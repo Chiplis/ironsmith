@@ -41,3 +41,31 @@ test('symbol bounds account for nested symmetry copies',()=>{
   assert.ok(Math.abs(bounds.min[0]-0.05)<1e-12);assert.ok(Math.abs(bounds.max[0]-0.95)<1e-12);
   assert.ok(Math.abs(bounds.max[1]-0.95)<1e-12);
 });
+
+import {prepareVectorSymbol} from '../src/lib/mse/symbol-geometry.mjs';
+test('legacy symbol preparation converts coordinates and constrained handles without changing input',()=>{
+  const shape=defaultVectorSymbol().parts[0];
+  shape.name='';
+  shape.points=shape.points.map(p=>({...p,position:p.position.map(v=>v*500)}));
+  shape.points[0]={...shape.points[0],lock:'size',before:[50,100],after:[-150,0]};
+  const symbol={version:'',parts:[{type:'group',parts:[shape]}]},before=structuredClone(symbol);
+  const prepared=prepareVectorSymbol(symbol).parts[0].parts[0];
+  assert.deepEqual(prepared.points.map(p=>p.position),defaultVectorSymbol().parts[0].points.map(p=>p.position));
+  assert.deepEqual(prepared.points[0].before,[0.2,0.1]);
+  assert.deepEqual(prepared.points[0].after,[-0.2,-0.1]);
+  assert.equal(prepared.name,'Shape');assert.deepEqual(symbol,before);
+});
+test('legacy coordinate detection uses both actual curve bounds and applies independently to each shape',()=>{
+  const point=(position,after=[0,0],before=[0,0],segment='line')=>({position,after,before,segment,lock:'free'});
+  // Endpoints stay below 100 vertically, but this curve reaches y=150.
+  const curve={type:'shape',name:'Curve',points:[point([0,0],[0,200],[0,0],'curve'),point([500,0],[0,0],[0,200])]};
+  const thin={type:'shape',name:'Thin',points:[point([0,0]),point([500,99])]};
+  const small=defaultVectorSymbol().parts[0];
+  for(const version of ['', '0.0.0','0-0-0']){
+    const prepared=prepareVectorSymbol({version,parts:[curve,thin,small]});
+    assert.deepEqual(symbolShapeBounds(prepared.parts[0]),{min:[0,0],max:[1,0.30000000000000004]});
+    assert.deepEqual(prepared.parts[1],thin);assert.deepEqual(prepared.parts[2],small);
+  }
+  const modern=prepareVectorSymbol({version:'0.3.5',parts:[curve]});
+  assert.deepEqual(modern.parts[0],curve);
+});

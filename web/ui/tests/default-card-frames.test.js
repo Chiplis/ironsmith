@@ -46,3 +46,8 @@ test('Sagas select identity frames despite their nonstandard layout and name', (
   assert.equal(defaultCardFrameKey({ cards: [{ layout: 'transform', color_identity: ['G'] }], typeLine: 'Enchantment — Saga' }), 'G');
   assert.equal(defaultCardFrameKey({ cards: [{ layout: 'saga', colors: ['R'], color_identity: ['U'] }], typeLine: 'Enchantment' }), 'U');
 });
+
+test('a land adds the colors of its current intrinsic mana to its identity frame', () => {
+  assert.equal(defaultCardFrameKey({ cards: [{ color_identity: [], intrinsic_mana: ['G'] }], typeLine: 'Legendary Land — Forest' }), 'G');
+  assert.equal(defaultCardFrameKey({ cards: [{ color_identity: [] }], typeLine: 'Legendary Land' }), 'land');
+});

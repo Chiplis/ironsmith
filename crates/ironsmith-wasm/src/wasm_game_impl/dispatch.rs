@@ -2083,8 +2083,11 @@ impl WasmGame {
                 return Err("commander-variant matches require commander lists".to_string());
             };
             match config.format {
-                MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => self
+                MatchFormatInput::Commander
+                | MatchFormatInput::PauperCommander
+                | MatchFormatInput::ArchenemyCommander => self
                     .validate_commander_setup(
+                        config.format,
                         player_count,
                         decks,
                         commanders,
@@ -2147,6 +2150,8 @@ impl WasmGame {
         self.match_format = config.format;
         self.game
             .set_commander_damage_loss_enabled(config.format.commander_damage_loss_enabled());
+        self.game
+            .set_commander_damage_loss_threshold(config.format.commander_damage_loss_threshold());
         let free_for_all_profile = match config.format {
             MatchFormatInput::FreeForAll => Some(config.free_for_all.unwrap_or_default()),
             MatchFormatInput::Planechase if player_count > 2 => {

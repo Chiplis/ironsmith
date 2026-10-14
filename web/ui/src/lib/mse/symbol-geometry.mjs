@@ -4,6 +4,23 @@ const sub=(a,b)=>a.map((x,i)=>x-b[i]);
 const mul=(a,b)=>a.map(x=>x*b);
 const length=a=>Math.sqrt(a[0]*a[0]+a[1]*a[1]);
 
+// SymbolShape::after_reading normalizes old unversioned files per shape,
+// after enforcing handle locks and measuring the actual curve bounds.
+export function prepareVectorSymbol(symbol) {
+  const legacy=!symbol.version||/^0(?:[.-]0){0,2}$/.test(symbol.version);
+  const prepare=part=>{
+    if(part.type!=='shape')return {...part,parts:part.parts.map(prepare)};
+    const shape=constrainSymbolShape(part);
+    if(!legacy)return shape;
+    const bounds=symbolShapeBounds(shape);
+    if(bounds.max[0]<100||bounds.max[1]<100)return shape;
+    return {...shape,name:shape.name||'Shape',points:shape.points.map(point=>({...point,
+      position:point.position.map(v=>v/500),before:point.before.map(v=>v/500),after:point.after.map(v=>v/500),
+    }))};
+  };
+  return {...symbol,parts:symbol.parts.map(prepare)};
+}
+
 export function constrainSymbolShape(shape) {
   return {...shape,points:shape.points.map(p=>{
     let before=[...p.before],after=[...p.after];

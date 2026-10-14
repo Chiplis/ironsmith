@@ -7,6 +7,7 @@ import { I18nProvider } from "@/i18n/I18nContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Shell from "@/components/layout/Shell";
 import VisualIndicatorsPreview from "@/components/layout/VisualIndicatorsPreview";
+import MseZonePreparation from "@/components/cards/MseZonePreparation";
 
 const visualIndicatorsPreview = typeof window !== "undefined"
   && new URLSearchParams(window.location.search).get("test") === "visual-indicators";
@@ -15,6 +16,7 @@ export default function App() {
   return (
     <I18nProvider>
       <GameProvider>
+        <MseZonePreparation />
         <ObjectSelectionProvider>
           <HoverProvider>
             <DragProvider>

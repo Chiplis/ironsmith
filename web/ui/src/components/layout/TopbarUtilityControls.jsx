@@ -1,4 +1,5 @@
 import { Github } from "lucide-react";
+import useUiText from "@/i18n/useUiText";
 import { Button } from "@/components/ui/button";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 
@@ -10,16 +11,15 @@ export default function TopbarUtilityControls({
   onReset,
   onRefresh,
   onToggleLog,
-  onEnterDeckLoading,
   onOpenPuzzleSetup,
   onOpenLobby,
-  deckLoadingMode,
   puzzleSetupMode = false,
   onAddCardNotice,
   showInlineControls = true,
   showBrand = false,
   children,
 }) {
+  const ui = useUiText();
   return (
     <div className="topbar-minor-controls topbar-minor-controls--utility">
       {showBrand ? (
@@ -35,7 +35,7 @@ export default function TopbarUtilityControls({
           href="https://github.com/Chiplis/ironsmith"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Ironsmith on GitHub"
+          aria-label={ui("Ironsmith on GitHub")}
           title="GitHub"
         >
           <Github className="size-3.5" aria-hidden="true" />
@@ -51,7 +51,7 @@ export default function TopbarUtilityControls({
           href="https://discord.gg/XDa4npdpVE"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="Ironsmith on Discord"
+          aria-label={ui("Ironsmith on Discord")}
           title="Discord"
         >
           <svg className="size-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -67,10 +67,8 @@ export default function TopbarUtilityControls({
         onReset={onReset}
         onRefresh={onRefresh}
         onToggleLog={onToggleLog}
-        onEnterDeckLoading={onEnterDeckLoading}
         onOpenPuzzleSetup={onOpenPuzzleSetup}
         onOpenLobby={onOpenLobby}
-        deckLoadingMode={deckLoadingMode}
         puzzleSetupMode={puzzleSetupMode}
         onAddCardNotice={onAddCardNotice}
         triggerIcon="menu"

@@ -11,6 +11,7 @@
     "build:lan": "pnpm build --mode lan",
     "preview:lan": "vite preview --mode lan --host 0.0.0.0",
     "test:frame-benchmark": "FRAME_BENCHMARK_ASSERT=1 node tests/bilingual-frame-benchmark.mjs",
+    "test:card-renderers": "node --test tests/mse-interaction-regions.test.mjs tests/mse-default-frames.test.mjs tests/mse-card-preparation.test.mjs tests/mse-browser-session.test.mjs tests/mse-deployment.test.mjs tests/card-frame-snapshot.test.mjs tests/mse-style-selection.test.mjs tests/mse-printing-style.test.mjs tests/mse-engine-card.test.mjs tests/inspector-ability-lines.test.js tests/group-mana-abilities.test.js && node tests/card-frame-reduction.browser.mjs && node tests/mse-react-frame.browser.mjs && node tests/mse-printing-frame.browser.mjs && node tests/mse-svg-symbol.browser.mjs",
     "cache:frame-benchmark": "node scripts/cache-bilingual-frame-benchmark.mjs",
     "test:lan": "node --test tests/lan-service.test.mjs tests/lan-browser.test.mjs tests/sha256.test.mjs",
     "test:deck-catalog": "node --test tests/catalog-client.test.js tests/deck-catalog-import.test.js tests/card-name-resolution.test.js",

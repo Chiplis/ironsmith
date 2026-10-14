@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { PUBLIC_FORMATS } from '../src/lib/relay/formats.js';
 const source = await readFile(new URL('../../../cards.json', import.meta.url), 'utf8');
+// Cards that may lead a Pauper EDH deck (refresh with fetch-pdh-commanders.mjs).
+const pdhCommanders = new Set(JSON.parse(await readFile(new URL('./data/pdh-commanders.json', import.meta.url), 'utf8')).names);
 const cards = {};
 for (const card of JSON.parse(source)) {
   if (!card.name || !card.legalities) continue;
@@ -11,6 +13,7 @@ for (const card of JSON.parse(source)) {
   cards[card.name.toLowerCase()] = {
     name: card.name, legalities: Object.fromEntries(Object.keys(PUBLIC_FORMATS).map(f => [f, card.legalities[f] || 'not_legal'])),
     colors: card.color_identity || [], type: face.type_line || '',
+    ...(pdhCommanders.has(card.name) ? { pdhCommander: true } : {}),
     // Only rules relevant to deck construction, keeping the catalog small.
     rules: oracle.split('\n').filter(line => /deck can have|commander|partner|background|friends forever|Doctor's companion/i.test(line)).join('\n'),
   };

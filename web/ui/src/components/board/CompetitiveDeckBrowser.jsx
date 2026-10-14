@@ -22,6 +22,7 @@ const FEATURED_SIZE = 3;
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
 const catalogFormats = [
   { id: "commander", label: "Commander" },
+  { id: "paupercommander", label: "Pauper EDH" },
   { id: "vintage", label: "Vintage" },
   { id: "modern", label: "Modern" },
   { id: "pioneer", label: "Pioneer" },
@@ -170,7 +171,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
   );
 });
 
-export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern" }) {
+export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern", onFormatChange }) {
   const ui = useUiText();
   const [catalog, setCatalog] = useState(null);
   const [catalogFormat, setCatalogFormat] = useState(initialFormat);
@@ -375,7 +376,7 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="grid gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#8b806b]">{ui("Format")}
-          <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); resetScroll(); }}>
+          <select className={selectClass.replace("w-full", "w-auto min-w-[136px]")} style={selectStyle} value={catalogFormat} onChange={(event) => { setCatalogFormat(event.target.value); onFormatChange?.(event.target.value); resetScroll(); }}>
             {catalogFormats.map((formatOption) => <option key={formatOption.id} value={formatOption.id}>{formatOption.label}</option>)}
           </select>
         </label>

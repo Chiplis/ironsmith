@@ -5,12 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import upstream from '../src/lib/mse/upstream.mjs';
+import {mseResourceFontPaths} from '../src/lib/mse/font-resources.mjs';
 const [directory,output='reports/mse/fonts.json']=process.argv.slice(2);
 if(!directory)throw new Error('Usage: node scripts/mse-audit-fonts.mjs CORPUS_DIRECTORY [REPORT.json]');
 const root=resolve(directory),library=resolve(dirname(fileURLToPath(import.meta.url)),'../src/lib/mse');
 const tree=JSON.parse(await readFile(resolve(root,'upstream-tree.json'),'utf8'));
 if(tree.sha!==upstream.revision || tree.truncated)throw new Error('Font corpus must have a complete pinned tree');
-const files=tree.tree.filter(e=>e.type==='blob'&&/\.(ttf|otf)$/i.test(e.path));
+const resourceFonts=new Set(mseResourceFontPaths(tree.tree.filter(e=>e.type==='blob').map(e=>e.path)));
+const files=tree.tree.filter(e=>e.type==='blob'&&/\.(ttf|otf)$/i.test(e.path)).map(e=>({...e,nativeResource:resourceFonts.has(e.path)}));
 const server=createServer(async(req,res)=>{
   try{
     if(req.url==='/'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>MSE font audit</title>');return;}
@@ -38,7 +40,7 @@ try{
     const {readFontMetadata}=await import('/font-metadata.mjs');
     const results=[];
     for(let i=0;i<files.length;i++){
-      const result={path:files[i].path,sha:files[i].sha},fonts=new MseBrowserFonts();
+      const result={path:files[i].path,sha:files[i].sha,nativeResource:files[i].nativeResource},fonts=new MseBrowserFonts();
       try{
         const response=await fetch(`/font/${i}`);if(!response.ok)throw new Error(await response.text());
         const bytes=await response.arrayBuffer();result.metadata=readFontMetadata(bytes);
@@ -53,7 +55,7 @@ try{
     }
     return results;
   },files);
-  const report={upstream,generatedAt:new Date().toISOString(),scope:'Chromium font loading and basic measurement; does not establish native text or full-card rendering parity.',browserDiagnostics,summary:{fonts:results.length,loaded:results.filter(r=>r.loaded).length,failed:results.filter(r=>!r.loaded).length},results};
+  const report={upstream,generatedAt:new Date().toISOString(),scope:'Chromium font loading and basic measurement; does not establish native text or full-card rendering parity.',browserDiagnostics,summary:{fonts:results.length,nativeResourceFonts:results.filter(r=>r.nativeResource).length,nativeResourceLoaded:results.filter(r=>r.nativeResource&&r.loaded).length,loaded:results.filter(r=>r.loaded).length,failed:results.filter(r=>!r.loaded).length},results};
   await mkdir(dirname(resolve(output)),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
   console.log(JSON.stringify({...report.summary,report:resolve(output),failures:results.filter(r=>!r.loaded).map(r=>({path:r.path,error:r.error}))},null,2));
   if(report.summary.failed)process.exitCode=1;

@@ -4637,9 +4637,11 @@ select::-ms-expand {
 }
 .mana-plan-strip-context { flex: 0 1 105px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.62rem; white-space: nowrap; }
 
-/* The permanent whose ability is currently being activated. */
-.game-card.field-card.activation-source,
-.game-card.battlefield-arena-card.activation-source .arena-permanent {
+/* The permanent whose ability is currently being activated. Once it is
+   tapped (e.g. a land awaiting the undo overlay) the rotation already marks
+   it, and the outline would sit on the unrotated wrapper. */
+.game-card.field-card.activation-source:not(.tapped),
+.game-card.battlefield-arena-card.activation-source:not(.tapped) .arena-permanent {
   outline: 2px solid #58b6ff;
   outline-offset: -1px;
   box-shadow: 0 0 0 1px #58b6ff, 0 0 12px 3px #329cff99;

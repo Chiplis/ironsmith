@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { chromium } from 'playwright';
 import upstream from '../src/lib/mse/upstream.mjs';
+import {mseResourceFontPaths} from '../src/lib/mse/font-resources.mjs';
 const args=process.argv.slice(2),fetchAssets=args.includes('--fetch-assets'),layers=args.includes('--layers'),useSession=args.includes('--session');
 const fontDpi=Number(args.find(arg=>arg.startsWith('--font-dpi='))?.slice(11)??96);
 if(![72,96].includes(fontDpi))throw new Error('Font DPI must be 72 (native macOS) or 96 (native Windows/Linux)');
@@ -26,7 +27,7 @@ const tree=JSON.parse(await readFile(resolve(root,'upstream-tree.json'),'utf8'))
 if(tree.sha!==upstream.revision||tree.truncated)throw new Error('Expected a complete pinned corpus index');
 const entries=new Map(tree.tree.filter(e=>e.type==='blob').map(e=>[e.path,e]));
 const files=[...entries.keys()].filter(p=>p.startsWith('data/')).map(p=>p.slice(5));
-const fontPaths=[...entries.keys()].filter(p=>/\.(ttf|otf)$/i.test(p));
+const fontPaths=mseResourceFontPaths(entries.keys());
 const fetchedAssets=[],pendingAssets=new Map();
 async function readAsset(path,entry){
   if(!pendingAssets.has(path))pendingAssets.set(path,(async()=>{
@@ -91,13 +92,13 @@ try{
       context.layoutTaggedText=async(name,...args)=>{field=name;return original(name,...args);};
       const originalChoice=context.measureChoiceImage.bind(context);
       context.measureChoiceImage=async(name,...args)=>{field=name;return originalChoice(name,...args);};
-      phase='measure';const measured=await context.prepareTextLayouts(fonts,renderer);
-      phase='layout';field=null;const layout=context.layout({visibleOnly:true});
       phase='draw';
       const stages=[];
       const {canvas,context:renderedContext,...drawn}=await service.renderContext(context,{
         onFieldDrawn:layers?({group,name,surface})=>{stages.push({name:`stage.${group}.${name}`,png:surface.toDataURL().split(',')[1]});}:undefined,
       });
+      const measured=drawn.preparation;
+      phase='layout';field=null;const layout=context.layout({visibleOnly:true});
       service.dispose();
       canvas.id='rendered-card';document.body.append(canvas);
       const diagnostics=[...stages,...context.diagnostics];
@@ -109,11 +110,12 @@ try{
           const dc=c.getContext('2d'),p=dc.createImageData(c.width,c.height);p.data.set(raster.data);dc.putImageData(p,0,0);png=c.toDataURL().split(',')[1];}
         const textLayout=context.textMeasurements.get(`${f.group}.${f.name}`)?.result;
         diagnostics.push({name:`${f.group}.${f.name}`,properties:f.properties,png,
-          textLayout:textLayout?.measurement?{scale:textLayout.scale,lines:textLayout.lines}:undefined});
+          textLayout:textLayout?.measurement?{scale:textLayout.scale,stretch:textLayout.stretch,lines:textLayout.lines}:undefined});
       }
       const measuredText=Object.fromEntries([...context.textMeasurements].filter(([,v])=>v.result?.measurement).map(([key,v])=>[key,v.result.measurement.runs.filter(r=>!r.soft).map(r=>r.text).join('')]));
-      return {success:true,phase,drawn,fontFailures,passes:measured.passes,textFields:measured.fields,dimensions:[layout.width,layout.height],fields:layout.fields.length,measuredText,diagnostics};
-    }catch(error){return {success:false,phase,field:error.field||field,fontFailures,error:{code:error.code||'host',message:error.message}};}
+      const measuredLayouts=Object.fromEntries([...context.textMeasurements].filter(([,v])=>v.result?.measurement).map(([key,v])=>[key,{scale:v.result.scale,stretch:v.result.stretch,alignment:context.property(key.slice(key.indexOf('.')+1),'alignment',key.slice(0,key.indexOf('.'))),geometry:Object.fromEntries(['left','top','width','height','content_width','content_height'].map(property=>[property,context.property(key.slice(key.indexOf('.')+1),property,key.slice(0,key.indexOf('.')))])),lines:v.result.lines.map(line=>[line.top,line.height,line.width])}]));
+      return {success:true,phase,drawn,fontFailures,measuredLayouts,passes:measured.passes,textFields:measured.fields,dimensions:[layout.width,layout.height],fields:layout.fields.length,measuredText,diagnostics};
+    }catch(error){return {success:false,phase,field:error.field||field,fontFailures,error:{code:error.code||'host',message:error.message,layoutChanges:error.layoutChanges}};}
     finally{if(session)session.dispose();else fonts.dispose();}
   },{files,fontPaths,style,layers,cardOptions,useSession,fontDpi,snapshot,faceIndex,ordered,artName:artPath?basename(artPath):null});
   for(const d of result.diagnostics||[]){if(!d.png)continue;
@@ -127,7 +129,7 @@ try{
     const data=await page.locator('#rendered-card').evaluate(canvas=>canvas.toDataURL('image/png').split(',')[1]);
     await writeFile(imagePath,Buffer.from(data,'base64'));
   }
-  const report={upstream,style,engineCardPath:engineCardPath?resolve(engineCardPath):undefined,cardPath:cardPath?resolve(cardPath):undefined,artPath:artPath?resolve(artPath):undefined,generatedAt:new Date().toISOString(),fetchedAssets,browserSession:useSession,fontDpi,faceIndex,scope:'Actual Chromium font metrics, template layout, and card drawing; no native visual parity comparison.',renderingVerified:false,imagePath,...result};
+  const report={upstream,style,engineCardPath:engineCardPath?resolve(engineCardPath):undefined,cardPath:cardPath?resolve(cardPath):undefined,artPath:artPath?resolve(artPath):undefined,generatedAt:new Date().toISOString(),fetchedAssets,fontSources:{policy:'native-resource-directories',files:fontPaths.length,allowSystemFonts:useSession},browserSession:useSession,fontDpi,faceIndex,scope:'Actual Chromium font metrics, template layout, and card drawing; no native visual parity comparison.',renderingVerified:false,imagePath,...result};
   await mkdir(dirname(resolve(output)),{recursive:true});await writeFile(output,JSON.stringify(report,null,2)+'\n');
   console.log(JSON.stringify(report,null,2));if(!result.success)process.exitCode=1;
 }finally{await browser?.close();await new Promise(done=>server.close(done));}

@@ -1,4 +1,5 @@
-import { cardArtColors, normalizeArtColors } from "./card-art-colors.js";
+import { cardArtColors } from "./card-art-colors.js";
+import { landManaColors } from "./land-mana-colors.js";
 
 // Arena's battlefield uses art tiles rather than full printed cards. Classification
 // follows live characteristics: animated lands and artifact creatures stay in combat.
@@ -27,7 +28,10 @@ export function partitionArenaBattlefield(cards = []) {
 
 export function arenaFrameColor(card = {}) {
   const liveColors = cardArtColors(card);
-  const colors = liveColors.length ? liveColors : arenaPermanentKind(card) === 'land' ? normalizeArtColors(card.produced_mana) : [];
+  // Colorless lands take the colors they currently make, current basic land
+  // types included, so Yavimaya's "each land is a Forest" turns frames green.
+  // Land creatures (Dryad Arbor) count too; landManaColors ignores nonlands.
+  const colors = liveColors.length ? liveColors : landManaColors(card).filter(color => color !== 'C');
   if (colors.length > 1) return '#b4a26a';
   return ({ W: '#d6ccad', U: '#618ead', B: '#78717c', R: '#ac6655', G: '#63907a' })[String(colors[0]).toUpperCase()] || '#8f979d';
 }

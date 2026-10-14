@@ -1,4 +1,5 @@
 import GameCard from "@/components/cards/GameCard";
+import useUiText from "@/i18n/useUiText";
 import "./visual-indicators-preview.css";
 
 // A focused visual fixture: the values are snapshots, not changes to a match.
@@ -6,8 +7,8 @@ import "./visual-indicators-preview.css";
 // power_toughness_without_counters is what the battlefield footer displays.
 const cases = [
   {
-    title: "Aura + contador + mareo",
-    description: "Runeclaw Bear 2/2 · Rancor +2/+0 · un contador +1/+1. Total real: 5/3.",
+    title: "Aura + counter + summoning sickness",
+    description: "Runeclaw Bear 2/2 · Rancor +2/+0 · one +1/+1 counter. Actual total: 5/3.",
     card: {
       id: 91001,
       name: "Runeclaw Bear",
@@ -21,8 +22,8 @@ const cases = [
     },
   },
   {
-    title: "Solo contador",
-    description: "Runeclaw Bear 2/2 · un contador +1/+1. Total real: 3/3.",
+    title: "Counter only",
+    description: "Runeclaw Bear 2/2 · one +1/+1 counter. Actual total: 3/3.",
     card: {
       id: 91002,
       name: "Runeclaw Bear",
@@ -35,8 +36,8 @@ const cases = [
     },
   },
   {
-    title: "Solo aura",
-    description: "Runeclaw Bear 2/2 · Rancor +2/+0. El 4/2 violeta ya incluye el aura.",
+    title: "Aura only",
+    description: "Runeclaw Bear 2/2 · Rancor +2/+0. The violet 4/2 already includes the aura.",
     card: {
       id: 91003,
       name: "Runeclaw Bear",
@@ -48,8 +49,8 @@ const cases = [
     },
   },
   {
-    title: "Recién entrada",
-    description: "Runeclaw Bear 2/2 · espiral violeta: todavía no puede atacar.",
+    title: "Just arrived",
+    description: "Runeclaw Bear 2/2 · violet spiral: it can't attack yet.",
     card: {
       id: 91004,
       name: "Runeclaw Bear",
@@ -60,8 +61,8 @@ const cases = [
     },
   },
   {
-    title: "Ya puede atacar",
-    description: "Runeclaw Bear 2/2 · sin espiral después de superar el mareo.",
+    title: "Ready to attack",
+    description: "Runeclaw Bear 2/2 · no spiral once summoning sickness wears off.",
     card: {
       id: 91005,
       name: "Runeclaw Bear",
@@ -74,25 +75,26 @@ const cases = [
 ];
 
 export default function VisualIndicatorsPreview() {
+  const ui = useUiText();
   return (
     <main className="visual-indicators-preview">
       <header className="visual-indicators-preview__header">
-        <a href="/?test=compile">← Volver a Compile Card</a>
-        <h1>Prueba visual de criaturas</h1>
-        <p>La pastilla del contador muestra solo +1/+1. El número inferior muestra la fuerza/resistencia sin sumar ese contador; si hay un aura activa, se vuelve violeta.</p>
+        <a href="/?test=compile">{ui("← Back to Compile Card")}</a>
+        <h1>{ui("Creature visual test")}</h1>
+        <p>{ui("The counter pill shows only the +1/+1. The number below shows power/toughness without that counter; with an active aura it turns violet.")}</p>
       </header>
       <div className="visual-indicators-preview__grid">
         {cases.map(({ title, description, card }) => (
           <section className="visual-indicators-preview__case" key={card.id}>
-            <h2>{title}</h2>
+            <h2>{ui(title)}</h2>
             <div className="visual-indicators-preview__card">
               <GameCard card={card} variant="battlefield" battlefieldVisualMode="portrait" suppressTooltip />
             </div>
-            <p>{description}</p>
+            <p>{ui(description)}</p>
           </section>
         ))}
       </div>
-      <p className="visual-indicators-preview__note">Esta escena usa el mismo componente de carta del battlefield, con datos de prueba aislados. No altera la partida.</p>
+      <p className="visual-indicators-preview__note">{ui("This scene uses the same battlefield card component with isolated test data. It does not change the match.")}</p>
     </main>
   );
 }

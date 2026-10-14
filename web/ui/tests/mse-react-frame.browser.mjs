@@ -20,7 +20,13 @@ const createSession=async()=>session,root=createRoot(document.getElementById('ro
 function render(name,{type_line,style,defaultStyle}={}){root.render(<MseRendererProvider corpusUrl="https://assets.example/mse/" createSession={createSession} defaultStyle={defaultStyle}>
  <MseCardFrame snapshot={JSON.stringify({name,type_line})} style={style} fallback={<span id="fallback">Fallback {name}</span>}/>
 </MseRendererProvider>);}
-window.test={async artwork(){
+// A session that can render blank default frames; the card render stays pending.
+const framed={dispose(){},renderer:{renderTo:()=>new Promise(()=>{}),async render(){
+ const canvas=new OffscreenCanvas(10,12);canvas.getContext('2d').fillRect(0,0,10,12);return {width:10,height:12,canvas};
+}}};
+const createFramedSession=async()=>framed;
+window.test={renderFramed(card){root.render(<MseRendererProvider corpusUrl="https://assets.example/framed/" createSession={createFramedSession}>
+ <MseCardFrame snapshot={JSON.stringify(card)} fallback={<span id="fallback">Fallback {card.name}</span>}/></MseRendererProvider>);},async artwork(){
  const source=document.createElement('canvas');source.width=2;source.height=2;
  const ctx=source.getContext('2d');ctx.fillStyle='rgb(255,0,0)';ctx.fillRect(0,0,2,2);
  const loader=createBrowserArtworkLoader(),url=source.toDataURL();
@@ -71,7 +77,9 @@ try{
   await page.waitForFunction(()=>window.test.count()===8);
   assert.equal(await page.evaluate(()=>window.test.request(7).snapshot.rarity),'rare');
   assert.equal(await page.evaluate(()=>window.test.request(7).snapshot.flavor_text),'Updated flavor.');
-  assert.equal(await page.locator('canvas').isVisible(),false);
+  // The same card keeps its previous canvas while the update renders.
+  assert.equal(await page.locator('canvas').isVisible(),true);
+  assert.equal(await page.locator('#miniature-fallback').count(),0);
   const dfc={id:44,layout:'transform',card_faces:[{name:'Front',type_line:'Creature'},{name:'Back',type_line:'Planeswalker'}]};
   await page.evaluate(card=>window.test.renderMiniature(card,0),dfc);
   await page.waitForFunction(()=>window.test.count()===9);
@@ -82,7 +90,28 @@ try{
   assert.equal(await page.evaluate(()=>window.test.request(9).adapter.faceIndex),1);
   assert.equal(await page.evaluate(()=>window.test.request(9).style),'magic-m15-mainframe-planeswalker.mse-style');
   assert.equal(await page.locator('canvas').isVisible(),false);
+  // A re-render of the same card keeps its canvas instead of flashing the fallback.
+  await page.evaluate(()=>window.test.render('D'));await page.waitForFunction(()=>window.test.count()===11);
+  await page.evaluate(()=>window.test.resolve(10));await page.locator('[data-mse-frame="ready"]').waitFor();
+  await page.evaluate(()=>window.test.render('D',{type_line:'Creature'}));await page.waitForFunction(()=>window.test.count()===12);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('canvas').isVisible(),true);
+  assert.equal(await page.locator('#fallback').count(),0);
+  assert.equal(await page.locator('canvas').getAttribute('data-mse-frame'),'pending');
+  // A different card shows the fallback only after the render grace period.
+  await page.evaluate(()=>window.test.render('E'));await page.waitForFunction(()=>window.test.count()===13);
+  assert.equal(await page.locator('#fallback').count(),0);
+  assert.equal(await page.locator('canvas').isVisible(),false);
+  await page.locator('#fallback').waitFor();
+  assert.equal(await page.locator('#fallback').textContent(),'Fallback E');
+  // While a card renders, its colors' blank default frame replaces the simple fallback.
+  await page.evaluate(()=>window.test.renderFramed({name:'Elf',type_line:'Creature — Elf',colors:['G']}));
+  await page.locator('[data-mse-placeholder="G"] img').waitFor();
+  assert.equal(await page.locator('#fallback').count(),0);
+  await page.evaluate(()=>window.test.renderFramed({name:'Forest',type_line:'Basic Land — Forest',colors:[],color_identity:['G']}));
+  await page.locator('[data-mse-placeholder="G-land"] img').waitFor();
+  assert.equal(await page.locator('#fallback').count(),0);
   await page.evaluate(()=>window.test.unmount());
   assert.equal(await page.evaluate(()=>window.test.disposeCount()),1);
-  console.log(JSON.stringify({status:'passed',checks:['browser artwork decoding and caching','loading fallback','render commit','stale render cancellation','error fallback','automatic style selection and overrides','miniature printing metadata and invalidation','DFC face selection and stale image invalidation','resource disposal']}));
+  console.log(JSON.stringify({status:'passed',checks:['browser artwork decoding and caching','loading fallback','render commit','stale render cancellation','error fallback','automatic style selection and overrides','miniature printing metadata and invalidation','DFC face selection and stale image invalidation','same-card canvas retention','fallback grace period','color default frames','resource disposal']}));
 }finally{await browser?.close();await server.close();}

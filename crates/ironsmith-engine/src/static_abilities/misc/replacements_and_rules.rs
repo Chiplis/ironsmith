@@ -849,9 +849,14 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 if etb.object == self.ability_source {
                     return false;
                 }
-                if self.actor.is_some()
-                    && !self.actor_matches(ctx.game.controller_of_id(etb.object), ctx.game)
-                {
+                // CR 122.6: the player who will control the permanent as it
+                // enters puts its entry counters, not its pre-entry controller.
+                let entering_controller = ctx
+                    .prospective_entry_world(etb.object)
+                    .and_then(|world| world.controller_of_id(etb.object))
+                    .or(etb.controller_override)
+                    .or_else(|| ctx.game.controller_of_id(etb.object));
+                if self.actor.is_some() && !self.actor_matches(entering_controller, ctx.game) {
                     return false;
                 }
                 if !etb

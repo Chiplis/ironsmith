@@ -5,7 +5,7 @@ import { I18nProvider } from '../src/i18n/I18nContext';
 import { HoverProvider } from '../src/context/HoverContext';
 import { DragProvider } from '../src/context/DragContext';
 import GameCard from '../src/components/cards/GameCard';
-import OriginalCardFallback from '../src/components/right-rail/OriginalCardFallback';
+import CardFramePresentation from '../src/components/cards/CardFramePresentation';
 import '../src/index.css';
 
 const cards = window.__miniatureCards.map((printing, index) => ({
@@ -26,7 +26,7 @@ const render = state => root.render(
       {cards.map(card => <GameCard key={card.id} card={card} variant="battlefield" battlefieldVisualMode="portrait"
         sourceImageUrl={card.sourceImageUrl} style={{width: 96, minWidth: 96, height: 134, minHeight: 134}} />)}
       <div id="fallback" style={{position: 'relative', width: 96, height: 134}}>
-        <OriginalCardFallback imageUrl={cards[2].sourceImageUrl} name="Fallback land" showDetails={false} />
+        <CardFramePresentation imageUrl={cards[2].sourceImageUrl} card={cards[2]} />
       </div>
     </div>
   </DragProvider></HoverProvider></GameContext.Provider></I18nProvider>

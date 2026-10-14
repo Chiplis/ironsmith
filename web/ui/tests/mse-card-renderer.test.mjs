@@ -71,3 +71,16 @@ test('legacy front/back region templates retain both numbered faces',async()=>{
   assert.equal(text(context.field('card','name_2')),'Night');
   assert.equal(context.runtime.run('length(set.cards)'),1);
 });
+test('finished renders are reused by request, least recently used first out',async()=>{
+  let loads=0;const r=setup(async()=>{loads++;return null;});
+  const first=await r.render(request('first'));
+  assert.equal(await r.render(request('first')),first,'the same request reuses its result');
+  assert.ok(r.has(request('first')));
+  const target=canvas(),drawn=await r.renderTo(target,request('first'));
+  assert.equal(drawn,first);assert.equal(target.calls[0][0],first.canvas);
+  assert.notEqual(await r.render(request('first'),{cache:false}),first,'uncached renders bypass it');
+  r.resultLimit=1;await r.render(request('second'));
+  assert.equal(r.has(request('first')),false);
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(r.render(request('second'),{signal:controller.signal}),{code:'render-aborted'});
+});

@@ -24,3 +24,13 @@ test('tagged layout remeasures mixed symbol and font runs at the selected scale'
   assert.equal(result.measurement.characters.length, source.length);
   assert.equal(result.measurement.runs[1].measured.glyphs[0].bitmap.width, 10);
 });
+
+test('field stretch uses available width and overflow flags while preserving content metrics',async()=>{
+  const font={name:'Fixture',size:10,scale_down_to:10};
+  const fonts={prepare:async()=>({measure:text=>({width:text.length*10,height:10}),lineHeight:()=>10})};
+  for(const [alignment,width,expected] of [['shrink-overflow',25,0.5],['shrink-overflow',65,1],['stretch',65,1.5],['left',25,1]]){
+    const result=await layoutTaggedText(parseTaggedText('ABCD',font),fonts,null,null,{width,height:20,paddingLeft:2,paddingRight:3,multiLine:false,alignment:parseAlignment(alignment)});
+    assert.equal(result.width,40);
+    assert.equal(result.stretch,expected);
+  }
+});

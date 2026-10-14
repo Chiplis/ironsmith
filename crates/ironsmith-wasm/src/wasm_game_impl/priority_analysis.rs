@@ -434,6 +434,34 @@ mod priority_analysis_tests {
     }
 
     #[test]
+    fn untapped_lands_offer_their_mana_abilities_whenever_the_player_has_priority() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            wasm.game.turn.active_player = alice;
+            // Upkeep: no spell is castable, so nothing would ever request mana.
+            wasm.game.turn.phase = ironsmith::game_state::Phase::Beginning;
+            wasm.game.turn.step = Some(ironsmith::game_state::Step::Upkeep);
+            let card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Forest")
+                .card_types(vec![ironsmith::types::CardType::Land])
+                .subtypes(vec![ironsmith::types::Subtype::Forest]).build();
+            let forest = wasm.game.create_object_from_card(&card, alice, ironsmith::Zone::Battlefield);
+            wasm.pending_decision = Some(DecisionContext::Priority(ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap()));
+            assert!(wasm.begin_priority_analysis("mana".into()));
+            let mut finished = false;
+            for _ in 0..1000 {
+                if wasm.advance_priority_analysis("mana", 8).unwrap() == Some(true) { finished = true; break; }
+            }
+            assert!(finished);
+            let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.clone() else { panic!() };
+            assert!(ctx.actions.iter().any(|action| matches!(action,
+                LegalAction::ActivateManaAbility { source, .. } if *source == forest)),
+                "a player with priority may tap an untapped land for mana");
+        });
+    }
+
+    #[test]
     fn new_hand_cards_show_pending_payment_before_their_search_starts() {
         with_fixture_stack(|| {
             let _ids = crate::test_id_counter_guard();

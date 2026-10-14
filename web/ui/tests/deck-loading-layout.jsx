@@ -19,7 +19,7 @@ function Fixture() {
   return (
     <GameContext.Provider value={value}>
       <div style={{ height: '100vh' }}>
-        <DeckLoadingView onOpenLobby={() => {}} onTestDecks={() => {}} onCancel={() => {}} />
+        <DeckLoadingView onTestDecks={() => {}} onCancel={() => {}} />
       </div>
     </GameContext.Provider>
   );

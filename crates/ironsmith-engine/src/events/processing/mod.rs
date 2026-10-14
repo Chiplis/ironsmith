@@ -2241,7 +2241,7 @@ fn commit_discard_original(
             provenance,
             mut resolved_event,
             discarded_snapshot,
-            programs,
+            mut programs,
             scope,
             source_snapshot,
             replacement_source_snapshot,
@@ -2273,7 +2273,7 @@ fn commit_discard_original(
                             },
                         ));
                     }
-                    let destination = discard.destination;
+                    let mut destination = discard.destination;
 
                     let new_id = if destination == Zone::Library {
                         move_to_top_of_library(
@@ -2283,6 +2283,50 @@ fn commit_discard_original(
                             discard.cause.clone(),
                             decision_maker,
                         )
+                    } else if destination == Zone::Battlefield {
+                        // CR 614.1c, 614.12: a discard put onto the battlefield
+                        // instead (Loxodon Smiter) still enters; entry
+                        // replacements (enters tapped, with counters) apply.
+                        let entry = game.move_object_with_etb_processing_with_dm_and_cause(
+                            card_id,
+                            Zone::Battlefield,
+                            discard.cause.clone(),
+                            decision_maker,
+                        )?;
+                        if entry.pending || decision_maker.awaiting_choice() {
+                            return Ok(CommittedDiscardOriginal::without_arrival(
+                                DiscardExecutionReceipt::pending(),
+                            ));
+                        }
+                        programs.extend(entry.programs);
+                        let new_id = match entry.original {
+                            EventOutcome::Proceed(entered) => Some(entered.new_id),
+                            // An entry replacement moved it elsewhere instead.
+                            _ => discarded_snapshot
+                                .as_ref()
+                                .and_then(|snapshot| {
+                                    game.find_object_by_stable_id(snapshot.stable_id)
+                                })
+                                .filter(|id| {
+                                    game.object(*id)
+                                        .is_some_and(|object| object.zone != Zone::Hand)
+                                }),
+                        };
+                        let Some(new_id) = new_id else {
+                            return Ok(CommittedDiscardOriginal::without_arrival(
+                                DiscardExecutionReceipt {
+                                    result: DiscardResult::prevented(),
+                                    resolved_event: None,
+                                    discarded_snapshot,
+                                    programs,
+                                    payload_outcome: None,
+                                },
+                            ));
+                        };
+                        if let Some(object) = game.object(new_id) {
+                            destination = object.zone;
+                        }
+                        Some(new_id)
                     } else {
                         game.move_object(card_id, destination, discard.cause.clone())
                     };
@@ -2713,10 +2757,14 @@ fn trait_effect_matches_event(
         return Ok(None);
     }
     // Entry programs may add counters while preparing the object. Apply
-    // counter-placement modifiers once, after all entry counter proposals exist.
+    // counter-placement modifiers once, after all entry counter proposals exist,
+    // so the affected player orders halvers, doublers and adders together
+    // (CR 616.1e).
     if matches!(
         effect.replacement,
-        ReplacementAction::DoubleCounters { .. } | ReplacementAction::AddCountersToPlacement { .. }
+        ReplacementAction::DoubleCounters { .. }
+            | ReplacementAction::HalveCounters { .. }
+            | ReplacementAction::AddCountersToPlacement { .. }
     ) && let Some(etb) =
         crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
         && etb.prepared_choices.is_none()
@@ -3802,32 +3850,29 @@ fn shield_counter_destroy_replacements(
 /// "If damage would be dealt to this permanent, prevent that damage and
 /// remove a shield counter from it." The additional part still happens for
 /// unpreventable damage (CR 615.12).
-fn shield_counter_damage_replacements(
-    game: &GameState,
-    target: DamageTarget,
-) -> Vec<ReplacementEffect> {
-    let DamageTarget::Object(permanent) = target else {
-        return Vec::new();
-    };
-    if shield_counter_count(game, permanent) == 0 {
-        return Vec::new();
-    }
-    let Some(controller) = game
-        .object(permanent)
-        .map(|object| game.controller_of(object))
-    else {
-        return Vec::new();
-    };
-    vec![ReplacementEffect::with_matcher(
-        permanent,
-        controller,
-        crate::events::damage::matchers::DamageToSelfMatcher,
-        ReplacementAction::PreventDamageThen(vec![crate::effect::Effect::remove_counters(
-            CounterType::Shield,
-            1,
-            crate::target::ChooseSpec::SpecificObject(permanent),
-        )]),
-    )]
+///
+/// Every shielded permanent contributes its effect: a replacement may move the
+/// damage onto a different permanent (CR 616.1f), and each effect's matcher
+/// only accepts damage to its own permanent.
+fn shield_counter_damage_replacements(game: &GameState) -> Vec<ReplacementEffect> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|permanent| shield_counter_count(game, *permanent) > 0)
+        .filter_map(|permanent| {
+            let controller = game.controller_of(game.object(permanent)?);
+            Some(ReplacementEffect::with_matcher(
+                permanent,
+                controller,
+                crate::events::damage::matchers::DamageToSelfMatcher,
+                ReplacementAction::PreventDamageThen(vec![crate::effect::Effect::remove_counters(
+                    CounterType::Shield,
+                    1,
+                    crate::target::ChooseSpec::SpecificObject(permanent),
+                )]),
+            ))
+        })
+        .collect()
 }
 
 /// The built-in replacement created by finality counters (CR 122.1h): "If
@@ -8929,7 +8974,6 @@ fn prepare_damage_proposal(
 
 fn damage_additional_replacements(
     game: &GameState,
-    target: DamageTarget,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     batch_allocation: Option<&PreventionBatchAllocation>,
     replacement_scope: &crate::effects::ReplacementExecutionContext,
@@ -8939,8 +8983,9 @@ fn damage_additional_replacements(
     let mut prevention_effects =
         prevention_shield_replacement_effects(game, source_snapshot, batch_allocation);
     // CR 122.1c shield counters are prevention effects ordered with the
-    // others by the affected player (CR 616.1).
-    prevention_effects.extend(shield_counter_damage_replacements(game, target));
+    // others by the affected player (CR 616.1). A redirected event reaches the
+    // new recipient's shield counters too (CR 616.1f).
+    prevention_effects.extend(shield_counter_damage_replacements(game));
     assign_ephemeral_effect_ids(&mut prevention_effects, u64::MAX / 4);
     let mut additional = replacement_scope.additional_replacement_effects.clone();
     assign_ephemeral_effect_ids(&mut additional, u64::MAX / 2);
@@ -8979,7 +9024,6 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     let event_provenance = event.provenance();
     let prevention_effects = damage_additional_replacements(
         game,
-        target,
         source_snapshot,
         batch_allocation,
         replacement_scope,
@@ -11515,7 +11559,13 @@ mod life_modification_tests;
 mod entry_failure_tests;
 
 #[cfg(test)]
+mod discard_entry_tests;
+
+#[cfg(test)]
 mod next_damage_occurrence_tests;
+
+#[cfg(test)]
+mod counter_modifier_entry_tests;
 
 #[cfg(test)]
 mod tests {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { validateFormatDeck, assertFormatMatch } from '../src/lib/relay/format-legality.js';
 import { normalizeMatchFormat, evaluateLobbyDeckSubmission } from '../src/lib/decklists.js';
+import { PUBLIC_FORMATS, usesCommanders } from '../src/lib/relay/formats.js';
 const catalog = JSON.parse(await readFile(new URL('../src/lib/relay/format-catalog.generated.json', import.meta.url)));
 const deck = (name, count = 60) => Array(count).fill(name);
 const check = (format, main, commanders = [], sideboard = []) => validateFormatDeck(format, main, commanders, sideboard, catalog);
@@ -31,6 +32,20 @@ test('Commander size, identity, commander eligibility, singleton, and legal pair
   assert.equal(check('commander', [...deck('Plains', 97), 'Swords to Plowshares', 'Swords to Plowshares'], ['Isamaru, Hound of Konda']).ready, false);
   assert.equal(check('commander', deck('Plains', 98), ['Isamaru, Hound of Konda', 'Isamaru, Hound of Konda']).ready, false);
   assert.equal(check('commander', deck('Plains', 98), ['Tymna the Weaver', 'Thrasios, Triton Hero']).ready, true);
+});
+test('Pauper EDH: uncommon commander, commons-only 99, its own bans and life total', () => {
+  const iconoclast = ['Third Path Iconoclast'];
+  assert.equal(PUBLIC_FORMATS.paupercommander.engineFormat, 'pauper_commander');
+  assert.equal(usesCommanders('paupercommander') && usesCommanders('pauper_commander'), true);
+  assert.equal(check('paupercommander', deck('Mountain', 99), iconoclast).ready, true);
+  assert.equal(check('commander', deck('Mountain', 99), iconoclast).ready, false);
+  assert.equal(check('paupercommander', deck('Mountain', 99), ['Krenko, Mob Boss']).ready, false);
+  assert.equal(check('paupercommander', [...deck('Mountain', 98), 'Sol Ring'], iconoclast).ready, false);
+  assert.equal(check('paupercommander', [...deck('Mountain', 98), 'Rhystic Study'], ['Tatyova, Benthic Druid']).ready, false);
+  assert.equal(check('paupercommander', [...deck('Mountain', 98), 'Lightning Bolt'], iconoclast).ready, true);
+  assert.equal(evaluateLobbyDeckSubmission('paupercommander', deck('Mountain', 99), iconoclast).ready, true);
+  assert.doesNotThrow(() => assertFormatMatch({ format: 'paupercommander', startingLife: 30, playerNames: ['A', 'B', 'C'],
+    decks: [deck('Mountain', 99), deck('Mountain', 99), deck('Mountain', 99)], commanders: [iconoclast, iconoclast, iconoclast] }, catalog));
 });
 test('match gate checks format rules and rejects missing catalog', () => {
   const config = { format: 'modern', startingLife: 20, playerNames: ['A', 'B'], decks: [deck('Plains'), deck('Island')] };

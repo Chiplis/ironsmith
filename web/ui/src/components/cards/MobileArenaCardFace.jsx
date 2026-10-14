@@ -1,11 +1,14 @@
-import { landManaColors, LAND_MANA_COLORS } from '@/lib/land-mana-colors';
+import useUiText from '@/i18n/useUiText';
+import { landManaColors } from '@/lib/land-mana-colors';
+import LandManaStrip from './LandManaStrip';
 import LoadingCardArt from './LoadingCardArt';
 import BattlefieldGroupBadge from './BattlefieldGroupBadge';
 import { cardArtCropUrl } from '@/lib/card-image-variants';
 import { cardArtColors } from '@/lib/card-art-colors';
 import { arenaFrameColor, arenaPermanentKind } from '@/lib/mobile-arena';
 
-export default function MobileArenaCardFace({ card, name, artUrl, pending, primary }) {
+export default function MobileArenaCardFace({ card, name, artUrl, pending, primary, manaChoices, manaStripOpen, onManaChoice }) {
+  const ui = useUiText();
   const kind = arenaPermanentKind(card);
   const manaColors = landManaColors(card);
   const statKind = kind === 'planeswalker' ? 'loyalty' : kind === 'battle' ? 'defense' : null;
@@ -30,10 +33,9 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
       title={kind === 'creature' && card.summoning_sick ? 'Summoning sickness' : statistic.title}
       aria-label={kind === 'creature' && card.summoning_sick ? `${statistic.title || 'Power/toughness'} — summoning sickness` : statistic.title}>{statistic.label}</span>}
     <BattlefieldGroupBadge count={card.count} />
-    {kind === 'saga' && chapters.length > 0 && <span className="arena-saga-chapters" aria-label="Saga chapters">{chapters.map(chapter => <span key={chapter} style={{display:'block'}}>{chapter}</span>)}</span>}
-    {manaColors.length > 0 && <div className="arena-land-mana-strip" aria-label={`Produces ${manaColors.map(color => LAND_MANA_COLORS[color].name.toLowerCase()).join(', ')} mana`}>
-      {manaColors.map(color => <span key={color} data-mana-color={color} aria-label={LAND_MANA_COLORS[color].name} style={{backgroundColor: LAND_MANA_COLORS[color].background}} />)}
-    </div>}
-    {card.tapped && <span className="arena-tapped-mark" aria-label="Tapped">↷</span>}
+    {kind === 'saga' && chapters.length > 0 && <span className="arena-saga-chapters" aria-label={ui('Saga chapters')}>{chapters.map(chapter => <span key={chapter} style={{display:'block'}}>{chapter}</span>)}</span>}
+    {manaColors.length > 0 && <LandManaStrip colors={manaColors} choices={manaChoices} open={manaStripOpen}
+      cardName={name || card.name} onChoose={onManaChoice} />}
+    {card.tapped && <span className="arena-tapped-mark" aria-label={ui('Tapped')}>↷</span>}
   </div>;
 }

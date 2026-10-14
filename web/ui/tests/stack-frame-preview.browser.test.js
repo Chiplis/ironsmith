@@ -48,12 +48,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 844, height: 390 
     await page.waitForTimeout(600);
     await page.waitForFunction(()=>{
       const frame=document.querySelector('[data-automatic-stack-preview="true"][data-visible="true"]')?.getBoundingClientRect();
-      const entry=document.querySelector('.my-zone-stack-rail .stack-timeline-entry').getBoundingClientRect();
-      return frame && Math.abs(frame.left-12)<2 && Math.abs(frame.top-entry.bottom-4)<2 && frame.width<=301;
+      const rail=document.querySelector('.my-zone-stack-rail').getBoundingClientRect();
+      return frame && Math.abs(frame.left-rail.right-12)<2 && Math.abs(frame.top-rail.top)<2;
     });
     const bounds=await frame.boundingBox();
     assert.ok(bounds.height>300,'rail frame remains readable');
     assert.ok(bounds.y+bounds.height<=viewport.height-7,'frame fits screen');
+    await page.locator('.my-zone-stack-rail .stack-timeline-entry').evaluate(el=>el.style.height='180px');
+    await page.waitForTimeout(250);
+    const expanded=await frame.boundingBox();
+    assert.ok(Math.abs(expanded.x-bounds.x)<2 && Math.abs(expanded.y-bounds.y)<2,'expanding the stack entry leaves preview anchored to the rail');
+    assert.ok(Math.abs(expanded.height-bounds.height)<2,'expanded stack text does not shrink the preview');
   }
 
   await page.evaluate(() => window.setStackState({ players: [], stack_objects: [], resolving_stack_object: window.stackFixture.entry, decision:{kind:'select_options'} }));
@@ -103,7 +108,8 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   assert.ok(geometry.mana.top>=geometry.identity.bottom,'mana sits beneath identity');
   assert.ok(geometry.mana.bottom<=900 && geometry.mana.bottom>=875,'mana sits at the screen bottom');
   assert.ok(geometry.preview.bottom<=geometry.mana.top-6,'frame clears mana');
-  assert.ok(geometry.preview.left<=geometry.identity.left && geometry.preview.right>=geometry.identity.right && geometry.preview.top<=geometry.identity.top && geometry.preview.bottom>=geometry.identity.bottom,'frame fully covers identity');
+  assert.ok(Math.abs(geometry.preview.left-geometry.rail.right-12)<2,'compact preview sits beside the stack');
+  assert.ok(Math.abs(geometry.preview.top-geometry.rail.top)<2,'compact preview aligns with the stack top');
   assert.ok(geometry.rail.width>=300,'stack gains a battlefield column');
   const lookTile=await page.locator('[data-zone-pile="look"]').boundingBox();
   assert.ok(lookTile.x>=0,'enlarged Look stays inside the left screen edge');
@@ -116,8 +122,8 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   await lookInspector.waitFor();
   assert.equal(await lookInspector.getAttribute('data-preview-object-id'),await page.locator('[data-zone-card="look"]').first().getAttribute('data-object-id'));
   const lookInspectorBounds=await lookInspector.boundingBox();
-  assert.ok(Math.abs(lookInspectorBounds.x-geometry.rail.left)<2,'Look inspector uses the stack rail');
-  assert.ok(lookInspectorBounds.x+lookInspectorBounds.width<=geometry.rail.right+1,'Look inspector stays in stack width');
+  assert.ok(Math.abs(lookInspectorBounds.x-geometry.rail.right-12)<2,'Look inspector uses the same beside-stack position');
+  assert.ok(Math.abs(lookInspectorBounds.y-geometry.rail.top)<2,'Look inspector aligns with the stack top');
   await page.waitForTimeout(300);
   const hoveredLook=await page.locator('[data-zone-card="look"]').first().boundingBox();
   const hoveredMenu=await page.locator('.zone-pile-menu--look').boundingBox();

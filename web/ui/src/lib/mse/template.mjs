@@ -25,13 +25,14 @@ import { loadMseKeywords, keywordBuiltins } from './keywords.mjs';
 import { imageBuiltins, mseImage } from './image-builtins.mjs';
 import { MseCardRegistry, cardLinkBuiltins } from './card-links.mjs';
 import { choiceDefinitions, normalizeMultipleChoice, isChoiceFieldType, choiceRenderFlags } from './choice-fields.mjs';
+import {infoCaption} from './info-painter.mjs';
 
 const numericStyleProperties = new Set('left right top bottom width height angle z_index tab_index padding_left padding_right padding_top padding_bottom padding_left_min padding_right_min padding_top_min padding_bottom_min line_height_soft line_height_hard line_height_line line_height_soft_max line_height_hard_max line_height_line_max paragraph_height'.split(' '));
 
 function storedFieldValue(definition,value) {
   const type=definition?.record.text('type');
   if(type==='color')return color(value);
-  return type==='text'||isChoiceFieldType(type)?text(value):value;
+  return type==='text'||type==='info'||isChoiceFieldType(type)?text(value):value;
 }
 
 function initialValue(record, choices) {
@@ -39,7 +40,7 @@ function initialValue(record, choices) {
   switch (record.text('type')) {
     // TextField does not reflect an `initial` property. TextValue starts
     // empty; the field's default script supplies any initial content.
-    case 'text': return '';
+    case 'text': case 'info': return '';
     case 'boolean': return value || 'yes';
     case 'choice': case 'slider': return value || choices[0]?.name || '';
     case 'color': {
@@ -75,11 +76,11 @@ export async function loadMseTemplate(store, name, { setKeywords = [] } = {}) {
   ]) for (const source of records) for (const entry of source.all(key)) {
     const record = await store.expandRecord(entry.record());
     const fieldName = canonicalName(record.text('name'));
-    if (!fieldName || record.text('type') === 'info') continue;
+    if (!fieldName) continue;
     const choices = isChoiceFieldType(record.text('type')) ? choiceDefinitions(record) : [];
     definitions[group].set(fieldName, {
       name: fieldName, record, choices, initial: initialValue(record, choices),
-      defaultScript: await compile(record.last('default')),
+      defaultScript: record.text('type')==='info'?null:await compile(record.last('default')),
       script: await compile(record.last('script')),
     });
   }
@@ -161,7 +162,7 @@ export class MseTemplateContext {
       for (const [name, definition] of template.definitions[group]) {
         let value = Object.hasOwn(supplied, name) ? supplied[name] : definition.initial;
         value=storedFieldValue(definition,value);
-        cells.set(name, { definition, value, sourceValue: value, isDefault: !Object.hasOwn(supplied, name), resolved: false });
+        cells.set(name, { definition, value, sourceValue: value, isDefault: !Object.hasOwn(supplied, name), resolved: group==='styling' });
       }
       for (const [name, value] of Object.entries(supplied)) if (!cells.has(name)) cells.set(name, { value, isDefault: false, resolved: true });
       this.runtime.scope.set(group, new MseObject(name => this.field(group, name)));
@@ -184,7 +185,9 @@ export class MseTemplateContext {
       this.fieldOrder=[];
       for(const group of ['set','styling','card','extra_card'])for(const [name,cell] of this.cells[group]){
         if(group==='set'&&cardRegistry.setContext!==this)continue;
-        this.fieldOrder.push(cell);
+        // Native updateAll initializes set/card data; styling values retain
+        // initial or loaded values until a user edit invokes their scripts.
+        if(group!=='styling')this.fieldOrder.push(cell);
         this.fieldUpdates.register(cell,()=>{
           if(!cell.definition)return false;
           const before=cell.value;
@@ -193,7 +196,7 @@ export class MseTemplateContext {
           const changed=!equal(before,cell.value);
           if(changed)this.fieldValueRevision++;
           return changed;
-        });
+        },{trackDependencies:group!=='styling'});
       }
     }
 
@@ -223,7 +226,7 @@ export class MseTemplateContext {
     if (!keepMeasurements) this.textMeasurements = null;
     this.layoutValues.clear(); this.keywordUsage.clear();
     for (const [group, cells] of Object.entries(this.cells)) for (const [name, cell] of cells) {
-      if (this.fieldUpdateMode==='lazy' && cell.definition && !this.reading.includes(`${group}.${name}`)) { cell.value = cell.sourceValue; cell.resolved = false; }
+      if (this.fieldUpdateMode==='lazy' && group!=='styling' && cell.definition && !this.reading.includes(`${group}.${name}`)) { cell.value = cell.sourceValue; cell.resolved = false; }
     }
   }
   setField(group, name, value, { age = ++this.cardRegistry.age, isDefault = false, lastChange = '' } = {}) {
@@ -237,13 +240,15 @@ export class MseTemplateContext {
     const modified=group==='set'?null:this.cardRegistry.touch(this.card);
     this.cardRegistry.changed();
     if(this.fieldUpdates)this.fieldUpdates.changeMany(modified?[cell,modified]:[cell]);
+    else if(group==='styling'&&cell.definition)this.evaluateField(group,name,cell);
   }
   fieldValue(group, name, cell) {
-    return new MseFieldValue(cell.value, cell.isDefault, { cell, context: this, group, name });
+    return new MseFieldValue(cell.value, cell.definition?.record.text('type')==='info'||cell.isDefault, { cell, context: this, group, name });
   }
   evaluateField(group,name,cell){
     this.reading.push(`${group}.${name}`);
     try {
+        if(cell.definition.record.text('type')==='info'&&!cell.value)cell.value=infoCaption(cell.definition.record);
         const scope = new MseScope(this.runtime.scope);
         scope.set('value', this.fieldValue(group, name, cell));
         scope.set('input', cell.value);
@@ -282,59 +287,90 @@ export class MseTemplateContext {
     if (this.active && !cell.resolved && !this.reading.includes(key)) this.evaluateField(group,name,cell);
     return this.fieldValue(group, name, cell);
   }
-  async prepareTextLayouts(fonts, renderer, { maxPasses = 16 } = {}) {
+  async prepareTextLayouts(fonts, renderer) {
     const generation = this.textPreparationGeneration = (this.textPreparationGeneration || 0) + 1;
     const fields = [];
     for (const [group, layouts] of [['card', this.template.layouts], ['extra_card', this.template.extraLayouts]]) {
-      for (const name of layouts.keys()) {
+      for (const name of new Set([...this.template.definitions[group].keys(),...layouts.keys()])) {
+        const layout=layouts.get(name);
+        if(!layout)continue;
         const type = this.cells[group].get(name)?.definition?.record.text('type');
-        if ((type==='text'||isChoiceFieldType(type))) fields.push({ group, name, type, key: `${group}.${name}` });
+        fields.push({ group, name, layout, type, key: `${group}.${name}` });
       }
     }
-    this.textMeasurements = new Map(fields.map(field => [field.key, { info: dummyTextLayout(), result: null }]));
+    const measuredFields=fields.filter(field=>field.type==='text'||isChoiceFieldType(field.type));
+    this.textMeasurements = new Map(measuredFields.map(field => [field.key, { info: dummyTextLayout(), result: null }]));
     this.invalidate({ keepMeasurements: true });
-    let previous = '';
-    try {
-      for (let pass = 1; pass <= maxPasses; pass++) {
-        const revision = this.layoutRevision, next = new Map(),pendingImages=[];
-        for (const field of fields) {
-          if (!this.fieldVisible(field.name,field.group)) {
-            next.set(field.key,this.textMeasurements.get(field.key));
-            continue;
-          }
-          let result;
-          try{
-            result = field.type === 'text'
-              ? await this.layoutTaggedText(field.name, this.field(field.group, field.name), fonts, renderer, { group: field.group, previousScale: this.textMeasurements.get(field.key).result?.scale || 1 })
-              : await this.measureChoiceImage(field.name, renderer, field.group);
-          }catch(error){
-            // A generated image can depend on text metrics from this pass.
-            // Retry invalid dimensions after publishing the measured text;
-            // persistent invalid dimensions still fail once layout stabilizes.
-            if(field.type==='text'||error.code!=='image-size')throw error;
-            pendingImages.push(error);next.set(field.key,this.textMeasurements.get(field.key));continue;
-          }
-          if (generation !== this.textPreparationGeneration || revision !== this.layoutRevision) throw new MseError('layout-stale', 'Card changed or text layout preparation was superseded');
-          next.set(field.key, { info: field.type === 'text' ? textLayoutInfo(result.lines) : { width: result.width, height: result.height, lines: [] }, result });
-        }
-        // Only exported geometry and line placement can invalidate dependent
-        // layouts. An invisible/empty run may keep shrinking because fixed
-        // padding cannot fit, without changing any resulting geometry.
-        const signature = JSON.stringify([...next].map(([key, value]) => [key, value.info, value.result?.lines]));
-        this.textMeasurements = next;
-        this.invalidate({ keepMeasurements: true });
-        const fieldRevision=this.fieldValueRevision;
-        this.refreshLayoutDependencies();
-        if (signature === previous && fieldRevision===this.fieldValueRevision) {
-          if(pendingImages.length)throw pendingImages[0];
-          return { passes: pass, fields: fields.length, measurements: next, renderingVerified: false };
-        }
-        previous = signature;
+    // Native DataViewer updates styles before preparing any viewers. Freeze
+    // these evaluated properties so later fields cannot accidentally see a
+    // partially updated stylesheet as earlier fields publish their metrics.
+    const styles=(refresh=false)=>new Map(fields.map(({group,name,layout,key,type})=>{
+      if(refresh)for(const cached of this.layoutValues.keys()){
+        if([`${group}_style.${name}.`,`${group}_geometry.${name}.`].some(prefix=>cached.startsWith(prefix))||cached===`${group}_font.${name}`||cached===`${group}_symbol_font.${name}`)this.layoutValues.delete(cached);
       }
-      throw new MseError('layout-convergence', `Text layout did not stabilize after ${maxPasses} passes`);
+      if(!this.fieldVisible(name,group))return [key,null];
+      const properties={};
+      for(const property of new Set([...layout.programs.keys(),...geometryNames]))properties[property]=this.property(name,property,group);
+      if(type==='text'||type==='info'||isChoiceFieldType(type))properties.font=this.font(name,group);
+      if(layout.symbolFont)properties.symbolFont=this.font(name,group,true);
+      if(isChoiceFieldType(type)&&layout.choiceImages.size)properties.image=this.property(name,'image',group);
+      return [key,JSON.stringify([type==='text'||isChoiceFieldType(type)?text(this.field(group,name)):null,properties])];
+    }));
+    try {
+      const initial=styles();
+      for(const field of fields)field.z=field.layout.programs.has('z_index')?this.property(field.name,'z_index',field.group):0;
+      measuredFields.sort((a,b)=>a.z-b.z);
+      let revision=this.layoutRevision;
+      const measure=async field=>{
+        const previous=this.textMeasurements.get(field.key);
+        const result=field.type==='text'
+          ? await this.layoutTaggedText(field.name,this.field(field.group,field.name),fonts,renderer,{group:field.group,previousScale:previous.result?.scale||1})
+          : await this.measureChoiceImage(field.name,renderer,field.group);
+        if(generation!==this.textPreparationGeneration||revision!==this.layoutRevision)throw new MseError('layout-stale','Card changed or text layout preparation was superseded');
+        this.textMeasurements.set(field.key,{info:field.type==='text'?textLayoutInfo(result.lines):{width:result.width,height:result.height,lines:[]},result});
+      };
+      // Fields measure one at a time; download every choice image's and text
+      // mask's assets together first so a cold frame is not a chain of round
+      // trips. styles() above already evaluated these properties.
+      if(renderer?.prefetch)for(const field of measuredFields){
+        if(initial.get(field.key)===null)continue;
+        const image=isChoiceFieldType(field.type)&&(field.layout.programs.has('image')||field.layout.choiceImages.size);
+        for(const key of [image?'image':null,field.layout.programs.has('mask')?'mask':null])if(key){
+          try{renderer.prefetch(mseImage(this.property(field.name,key,field.group),this.template.name));}catch{/* measured below */}
+        }
+      }
+      for(const field of measuredFields){
+        if(initial.get(field.key)===null)continue;
+        try{await measure(field);}catch(error){
+          // Native draw retries an unprepared viewer after the content-style
+          // refresh. Generated image dimensions may be valid only then.
+          if(field.type==='text'||error.code!=='image-size')throw error;
+        }
+      }
+      // Preparing text can itself update scripted alignment/direction. Native
+      // style updates compare against these current values, not initial ones.
+      const beforeRefresh=styles();
+      const preparedStyles=new Map(this.layoutValues);
+      this.invalidate({keepMeasurements:true});
+      this.refreshLayoutDependencies();
+      // Styles update in game-field order. References to a later style see
+      // its previous values until that style itself has been updated.
+      this.layoutValues=preparedStyles;
+      const updated=styles(true);
+      revision=this.layoutRevision;
+      // A style change resets its viewer. Drawing lazily prepares it again,
+      // retaining its previous shrink factor. Native MSE does not perform a
+      // third style update or seek a fixed point after this preparation.
+      const reprepared=[];
+      for(const field of measuredFields){
+        if(updated.get(field.key)===null)continue;
+        if(updated.get(field.key)!==beforeRefresh.get(field.key)||!this.textMeasurements.get(field.key).result){
+          await measure(field);reprepared.push(field.key);
+        }
+      }
+      return {passes:2,fields:measuredFields.length,measurements:this.textMeasurements,reprepared,renderingVerified:false};
     } catch (error) {
-      // Font/image loading may finish after another preparation has completed.
-      // A superseded request must not clear that newer request's measurements.
+      // A superseded request must not clear a newer request's measurements.
       if (generation === this.textPreparationGeneration) this.invalidate();
       throw error;
     }
@@ -361,6 +397,8 @@ export class MseTemplateContext {
     return {width:image.width,height:image.height,lines:[],scale:1,image,combine:imageCombineMode(graph)};
   }
   async layoutTaggedText(field, content, fonts, renderer, { group = 'card', previousScale = 1 } = {}) {
+    const generation=this.textPreparationGeneration,revision=this.layoutRevision;
+    const check=()=>{if(generation!==this.textPreparationGeneration||revision!==this.layoutRevision)throw new MseError('layout-stale','Card changed while preparing text');};
     const layout = (group === 'card' ? this.template.layouts : this.template.extraLayouts).get(field);
     const get = (key, fallback) => layout.programs.has(key) ? this.property(field, key, group) : fallback;
     const parsed = parseTaggedText(text(content), this.font(field, group));
@@ -372,7 +410,21 @@ export class MseTemplateContext {
       const image = mseImage(mask, this.template.name);
       if (image.operation !== 'blank') rowBounds = createTextMask(await renderer.render(image, { width: Math.ceil(width), height: Math.ceil(height) }), width, height);
     }
-    return layoutTaggedText(parsed, fonts, symbols, renderer, {
+    const scripted=['alignment','direction'].filter(key=>layout.programs.has(key)&&layout.programs.get(key).type!=='literal');
+    const publish=(lines,result)=>{
+      check();this.textMeasurements ||= new Map();
+      const key=`${group}.${field}`,previous=this.textMeasurements.get(key);
+      this.textMeasurements.set(key,{info:textLayoutInfo(lines),result:result??previous?.result??null});
+    };
+    // Native TextViewer publishes the current lines before refreshing these
+    // two scripts on each vertical-offset pass; other styles stay frozen.
+    const refreshLayoutStyle=scripted.length?lines=>{
+      publish(lines);
+      for(const key of scripted)this.layoutValues.delete(`${group}_style.${field}.${key}`);
+      return {alignment:parseAlignment(text(get('alignment','left top'))),vertical:['top to bottom','vertical'].includes(get('direction',''))};
+    }:undefined;
+    const result=await layoutTaggedText(parsed, fonts, symbols, renderer, {
+      refreshLayoutStyle,
       rowBounds,
       width: this.property(field, 'width', group), height: this.property(field, 'height', group), previousScale,
       multiLine: boolean(this.cells[group].get(field)?.definition?.record.text('multi line') || false),
@@ -381,6 +433,8 @@ export class MseTemplateContext {
       paragraphHeight: get('paragraph_height', -1),
       ...Object.fromEntries(['paddingLeft','paddingRight','paddingTop','paddingBottom','lineHeightSoft','lineHeightHard','lineHeightLine','lineHeightSoftMax','lineHeightHardMax','lineHeightLineMax'].map(name => [name, get(name.replace(/[A-Z]/g, c => '_' + c.toLowerCase()), name.startsWith('lineHeight') && !name.endsWith('Max') ? 1 : 0)])),
     });
+    publish(result.lines,result);
+    return result;
   }
   async measureTaggedText(field, content, fonts, renderer, { group = 'card', scale = 1 } = {}) {
     const layout = (group === 'card' ? this.template.layouts : this.template.extraLayouts).get(field);

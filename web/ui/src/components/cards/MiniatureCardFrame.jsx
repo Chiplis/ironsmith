@@ -1,8 +1,5 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import HoverArtOverlay from '../right-rail/HoverArtOverlay';
-import { GameContext } from '@/context/GameContext.shared';
-import MseCardFrame from './MseCardFrame';
-import { MSE_PRINTING_FIELDS } from '@/lib/mse/printing-style.mjs';
+import { useLayoutEffect, useRef, useState } from 'react';
+import CardFramePresentation from './CardFramePresentation';
 
 // Lay out the composition at inspector size. Only its finished presentation
 // scales with the battlefield slot, including pixel-sized icons and borders.
@@ -14,23 +11,7 @@ export const CARD_FRAME_RENDER_HEIGHT = 531;
 const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
-const FRAME_FIELDS = ['id', 'stable_id', 'name', 'oracle_id', 'oracleId', 'oracle_text', 'flavor_text', 'rarity', 'effect_text', 'ability_text', 'compiled_text', 'abilities', 'mana_cost', 'type_line', 'type_line_display', 'card_types', 'cardTypes', 'supertypes', 'subtypes', 'layout', 'color_identity', 'colorIdentity', 'color_indicator', 'card_faces', 'colors', 'characteristic_signature', 'keywords', 'power', 'toughness', 'power_toughness', 'loyalty', 'defense', 'owner', 'controller'];
-
-const MiniatureComposition = memo(function MiniatureComposition({snapshot, imageUrl}) {
-  const card = useMemo(() => JSON.parse(snapshot), [snapshot]);
-  // A miniature has no game actions. Publish only its own printable snapshot
-  // so unrelated game/priority updates cannot refit every card on the table.
-  const context = useMemo(() => ({game: null, state: {
-    players: [{id: card.controller ?? card.owner, battlefield: [card]}],
-    perspective: card.controller ?? card.owner,
-  }}), [card]);
-  return <GameContext.Provider value={context}>
-    <HoverArtOverlay objectId={card.id} sourceImageUrl={imageUrl} displayMode="miniature-frame" />
-  </GameContext.Provider>;
-});
-
 export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0 }) {
-  const snapshot = JSON.stringify(Object.fromEntries([...FRAME_FIELDS, ...MSE_PRINTING_FIELDS, 'printing'].map(key => [key, card[key]])));
   const host = useRef(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
@@ -40,13 +21,13 @@ export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0 }) {
     observer.observe(host.current);
     return () => observer.disconnect();
   }, []);
-  return <div ref={host} className="battlefield-prepared-frame" aria-hidden="true" inert>
+  return <div ref={host} className="battlefield-prepared-frame" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden'}} aria-hidden="true" inert>
     <div className="battlefield-prepared-frame__composition" style={{
       width: WIDTH, height: HEIGHT,
-      transform: `scale(${scale})`, visibility: scale > 0 ? 'visible' : 'hidden',
+      position:'absolute',left:'50%',top:'50%',
+      transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin:'center', visibility: scale > 0 ? 'visible' : 'hidden',
     }}>
-      <MseCardFrame snapshot={snapshot} imageUrl={imageUrl} style={card.mse_style} faceIndex={faceIndex}
-        fallback={<MiniatureComposition snapshot={snapshot} imageUrl={imageUrl} />} />
+      <CardFramePresentation card={card} imageUrl={imageUrl} faceIndex={faceIndex}/>
     </div>
   </div>;
 }

@@ -10,10 +10,14 @@ export const LAND_MANA_COLORS = {
 export function landManaColors(card) {
   const types = card?.card_types?.length ? card.card_types.join(' ') : card?.type_line || card?.lane || '';
   if (!/land/i.test(types)) return [];
+  // The engine reports the land's current basic land types (CR 305.6), so a
+  // type-changing effect such as Yavimaya's "each land is a Forest" adds its
+  // color on top of whatever the card prints.
+  const intrinsic = Array.isArray(card.intrinsic_mana) ? card.intrinsic_mana.map(value => String(value).toUpperCase()) : [];
   // Production metadata includes conditional mana and stays visible when tapped.
   // Empty metadata may be a missing Scryfall field; live ability text still applies.
   if (Array.isArray(card.produced_mana) && card.produced_mana.length > 0) {
-    const produced = new Set(card.produced_mana.map(value => String(value).toUpperCase()));
+    const produced = new Set([...card.produced_mana.map(value => String(value).toUpperCase()), ...intrinsic]);
     return ORDER.filter(color => produced.has(color));
   }
   const text = [card.oracle_text, card.rules_text, card.effect_text, card.ability_text, ...(card.abilities || [])].filter(Boolean).join('\n');
@@ -23,6 +27,7 @@ export function landManaColors(card) {
     if (/any (?:one )?colou?r|any combination of colou?rs/i.test(output)) ORDER.slice(0,5).forEach(color => produced.add(color));
     for (const symbol of output.matchAll(/\{([WUBRGC])\}/gi)) produced.add(symbol[1].toUpperCase());
   }
+  intrinsic.forEach(color => produced.add(color));
   if (Array.isArray(card.produced_mana) && card.produced_mana.length === 0) return ORDER.filter(color => produced.has(color));
   // Basic land types grant intrinsic mana abilities, even without reminder text.
   for (const [type,color] of [['Plains','W'],['Island','U'],['Swamp','B'],['Mountain','R'],['Forest','G']]) {

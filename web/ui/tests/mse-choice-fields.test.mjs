@@ -117,3 +117,35 @@ test('failed choice script conversion retains the last valid value',async()=>{
     assert.equal(context.diagnostics[0].code,'script-conversion');
   }
 });
+
+test('primary_choice accepts slider values and tracks their top-level choice after edits',async()=>{
+  const files={
+    'slider-primary.mse-game/game':`card field:
+\ttype: slider
+\tname: amount
+\tminimum: 0
+\tmaximum: 10
+\tincrement: 2
+\tinitial: 4
+\tchoice:
+\t\tname: custom
+\t\tchoice: amount
+card field:
+\ttype: text
+\tname: primary
+\tscript: primary_choice(card.amount)
+`,
+    'slider-primary.mse-style/style':'game: slider-primary\n',
+  };
+  const template=await loadMseTemplate(new MsePackageStore({readText:async p=>files[p.key]}),'slider-primary.mse-style');
+  for(const fieldUpdateMode of ['lazy','ordered']){
+    const context=new MseTemplateContext(template,{fieldUpdateMode}).initialize();
+    assert.equal(text(context.field('card','primary')),'4');
+    context.setField('card','amount','custom amount');assert.equal(text(context.field('card','primary')),'custom');
+    context.setField('card','amount','10');assert.equal(text(context.field('card','primary')),'10');
+    context.setField('card','amount','unknown');assert.equal(text(context.field('card','primary')),'true');
+    assert.equal(context.runtime.run('primary_choice(card.amount)'),true);
+    assert.throws(()=>context.runtime.run('primary_choice(card.primary)'),{code:'choice-field-type'});
+    assert.deepEqual(context.diagnostics,[]);
+  }
+});

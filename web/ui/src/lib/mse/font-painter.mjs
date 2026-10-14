@@ -24,28 +24,33 @@ export function decorateTextRaster(mask,color,strokeColor,radius,blur,maxPixels=
   }
   return {raster,margin};
 }
-export async function prepareFontDrawing(font,fonts,{createCanvas=canvas,maxPixels=16777216,...flags}={}){
+export async function prepareFontDrawing(font,fonts,{createCanvas=canvas,maxPixels=16777216,effectScaleMultiplier=1,...flags}={}){
   const provider=await fonts.prepare(font,flags);
   const hasStroke=(active(font.stroke_radius)||active(font.stroke_blur))&&font.stroke_color?.channels[3];
   const hasShadow=!hasStroke&&(active(font.shadow_displacement_x)||active(font.shadow_displacement_y)||active(font.shadow_blur))&&font.shadow_color?.channels[3];
-  if(!hasShadow&&!active(font.stroke_radius)&&!active(font.stroke_blur))return provider;
+  const resample=provider.rasterScale===4;
+  if(!resample&&!hasShadow&&!active(font.stroke_radius)&&!active(font.stroke_blur))return provider;
   const bitmaps=new Map();
   const bitmap=raster=>{const c=createCanvas(raster.width,raster.height),ctx=c.getContext('2d'),pixels=ctx.createImageData(raster.width,raster.height);pixels.data.set(raster.data);ctx.putImageData(pixels,0,0);return c;};
   return {...provider,draw(target,text,x,y,scale){
     if(!text)return;
-    const key=JSON.stringify([text,scale]);let layers=bitmaps.get(key);
+    const originX=resample?Math.trunc(x):x,originY=resample?Math.trunc(y):y;
+    const subX=resample?Math.trunc(4*(x-originX)):0,subY=resample?Math.trunc(4*(y-originY)):0;
+    const key=JSON.stringify([text,scale,subX,subY]);let layers=bitmaps.get(key);
     if(!layers){
       const extent=provider.measure(text,font,scale),width=Math.trunc(extent.width)+4,height=Math.trunc(extent.height)+2;
       if(width<1||height<1||width*height*16>maxPixels)throw new MseError('image-budget','Text effect mask exceeds pixel budget');
-      const surface=createCanvas(width*4,height*4),ctx=surface.getContext('2d');ctx.fillStyle='white';provider.draw(ctx,text,0,0,scale*4);
+      const surface=createCanvas(width*4,height*4),ctx=surface.getContext('2d');ctx.fillStyle='white';
+      if(resample&&provider.drawRaster)provider.drawRaster(ctx,text,subX,subY,scale);
+      else provider.draw(ctx,text,subX,subY,scale*4);
       const data=ctx.getImageData(0,0,surface.width,surface.height).data;
       const mask=resizeRaster({width:surface.width,height:surface.height,data,hasAlpha:true},width,height,maxPixels);
-      const effectScale=font.size*scale/15;layers=[];
+      const effectScale=effectScaleMultiplier*(provider.pointSize?.(scale)??font.size*scale)/15;layers=[];
       const add=(color,radius,blur,dx=0,dy=0)=>{const result=decorateTextRaster(mask,color,radius?font.stroke_color.channels:color,radius,blur,maxPixels);if(result)layers.push({bitmap:bitmap(result.raster),x:dx-result.margin,y:dy-result.margin});};
       if(hasShadow)add(font.shadow_color.channels,0,round((font.shadow_blur||0)*effectScale),(font.shadow_displacement_x||0)*effectScale,(font.shadow_displacement_y||0)*effectScale);
       add(font.color.channels,round((font.stroke_radius||0)*effectScale),round((font.stroke_blur||0)*effectScale));
       bitmaps.set(key,layers);
     }
-    for(const layer of layers)target.drawImage(layer.bitmap,x+layer.x,y+layer.y);
+    for(const layer of layers)target.drawImage(layer.bitmap,originX+layer.x,originY+layer.y);
   }};
 }

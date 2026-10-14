@@ -34,7 +34,7 @@ function PoolSummary({ label, pool }) {
   const entries = poolEntries(pool);
   return (
     <div className="mana-plan-pool">
-      <span className="mana-plan-label">{ui(label)}</span>
+      <span className="mana-plan-label">{label}</span>
       <span className="flex min-h-6 items-center gap-1">
         {entries.length ? entries.map(({ symbol, amount }) => (
           <span key={symbol} className="inline-flex items-center gap-0.5 text-xs font-semibold">
@@ -201,8 +201,8 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
         </div>)}
       </div>
       {additionalSources.length > 0 && <div className="mana-payment-additional-sources"><span>{ui('Additional mana sources')}</span>{additionalSources.map(source => <PaymentCardName key={`${source.choice_key}:${source.occurrence}`} objectId={source.source_id} onInspect={showAnchoredCardPreview}>{source.source_name}</PaymentCardName>)}</div>}
-      {poolEntries(payment.pool_before).length > 0 && <PoolSummary label="Floating mana" pool={payment.pool_before} />}
-      {poolEntries(payment.pool_after_payment).length > 0 && <PoolSummary label="After payment" pool={payment.pool_after_payment} />}
+      {poolEntries(payment.pool_before).length > 0 && <PoolSummary label={ui("Floating mana")} pool={payment.pool_before} />}
+      {poolEntries(payment.pool_after_payment).length > 0 && <PoolSummary label={ui("After payment")} pool={payment.pool_after_payment} />}
       {payment.activation_options_error && <div role="status">{ui('Payment options could not be loaded.')}</div>}
       {payment.activation_options_complete === false && <div role="status">{ui('Loading payment options…')}</div>}
       {editor.error && <div role="alert">{editor.error}</div>}

@@ -10,6 +10,7 @@ import {
   normalizeMatchFormat,
 } from "@/lib/decklists";
 import { commanderDeckTarget, formatDeckRequirement, formatName } from "@/lib/lobby-deck";
+import { usesCommanders } from "@/lib/relay/formats";
 
 // The deck a player brings to a lobby seat: the lobby sheet shows it when they
 // join, and the rematch screen shows the same controls between games.
@@ -92,18 +93,18 @@ export default function LobbyDeckEditor({
         value={deckText}
         onChange={(event) => onChange({ deckText: event.target.value })}
         placeholder={
-          ui(activeFormat === MATCH_FORMAT_COMMANDER
+          ui(usesCommanders(activeFormat)
             ? `Paste your Commander main deck...\n\n1 Sol Ring\n1 Brainstorm\n33 Island`
             : `Paste a main deck with at least ${LOBBY_DECK_SIZE} cards...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`)
         }
       />
       <div className={lobbyInfoTextClass}>
         <span>{ui("Main deck:")}{" "}
-          {activeFormat === MATCH_FORMAT_COMMANDER
+          {usesCommanders(activeFormat)
             ? `${deckCount}/${activeCommanderTarget}`
             : `${deckCount}/${LOBBY_DECK_SIZE}+`}
         </span>
-        {activeFormat === MATCH_FORMAT_COMMANDER
+        {usesCommanders(activeFormat)
         || activeFormat === MATCH_FORMAT_PLANECHASE ? (
           <>
             <PreservingTextarea

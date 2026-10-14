@@ -188,9 +188,16 @@ export function KeywordHelpersProvider({ enabled = true, children }) {
   );
 }
 
-function KeywordHelperText({ text, rule }) {
+export function GameSymbolHelper({sym,children}) {
+  const ui=useUiText(),description=describeGameSymbol(sym,ui);
+  return description?<ComicTooltip title={ui(description.title)} description={ui(description.description)}>{children}</ComicTooltip>:children;
+}
+
+export function KeywordHelperText({ text, rule, className='', style, children,respectContext=false }) {
   const ui = useUiText();
   const { locale } = useI18n({ optional: true });
+  const enabled=useContext(KeywordHelpersEnabledContext);
+  if(respectContext&&!enabled)return null;
   if (!rule) return text;
   const localizedRule = localeCatalogs[locale]?.rules?.[rule.id] || rule;
   const title = `${localizedRule.title} (${rule.rule})`;
@@ -203,16 +210,20 @@ function KeywordHelperText({ text, rule }) {
       contentClassName="max-w-[300px]"
     >
       <span
-        className="mtg-keyword-helper"
+        className={`mtg-keyword-helper ${className}`}
+        style={style}
         role="button"
         tabIndex={0}
         aria-label={ui("{0} rules helper", { 0: localizedRule.title })}
         data-keyword-helper={rule.id}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.click();}
+        }}
       >
-        <span className="mtg-keyword-helper__text">{text}</span>
+        {children??<span className="mtg-keyword-helper__text">{text}</span>}
       </span>
     </ComicTooltip>
   );

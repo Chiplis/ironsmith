@@ -6,7 +6,7 @@ import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../..
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
 import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
 import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
-import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
+import { PUBLIC_FORMATS, isRelayId, relayBaseUrl, usesCommanders } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer, pinnedSessionSecurityMode, relayPeerOptions } from './shared.js';
 import {
@@ -15,7 +15,6 @@ import {
   DEFAULT_OPENING_HAND_SIZE,
   DISCONNECT_AUTO_FORFEIT_MS,
   INITIAL_AUDIT_STATE_HASH,
-  MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
   MATCH_FORMAT_PLANECHASE,
   MULTIPLAYER_SECURITY_TRUSTED,
@@ -1019,7 +1018,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const format = normalizeMatchFormat(session.format);
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const commanders =
-      format === MATCH_FORMAT_COMMANDER
+      usesCommanders(format)
         ? players.map((player) => sanitizeCardList(player.commanders))
         : undefined;
     const planarDecks =
@@ -1181,7 +1180,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const format = normalizeMatchFormat(session.format);
     const commanders =
-      format === MATCH_FORMAT_COMMANDER
+      usesCommanders(format)
         ? players.map((player) => sanitizeCardList(player.commanders))
         : null;
     const missingZiffle = players.find((player) => !player.ziffleKey);
@@ -1435,7 +1434,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const format = normalizeMatchFormat(session.format);
     const sideboards = players.map((player) => sanitizeCardList(player.sideboard));
     const commanders =
-      format === MATCH_FORMAT_COMMANDER
+      usesCommanders(format)
         ? players.map((player) => sanitizeCardList(player.commanders))
         : null;
     const missingZiffle = players.find((player) => !player.ziffleKey);

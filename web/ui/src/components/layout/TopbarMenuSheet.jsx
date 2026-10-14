@@ -65,10 +65,8 @@ export default function TopbarMenuSheet({
   onReset,
   onRefresh,
   onToggleLog,
-  onEnterDeckLoading,
   onOpenPuzzleSetup,
   onOpenLobby,
-  deckLoadingMode,
   puzzleSetupMode = false,
   onAddCardNotice,
   triggerIcon = "settings",
@@ -145,10 +143,6 @@ export default function TopbarMenuSheet({
     onOpenLobby();
   };
 
-  const handleToggleDeckLoading = () => {
-    setOpen(false);
-    onEnterDeckLoading();
-  };
   const handleRefresh = () => {
     setOpen(false);
     onRefresh();
@@ -269,15 +263,6 @@ export default function TopbarMenuSheet({
                     />
                   </>
                 )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="stone-pill justify-start"
-                  disabled={lobbyBusy}
-                  onClick={handleToggleDeckLoading}
-                >
-                  {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
-                </Button>
                 <Button
                   variant="secondary"
                   size="sm"

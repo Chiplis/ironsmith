@@ -3910,6 +3910,7 @@ function GameOverBar({
 }) {
   const { state, multiplayer } = useGame();
   const { t } = useI18n();
+  const ui = useUiText();
   const action = useRematchMainAction();
   const gameOver = state?.game_over || null;
   if (!gameOver || !action.available) return null;
@@ -3932,7 +3933,7 @@ function GameOverBar({
             data-end-of-match-disclosure="true"
           >
             <div className="font-bold uppercase tracking-wider text-[#d8bf7a]">
-              Hidden-card disclosure
+              {ui("Hidden-card disclosure")}
             </div>
             {disclosureEntries.map((entry) => (
               <div

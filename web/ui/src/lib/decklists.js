@@ -1,4 +1,4 @@
-import { PUBLIC_FORMATS } from './relay/formats.js';
+import { PUBLIC_FORMATS, usesCommanders } from './relay/formats.js';
 export const MATCH_FORMAT_NORMAL = "normal";
 export const MATCH_FORMAT_COMMANDER = "commander";
 export const MATCH_FORMAT_PLANECHASE = "planechase";
@@ -71,6 +71,13 @@ function sanitizeDeckPresetPlayerNames(names) {
   return names.map((name) => String(name || "").trim());
 }
 
+// The formats a saved deck was checked against, in the catalog's order.
+function sanitizeDeckPresetFormats(formats) {
+  if (!Array.isArray(formats)) return [];
+  const chosen = new Set(formats.map((format) => String(format || "")));
+  return Object.keys(PUBLIC_FORMATS).filter((format) => chosen.has(format));
+}
+
 function canUseSessionStorage() {
   return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 }
@@ -97,6 +104,7 @@ function readSavedDeckPresets() {
           name,
           texts: sanitizeDeckPresetTexts(entry?.texts),
           playerNames: sanitizeDeckPresetPlayerNames(entry?.playerNames),
+          formats: sanitizeDeckPresetFormats(entry?.formats),
           updatedAt: Number(entry?.updatedAt) || 0,
         };
       })
@@ -334,12 +342,16 @@ export function findSavedDeckPreset(name) {
   );
 }
 
-export function saveSavedDeckPreset(name, texts, playerNames = []) {
+// Callers check the decks' legality in `formats` first (validateFormatDeck);
+// a deck is never saved without at least one format.
+export function saveSavedDeckPreset(name, texts, playerNames = [], formats = []) {
   const normalizedName = normalizeDeckPresetName(name);
-  if (!normalizedName) {
+  const normalizedFormats = sanitizeDeckPresetFormats(formats);
+  if (!normalizedName || !normalizedFormats.length) {
     return {
       saved: false,
       replaced: false,
+      ...(normalizedName ? { reason: "format" } : {}),
       entry: null,
       entries: readSavedDeckPresets(),
     };
@@ -350,6 +362,7 @@ export function saveSavedDeckPreset(name, texts, playerNames = []) {
     name: normalizedName,
     texts: sanitizeDeckPresetTexts(texts),
     playerNames: sanitizeDeckPresetPlayerNames(playerNames),
+    formats: normalizedFormats,
     updatedAt: now,
   };
   const normalizedKey = normalizedName.toLowerCase();
@@ -410,7 +423,7 @@ export function evaluateLobbyDeckSubmission(format, deck, commanders = []) {
   const deckCount = Array.isArray(deck) ? deck.length : 0;
   const commanderCount = Array.isArray(commanders) ? commanders.length : 0;
 
-  if (normalizedFormat === MATCH_FORMAT_COMMANDER) {
+  if (usesCommanders(normalizedFormat)) {
     const requiredDeckCount = commanderCount === 2 ? PARTNER_DECK_SIZE : COMMANDER_DECK_SIZE;
     const ready =
       (commanderCount === 1 || commanderCount === 2)

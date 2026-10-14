@@ -7,6 +7,8 @@ import {createBrowserSymbolRenderer} from './browser-symbols.mjs';
 import {MseCardRenderer} from './card-renderer.mjs';
 import upstream from './upstream.mjs';
 import {createBrowserArtworkLoader} from './browser-artwork.mjs';
+import {loadBrowserCorpusIndex,configureIndexedCorpus} from './browser-corpus-index.mjs';
+import {mseResourceFontPaths} from './font-resources.mjs';
 
 // A session owns shared resources for all card surfaces using one corpus.
 // The corpus has the same data/, Magic - Fonts/, and upstream-tree.json layout
@@ -34,9 +36,11 @@ export async function createBrowserMseSession({corpusUrl,fetcher=globalThis.fetc
     const styles=files.filter(p=>/^[^/]+\.mse-style\/style$/.test(p)).map(p=>p.split('/')[0]).sort();
     const store=createFetchMseStore(new URL('data/',base),fetchResource,{files});
     fonts=createFonts();
-    const fontPaths=paths.filter(p=>p.startsWith('Magic - Fonts/')&&/\.(ttf|otf)$/i.test(p));
+    const index=await loadBrowserCorpusIndex(base,fetchResource,expectedRevision,paths);check();
+    const fontPaths=mseResourceFontPaths(paths);
     const fontFailures=[];let cursor=0;
-    await Promise.all(Array.from({length:Math.min(4,fontPaths.length)},async()=>{
+    if(index)configureIndexedCorpus({index,store,fonts,base,fetchResource,check,fontFailures});
+    else await Promise.all(Array.from({length:Math.min(4,fontPaths.length)},async()=>{
       while(cursor<fontPaths.length){
         check();const path=fontPaths[cursor++];
         try{

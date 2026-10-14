@@ -5,12 +5,17 @@ import { Button } from "@/components/ui/button";
 import {
   findSavedDeckPreset,
   listSavedDeckPresets,
+  MATCH_FORMAT_COMMANDER,
+  MATCH_FORMAT_NORMAL,
+  parseCommanderList,
   parseDeckList,
   parseSideboardList,
   removeSavedDeckPreset,
   saveSavedDeckPreset,
   SAVED_DECK_PRESETS_LIMIT,
 } from "@/lib/decklists";
+import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
+import { deckFormatProblems, loadFormatCatalog } from "@/lib/relay/format-legality";
 import CompetitiveDeckBrowser from "./CompetitiveDeckBrowser";
 import PreservingTextarea from "@/components/ui/PreservingTextarea";
 
@@ -32,6 +37,20 @@ function ActionSpinner() {
   return <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 animate-spin" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" /><path d="M17 10a7 7 0 0 0-7-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>;
 }
 
+// Goldfish always offers four seats, whatever the current table holds: the
+// game is rebuilt with the chosen player count when it starts.
+const GOLDFISH_SEAT_COUNT = 4;
+const PLAYER_COUNT_MODES = {
+  [MATCH_FORMAT_NORMAL]: [1, 2],
+  [MATCH_FORMAT_COMMANDER]: [1, 2, 4],
+};
+const COMMANDER_SECTION = /(?:^|\n)Commanders?\s*\n([\s\S]*?)(?=\n(?:Deck|Sideboard)\s*(?:\n|$)|$)/i;
+
+function parseCommanderSection(text) {
+  const section = String(text || "").match(COMMANDER_SECTION);
+  return section ? parseCommanderList(section[1]) : [];
+}
+
 function stripDeckHeader(text) {
   return String(text || "").replace(/^\s*Deck\s*\r?\n/i, "");
 }
@@ -47,31 +66,39 @@ function fitTextsToPlayers(players, texts) {
   return players.map((_, index) => stripDeckHeader(texts?.[index]));
 }
 
-function editorCountForTexts(players, texts) {
+function editorCountForTexts(modes, texts) {
   const highestFilledIndex = texts.reduce(
     (highest, text, index) => String(text || "").trim() ? index : highest,
     -1,
   );
-  if (highestFilledIndex < 1) return Math.min(1, players.length);
-  if (highestFilledIndex < 2) return Math.min(2, players.length);
-  return Math.min(4, players.length);
+  return modes.find((count) => count > highestFilledIndex) || modes[modes.length - 1];
 }
 
-export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) {
+export default function DeckLoadingView({ onTestDecks, onCancel, embedded = false }) {
   const ui = useUiText();
   const {
     state,
     setStatus,
   } = useGame();
-  const players = useMemo(() => state?.players || [], [state?.players]);
+  const players = useMemo(
+    () => Array.from({ length: GOLDFISH_SEAT_COUNT }, (_, index) => {
+      const player = state?.players?.[index];
+      return {
+        id: player?.id ?? `seat-${index}`,
+        name: player?.name || (index === 0 ? "Player 1" : `Bot ${index + 1}`),
+      };
+    }),
+    [state?.players],
+  );
+  const [format, setFormat] = useState(MATCH_FORMAT_NORMAL);
   const [texts, setTexts] = useState(() => players.map(() => ""));
   const [deckLabels, setDeckLabels] = useState(() => players.map(() => ""));
   const [savedPresets, setSavedPresets] = useState(() => listSavedDeckPresets());
   const [selectedPresetName, setSelectedPresetName] = useState("");
   const [presetName, setPresetName] = useState("");
+  const [presetFormats, setPresetFormats] = useState([]);
+  const [saveProblems, setSaveProblems] = useState([]);
   const [actionBusy, setActionBusy] = useState("");
-  const [showContinueChoices, setShowContinueChoices] = useState(false);
-  const [showLobbyConfirm, setShowLobbyConfirm] = useState(false);
   const [actionNotice, setActionNotice] = useState("");
   const actionNoticeTimerRef = useRef(null);
   const [copiedPlayerIndex, setCopiedPlayerIndex] = useState(null);
@@ -79,6 +106,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const [editorPlayerCount, setEditorPlayerCount] = useState(1);
 
   const handleTextChange = useCallback((index, value) => {
+    setSaveProblems([]);
     setTexts((prev) => {
       const next = [...prev];
       next[index] = value;
@@ -94,10 +122,15 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     () => texts.map((t) => parseSideboardList(t).length),
     [texts]
   );
+  const commanderCounts = useMemo(
+    () => texts.map((t) => parseCommanderSection(t).length),
+    [texts]
+  );
   const totalCards = cardCounts.reduce((a, b) => a + b, 0);
-  const visiblePlayerCount = Math.min(editorPlayerCount, players.length || 1);
+  const playerCountModes = PLAYER_COUNT_MODES[usesCommanders(format) ? MATCH_FORMAT_COMMANDER : format] || PLAYER_COUNT_MODES[MATCH_FORMAT_NORMAL];
+  const maxPlayerCount = playerCountModes[playerCountModes.length - 1];
+  const visiblePlayerCount = Math.min(editorPlayerCount, maxPlayerCount);
   const visiblePlayers = useMemo(() => players.slice(0, visiblePlayerCount), [players, visiblePlayerCount]);
-  const playerCountModes = [1, 2, 4].filter((count) => count <= players.length);
   const targetIndex = Math.min(catalogTargetIndex, Math.max(0, visiblePlayerCount - 1));
   const targetPlayer = visiblePlayers[targetIndex] || null;
   const targetPlayerName = targetPlayer?.name || "";
@@ -126,19 +159,41 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const handleApplySavedPreset = () => {
     if (!selectedPreset) return;
     const nextTexts = fitTextsToPlayers(players, selectedPreset.texts);
-    const nextCount = editorCountForTexts(players, nextTexts);
+    const nextCount = editorCountForTexts(playerCountModes, nextTexts);
     setTexts(nextTexts);
     setDeckLabels(nextTexts.map((text) => String(text || "").trim() ? selectedPreset.name : ""));
     setEditorPlayerCount(nextCount);
+    setPresetFormats(selectedPreset.formats || []);
     const nextEmptyIndex = nextTexts.findIndex((text) => !String(text || "").trim());
     setCatalogTargetIndex(nextEmptyIndex >= 0 ? Math.min(nextEmptyIndex, Math.max(0, nextCount - 1)) : 0);
     showActionNotice(ui("Deck loaded into {0}", { 0: players[nextEmptyIndex >= 0 ? nextEmptyIndex : 0]?.name || ui("the editor") }));
   };
 
-  const saveCurrentPreset = useCallback((requestedName) => {
+  const saveCurrentPreset = useCallback(async (requestedName) => {
     const normalizedPresetName = String(requestedName || "").trim();
     if (!normalizedPresetName) {
       setStatus(ui("Choose a name to save this deck."));
+      return false;
+    }
+    if (!presetFormats.length) {
+      setStatus(ui("Choose at least one format to save this deck."));
+      return false;
+    }
+
+    // Every deck in the configuration must be legal in every chosen format.
+    let catalog;
+    try {
+      catalog = await loadFormatCatalog();
+    } catch (error) {
+      setStatus(error?.message || ui("Card legality catalog unavailable."));
+      return false;
+    }
+    const problems = deckFormatProblems(presetFormats, texts
+      .map((text, index) => ({ index, deck: parseDeckList(text), commanders: parseCommanderSection(text), sideboard: parseSideboardList(text) }))
+      .filter(({ deck, commanders }) => deck.length || commanders.length), catalog);
+    setSaveProblems(problems);
+    if (problems.length) {
+      setStatus(ui("This deck is not legal in every chosen format."));
       return false;
     }
 
@@ -153,7 +208,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       return false;
     }
 
-    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name));
+    const saveResult = saveSavedDeckPreset(normalizedPresetName, nextTexts, players.map((player) => player.name), presetFormats);
     if (saveResult.saved) {
       setSavedPresets(saveResult.entries);
       setSelectedPresetName(saveResult.entry.name);
@@ -169,11 +224,18 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
       setStatus(ui("Session limit reached ({0} decks). Delete one saved deck to add another.", { 0: SAVED_DECK_PRESETS_LIMIT }));
     }
     return false;
-  }, [players, setStatus, showActionNotice, texts, ui]);
+  }, [players, presetFormats, setStatus, showActionNotice, texts, ui]);
 
-  const handleSavePreset = useCallback(() => {
-    if (saveCurrentPreset(presetName)) setPresetName("");
+  const handleSavePreset = useCallback(async () => {
+    if (await saveCurrentPreset(presetName)) setPresetName("");
   }, [presetName, saveCurrentPreset]);
+
+  const togglePresetFormat = useCallback((format) => {
+    setSaveProblems([]);
+    setPresetFormats((current) => current.includes(format)
+      ? current.filter((entry) => entry !== format)
+      : Object.keys(PUBLIC_FORMATS).filter((entry) => entry === format || current.includes(entry)));
+  }, []);
 
   const handleClearPlayer = useCallback((playerIndex) => {
     setTexts((current) => {
@@ -194,6 +256,20 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const handleEditorPlayerCountChange = useCallback((count) => {
     setEditorPlayerCount(count);
     setCatalogTargetIndex((current) => Math.min(current, Math.max(0, count - 1)));
+  }, []);
+
+  // The catalog's format dropdown decides the match: Commander decks start a
+  // Commander game (up to x4), every other format plays Normal.
+  const handleFormatChange = useCallback((catalogFormat) => {
+    // Pauper EDH keeps its own id so the goldfish starts with its life total
+    // and commander rules; every other commander catalog plays Commander.
+    const nextFormat = catalogFormat === "paupercommander" ? catalogFormat
+      : usesCommanders(catalogFormat) ? MATCH_FORMAT_COMMANDER : MATCH_FORMAT_NORMAL;
+    const modes = PLAYER_COUNT_MODES[usesCommanders(nextFormat) ? MATCH_FORMAT_COMMANDER : nextFormat] || PLAYER_COUNT_MODES[MATCH_FORMAT_NORMAL];
+    const nextMax = modes[modes.length - 1];
+    setFormat(nextFormat);
+    setEditorPlayerCount((current) => Math.min(current, nextMax));
+    setCatalogTargetIndex((current) => Math.min(current, Math.max(0, nextMax - 1)));
   }, []);
 
   const handleCopyMtgo = useCallback(async (playerIndex = catalogTargetIndex) => {
@@ -260,14 +336,14 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     const findEmptyPlayer = (count) => players.slice(0, count).findIndex((_, index) => !String(nextTexts[index] || "").trim());
     let nextCount = visiblePlayerCount;
     let nextIndex = findEmptyPlayer(nextCount);
-    if (nextIndex < 0 && nextCount < players.length) {
-      nextCount = [1, 2, 4].find((count) => count > nextCount && count <= players.length) || players.length;
+    if (nextIndex < 0 && nextCount < maxPlayerCount) {
+      nextCount = playerCountModes.find((count) => count > nextCount) || maxPlayerCount;
       nextIndex = findEmptyPlayer(nextCount);
     }
     setEditorPlayerCount(nextCount);
     setCatalogTargetIndex(nextIndex >= 0 ? nextIndex : (target + 1) % Math.max(1, nextCount));
     showActionNotice(ui("Deck loaded into {0}", { 0: players[target]?.name || ui("the editor") }));
-  }, [catalogTargetIndex, handleTextChange, players, showActionNotice, texts, ui, visiblePlayerCount, visiblePlayers.length]);
+  }, [catalogTargetIndex, handleTextChange, maxPlayerCount, playerCountModes, players, showActionNotice, texts, ui, visiblePlayerCount, visiblePlayers.length]);
 
   const handleDeleteSavedPreset = useCallback(() => {
     if (!selectedPreset) return;
@@ -281,8 +357,13 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
   const handleTestInGame = useCallback(() => {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
+    const commanders = texts.map(parseCommanderSection);
     if (!decks.some((deck) => deck.length > 0)) {
       setStatus(ui("Paste at least one deck to test it in a game."));
+      return false;
+    }
+    if (usesCommanders(format) && !commanders.some((list, index) => list.length > 0 && decks[index].length > 0)) {
+      setStatus(ui("Add a Commander section to at least one deck."));
       return false;
     }
     // The x1/x2/x4 selector is the source of truth for the match size. Empty
@@ -292,46 +373,23 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
     const perspectivePlayerIndex = Math.max(0, decks.findIndex((deck) => deck.length > 0));
     const playerDecks = decks.slice(0, playerCount);
     const playerSideboards = sideboards.slice(0, playerCount);
-    const seedPlayerIndices = playerDecks.reduce(
-      (indices, deck, index) => (deck.length > 0 ? [...indices, index] : indices),
-      [],
-    );
     return onTestDecks?.({
+      format,
       decks: playerDecks,
       sideboards: playerSideboards,
+      commanders: commanders.slice(0, playerCount),
       playerCount,
       perspectivePlayerIndex,
-      seedPlayerIndices,
       preserveMissingDecks: true,
       allowPartialDecks: true,
-      seedTestPosition: true,
     });
-  }, [onTestDecks, setStatus, texts, ui, visiblePlayerCount]);
-
-  const lobbyPlayerCount = Math.max(2, Math.min(4, visiblePlayerCount));
-  const lobbyDeckOptions = useMemo(
-    () => texts
-      .map((text, index) => {
-        const deckText = String(text || "");
-        const commanderSection = deckText.match(/(?:^|\n)Commanders?\s*\n([\s\S]*?)(?=\n(?:Deck|Sideboard)\s*(?:\n|$)|$)/i);
-        return {
-          id: `editor-${index}`,
-          label: `${deckLabels[index] || ui("Deck {0}", { 0: index + 1 })} (${players[index]?.name || ui("Player {0}", { 0: index + 1 })})`,
-          deckText: commanderSection ? deckText.replace(commanderSection[0], "") : deckText,
-          commanderText: commanderSection?.[1]?.trim() || "",
-        };
-      })
-      .filter((option) => option.deckText.trim()),
-    [deckLabels, players, texts, ui],
-  );
-  const handleConfirmLobby = useCallback(() => {
-    setShowLobbyConfirm(false);
-    onOpenLobby?.(texts, lobbyPlayerCount, lobbyDeckOptions);
-  }, [lobbyDeckOptions, lobbyPlayerCount, onOpenLobby, texts]);
+  }, [format, onTestDecks, setStatus, texts, ui, visiblePlayerCount]);
 
   return (
     <main
-      className="setup-screen deck-loading-screen relative flex h-full min-h-0 flex-col overflow-y-auto bg-[#08090a] p-3 pb-24 lg:overflow-hidden lg:pb-3"
+      className={embedded
+        ? "deck-loading-screen deck-loading-screen--embedded relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#08090a] p-2 lg:overflow-hidden"
+        : "setup-screen deck-loading-screen relative flex h-full min-h-0 flex-col overflow-y-auto bg-[#08090a] p-3 pb-24 lg:overflow-hidden lg:pb-3"}
     >
       {actionNotice ? (
         <div className="pointer-events-none sticky top-0 z-30 flex justify-end" role="status" aria-live="polite">
@@ -340,46 +398,46 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
           </div>
         </div>
       ) : null}
-      <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-3 pb-3">
+      <div className={`flex shrink-0 flex-wrap items-center justify-between gap-3 ${embedded ? "mb-2" : "mb-3 pb-3"}`}>
         <div className="min-w-0">
-          <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Load Decks")}</h1>
-          <div className="mt-1 text-[12px] font-semibold text-[#b8aa8e]">{ui("Select decks from the catalog or paste lists to assign them to players.")}</div>
+          {embedded ? null : <h1 className="text-[18px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Goldfish")}</h1>}
+          <div className={`text-[12px] font-semibold text-[#b8aa8e] ${embedded ? "" : "mt-1"}`}>{ui("Select decks from the catalog or paste lists to assign them to players.")}</div>
         </div>
-        {/* The match is still built in one screen; the steps only say where
-            the player is in that flow. */}
-        <ol className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em]" aria-label={ui("Steps")}>
-          {[ui("Load Decks"), ui("Configure"), ui("Start")].map((step, index) => (
-            <li key={step} className="flex items-center gap-2">
-              {index ? <span className="text-[#5b5245]" aria-hidden="true">›</span> : null}
-              <span
-                className={index === 0 ? "rounded-sm bg-[#2e2416] px-1.5 py-0.5 text-[#f2d9a3]" : "text-[#5b5449]"}
-                aria-current={index === 0 ? "step" : undefined}
-              >{index + 1}. {step}</span>
-            </li>
-          ))}
-        </ol>
       </div>
 
       <section
-        className="mb-2 flex min-h-0 flex-1 flex-col gap-3 lg:flex-row"
+        className="mb-2 flex min-h-0 flex-1 flex-col gap-2 lg:flex-row"
         aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
-        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-[70%] lg:shrink-0">
+        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-[60%] lg:shrink-0">
           <CompetitiveDeckBrowser
+            onFormatChange={handleFormatChange}
             onSelect={handleCatalogSelect}
             targetName={targetPlayerName}
             savedDecks={savedPresets}
           />
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 bg-[#0e0f11] p-2.5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Players / deck assignment")}</h2>
-              <p className="max-w-[46ch] text-[11px] text-[#8b806b]">{ui("Pick a player and assign their deck. You can paste a list, use a catalog deck, or import from MTGO.")}</p>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 bg-[#0e0f11] p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]" title={ui("Pick a player and assign their deck. You can paste a list, use a catalog deck, or import from MTGO.")}>{ui("Players / deck assignment")}</h2>
+            <div className="flex flex-wrap items-center gap-1.5" aria-label={ui("Number of players to edit")}>
+              <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Players")}</span>
+              {playerCountModes.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
+                  aria-pressed={visiblePlayerCount === count}
+                  onClick={() => handleEditorPlayerCountChange(count)}
+                >
+                  x{count}
+                </button>
+              ))}
             </div>
-            <div className="flex shrink-0 flex-wrap gap-1" aria-label={ui("Players")} data-player-tabs="">
+          </div>
+          <div className="flex flex-wrap gap-1" aria-label={ui("Players")} data-player-tabs="">
               {visiblePlayers.map((player, index) => {
                 const isTarget = index === targetIndex;
                 return (
@@ -399,41 +457,26 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
                   </button>
                 );
               })}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5" aria-label={ui("Number of players to edit")}>
-            <span className="text-[10px] uppercase tracking-wide text-[#8b806b]">{ui("Players")}</span>
-            {playerCountModes.map((count) => (
-              <button
-                key={count}
-                type="button"
-                className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${visiblePlayerCount === count ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#131418] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
-                aria-pressed={visiblePlayerCount === count}
-                onClick={() => handleEditorPlayerCountChange(count)}
-              >
-                x{count}
-              </button>
-            ))}
           </div>
 
           {targetPlayer ? (
-            <div className="flex min-h-0 flex-1 flex-col gap-3 bg-[#131418] p-3" data-player-panel={targetIndex}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#211a10] text-[16px] font-bold text-[#d8bf7a]" aria-hidden="true">
-                    {targetPlayer.name.slice(0, 1).toLocaleUpperCase("en-US")}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      <span className="min-w-0 truncate text-[15px] font-bold uppercase tracking-wide text-[#f2d9a3]">{targetPlayer.name}</span>
-                      <span className="shrink-0 rounded-full bg-[#3d2f1c] px-1.5 text-[9px] font-bold uppercase tracking-wide text-[#f2d9a3]">{ui("Target")}</span>
-                    </div>
-                    <div className="truncate text-[11px] text-[#b8aa8e]">{deckLabels[targetIndex] || ui("No deck assigned")}</div>
-                    <div className="text-[11px] font-semibold text-[#8b806b]">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 bg-[#131418] p-2.5" data-player-panel={targetIndex}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="min-w-0 truncate text-[13px] font-bold text-[#f2d9a3]" title={deckLabels[targetIndex] || undefined}>{deckLabels[targetIndex] || ui("No deck assigned")}</span>
+                    <span className="sr-only">{targetPlayer.name}</span>
+                  </div>
+                  <div className="whitespace-nowrap text-[11px] font-semibold text-[#8b806b]">
                       <span className="text-[#e7d9bc]">{cardCounts[targetIndex]}</span> {ui("main")}
                       <span className="mx-1 text-[#776b58]">/</span>
                       <span className="text-[#e7d9bc]">{sideboardCounts[targetIndex]}</span> {ui("sideboard")}
-                    </div>
+                      {usesCommanders(format) ? (
+                        <>
+                          <span className="mx-1 text-[#776b58]">/</span>
+                          <span className="text-[#e7d9bc]">{commanderCounts[targetIndex]}</span> {ui("commander")}
+                        </>
+                      ) : null}
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
@@ -469,7 +512,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               <PreservingTextarea
                 aria-label={ui("{0} decklist", { 0: targetPlayer.name })}
                 spellCheck={false}
-                className="min-h-[160px] w-full flex-1 resize-none bg-[#050607] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#0a0b0d] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35"
+                className="min-h-[240px] w-full flex-1 resize-none bg-[#050607] p-2.5 font-mono text-[13px] leading-snug text-[#e7d9bc] outline-none transition-colors placeholder:text-[#6f6759] focus:bg-[#0a0b0d] focus-visible:ring-1 focus-visible:ring-[#d8bf7a]/35"
                 placeholder={stripDeckHeader(ui("Paste {0}'s list...\n\nDeck\n4 Lightning Bolt\n2 Counterspell\n20 Island\n\nSideboard\n2 Pyroblast\n1 Tormod's Crypt", { 0: targetPlayer.name }))}
                 value={texts[targetIndex] || ""}
                 onChange={(event) => handleTextChange(targetIndex, event.target.value)}
@@ -477,13 +520,30 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             </div>
           ) : null}
 
-          {/* The column is narrow now, so this panel stacks instead of trying
-              to sit three across. */}
-          <div className="grid shrink-0 gap-2 bg-[#131418] p-3">
-            <div className="min-w-0">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Save configuration")}</h3>
-              <p className="text-[11px] text-[#8b806b]">{ui("Save every player's deck as one configuration.")}</p>
+          <div className="grid shrink-0 gap-1.5 bg-[#131418] p-2.5">
+            <div className="flex flex-wrap items-center gap-1" role="group" aria-label={ui("Formats this deck is legal in")} data-preset-formats="">
+              <h3 className="mr-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]" title={ui("Save every player's deck as one configuration.")}>{ui("Save configuration")}</h3>
+              {Object.values(PUBLIC_FORMATS).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors ${presetFormats.includes(id) ? "bg-[#3d2f1c] text-[#f2d9a3]" : "bg-[#0e0f11] text-[#6f6759] hover:bg-[#1d1e22] hover:text-[#e7d9bc]"}`}
+                  aria-pressed={presetFormats.includes(id)}
+                  data-preset-format={id}
+                  onClick={() => togglePresetFormat(id)}
+                >{ui(label)}</button>
+              ))}
             </div>
+            {saveProblems.length ? (
+              <ul className="grid max-h-28 gap-0.5 overflow-y-auto text-[11px] text-red-300" data-preset-format-problems="">
+                {saveProblems.map(({ format, index, errors }) => (
+                  <li key={`${format}:${index}`}>
+                    <span className="font-bold">{ui("{0} — {1}:", { 0: players[index]?.name || ui("Player {0}", { 0: index + 1 }), 1: ui(PUBLIC_FORMATS[format]?.label || format) })}</span>{" "}
+                    {errors.slice(0, 4).join(" ")}{errors.length > 4 ? ` ${ui("(+{0} more)", { 0: errors.length - 4 })}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <div className="flex min-w-0 items-center gap-2">
             <input
               className={`${fieldClass} min-w-0 flex-1 py-1.5 text-[11px]`}
@@ -496,8 +556,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 shrink-0 max-w-[120px] truncate rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-gold"
-              disabled={!presetName.trim() || totalCards === 0 || Boolean(actionBusy)}
+              className="h-8 shrink-0 max-w-[120px] truncate rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-gold"
+              disabled={!presetName.trim() || !presetFormats.length || totalCards === 0 || Boolean(actionBusy)}
+              title={presetFormats.length ? undefined : ui("Choose at least one format to save this deck.")}
               onClick={() => runAction("saved-save", handleSavePreset)}
             >{actionBusy === "saved-save" ? <ActionSpinner /> : ui("Save")}</Button>
             </div>
@@ -505,7 +566,7 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
         </div>
       </section>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-4 pr-40 pt-2 lg:pb-0">
+      <div className={`flex shrink-0 flex-wrap items-center justify-end gap-2 pt-2 ${embedded ? "" : "pb-4 pr-40 lg:pb-0"}`}>
         {savedPresets.length ? (
           <div className="mr-auto flex min-w-0 items-center gap-2">
             <select
@@ -517,7 +578,9 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             >
               <option value="">{ui("Select a saved deck")}</option>
               {savedPresets.map((preset) => (
-                <option key={preset.name} value={preset.name}>{preset.name}</option>
+                <option key={preset.name} value={preset.name}>
+                  {preset.formats?.length ? `${preset.name} (${preset.formats.map((format) => ui(PUBLIC_FORMATS[format]?.label || format)).join(", ")})` : preset.name}
+                </option>
               ))}
             </select>
             <Button
@@ -538,64 +601,14 @@ export default function DeckLoadingView({ onOpenLobby, onTestDecks, onCancel }) 
             >{actionBusy === "saved-delete" ? <ActionSpinner /> : ui("Delete")}</Button>
           </div>
         ) : null}
-        {showLobbyConfirm ? (
-          <div className="flex flex-wrap items-center justify-end gap-2 rounded-sm bg-[#211a10] px-2 py-1.5">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#f2d9a3]">{ui("Create a {0}-player lobby?", { 0: lobbyPlayerCount })}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-sm px-3 text-[10px] font-bold uppercase tracking-wide flat-button-primary"
-              disabled={Boolean(actionBusy)}
-              onClick={handleConfirmLobby}
-            >{ui("Confirm")}</Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-sm px-2 text-[10px] font-bold uppercase tracking-wide flat-button"
-              disabled={Boolean(actionBusy)}
-              onClick={() => setShowLobbyConfirm(false)}
-            >{ui("Cancel")}</Button>
-          </div>
-        ) : showContinueChoices ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-[#b8aa8e]">{ui("Continue with these decks")}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 rounded-sm px-3 text-[11px] font-bold uppercase tracking-wide flat-button-primary"
-              disabled={Boolean(actionBusy)}
-              onClick={() => setShowLobbyConfirm(true)}
-            >{ui("Lobby and share")}</Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 rounded-sm px-3 text-[11px] font-bold uppercase tracking-wide flat-button-gold"
-              disabled={Boolean(actionBusy)}
-              onClick={() => runAction("test", handleTestInGame)}
-            >{actionBusy === "test" ? <ActionSpinner /> : ui("Test in game")}</Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 rounded-sm px-2 text-[11px] font-bold uppercase tracking-wide flat-button"
-              disabled={Boolean(actionBusy)}
-              onClick={() => setShowContinueChoices(false)}
-            >{ui("Back")}</Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-10 rounded-sm px-5 text-[12px] font-bold uppercase tracking-wide flat-button-primary"
-            disabled={Boolean(actionBusy)}
-            onClick={() => setShowContinueChoices(true)}
-          >{ui("Build lobby")}</Button>
-        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-10 rounded-sm px-5 text-[12px] font-bold uppercase tracking-wide flat-button-primary"
+          disabled={Boolean(actionBusy)}
+          onClick={() => runAction("test", handleTestInGame)}
+        >{actionBusy === "test" ? <ActionSpinner /> : ui("Build lobby")}</Button>
         <Button
           type="button"
           variant="ghost"

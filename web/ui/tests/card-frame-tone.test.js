@@ -45,3 +45,13 @@ test('cardFrameTone resolves a token from its printing colors', () => {
   assert.deepEqual(monk.colors, ['R']);
   assert.equal(monk.style['--card-frame-accent'], '#9b493b');
 });
+
+test('a colorless land takes the tone of the mana its current land types make', () => {
+  assert.equal(cardFrameTone({cards: [{intrinsic_mana: ['G']}], typeLine: 'Legendary Land — Forest'}).tone, 'green');
+  assert.equal(cardFrameTone({cards: [{}], typeLine: 'Land'}).tone, 'land');
+});
+
+test('a Yavimaya Forest keeps the colors its rules text produces', () => {
+  assert.equal(cardFrameTone({cards: [{oracle_text: '{T}, Pay 1 life: Add {U} or {R}.', intrinsic_mana: ['G']}], typeLine: 'Land — Forest'}).tone, 'gold');
+  assert.equal(cardFrameTone({cards: [{oracle_text: '{T}: Add {U} or {R}.'}], typeLine: 'Land'}).tone, 'land');
+});

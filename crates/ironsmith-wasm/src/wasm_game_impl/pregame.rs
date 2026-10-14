@@ -607,7 +607,9 @@ impl WasmGame {
     fn companion_minimum_deck_size(format: MatchFormatInput) -> usize {
         match format {
             MatchFormatInput::Brawl | MatchFormatInput::CommanderDraft => 60,
-            MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => 100,
+            MatchFormatInput::Commander
+            | MatchFormatInput::PauperCommander
+            | MatchFormatInput::ArchenemyCommander => 100,
             MatchFormatInput::ConspiracyDraft => 40,
             MatchFormatInput::Normal
             | MatchFormatInput::FreeForAll
@@ -1681,8 +1683,17 @@ impl WasmGame {
         Ok(())
     }
 
+    /// Pauper EDH leads with any creature printed at uncommon, legendary or
+    /// not. The engine has no printing rarities, so the client's format
+    /// legality check owns the rarity half of that rule.
+    fn is_pauper_commander_eligible(definition: &CardDefinition) -> bool {
+        definition.card.has_card_type(CardType::Creature)
+            || Self::is_ordinary_commander_eligible(definition)
+    }
+
     fn validate_commander_setup(
         &mut self,
+        format: MatchFormatInput,
         player_count: usize,
         decks: &[Vec<String>],
         commanders: &[Vec<String>],
@@ -1783,9 +1794,14 @@ impl WasmGame {
                     .push(self.load_compilable_card_definition_result(commander_name)?);
             }
             if commander_definitions.len() == 1 {
-                if !Self::is_ordinary_commander_eligible(&commander_definitions[0]) {
+                let (eligible, format_name) = if format == MatchFormatInput::PauperCommander {
+                    (Self::is_pauper_commander_eligible(&commander_definitions[0]), "Pauper EDH")
+                } else {
+                    (Self::is_ordinary_commander_eligible(&commander_definitions[0]), "Commander")
+                };
+                if !eligible {
                     return Err(format!(
-                        "{} is not an eligible Commander commander",
+                        "{} is not an eligible {format_name} commander",
                         commander_definitions[0].card.name
                     ));
                 }
@@ -1832,7 +1848,7 @@ impl WasmGame {
         revealed_object: ObjectId,
         definition: &CardDefinition,
     ) -> Result<(), String> {
-        if self.match_format != MatchFormatInput::Commander {
+        if !self.match_format.is_commander() {
             return Ok(());
         }
 
@@ -1978,7 +1994,7 @@ impl WasmGame {
         &mut self,
         reveals: &[ValidatedHiddenPositionReveal],
     ) -> Result<(), String> {
-        if self.match_format != MatchFormatInput::Commander {
+        if !self.match_format.is_commander() {
             return Ok(());
         }
 
@@ -2017,7 +2033,7 @@ impl WasmGame {
     }
 
     fn validate_commander_manual_zone_addition(&self, zone: Zone) -> Result<(), String> {
-        if self.match_format == MatchFormatInput::Commander
+        if self.match_format.is_commander()
             && matches!(zone, Zone::Command | Zone::OutsideGame)
         {
             return Err(
@@ -3971,6 +3987,7 @@ mod commander_setup_tests {
         let mut game = WasmGame::new();
 
         game.validate_commander_setup(
+            MatchFormatInput::Commander,
             2,
             &two_player_lists(repeated("Plains", 99)),
             &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -3980,6 +3997,7 @@ mod commander_setup_tests {
         .expect("a legendary creature and 99 in-identity basic lands should be legal");
 
         game.validate_commander_setup(
+            MatchFormatInput::Commander,
             2,
             &two_player_lists(repeated("Plains", 98)),
             &two_player_lists(vec![
@@ -3992,6 +4010,7 @@ mod commander_setup_tests {
         .expect("two ordinary partner commanders should be legal");
 
         game.validate_commander_setup(
+            MatchFormatInput::Commander,
             2,
             &two_player_lists(repeated("Plains", 98)),
             &two_player_lists(vec![
@@ -4012,6 +4031,7 @@ mod commander_setup_tests {
 
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(repeated("Plains", 99)),
                 &two_player_lists(vec!["Sol Ring".to_string()]),
@@ -4023,6 +4043,7 @@ mod commander_setup_tests {
         );
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(repeated("Plains", 98)),
                 &two_player_lists(vec![
@@ -4040,6 +4061,7 @@ mod commander_setup_tests {
         duplicate.extend(["Sol Ring".to_string(), "Sol Ring".to_string()]);
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(duplicate),
                 &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -4054,6 +4076,7 @@ mod commander_setup_tests {
         off_identity.push("Lightning Bolt".to_string());
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(off_identity),
                 &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -4067,6 +4090,7 @@ mod commander_setup_tests {
         linked_face_identity.push("Breaking".to_string());
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(linked_face_identity),
                 &two_player_lists(vec!["Oona, Queen of the Fae".to_string()]),
@@ -4080,6 +4104,7 @@ mod commander_setup_tests {
         disallowed_basic_type.push("Tundra".to_string());
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(disallowed_basic_type),
                 &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -4091,6 +4116,7 @@ mod commander_setup_tests {
         );
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(repeated("Island", 99)),
                 &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -4102,6 +4128,7 @@ mod commander_setup_tests {
         );
         assert!(
             game.validate_commander_setup(
+                MatchFormatInput::Commander,
                 2,
                 &two_player_lists(repeated("Plains", 99)),
                 &two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]),
@@ -4155,13 +4182,13 @@ mod commander_setup_tests {
         let commanders = two_player_lists(vec!["Isamaru, Hound of Konda".to_string()]);
         let decks = two_player_lists(Vec::new());
         let manifests = hidden_manifests(99, 1);
-        game.validate_commander_setup(2, &decks, &commanders, None, &manifests)
+        game.validate_commander_setup(MatchFormatInput::Commander, 2, &decks, &commanders, None, &manifests)
             .expect("complete committed Commander decks should pass setup validation");
 
         let mut incomplete = manifests.clone();
         incomplete[0].slot_commitments.pop();
         assert!(
-            game.validate_commander_setup(2, &decks, &commanders, None, &incomplete)
+            game.validate_commander_setup(MatchFormatInput::Commander, 2, &decks, &commanders, None, &incomplete)
                 .unwrap_err()
                 .contains("commit every main-deck slot")
         );
@@ -4221,6 +4248,50 @@ mod commander_setup_tests {
             game.validate_hidden_commander_reveal(owner, hidden_for_owner[1], &sol_ring)
                 .unwrap_err()
                 .contains("only one card named Sol Ring")
+        );
+    }
+
+    #[test]
+    fn pauper_commander_setup_uses_thirty_life_and_sixteen_commander_damage() {
+        let _id_guard = crate::test_id_counter_guard();
+        let mut game = WasmGame::new();
+        let config = MatchSetupInput {
+            player_names: vec!["Alice".to_string(), "Bob".to_string()],
+            starting_life: 20,
+            seed: 9,
+            format: MatchFormatInput::PauperCommander,
+            decks: Some(two_player_lists(Vec::new())),
+            sideboards: None,
+            commanders: Some(two_player_lists(vec!["Isamaru, Hound of Konda".to_string()])),
+            planar_decks: None,
+            vanguards: None,
+            scheme_decks: None,
+            conspiracies: None,
+            commander_draft: None,
+            opening_hand_size: Some(3),
+            hidden_deck_manifests: Some(hidden_manifests(99, 1)),
+            public_decklists: None,
+            free_for_all: None,
+            teams: None,
+            starting_player: None,
+        };
+        game.apply_match_setup(config)
+            .expect("hidden Pauper EDH setup should start");
+        assert!(game.game.players.iter().all(|player| player.life == 30));
+        assert!(game.game.commander_damage_loss_enabled());
+        assert_eq!(game.game.commander_damage_loss_threshold(), 16);
+        assert!(game.match_format.is_commander());
+
+        // A non-legendary uncommon creature leads Pauper EDH, never Commander.
+        let commanders = two_player_lists(vec!["Sprite Dragon".to_string()]);
+        let decks = two_player_lists(Vec::new());
+        let manifests = hidden_manifests(99, 1);
+        game.validate_commander_setup(MatchFormatInput::PauperCommander, 2, &decks, &commanders, None, &manifests)
+            .expect("Sprite Dragon is an eligible Pauper EDH commander");
+        assert!(
+            game.validate_commander_setup(MatchFormatInput::Commander, 2, &decks, &commanders, None, &manifests)
+                .unwrap_err()
+                .contains("not an eligible Commander commander")
         );
     }
 

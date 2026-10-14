@@ -171,13 +171,26 @@ test("empty lobby deck submissions do not clear the saved default", () => {
 test("saved deck presets stay in the browser session and stop at five", () => {
   withMockSessionStorage(() => {
     for (let index = 0; index < SAVED_DECK_PRESETS_LIMIT; index += 1) {
-      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`], index === 0 ? ["Alice", "Bob"] : []).saved, true);
+      assert.equal(saveSavedDeckPreset(`Deck ${index}`, [`${index} Island`], index === 0 ? ["Alice", "Bob"] : [], ["modern"]).saved, true);
     }
 
-    const rejected = saveSavedDeckPreset("Deck extra", ["1 Island"]);
+    const rejected = saveSavedDeckPreset("Deck extra", ["1 Island"], [], ["modern"]);
     assert.equal(rejected.saved, false);
     assert.equal(rejected.reason, "limit");
     assert.equal(listSavedDeckPresets().length, SAVED_DECK_PRESETS_LIMIT);
     assert.deepEqual(listSavedDeckPresets().find((entry) => entry.name === "Deck 0")?.playerNames, ["Alice", "Bob"]);
+  });
+});
+
+test("saved deck presets need at least one format", () => {
+  withMockSessionStorage(() => {
+    const rejected = saveSavedDeckPreset("No format", ["1 Island"], [], []);
+    assert.equal(rejected.saved, false);
+    assert.equal(rejected.reason, "format");
+    assert.equal(listSavedDeckPresets().length, 0);
+
+    const saved = saveSavedDeckPreset("Pauper pile", ["1 Island"], [], ["paupercommander", "bogus", "pauper"]);
+    assert.equal(saved.saved, true);
+    assert.deepEqual(listSavedDeckPresets()[0].formats, ["pauper", "paupercommander"]);
   });
 });

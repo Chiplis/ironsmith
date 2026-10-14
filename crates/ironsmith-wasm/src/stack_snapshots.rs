@@ -49,6 +49,7 @@ pub(super) fn deterministic_match_seed(
             MatchFormatInput::ConspiracyDraft => "conspiracy_draft",
             MatchFormatInput::CommanderDraft => "commander_draft",
             MatchFormatInput::Commander => "commander",
+            MatchFormatInput::PauperCommander => "pauper_commander",
             MatchFormatInput::Brawl => "brawl",
         },
     );

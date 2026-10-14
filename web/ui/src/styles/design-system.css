@@ -7702,7 +7702,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Rules remain scrollable while an automatic stack preview is displayed. */
 .floating-card-preview[data-automatic-stack-preview="true"]
-  :is(.interactive-card-frame__rules, .inspector-oracle-scroll) {
+  :is(.interactive-card-frame__rules, .inspector-oracle-scroll, .simple-card-frame__rules, .simple-card-frame__rules *, .mse-card-hit-target, .mse-card-rule-helper) {
   pointer-events: auto !important;
   overscroll-behavior: contain;
   touch-action: pan-y;

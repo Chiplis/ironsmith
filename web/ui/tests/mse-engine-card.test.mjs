@@ -12,6 +12,8 @@ test('explicit colors and indicators override mismatched costs without changing 
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',colors:['R'],characteristic_signature:'colors: blue\nother: test'}).card.card_color,'blue');
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',characteristic_signature:'colors:-\nother: test'}).card.card_color,'colorless');
   assert.equal(engineCardToMse({type_line:'Creature',color_identity:['U']}).card.card_color,undefined);
+  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',colors:[],color_identity:['G']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Land',card_faces:[{type_line:'Land'}],color_identity:['G']}).card.card_color,undefined);
 });
 test('face indicators stay separate and native overrides remain authoritative',()=>{
   const snapshot={color_indicator:['W'],card_faces:[{color_indicator:['U']},{color_indicator:['R']}]};
@@ -60,14 +62,33 @@ test('planeswalker face costs use native eight-slot offsets and explicit selecti
 });
 
 test('Saga grouped chapters map labels to ability boxes without duplicating their text',()=>{
-  const rules='(Add a lore counter.)\nI, II — Add {U}.\nIII — Draw a card.\nThen discard a card.';
+  const rules='(Add a lore counter.)\nI, II — Add {U}.\nIII — Choose one —\n• Draw a card.\n• Discard a card.';
   const result=engineCardToMse({type_line:'Enchantment — Saga',oracle_text:rules});
   assert.equal(result.card.chapter_text,'(Add a lore counter.)');
   assert.equal(result.card.level_1_text,'Add <sym>U</sym>.');
-  assert.equal(result.card.level_2_text,'Draw a card.\nThen discard a card.');
+  assert.equal(result.card.level_2_text,'Choose one —\n• Draw a card.\n• Discard a card.');
+  assert.equal(result.styling.reminder_text_offset,undefined);
   assert.equal(result.styling.chapter_textboxes,'two');assert.equal(result.styling.snap_chapter_to_box,'1,1,2');
   assert.equal(result.card.rule_text,engineRulesToMse(rules));
   assert.equal(engineCardToMse({type_line:'Enchantment — Saga',oracle_text:rules},{styling:{chapter_textboxes:'three'}}).styling.chapter_textboxes,'three');
+});
+
+test('abilities after a Saga\'s chapters join the reminder box, and the boxes are sized to their text',()=>{
+  const chapters=['I — Add {C}.','II — Create a 0/0 colorless Construct artifact creature token with "This token gets +1/+1 for each artifact you control."','III — Draw a card.'];
+  const gained=['{T}: Add {G}.','{2}, {T}: Create a 0/0 colorless Construct artifact creature token with "This token gets +1/+1 for each artifact you control."'];
+  const result=engineCardToMse({type_line:'Enchantment Land — Urza\'s Saga Forest',oracle_text:['(Add a lore counter.)',...chapters,...gained].join('\n')});
+  assert.equal(result.card.level_3_text,'Draw a card.');
+  assert.equal(result.card.chapter_text,'(Add a lore counter.)\n<sym>T</sym>: Add <sym>G</sym>.\n'+engineRulesToMse(gained[1]));
+  const grow=Number(result.styling.reminder_text_offset),offsets=result.styling.chapter_divider_offsets.split(',').slice(0,2).map(Number);
+  assert.ok(grow>0,'the reminder box grows to hold the abilities');
+  // Box x ends at column top + x*base + offset_x (template text_column_cell_height_array).
+  const column=155+grow,base=Math.trunc((437-column)/3);
+  const heights=[base+offsets[0],base+offsets[1]-offsets[0],base-offsets[1]];
+  assert.ok(heights.every(height=>height>=42),'every chapter keeps room for its numeral');
+  assert.ok(heights[1]>heights[0]&&heights[1]>heights[2],'the longest chapter gets the tallest box');
+  const creature=engineCardToMse({type_line:'Enchantment Creature — Saga',oracle_text:['I — Add {C}.','II — Draw.','{T}: Add {G}.'].join('\n')});
+  assert.equal(creature.card.chapter_text,'<sym>T</sym>: Add <sym>G</sym>.');
+  assert.equal(creature.styling.reminder_text_offset,undefined);
 });
 
 test('Saga adaptation preserves face offsets, explicit selection, and non-Saga text',()=>{
@@ -97,4 +118,15 @@ test('double-faced snapshots become reciprocal linked cards with independent fac
   assert.equal(engineDoubleFacesToMse({...snapshot,layout:'split'}),null);
   assert.throws(()=>engineDoubleFacesToMse(snapshot,{faceIndex:2}),{code:'engine-face'});
   assert.throws(()=>engineDoubleFacesToMse({...snapshot,card_faces:[{}]}),{code:'engine-face'});
+});
+
+test('a land renders in the colors of its current intrinsic mana (Yavimaya makes itself a Forest)',()=>{
+  assert.equal(engineCardToMse({type_line:'Legendary Land — Forest',intrinsic_mana:['G']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',intrinsic_mana:['G']}).card.card_color,'green, land');
+});
+
+test('a Yavimaya Forest keeps the colors its rules text produces',()=>{
+  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}, Pay 1 life: Add {U} or {R}. (Reminder {B}.)',intrinsic_mana:['G']}).card.card_color,'blue, red, green, land, multicolor');
+  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}: Add {U}.',color_identity:['U'],intrinsic_mana:['G']}).card.card_color,'blue, green, land, multicolor');
+  assert.equal(engineCardToMse({type_line:'Land',oracle_text:'{T}: Add {U} or {R}.'}).card.card_color,undefined);
 });

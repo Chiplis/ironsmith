@@ -18,11 +18,14 @@ const frames = Object.fromEntries(Object.entries(catalog).map(([key, entry]) => 
 
 export function fallbackCardFrameColors({ cards = [], printing = null, manaCost = '', typeLine = '' } = {}) {
   const sources = [...cards.filter(Boolean), printing].filter(Boolean);
+  // A land also takes the intrinsic mana of its current basic land types
+  // (Yavimaya makes every land a Forest), which identity does not reflect.
+  const intrinsic = /\bLand\b/i.test(typeLine) ? sources.flatMap(card => card.intrinsic_mana || []) : [];
   // An explicit empty identity is authoritative too. Search every source
   // before deriving anything from the live object's current characteristics.
   for (const card of sources) {
     const identity = card.color_identity ?? card.colorIdentity;
-    if (identity != null) return normalizeArtColors(identity);
+    if (identity != null) return normalizeArtColors([...normalizeArtColors(identity), ...intrinsic]);
   }
   // Engine snapshots may omit identity. Use printed costs/rules and basic
   // land types, including other faces when available, until metadata arrives.
@@ -42,7 +45,7 @@ export function fallbackCardFrameColors({ cards = [], printing = null, manaCost 
       }
     }
   }
-  return normalizeArtColors([...colors, ...cardFrameColors({ cards, printing, manaCost })]);
+  return normalizeArtColors([...colors, ...intrinsic, ...cardFrameColors({ cards, printing, manaCost })]);
 }
 
 export function isSagaCardFrame({ cards = [], printing = null, typeLine = '' } = {}) {

@@ -1,3 +1,5 @@
+import { usesCommanders } from "./relay/formats.js";
+
 const MAINBOARD_MINIMUM = 60;
 const COMMANDER_DECK_SIZE = 100;
 const SIDEBOARD_MAXIMUM = 15;
@@ -66,7 +68,7 @@ export function validateDeckCatalogEntry(entry, { format = entry?.format || "nor
     errors.push("mainboard contains an invalid count");
   }
   if (sideboardCount > SIDEBOARD_MAXIMUM) errors.push("sideboard exceeds 15 cards");
-  if (normalizedFormat === "commander") {
+  if (usesCommanders(normalizedFormat)) {
     if (mainboardCount + commanderCount !== COMMANDER_DECK_SIZE) errors.push("Commander mainboard and commanders must total 100 cards");
     if (commanderCount < 1 || commanderCount > 2) errors.push("Commander must contain one or two commanders");
   } else if (mainboardCount < MAINBOARD_MINIMUM) {

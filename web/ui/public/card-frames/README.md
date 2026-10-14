@@ -1,5 +1,10 @@
 # Standard default card frames
 
+These are legacy assets retained for offline comparison and regeneration.
+The live card UI now uses `CardFramePresentation` (MSE plus `SimpleCardFrame`)
+and does not select or load these stock frames. The description below documents
+the retained asset format, not the current UI fallback policy.
+
 `default/` contains 34 local WebP frame templates: all 32 WUBRG color subsets
 (including a colorless artifact frame), plus land and colorless nonartifact
 materials. Total image payload is about 650 KiB; a card loads only its selected

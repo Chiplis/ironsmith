@@ -328,6 +328,7 @@ impl GameState {
         let mut child = GameState::new(names, default_life);
         child.set_random_seed(child_seed);
         child.set_commander_damage_loss_enabled(self.commander_damage_loss_enabled());
+        child.set_commander_damage_loss_threshold(self.commander_damage_loss_threshold());
         for child_player in &mut child.players {
             child_player.has_left_game = !participants.contains(&child_player.id);
             if participants.contains(&child_player.id) {

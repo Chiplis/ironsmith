@@ -626,6 +626,14 @@ fn commit_draw_original_with_reveal_mode(
                         .downcast::<CardsDrawnEvent>()
                         .is_some_and(|draw| draw.player == player && !draw.cards.is_empty())
                 });
+            // Narset, Spirit of the Labyrinth bind whoever actually draws.
+            let count = if game.can_draw_extra_cards(player) {
+                count
+            } else if is_first {
+                count.min(1)
+            } else {
+                return Ok(EffectOutcome::count(0));
+            };
             let step = game.draw_step_context_for_player(player);
             let completed = super::draw_cards_with_miracle_window(
                 game,
@@ -816,21 +824,18 @@ fn execute_prepared_draw_cards(
     }
 
     // Check for "can't draw extra cards" restriction (e.g., Narset)
-    let count = if !game.can_draw_extra_cards(player_id) {
-        let has_drawn = game
+    if !game.can_draw_extra_cards(player_id)
+        && game
             .turn_store
             .turn_history
-            .has_drawn_cards_this_turn(player_id)?;
-        // Player can only draw their first card of the turn
-        if has_drawn {
-            // Already drew this turn, can't draw any more
-            return Ok(EffectOutcome::prevented());
-        }
-        // First draw - can only draw 1, not more
-        requested_count.min(1)
-    } else {
-        requested_count
-    };
+            .has_drawn_cards_this_turn(player_id)?
+    {
+        // Already drew this turn, can't draw any more
+        return Ok(EffectOutcome::prevented());
+    }
+    // CR 121.2: each card is a separate draw, so the one-card limit is
+    // checked per card below. A replaced draw (dredge) isn't a draw.
+    let count = requested_count;
 
     let mut total_drawn: i64 = 0;
     let mut replacement_count = 0;
@@ -858,6 +863,11 @@ fn execute_prepared_draw_cards(
                     .downcast::<CardsDrawnEvent>()
                     .is_some_and(|draw| draw.player == player_id && !draw.cards.is_empty())
             });
+        // Narset, Spirit of the Labyrinth: only the first card drawn this turn.
+        let restricted = !game.can_draw_extra_cards(player_id);
+        if restricted && !is_first {
+            continue;
+        }
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(player_id);
         let draw_event = Event::draw_in_instruction(
@@ -981,7 +991,7 @@ fn execute_prepared_draw_cards(
                             )
                         })?,
                 );
-                let final_count = final_draw.unwrap().count;
+                let mut final_count = final_draw.unwrap().count;
                 // A redirect replacement ("instead that player skips that
                 // draw and you draw a card", Notion Thief) changes who
                 // draws; the card goes to that player's hand.
@@ -1017,6 +1027,13 @@ fn execute_prepared_draw_cards(
                                 draw.player == redirected_player && !draw.cards.is_empty()
                             })
                         });
+                    // The redirected card is the new drawer's own draw (CR 121.2).
+                    if !game.can_draw_extra_cards(redirected_player) {
+                        if !redirected_is_first {
+                            continue;
+                        }
+                        final_count = final_count.min(1);
+                    }
                     let (redirected_in_draw_step, redirected_previous) =
                         game.draw_step_context_for_player(redirected_player);
                     let completed = super::draw_cards_with_miracle_window(
@@ -1067,6 +1084,10 @@ fn execute_prepared_draw_cards(
                     continue;
                 }
 
+                if restricted {
+                    // A count raised by a replacement is still one draw per card.
+                    final_count = final_count.min(1);
+                }
                 let completed = super::draw_cards_with_miracle_window(
                     game,
                     player_id,
@@ -1857,6 +1878,138 @@ mod tests {
 
         let event2 = result2.events[0].downcast::<CardsDrawnEvent>().unwrap();
         assert!(!event2.is_first_this_turn); // Not first draw anymore
+    }
+
+    /// Spirit of the Labyrinth: "Each player can't draw more than one card each turn."
+    fn add_spirit_of_the_labyrinth(game: &mut GameState, owner: PlayerId) {
+        add_static_source(
+            game,
+            owner,
+            "Spirit of the Labyrinth",
+            crate::static_abilities::StaticAbility::restriction(
+                crate::effect::Restriction::draw_extra_cards(crate::target::PlayerFilter::Any),
+                "Each player can't draw more than one card each turn.".into(),
+            ),
+        );
+        game.update_cant_effects();
+    }
+
+    struct ApplyReplacementNamed(&'static str);
+
+    impl crate::decision::DecisionMaker for ApplyReplacementNamed {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if let Some(option) = ctx.options.iter().find(|option| {
+                option.legal
+                    && option.description.contains(self.0)
+                    && !option.description.contains("Do not")
+            }) {
+                return vec![option.index];
+            }
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    #[test]
+    fn draw_restriction_ignores_a_draw_replaced_by_dredge() {
+        // CR 121.2, 614.6: a dredged draw never happened, so with Spirit of
+        // the Labyrinth Brainstorm's second draw is still the first card drawn.
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 4);
+        let thug = add_graveyard_dredger(&mut game, alice, "Golgari Thug", 2);
+        add_spirit_of_the_labyrinth(&mut game, alice);
+        let mut dm = ApplyReplacementNamed("Golgari Thug");
+        let mut ctx = ExecutionContext::new(thug, alice, &mut dm);
+
+        let result = DrawCardsEffect::you(3)
+            .execute(&mut game, &mut ctx)
+            .expect("draw should resolve");
+
+        let player = game.player(alice).expect("alice");
+        assert_eq!(player.hand.len(), 2, "dredged card plus one real draw");
+        assert_eq!(player.library.len(), 1, "two milled, one drawn, third draw blocked");
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+    }
+
+    #[test]
+    fn draw_restriction_applies_to_the_redirected_drawer() {
+        // Notion Thief makes Alice draw instead; each redirected draw is Alice's
+        // own draw and Spirit of the Labyrinth stops it once she has drawn.
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        add_cards_to_library(&mut game, alice, 5);
+        add_cards_to_library(&mut game, bob, 5);
+        add_static_source(
+            &mut game,
+            alice,
+            "Notion Thief",
+            crate::static_abilities::StaticAbility::redirect_draw_replacement(
+                crate::target::PlayerFilter::Opponent,
+                true,
+                "If an opponent would draw a card except the first one they draw in each of their draw steps, instead that player skips that draw and you draw a card.",
+            ),
+        );
+        add_spirit_of_the_labyrinth(&mut game, alice);
+        let source = game.new_object_id();
+        let mut alice_ctx = ExecutionContext::new_default(source, alice);
+        crate::effects::execute_effect(
+            &mut game,
+            &crate::effect::Effect::new(DrawCardsEffect::you(1)),
+            &mut alice_ctx,
+        )
+        .expect("alice's first draw resolves");
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+
+        let mut bob_ctx = ExecutionContext::new_default(source, bob);
+        DrawCardsEffect::you(3)
+            .execute(&mut game, &mut bob_ctx)
+            .expect("bob's brainstorm resolves");
+
+        assert_eq!(
+            game.player(alice).unwrap().hand.len(),
+            1,
+            "Alice already drew this turn, so redirected draws are blocked"
+        );
+        assert_eq!(game.player(bob).unwrap().hand.len(), 0);
+    }
+
+    #[test]
+    fn draw_restriction_applies_to_each_card_of_a_raised_draw() {
+        // CR 121.2: each card is a separate draw. A draw whose count a
+        // replacement raised still draws only the first card under Spirit.
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        add_cards_to_library(&mut game, alice, 5);
+        add_spirit_of_the_labyrinth(&mut game, alice);
+        let source = game.new_object_id();
+        game.effect_store.replacement_effects.add_resolution_effect(
+            crate::replacement::ReplacementEffect::with_matcher(
+                source,
+                alice,
+                crate::events::cards::matchers::WouldDrawCardMatcher::you(),
+                crate::replacement::ReplacementAction::Modify(
+                    crate::replacement::EventModification::Multiply(2),
+                ),
+            ),
+        );
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        DrawCardsEffect::you(1)
+            .execute(&mut game, &mut ctx)
+            .expect("draw should resolve");
+
+        assert_eq!(game.player(alice).unwrap().hand.len(), 1);
+        assert_eq!(game.player(alice).unwrap().library.len(), 4);
     }
 }
 

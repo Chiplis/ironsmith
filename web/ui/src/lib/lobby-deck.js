@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { PUBLIC_FORMATS } from "@/lib/relay/formats";
+import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
 import {
   COMMANDER_DECK_SIZE,
   LOBBY_DECK_SIZE,
@@ -25,9 +25,12 @@ export function commanderDeckTarget(commanderCount) {
 }
 
 export function formatDeckRequirement(format) {
-  if (PUBLIC_FORMATS[format] && format !== MATCH_FORMAT_COMMANDER) return "At least 60 main-deck cards; up to 15 sideboard cards. Format bans and copy limits apply.";
+  if (PUBLIC_FORMATS[format] && !usesCommanders(format)) return "At least 60 main-deck cards; up to 15 sideboard cards. Format bans and copy limits apply.";
   const normalized = normalizeMatchFormat(format);
-  if (normalized === MATCH_FORMAT_COMMANDER) {
+  if (normalized === "paupercommander") {
+    return `Submit a ${COMMANDER_DECK_SIZE}-card main deck of commons plus 1 uncommon commander, or ${PARTNER_DECK_SIZE} cards plus 2 commanders.`;
+  }
+  if (usesCommanders(normalized)) {
     return `Submit a ${COMMANDER_DECK_SIZE}-card main deck plus 1 commander, or a ${PARTNER_DECK_SIZE}-card main deck plus 2 commanders.`;
   }
   if (normalized === MATCH_FORMAT_PLANECHASE) {

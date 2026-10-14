@@ -34,9 +34,9 @@ async function openWorkspace(server, browser, {locale} = {}) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   if (locale) await page.addInitScript((value) => window.localStorage.setItem('ironsmith.locale', value), locale);
-  await page.route('**/catalog/modern/index.json', (route) => route.fulfill({json: index}));
-  await page.route('**/catalog/modern/search-index.json', (route) => route.fulfill({status: 404, body: ''}));
-  await page.route('**/catalog/modern/details/*.json', (route) => route.fulfill({json: {
+  await page.route('**/catalog/*/index.json', (route) => route.fulfill({json: index}));
+  await page.route('**/catalog/*/search-index.json', (route) => route.fulfill({status: 404, body: ''}));
+  await page.route('**/catalog/*/details/*.json', (route) => route.fulfill({json: {
     id: 'deck', format: 'modern', name: 'Boros Energy 4', archetype: 'Boros Energy',
     mainboard: [{name: 'Mountain', count: 60}], sideboard: [], commander: [],
   }}));
@@ -76,6 +76,11 @@ test('the featured strip is the last-major-events collection and assigns to the 
       ['Boros Energy 4', 'Boros Energy 3', 'Boros Energy 2', 'Boros Energy 1'],
     );
     assert.equal(await page.locator('[data-catalog-tab="last-major-events"]').getAttribute('aria-pressed'), 'true');
+
+    // Normal goldfish tops out at two players; Commander opens up x4.
+    assert.equal(await page.getByRole('button', {name: 'x4'}).count(), 0);
+    await page.locator('[data-deck-catalog] select').first().selectOption('commander');
+    await featured.first().waitFor();
 
     // The player tabs pick who a catalog deck is assigned to.
     await page.getByRole('button', {name: 'x4'}).click();

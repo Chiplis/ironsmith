@@ -308,7 +308,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
               {disclosureEntries.length > 0 && (
                 <div className="flex flex-col gap-0.5 text-[11px] leading-snug">
                   <div className="font-bold uppercase tracking-wider text-[#d8bf7a]">
-                    Hidden-card disclosure
+                    {ui("Hidden-card disclosure")}
                   </div>
                   {disclosureEntries.map((entry) => (
                     <div

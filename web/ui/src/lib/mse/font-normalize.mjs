@@ -1,8 +1,8 @@
 import { readFontMetadata } from './font-metadata.mjs';
 import { MseError } from './document.mjs';
 
-// Repair derived search accelerators only. Character mappings, glyph outlines,
-// hint programs and metrics are never rewritten. Source buffers stay intact.
+// Repair derived search accelerators and invalid terminal cmap pointers only.
+// Printable mappings, outlines, hints and metrics remain intact, as do inputs.
 export function normalizeFont(input) {
   const source=input instanceof Uint8Array?input:new Uint8Array(input);
   readFontMetadata(source); // Validate the SFNT directory before touching offsets.
@@ -23,6 +23,18 @@ export function normalizeFont(input) {
       check(at,14);const length=v.getUint16(at+2),segments=v.getUint16(at+6)/2;
       check(at,length);
       if(!Number.isInteger(segments)||segments<1||length<16+8*segments)throw new MseError('font-format','Invalid format-4 character mapping');
+      const last=segments-1,endCodes=at+14,startCodes=endCodes+2*segments+2;
+      const deltas=startCodes+2*segments,ranges=deltas+2*segments;
+      const terminalRange=ranges+2*last,offset=v.getUint16(terminalRange);
+      // OpenType format-4 terminal segment: https://learn.microsoft.com/typography/opentype/spec/cmap
+      // An isolated FFFF terminator is not a printable character mapping.
+      // Some legacy fonts have garbage pointers here; map that invalid entry
+      // to missingGlyph without touching any real segment or glyph array.
+      if(v.getUint16(endCodes+2*last)===0xffff&&v.getUint16(startCodes+2*last)===0xffff&&offset
+        &&(offset%2||terminalRange+offset<ranges+2*segments||terminalRange+offset+2>at+length)){
+        v.setUint16(deltas+2*last,1);v.setUint16(terminalRange,0);
+        repairs.push('cmap format 4 invalid terminal pointer');
+      }
       const selector=Math.floor(Math.log2(segments)),range=2*(2**selector),shift=2*segments-range;
       for(const [offset,value,name] of [[8,range,'searchRange'],[10,selector,'entrySelector'],[12,shift,'rangeShift']]){
         if(v.getUint16(at+offset)!==value){repairs.push(`cmap format 4 ${name}`);v.setUint16(at+offset,value);}

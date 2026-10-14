@@ -1,10 +1,12 @@
 /* Desktop HUD for the "Full cards" battlefield appearance.
-   Every rule is scoped to the focused desktop HUD while a battlefield row
+   Rules are scoped to the focused desktop HUD while a battlefield row
    renders full cards, so the compact appearance and mobile keep their own
-   layout. Loaded last so it can settle the full-card HUD in one place. */
+   layout; only the palette and the action buttons are shared with compact. Loaded last so it can settle the full-card HUD in one place. */
 
 @media (min-width: 1024px) {
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) {
+  /* The palette and the action buttons are shared with the compact-cards
+     appearance, so both desktop appearances present the same decisions. */
+  .table-shell[data-focused-hud="true"] {
     /* One violet language for the HUD: the phase track, stack and actions. */
     --fc-ink: #ece4ff;
     --fc-ink-muted: rgba(221, 211, 241, 0.72);
@@ -332,7 +334,8 @@
   }
 
   /* ---------------------------------------------------------------------
-     Actions: one dock, one height, one palette.
+     Actions: one dock, one height, one palette. The button rules below
+     apply to both battlefield appearances; the dock frame is full-only.
      Primary (Resolve, Go to …, Keep hand, No attackers): filled violet.
      Pass: outlined violet. Auto-pass (») : quiet icon button.
      --------------------------------------------------------------------- */
@@ -371,7 +374,7 @@
     padding: 0 !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle) {
     position: relative !important;
     display: inline-flex !important;
     height: var(--fc-action-h) !important;
@@ -393,7 +396,7 @@
     transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, filter 140ms ease !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
     width: auto !important;
     min-width: 150px !important;
     padding: 0 18px !important;
@@ -405,18 +408,18 @@
     text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button *:not(.priority-hold-window-fill) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button *:not(.priority-hold-window-fill) {
     color: inherit !important;
     -webkit-text-fill-color: currentColor !important;
   }
 
   /* The main label is an overlay above its button: centre it in the button
      and give it the button's ink. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-main-region {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region {
     position: relative !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack {
     inset: 0 !important;
     display: flex !important;
     width: auto !important;
@@ -428,7 +431,7 @@
     pointer-events: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack :is(*, .action-strip-main-title-row, .action-strip-main-title-text) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack :is(*, .action-strip-main-title-row, .action-strip-main-title-text) {
     justify-content: center !important;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
@@ -439,28 +442,28 @@
     text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack :is(*, .action-strip-main-title-text) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack :is(*, .action-strip-main-title-text) {
     color: rgba(221, 211, 241, 0.45) !important;
     -webkit-text-fill-color: rgba(221, 211, 241, 0.45) !important;
     text-shadow: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button::before,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button::after {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button::before,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button::after {
     display: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
     filter: brightness(1.1) !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 18px rgba(130, 80, 220, 0.5) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):active {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):active {
     filter: brightness(0.95) !important;
     box-shadow: inset 0 2px 6px rgba(20, 8, 44, 0.55) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button:is(:disabled, [aria-disabled="true"]) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:is(:disabled, [aria-disabled="true"]) {
     border-color: var(--fc-line) !important;
     background: rgba(40, 34, 58, 0.8) !important;
     box-shadow: none !important;
@@ -471,39 +474,39 @@
 
   /* The theme swaps the primary face to black with a yellow label on hover.
      Repeated classes outrank those rules so every state stays violet/white. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]),
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, :active) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]),
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, :active) {
     border-color: rgba(214, 190, 255, 0.55) !important;
     background: linear-gradient(180deg, var(--fc-violet-strong), var(--fc-violet-deep)) !important;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) {
     filter: brightness(1.12) !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 18px rgba(130, 80, 220, 0.5) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
     text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
     color: rgba(221, 211, 241, 0.45) !important;
     -webkit-text-fill-color: rgba(221, 211, 241, 0.45) !important;
     text-shadow: none !important;
   }
 
   /* The region behind the overlay label is not a second surface. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-main-region.action-strip-main-region {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region.action-strip-main-region {
     background: transparent !important;
   }
 
   /* The hold window keeps its draining fill, in the dock's colours. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock button.priority-hold-window.decision-main-button,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock button.priority-hold-window.decision-main-button:not(:disabled):is(:hover, :active) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.decision-main-button,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.decision-main-button:not(:disabled):is(:hover, :active) {
     overflow: hidden !important;
     border-color: rgba(214, 190, 255, 0.5) !important;
     border-radius: var(--fc-radius) !important;
@@ -512,18 +515,18 @@
     color: var(--fc-violet-strong) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-label {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-label {
     color: var(--fc-violet-strong) !important;
     -webkit-text-fill-color: var(--fc-violet-strong) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-fill {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-fill {
     background: linear-gradient(180deg, var(--fc-violet-strong), var(--fc-violet-deep)) !important;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-quick-controls {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
     display: flex !important;
     width: auto !important;
     height: var(--fc-action-h) !important;
@@ -531,7 +534,7 @@
     gap: 6px !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-phase-pass {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-phase-pass {
     width: auto !important;
     min-width: 76px !important;
     padding: 0 16px !important;
@@ -542,20 +545,20 @@
     -webkit-text-fill-color: #f4edff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-phase-pass:not(:disabled):hover {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-phase-pass:not(:disabled):hover {
     border-color: #d2b6ff !important;
     background: rgba(140, 98, 220, 0.5) !important;
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
     border-color: var(--fc-violet-strong) !important;
     background: rgba(157, 114, 230, 0.32) !important;
     box-shadow: inset 0 0 0 1px rgba(214, 190, 255, 0.35) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .battlefield-auto-pass-toggle {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle {
     width: var(--fc-action-h) !important;
     min-width: var(--fc-action-h) !important;
     padding: 0 !important;
@@ -565,19 +568,19 @@
     color: #e9e0ff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .battlefield-auto-pass-toggle:hover {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle:hover {
     border-color: #d2b6ff !important;
     background: rgba(140, 98, 220, 0.4) !important;
     color: #fff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .battlefield-auto-pass-toggle[data-enabled="true"] {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle[data-enabled="true"] {
     border-color: var(--fc-violet-strong) !important;
     background: rgba(157, 114, 230, 0.28) !important;
     color: #fff !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle):focus-visible {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle):focus-visible {
     outline: 2px solid var(--fc-violet-strong) !important;
     outline-offset: 2px !important;
   }

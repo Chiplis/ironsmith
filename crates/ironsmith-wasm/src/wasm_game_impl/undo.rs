@@ -1897,7 +1897,9 @@ impl WasmGame {
                     continue;
                 }
                 let (expected_deck_size, expected_commander_count) = match config.format {
-                    MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => {
+                    MatchFormatInput::Commander
+                    | MatchFormatInput::PauperCommander
+                    | MatchFormatInput::ArchenemyCommander => {
                         if !(commander_list.len() == 1 || commander_list.len() == 2) {
                             return Err(JsValue::from_str(
                                 "commander matches require exactly 1 or 2 commanders per player",
@@ -2074,8 +2076,11 @@ impl WasmGame {
 
         if issues.is_empty() {
             match config.format {
-                MatchFormatInput::Commander | MatchFormatInput::ArchenemyCommander => {
+                MatchFormatInput::Commander
+                | MatchFormatInput::PauperCommander
+                | MatchFormatInput::ArchenemyCommander => {
                     self.validate_commander_setup(
+                        config.format,
                         player_count,
                         decks.expect("Commander decks checked above"),
                         commanders.expect("Commander commanders checked above"),

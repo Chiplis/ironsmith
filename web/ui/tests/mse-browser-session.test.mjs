@@ -8,6 +8,7 @@ function fixture(){
   const calls=[],fonts={disposed:false,loaded:[],async registerFile(bytes){if(bytes[0]===2)throw new Error('Broken font');this.loaded.push(bytes);},dispose(){this.disposed=true;}};
   const fetcher=async(url,options)=>{
     calls.push({url,options});
+    if(url.endsWith('/runtime-index.json'))return {ok:false,status:404};
     return {ok:true,json:async()=>manifest,arrayBuffer:async()=>new Uint8Array([url.includes('Broken')?2:1]),
       text:async()=>url.endsWith('/style')?'game: example\ncard width: 10\ncard height: 12\n':'card field:\n\tname: name\n\ttype: text\n'};
   };
@@ -41,4 +42,38 @@ test('cancellation during font registration disposes resources and cannot return
   const rejected=assert.rejects(pending,{code:'render-aborted'});
   await ready;controller.abort();release();await rejected;
   assert.equal(f.fonts.disposed,true);
+});
+
+test('session loads native resource font directories without registering package-local alternate revisions',async()=>{
+  const f=fixture();
+  f.manifest.tree.push(
+    {type:'blob',path:'Extra FONTS/Nested/Alternate.OTF'},
+    {type:'blob',path:'data/example.mse-style/fonts/Alternate.ttf'},
+    {type:'blob',path:'Extra FONTS/readme.txt'},
+  );
+  const session=await createBrowserMseSession(f.options);
+  assert.equal(f.fonts.loaded.length,2);
+  assert.ok(f.calls.some(c=>c.url.endsWith('Extra%20FONTS/Nested/Alternate.OTF')));
+  assert.ok(!f.calls.some(c=>c.url.includes('example.mse-style/fonts/')));
+  assert.ok(!f.calls.some(c=>c.url.endsWith('readme.txt')));
+  session.dispose();
+});
+
+test('indexed corpus loads fonts on demand and coalesces package and font requests',async()=>{
+  const f=fixture();f.fonts.prepare=async()=>({measure:()=>({width:1,height:1})});
+  const original=f.options.fetcher;
+  f.options.fetcher=async(url,options)=>{
+    if(url.endsWith('/runtime-index.json'))return {ok:true,json:async()=>({revision:'fixture',fonts:[{path:'Magic - Fonts/A Font.ttf',names:['Example']}],textPackages:['example.mse-style']})};
+    if(url.endsWith('/packages/example.mse-style.json')){f.calls.push({url,options});return {ok:true,json:async()=>({style:'game: example\ncard width: 10\ncard height: 12\n'})};}
+    return original(url,options);
+  };
+  const session=await createBrowserMseSession(f.options);
+  assert.equal(f.fonts.loaded.length,0);
+  await Promise.all([session.fonts.prepare({name:'Example'}),session.fonts.prepare({name:'Example'})]);
+  assert.equal(f.fonts.loaded.length,1);
+  await session.renderer.template('example.mse-style');
+  assert.equal(f.calls.filter(c=>c.url.includes('/packages/')).length,1);
+  assert.equal(f.calls.filter(c=>c.url.endsWith('/style')).length,0);
+  assert.equal(f.calls.filter(c=>c.url.includes('Broken')).length,0);
+  session.dispose();
 });

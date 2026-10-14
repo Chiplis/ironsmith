@@ -5,9 +5,9 @@ import {MseError} from './document.mjs';
 // Each field is updated at most once in a change transaction, including cycles.
 export class MseFieldUpdateQueue {
   constructor(){this.nodes=new Map();this.observers=new Map();this.active=null;this.running=false;}
-  register(key,update){
+  register(key,update,{trackDependencies=true}={}){
     if(this.nodes.has(key))throw new MseError('field-update','Field is already registered');
-    this.nodes.set(key,{update,dependencies:new Set()});
+    this.nodes.set(key,{update,trackDependencies,dependencies:new Set()});
   }
   read(key){
     if(!this.active||this.active.key===key)return;
@@ -17,7 +17,7 @@ export class MseFieldUpdateQueue {
     const node=this.nodes.get(key);
     if(!node)throw new MseError('field-update','Field is not registered');
     const previous=this.active,current={key,dependencies:new Set()};
-    this.active=current;
+    this.active=node.trackDependencies?current:null;
     let changed;
     try{changed=Boolean(node.update());}
     finally{this.active=previous;}

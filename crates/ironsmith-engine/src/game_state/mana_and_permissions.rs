@@ -3715,6 +3715,15 @@ impl GameState {
         self.commander_damage_loss_enabled
     }
 
+    /// Set how much combat damage from a single commander makes a player lose.
+    pub fn set_commander_damage_loss_threshold(&mut self, threshold: u32) {
+        self.commander_damage_loss_threshold = threshold;
+    }
+
+    pub fn commander_damage_loss_threshold(&self) -> u32 {
+        self.commander_damage_loss_threshold
+    }
+
     /// Resolve a commander's stable identity from either its original or current object ID.
     pub fn commander_identity(&self, obj_id: ObjectId) -> Option<ObjectId> {
         if self

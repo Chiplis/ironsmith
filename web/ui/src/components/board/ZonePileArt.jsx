@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import useUiText from "@/i18n/useUiText";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { isFaceUpZoneCard } from "@/lib/zone-piles";
 import { customCardCounterOverrides } from "@/lib/scryfall";
@@ -33,6 +34,7 @@ function ZonePilePlaceholder({ hasCard }) {
 
 // Shared by desktop piles and the touch-sized mobile zone buttons.
 export default function ZonePileArt({ card }) {
+  const ui = useUiText();
   const imageRef = useRef(null);
   const faceUp = isFaceUpZoneCard(card);
   const name = faceUp ? card.name : null;
@@ -57,7 +59,7 @@ export default function ZonePileArt({ card }) {
       {url ? <img ref={imageRef} src={url} alt="" draggable={false} loading="lazy" referrerPolicy="no-referrer" />
         : <span className="zone-pile-placeholder"><ZonePilePlaceholder hasCard={Boolean(card)} /></span>}
       {counterBadges.length > 0 && (
-        <span className="zone-pile-counter-rail" aria-label="Card counters">
+        <span className="zone-pile-counter-rail" aria-label={ui("Card counters")}>
           {counterBadges.map((badge, index) => (
             <BattlefieldCounterBadge key={`${badge.fullLabel}-${index}`} badge={badge} />
           ))}

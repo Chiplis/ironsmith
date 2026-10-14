@@ -5,9 +5,25 @@ use super::*;
 use crate::events::DamageEvent;
 
 pub(super) fn needed(game: &GameState) -> bool {
-    game.effect_store.replacement_effects.effects().iter().any(|effect| {
+    let finite_redirect = game.effect_store.replacement_effects.effects().iter().any(|effect| {
         game.effect_store.replacement_effects.is_one_shot(effect.id)
             && matches!(effect.replacement, ReplacementAction::RedirectDamageAmount { .. })
+    });
+    // CR 615.7 + 616.1f: a redirection can move simultaneous damage onto a
+    // finite shield's protected recipient, so allocate against live proposals.
+    finite_redirect || (finite_prevention_shield(game) && damage_redirect(game))
+}
+
+fn finite_prevention_shield(game: &GameState) -> bool {
+    game.effect_store.prevention_effects.shields().iter()
+        .any(|shield| shield.amount_remaining.is_some_and(|amount| amount > 0))
+}
+
+fn damage_redirect(game: &GameState) -> bool {
+    game.effect_store.replacement_effects.effects().iter().any(|effect| {
+        matches!(effect.replacement, ReplacementAction::Redirect { .. })
+            && effect.matcher.as_ref()
+                .is_some_and(|matcher| matcher.may_match_event_kind(crate::events::EventKind::Damage))
     })
 }
 
@@ -73,14 +89,14 @@ fn candidates(
         if proposal.complete || quantitative_event_has_been_removed(&proposal.event) {
             continue;
         }
-        let damage = crate::events::downcast_event::<DamageEvent>(proposal.event.inner())
+        crate::events::downcast_event::<DamageEvent>(proposal.event.inner())
             .ok_or_else(|| crate::effects::ExecutionError::InternalError(
                 "simultaneous damage lost its live proposal".into(),
             ))?;
         // Redirected recipients acquire their own shield counters. New shields
         // created by a replacement payload must likewise be discovered here.
         proposal.additional = damage_additional_replacements(
-            game, damage.target, originals[proposal.original].source_snapshot.as_ref(), None, scopes[proposal.original],
+            game, originals[proposal.original].source_snapshot.as_ref(), None, scopes[proposal.original],
         );
         for effect in &mut proposal.additional {
             let next_id = ReplacementEffectId(u64::MAX / 4 + additional_ids.len() as u64);
@@ -102,6 +118,19 @@ fn candidates(
                 if apnap_position(game, player) < apnap_position(game, existing.player) {
                     existing.player = player;
                 }
+            } else if budget.is_none()
+                && !game.effect_store.replacement_effects.is_one_shot(effect.id)
+                && let Some(existing) = candidates.iter_mut().find(|candidate| {
+                    candidate.priority == priority
+                        && candidate.budget.is_none()
+                        && candidate.player == player
+                        && candidate.members[0].1.id == effect.id
+                })
+            {
+                // A lasting replacement (Pariah) modifies the whole simultaneous
+                // event at once, so a finite shield on its new recipient later
+                // sees every redirected part together (CR 615.7).
+                existing.members.push((index, effect));
             } else {
                 candidates.push(Candidate {
                     members: vec![(index, effect)], player, priority, budget,

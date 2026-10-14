@@ -1,10 +1,11 @@
 import useUiText from "@/i18n/useUiText";
 import PublicLobbySearch from './PublicLobbySearch';
-import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '@/lib/relay/formats';
+import { PUBLIC_FORMATS, isRelayId, relayBaseUrl, usesCommanders } from '@/lib/relay/formats';
 import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
 import { useMemo, useState } from "react";
 import LocalLobbySearch from "./LocalLobbySearch";
 import TournamentPanel from "./TournamentPanel";
+import DeckLoadingView from "@/components/board/DeckLoadingView";
 import { listTournamentCertificates } from "@/lib/tournament/credentials";
 import { readRelayOnlyPreference, writeRelayOnlyPreference } from "@/lib/relay/session";
 import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
@@ -96,7 +97,7 @@ function formatPlayerStatus(player, localPeerId, format) {
 
   const normalizedFormat = normalizeMatchFormat(format);
   if (
-    normalizedFormat === MATCH_FORMAT_COMMANDER
+    usesCommanders(normalizedFormat)
     || normalizedFormat === MATCH_FORMAT_PLANECHASE
   ) {
     const mainCount = Number(player.deckCount || 0);
@@ -129,6 +130,7 @@ function offlinePlayerSummary(players) {
 
 export default function LobbyOverlay({
   onClose,
+  onStartGoldfish,
   defaultName = "Player",
   defaultStartingLife = 20,
   initialMode = "create",
@@ -173,7 +175,7 @@ export default function LobbyOverlay({
   const tournamentCertificates = useMemo(() => listTournamentCertificates(), []);
   const [createTournamentId, setCreateTournamentId] = useState(() => tournamentCertificates[0]?.tournamentId || "");
   const [mode, setMode] = useState(
-    ["join", "tournaments"].includes(initialMode) ? initialMode : "create"
+    ["join", "tournaments", "goldfish"].includes(initialMode) ? initialMode : "create"
   );
   // Tournament matches ride the relay room in Verified mode.
   const relayTransport = transport === 'websocket' || transport === 'tournament';
@@ -361,14 +363,19 @@ export default function LobbyOverlay({
     }}>
       <SheetContent
         side="center"
-        className={`fantasy-sheet lobby-sheet flex max-h-[96vh] w-[min(96vw,1120px)] flex-col p-0${lobbyActive ? " lobby-sheet-active" : ""}`}
+        className={`fantasy-sheet lobby-sheet flex ${!lobbyActive && mode === "goldfish" ? "lobby-sheet-goldfish h-[100dvh] max-h-[100dvh] w-screen max-w-none" : "max-h-[96vh] w-[min(96vw,1120px)]"} flex-col p-0${lobbyActive ? " lobby-sheet-active" : ""}`}
+        // Goldfish is a full workspace (catalog + every seat's list), so it
+        // takes the whole viewport instead of floating as a dialog.
+        style={!lobbyActive && mode === "goldfish" ? { maxHeight: "100dvh" } : undefined}
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
           <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Multiplayer")}</div>
           <SheetTitle>
-            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : ui("Create Lobby")}
+            {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : mode === "goldfish" ? ui("Goldfish") : ui("Create Lobby")}
           </SheetTitle>
-          <SheetDescription className={lobbyActive ? "sr-only" : "max-w-[46ch] text-[13px] leading-5"}>{ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
+          <SheetDescription className={lobbyActive ? "sr-only" : "max-w-[46ch] text-[13px] leading-5"}>{mode === "goldfish" && !lobbyActive
+            ? ui("Practice locally: load decks for each seat and start the game right away.")
+            : ui("Host or join a multiplayer table, submit decks, and manage invite links from one place.")}</SheetDescription>
         </SheetHeader>
 
         <div className="lobby-sheet-body grid min-h-0 gap-4 p-4">
@@ -378,7 +385,7 @@ export default function LobbyOverlay({
               </div>}
           {!lobbyActive ? (
             <div className="lobby-sheet-setup grid gap-4">
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   className={`${modeTabClass} ${
@@ -403,6 +410,14 @@ export default function LobbyOverlay({
                   aria-pressed={mode === "tournaments"}
                   onClick={() => setMode("tournaments")}
                 >{ui("Tournaments")}</button>
+                <button
+                  type="button"
+                  className={`${modeTabClass} ${
+                    mode === "goldfish" ? "brightness-125" : "opacity-70"
+                  }`}
+                  aria-pressed={mode === "goldfish"}
+                  onClick={() => setMode("goldfish")}
+                >{ui("Goldfish")}</button>
               </div>
 
               {mode === 'create' && <div className={`${panelClass} lobby-sheet-connection-panel`}>
@@ -475,7 +490,9 @@ export default function LobbyOverlay({
                   </div>
                 </fieldset>}
               </div>}
-              {mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
+              {mode === "goldfish" ? (
+                <DeckLoadingView embedded onTestDecks={onStartGoldfish} onCancel={handleClose} />
+              ) : mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
                 <div className="lobby-sheet-setup-grid grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="lobby-sheet-setup-main grid gap-4">
                     <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -539,13 +556,13 @@ export default function LobbyOverlay({
                         value={createDeckText}
                         onChange={(event) => setCreateDeckText(event.target.value)}
                         placeholder={
-                          ui(createFormat === MATCH_FORMAT_COMMANDER
+                          ui(usesCommanders(createFormat)
                             ? `Paste a ${COMMANDER_DECK_SIZE}-card Commander main deck...\n\n1 Sol Ring\n1 Swords to Plowshares\n35 Plains`
                             : `Paste a main deck with at least ${LOBBY_DECK_SIZE} cards...\n\n4 Lightning Bolt\n4 Counterspell\n24 Island`)
                         }
                       />
                     </label>
-                    {createFormat === MATCH_FORMAT_COMMANDER
+                    {usesCommanders(createFormat)
                     || createFormat === MATCH_FORMAT_PLANECHASE ? (
                       <label className={labelClass}>
                         {createFormat === MATCH_FORMAT_PLANECHASE
@@ -569,11 +586,11 @@ export default function LobbyOverlay({
                     <div className={infoTextClass}>
                       <span>{ui("Format:") + " "}{ui(formatName(createFormat))}</span>
                       <span>{ui("Main deck:")}{" "}
-                        {createFormat === MATCH_FORMAT_COMMANDER
+                        {usesCommanders(createFormat)
                           ? `${createDeckCount}/${createCommanderTarget}`
                           : `${createDeckCount}/${LOBBY_DECK_SIZE}+`}
                       </span>
-                      {createFormat === MATCH_FORMAT_COMMANDER ? (
+                      {usesCommanders(createFormat) ? (
                         <span>{ui("Commander(s):") + " "}{createCommanderCount}/1-2</span>
                       ) : createFormat === MATCH_FORMAT_PLANECHASE ? (
                         <span>{ui("Planar deck:") + " "}{createCommanderCount}/10+</span>

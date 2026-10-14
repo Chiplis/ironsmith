@@ -1,14 +1,9 @@
+import { prepareFontDrawing } from './font-painter.mjs';
 import { strokeRaster } from './image-stroke.mjs';
 import { MseError } from './document.mjs';
 import { alignmentOffset } from './alignment.mjs';
 
 export const cssColor = value => { const [r,g,b,a] = value?.channels || [0,0,0,255]; return `rgba(${r},${g},${b},${a/255})`; };
-export function requirePlainFont(font) {
-  if (font.stroke_radius || font.stroke_blur
-    || ((font.shadow_displacement_x || font.shadow_displacement_y || font.shadow_blur) && font.shadow_color?.channels[3])) {
-    throw new MseError('text-drawing', 'Decorated font drawing is not implemented yet');
-  }
-}
 
 function bitmapCanvas(bitmap) {
   const canvas = globalThis.OffscreenCanvas ? new OffscreenCanvas(bitmap.width, bitmap.height) : globalThis.document?.createElement('canvas');
@@ -21,7 +16,7 @@ function bitmapCanvas(bitmap) {
 
 // Native SymbolFont::draw fits overlay text inside the bitmap, not its advance
 // rectangle. The quarter-point decrement matches native high-quality drawing.
-export async function prepareSymbolDrawing(measured, fonts, { createBitmap = bitmapCanvas, fontSizeStep = 0.25 } = {}) {
+export async function prepareSymbolDrawing(measured, fonts, { createBitmap = bitmapCanvas, fontSizeStep = 0.25, createCanvas } = {}) {
   if (!Number.isFinite(fontSizeStep) || fontSizeStep <= 0) throw new MseError('text-drawing', 'Font size step must be positive');
   const settings = measured.settings;
   const active = (value) => Math.abs(value || 0) > 1e-8;
@@ -49,8 +44,9 @@ export async function prepareSymbolDrawing(measured, fonts, { createBitmap = bit
     let overlay = null;
     const font = glyph.symbol.font;
     if (glyph.drawText && font && font.size > 0) {
-      requirePlainFont(font);
-      const provider = await fonts.prepare(font);
+      // SymbolFont::draw passes the symbol's font size as the extra effect
+      // scale, independently of the shrink factor used to fit overlay text.
+      const provider = await prepareFontDrawing(font,fonts,{createCanvas,effectScaleMultiplier:measured.fontSize});
       const margins = glyph.symbol.margins, size = measured.fontSize;
       const left = size * margins.left, top = size * margins.top;
       const width = glyph.bitmap.width - size * (margins.left + margins.right);

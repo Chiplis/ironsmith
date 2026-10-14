@@ -8,7 +8,7 @@ const { parse } = createRequire(require.resolve('eslint'))('espree');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const known = new Set([...Object.keys(localeCatalogs.en.ui), ...Object.values(localeCatalogs.en.messages)]);
 // Brands, units, literal mana syntax and developer commands are language-neutral.
-const neutral = new Set(['x', 'ms', 'KB', 'Ironsmith', 'GitHub', '{2}{W}{U}', 'https://...', '__ironsmithDiagnostics.export()']);
+const neutral = new Set(['x', 'ms', 'KB', 'Ironsmith', 'GitHub', 'Discord', 'IST1.', '{2}{W}{U}', 'https://...', '__ironsmithDiagnostics.export()']);
 const attributes = /^(title|aria-label|ariaLabel|placeholder|alt|label|description|hint|heading|tooltip|text|emptyMessage|[a-zA-Z]+Label)$/;
 function files(dir) { return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(path.join(dir, entry.name)) : /\.[jt]sx?$/.test(entry.name) ? [path.join(dir, entry.name)] : []); }
 export function auditUiTranslations() {

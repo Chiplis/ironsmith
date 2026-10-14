@@ -26,7 +26,7 @@ const server=await createServer({root,configFile:false,logLevel:'error',cacheDir
   plugins:[{name:'mse-printing-test',resolveId(id){if(id==='/printing-test.jsx')return id;},load(id){
     if(id==='/printing-test.jsx')return entry;
     if(id.endsWith('/components/right-rail/HoverArtOverlay.jsx'))return 'export default function(){return <span id="fallback">Existing renderer</span>}';
-    if(id.endsWith('/lib/scryfall.js'))return 'export const resolveScryfallPrintingMetadata=url=>window.metadata(url);';
+    if(id.endsWith('/lib/scryfall.js'))return 'export const resolveScryfallPrintingMetadata=url=>window.metadata(url);export const resolveScryfallSetIcon=async()=>null;export const peekScryfallPrintingMetadata=()=>undefined;export const peekScryfallSetIcon=()=>undefined;';
   },configureServer(server){server.middlewares.use((req,res,next)=>{
     if(req.url!=='/printing-test')return next();
     res.setHeader('Content-Type','text/html');res.end('<div id="root"></div><script type="module" src="/printing-test.jsx"></script>');
@@ -51,7 +51,7 @@ try {
   assert.equal(await page.locator('canvas').isVisible(),false);
   await page.evaluate(()=>window.test.requests[1].reject(new Error('Missing font')));
   await page.waitForFunction(()=>document.querySelector('canvas').dataset.mseFrame==='error');
-  assert.equal(await page.locator('#fallback').isVisible(),true);
+  assert.equal(await page.locator('[data-frame-mode="simple"]').isVisible(),true);
 
   await render({...card,frame:'1997',border_color:'white'});await count(3);
   assert.equal((await request(2)).style,'magic-old.mse-style');
@@ -85,10 +85,12 @@ try {
   await render({...card,mse_style:'custom.mse-style',frame_effects:['showcase']},'https://images.example/d.jpg');await count(10);
   assert.equal((await request(9)).style,'custom.mse-style');
   assert.deepEqual((await request(9)).adapter.styling,{});
-  await flush();assert.equal(await page.evaluate(()=>window.test.metadata.length),3);
+  // A forced style still looks up the printing, whose artist and number fill the footer.
+  await flush();assert.equal(await page.evaluate(()=>window.test.metadata.length),4);
+  assert.equal(await page.evaluate(()=>window.test.metadata[3].url),'https://images.example/d.jpg');
   await render({...card,type_line:'Enchantment — Saga'});
   await page.waitForFunction(()=>document.querySelector('canvas').dataset.mseFrame==='unavailable');
-  assert.equal(await page.locator('#fallback').isVisible(),true);
+  assert.equal(await page.locator('[data-frame-mode="simple"]').isVisible(),true);
   assert.equal(await page.evaluate(()=>window.test.requests.length),10);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'passed',checks:['printing metadata propagation','printing change invalidation','render failure fallback',

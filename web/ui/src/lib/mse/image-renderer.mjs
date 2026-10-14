@@ -25,8 +25,33 @@ function sameSize(a, b) {
 // Graph evaluation is asynchronous only at the asset boundary. Filters operate
 // on copies, so differently colored cards can safely share decoded asset data.
 export class MseImageRenderer {
-  constructor({ loadAsset, renderSymbol, maxPixels = 16777216 } = {}) { this.loadAsset = loadAsset; this.renderSymbol = renderSymbol; this.maxPixels = maxPixels; }
-  async render(image, { width = 0, height = 0 } = {}) {
+  constructor({ loadAsset, renderSymbol, maxPixels = 16777216 } = {}) { this.loadAsset = loadAsset; this.renderSymbol = renderSymbol; this.maxPixels = maxPixels; this.prefetched = new WeakMap(); }
+  // Evaluation awaits each child before reaching the next, so a cold frame
+  // would download its assets one round trip at a time. Start every leaf of
+  // the graph up front. The asset node's own evaluation consumes the request,
+  // so each evaluated node still loads once and reports its own failure.
+  prefetch(image) {
+    if (!this.loadAsset || !(image instanceof MseImage)) return;
+    const pending = [image], seen = new Set();
+    while (pending.length) {
+      const node = pending.pop();
+      if (seen.has(node)) continue;
+      seen.add(node);
+      if (node.operation === 'asset') {
+        if (this.prefetched.has(node)) continue;
+        const request = Promise.resolve().then(() => this.loadAsset(node.parameters.path));
+        request.catch(() => {});
+        this.prefetched.set(node, request);
+        continue;
+      }
+      for (const value of Object.values(node.parameters)) if (value instanceof MseImage) pending.push(value);
+    }
+  }
+  render(image, options) {
+    this.prefetch(image);
+    return this.evaluate(image, options);
+  }
+  async evaluate(image, { width = 0, height = 0 } = {}) {
     if (!(image instanceof MseImage)) throw new MseError('image-value', 'Expected an MSE image');
     const p = image.parameters;
     if (image.operation === 'symbol') {
@@ -42,17 +67,19 @@ export class MseImageRenderer {
     }
     if (image.operation === 'asset') {
       if (!this.loadAsset) throw new MseError('image-loader', 'A decoded image asset provider is required');
-      const raster = validate(await this.loadAsset(p.path));
+      const prefetched = this.prefetched.get(image);
+      this.prefetched.delete(image);
+      const raster = validate(await (prefetched ?? this.loadAsset(p.path)));
       if (raster.width * raster.height > this.maxPixels) throw new MseError('image-budget', 'Image exceeds pixel budget');
       return { ...raster, data: new Uint8ClampedArray(raster.data) };
     }
     if (image.operation === 'enlarge') {
       if (!Number.isFinite(p.border) || p.border < 0) throw new MseError('image-enlarge', 'Image border must be finite and nonnegative');
       const factor = p.border < 0.5 ? 1 - 2 * p.border : 0;
-      const source = await this.render(p.image, { width: Math.trunc(width * factor), height: Math.trunc(height * factor) });
+      const source = await this.evaluate(p.image, { width: Math.trunc(width * factor), height: Math.trunc(height * factor) });
       return enlargeRaster(source, p.border, this.maxPixels);
     }
-    const render = child => this.render(child, { width, height });
+    const render = child => this.evaluate(child, { width, height });
     const first = p.image || p.light || p.image1;
     if (!first) throw new MseError('image-operation', `Unsupported image operation ${image.operation}`);
     const raster = await render(first), data = raster.data;

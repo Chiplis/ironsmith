@@ -16,6 +16,9 @@ export class MseCardRenderer{
     this.store=store;this.fonts=fonts;this.createCanvas=createCanvas;this.loadCardImage=loadCardImage;
     this.images=imageRenderer??new MseImageRenderer({loadAsset:createMseImageLoader(store),renderSymbol:createBrowserSymbolRenderer({store})});
     this.templates=new Map();this.targets=new WeakMap();this.disposed=false;
+    // Finished renders by request, so a card prepared in the background, or
+    // inspected again, draws without rendering. Results are never mutated.
+    this.results=new Map();this.resultLimit=24;
   }
   check(signal){
     if(this.disposed)throw new MseError('renderer-disposed','Card renderer has been disposed');
@@ -53,9 +56,22 @@ export class MseCardRenderer{
     return card;
   }
   async render(request,options={}){
+    const key=options.cache===false?null:JSON.stringify(request);
+    const cached=key&&this.results.get(key);
+    if(cached){
+      this.check(options.signal);
+      this.results.delete(key);this.results.set(key,cached);
+      return cached;
+    }
     const context=await this.prepareContext(request,options);
-    return this.renderContext(context,options);
+    const result=await this.renderContext(context,options);
+    if(key){
+      this.results.set(key,result);
+      if(this.results.size>this.resultLimit)this.results.delete(this.results.keys().next().value);
+    }
+    return result;
   }
+  has(request){return this.results.has(JSON.stringify(request));}
   async renderContext(context,{signal,onFieldDrawn}={}){
     this.check(signal);
     const width=Number(context.template.style.text('card width')),height=Number(context.template.style.text('card height'));
@@ -80,5 +96,5 @@ export class MseCardRenderer{
     target.getContext('2d').drawImage(result.canvas,0,0);
     return result;
   }
-  dispose(){this.disposed=true;this.templates.clear();this.targets=new WeakMap();}
+  dispose(){this.disposed=true;this.templates.clear();this.results.clear();this.targets=new WeakMap();}
 }

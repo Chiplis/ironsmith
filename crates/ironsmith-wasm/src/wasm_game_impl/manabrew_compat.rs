@@ -115,6 +115,7 @@ fn manabrew_format(value: Option<&str>) -> MatchFormatInput {
         "ante" => MatchFormatInput::Ante,
         "brawl" => MatchFormatInput::Brawl,
         "commander" | "oathbreaker" => MatchFormatInput::Commander,
+        "paupercommander" | "pauper_commander" | "pdh" => MatchFormatInput::PauperCommander,
         _ => MatchFormatInput::Normal,
     }
 }

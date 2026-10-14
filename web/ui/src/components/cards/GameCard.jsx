@@ -5,6 +5,7 @@ import './battlefield-appearance.css';
 import { cardArtColors } from "@/lib/card-art-colors";
 import LoadingCardArt from "./LoadingCardArt";
 import MobileArenaCardFace from "./MobileArenaCardFace";
+import LandManaStrip from "./LandManaStrip";
 import BattlefieldGroupBadge from "./BattlefieldGroupBadge";
 import useUiText from "@/i18n/useUiText";
 import { translateUiText as ui } from "@/i18n/catalog";
@@ -24,11 +25,7 @@ import {
 } from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
-import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
-import { cardArtCropUrl } from "@/lib/card-image-variants";
 import MiniatureCardFrame from "./MiniatureCardFrame";
-import { cardNeedsFrame } from '@/lib/card-frame-scope';
-import { defaultCardFrameKey } from '@/lib/default-card-frames';
 import {
   aggregateCounterEntries,
   BattlefieldCounterBadge,
@@ -675,6 +672,9 @@ export default function GameCard({
   suppressTooltip = false,
   battlefieldVisualMode = "classic",
   sourceImageUrl = null,
+  manaChoices = null,
+  manaStripOpen = false,
+  onManaChoice = null,
 }) {
   const ui = useUiText();
   const { game, inspectorDebug, state, playerAccentOverrides } = useGame();
@@ -704,11 +704,6 @@ export default function GameCard({
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
   const artUrl = sourceImageUrl || resolvedArtUrl;
-  // Share the hover inspector's preparation from the moment a visible card
-  // has an image, including while it is still in hand.
-  const hasDefaultFrame = defaultCardFrameKey({ cards: [card], manaCost: card.mana_cost, typeLine: card.type_line }) != null;
-  usePreparedCardFrame(cardArtCropUrl(artUrl), card.type_line, Boolean(artUrl) && cardNeedsFrame(state, card.id) && !hasDefaultFrame
-    && !(isCompiledCardName(name) && customCardAssets(name)));
   // A card compiled in the forge may carry an existing card's name, and both
   // the hand and the portrait battlefield show that printing's scan whole.
   // Its printed text is the template's, not this card's, so the live frame is
@@ -1534,7 +1529,8 @@ export default function GameCard({
         )}
         {useArenaBattlefield ? (
           <MobileArenaCardFace card={resolvedBattlefieldCard} name={displayName} artUrl={artUrl}
-            pending={!artResolved} primary={numericPrimaryBattlefieldInfo} />
+            pending={!artResolved} primary={numericPrimaryBattlefieldInfo}
+            manaChoices={manaChoices} manaStripOpen={manaStripOpen} onManaChoice={onManaChoice} />
         ) : useTokenBattlefield ? (
           <div className="battlefield-token-shell">
             <svg
@@ -1704,6 +1700,11 @@ export default function GameCard({
           </div>
         ) : null}
 
+        {/* Without an art tile's strip, the open mana strip sits along the card's bottom edge. */}
+        {variant === "battlefield" && !useArenaBattlefield && manaStripOpen && manaChoices?.length > 0 && (
+          <LandManaStrip choices={manaChoices} open overlay cardName={displayName} onChoose={onManaChoice} />
+        )}
+
         {variant === "battlefield" && centerOverlay && (
           <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
             <div className="pointer-events-auto">
@@ -1739,7 +1740,7 @@ export default function GameCard({
       {variant === "battlefield" && (!useTokenBattlefield || useArenaBattlefield) && powerToughnessCounterBadges.length > 0 && (
         <div
           className="battlefield-counter-rail battlefield-counter-rail--power-toughness"
-          aria-label="Power and toughness counters"
+          aria-label={ui("Power and toughness counters")}
         >
           {powerToughnessCounterBadges.map((badge, index) => (
             <BattlefieldCounterBadge

@@ -1,5 +1,38 @@
 import { MseFunction, text, number } from './script-values.mjs';
 
+function untag(source,decode=false){
+  let inside=false,result='';
+  for(const c of source){
+    if(c==='<')inside=true;
+    else if(!inside)result+=decode?(c==='\u0001'?'<':c==='\ueb00'?' ':c):c;
+    else if(c==='>')inside=false;
+  }
+  return result;
+}
+function hideSoftSeparators(source){
+  let start=0,pos=source.indexOf('<sep-soft'),result='';
+  while(pos>=0){
+    // Native match_close_tag groups all sep-* variants under the sep family.
+    let depth=1,end=-1;
+    for(let i=pos+5;i<source.length;i++){
+      if(source[i]!=='<')continue;
+      if(source.startsWith('sep',i+1)){depth++;i+=4;}
+      else if(source.startsWith('/sep',i+1)){
+        if(--depth===0){end=i;break;}
+        i+=5;
+      }
+    }
+    // Native remove_tag_contents returns the already completed prefix when
+    // a close tag is missing, dropping this segment even before the opening.
+    if(end<0)return result;
+    result+=source.slice(start,pos);
+    const close=source.indexOf('>',end);
+    if(close<0)return result;
+    start=close+1;pos=source.indexOf('<sep-soft',start);
+  }
+  return result+source.slice(start);
+}
+
 function stripTags(source, prefix = null) {
   let output = '', offset = 0;
   const closing = prefix ? '</' + prefix.slice(1) : null;
@@ -38,7 +71,8 @@ export function tagBuiltins() {
       }
       return result + source.slice(offset);
     },
-    remove_tags: scope => stripTags(text(scope.get('input'))),
+    to_text: scope => untag(hideSoftSeparators(text(scope.get('input'))),true),
+    remove_tags: scope => untag(text(scope.get('input'))),
     remove_tag: scope => { const prefix = text(scope.get('tag')); return prefix ? stripTags(text(scope.get('input')), prefix) : text(scope.get('input')); },
     curly_quotes: scope => {
       let open = true, inside = false, result = '';

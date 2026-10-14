@@ -24,3 +24,14 @@ test('live permanent snapshots use lane and compiled abilities rather than type_
  assert.deepEqual(landManaColors({lane:'lands',abilities:['{T}: Add {G}.']}),['G']);
  assert.deepEqual(landManaColors({lane:'land',oracle_text:'{T}, Pay 1 life, Sacrifice this land: Search your library for a Mountain or Plains card.'}),[]);
 });
+
+test('current basic land types add their color to printed production (Yavimaya, Cradle of Growth)',()=>{
+ assert.deepEqual(landManaColors({lane:'land',produced_mana:['W'],intrinsic_mana:['W','G']}),['W','G']);
+ assert.deepEqual(landManaColors({lane:'land',produced_mana:['R','W'],intrinsic_mana:['G']}),['W','R','G']);
+ assert.deepEqual(landManaColors({lane:'land',produced_mana:[],intrinsic_mana:['G'],oracle_text:'{T}, Pay 1 life, Sacrifice this land: Search your library for an Island or Plains card.'}),['G']);
+});
+
+test('land creatures snapshot in the creature lane still get their mana strip (Dryad Arbor)',()=>{
+  assert.deepEqual(landManaColors({lane:'creatures',card_types:['land','creature'],intrinsic_mana:['G'],produced_mana:['G']}),['G']);
+  assert.deepEqual(landManaColors({lane:'creatures',card_types:['creature'],produced_mana:['G']}),[]);
+});

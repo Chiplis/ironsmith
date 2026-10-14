@@ -3922,6 +3922,9 @@ pub struct TargetDistribution {
 /// boundary as numbers.
 pub const STACK_ABILITY_ID_BASE: u64 = 1 << 52;
 
+/// CR 704.6c: 21 combat damage from one commander makes a player lose.
+pub const DEFAULT_COMMANDER_DAMAGE_LOSS_THRESHOLD: u32 = 21;
+
 /// An entry on the stack.
 #[derive(Debug, Clone)]
 pub struct StackEntry {
@@ -4479,6 +4482,10 @@ pub struct GameState {
     /// Brawl explicitly disables this state-based action (CR 903.12h).
     commander_damage_loss_enabled: bool,
 
+    /// Combat damage from one commander that makes a player lose (CR 704.6c):
+    /// 21, or 16 in Pauper EDH.
+    commander_damage_loss_threshold: u32,
+
     exile_tracking: Arc<ExileTracking>,
 
     /// Whether required single-object choices with exactly one legal candidate
@@ -4985,6 +4992,7 @@ impl GameState {
             cast_permission_flags: Arc::new(CastPermissionFlags::default()),
             commander_tracking: Arc::new(CommanderTracking::default()),
             commander_damage_loss_enabled: true,
+            commander_damage_loss_threshold: DEFAULT_COMMANDER_DAMAGE_LOSS_THRESHOLD,
             exile_tracking: Arc::new(ExileTracking::default()),
             auto_choose_single_object_decisions: true,
             runtime_cache: RuntimeCacheState::new(active_player),

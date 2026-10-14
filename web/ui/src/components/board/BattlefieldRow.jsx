@@ -1,4 +1,5 @@
 import { arenaPermanentKind } from '@/lib/mobile-arena';
+import { cardIntrinsicManaColors, landManaChoices } from "@/lib/land-mana-choices";
 import { compactLandOffsets } from '@/lib/compact-land-layout';
 import useBattlefieldAppearance from '@/hooks/useBattlefieldAppearance';
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
@@ -2352,6 +2353,42 @@ export default function BattlefieldRow({
     }
   }, [loading, closeManaPopover, clearHover, clearAnchoredCardPreview, dispatch, paymentEditor]);
 
+  // A land with intrinsic mana opens its mana strip on click; each color
+  // section taps it for that mana (CR 305.6 abilities have no text line).
+  const [openManaLandId, setOpenManaLandId] = useState(null);
+  const landManaChoicesFor = useCallback((card) => {
+    if (!card || !cardIntrinsicManaColors(card).length) return [];
+    const actions = state?.decision?.kind === "mana_payment"
+      ? (paymentActionMap.get(Number(card.id)) || [])
+      : state?.decision?.kind === "priority" ? collectActivatableActionsForCard(card, activatableMap) : [];
+    return landManaChoices(actions);
+  }, [state?.decision?.kind, paymentActionMap, activatableMap]);
+  const chooseLandMana = useCallback((action) => {
+    setOpenManaLandId(null);
+    if (state?.decision?.kind === "mana_payment") {
+      void activatePaymentMana(action);
+      return;
+    }
+    if (state?.decision?.kind !== "priority" || loading) return;
+    clearHover();
+    clearAnchoredCardPreview();
+    void dispatch({ type: "priority_action", action_index: action.index, action_ref: action.action_ref }, action.label);
+  }, [state?.decision?.kind, activatePaymentMana, loading, clearHover, clearAnchoredCardPreview, dispatch]);
+  useEffect(() => {
+    if (openManaLandId == null) return undefined;
+    // Any press outside the open land, or Escape, closes its strip.
+    const close = (event) => {
+      if (event.type === "keydown" ? event.key !== "Escape" : event.target?.closest?.(`[data-object-id="${openManaLandId}"]`)) return;
+      setOpenManaLandId(null);
+    };
+    document.addEventListener("pointerdown", close, true);
+    document.addEventListener("keydown", close, true);
+    return () => {
+      document.removeEventListener("pointerdown", close, true);
+      document.removeEventListener("keydown", close, true);
+    };
+  }, [openManaLandId]);
+
   const handleCardSelectionClick = useCallback((event, card) => {
     // An explicit field click is allowed to take ownership from the hand.
     handInspectionLockedRef.current = false;
@@ -2364,7 +2401,9 @@ export default function BattlefieldRow({
     if (manaActions.length) {
       event.preventDefault();
       event.stopPropagation();
+      const landChoices = manaActions.length > 1 ? landManaChoicesFor(card) : [];
       if (manaActions.length === 1) void activatePaymentMana(manaActions[0]);
+      else if (landChoices.length) setOpenManaLandId((open) => (open === String(card.id) ? null : String(card.id)));
       else showManaPopover(event, card);
       return;
     }
@@ -2423,6 +2462,17 @@ export default function BattlefieldRow({
       return;
     }
 
+    // Lands with intrinsic mana toggle their mana strip. Targeting keeps the
+    // click as a target choice; the card is still inspected as before.
+    if (!isLegalTargetCard && landManaChoicesFor(card).length) {
+      setOpenManaLandId((open) => (open === String(card.id) ? null : String(card.id)));
+      if (mobileObjectGesturesEnabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+
     if (mobileObjectGesturesEnabled && typeof onMobileCardActionMenu === "function") {
       const didOpenMenu = onMobileCardActionMenu({
         card,
@@ -2450,6 +2500,7 @@ export default function BattlefieldRow({
     onInspect?.(card.id);
   }, [
     effectiveActivatableMap,
+    landManaChoicesFor,
     showManaPopover,
     paymentActionMap,
     activatePaymentMana,
@@ -2810,6 +2861,9 @@ export default function BattlefieldRow({
             isBumped={isBumped}
             bumpDirection={bumpDir}
             battlefieldVisualMode={isMobileBattleSingleRowLayout ? "mobile-arena" : useMobileBattlefieldToken ? "mobile-token" : "portrait"}
+            manaStripOpen={openManaLandId === String(card.id)}
+            manaChoices={openManaLandId === String(card.id) ? landManaChoicesFor(card) : null}
+            onManaChoice={chooseLandMana}
             suppressTooltip={suppressTooltip}
             onClick={isLayoutHold ? undefined : ((event) => handleCardSelectionClick(event, card))}
             onKeyboardActivate={isLayoutHold ? undefined : ((event) => handleCardKeyboardActivate(event, card))}

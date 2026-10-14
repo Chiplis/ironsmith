@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arenaPermanentKind, partitionArenaBattlefield } from '../src/lib/mobile-arena.js';
+import { arenaFrameColor, arenaPermanentKind, partitionArenaBattlefield } from '../src/lib/mobile-arena.js';
 import { solveMobileBattleLayout } from '../src/lib/mobile-battle-layout.js';
 
 test('live creature characteristics take precedence over resource and enchantment lanes', () => {
@@ -27,4 +27,15 @@ test('lands leave more vertical room for combat on short and tall mobile screens
     assert.ok(layout.cardHeight >= 60);
     assert.ok(layout.totalHeight <= viewportHeight);
   }
+});
+
+test('land frames follow the colors the land currently makes', () => {
+  assert.equal(arenaFrameColor({ lane: 'land', produced_mana: [], intrinsic_mana: ['G'] }), '#63907a');
+  assert.equal(arenaFrameColor({ lane: 'land', produced_mana: ['W'], intrinsic_mana: ['W', 'G'] }), '#b4a26a');
+  assert.equal(arenaFrameColor({ lane: 'land', produced_mana: ['C'] }), '#8f979d');
+});
+
+test('land creatures in the creature lane keep their land frame color', () => {
+  assert.equal(arenaFrameColor({ lane: 'creatures', card_types: ['land', 'creature'], colors: [], power_toughness: '1/1', intrinsic_mana: ['G'], produced_mana: ['G'] }), '#63907a');
+  assert.equal(arenaFrameColor({ lane: 'creatures', card_types: ['land', 'creature'], colors: ['green'], power_toughness: '1/1' }), '#63907a');
 });

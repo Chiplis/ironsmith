@@ -20,3 +20,19 @@ test('font normalization repairs derived cmap fields and checksums without chang
   assert.equal(sum,0xb1b0afba);
   assert.deepEqual(normalizeFont(result.bytes).repairs,[]);
 });
+
+test('invalid isolated terminal cmap pointers are repaired without changing printable segments',()=>{
+  const source=fixture(),v=new DataView(source.buffer);
+  v.setUint16(130,27988);v.setUint16(134,27753);
+  const before=source.slice(),result=normalizeFont(source),out=new DataView(result.bytes.buffer);
+  assert.ok(result.repairs.includes('cmap format 4 invalid terminal pointer'));
+  assert.equal(out.getUint16(130),1);assert.equal(out.getUint16(134),0);
+  assert.deepEqual(result.bytes.slice(118,130),source.slice(118,130));
+  assert.equal(out.getUint16(132),v.getUint16(132));
+  assert.deepEqual(source,before);assert.deepEqual(normalizeFont(result.bytes).repairs,[]);
+  // A damaged printable segment is not silently rewritten as missingGlyph.
+  v.setUint16(126,65534);
+  const printable=normalizeFont(source);
+  assert.equal(new DataView(printable.bytes.buffer).getUint16(134),27753);
+  assert.ok(!printable.repairs.includes('cmap format 4 invalid terminal pointer'));
+});

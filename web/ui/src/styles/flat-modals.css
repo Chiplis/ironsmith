@@ -666,6 +666,35 @@
 
 /* --- lobby ---------------------------------------------------------- */
 
+/* Goldfish fills the viewport: the sheet, its body and the setup column all
+   flex so the deck workspace gets every remaining pixel. */
+.lobby-sheet.lobby-sheet-goldfish:not(.lobby-sheet-active) {
+  width: 100vw !important;
+  max-width: none !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.lobby-sheet.lobby-sheet-goldfish:not(.lobby-sheet-active) .lobby-sheet-body,
+.lobby-sheet.lobby-sheet-goldfish:not(.lobby-sheet-active) .lobby-sheet-setup {
+  display: flex !important;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden !important;
+}
+
+.lobby-sheet.lobby-sheet-goldfish:not(.lobby-sheet-active) .lobby-sheet-body {
+  gap: 8px !important;
+  padding: 8px 12px 10px !important;
+}
+
+.lobby-sheet.lobby-sheet-goldfish:not(.lobby-sheet-active) .lobby-sheet-setup {
+  gap: 8px !important;
+}
+
 .lobby-sheet .lobby-sheet-panel {
   padding: 12px;
 }

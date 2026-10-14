@@ -34,14 +34,26 @@ export class MseBrowserFonts {
     if(!this.normalFont.family||!Number.isFinite(this.normalFont.pixelSize)||this.normalFont.pixelSize<=0)throw new MseError('font-provider','Invalid system UI font definition');
     return this.normalFont;
   }
-  async localFont(name){
+  async localFont(name,{bold=false,italic=false}={}){
     this.requireActive();
     if(/[\x00-\x1f\x7f]/.test(name))throw new MseError('font-missing','Invalid local font name');
-    const key=name.toLowerCase();
-    if(!this.localFonts.has(key))this.localFonts.set(key,this.register(name,`local(${JSON.stringify(name)})`).catch(()=>{
-      this.requireActive();
-      throw new MseError('font-missing',`Font is not installed or accessible: ${name}`);
-    }));
+    const familyKey=name.toLowerCase();
+    const key=bold||italic?`${familyKey}\0${Boolean(bold)}:${Boolean(italic)}`:familyKey;
+    if(!this.localFonts.has(key)){
+      const suffix=bold?(italic?'Bold Italic':'Bold'):(italic?'Italic':'');
+      const names=suffix?[`${name} ${suffix}`,`${name}-${suffix.replaceAll(' ','')}`,`${name.replaceAll(' ','')}-${suffix.replaceAll(' ','')}`]:[name];
+      const source=[...new Set(names)].map(value=>`local(${JSON.stringify(value)})`).join(', ');
+      const pending=this.register(name,source,{weight:bold?'700':'400',style:italic?'italic':'normal'},null,null,{local:true}).catch(()=>{
+        this.requireActive();
+        // CSS can synthesize from an already loaded face of this family. If
+        // none is loaded, try its regular face before reporting a missing font.
+        const family=this.families.get(familyKey);
+        if(family?.faces.length)return family.faces[0];
+        if(bold||italic)return this.localFont(name);
+        throw new MseError('font-missing',`Font is not installed or accessible: ${name}`);
+      });
+      this.localFonts.set(key,pending);
+    }
     return this.localFonts.get(key);
   }
   async registerFile(bytes) {
@@ -52,7 +64,7 @@ export class MseBrowserFonts {
     for (const name of names) await this.register(name, normalized.bytes, { weight: String(metadata.weight), style: metadata.style },metadata.decoration,metadata.verticalMetrics);
     return { ...metadata, repairs: normalized.repairs };
   }
-  async register(name, source, descriptors = {}, decoration = null, verticalMetrics = null) {
+  async register(name, source, descriptors = {}, decoration = null, verticalMetrics = null, {local=false} = {}) {
     this.requireActive();
     if (!this.fontSet || !this.FontFaceClass) throw new MseError('font-provider', 'Browser FontFace support is required');
     const key=name.toLowerCase();
@@ -61,6 +73,9 @@ export class MseBrowserFonts {
       family = { alias: `MSEFont${nextFamilyId++}`, pending: new Set(), faces: [], metrics: [] };
       this.families.set(key, family);
     }
+    // Mark local loads before awaiting them; an explicitly supplied font can
+    // subsequently replace a failed lookup and takes precedence over it.
+    if(!local||!family.faces.length)family.local=local;
     const face = new this.FontFaceClass(family.alias, source, descriptors);
     const pending = face.load();
     family.pending.add(pending);
@@ -81,10 +96,9 @@ export class MseBrowserFonts {
       normal=this.systemFont();
     } else {
       family=this.families.get(face.name.toLowerCase());
-      if(!family?.faces.length&&this.localFonts.has(face.name.toLowerCase()))await this.localFonts.get(face.name.toLowerCase());
-      else if(family)await Promise.all(family.pending);
-      if((!family||!family.faces.length)&&this.allowSystemFonts){
-        await this.localFont(face.name);family=this.families.get(face.name.toLowerCase());
+      if(family&&!family.local)await Promise.all(family.pending);
+      if(family?.local||((!family||!family.faces.length)&&this.allowSystemFonts)){
+        await this.localFont(face.name,face);family=this.families.get(face.name.toLowerCase());
       }
       if (!family) throw new MseError('font-missing', `Font is not registered: ${face.name}`);
       this.requireActive();
@@ -100,10 +114,11 @@ export class MseBrowserFonts {
     // Native macOS exports use 72 DPI and a 4x text surface. wxGCDC
     // rounds CoreText extents upward before MSE divides them by four.
     const textScale=pixelsPerPoint===1?4:1;
-    const setup = (scale, target = ctx) => {
+    const setup = (scale, target = ctx, rasterFactor=1) => {
       this.requireActive();
-      const pixels = font.code&&Math.floor(textScale*scale*font.size+0.4999995)<2?this.systemFont().pixelSize/textScale
+      const logicalPixels = font.code&&Math.floor(textScale*scale*font.size+0.4999995)<2?this.systemFont().pixelSize/textScale
         :Math.max(1, Math.floor(textScale * scale * (normal && font.size <= 1 ? normal.pixelSize : font.size * pixelsPerPoint) + (textScale===4?0.4999995:0.5)))/textScale;
+      const pixels=logicalPixels*rasterFactor;
       target.font = normal ? `normal normal ${pixels}px ${normal.family}`
         : `${face.italic ? 'italic' : 'normal'} ${face.bold ? 'bold' : 'normal'} ${pixels}px "${family.alias}"`;
       target.fontKerning = 'normal';
@@ -121,13 +136,13 @@ export class MseBrowserFonts {
       if (!Number.isFinite(height)) throw new MseError('font-metrics', 'Browser font bounding-box metrics are required');
       return textScale===4?{width:Math.ceil(metric.width*4)/4,height:Math.ceil(height*4)/4}:{ width: metric.width, height };
     };
-    return {
-      measure: (text, unusedFont, scale) => extent(text, scale),
-      lineHeight: (unusedFont, scale) => extent('M', scale).height,
-      draw: (target, text, x, y, scale) => {
-        const pixels=setup(scale, target);
+    const draw=(target, text, x, y, scale, rasterFactor=1) => {
+        const pixels=setup(scale, target,rasterFactor);
         const metrics = target.measureText(text);
-        const baseline=y+metrics.fontBoundingBoxAscent;
+        // wxMac positions glyphs using CTFontGetAscent, without rounding
+        // it to the browser's integer font bounding box.
+        const ascent=textScale===4&&vertical?pixels*vertical.ascent/vertical.unitsPerEm:metrics.fontBoundingBoxAscent;
+        const baseline=y+ascent;
         target.fillText(text, x, baseline);
         const unit=selected?.unitsPerEm>0?pixels/selected.unitsPerEm:null;
         // OpenType post/OS/2 positions describe the top edge, not the center.
@@ -138,8 +153,23 @@ export class MseBrowserFonts {
           Math.max(1,unit!==null&&selected.underlineThickness>0?selected.underlineThickness*unit:pixels/20));
         if(font.strikethrough)line(unit!==null&&Number.isFinite(selected.strikePosition)?selected.strikePosition*unit:pixels*0.3,
           Math.max(1,unit!==null&&selected.strikeThickness>0?selected.strikeThickness*unit:pixels/20));
-      },
+      };
+    return {
+      measure:(text,unusedFont,scale)=>extent(text,scale),
+      lineHeight:(unusedFont,scale)=>extent('M',scale).height,
+      rasterScale:textScale===4?4:1,
+      pointSize:scale=>setup(scale)/pixelsPerPoint,
+      draw,
+      drawRaster:(target,text,x,y,scale)=>draw(target,text,x,y,scale,4),
     };
+  }
+  // The CSS face of an already loaded font, for DOM text that should match the
+  // canvas (e.g. a card's stand-in while its frame renders). Never loads.
+  cssFace(font, flags = {}) {
+    const face = resolveFontFace(font, flags);
+    const family = face.name && this.families.get(face.name.toLowerCase());
+    if (!family?.faces.length) return null;
+    return { family: `"${family.alias}"`, weight: face.bold ? 'bold' : 'normal', style: face.italic ? 'italic' : 'normal' };
   }
   dispose() {
     this.disposed = true;

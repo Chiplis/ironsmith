@@ -434,6 +434,55 @@ mod tests {
     }
 
     #[test]
+    fn unpreventable_damage_neither_uses_up_nor_reflects_a_next_time_shield() {
+        // CR 615.12 + 609.7b: the shield prevents nothing, so it isn't used up,
+        // and Deflecting Palm's "if damage is prevented this way" rider does nothing.
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_def = CardDefinitionBuilder::new(CardId::from_raw(91_411), "Bob's Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let source = game.create_object_from_definition(&source_def, bob, Zone::Battlefield);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        PreventNextTimeDamageEffect::new(
+            PreventNextTimeDamageSource::Choice,
+            PreventNextTimeDamageTarget::You,
+        )
+        .reflecting_to_source_controller()
+        .execute(&mut game, &mut ctx)
+        .unwrap();
+        let hit = |unpreventable| crate::events::processing::SimultaneousDamageEvent {
+            source,
+            target: DamageTarget::Player(alice),
+            amount: 3,
+            is_combat: false,
+            unpreventable,
+            cause: crate::events::cause::EventCause::from_effect(source, bob),
+            source_snapshot: None,
+        };
+        let results = crate::events::processing::process_simultaneous_damage_assignments_with_event(
+            &mut game,
+            &[hit(true)],
+        )
+        .unwrap();
+        assert_eq!(results[0].assignments.iter().map(|a| a.amount).sum::<u32>(), 3);
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.effect_store.replacement_effects.effects().len(), 1);
+        // The retained shield still catches the next preventable damage.
+        let results = crate::events::processing::process_simultaneous_damage_assignments_with_event(
+            &mut game,
+            &[hit(false)],
+        )
+        .unwrap();
+        assert!(results[0].assignments.iter().all(|a| a.amount == 0));
+        assert_eq!(game.player(bob).unwrap().life, 17);
+        assert!(game.effect_store.replacement_effects.effects().is_empty());
+    }
+
+    #[test]
     fn prevent_next_time_damage_target_object_only_prevents_matching_damage_once() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);

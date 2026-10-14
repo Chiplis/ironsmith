@@ -13,11 +13,9 @@ const triggerPill = "stone-pill table-zone-action-button inline-flex items-cente
 export default function TableActionControls({
   compact = false,
   onAddCardNotice,
-  onEnterDeckLoading,
   onOpenPuzzleSetup,
   onGenerateRandomGame,
   onOpenLobby,
-  deckLoadingMode = false,
   puzzleSetupMode = false,
 }) {
   const {
@@ -91,14 +89,6 @@ export default function TableActionControls({
         </button>
       ) : null}
       <CardCreationControls onAddCardNotice={onAddCardNotice} />
-      <button
-        type="button"
-        className={triggerPill}
-        disabled={lobbyBusy}
-        onClick={onEnterDeckLoading}
-      >
-        {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
-      </button>
       <RandomGameSheet
         onGenerate={onGenerateRandomGame}
         disabled={lobbyBusy}

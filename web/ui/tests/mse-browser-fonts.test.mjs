@@ -4,7 +4,7 @@ import { MseBrowserFonts } from '../src/lib/mse/browser-fonts.mjs';
 function fixture(load = async face => face) {
   const fontSet = new Set();
   class Face {
-    constructor(family,source){this.family=family;this.source=source;}
+    constructor(family,source,descriptors){this.family=family;this.source=source;this.descriptors=descriptors;}
     load(){return load(this);}
   }
   const canvas={getContext:()=>({measureText:()=>({width:10,fontBoundingBoxAscent:8,fontBoundingBoxDescent:2})})};
@@ -139,5 +139,62 @@ test('macOS metrics use descent magnitude for legacy positive hhea descenders',a
   await fonts.register('ModMatrix','fixture',{weight:'700'},null,{unitsPerEm:1000,ascent:633,descent:167,lineGap:0});
   const metrics=await fonts.prepare({name:'ModMatrix',size:18,bold:true});
   assert.equal(metrics.measure('3/4',null,1).height,14.5);
+  fonts.dispose();
+});
+
+test('native raster drawing scales the already quantized font size',async()=>{
+  const options=fixture(),ctx=options.canvas.getContext();options.canvas={getContext:()=>ctx};
+  const fonts=new MseBrowserFonts({...options,pixelsPerPoint:1});
+  const face=await fonts.register('Example','fixture');
+  const provider=await fonts.prepare({name:'Example',size:14});
+  const target={measureText:ctx.measureText,fillText(){}};
+  provider.drawRaster(target,'A',0,0,0.9);
+  assert.equal(target.font,`normal normal 50px "${face.family}"`);
+  assert.equal(provider.rasterScale,4);
+  assert.equal(provider.pointSize(0.9),12.5);
+  fonts.dispose();
+});
+
+test('native glyph baselines retain fractional font ascent at raster resolution',async()=>{
+  const fonts=new MseBrowserFonts({...fixture(),pixelsPerPoint:1});
+  await fonts.register('MPlantin','fixture',{},null,{unitsPerEm:1000,ascent:774,descent:-225,lineGap:150});
+  const calls=[],target={measureText:()=>({width:30,fontBoundingBoxAscent:43}),fillText:(...args)=>calls.push(args)};
+  const provider=await fonts.prepare({name:'MPlantin',size:14});
+  provider.drawRaster(target,'Trial',2,3,1);
+  assert.deepEqual(calls,[['Trial',2,46.344]]);
+  const standard=await fonts.prepare({name:'MPlantin',size:14},{pixelsPerPoint:96/72});
+  standard.draw(target,'Trial',2,3,1);
+  assert.equal(calls[1][2],46);
+  fonts.dispose();
+});
+
+test('local bold and italic faces are registered independently and shared by concurrent requests',async()=>{
+  const loaded=[],options=fixture(async face=>{loaded.push(face);return face;});
+  const fonts=new MseBrowserFonts({...options,allowSystemFonts:true});
+  await Promise.all([fonts.prepare({name:'Verdana',size:12,bold:true}),fonts.prepare({name:'Verdana',size:14,bold:true})]);
+  assert.equal(loaded.length,1);
+  assert.ok(loaded[0].source.startsWith('local("Verdana Bold")'));
+  assert.deepEqual(loaded[0].descriptors,{weight:'700',style:'normal'});
+  await fonts.prepare({name:'Verdana',size:12,italic:true});
+  await fonts.prepare({name:'Verdana',size:12,bold:true,italic:true});
+  await fonts.prepare({name:'Verdana',size:12});
+  assert.deepEqual(loaded.map(f=>f.descriptors),[
+    {weight:'700',style:'normal'},{weight:'400',style:'italic'},
+    {weight:'700',style:'italic'},{weight:'400',style:'normal'},
+  ]);
+  assert.equal(new Set(loaded.map(f=>f.family)).size,1);
+  fonts.dispose();assert.equal(options.fontSet.size,0);
+});
+
+test('an unavailable local variant retains regular-face synthesis without repeating failed lookups',async()=>{
+  const sources=[],options=fixture(async face=>{
+    sources.push(face.source);if(face.descriptors.weight==='700')throw new Error('No bold face');return face;
+  });
+  const fonts=new MseBrowserFonts({...options,allowSystemFonts:true});
+  const first=await fonts.prepare({name:'Regular Only',size:12,bold:true});
+  const second=await fonts.prepare({name:'Regular Only',size:12,bold:true});
+  assert.equal(first.measure('A',null,1).width,second.measure('A',null,1).width);
+  assert.equal(sources.length,2);assert.equal(sources[1],'local("Regular Only")');
+  assert.equal(options.fontSet.size,1);
   fonts.dispose();
 });

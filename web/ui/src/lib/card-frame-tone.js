@@ -46,6 +46,12 @@ export function cardFrameColors({cards = [], printing = null, manaCost = ''} = {
   return manaCostColors(manaCost);
 }
 
+function textManaColors(text) {
+  let rules = String(text || '');
+  while (/\([^()]*\)/.test(rules)) rules = rules.replace(/\([^()]*\)/g, '');
+  return manaCostColors(rules);
+}
+
 export function frameToneForColors(colors, typeLine = '') {
   const normalized = normalizeArtColors(colors);
   if (normalized.length === 1) return COLOR_TONES[normalized[0]];
@@ -83,7 +89,18 @@ export function cardFrameToneStyle(tone, colors = []) {
 }
 
 export function cardFrameTone(input) {
-  const colors = cardFrameColors(input);
+  let colors = cardFrameColors(input);
+  // A colorless land is framed by its identity (live snapshots omit it, so
+  // the mana symbols in its rules text) plus the intrinsic mana of its current
+  // basic land types: Yavimaya's Forests are green.
+  const cards = (input?.cards || []).filter(Boolean);
+  const intrinsic = cards.flatMap(card => card.intrinsic_mana || []);
+  if (!colors.length && intrinsic.length && /\bland\b/i.test(String(input?.typeLine || ''))) {
+    const identity = cards.map(card => card.color_identity ?? card.colorIdentity).find(value => value != null);
+    colors = normalizeArtColors([...(identity == null
+      ? cards.flatMap(card => textManaColors(card.oracle_text))
+      : normalizeArtColors(identity)), ...intrinsic]);
+  }
   const tone = frameToneForColors(colors, input?.typeLine);
   return {tone, colors, style: cardFrameToneStyle(tone, colors)};
 }

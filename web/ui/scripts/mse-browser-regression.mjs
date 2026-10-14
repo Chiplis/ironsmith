@@ -27,6 +27,19 @@ for(const fixture of selected){
   if(report.success){
     if(JSON.stringify(report.dimensions)!==JSON.stringify(fixture.dimensions))errors.push('Unexpected canvas dimensions');
     for(const [field,expected] of Object.entries(fixture.text))if(report.measuredText?.[field]!==expected)errors.push(`Unexpected measured text for ${field}: ${JSON.stringify(report.measuredText?.[field])}`);
+    if(fontDpi===72)for(const [field,expected] of Object.entries(fixture.layout||{})){
+      if(expected.alignment!==undefined&&report.measuredLayouts?.[field]?.alignment!==expected.alignment)
+        errors.push(`Native alignment mismatch for ${field}: ${report.measuredLayouts?.[field]?.alignment} versus ${expected.alignment}`);
+      for(const [property,value] of Object.entries(expected.geometry||{})){
+        const actual=report.measuredLayouts?.[field]?.geometry?.[property];
+        if(!Number.isFinite(actual)||Math.abs(actual-value)>expected.tolerance)errors.push(`Native geometry mismatch for ${field}.${property}: ${actual} versus ${value}`);
+      }
+      const actual=report.measuredLayouts?.[field]?.lines;
+      if(!actual||actual.length!==expected.lines.length)errors.push(`Unexpected native line count for ${field}`);
+      else for(let row=0;row<actual.length;row++)for(let col=0;col<3;col++)
+        if(!Number.isFinite(actual[row][col])||Math.abs(actual[row][col]-expected.lines[row][col])>expected.tolerance)
+          errors.push(`Native layout mismatch for ${field}, line ${row}, metric ${col}: ${actual[row][col]} versus ${expected.lines[row][col]}`);
+    }
     if(!report.imagePath)errors.push('Missing rendered artifact');
     for(const diagnostic of report.diagnostics||[])if(diagnostic.severity==='error')errors.push(diagnostic.message);
   }

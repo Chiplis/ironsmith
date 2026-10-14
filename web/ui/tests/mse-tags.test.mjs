@@ -16,3 +16,9 @@ test('tag content replacement preserves tags, nested content and dynamic argumen
   assert.equal(vm.run('curly_quotes("\'\'\\\"nest\\\"\'\'")'), '‘‘“nest”’’');
   assert.throws(() => vm.run('check_spelling_word("word", language:"en_US")'), { code: 'script-spelling-provider' });
 });
+
+import {plainTextCases} from './fixtures/mse-plain-text-cases.mjs';
+test('plain text conversion matches native soft separators, escapes, and incomplete tags',()=>{
+  const vm=new MseRuntime({builtins:coreBuiltins()});
+  for(const {expression,expected} of plainTextCases)assert.equal(vm.run(expression),expected,expression);
+});

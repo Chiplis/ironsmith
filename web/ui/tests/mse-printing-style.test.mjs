@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {selectMsePresentation, selectMseStyle} from '../src/lib/mse/style-selection.mjs';
-import {printingMseCardFields} from '../src/lib/mse/printing-style.mjs';
+import {printingMseCardFields,printingMseFooterFields,printingMseSetFields} from '../src/lib/mse/printing-style.mjs';
 
 const ordinary = {name:'Live card',type_line:'Creature — Wizard',layout:'normal'};
 const main = 'magic-m15-altered.mse-style';
@@ -76,4 +76,24 @@ test('dedicated masterpiece sets select their known package without treating nor
   for(const [set,expected] of [['mps','magic-m15-Kaladesh'],['mp2','magic-m15-invocation'],['exp','magic-m15-expedition']])
     assert.equal(selectMseStyle({...ordinary,set}),`${expected}.mse-style`);
   assert.equal(selectMseStyle({...ordinary,set:'kld'}),main);
+});
+
+test('the footer credits the displayed printing in its era\'s number format',()=>{
+  const modern={artist:'Steve Ditko',rarity:'mythic',collector_number:'9',set:'mar',lang:'ja',frame:'2015',released_at:'2025-09-26'};
+  assert.deepEqual(printingMseFooterFields({rarity:'common'},modern),{illustrator:'Steve Ditko',rarity:'mythic rare',custom_card_number:'0009'});
+  assert.deepEqual(printingMseSetFields({},modern),{automatic_card_numbers:'no',card_number_style:'0001',set_code:'MAR',set_language:'JP',copyright:'™ & © 2025 Wizards of the Coast'});
+  const m15={artist:'Titus Lunter',rarity:'rare',collector_number:'259',set:'mh2',lang:'en',frame:'2015',released_at:'2021-06-18'};
+  assert.equal(printingMseFooterFields({},m15).custom_card_number,'259');
+  assert.equal(printingMseSetFields({},m15).card_number_style,'001');
+  assert.equal(printingMseFooterFields({},{collector_number:'12a',frame:'2015',released_at:'2020-01-01'}).custom_card_number,'012a');
+  assert.equal(printingMseFooterFields({},{collector_number:'213',frame:'2003'}).custom_card_number,'213');
+  // Without resolved metadata the snapshot's own printing fields are used.
+  assert.deepEqual(printingMseFooterFields({artist:'Kev Walker',rarity:'uncommon'},null),{illustrator:'Kev Walker',rarity:'uncommon'});
+  assert.deepEqual(printingMseSetFields({lang:'xx'},null),{});
+});
+
+test('the copyright line follows the printing\'s release year and era',()=>{
+  assert.equal(printingMseSetFields({},{released_at:'2021-06-18'}).copyright,'™ & © 2021 Wizards of the Coast');
+  assert.equal(printingMseSetFields({},{released_at:'2005-10-07'}).copyright,'™ & © 1993-2005 Wizards of the Coast, Inc.');
+  assert.equal(printingMseSetFields({},{released_at:''}).copyright,undefined);
 });

@@ -3,24 +3,17 @@ import { cardDisplayTypeLine } from "@/lib/card-display-type-line";
 import { customCardFlavorText } from "@/lib/custom-card-flavor";
 import useUiText from "@/i18n/useUiText";
 import { groupManaAbilities } from "@/lib/group-mana-abilities";
-import RegisteredCardFrame from './RegisteredCardFrame';
 import GroupedManaAbility from "./GroupedManaAbility";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { cachedInspectorDetails, requestInspectorDetails } from "@/lib/inspector-details-cache";
-import OriginalCardFallback from "./OriginalCardFallback";
 import { stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView } from "@/lib/inspector-ability-lines";
 import "@/styles/card-typography.css";
-import CardFrameRulesBox from "./CardFrameRulesBox";
-import CardFrameSingleLine from "./CardFrameSingleLine";
-import CardFrameStage from "./CardFrameStage";
 import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
-import usePreparedCardFrame from "@/hooks/usePreparedCardFrame";
-import { defaultCardFrame, fallbackCardFrameColors, isSagaCardFrame } from "@/lib/default-card-frames";
-import { fullCardImageUrl } from '@/lib/card-frame-colors';
-import { cardFrameTone } from '@/lib/card-frame-tone';
-import "@/styles/card-frame-colors.css";
+import CardFramePresentation from "../cards/CardFramePresentation";
+import { intrinsicManaColors, withoutIntrinsicManaLines } from "@/lib/land-mana-choices";
+import { cardFrameFaceIndex } from "@/lib/card-frame-snapshot.mjs";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import useScryfallFlavorText from "@/hooks/useScryfallFlavorText";
 import { customCardCounterOverrides, isCompiledCardName } from "@/lib/scryfall";
@@ -35,18 +28,6 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, Copy } from "lucide-reac
 import { useI18n } from "@/i18n/I18nContext";
 import { loadTranslatedCardView } from "@/i18n/cardTranslations";
 import { counterDisplayLabel } from "@/lib/mana-assets";
-
-const LOADING_CARD_FRAME = {
-  style: { "--source-frame-status": "placeholder" },
-  artReady: false,
-};
-// A bare art crop says nothing about what the object is -- a stack entry is
-// often an ability. While a frame is prepared, the placeholder frame carries
-// the art itself, so the name, type and text are readable from the start.
-const LOADING_CARD_FRAME_WITH_ART = {
-  ...LOADING_CARD_FRAME,
-  artReady: true,
-};
 
 const ORACLE_TEXT_STYLE = {
   textShadow: "0 0 1px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.88)",
@@ -675,7 +656,6 @@ export default function HoverArtOverlay({
   onPreferredInspectorWidthChange = null,
   onInspectorAccentChange = null,
   onCardFrameReadyChange = null,
-  enableFramePreparation = true,
   sourceImageUrl = null,
   interactiveActions = [],
   onInteractiveAction = null,
@@ -730,7 +710,6 @@ export default function HoverArtOverlay({
   const ruleLineRefs = useRef(new Map());
 
   const [detailsCache, setDetailsCache] = useState({});
-  const [settledDetailsKey, setSettledDetailsKey] = useState(null);
   const [failedImageUrl, setFailedImageUrl] = useState(null);
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
@@ -778,8 +757,7 @@ export default function HoverArtOverlay({
       .catch(() => {
         // Keep any stale entry; a transient failure must not blank this
         // object's details for the rest of the session.
-      })
-      .finally(() => { if (active) setSettledDetailsKey(detailsObjectIdKey); });
+      });
 
     return () => {
       active = false;
@@ -922,37 +900,7 @@ export default function HoverArtOverlay({
   const artObjectName = stableLinkedObjectName || objectName;
   const image = useScryfallImage(sourceImageUrl ? "" : artObjectName, "art_crop");
   const imageUrl = sourceImageUrl ? cardArtCropUrl(sourceImageUrl) : image.url;
-  const stockFallback = useMemo(() => isCardFrameMode ? defaultCardFrame({
-    cards: [details, cardSnapshot, previewCard, hoveredStackObject], manaCost, typeLine,
-  }) || (localCustom ? defaultCardFrame({manaCost, typeLine: typeLine?.split(" — ")[0]}) : null)
-    : null, [isCardFrameMode, details, cardSnapshot, previewCard, hoveredStackObject, manaCost, typeLine, localCustom]);
-  const generatedFrame = usePreparedCardFrame(imageUrl, typeLine, isCardFrameMode && image.ready && enableFramePreparation && !localCustom);
-  const originalFrame = useMemo(() => ({imageUrl, originalImageUrl: fullCardImageUrl(imageUrl) || imageUrl}), [imageUrl]);
-  // A custom card can have no printing to look up at all. Waiting on a
-  // preparation that will never arrive leaves the stage hidden and inert, so
-  // an art lookup that settled on nothing publishes its own bundle instead and
-  // the frame is drawn from the placeholder. An object whose name has not
-  // arrived yet has not looked anything up, and must keep waiting rather than
-  // flash the printing behind a frame that is still being prepared.
-  const artUnavailable = !imageUrl && Boolean(sourceImageUrl || artObjectName) && image.ready;
-  // A prepared frame is still held back until the object's details settle;
-  // until then the placeholder frame stands in for it, never a blank stage.
-  const detailsPending = Boolean(!isMiniatureFrame && game && detailsObjectIdKey && !details
-    && !sharedDetails?.ready && settledDetailsKey !== detailsObjectIdKey);
-  // Stock frames are immediate fallbacks, not a reason to skip preparation.
-  // Keep them on failures (including unmasked/placeholder results), and only
-  // upgrade once the prepared printing and the live details are usable.
-  const generatedFrameUsable = generatedFrame?.artReady !== false && Boolean(
-    generatedFrame?.registration || (generatedFrame?.style?.['--source-frame-status'] === 'masked'
-      && generatedFrame.style['--source-frame-image'])
-  );
-  const stockFrame = !detailsPending && generatedFrameUsable ? null : stockFallback;
-  const showLoadingFrame = isCardFrameMode && enableFramePreparation && !stockFrame
-    && !artUnavailable && (!generatedFrame || detailsPending) && Boolean(artObjectName);
-  const preparedFrame = stockFrame || (showLoadingFrame ? (imageUrl ? LOADING_CARD_FRAME_WITH_ART : LOADING_CARD_FRAME)
-    : enableFramePreparation && !artUnavailable ? generatedFrame : originalFrame);
-  const defaultTypography = useCardTypography(isCardFrameMode ? "" : imageUrl);
-  const typography = preparedFrame?.typography || defaultTypography;
+  const typography = useCardTypography(isCardFrameMode ? "" : imageUrl);
   const inspectorMeasureFont = typography.rules;
   useEffect(() => {
     if (typeof document === "undefined" || !document.fonts?.load) return undefined;
@@ -972,23 +920,22 @@ export default function HoverArtOverlay({
       cancelled = true;
     };
   }, [inspectorMeasureFont, typography]);
-  const cardFrameColors = preparedFrame?.style || null;
   // Forget past failures whenever the art URL changes so a transient network
   // error doesn't blacklist a card's art for the whole session.
   if (failedImageUrl != null && failedImageUrl !== imageUrl) {
     setFailedImageUrl(null);
   }
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
-  const defaultFlavorText = useScryfallFlavorText((isCardFrameMode && !stockFrame) || imageErrored ? "" : imageUrl);
+  const defaultFlavorText = useScryfallFlavorText(imageErrored ? "" : imageUrl);
   const localizedFlavorText = useScryfallFlavorText(locale === "en" ? "" : sourceImageUrl || imageUrl, locale);
-  // Mask preparation retains the source-language flavor. Only the visible
-  // layer switches language; never mix English flavor into Spanish rules.
+  // Never mix English flavor into translated rules.
   // A card compiled in the forge may carry an existing card's name. That
   // printing is only a template for its frame: none of its printed wording --
   // rules, flavor -- belongs to this card.
   const compiledCustomCard = isCompiledCardName(objectName);
-  const flavorText = customCardFlavorText(objectName) || (locale !== "en" ? localizedFlavorText
-    : isCardFrameMode ? (compiledCustomCard ? "" : stockFrame ? defaultFlavorText : preparedFrame?.flavorText || "") : defaultFlavorText);
+  const flavorText = customCardFlavorText(objectName) || (compiledCustomCard ? ""
+    : locale !== "en" ? localizedFlavorText
+      : details?.flavor_text ?? cardSnapshot?.flavor_text ?? previewCard?.flavor_text ?? defaultFlavorText);
   const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
@@ -1060,19 +1007,27 @@ export default function HoverArtOverlay({
     Boolean(hoveredStackObject?.ability_kind)
     && compiledRulesLines.length > 0
   );
+  // Intrinsic basic-land mana is used from the land's mana strip, and is
+  // never printed on the card, so the text box leaves it out.
+  const landRulesLines = useMemo(
+    () => withoutIntrinsicManaLines(compiledRulesLines, intrinsicManaColors(details?.type_line || typeLine)),
+    [compiledRulesLines, details?.type_line, typeLine]
+  );
   const baseDisplayRulesLines = useMemo(() => {
     if (shouldPreferStackAbilityRules) {
       return compiledRulesLines;
     }
+    if (landRulesLines.length > 0) {
+      return landRulesLines;
+    }
     if (compiledRulesLines.length > 0) {
-      return compiledRulesLines;
+      return landRulesLines;
     }
     if (oracleRulesLines.length > 0) {
       return oracleRulesLines;
     }
-    return isMiniatureFrame && !compiledCustomCard
-      ? String(preparedFrame?.printing?.oracle_text || '').split('\n').filter(Boolean) : compiledRulesLines;
-  }, [compiledCustomCard, compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, isMiniatureFrame, preparedFrame?.printing?.oracle_text]);
+    return compiledRulesLines;
+  }, [compiledRulesLines, landRulesLines, oracleRulesLines, shouldPreferStackAbilityRules]);
   const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
   const baseDisplayObjectName = debugInspector ? null : objectName;
   const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -1147,10 +1102,6 @@ export default function HoverArtOverlay({
   const displayCountersLine = debugInspector ? null : countersLine;
   const displayManaCost = debugInspector ? null : manaCost;
   const displayStatsText = debugInspector || transitionTitle || isMiniatureFrame ? null : statsText;
-  // Only a masked printing keeps its P/T plaque where the scan has it; the
-  // synthetic frame always draws its own plaque on the art.
-  const printedStatsAtRules = Boolean(displayStatsText && /^[^/]+\/[^/]+$/.test(displayStatsText)
-    && cardFrameColors?.["--source-frame-status"] === "masked" && cardFrameColors?.["--printed-pt-position"] === "rules");
   const displayTypeZoneLine = useMemo(
     () => [displayZoneLine, displayTypeLine].filter(Boolean).join(" - ") || null,
     [displayTypeLine, displayZoneLine]
@@ -2396,7 +2347,7 @@ export default function HoverArtOverlay({
     rulesRenderKey,
   ]);
 
-  const showImageBackdrop = !!imageUrl && !imageErrored && (!isCardFrameMode || preparedFrame?.artReady);
+  const showImageBackdrop = !!imageUrl && !imageErrored;
   const hasRenderableContent = Boolean(
     transitionTitle
     || displayObjectName
@@ -2410,221 +2361,25 @@ export default function HoverArtOverlay({
   );
 
   if (isCardFrameMode) {
-    const hasSourceMask = cardFrameColors?.["--source-frame-status"] === "masked"
-      && Boolean(cardFrameColors?.["--source-frame-image"]);
-    // No usable mask, or no printing at all: the scan is not shown. Our own
-    // frame, in the card's colors, carries the art crop and the live text, so
-    // a token or an odd layout never gets containers laid over a printing they
-    // do not fit. The frame is the card's details; nothing is stacked over it.
-    const customFrame = !hasSourceMask && !preparedFrame?.registration
-      && (artUnavailable || ["unmasked", "placeholder"].includes(cardFrameColors?.["--source-frame-status"]));
-    const customArt = customFrame && showImageBackdrop;
-    // A card-shaped image the sampler cannot read is a whole printing: the art
-    // box shows its conventional art region rather than the entire card.
-    const artSource = customArt && cardFrameColors?.["--source-frame-fallback-reason"] === "unsampled-art" ? "printing" : undefined;
-    const frameToneInput = {
-      cards: [details, cardSnapshot, previewCard, hoveredStackObject],
-      printing: preparedFrame?.printing, manaCost: displayManaCost, typeLine: displayTypeLine,
-    };
-    const frameTone = cardFrameTone(stockFrame || customFrame
-      ? { ...frameToneInput, cards: [{ colors: fallbackCardFrameColors(frameToneInput) }] }
-      : frameToneInput);
-    // Measured scan geometry only means anything while that scan is shown.
-    const frameGeometry = hasSourceMask ? cardFrameColors : null;
-    const columnMana = frameGeometry?.["--printed-mana-placement"] === "column"
-      ? JSON.parse(frameGeometry["--printed-mana-symbols"] || "null") : null;
-    const manaTokens = String(displayManaCost || "").match(/\{[^}]+\}/g) || [];
-    return (
-      <CardFrameStage
-        animateRenderer={!isMiniatureFrame}
-        transitionIdentity={`${detailsObjectIdKey || ""}:${objectName || ""}`}
-        transitionRenderer={preparedFrame?.registration ? "registered"
-          : hasSourceMask ? "masked" : stockFrame ? `stock:${stockFrame.defaultFrame}`
-          : customArt ? "custom" : customFrame ? "placeholder" : "original"}
-        assets={preparedFrame}
-        showLoadingFrame={showLoadingFrame}
-        showLiveFrame={Boolean(stockFrame)}
-        preparation={showLoadingFrame || detailsPending ? null : preparedFrame}
-        onReadyChange={onCardFrameReadyChange}
-        className="interactive-card-frame-stage absolute inset-0 z-30 pointer-events-auto"
-        data-card-frame-tone={frameTone.tone}
-        data-card-frame-colors={frameTone.colors.join("") || undefined}
-        data-printing-ready={typography.printingReady || undefined}
-        data-source-frame={hasSourceMask ? "true" : undefined}
-        data-default-frame={stockFrame?.defaultFrame}
-        data-box-sizing={frameGeometry?.["--printed-box-sizing"] || undefined}
-        data-frame-geometry={frameGeometry && Object.keys(frameGeometry).some(key => key.startsWith("--printed-gap-")) ? "true" : undefined}
-        data-card-colors={hasSourceMask ? "sampled" : undefined}
-        data-frame-mode={preparedFrame?.registration ? "registered" : hasSourceMask ? "masked" : customArt ? "custom" : customFrame ? "placeholder" : "original"}
-        data-frame-presentation={isMiniatureFrame ? "miniature" : "inspector"}
-        data-frame-fallback-reason={cardFrameColors?.["--source-frame-fallback-reason"] || undefined}
-        data-art-source={artSource}
-        data-art-fit={stockFrame && isSagaCardFrame(frameToneInput) ? "contain" : undefined}
-        data-inspected-object-id={detailsObjectIdKey || undefined}
-        data-inner-frame-border={frameGeometry?.["--inner-frame-bevel-profile"] ? frameGeometry["--inner-frame-border-kind"] : undefined}
-        data-whole-title={frameGeometry?.["--whole-title-image"] ? "true" : undefined}
-        data-whole-type={frameGeometry?.["--whole-type-image"] ? "true" : undefined}
-        data-whole-rules={frameGeometry?.["--whole-rules-image"] ? "true" : undefined}
-        data-rules-bottom={frameGeometry?.["--rules-bottom-middle"] ? "sampled" : undefined}
-        data-type-panel={frameGeometry?.["--type-panel-kind"] || undefined}
-        data-title-panel={frameGeometry?.["--title-panel-kind"] || undefined}
-        data-art-enclosure={frameGeometry?.["--art-frame-enclosure"] || undefined}
-        style={{ ...frameGeometry, ...frameTone.style, ...typography.style }}
-        data-card-era={typography.era}
-        data-zone-transition-token={transientPreview?.token || undefined}
-      >
-        {preparedFrame?.registration ? <RegisteredCardFrame
-          registration={preparedFrame.registration} imageUrl={preparedFrame.originalImageUrl}
-          typography={preparedFrame.typography} rulesView={rulesView} name={displayObjectName}
-          interactive={!isMiniatureFrame}
-          typeLine={displayTypeLine} stats={displayStatsText} flavorText={flavorText}
-          onActivate={onInteractiveAction} highlighted={highlightedRuleLineIndices}
-        /> : !hasSourceMask && !customFrame ? <OriginalCardFallback
-          showDetails={!isMiniatureFrame}
-          imageUrl={preparedFrame?.originalImageUrl || sourceImageUrl || imageUrl}
-          name={displayObjectName} rulesView={rulesView} onActivate={onInteractiveAction}
-          highlighted={highlightedRuleLineIndices} flavorText={flavorText}
-          stats={displayStatsText} counters={displayCountersLine}
-          detailsLabel={t("card.previewDetails", null, "Card details")}
-        /> : <article className="interactive-card-frame" aria-label={displayObjectName || ui("Card details")}>
-          <div className="interactive-card-frame__inner">
-            <header className="interactive-card-frame__title-row">
-              <div className="interactive-card-frame__title-wrap">
-                <CardFrameSingleLine as="h2" className="interactive-card-frame__title">
-                  {displayObjectName || t("status.cardDetailsUnavailable")}
-                </CardFrameSingleLine>
-              </div>
-              {displayManaCost && !columnMana && (
-                <div className="interactive-card-frame__mana" aria-label={ui("Mana cost {0}", { 0: displayManaCost })}>
-                  <ManaCostIcons cost={displayManaCost} size={18} />
-                </div>
-              )}
-            </header>
-            {columnMana && manaTokens.map((token, index) => {
-              const box = columnMana.symbols[index] || {...columnMana.symbols[0], y: columnMana.symbols[0].y + index * (columnMana.symbols[0].height + 6)};
-              const originalSymbol = columnMana.symbols.find(symbol => `{${symbol.key}}` === token);
-              return <span key={index} className="interactive-card-frame__source-mana" style={{
-                left: `calc(${box.x} * var(--card-frame-source-unit) - 3px)`,
-                top: `calc(${box.y} * var(--card-frame-source-unit) - 3px)`,
-                width: `calc(${box.width} * var(--card-frame-source-unit))`,
-                height: `calc(${box.height} * var(--card-frame-source-unit))`,
-              }}>{originalSymbol?.image ? <img src={originalSymbol.image} alt={ui(token)} /> : <ManaCostIcons cost={token} size="100%" />}</span>;
-            })}
-
-            <div className="interactive-card-frame__art" aria-label={ui(objectName ? `Art for ${objectName}` : "Card art")}>
-              {showImageBackdrop ? (
-                <img
-                  src={imageUrl}
-                  alt=""
-                  aria-hidden="true"
-                  loading="eager"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  data-art-source={artSource}
-                  onError={() => setFailedImageUrl(imageUrl)}
-                />
-              ) : (
-                <div className="interactive-card-frame__art-fallback" aria-hidden="true" />
-              )}
-              {!isMiniatureFrame && displayZoneLine && (
-                <span className="interactive-card-frame__zone">{ui(displayZoneLine)}</span>
-              )}
-              {displayStatsText && !printedStatsAtRules && (
-                <div className="interactive-card-frame__art-stats"><CardFrameSingleLine className="interactive-card-frame__stats-text">{displayStatsText}</CardFrameSingleLine></div>
-              )}
-            </div>
-
-            <div className="interactive-card-frame__type-row">
-              <CardFrameSingleLine className="interactive-card-frame__type">
-                {displayTypeLine || ui("Card")}
-              </CardFrameSingleLine>
-            </div>
-
-            {!isMiniatureFrame && displayTypeLineBadges.length > 0 && (
-              <div className="interactive-card-frame__badges">
-                {displayTypeLineBadges.map((badge) => (
-                  <span key={badge}>{ui(badge)}</span>
-                ))}
-              </div>
-            )}
-
-            <div className="interactive-card-frame__rules-section" data-printed-stats={printedStatsAtRules ? "true" : undefined} data-pt-treatment={printedStatsAtRules ? cardFrameColors?.["--printed-pt-treatment"] : undefined}>
-            <CardFrameRulesBox label={ui(displayObjectName ? `Rules text for ${displayObjectName}` : "Card rules text")}>
-              {displayRulesLines.length > 0 || flavorText ? (
-                <div className="interactive-card-frame__rules-body">
-                  {displayRulesLines.map((line, lineIndex) => {
-                    const lineActions = interactiveRuleLineActions.get(lineIndex) || [];
-                    const action = lineActions.find((candidate) => candidate.mana_payment_available !== false)
-                      || lineActions[0]
-                      || null;
-                    const isActivatedAbility = action != null || activatedRuleLineIndices.has(lineIndex);
-                    const canClickAbility = action != null && typeof onInteractiveAction === "function";
-                    const canActivate = action != null
-                      && !action.payment_pending
-                      && action.mana_payment_available !== false
-                      && typeof onInteractiveAction === "function";
-                    const content = (
-                      <SymbolText
-                        text={line}
-                        className={cn(
-                          "interactive-card-frame__rule-line inspector-oracle-line",
-                          /^\s*[•*-]\s+/.test(String(line || "")) && "inspector-oracle-line-bullet"
-                        )}
-                      />
-                    );
-                    return (
-                      <div key={`${lineIndex}-${line.slice(0, 32)}`} className="interactive-card-frame__rule inspector-ability-section" data-stack-highlighted={highlightedRuleLineIndices.has(lineIndex) ? "true" : undefined}>
-                        {isMiniatureFrame ? content : rulesView.manaGroups.has(lineIndex) ? (
-                          <GroupedManaAbility group={rulesView.manaGroups.get(lineIndex)}
-                            name={displayObjectName} onActivate={onInteractiveAction}
-                            className="interactive-card-frame__ability interactive-card-frame__rule-line inspector-oracle-line" />
-                        ) : isActivatedAbility ? (
-                          <button
-                            type="button"
-                            className="inspector-oracle-line-action interactive-card-frame__ability group w-full text-left"
-                            data-available={canActivate ? "true" : "false"}
-                            aria-disabled={canClickAbility ? undefined : "true"}
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              if (canClickAbility) onInteractiveAction(action);
-                            }}
-                            aria-label={ui(canClickAbility
-                              ? `Activate ${displayObjectName || "card ability"}: ${line}`
-                              : `${displayObjectName || "Card"} ability cannot be activated now: ${line}`)}
-                          >
-                            {content}
-                          </button>
-                        ) : content}
-                      </div>
-                    );
-                  })}
-                  <InspectorFlavorText text={flavorText} className="interactive-card-frame__rule-line" />
-                </div>
-              ) : (
-                <div className="interactive-card-frame__rules-empty">
-                  {t("status.cardDetailsUnavailable")}
-                </div>
-              )}
-            </CardFrameRulesBox>
-
-              {printedStatsAtRules && <div className="interactive-card-frame__art-stats interactive-card-frame__printed-stats"><CardFrameSingleLine className="interactive-card-frame__stats-text">{displayStatsText}</CardFrameSingleLine></div>}
-            </div>
-
-            {!isMiniatureFrame && displayCountersLine && (
-              <footer className="interactive-card-frame__footer">
-                <div className="interactive-card-frame__footer-meta">
-                  {String(displayCountersLine).split("\n").filter(Boolean).map((line, index) => (
-                    <span key={`${line}-${index}`} style={{ display: "block" }}>{ui(line)}</span>
-                  ))}
-                </div>
-              </footer>
-            )}
-          </div>
-        </article>}
-      </CardFrameStage>
-    );
+    const liveCard = {...hoveredStackObject, ...previewCard, ...cardSnapshot, ...details};
+    const faceIndex = cardFrameFaceIndex(liveCard, sourceImageUrl || imageUrl);
+    const display = {name: displayObjectName, type_line_display: displayTypeLine,
+      mana_cost: displayManaCost, oracle_text: displayRulesText, flavor_text: flavorText};
+    const frameCard = {...liveCard, ...display, type_line: typeLine || liveCard.type_line};
+    // The renderer consumes selected face fields for DFCs. Apply live and
+    // localized text to that face without replacing its canonical type.
+    if (Array.isArray(liveCard.card_faces) && !['split','adventure'].includes(liveCard.layout)) {
+      frameCard.card_faces = liveCard.card_faces.map((face,index) => index === faceIndex
+        ? {...face,...display, type_line: frameCard.type_line,
+          power: liveCard.power ?? face.power, toughness: liveCard.toughness ?? face.toughness,
+          loyalty: liveCard.loyalty ?? face.loyalty, defense: liveCard.defense ?? face.defense} : face);
+    }
+    return <div className="absolute inset-0 z-30 pointer-events-auto" data-zone-transition-token={transientPreview?.token || undefined}>
+      <CardFramePresentation card={frameCard} imageUrl={imageUrl} faceIndex={faceIndex}
+        rulesView={isMiniatureFrame ? null : rulesView} onActivate={onInteractiveAction}
+        highlighted={highlightedRuleLineIndices} stats={displayStatsText} counters={displayCountersLine}
+        zone={displayZoneLine} badges={displayTypeLineBadges} onReadyChange={onCardFrameReadyChange}/>
+    </div>;
   }
 
   if (isFullArtMode) {

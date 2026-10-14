@@ -1036,20 +1036,51 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
   return request;
 }
 
+// Set icons (SVG) for the MSE set symbol. Promo and token sets carry their
+// parent set's icon, so resolve through the set object rather than its code.
+const setIconRequests = new Map(), resolvedSetIcons = new Map();
+export function resolveScryfallSetIcon(setCode) {
+  const code = String(setCode || '').trim().toLowerCase();
+  if (!/^[a-z0-9]{2,6}$/.test(code)) return Promise.resolve(null);
+  if (!setIconRequests.has(code)) {
+    setIconRequests.set(code, fetchScryfallApiJson(`https://api.scryfall.com/sets/${code}`)
+      .then(response => response.ok ? response.json() : null)
+      .then(set => set?.icon_svg_uri?.startsWith('https://') ? set.icon_svg_uri : null)
+      .then(url => { resolvedSetIcons.set(code, url); return url; })
+      .catch(() => { setIconRequests.delete(code); return null; }));
+  }
+  return setIconRequests.get(code);
+}
+// Already resolved icons, read synchronously so a frame's first render
+// request is complete. undefined: not resolved yet; null: no icon.
+export function peekScryfallSetIcon(setCode) {
+  return resolvedSetIcons.get(String(setCode || '').trim().toLowerCase());
+}
+
 // Typography follows the displayed printing, including retro reprints.
-const printingMetadataRequests = new Map();
+const printingMetadataRequests = new Map(), resolvedPrintingMetadata = new Map();
+const printingId = imageUrl => String(imageUrl || '').match(/^https:\/\/cards\.scryfall\.io\/[^?#]+\/([0-9a-f-]{36})\.[a-z]+(?:\?.*)?$/i)?.[1];
 export function resolveScryfallPrintingMetadata(imageUrl) {
-  const id = String(imageUrl || '').match(/^https:\/\/cards\.scryfall\.io\/[^?#]+\/([0-9a-f-]{36})\.[a-z]+(?:\?.*)?$/i)?.[1];
+  const id = printingId(imageUrl);
   if (!id) return Promise.resolve(null);
   if (printingMetadataRequests.has(id)) return printingMetadataRequests.get(id).then(printing => printingForImageFace(printing, imageUrl));
   const request = fetchScryfallApiJson(`https://api.scryfall.com/cards/${id}`)
     .then(async response => {
       if (!response.ok) throw new Error('Printing metadata unavailable');
       return response.json();
+    }).then(printing => {
+      resolvedPrintingMetadata.set(id, printing);
+      if (resolvedPrintingMetadata.size > 256) resolvedPrintingMetadata.delete(resolvedPrintingMetadata.keys().next().value);
+      return printing;
     }).catch(() => { printingMetadataRequests.delete(id); return null; });
   printingMetadataRequests.set(id, request);
   if (printingMetadataRequests.size > 96) printingMetadataRequests.delete(printingMetadataRequests.keys().next().value);
   return request.then(printing => printingForImageFace(printing, imageUrl));
+}
+// Already fetched metadata, read synchronously (undefined when not fetched).
+export function peekScryfallPrintingMetadata(imageUrl) {
+  const id = printingId(imageUrl);
+  return id && resolvedPrintingMetadata.has(id) ? printingForImageFace(resolvedPrintingMetadata.get(id), imageUrl) : undefined;
 }
 
 

@@ -1,5 +1,6 @@
 import { MseError } from './document.mjs';
 import { MseFieldValue, boolean, text } from './script-values.mjs';
+import {isChoiceFieldType} from './choice-fields.mjs';
 
 function closeTag(source, start) {
   const openEnd = source.indexOf('>', start);
@@ -79,8 +80,11 @@ export function editorBuiltins() {
     forward_editor: combined,
     primary_choice: scope => {
       const value = scope.get('input'), definition = value instanceof MseFieldValue ? value.reference?.cell.definition : null;
-      if (!definition || !['choice', 'multiple choice', 'boolean'].includes(definition.record.text('type'))) throw new MseError('choice-field-type', 'primary_choice requires a choice field');
-      return definition.choices.find(choice => choice.name === text(value))?.primary || '';
+      if (!definition || !isChoiceFieldType(definition.record.text('type'))) throw new MseError('choice-field-type', 'primary_choice requires a choice field');
+      // Pinned native primary_choice ends with SCRIPT_RETURN(_("")); the
+      // string-literal pointer selects to_script(bool), producing true when
+      // no choice matches. A matched unnamed group still returns a string.
+      return definition.choices.find(choice => choice.name === text(value))?.primary ?? true;
     },
   };
 }

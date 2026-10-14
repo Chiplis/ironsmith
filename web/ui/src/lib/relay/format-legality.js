@@ -1,5 +1,5 @@
 import { indexFormatCatalog, installFormatAliases } from './format-catalog-index.js';
-import { PUBLIC_FORMATS } from './formats.js';
+import { PUBLIC_FORMATS, usesCommanders } from './formats.js';
 let catalog;
 let loading;
 export async function loadFormatCatalog() {
@@ -33,16 +33,19 @@ const key = name => String(name || '').trim().toLowerCase();
 function lookup(cards, name) {
   const exact = cards[key(name)];
   if (exact) return exact;
-  // Deck imports commonly use the front face of double-faced cards.
-  return indexFormatCatalog(cards).get(key(name));
+  // Deck imports commonly use the front face of double-faced cards, and
+  // tournament lists write split cards with a single slash ("Wear / Tear").
+  return indexFormatCatalog(cards).get(key(name)) || cards[key(name).replace(/\s+\/\s+/, ' // ')];
 }
 function copyLimit(card, format) {
   if (/\bBasic\b/.test(card.type) || /deck can have any number of cards named/i.test(card.rules)) return Infinity;
   const match = card.rules.match(/deck can have up to (\w+) cards named/i);
   const number = match && ({ two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 }[match[1]] || Number(match[1]));
-  return number || (format === 'commander' ? 1 : 4);
+  return number || (usesCommanders(format) ? 1 : 4);
 }
-function commanderEligible(card) {
+function commanderEligible(card, format) {
+  // Pauper EDH leads with a creature (or Background) printed at uncommon.
+  if (format === 'paupercommander') return card.pdhCommander === true;
   return /Legendary.*Creature/.test(card.type) || /can be your commander/i.test(card.rules);
 }
 function validPair(a, b) {
@@ -58,9 +61,10 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   if (!rules) return { ready: false, errors: ['Choose a supported public format.'] };
   const errors = [];
   if (!data?.cards) return { ready: false, errors: ['Card legality catalog has not loaded.'] };
-  if (format === 'commander') {
-    if (![1, 2].includes(commanders.length) || deck.length + commanders.length !== 100) errors.push('Commander requires 100 cards including one commander or a legal commander pair.');
-    if (sideboard.length) errors.push('Commander does not use a sideboard.');
+  const commanderFormat = usesCommanders(format);
+  if (commanderFormat) {
+    if (![1, 2].includes(commanders.length) || deck.length + commanders.length !== 100) errors.push(`${rules.label} requires 100 cards including one commander or a legal commander pair.`);
+    if (sideboard.length) errors.push(`${rules.label} does not use a sideboard.`);
   } else {
     if (deck.length < 60) errors.push(`${rules.label} requires at least 60 main-deck cards.`);
     if (sideboard.length > 15) errors.push('Sideboards may contain at most 15 cards.');
@@ -76,17 +80,25 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
     counts.set(card.name, (counts.get(card.name) || 0) + count);
     found.set(card.name, card);
   }
+  // Pauper EDH commanders are uncommons, which its card legality (the 99's
+  // commons-only rule) never covers; their eligibility is checked below.
+  const leaders = commanders.map(name => lookup(data.cards, name));
+  const exempt = new Set(format === 'paupercommander' ? leaders.filter(Boolean).map(card => card.name) : []);
   for (const [name, count] of counts) {
     const card = found.get(name);
     const legal = card.legalities[format];
-    if (!['legal', 'restricted'].includes(legal)) errors.push(`${name} is ${legal === 'banned' ? 'banned' : 'not legal'} in ${rules.label}.`);
+    const allowed = exempt.has(name) ? legal !== 'banned' : ['legal', 'restricted'].includes(legal);
+    if (!allowed) errors.push(`${name} is ${legal === 'banned' ? 'banned' : 'not legal'} in ${rules.label}.`);
     const limit = legal === 'restricted' ? 1 : copyLimit(card, format);
     if (count > limit) errors.push(`${name}: at most ${limit} ${limit === 1 ? 'copy' : 'copies'} across the deck, sideboard, and commanders.`);
   }
-  if (format === 'commander') {
-    const leaders = commanders.map(name => lookup(data.cards, name));
-    if (leaders.length === 1 && leaders[0] && !commanderEligible(leaders[0])) errors.push(`${leaders[0].name} cannot be a commander.`);
-    if (leaders.length === 2 && leaders.every(Boolean) && !validPair(...leaders)) errors.push('These commanders do not form a legal pair.');
+  if (commanderFormat) {
+    if (leaders.length === 1 && leaders[0] && !commanderEligible(leaders[0], format)) errors.push(`${leaders[0].name} cannot be a commander in ${rules.label}.`);
+    if (leaders.length === 2 && leaders.every(Boolean)) {
+      // A partner pair is legendary by construction; Pauper EDH also wants both uncommon.
+      if (format === 'paupercommander') for (const leader of leaders) if (!commanderEligible(leader, format)) errors.push(`${leader.name} cannot be a commander in ${rules.label}.`);
+      if (!validPair(...leaders)) errors.push('These commanders do not form a legal pair.');
+    }
     const colors = new Set(leaders.filter(Boolean).flatMap(c => c.colors));
     for (const card of found.values()) {
       if (card.colors.some(color => !colors.has(color))) errors.push(`${card.name} is outside the commanders’ color identity.`);
@@ -97,6 +109,14 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
     }
   }
   return { ready: errors.length === 0, errors: [...new Set(errors)] };
+}
+// Checks every deck of a saved configuration against each chosen format;
+// `decks` holds { index, deck, commanders, sideboard } card-name lists.
+export function deckFormatProblems(formats, decks, data = catalog) {
+  return formats.flatMap(format => decks.flatMap(({ index, deck, commanders, sideboard }) => {
+    const result = validateFormatDeck(format, deck, commanders, sideboard, data);
+    return result.ready ? [] : [{ format, index, errors: result.errors }];
+  }));
 }
 export function assertFormatMatch(config, data = catalog) {
   const rules = Object.hasOwn(PUBLIC_FORMATS, config.format) ? PUBLIC_FORMATS[config.format] : null;

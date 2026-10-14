@@ -636,3 +636,92 @@ fn later_damage_multiplier_does_not_spend_redirect_capacity_twice() {
     assert!(matches!(game.effect_store.replacement_effects.get_effect(id).unwrap().replacement,
         ReplacementAction::RedirectDamageAmount { amount: 1, .. }));
 }
+
+fn static_redirect(game: &mut GameState, protected: PlayerId, recipient: ObjectId) {
+    // Pariah: "All damage that would be dealt to you is dealt to enchanted creature instead."
+    game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(
+        recipient, protected, DamageToPlayerMatcher::new(PlayerFilter::Specific(protected)),
+        ReplacementAction::Redirect { target: RedirectTarget::ToObject(recipient), which: RedirectWhich::First },
+    ));
+}
+
+#[test]
+fn static_redirect_recipient_spends_its_own_shield_counter() {
+    // CR 122.1c + 616.1f: the redirected event is checked against the new
+    // recipient's prevention effects, including its shield counters.
+    for combat in [false, true] {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = creature(&mut game, alice, "Bolt source");
+        let warden = creature(&mut game, bob, "Sanctuary Warden");
+        game.object_mut(warden).unwrap().counters.insert(CounterType::Shield, 2);
+        static_redirect(&mut game, bob, warden);
+        let mut event = assignment(source, bob, 3);
+        event.is_combat = combat;
+        if combat {
+            event.cause = EventCause::combat_damage(source);
+        }
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        crate::effects::damage::execute_damage_batch(&mut game, &mut ctx, vec![event], None).unwrap();
+        assert_eq!(game.player(bob).unwrap().life, 20);
+        assert_eq!(game.damage_on(warden), 0, "combat: {combat}");
+        assert_eq!(game.counter_count(warden, CounterType::Shield), 1, "combat: {combat}");
+    }
+}
+
+#[test]
+fn static_redirect_of_unpreventable_damage_still_removes_recipient_shield_counter() {
+    // CR 615.12: the shield counter prevents nothing but is still removed.
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = creature(&mut game, alice, "Unpreventable source");
+    let warden = creature(&mut game, bob, "Sanctuary Warden");
+    game.object_mut(warden).unwrap().counters.insert(CounterType::Shield, 2);
+    static_redirect(&mut game, bob, warden);
+    let mut event = assignment(source, bob, 3);
+    event.unpreventable = true;
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    crate::effects::damage::execute_damage_batch(&mut game, &mut ctx, vec![event], None).unwrap();
+    assert_eq!(game.player(bob).unwrap().life, 20);
+    assert_eq!(game.damage_on(warden), 3);
+    assert_eq!(game.counter_count(warden, CounterType::Shield), 1);
+}
+
+#[test]
+fn finite_shield_on_redirect_recipient_is_allocated_across_simultaneous_sources() {
+    // CR 615.7: after Pariah moves both combat damage events onto the shielded
+    // creature, its controller chooses which damage the 3-point shield prevents
+    // (e.g. all of a deathtouch attacker's damage).
+    let mut game = game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vanilla = creature(&mut game, alice, "Vanilla attacker");
+    let deathtouch = creature(&mut game, alice, "Deathtouch attacker");
+    let shielded = creature(&mut game, bob, "Pariah host");
+    let salve = creature(&mut game, bob, "Healing Salve");
+    let shield = game.effect_store.prevention_effects.add_shield(
+        crate::prevention::PreventionShield::prevent_next_n(
+            salve, bob, crate::prevention::PreventionTarget::Permanent(shielded), 3,
+        ),
+    );
+    static_redirect(&mut game, bob, shielded);
+    let mut events = [assignment(vanilla, bob, 2), assignment(deathtouch, bob, 2)];
+    for event in &mut events {
+        event.is_combat = true;
+        event.cause = EventCause::combat_damage(event.source);
+    }
+    // Spend only 1 on the vanilla damage, leaving 2 for the deathtouch damage.
+    let mut dm = AllocateBudget::new("", [1]);
+    let result = process_simultaneous_damage_assignments_with_event_with_dm(
+        &mut game, &events, &mut dm,
+    ).unwrap();
+    assert_eq!(dm.offered, vec![(bob, 1, 2)]);
+    let to_shielded = |result: &ProcessedDamageResult| result.assignments.iter()
+        .filter(|assignment| assignment.target == DamageTarget::Object(shielded))
+        .map(|assignment| assignment.amount).sum::<u32>();
+    assert_eq!(to_shielded(&result[0]), 1);
+    assert_eq!(to_shielded(&result[1]), 0);
+    assert_eq!(game.effect_store.prevention_effects.prevented_by_shield(shield), 3);
+}

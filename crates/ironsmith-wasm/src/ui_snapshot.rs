@@ -106,6 +106,38 @@ struct PermanentObjectView {
     power_toughness_without_counters: Option<String>,
     pt_modified_by_effect: bool,
     counters: Vec<CounterSnapshot>,
+    intrinsic_mana: Vec<&'static str>,
+    card_types: Vec<&'static str>,
+    colors: Vec<&'static str>,
+}
+
+/// Current colors by name ("green"), in WUBRG order; empty when colorless.
+fn color_names(colors: ironsmith::color::ColorSet) -> Vec<&'static str> {
+    ironsmith::color::Color::ALL
+        .into_iter()
+        .filter(|color| colors.contains(*color))
+        .map(|color| color.name())
+        .collect()
+}
+
+/// Colors of the intrinsic mana abilities a land has from its basic land
+/// types (CR 305.6), e.g. a Forest's "{T}: Add {G}.". The UI taps lands for
+/// these from their mana strip rather than from a printed rules line.
+fn intrinsic_mana_colors(card_types: &[CardType], subtypes: &[Subtype]) -> Vec<&'static str> {
+    if !card_types.contains(&CardType::Land) {
+        return Vec::new();
+    }
+    [
+        (Subtype::Plains, "W"),
+        (Subtype::Island, "U"),
+        (Subtype::Swamp, "B"),
+        (Subtype::Mountain, "R"),
+        (Subtype::Forest, "G"),
+    ]
+    .into_iter()
+    .filter(|(subtype, _)| subtypes.contains(subtype))
+    .map(|(_, color)| color)
+    .collect()
 }
 
 const SNAPSHOT_OBJECT_VIEW_CACHE_LIMIT: usize = 8_192;
@@ -897,6 +929,20 @@ impl SnapshotObjectViewCache {
             abilities.join("\n")
         };
         let counter_signature = key.counter_signature.clone();
+        let intrinsic_mana = intrinsic_mana_colors(
+            current_card_types,
+            current
+                .as_ref()
+                .map(|chars| chars.subtypes.as_slice())
+                .unwrap_or(&obj.subtypes),
+        );
+        let card_types = current_card_types.iter().map(|card_type| card_type.name()).collect();
+        let colors = color_names(
+            current
+                .as_ref()
+                .map(|chars| chars.colors)
+                .unwrap_or_else(|| obj.colors()),
+        );
         let view = Arc::new(PermanentObjectView {
             characteristics: current.clone(),
             id: obj.id.0,
@@ -916,6 +962,9 @@ impl SnapshotObjectViewCache {
             power_toughness_without_counters,
             pt_modified_by_effect,
             counters: counter_snapshots_for_object(obj),
+            intrinsic_mana,
+            card_types,
+            colors,
         });
 
         let mut cache = self.battlefield.borrow_mut();
@@ -1951,6 +2000,15 @@ fn grouped_battlefield_for_ids(
             let counters = representative
                 .map(|view| view.counters.clone())
                 .unwrap_or_default();
+            let intrinsic_mana = representative
+                .map(|view| view.intrinsic_mana.clone())
+                .unwrap_or_default();
+            let card_types = representative
+                .map(|view| view.card_types.clone())
+                .unwrap_or_default();
+            let colors = representative
+                .map(|view| view.colors.clone())
+                .unwrap_or_default();
             PermanentSnapshot {
                 view_identity: PermanentViewIdentity(members.clone()),
                 id,
@@ -1972,6 +2030,9 @@ fn grouped_battlefield_for_ids(
                 pt_modified_by_effect: representative.is_some_and(|view| view.pt_modified_by_effect),
                 counter_signature: key.counter_signature.clone(),
                 counters,
+                intrinsic_mana,
+                card_types,
+                colors,
             }
         })
         .collect();
@@ -2216,6 +2277,13 @@ pub(super) struct PermanentSnapshot {
     pub(super) pt_modified_by_effect: bool,
     pub(super) counter_signature: String,
     pub(super) counters: Vec<CounterSnapshot>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(super) intrinsic_mana: Vec<&'static str>,
+    /// Current card types ("land", "creature"), so the UI can tell a land
+    /// creature such as Dryad Arbor apart from its lane.
+    pub(super) card_types: Vec<&'static str>,
+    /// Current colors by name; an empty list means colorless, not unknown.
+    pub(super) colors: Vec<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -5363,6 +5431,66 @@ mod tests {
 
         assert!(bear_snapshot.summoning_sick);
         assert!(bear_snapshot.has_active_aura);
+    }
+
+    #[test]
+    fn battlefield_snapshot_lists_intrinsic_mana_from_basic_land_types() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let land = |id, name: &str, subtypes| {
+            CardBuilder::new(CardId::from_raw(id), name)
+                .card_types(vec![CardType::Land])
+                .subtypes(subtypes)
+                .build()
+        };
+        let savannah = game.create_object_from_card(
+            &land(90_101, "Savannah", vec![Subtype::Forest, Subtype::Plains]),
+            alice,
+            Zone::Battlefield,
+        );
+        let wastes = game.create_object_from_card(&land(90_102, "Wastes", vec![]), alice, Zone::Battlefield);
+        let bear = game.create_object_from_card(&test_bears_card(), alice, Zone::Battlefield);
+        let arbor = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(90_103), "Dryad Arbor")
+                .card_types(vec![CardType::Land, CardType::Creature])
+                .subtypes(vec![Subtype::Forest, Subtype::Dryad])
+                .color_indicator(ironsmith::color::ColorSet::GREEN)
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let intrinsic = |id: ObjectId| {
+            battlefield
+                .iter()
+                .find(|permanent| permanent.member_ids.contains(&id.0))
+                .expect("permanent in battlefield snapshot")
+                .intrinsic_mana
+                .clone()
+        };
+        assert_eq!(intrinsic(savannah), vec!["W", "G"]);
+        assert!(intrinsic(wastes).is_empty());
+        assert!(intrinsic(bear).is_empty());
+
+        let snapshot = |id: ObjectId| {
+            battlefield
+                .iter()
+                .find(|permanent| permanent.member_ids.contains(&id.0))
+                .expect("permanent in battlefield snapshot")
+        };
+        assert_eq!(snapshot(savannah).card_types, vec!["land"]);
+        assert!(snapshot(savannah).colors.is_empty());
+        assert_eq!(snapshot(bear).card_types, vec!["creature"]);
+        assert!(snapshot(bear).colors.is_empty());
+        // A land creature is in the creature lane but still reports its land
+        // type, and its color indicator makes it green.
+        assert_eq!(snapshot(arbor).lane, "creatures");
+        assert_eq!(snapshot(arbor).card_types, vec!["land", "creature"]);
+        assert_eq!(snapshot(arbor).colors, vec!["green"]);
+        assert_eq!(snapshot(arbor).intrinsic_mana, vec!["G"]);
     }
 
     #[test]

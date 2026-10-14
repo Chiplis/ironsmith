@@ -23,6 +23,13 @@ function printableColors(value){
   }
   return Object.keys(colorNames).filter(code=>found.has(code));
 }
+// The colored mana symbols in rules text, reminder text excluded.
+function textManaColors(text){
+  let rules=String(text??'');
+  while(/\([^()]*\)/.test(rules))rules=rules.replace(/\([^()]*\)/g,'');
+  const found=new Set([...rules.matchAll(/\{([^{}]+)\}/g)].flatMap(match=>match[1].toUpperCase().split('/')));
+  return Object.keys(colorNames).filter(code=>found.has(code));
+}
 function frameColor(colors,type){
   const choices=colors.map(code=>colorNames[code]);
   if(/\bArtifact\b/.test(type))choices.push('artifact');
@@ -33,14 +40,17 @@ function frameColor(colors,type){
 
 function sagaChapters(rules){
   const roman=['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
-  const chapters=[],preamble=[];
+  const chapters=[],preamble=[],abilities=[];
   for(const line of rules.replace(/\r\n?/g,'\n').split('\n')){
     const match=/^\s*([IVXLCDM]+(?:\s*,\s*[IVXLCDM]+)*)\s+[—–-]\s+(.*)$/.exec(line);
     if(match){
       const labels=match[1].split(/\s*,\s*/).map(label=>roman.indexOf(label)+1);
       if(labels.some(label=>label===0))throw new MseError('engine-saga','Unsupported Saga chapter numeral');
       chapters.push({labels,lines:[match[2]]});
-    }else if(chapters.length)chapters.at(-1).lines.push(line);
+    // Only modal bullets continue a chapter. Any other line is an ability of
+    // the permanent itself, such as one granted by another card.
+    }else if(chapters.length&&/^\s*•/.test(line))chapters.at(-1).lines.push(line);
+    else if(chapters.length)abilities.push(line);
     else preamble.push(line);
   }
   if(!chapters.length)return null;
@@ -51,7 +61,38 @@ function sagaChapters(rules){
     snaps[label-1]=i+1;
   }});
   if(Array.from(snaps).some(value=>value===undefined))throw new MseError('engine-saga','Saga chapter labels must form a complete sequence');
-  return {chapters,preamble:preamble.join('\n'),snaps:snaps.join(',')};
+  return {chapters,preamble:preamble.join('\n'),abilities,snaps:snaps.join(',')};
+}
+
+// m15 Saga geometry: the reminder box spans y 60-155 above the chapter
+// column, which ends at 437. Its boxes split that space evenly, which suits
+// printed Sagas but crushes a reminder box that also holds gained abilities.
+// Size every box to an estimate of its wrapped lines instead.
+const SAGA_TOP=60,SAGA_COLUMN=155,SAGA_BOTTOM=437,SAGA_MIN_CHAPTER=42;
+function estimatedLines(text,charsPerLine){
+  return text.split('\n').reduce((total,paragraph)=>{
+    const length=paragraph.replace(/\{[^{}]+\}/g,'xx').length;
+    return total+Math.max(1,Math.ceil(length/charsPerLine));
+  },0);
+}
+function sagaBoxStyling(top,chapters){
+  const weight=(text,chars)=>estimatedLines(text,chars)*16+12;
+  const chapterWeights=chapters.map(text=>weight(text,22)),cells=chapters.length;
+  const total=weight(top,24)+chapterWeights.reduce((a,b)=>a+b,0);
+  const column=Math.min(SAGA_BOTTOM-cells*SAGA_MIN_CHAPTER,Math.round(SAGA_TOP+weight(top,24)*(SAGA_BOTTOM-SAGA_TOP)/total));
+  // The template truncates its even share, so chapters fill cells*base.
+  const base=Math.trunc((SAGA_BOTTOM-column)/cells),available=cells*base;
+  const chapterTotal=chapterWeights.reduce((a,b)=>a+b,0);
+  const heights=chapterWeights.map(value=>value*available/chapterTotal);
+  // Keep room for each chapter's numeral badge, taken from the largest box.
+  for(let i=0;i<cells;i++)if(heights[i]<SAGA_MIN_CHAPTER){
+    const largest=heights.indexOf(Math.max(...heights));
+    heights[largest]-=SAGA_MIN_CHAPTER-heights[i];heights[i]=SAGA_MIN_CHAPTER;
+  }
+  const offsets=[];
+  let bottom=0;
+  for(let x=1;x<cells;x++){bottom+=heights[x-1];offsets.push(Math.round(bottom)-x*base);}
+  return {reminder_text_offset:String(column-SAGA_COLUMN),chapter_divider_offsets:offsets.map(offset=>offset+',').join('')};
 }
 
 // Template choice and native style overrides belong to the caller. This layer
@@ -75,7 +116,20 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
     const indicator=printableColors(face.color_indicator);
     if(indicator!==null)put('indicator',frameColor(indicator,''));
     const signature=String(face.characteristic_signature??'').match(/^colors:([^\n]*)/m);
-    const colors=printableColors(signature?signature[1]:face.colors)??indicator;
+    let colors=printableColors(signature?signature[1]:face.colors)??indicator;
+    // A nonbasic land with no colors of its own (Dryad Arbor when the
+    // snapshot drops its indicator) takes its frame from its color identity
+    // plus the intrinsic mana of its current basic land types (Yavimaya makes
+    // itself a Forest); the template already infers basics. Identity is a
+    // whole-card value, so only single-faced snapshots use it. Live snapshots
+    // omit identity, so intrinsic mana joins the symbols in the rules text
+    // instead, as the template would infer them (Fiery Islet stays U/R).
+    const listed=value=>value==null?[]:Array.isArray(value)?value:String(value).split(/[,\s]+/);
+    const intrinsic=face===snapshot?listed(snapshot.intrinsic_mana):[];
+    const printedIdentity=face===snapshot?snapshot.color_identity??snapshot.colorIdentity:null;
+    const identity=printedIdentity==null&&!intrinsic.length?null
+      :printableColors([...(printedIdentity==null?textManaColors(face.oracle_text):listed(printedIdentity)),...intrinsic]);
+    if(/\bLand\b/.test(canonicalType)&&!/\bBasic\b/.test(canonicalType)&&!colors?.length&&identity?.length)colors=identity;
     const costColors=Object.keys(colorNames).filter(code=>String(face.mana_cost??'').includes(code));
     // Preserve template-specific hybrid/land/artifact inference when its mana
     // colors agree. Explicit live colors and indicators can override that
@@ -104,9 +158,13 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
       const saga=sagaChapters(rules);
       if(saga){
         saga.chapters.forEach((chapter,index)=>{card[`level_${i*8+index+1}_text`]=engineRulesToMse(chapter.lines.join('\n'));});
-        if(saga.preamble)put('chapter_text',engineRulesToMse(saga.preamble));
+        const top=[saga.preamble,...saga.abilities].filter(Boolean).join('\n');
+        if(top)put('chapter_text',engineRulesToMse(top));
         inferredStyling[`chapter_textboxes${suffix}`]=['one','two','three','four','five','six','seven','eight'][saga.chapters.length-1];
         inferredStyling[`snap_chapter_to_box${suffix}`]=saga.snaps;
+        // Saga creatures use a different column layout.
+        if(saga.abilities.length&&!/\bCreature\b/.test(String(face.type_line??typeLine)))
+          for(const [key,value] of Object.entries(sagaBoxStyling(top,saga.chapters.map(chapter=>chapter.lines.join('\n')))))inferredStyling[key+suffix]=value;
       }
     }
     put('rule_text',engineRulesToMse(renderedRules));

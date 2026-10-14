@@ -1,5 +1,6 @@
 import { MseError } from './document.mjs';
 import {formatMseDateTime} from './date-format.mjs';
+import {formatMseNumberOrText} from './number-format.mjs';
 import {MseDateTime} from './script-values.mjs';
 import { sortMseText } from './sort-text.mjs';
 import { regexBuiltins } from './regex-builtins.mjs';
@@ -31,13 +32,7 @@ function convertedNumber(value, integer = false) {
 
 function formatValue(value,format){
   if(force(value) instanceof MseDateTime)return formatMseDateTime(force(value),format);
-  const spec=format.replaceAll('%','');
-  const fixed=/^(?:\.(\d+))?f$/.exec(spec);
-  if(fixed)return number(value).toFixed(Number(fixed[1]??6));
-  if(spec==='x'||spec==='X'){const output=number(value,true).toString(16);return spec==='X'?output.toUpperCase():output;}
-  if(spec==='s')return text(value);
-  if(spec==='d'||spec==='i')return String(number(value,true));
-  throw new MseError('script-format',`Unsupported format ${format}`);
+  return formatMseNumberOrText(value,format);
 }
 
 export function coreBuiltins({ spellcheck, spellcheckEnabled } = {}) {
@@ -109,6 +104,5 @@ export function coreBuiltins({ spellcheck, spellcheckEnabled } = {}) {
   })) builtins[name] = scope => new MseReal(fn(number(input(scope))));
   builtins.pow = scope => new MseReal(Math.pow(number(input(scope)), number(scope.get('exponent'))));
   builtins.sort_rule = scope => new MseFunction('bound', new MseFunction('native', builtins.sort_text), scope.has('order') ? [['order', scope.get('order')]] : []);
-  builtins.to_text = scope => text(input(scope)).replace(/<[^>]*>/g, '').replaceAll('\u0001', '<');
   return builtins;
 }

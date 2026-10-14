@@ -1482,7 +1482,7 @@ function OrderingDecision({
             <div
               className="decision-ordering-options-scroll"
               role="region"
-              aria-label="Ordering options"
+              aria-label={ui("Ordering options")}
               tabIndex={0}
             >
               {standardRows}

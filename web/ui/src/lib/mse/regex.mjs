@@ -20,7 +20,22 @@ const collatingNames = [
   ...'left-curly-bracket vertical-line right-curly-bracket tilde DEL'.split(' '),
 ];
 
+// Script builtins such as match and replace recompile their pattern on every
+// call. Translation is pure, so reuse stateless expressions (no g/y flags).
+const compiled = new Map(), COMPILED_LIMIT = 1024;
 export function compileMseRegex(pattern, extraFlags = '') {
+  const key = text(pattern) + '\0' + extraFlags;
+  const cached = compiled.get(key);
+  if (cached) return cached;
+  const expression = translateMseRegex(pattern, extraFlags);
+  if (!/[gy]/.test(expression.flags)) {
+    if (compiled.size >= COMPILED_LIMIT) compiled.delete(compiled.keys().next().value);
+    compiled.set(key, expression);
+  }
+  return expression;
+}
+
+function translateMseRegex(pattern, extraFlags) {
   const original = text(pattern);
   let source = original, extended = false;
   // Boost's default Perl syntax treats ^/$ as line anchors and dot as matching

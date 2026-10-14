@@ -50,11 +50,15 @@
   height: var(--arena-name-height); padding: 0 3px;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   border-radius: 2px 2px 0 0; border-bottom: 1px solid #171a1e;
-  background: linear-gradient(#eee8d9, var(--arena-frame));
+  /* Tinted by the frame color across the whole bar, light enough for dark text. */
+  background: linear-gradient(color-mix(in srgb, var(--arena-frame) 18%, #f4eedf), color-mix(in srgb, var(--arena-frame) 48%, #e8e0cb));
   color: #111318; text-shadow: none;
-  font: 700 clamp(8px, calc(var(--bf-card-height, 90px) * .105), 12px)/var(--arena-name-height) Georgia, serif;
+  font: 700 clamp(8px, calc(var(--bf-card-height, 90px) * .098), 11.5px)/var(--arena-name-height) Georgia, serif;
+  letter-spacing: .01em;
 }
-.battlefield-artwork-card .arena-permanent-art { top: calc(var(--arena-name-height) + 2px); }
+/* The art sits flush under the name bar and spans the same width as the bars,
+   so every seam is the same 1px frame line. */
+.battlefield-artwork-card .arena-permanent-art { top: calc(var(--arena-name-height) + 1px); left: 1px; right: 1px; }
 /* Token silhouettes have an arched crown, distinct from printed card tiles. */
 .battlefield-artwork-card .arena-permanent[data-token] { border-radius: 48% 48% 4px 4px; }
 .battlefield-artwork-card .arena-permanent[data-token] .arena-permanent-art { top: 2px; }
@@ -71,20 +75,58 @@
   top: calc(var(--arena-name-height) + 2px);
 }
 
-.battlefield-artwork-card { --mana-strip-height: clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px); }
+.battlefield-artwork-card {
+  --mana-strip-height: clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px);
+  /* Tall enough that a tap button's mana symbol always fits inside it. */
+  --mana-strip-open-height: max(14px, calc(var(--mana-strip-height) * 3));
+}
 /* Add a footer below the original art tile instead of taking height from it. */
 .game-card.field-card.battlefield-small-land:has(.arena-land-mana-strip) {
   height: calc(var(--land-tile-size) + var(--mana-strip-height) + 3px) !important;
   min-height: calc(var(--land-tile-size) + var(--mana-strip-height) + 3px) !important;
 }
-.battlefield-artwork-card .arena-permanent[data-mana-strip="true"] .arena-permanent-art { bottom: calc(var(--mana-strip-height) + 5px); }
+.battlefield-artwork-card .arena-permanent[data-mana-strip="true"] .arena-permanent-art { bottom: calc(var(--mana-strip-height) + 1px); }
 .arena-land-mana-strip {
-  position: absolute; bottom: 1px; left: 1px; right: 1px;
+  position: absolute; top: calc(100% - 1px - var(--mana-strip-height)); left: 1px; right: 1px;
   height: var(--mana-strip-height); display: flex;
   border: 1px solid #151a20; border-radius: 0 0 2px 2px; overflow: hidden; pointer-events: none;
 }
 .arena-land-mana-strip > span { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; background-image: linear-gradient(#ffffff24, transparent 40%, #00000038); box-shadow: inset 0 1px #ffffff26; }
-.arena-land-mana-strip > span + span { border-left: 1px solid #151a2055; }
+.arena-land-mana-strip > :is(span, button) + :is(span, button) { border-left: 1px solid #151a2055; }
+/* Clicking a land opens its strip to three times its height, one tap button per color.
+   The strip is anchored by its top edge, so it grows out past the card's bottom instead of over the art. */
+.arena-land-mana-strip { transition: height .14s ease-out; }
+.arena-land-mana-strip[data-open="true"] {
+  height: var(--mana-strip-open-height, calc(var(--mana-strip-height, 6px) * 3)); pointer-events: auto; z-index: 6;
+  box-shadow: 0 3px 6px #0008;
+}
+/* On an art tile the open drawer continues the card's frame: it lines up with
+   the outer edge of the side borders, carries them down in the frame color and
+   rounds only where it ends, with the usual 1px dark seam under the art. */
+.battlefield-artwork-card .arena-permanent[data-mana-strip="true"] > .arena-land-mana-strip[data-open="true"] {
+  left: -1px; right: -1px;
+  border: 1px solid var(--arena-frame, #151a20); border-top: 0;
+  border-radius: 0 0 3px 3px;
+}
+/* The seam sits on the buttons, so it never runs over the side borders. */
+.battlefield-artwork-card .arena-permanent[data-mana-strip="true"] > .arena-land-mana-strip[data-open="true"] > button {
+  box-shadow: inset 0 1px #151a20, inset 0 2px #ffffff26;
+}
+.battlefield-artwork-card .arena-permanent[data-mana-strip="true"]:has(> .arena-land-mana-strip[data-open="true"]) {
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.arena-permanent:has(> .arena-land-mana-strip[data-open="true"]) { overflow: visible; }
+.game-card:has(.arena-land-mana-strip[data-open="true"]) { z-index: 30; }
+.arena-land-mana-strip > button {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; cursor: pointer;
+  background-image: linear-gradient(#ffffff24, transparent 40%, #00000038); box-shadow: inset 0 1px #ffffff26; transition: filter .1s;
+}
+.arena-land-mana-strip > button:hover { filter: brightness(1.18); }
+.arena-land-mana-strip > button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.arena-land-mana-strip > button img { width: auto; height: calc(100% - 4px); max-height: 18px; aspect-ratio: 1; filter: drop-shadow(0 1px 1px #000a); }
+/* Cards without an art tile have no strip; the open one overlays their bottom edge. */
+.arena-land-mana-strip[data-overlay="true"] { --mana-strip-height: clamp(6px, calc(var(--bf-card-height, 96px) * .07), 9px); top: calc(100% - 2px - var(--mana-strip-height)); left: 2px; right: 2px; }
+@media (prefers-reduced-motion: reduce) { .arena-land-mana-strip { transition: none; } }
 .arena-permanent[data-mana-strip="true"] :is(.arena-permanent-stat, .arena-permanent-pt) { bottom: calc(var(--mana-strip-height) + 3px); }
 
 /* Share the full-card badge styling; only its placement changes on art tiles. */
@@ -124,4 +166,16 @@
 .game-card.battlefield-artwork-card:has(.arena-permanent:is([data-kind="saga"], [data-kind="planeswalker"], [data-kind="battle"])) .battlefield-group-stack-layer {
   inset: var(--arena-face-inset);
   border-radius: var(--arena-face-radius);
+}
+
+/* A crisp ring with a faint halo marks the hovered or inspected artwork tile
+   without blurring its frame edge; an open mana drawer is inside the ring. */
+.game-card.battlefield-arena-card > .card-inspector-source-glow {
+  box-shadow: 0 0 0 1.5px rgba(var(--inspected-object-rgb), 0.85),
+    0 0 6px 1px rgba(var(--inspected-object-rgb), 0.3);
+}
+.game-card.battlefield-artwork-card:has(.arena-land-mana-strip[data-open="true"]:not([data-overlay="true"])) > .card-inspector-source-glow {
+  /* The glow's 2px inset, less the drawer's overhang: it starts 2px above the
+     tile's bottom edge (border plus inset) and is the open height tall. */
+  bottom: calc(4px - (var(--mana-strip-open-height) - var(--mana-strip-height)));
 }
