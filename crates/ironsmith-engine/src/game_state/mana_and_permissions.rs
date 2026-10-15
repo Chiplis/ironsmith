@@ -3703,7 +3703,7 @@ impl GameState {
         update: impl FnOnce(&mut Player) -> R,
     ) -> Option<R> {
         let retain =
-            self.continuous_state_is_clean() && !self.continuous_effects_are_tap_sensitive();
+            self.continuous_state_is_clean() && !self.runtime_cache.derived_state_read_mana.get();
         if !retain {
             self.mark_continuous_state_dirty();
         }

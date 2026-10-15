@@ -1179,7 +1179,8 @@ pub(crate) fn resolve_wide(
             let total = player_ids
                 .iter()
                 .filter_map(|player_id| game.player(*player_id))
-                .map(|player| player.mana_pool.total_wide() as i64)
+                .filter_map(|player| game.player_mana_pool(player.id))
+                .map(|pool| pool.total_wide() as i64)
                 .sum::<i64>();
             Ok(i64::from(total))
         }

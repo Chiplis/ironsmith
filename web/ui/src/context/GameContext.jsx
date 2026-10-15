@@ -55,7 +55,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { createPregameFollower, hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
+import { createPregameFollower, emptyPregameAction, hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
 
 import { GameContext } from "./GameContext.shared";
@@ -1305,6 +1305,16 @@ export function GameProvider({ children }) {
       for (let i = 0; i < maxSettleIterations; i++) {
         while (st && st.decision) {
           const pregameTarget = pregameFollowerRef.current(st);
+          const emptyPregame = emptyPregameAction(st);
+          if (emptyPregame) {
+            if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
+            const decisionBefore = summarizeDecision(st.decision);
+            st = await dispatchForAutomation(currentGame, priorityCommandForAction(emptyPregame));
+            autoPasses += 1;
+            trace.push({ kind: "empty_pregame", decision_before: decisionBefore,
+              decision_after: summarizeDecision(st?.decision || null) });
+            continue;
+          }
           const followTarget = typeof currentGame.setPerspective === "function"
             ? pregameTarget ?? (autoPassEnabled && followActivePlayerRef.current ? hotseatFollowTarget(st) : null)
             : null;

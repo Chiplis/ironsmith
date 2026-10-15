@@ -8,6 +8,9 @@
 //!
 //!   cargo build --release -p ironsmith-tools --bin probe_tap_differential
 //!   probe_tap_differential <out_dir> [limit]
+//!
+//! Set PROBE_MANA=1 to exercise mana credits (each color and colorless,
+//! including a second credit on an already warm pool) and losses instead.
 
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::game_state::{GameState, Phase};
@@ -162,6 +165,13 @@ struct Outcome {
     mismatch: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Mutation {
+    Tap(ObjectId, bool),
+    Credit(ObjectId, PlayerId, ironsmith::mana::ManaSymbol),
+    Empty(ObjectId, PlayerId),
+}
+
 fn refresh(game: &mut GameState) -> Result<(), String> {
     for _ in 0..3 {
         game.refresh_continuous_state()
@@ -202,27 +212,50 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
         let mut full_state = full_state;
         refresh(&mut full_state)?;
         if warm != fingerprint(&full_state) {
-            return Err("warm_state_differs_before_any_tap".into());
+            return Err("warm_state_differs_before_any_mutation".into());
         }
     }
     // Tap each in turn, then untap each in turn: covers tapped sources,
     // tapped recipients, and counts of tapped permanents in both directions.
-    let steps: Vec<(ObjectId, bool)> = order
-        .iter()
-        .map(|&id| (id, true))
-        .chain(order.iter().map(|&id| (id, false)))
-        .collect();
-    for (id, tap) in steps {
-        if game.object(id).is_none_or(|object| object.zone != Zone::Battlefield) {
-            continue;
+    let steps: Vec<Mutation> = if std::env::var_os("PROBE_MANA").is_some() {
+        use ironsmith::mana::ManaSymbol::*;
+        let mut steps = Vec::new();
+        for _ in 0..2 {
+            for (source, player) in [(order[1], p0), (order[4], p1)] {
+                for symbol in [White, Blue, Black, Red, Green, Colorless] {
+                    steps.push(Mutation::Credit(source, player, symbol));
+                }
+            }
         }
+        steps.extend([Mutation::Empty(order[1], p0), Mutation::Empty(order[4], p1)]);
+        steps
+    } else {
+        order.iter().map(|&id| Mutation::Tap(id, true))
+            .chain(order.iter().map(|&id| Mutation::Tap(id, false))).collect()
+    };
+    for step in steps {
         // Warm every cached result the fast path must keep correct.
         let _ = fingerprint(&game);
         let before = game.work_counters();
-        if tap {
-            game.tap(id);
-        } else {
-            game.untap(id);
+        match step {
+            Mutation::Tap(id, tap) => {
+                if game.object(id).is_none_or(|object| object.zone != Zone::Battlefield) {
+                    continue;
+                }
+                if tap { game.tap(id); } else { game.untap(id); }
+            }
+            Mutation::Credit(source, player, symbol) => {
+                use ironsmith::effects::{EffectExecutor, ExecutionContext, AddManaEffect};
+                AddManaEffect::you(vec![symbol])
+                    .execute(&mut game, &mut ExecutionContext::new_default(source, player))
+                    .map_err(|error| format!("mutation_err:{error:?}"))?;
+            }
+            Mutation::Empty(source, player) => {
+                use ironsmith::effects::{EffectExecutor, ExecutionContext, EmptyManaPoolEffect};
+                EmptyManaPoolEffect::new(ironsmith::target::PlayerFilter::You)
+                    .execute(&mut game, &mut ExecutionContext::new_default(source, player))
+                    .map_err(|error| format!("mutation_err:{error:?}"))?;
+            }
         }
         let after = game.work_counters();
         if after.continuous_global_invalidations > before.continuous_global_invalidations {
@@ -243,9 +276,7 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
                 .map(|o| o.name.to_string())
                 .unwrap_or_else(|| "<tracker>".into());
             outcome.mismatch = Some(format!(
-                "{} {:?} → object {name}: {}",
-                if tap { "tap" } else { "untap" },
-                game.object(id).map(|o| o.name.to_string()),
+                "{step:?} → object {name}: {}",
                 first_difference(a, b)
             ));
             return Ok(outcome);
@@ -359,7 +390,7 @@ fn main() {
     }
     println!("cards: {counts:?}");
     println!(
-        "tap/untap steps: local={local} global={global} ({:.1}% local); cards whose every step stayed local: {all_local_cards}",
+        "mutation steps: local={local} global={global} ({:.1}% local); cards whose every step stayed local: {all_local_cards}",
         100.0 * local as f64 / (local + global).max(1) as f64
     );
     for (name, status, _, _, detail) in rows.iter().filter(|r| r.1 == "MISMATCH").take(40) {

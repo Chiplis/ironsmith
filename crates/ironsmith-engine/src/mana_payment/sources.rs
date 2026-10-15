@@ -838,7 +838,8 @@ mod tests {
             game.with_player_mana_mut(request.payer, |player| {
                 player.mana_pool.add(ManaSymbol::Green, 1);
             });
-            assert!(!game.continuous_state_is_clean());
+            assert!(game.continuous_state_is_clean(),
+                "the donor depends on tapping, not a subsequent mana-only credit");
         }
     }
 

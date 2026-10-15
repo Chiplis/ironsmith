@@ -2572,7 +2572,8 @@ fn resolve_filter_comparison_rhs_value(
                 .filter(|player| {
                     player.is_in_game() && player_filter.matches_player(player.id, ctx)
                 })
-                .map(|player| player.mana_pool.total_wide() as i64)
+                .filter_map(|player| game.player_mana_pool(player.id))
+                .map(|pool| pool.total_wide() as i64)
                 .sum(),
         ),
         Value::Devotion { player, color } => Some(

@@ -3272,10 +3272,11 @@ pub(crate) fn resolve_anthem_count_expression_checked(
                     &context,
                 )
         })
-        .map(|player| {
+        .filter_map(|player| game.player_mana_pool(player.id))
+        .map(|pool| {
             symbol.map_or_else(
-                || u128::from(player.mana_pool.total_wide()),
-                |symbol| u128::from(player.mana_pool.amount(symbol)),
+                || u128::from(pool.total_wide()),
+                |symbol| u128::from(pool.amount(symbol)),
             )
         })
         .sum();
@@ -3501,7 +3502,8 @@ pub(crate) fn resolve_anthem_count_expression(
                             &filter_ctx,
                         )
                 })
-                .map(|player| u128::from(player.mana_pool.total_wide()))
+                .filter_map(|player| game.player_mana_pool(player.id))
+                .map(|pool| u128::from(pool.total_wide()))
                 .sum::<u128>(),
         )
         .expect("checked mana scalar domain"),
@@ -3520,7 +3522,8 @@ pub(crate) fn resolve_anthem_count_expression(
                             &filter_ctx,
                         )
                 })
-                .map(|player| u128::from(player.mana_pool.amount(*symbol)))
+                .filter_map(|player| game.player_mana_pool(player.id))
+                .map(|pool| u128::from(pool.amount(*symbol)))
                 .sum::<u128>(),
         )
         .expect("checked mana scalar domain"),

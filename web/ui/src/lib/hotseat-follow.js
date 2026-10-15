@@ -21,6 +21,17 @@ function isPregameDecision(decision) {
     PREGAME_ACTION_KINDS.has(action?.kind) || PREGAME_ACTION_KINDS.has(action?.action_ref?.kind));
 }
 
+// An opening-action step with only Continue/Begin has no choice to make.
+// Mulligans and card actions must still be presented to their owner.
+export function emptyPregameAction(state) {
+  if (state?.game_over || state?.decision?.kind !== "priority") return null;
+  const actions = (state.decision.actions || []).filter(action => action.legal !== false);
+  if (actions.length !== 1) return null;
+  const action = actions[0];
+  const kind = action.action_ref?.kind ?? action.kind;
+  return kind === "continue_pregame" || kind === "begin_game" ? action : null;
+}
+
 // Pregame belongs to each deciding seat even when turn-following is disabled.
 // Keep following its nested choices until normal priority starts, then restore
 // the starting seat once and leave subsequent seat selection alone.
@@ -30,7 +41,7 @@ export function createPregameFollower() {
     if (!state || state.game_over) { pending = false; return null; }
     const decision = state.decision;
     if (isPregameDecision(decision)) pending = true;
-    if (!pending || !decision) return null;
+    if (!pending || !decision || emptyPregameAction(state)) return null;
     let player = decision.player;
     if (decision.kind === "priority" && !isPregameDecision(decision)) {
       player = state.active_player;
