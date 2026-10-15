@@ -2039,6 +2039,16 @@ impl GrantRegistry {
                     }
                     return None;
                 };
+                // Combined off-stack split characteristics include the other
+                // half's text. Its grants are collected below with the face's
+                // own identity; treating them as this face's printed slots
+                // would also authorize casting the wrong half.
+                if linked_half.is_some()
+                    && matches!(&origin, crate::continuous::AbilityOrigin::Printed(slot)
+                        if *slot >= source.abilities.len())
+                {
+                    return None;
+                }
                 let printed_face = matches!(&origin, crate::continuous::AbilityOrigin::Printed(_)).then_some(source.card).flatten();
                 Some((ability, None, GrantPermissionIdentity::Static { source: source_id, origin, printed_face }))
             });

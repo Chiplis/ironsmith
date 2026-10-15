@@ -528,6 +528,8 @@ fn parse_copy_name_exception_lexed<'a>(
             primitives::kw("and").void(),
             primitives::kw("it's").void(),
             primitives::kw("it’s").void(),
+            primitives::phrase(&["it", "s"]).void(),
+            primitives::phrase(&["it", "is"]).void(),
             primitives::sentence_end(),
         ))),
     )

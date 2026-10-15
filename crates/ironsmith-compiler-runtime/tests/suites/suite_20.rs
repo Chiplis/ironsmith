@@ -53,5 +53,8 @@ mod r#turned_face_up_replacement_programs;
 #[path = "../variable_suspend_bodies.rs"]
 mod r#variable_suspend_bodies;
 
+#[path = "../wymi_regressions.rs"]
+mod r#wymi_regressions;
+
 #[path = "../zone_shuffle_references.rs"]
 mod r#zone_shuffle_references;

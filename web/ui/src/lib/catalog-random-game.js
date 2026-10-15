@@ -59,7 +59,7 @@ export async function buildCatalogRandomGame({
   playerNames = ['Alice', 'Bob'], startingLife = 20, minScore = 0.96,
   format = 'modern', seatCount = 2, asMatch = false,
   rng = Math.random, fetchImpl = globalThis.fetch,
-  signal, onProgress,
+  signal, onProgress, excludedCards = new Set(),
 } = {}) {
   const target = Math.max(1, Math.floor(seatCount) || 2);
   const [catalog, index] = await Promise.all([
@@ -76,6 +76,7 @@ export async function buildCatalogRandomGame({
       const deck = result.value;
       if (!validateDeckCatalogEntry(deck, { format }).valid) continue;
       const inventory = [...(deck.mainboard || []), ...(deck.commander || [])];
+      if (inventory.some(card => excludedCards.has(key(card.name)))) continue;
       if (!deck.mainboard?.length || inventory.some(card => !Number.isInteger(card.count) || card.count <= 0)) continue;
       if (!inventory.every(card => {
         const record = supported.get(key(card.name));

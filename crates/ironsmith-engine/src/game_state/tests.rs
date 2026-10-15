@@ -386,7 +386,7 @@ fn cloned_state_cows_hot_battlefield_maps() {
 }
 
 #[test]
-fn summoning_sickness_change_stays_local_for_granted_static_abilities() {
+fn summoning_sickness_change_rebuilds_continuous_state() {
     use crate::ability::Ability;
     use crate::card::PowerToughness;
     use crate::static_abilities::{StaticAbility, StaticAbilityId};
@@ -417,10 +417,11 @@ fn summoning_sickness_change_stays_local_for_granted_static_abilities() {
 
     game.remove_summoning_sickness(bear_id);
 
-    assert!(
-        game.continuous_state_is_clean(),
-        "granted static abilities alone should not force global continuous-state invalidation"
-    );
+    // No per-object recompute: a full layer pass is the only derivation that
+    // stays correct when objects' characteristics depend on each other.
+    assert!(!game.continuous_state_is_clean());
+    game.refresh_continuous_state();
+    assert!(game.current_has_static_ability_id(bear_id, StaticAbilityId::Haste));
 }
 
 #[test]

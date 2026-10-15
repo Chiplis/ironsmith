@@ -1105,7 +1105,17 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
         let mut token = create.token.clone();
         token.card.power_toughness = None;
         blueprint = describe_token_blueprint_with_name_role(&token, ability_presentation, create.text_roles.as_ref());
-        blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
+        let size = match (power.unhinted(), toughness.unhinted()) {
+            (Value::X, Value::X) => Some("X/X".to_string()),
+            (Value::X, Value::Fixed(n)) => Some(format!("X/{n}")),
+            (Value::Fixed(n), Value::X) => Some(format!("{n}/X")),
+            _ => None,
+        };
+        if let Some(size) = size {
+            blueprint = format!("{size} {blueprint}");
+        } else {
+            blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
+        }
     }
     blueprint
 }
@@ -1174,7 +1184,11 @@ fn describe_token_blueprint_with_name_role(
         && !card.name.trim().is_empty()
         && !card.name.eq_ignore_ascii_case("token")
     {
-        return format!("{} token", card.name);
+        return if card.name.ends_with(" Role") {
+            format!("{} token", card.name)
+        } else {
+            format!("{} Role token", card.name)
+        };
     }
     let mut parts = Vec::new();
     let mut creature_name_prefix: Option<String> = None;

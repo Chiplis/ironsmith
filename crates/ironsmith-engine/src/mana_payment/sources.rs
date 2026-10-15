@@ -817,6 +817,13 @@ mod tests {
             let (mut game, request) = fixture(
                 TotalCost::from_cost(Cost::tap()), vec![ManaSymbol::Green], vec![],
             );
+            // A recipient whose copied abilities are derived (and cached) by
+            // reading which donors are tapped.
+            let recipient = CardBuilder::new(CardId::new(), "Copy recipient")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .build();
+            let recipient = game.create_object_from_card(&recipient, request.payer, Zone::Battlefield);
             game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
                 request.source, request.payer, EffectTarget::Filter(ObjectFilter::creature()),
                 modification,
@@ -824,6 +831,7 @@ mod tests {
             game.refresh_continuous_state().unwrap();
             assert!(game.continuous_state_is_clean());
             assert!(game.continuous_effects_are_tap_sensitive());
+            assert!(game.current_characteristics(recipient).is_some());
             game.tap(request.source);
             assert!(!game.continuous_state_is_clean(), "tapping must invalidate donor-dependent abilities");
             game.refresh_continuous_state().unwrap();

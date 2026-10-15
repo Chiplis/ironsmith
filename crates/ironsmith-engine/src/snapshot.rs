@@ -972,7 +972,7 @@ impl ObjectSnapshot {
         game: &crate::game_state::GameState,
         effects: &[ContinuousEffect],
     ) -> Result<Self, crate::effects::ExecutionError> {
-        let calculated = game.calculated_characteristics_with_effects(obj.id, effects);
+        let calculated = game.calculated_characteristics_for_capture(obj.id, effects);
         Self::try_from_object_with_known_characteristics_and_effects(
             obj, game, calculated.as_ref(), effects,
         )

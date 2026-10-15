@@ -52,6 +52,9 @@ const ABILITY_SCALE = 1;
 // share of a card width away, so the arrow between them has room.
 const PULL_GAP_SHARE = 0.34;
 const PULL_SCALE = 0.94;
+// Stack frames render this much larger than the dock/hover-frame size,
+// growing upward into the board.
+const FRAME_SCALE = 1.33;
 
 // The pile sits where the Stack rail used to: the board's stack dock
 // (MyZone keeps an empty .my-zone-stack-rail for it). Layouts without that
@@ -126,11 +129,13 @@ function pileGeometry(frame, count, fanned) {
   if (dock) {
     // The bottom strip of the dock holds the position pager.
     height = Math.min(hoverFrameHeight(), Math.max(0, dock.height - PAGER_HEIGHT));
+    // Grow upward from the dock's floor, as far as the table allows.
+    height = Math.min(height * FRAME_SCALE, Math.max(0, dock.bottom - PAGER_HEIGHT - (Math.max(table.top, 0) + 8)));
     // A gutter keeps the card off the window edge the dock starts at.
     left = Math.max(dock.left, 0) + 12;
     bottom = dock.bottom - PAGER_HEIGHT;
   } else {
-    height = Math.max(CARD_MIN_HEIGHT, Math.min(CARD_MAX_HEIGHT, table.height * CARD_TABLE_SHARE));
+    height = Math.max(CARD_MIN_HEIGHT, Math.min(CARD_MAX_HEIGHT, table.height * CARD_TABLE_SHARE)) * FRAME_SCALE;
     left = Math.min(table.left + table.width * 0.78, table.right - (height * CARD_ASPECT) / 2 - 24) - (height * CARD_ASPECT) / 2;
     bottom = table.top + table.height * 0.47 + height / 2;
   }

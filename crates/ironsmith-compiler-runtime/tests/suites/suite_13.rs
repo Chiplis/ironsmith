@@ -82,3 +82,6 @@ mod r#token_template_replacements;
 
 #[path = "../vote_control.rs"]
 mod r#vote_control;
+
+#[path = "../wymi_complete.rs"]
+mod r#wymi_complete;

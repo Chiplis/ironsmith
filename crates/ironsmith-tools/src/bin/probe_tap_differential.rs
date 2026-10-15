@@ -53,9 +53,90 @@ fn fingerprint(game: &GameState) -> Vec<(ObjectId, String)> {
         .collect();
     out.push((
         ObjectId::from_raw(0),
-        format!("cant={:?}", game.effect_store.cant_effects),
+        canonical(&format!("cant={:?}", game.effect_store.cant_effects)),
     ));
     out
+}
+
+/// Debug text with change journals (mutation history, not state) removed and
+/// the entries of every `{…}` group sorted, so hash-map iteration order and
+/// journal length do not register as differences.
+fn canonical(debug: &str) -> String {
+    let mut text = debug.to_string();
+    while let Some(start) = text.find("changes: ChangeJournal {") {
+        let open = start + "changes: ChangeJournal ".len();
+        let close = matching(&text, open);
+        let mut end = close + 1;
+        if text[end..].starts_with(", ") {
+            end += 2;
+        }
+        text.replace_range(start..end, "");
+    }
+    sort_groups(&text)
+}
+
+fn matching(text: &str, open: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut depth = 0i32;
+    for (i, &b) in bytes.iter().enumerate().skip(open) {
+        match b {
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return i;
+                }
+            }
+            _ => {}
+        }
+    }
+    text.len() - 1
+}
+
+fn sort_groups(text: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    let bytes = text.as_bytes();
+    while i < text.len() {
+        if bytes[i] == b'{' {
+            let close = matching(text, i);
+            let inner = &text[i + 1..close];
+            let mut parts = split_top(inner)
+                .into_iter()
+                .map(|part| sort_groups(part.trim()))
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+            parts.sort();
+            out.push('{');
+            out.push_str(&parts.join(", "));
+            out.push('}');
+            i = close + 1;
+        } else {
+            let ch = text[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
+}
+
+fn split_top(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0;
+    for (i, b) in text.bytes().enumerate() {
+        match b {
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => depth -= 1,
+            b',' if depth == 0 => {
+                parts.push(&text[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    parts
 }
 
 fn first_difference(a: &str, b: &str) -> String {
@@ -112,6 +193,18 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
     refresh(&mut game)?;
 
     let mut outcome = Outcome { local_steps: 0, global_steps: 0, mismatch: None };
+    // A board whose warm state already differs from a from-scratch recompute
+    // (an order-dependent ability-copy loop, say) says nothing about taps.
+    {
+        let warm = fingerprint(&game);
+        let full_state = game.clone();
+        full_state.invalidate_continuous_state_public();
+        let mut full_state = full_state;
+        refresh(&mut full_state)?;
+        if warm != fingerprint(&full_state) {
+            return Err("warm_state_differs_before_any_tap".into());
+        }
+    }
     // Tap each in turn, then untap each in turn: covers tapped sources,
     // tapped recipients, and counts of tapped permanents in both directions.
     let steps: Vec<(ObjectId, bool)> = order
@@ -180,6 +273,12 @@ fn main() {
         .filter(|r| r.type_line.as_deref().is_some_and(is_permanent_type))
         .filter(|r| only.as_ref().is_none_or(|names| names.contains(&r.payload.name)))
         .collect();
+    let skip: std::collections::HashSet<String> = std::env::var("SKIP_CARDS_FILE")
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| text.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    items.retain(|r| !skip.contains(&r.payload.name));
     items.sort_by(|a, b| a.payload.name.cmp(&b.payload.name));
     if let Some(n) = limit {
         items.truncate(n);
@@ -193,6 +292,13 @@ fn main() {
         compile_definition_from_payload(&recs[0]).unwrap()
     };
     let bear = vanilla("Probe Bear");
+    let progress = std::sync::Mutex::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!("{out_dir}/progress.log"))
+            .unwrap(),
+    );
     std::panic::set_hook(Box::new(|_| {}));
     let done = AtomicUsize::new(0);
     let total = items.len();
@@ -206,6 +312,12 @@ fn main() {
                     eprintln!("{n}/{total} {:?}", t0.elapsed());
                 }
                 let name = rec.payload.name.clone();
+                // Started/ended markers locate a card that aborts the process.
+                {
+                    let mut log = progress.lock().unwrap();
+                    let _ = writeln!(log, "S\t{name}");
+                }
+                let row = (|| {
                 let def = match catch_unwind(AssertUnwindSafe(|| compile_definition_from_payload(&rec.payload))) {
                     Ok(Ok(def)) => def,
                     _ => return (name, "compile_failed".into(), 0, 0, String::new()),
@@ -221,6 +333,12 @@ fn main() {
                     Ok(Err(e)) => (name, e, 0, 0, String::new()),
                     Err(_) => (name, "panic".into(), 0, 0, String::new()),
                 }
+                })();
+                {
+                    let mut log = progress.lock().unwrap();
+                    let _ = writeln!(log, "E\t{}", row.0);
+                }
+                row
             })
             .collect()
     });

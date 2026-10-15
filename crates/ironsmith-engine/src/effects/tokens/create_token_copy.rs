@@ -1473,7 +1473,7 @@ mod tests {
             "Xorn should only affect its controller's Treasure token copies"
         );
         let token = game.object(ids[0]).expect("token should exist");
-        assert_eq!(token.name, "Treasure Token");
+        assert_eq!(token.name, "Treasure");
         assert_eq!(game.controller_of(token), bob);
     }
 

@@ -73,15 +73,23 @@ mod tests {
         assert!(lander.card.card_types.contains(&CardType::Artifact));
         assert!(lander.card.subtypes.contains(&Subtype::Lander));
         assert_eq!(lander.abilities.len(), 1);
-        match &lander.abilities[0].kind {
-            AbilityKind::Activated(_) => {}
-            other => panic!("expected activated ability, got {other:?}"),
-        }
-        let lines = crate::runtime_display::unprocessed_compiled_lines(&lander);
-        let joined = lines.join("\n");
-        assert!(
-            joined.contains("Search your library for a basic land card, put it onto the battlefield tapped, then shuffle"),
-            "expected search-to-battlefield-tapped text, got {joined}"
-        );
+        let AbilityKind::Activated(ability) = &lander.abilities[0].kind else {
+            panic!("expected activated ability");
+        };
+        let effects = ability.effects.flattened_default_effects();
+        let sequence = effects[0].downcast_ref::<crate::effects::SequenceEffect>().unwrap();
+        let [search, put, shuffle] = sequence.effects.as_slice() else { panic!("search, put, shuffle"); };
+        let search = search.downcast_ref::<crate::effects::ChooseObjectsEffect>().unwrap();
+        assert!(search.is_search);
+        assert_eq!(search.count.max, Some(1));
+        assert_eq!(search.chooser, crate::filter::PlayerFilter::You);
+        assert_eq!(search.zone, Some(crate::zone::Zone::Library));
+        assert_eq!(search.filter.card_types, vec![CardType::Land]);
+        assert_eq!(search.filter.supertypes, vec![crate::types::Supertype::Basic]);
+        let put = put.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>().unwrap();
+        assert_eq!(put.target, crate::target::ChooseSpec::Tagged(search.tag.clone()));
+        assert!(put.tapped);
+        assert_eq!(put.controller, crate::filter::PlayerFilter::You);
+        assert!(shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>().is_some());
     }
 }

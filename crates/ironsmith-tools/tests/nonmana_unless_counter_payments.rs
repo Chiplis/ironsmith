@@ -195,7 +195,7 @@ fn blood_funnel_reduces_only_noncreature_spells_and_its_trigger_keeps_you_bound_
         board.resolve_one();
         assert_eq!(board.spell_present(victim), available && accept);
         assert_eq!(board.counters(), usize::from(!available || !accept));
-        assert_eq!(board.choices.booleans, if available { vec![A] } else { vec![] });
+        assert_eq!(board.choices.booleans, vec![A]);
         assert!(board.game.object(foreign).is_some());
         if let Some(payment) = payment { assert_eq!(board.game.object(payment).is_some(), !accept); }
     } } }
@@ -244,7 +244,7 @@ fn reality_smasher_binds_the_targeting_spell_and_discard_payer_without_ability_o
         assert_eq!(board.spell_present(victim), count > 0 && accept);
         assert_eq!(board.game.player(B).unwrap().hand.len(), count - usize::from(count > 0 && accept));
         assert!(board.game.object(foreign).is_some());
-        assert_eq!(board.choices.booleans, if count > 0 { vec![B] } else { vec![] });
+        assert_eq!(board.choices.booleans, vec![B]);
     } }
         let mut board = Board::new(route); let smasher = board.cast("Reality Smasher", A, 5);
         board.choices.targets = vec![Target::Object(smasher)];

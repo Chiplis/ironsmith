@@ -1321,6 +1321,16 @@ pub(super) fn describe_effect_list_compacts_targeted_haste_then_role_attachment(
 }
 
 #[test]
+pub(super) fn lander_token_has_expected_basic_land_search_text() {
+    let lander = crate::cards::tokens::lander_token_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&lander).join("\n");
+    assert!(
+        rendered.contains("Search your library for a basic land card, put it onto the battlefield tapped, then shuffle"),
+        "{rendered}"
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_attached_creature_sacrifice_then_token() {
     let tag = TagKey::from("enchanted");
     let tag_attached = Effect::new(crate::effects::TagAttachedToSourceEffect::new(tag.clone()));

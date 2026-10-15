@@ -58,7 +58,7 @@ pub(super) fn static_abilities_for_object_with_effects(
     object_id: ObjectId,
     effects: &[crate::continuous::ContinuousEffect],
 ) -> Vec<crate::static_abilities::StaticAbility> {
-    if let Some(calc) = game.calculated_characteristics_with_effects(object_id, effects) {
+    if let Some(calc) = game.calculated_characteristics_for_capture(object_id, effects) {
         return calc.static_abilities.to_vec();
     }
     game.object(object_id)
@@ -199,7 +199,7 @@ pub(super) fn player_assigns_combat_damage_of_creatures_attacking_them(
     game: &GameState,
     player: PlayerId,
 ) -> bool {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     for &source_id in &game.battlefield {
         let Some(source) = game.object(source_id) else {
             continue;

@@ -71,7 +71,7 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
                 style={{ "--option-accent": player.accent }}
                 onClick={() => {
                   setOpen(false);
-                  if (!selected) onSelect(Number(player.id));
+                  onSelect(Number(player.id));
                 }}
               >
                 <span className="player-header-perspective-dot" aria-hidden="true" />

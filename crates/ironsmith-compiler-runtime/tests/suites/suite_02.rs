@@ -20,6 +20,9 @@ mod r#cumulative_action_costs;
 #[path = "../damage_history_filter_bodies.rs"]
 mod r#damage_history_filter_bodies;
 
+#[path = "../delirium_graveyard_lookups.rs"]
+mod r#delirium_graveyard_lookups;
+
 #[path = "../die_x_table_rows.rs"]
 mod r#die_x_table_rows;
 

@@ -51,6 +51,7 @@ function shuffledFormats(formats, rng) {
 export async function buildRandomStartingBoard(playerNames, startingLife, semanticThreshold, {
   rng = Math.random,
   fetchImpl = globalThis.fetch,
+  excludedCards = new Set(),
 } = {}) {
   const names = Array.isArray(playerNames) && playerNames.length ? playerNames : ["Alice", "Bob"];
   const seatCount = Math.max(2, names.length);
@@ -64,7 +65,7 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
       const payload = await buildCatalogRandomGame({
         playerNames: names,
         startingLife: commander ? PUBLIC_FORMATS[format].startingLife : startingLife,
-        minScore, format, seatCount, asMatch: commander, rng, fetchImpl,
+        minScore, format, seatCount, asMatch: commander, rng, fetchImpl, excludedCards,
       });
       if (payload.match) payload.match.format = PUBLIC_FORMATS[format].engineFormat;
       return { ...payload, format };
@@ -73,6 +74,37 @@ export async function buildRandomStartingBoard(playerNames, startingLife, semant
     }
   }
   throw lastError || new Error("No random deck meets the selected card threshold");
+}
+
+// Catalog support can be ahead of the running engine. Reject cards the engine
+// cannot load and choose fresh decks, including when the first board was prefetched.
+export async function loadRandomStartingBoard(playerNames, startingLife, semanticThreshold, {
+  initialPayload = null,
+  apply,
+  build = buildRandomStartingBoard,
+} = {}) {
+  const excludedCards = new Set();
+  let payload = initialPayload;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    payload ||= await build(playerNames, startingLife, semanticThreshold, { excludedCards });
+    try {
+      await apply(payload);
+      return payload;
+    } catch (error) {
+      const message = String(error?.message || error).toLocaleLowerCase("en-US");
+      if (!payload.match || !/unsupported|unknown card|compil|commander/.test(message) || attempt === 11) {
+        throw error;
+      }
+      const commanders = (payload.match.commanders || []).flat();
+      const cards = [...commanders, ...(payload.match.decks || []).flat()];
+      const namedCards = cards.filter(name => message.includes(name.toLocaleLowerCase("en-US")));
+      const rejected = namedCards.length ? namedCards : commanders;
+      const previousSize = excludedCards.size;
+      for (const name of rejected) excludedCards.add(name.trim().toLocaleLowerCase("en-US"));
+      if (excludedCards.size === previousSize) throw error;
+      payload = null;
+    }
+  }
 }
 
 /**

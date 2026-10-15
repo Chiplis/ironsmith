@@ -56,4 +56,7 @@ test('skips missing deck details and uses a valid mirror match for a one-deck ca
   const payload = await buildCatalogRandomGame({ fetchImpl, rng: () => .9 });
   assert.equal(payload.players.length, 2);
   for (const player of payload.players) assert.deepEqual(inventory(Object.values(player.zones).flat()), { Forest: 60 });
+  await assert.rejects(buildCatalogRandomGame({
+    fetchImpl, rng: () => .9, excludedCards: new Set(['forest']),
+  }), /No complete supported modern deck/);
 });

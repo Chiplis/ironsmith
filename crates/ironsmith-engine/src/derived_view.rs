@@ -38,6 +38,9 @@ pub(crate) struct DerivedGameView<'a> {
     battlefield_characteristic_scope: OnceCell<BattlefieldCharacteristicScope>,
     use_game_characteristics_cache: bool,
     characteristics: RefCell<FxMap<ObjectId, Option<Arc<CalculatedCharacteristics>>>>,
+    /// Battlefield misses so far on a view without the game cache; the second
+    /// one derives the rest of the battlefield in one layer pass.
+    battlefield_misses: Cell<u8>,
     abilities_cache: RefCell<FxMap<ObjectId, Arc<Vec<Ability>>>>,
     ability_index_summary_cache: RefCell<FxMap<ObjectId, Rc<AbilityIndexSummary>>>,
     static_abilities_cache:
@@ -423,6 +426,7 @@ impl<'a> DerivedGameView<'a> {
             all_effects,
             use_game_characteristics_cache: true,
             characteristics: RefCell::new(FxMap::default()),
+            battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
             ability_index_summary_cache: RefCell::new(FxMap::default()),
             static_abilities_cache: RefCell::new(FxMap::default()),
@@ -467,6 +471,7 @@ impl<'a> DerivedGameView<'a> {
             all_effects,
             use_game_characteristics_cache: false,
             characteristics: RefCell::new(FxMap::default()),
+            battlefield_misses: Cell::new(0),
             abilities_cache: RefCell::new(FxMap::default()),
             ability_index_summary_cache: RefCell::new(FxMap::default()),
             static_abilities_cache: RefCell::new(FxMap::default()),
@@ -507,6 +512,7 @@ impl<'a> DerivedGameView<'a> {
             return;
         }
         self.characteristics.borrow_mut().clear();
+        self.battlefield_misses.set(0);
         self.abilities_cache.borrow_mut().clear();
         self.ability_index_summary_cache.borrow_mut().clear();
         self.static_abilities_cache.borrow_mut().clear();
@@ -579,6 +585,11 @@ impl<'a> DerivedGameView<'a> {
         let calculated = if self.use_game_characteristics_cache {
             self.game.calculated_characteristics_arc(object_id)
         } else {
+            if self.derive_battlefield_batch_on_repeated_miss(object_id)
+                && let Some(cached) = self.characteristics.borrow().get(&object_id)
+            {
+                return cached.clone();
+            }
             self.game
                 .calculated_characteristics_with_effects(object_id, self.all_effects.as_slice())
                 .map(Arc::new)
@@ -587,6 +598,48 @@ impl<'a> DerivedGameView<'a> {
             .borrow_mut()
             .insert(object_id, calculated.clone());
         calculated
+    }
+
+    /// A view over a dirty state has no game cache, and computing objects one
+    /// at a time repeats the dependency sort per object. Passes that walk the
+    /// battlefield (state triggers, menus) miss repeatedly; from the second
+    /// battlefield miss, derive every remaining permanent in one batch.
+    fn derive_battlefield_batch_on_repeated_miss(&self, object_id: ObjectId) -> bool {
+        let on_battlefield = |id: ObjectId| {
+            self.game
+                .object(id)
+                .is_some_and(|object| object.zone == Zone::Battlefield)
+                && !self.game.is_phased_out(id)
+        };
+        if !on_battlefield(object_id) {
+            return false;
+        }
+        let misses = self.battlefield_misses.get();
+        if misses == u8::MAX {
+            return false;
+        }
+        self.battlefield_misses.set(misses + 1);
+        if misses != 1 {
+            return false;
+        }
+        self.battlefield_misses.set(u8::MAX);
+        let missing: Vec<ObjectId> = {
+            let known = self.characteristics.borrow();
+            self.game
+                .battlefield
+                .iter()
+                .copied()
+                .filter(|&id| !known.contains_key(&id) && on_battlefield(id))
+                .collect()
+        };
+        let batch = self
+            .game
+            .calculated_characteristics_batch_with_effects(&missing, self.all_effects.as_slice());
+        let mut known = self.characteristics.borrow_mut();
+        for (id, chars) in batch {
+            known.insert(id, Some(Arc::new(chars)));
+        }
+        true
     }
 
     pub(crate) fn calculated_characteristics(

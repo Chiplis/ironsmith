@@ -21,6 +21,27 @@ function isPregameDecision(decision) {
     PREGAME_ACTION_KINDS.has(action?.kind) || PREGAME_ACTION_KINDS.has(action?.action_ref?.kind));
 }
 
+// Pregame belongs to each deciding seat even when turn-following is disabled.
+// Keep following its nested choices until normal priority starts, then restore
+// the starting seat once and leave subsequent seat selection alone.
+export function createPregameFollower() {
+  let pending = false;
+  return state => {
+    if (!state || state.game_over) { pending = false; return null; }
+    const decision = state.decision;
+    if (isPregameDecision(decision)) pending = true;
+    if (!pending || !decision) return null;
+    let player = decision.player;
+    if (decision.kind === "priority" && !isPregameDecision(decision)) {
+      player = state.active_player;
+      pending = false;
+    }
+    if (player == null || samePlayerId(player, state.perspective)) return null;
+    const target = Number(player);
+    return Number.isInteger(target) && target >= 0 ? target : null;
+  };
+}
+
 // Hotseat play for local games: the human sits in whichever seat has to act.
 // The view follows the active player's priority (so ending a turn hands the
 // table to the next player) and any non-priority choice of another seat, such

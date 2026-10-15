@@ -169,6 +169,13 @@ export function createPriorityStops({
       publish();
       return true;
     },
+    holdCurrentPriority(state) {
+      observe(state);
+      pending = null;
+      window = null;
+      heldKey = isLocalPriority(state) ? priorityKey(state) : null;
+      publish();
+    },
     resume(state) {
       observe(state);
       heldKey = null;

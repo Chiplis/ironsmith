@@ -340,7 +340,7 @@ fn sacrifice_execution_failure_is_typed_atomic_and_retryable() {
         assert_eq!(game.object(game.find_object_by_stable_id(stable).unwrap()).unwrap().zone, Zone::Graveyard);
         assert_eq!(count(&game, EventKind::SearchLibrary), 1);
         assert_eq!(count(&game, EventKind::ShuffleLibrary), 1);
-        assert_eq!(game.battlefield.iter().filter(|id| game.object(**id).unwrap().name == "Treasure").count(), 1);
+        assert_eq!(game.battlefield.iter().filter(|id| game.current_has_subtype(**id, ironsmith::Subtype::Treasure)).count(), 1);
     }
 }
 

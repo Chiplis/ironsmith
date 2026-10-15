@@ -1709,7 +1709,8 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 }
 
 .hand-layout-item--selected,
-.hand-layout-item:has(> .game-card.hand-card.inspected) {
+.hand-layout-item:has(> .game-card.hand-card.inspected),
+.hand-layout-item:has(> .game-card.hand-card.keyboard-selected) {
   z-index: 20000 !important;
 }
 

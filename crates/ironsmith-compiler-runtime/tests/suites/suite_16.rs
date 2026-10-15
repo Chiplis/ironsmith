@@ -29,6 +29,9 @@ mod r#each_opponent_exile_until_total;
 #[path = "../each_player_additional_land_plays.rs"]
 mod r#each_player_additional_land_plays;
 
+#[path = "../effect_refactoring_wiring.rs"]
+mod r#effect_refactoring_wiring;
+
 #[path = "../elliptical_conditions.rs"]
 mod r#elliptical_conditions;
 

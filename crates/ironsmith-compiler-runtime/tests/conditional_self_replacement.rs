@@ -242,7 +242,7 @@ fn bring_the_ending_rechecks_target_controller_poison_and_preserves_the_optional
         let survives = uncounterable || paid;
         assert_eq!(game.stack.iter().any(|entry| entry.object_id == target), survives);
         assert_eq!(game.player(B).unwrap().mana_pool.total(), available - if paid { 2 } else { 0 });
-        assert_eq!(dm.payers, if poison == 0 && available >= 2 { vec![B] } else { vec![] });
+        assert_eq!(dm.payers, if poison == 0 { vec![B] } else { vec![] });
     }}
 }
 

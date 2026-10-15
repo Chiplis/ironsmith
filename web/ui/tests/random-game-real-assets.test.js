@@ -31,7 +31,7 @@ const fileFetch = async (url) => {
 };
 
 test("startup uses complete supported lobby decks for a 1v1 board", { skip: !built }, async () => {
-  const names = ["Alice", "Bob", "Charlie", "Diana"];
+  const names = ["Alice", "Bob"];
   const requested = new Set();
   const fetchImpl = async (url) => {
     requested.add(String(url));
@@ -45,7 +45,7 @@ test("startup uses complete supported lobby decks for a 1v1 board", { skip: !bui
   });
   assert.deepEqual(first.players.map(player => player.name), names.slice(0, 2));
   assert.ok(first.players.every(player => player.life === 25));
-  assert.ok(requested.has("http://localhost/catalog/modern/index.json"));
+  assert.ok(requested.has(`http://localhost/catalog/${first.format}/index.json`));
   assert.notDeepEqual(first, second);
   const index = await fileFetch("http://localhost/cards/index.json").then(response => response.json());
   const cards = new Map(index.cards.map(card => [card.name, card]));
@@ -57,6 +57,26 @@ test("startup uses complete supported lobby decks for a 1v1 board", { skip: !bui
     for (const name of Object.values(player.zones).flat()) {
       assert.ok(cards.has(name), `${name} is supported`);
       assert.ok(cards.get(name).score >= .96, `${name} meets the fidelity setting`);
+    }
+  }
+});
+
+test("four-player startup builds Commander and Pauper EDH matches", { skip: !built }, async () => {
+  const names = ["Alice", "Bob", "Charlie", "Diana"];
+  for (const [rng, format, engineFormat, life] of [
+    [() => 0.99, "commander", "commander", 40],
+    [() => 0, "paupercommander", "pauper_commander", 30],
+  ]) {
+    const payload = await buildRandomStartingBoard(names, 123, 0, { rng, fetchImpl: fileFetch });
+    assert.equal(payload.format, format);
+    assert.equal(payload.match.format, engineFormat);
+    assert.deepEqual(payload.match.playerNames, names);
+    assert.equal(payload.match.startingLife, life);
+    assert.equal(payload.match.decks.length, 4);
+    assert.equal(payload.match.commanders.length, 4);
+    for (let seat = 0; seat < 4; seat++) {
+      assert.ok(payload.match.commanders[seat].length > 0);
+      assert.equal(payload.match.decks[seat].length + payload.match.commanders[seat].length, 100);
     }
   }
 });

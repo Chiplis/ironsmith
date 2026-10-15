@@ -5500,11 +5500,6 @@ impl GameState {
 
     pub(crate) fn note_tapped_state_read(&self) {
         if self.runtime_cache.derived_tap_read_depth.get() > 0 {
-            if !self.runtime_cache.derived_state_read_tapped.get()
-                && std::env::var_os("TAP_READ_TRACE").is_some()
-            {
-                eprintln!("TAPREAD {}", std::backtrace::Backtrace::force_capture());
-            }
             self.runtime_cache.derived_state_read_tapped.set(true);
         }
     }
@@ -5566,7 +5561,13 @@ impl GameState {
         }
     }
 
-    fn mark_object_characteristics_dirty(&mut self, id: ObjectId) {
+    /// A change to `id`'s battlefield state that no cached characteristic
+    /// derivation read (see `derived_tap_read_scope`). Snapshots and other
+    /// mutation-revision caches still observe it; calculated characteristics,
+    /// including the object's own, stay valid. Recomputing only this object
+    /// against its peers' cached values could even settle a mutual
+    /// ability-copy loop differently from a full recompute.
+    pub(crate) fn mark_object_state_changed_keeping_characteristics(&mut self, id: ObjectId) {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
         let counter = &self
@@ -5574,10 +5575,22 @@ impl GameState {
             .work_counters
             .continuous_local_invalidations;
         counter.set(counter.get().saturating_add(1));
+        self.bump_mutation_revision();
+    }
+
+    /// A change to `id`'s state that a continuous effect may observe. There is
+    /// deliberately no per-object recompute: rederiving one object against its
+    /// peers' cached values is not equivalent to a full layer pass when
+    /// objects' characteristics depend on each other (a mutual ability-copy
+    /// loop, CR 613.8b), so every such change rebuilds the whole state.
+    fn mark_object_changed_and_continuous_state_dirty(&mut self, id: ObjectId) {
+        self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
         let revision = self.bump_mutation_revision();
         self.runtime_cache
             .characteristics_cache
             .bump_object_revision(id, revision);
+        self.mark_continuous_state_dirty();
     }
 
     pub(crate) fn bump_mutation_revision(&mut self) -> u64 {

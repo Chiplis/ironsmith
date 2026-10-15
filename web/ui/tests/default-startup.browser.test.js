@@ -26,6 +26,29 @@ test('default catalog startup reaches a playable table without poisoning WASM', 
   } finally { await browser.close(); await vite.close(); }
 });
 
+test('commander URL overrides saved two-player and fixed-board settings', async () => {
+  const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
+  await vite.listen();
+  const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
+  try {
+    const page = await browser.newPage();
+    await page.addInitScript(() => {
+      localStorage.setItem('ironsmith.tableSetup', JSON.stringify({ playerNames: 'Saved A,Saved B', startingLife: 7 }));
+      localStorage.setItem('ironsmith.fixedStartingBoard', 'true');
+    });
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/?commander=true`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await page.waitForFunction(() => document.querySelector('[data-workspace-shell]')
+      || document.body.textContent.includes('Game initialization failed'), null, { timeout: 90000 });
+    assert.equal(await page.locator('[data-workspace-shell]').count(), 1,
+      (await page.locator('body').innerText()).slice(0, 500));
+    const body = await page.locator('body').innerText();
+    for (const name of ['Alice', 'Bob', 'Charlie', 'Diana']) assert.ok(body.includes(name), body);
+    assert.ok(!body.includes('Saved A'));
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('ironsmith.tableSetup')).startingLife), 7);
+    assert.equal(await page.evaluate(() => localStorage.getItem('ironsmith.fixedStartingBoard')), 'true');
+  } finally { await browser.close(); await vite.close(); }
+});
+
 test('source registration for Endurance fits the browser worker stack', async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();

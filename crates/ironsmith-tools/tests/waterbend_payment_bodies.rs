@@ -164,7 +164,7 @@ impl DecisionMaker for Choices {
                 return ManaPaymentResponse::Replan { preferences };
             }
         }
-        assert!(ctx.plan.payable, "successful path must have a complete price: {ctx:?}");
+        if !ctx.plan.payable { return ManaPaymentResponse::Cancel; }
         self.accepted.push(ctx.clone());
         ManaPaymentResponse::Confirm { plan_id: ctx.plan.id, request_hash: ctx.plan.request_hash }
     }

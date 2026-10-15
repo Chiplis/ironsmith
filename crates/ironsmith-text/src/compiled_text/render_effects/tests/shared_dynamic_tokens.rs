@@ -126,54 +126,20 @@ fn shared_dynamic_tokens_reject_different_sizes_targets_and_blueprints() {
         .find_map(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
         .unwrap();
     assert!(describe_shared_dynamic_token_pair(&sequence.effects).is_some());
-    for variant in 0..5 {
+    for variant in 0..6 {
         let mut effects = sequence.effects.clone();
-        if variant < 3 {
-            let mut tagged = effects[3]
-                .downcast_ref::<crate::effects::TaggedEffect>()
-                .unwrap()
-                .clone();
-            let mut set = tagged
-                .effect
-                .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()
-                .unwrap()
-                .clone();
-            match variant {
-                0 => set.power = Value::Fixed(5),
-                1 => {
-                    set.target = ChooseSpec::Tagged(
-                        effects[0]
-                            .downcast_ref::<crate::effects::TaggedEffect>()
-                            .unwrap()
-                            .tag
-                            .clone(),
-                    )
-                }
-                _ => set.duration = Until::EndOfTurn,
-            }
-            *tagged.effect = Effect::new(set);
-            effects[3] = Effect::new(tagged);
-        } else {
-            let mut tagged = effects[2]
-                .downcast_ref::<crate::effects::TaggedEffect>()
-                .unwrap()
-                .clone();
-            let mut create = tagged
-                .effect
-                .downcast_ref::<crate::effects::CreateTokenEffect>()
-                .unwrap()
-                .clone();
-            if variant == 3 {
-                create.token.card.subtypes = vec![Subtype::Beast];
-            } else {
-                create.enters_tapped = true;
-            }
-            *tagged.effect = Effect::new(create);
-            effects[2] = Effect::new(tagged);
+        let mut tagged = effects[1].downcast_ref::<crate::effects::TaggedEffect>().unwrap().clone();
+        let mut create = tagged.effect.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap().clone();
+        match variant {
+            0 => create.dynamic_power_toughness.as_mut().unwrap().0 = Value::Fixed(5),
+            1 => create.controller_target = Some(ChooseSpec::Player(PlayerFilter::You)),
+            2 => create.dynamic_power_toughness.as_mut().unwrap().1 = Value::Fixed(5),
+            3 => create.token.card.subtypes = vec![Subtype::Beast],
+            4 => create.enters_tapped = true,
+            _ => create.count = Value::Fixed(2),
         }
-        assert!(
-            describe_shared_dynamic_token_pair(&effects).is_none(),
-            "variant {variant}"
-        );
+        *tagged.effect = Effect::new(create);
+        effects[1] = Effect::new(tagged);
+        assert!(describe_shared_dynamic_token_pair(&effects).is_none(), "variant {variant}");
     }
 }

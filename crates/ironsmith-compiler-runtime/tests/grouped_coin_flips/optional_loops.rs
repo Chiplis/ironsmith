@@ -449,7 +449,7 @@ fn scales_unaffordable_payment_and_illegal_targets_never_choose_replacements() {
             if removed & 1 != 0 { g.move_object_by_effect(enemy, Zone::Graveyard).unwrap(); }
             if removed & 2 != 0 { g.move_object_by_effect(own, Zone::Graveyard).unwrap(); }
             force(&mut g, &[T]); settle(&mut g, &mut dm);
-            assert!(dm.boolean_players.is_empty(), "an unaffordable payment is not offered");
+            assert_eq!(dm.boolean_players, if removed == 3 { vec![] } else { vec![A] }, "willingness is offered before funding; illegal targets still fizzle");
             assert_eq!(dm.option_players.len(), if removed == 3 { 0 } else { 1 });
             assert_eq!(g.player(A).unwrap().mana_pool.total(), 2);
             assert_eq!(g.object(g.find_object_by_stable_id(enemy_stable).unwrap()).unwrap().zone,

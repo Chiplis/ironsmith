@@ -1,5 +1,6 @@
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
+import { selectGoldfishPlayer } from "@/lib/goldfish-player.js";
 import { COMBAT_STEPS, createPriorityStops } from "@/lib/priority-stops";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
@@ -54,7 +55,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
-import { hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
+import { createPregameFollower, hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
 
 import { GameContext } from "./GameContext.shared";
@@ -927,6 +928,7 @@ export function GameProvider({ children }) {
   const externalAutoPassGateRef = useRef(null);
   const [followActivePlayer, setFollowActivePlayerRaw] = useState(readFollowActivePlayer);
   const followActivePlayerRef = useRef(followActivePlayer);
+  const pregameFollowerRef = useRef(createPregameFollower());
   const setFollowActivePlayer = useCallback((value) => {
     const enabled = Boolean(value);
     followActivePlayerRef.current = enabled;
@@ -1277,7 +1279,7 @@ export function GameProvider({ children }) {
         };
       }
 
-      if (multiplayerActiveRef.current || !autoPassEnabled) {
+      if (multiplayerActiveRef.current) {
         return {
           state: currentState,
           autoPasses: 0,
@@ -1301,16 +1303,10 @@ export function GameProvider({ children }) {
 
       let perspectiveSwitches = 0;
       for (let i = 0; i < maxSettleIterations; i++) {
-        while (
-          st
-          && st.decision
-          && (
-            !samePlayerId(st.decision.player, st.perspective)
-            || st.active_player !== st.perspective
-          )
-        ) {
-          const followTarget = followActivePlayerRef.current && typeof currentGame.setPerspective === "function"
-            ? hotseatFollowTarget(st)
+        while (st && st.decision) {
+          const pregameTarget = pregameFollowerRef.current(st);
+          const followTarget = typeof currentGame.setPerspective === "function"
+            ? pregameTarget ?? (autoPassEnabled && followActivePlayerRef.current ? hotseatFollowTarget(st) : null)
             : null;
           if (followTarget !== null && perspectiveSwitches < playerCount * 4) {
             const decisionBefore = summarizeDecision(st.decision);
@@ -1329,6 +1325,9 @@ export function GameProvider({ children }) {
               decision_after: summarizeDecision(st?.decision || null) });
             continue;
           }
+          if (!autoPassEnabled) break;
+          if (samePlayerId(st.decision.player, st.perspective)
+            && samePlayerId(st.active_player, st.perspective)) break;
           if (st.decision.kind === "priority") {
             const isLocalOffTurnPriority = samePlayerId(st.decision.player, st.perspective);
             const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
@@ -1448,7 +1447,7 @@ export function GameProvider({ children }) {
             decision_after: summarizeDecision(st?.decision || null) });
           continue;
         }
-        if (holdReason) break;
+        if (holdReason || !autoPassEnabled) break;
         if (!st || st.game_over || st.decision) break;
         if (phaseAdvances >= maxPhaseAdvances) { holdReason = "phase auto-advance safety limit reached"; break; }
         const before = `${st.turn_number}|${st.phase}|${st.step}|${st.priority_player}|${st.stack_size}`;
@@ -2444,6 +2443,26 @@ export function GameProvider({ children }) {
   // the saved auto-resolve preference: the stop itself keeps holding until the
   // player acts, and with default stops a paused run is the normal outcome.
   const pausePassing = stopResolveAll;
+  const changeGoldfishPlayer = useCallback(async (playerId) => runWasmInteraction(async () => {
+    if (!game || multiplayerActiveRef.current) return;
+    stopResolveAll();
+    try {
+      const result = await selectGoldfishPlayer(game, playerId,
+        command => dispatchForAutomation(game, command));
+      const current = await game.uiState();
+      priorityStops.holdCurrentPriority(current);
+      await finalizeState(game, current, {
+        message: result.reached ? `Viewing as player ${playerId}` : "Player switch paused for a required decision",
+        allowOpponentAutomation: false,
+        allowTrivialAutomation: false,
+      });
+    } catch (error) {
+      const current = await game.uiState();
+      priorityStops.holdCurrentPriority(current);
+      await finalizeState(game, current, { allowOpponentAutomation: false, allowTrivialAutomation: false });
+      setStatus(`Change player failed: ${error}`, true);
+    }
+  }), [game, runWasmInteraction, stopResolveAll, priorityStops, finalizeState, setStatus]);
   const startResolveAll = useCallback(() => {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
@@ -3206,6 +3225,7 @@ export function GameProvider({ children }) {
       dispatchInBackground,
       cancelDecision,
       refresh,
+      changeGoldfishPlayer,
       autoPassEnabled,
       setAutoPassEnabled,
       autoResolveEnabled,
@@ -3278,7 +3298,7 @@ export function GameProvider({ children }) {
       status,
       setStatus,
       runWasmInteraction,
-      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, autoPassEnabled, autoResolveEnabled, holdRule, uiFont,
+      dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, changeGoldfishPlayer, autoPassEnabled, autoResolveEnabled, holdRule, uiFont,
       priorityStopsState, cyclePriorityStop, holdPostActionPriority,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeEffectOrderingState, moveEffectOrderingItem,

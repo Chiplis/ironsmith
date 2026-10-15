@@ -144,6 +144,12 @@ pub(crate) fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut imp
     value_field!(crate::effects::RemoveCountersEffect, count);
     value_field!(crate::effects::RepeatEffectsEffect, count);
     value_field!(crate::effects::CreateTokenEffect, count);
+    if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some((power, toughness)) = &create.dynamic_power_toughness
+    {
+        visit(power);
+        visit(toughness);
+    }
     value_field!(crate::effects::CreateTokenCopyEffect, count);
     value_field!(crate::effects::DiscardEffect, count);
     value_field!(crate::effects::MillEffect, count);

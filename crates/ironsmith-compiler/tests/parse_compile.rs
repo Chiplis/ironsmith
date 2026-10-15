@@ -1438,7 +1438,7 @@ fn inline_dynamic_token_power_toughness_lowers_from_typed_creation_fact() {
         .expect("inline dynamic token P/T should parse");
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("SetBasePowerToughnessEffect")
+        debug.contains("dynamic_power_toughness: Some")
             && debug.contains("PowerOf")
             && debug.contains("ToughnessOf"),
         "expected the created token to inherit the exiled card's P/T, got {debug}"
@@ -1468,34 +1468,25 @@ fn comma_then_dynamic_token_keeps_pt_tag_and_delayed_cleanup() {
         .downcast_ref::<ironsmith_compiler::effects::SequenceEffect>()
         .expect("expected comma-then sequence");
     assert_eq!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen);
-    let [_, create_effect, set_pt_effect] = sequence.effects.as_slice() else {
-        panic!("expected counter, token creation, and dynamic P/T setter");
+    let [_, create_effect] = sequence.effects.as_slice() else {
+        panic!("expected counter and token creation with intrinsic dynamic P/T");
     };
-    let tagged_create = create_effect
-        .as_tagged()
-        .expect("created token should carry an identity tag");
-    let create = tagged_create
-        .effect
+    let create = create_effect
         .downcast_ref::<ironsmith_compiler::effects::CreateTokenEffect>()
         .expect("expected token creation");
     assert!(create.sacrifice_at_next_end_step);
 
-    let set_pt = set_pt_effect
-        .downcast_ref::<ironsmith_compiler::effects::SetBasePowerToughnessEffect>()
-        .expect("expected dynamic base-P/T setter");
-    assert!(
-        matches!(&set_pt.target, ChooseSpec::Tagged(tag) if tag == &tagged_create.tag),
-        "P/T setter must target the exact created token: {set_pt:#?}"
-    );
+    let (power, toughness) = create.dynamic_power_toughness.as_ref()
+        .expect("token creation must carry intrinsic dynamic P/T");
     assert!(
         matches!(
-            set_pt.power.unhinted(),
+            power.unhinted(),
             Value::CountersOn(source, Some(ironsmith_compiler::object::CounterType::Oil))
                 if matches!(source.base(), ChooseSpec::Source)
         ),
-        "power must remain the source's oil-counter count: {set_pt:#?}"
+        "power must remain the source's oil-counter count: {create:#?}"
     );
-    assert_eq!(set_pt.toughness.unhinted(), &Value::Fixed(1));
+    assert_eq!(toughness.unhinted(), &Value::Fixed(1));
 }
 
 #[test]
@@ -1525,10 +1516,11 @@ fn dynamic_token_stats_after_destroy_keep_the_destroyed_object_reference() {
                 activated.effects
             )
         });
-    let set_pt = conditional.then[1]
-        .downcast_ref::<ironsmith_compiler::effects::SetBasePowerToughnessEffect>()
-        .expect("expected the created token's dynamic P/T effect");
-    for value in [&set_pt.power, &set_pt.toughness] {
+    assert_eq!(conditional.then.len(), 1);
+    let create = conditional.then[0].downcast_ref::<ironsmith_compiler::effects::CreateTokenEffect>()
+        .expect("token creation");
+    let (power, toughness) = create.dynamic_power_toughness.as_ref().expect("intrinsic dynamic P/T");
+    for value in [power, toughness] {
         let spec = match value {
             Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec,
             other => panic!("expected a copied characteristic value, got {other:#?}"),

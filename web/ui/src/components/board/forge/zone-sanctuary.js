@@ -37,9 +37,6 @@ export function createZoneSanctuary(scene, own) {
       mesh(box, dark, 0, -.04, -4, 1.12, 1.12, 7);
       mesh(box, stone, 0, 0, 1, 1.03, 1.03, 6);
       mesh(box, silver, 0, -.48, 5, .83, .025, 1);
-    } else if (type === 'hand') {
-      mesh(box, stone, 0, -.5, -2, 1, .045, 4);
-      mesh(box, silver, 0, -.48, 1, 1, .01, 1);
     }
     scene.add(group); return group;
   }

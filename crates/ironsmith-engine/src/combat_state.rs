@@ -480,7 +480,7 @@ pub fn end_combat(combat: &mut CombatState) {
 }
 
 fn battlefield_static_abilities(game: &GameState) -> Vec<StaticAbility> {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     let mut out = Vec::new();
     for &object_id in &game.battlefield {
         out.extend(static_abilities_for_object(game, object_id, &all_effects));
@@ -493,7 +493,7 @@ fn static_abilities_for_object(
     object_id: ObjectId,
     effects: &[crate::continuous::ContinuousEffect],
 ) -> Vec<StaticAbility> {
-    if let Some(calc) = game.calculated_characteristics_with_effects(object_id, effects) {
+    if let Some(calc) = game.calculated_characteristics_for_capture(object_id, effects) {
         return calc.static_abilities.to_vec();
     }
     game.object(object_id)
@@ -530,7 +530,7 @@ pub(crate) fn max_creatures_can_attack_defending_player_each_combat(
     game: &GameState,
     defending_player: PlayerId,
 ) -> Option<usize> {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     game.battlefield
         .iter()
         .filter_map(|&object_id| {
@@ -548,7 +548,7 @@ pub(crate) fn max_creatures_can_attack_planeswalker_each_combat(
     game: &GameState,
     planeswalker: ObjectId,
 ) -> Option<usize> {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     static_abilities_for_object(game, planeswalker, &all_effects)
         .iter()
         .filter_map(|ability| ability.max_creatures_can_attack_this_each_combat())
@@ -598,7 +598,7 @@ pub fn declare_attackers(
 ) -> Result<(), CombatError> {
     let active_player = game.turn.active_player;
     let declared_attackers: Vec<ObjectId> = declarations.iter().map(|(id, _)| *id).collect();
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
 
     // First pass: validate all declarations
     let mut seen_attackers = std::collections::HashSet::new();
@@ -846,7 +846,7 @@ fn declare_blockers_internal(
     enforce_requirements: bool,
     requirement_player: Option<PlayerId>,
 ) -> Result<(), CombatError> {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
 
     // Group blockers by attacker for menace validation
     let mut blockers_by_attacker: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
@@ -1729,7 +1729,7 @@ pub fn set_attacking_band(
 }
 
 fn creature_has_banding(game: &GameState, creature: ObjectId) -> bool {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     static_abilities_for_object(game, creature, &all_effects)
         .iter()
         .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Banding)
@@ -1757,7 +1757,7 @@ fn group_shares_bands_with_other_quality(game: &GameState, members: &[ObjectId])
     if members.len() < 2 {
         return false;
     }
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     members.iter().any(|source| {
         static_abilities_for_object(game, *source, &all_effects)
             .iter()
@@ -1769,7 +1769,7 @@ fn group_shares_bands_with_other_quality(game: &GameState, members: &[ObjectId])
 // CR 702.22j-k requires a matching pair, not a matching entire group.
 // Extra blockers/attackers of other qualities do not undo that permission.
 fn group_contains_bands_with_other_pair(game: &GameState, members: &[ObjectId]) -> bool {
-    let all_effects = game.all_continuous_effects();
+    let all_effects = game.all_continuous_effects_arc();
     members.iter().any(|source| {
         static_abilities_for_object(game, *source, &all_effects)
             .iter()

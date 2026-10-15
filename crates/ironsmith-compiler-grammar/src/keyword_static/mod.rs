@@ -7091,11 +7091,20 @@ mod enter_as_copy_added_color_tests {
         for tail in [
             "and it has flying",
             "and it can't block",
-            ", it's legendary in addition to its other types",
         ] {
             let text = format!("You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror {tail}.");
             let tokens = crate::lexer::lex_line(&text, 0).unwrap();
             assert!(parse_enter_as_copy_as_enters_line(&tokens).is_err(), "{text}");
+        }
+        // Legendary is now a modeled characteristic exception. Verify that
+        // the comma tail is retained as a supertype, never swallowed as a name.
+        for tail in [", it's legendary in addition to its other types", ", it is legendary in addition to its other types"] {
+            let text = format!("You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror {tail}.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let ability = parse_enter_as_copy_as_enters_line(&tokens).unwrap().unwrap();
+            let ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, .. } = ability.payload else { panic!("copy model"); };
+            assert_eq!(spec.name_override.as_deref(), Some("Mirror"));
+            assert_eq!(spec.added_supertypes, vec![crate::types::Supertype::Legendary]);
         }
         let text = "You may have Mirror enter as a copy of any creature on the battlefield, except its name is Mirror and it's a 4/4 Spider Human Hero in addition to its other types.";
         let tokens = crate::lexer::lex_line(text, 0).unwrap();

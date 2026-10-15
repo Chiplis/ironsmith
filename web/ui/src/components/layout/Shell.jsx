@@ -37,7 +37,7 @@ import KeyboardShortcutsOverlay from "@/components/overlays/KeyboardShortcutsOve
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   addFixedStartingBoardPreset,
-  buildRandomStartingBoard,
+  loadRandomStartingBoard,
   prefetchRandomStartingBoard,
   startingBoardKey,
 } from "@/lib/starting-board";
@@ -55,6 +55,7 @@ export default function Shell() {
     wasmPhase,
     wasmRegistryCount,
     refresh,
+    changeGoldfishPlayer,
     runWasmInteraction,
     setStatus,
     multiplayer,
@@ -63,11 +64,16 @@ export default function Shell() {
     joinLobby,
   } = useGame();
   useTabAttention();
-  const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
+  const [commanderStartup] = useState(() => (
+    typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("commander") === "true"
+  ));
+  const initialPuzzleQueryRef = useRef(commanderStartup ? null : readPuzzleQueryParams());
   const syncedLobbyUrlRef = useRef("");
   const [savedTableSetup] = useState(readTableSetup);
   const [playerNames, setPlayerNames] = useState(
-    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || savedTableSetup.playerNames
+    () => commanderStartup ? "Alice,Bob,Charlie,Diana"
+      : initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || savedTableSetup.playerNames
   );
 
   useEffect(() => {
@@ -90,7 +96,8 @@ export default function Shell() {
     syncedLobbyUrlRef.current = "";
   }, [multiplayer?.hostPeerId, multiplayer?.lobbyId, multiplayer?.mode]);
   const [startingLife, setStartingLife] = useState(
-    () => initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? savedTableSetup.startingLife
+    () => commanderStartup ? 40
+      : initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? savedTableSetup.startingLife
   );
   // Menu edits are the player's table setup, so they are saved; loads that
   // bring their own names (puzzles, goldfish) use the raw setters instead.
@@ -116,7 +123,7 @@ export default function Shell() {
   const autoJoinAttemptedLobbyRef = useRef("");
   const autoLoadAttemptedPuzzleRef = useRef(false);
   const initialLobbyQueryRef = useRef(
-    initialPuzzleQueryRef.current ? emptyLobbyQueryParams() : readLobbyQueryParams()
+    (commanderStartup || initialPuzzleQueryRef.current) ? emptyLobbyQueryParams() : readLobbyQueryParams()
   );
   const [lobbyOverlayInitial, setLobbyOverlayInitial] = useState(() => (
     buildLobbyOverlayInitialState(initialLobbyQueryRef.current)
@@ -280,10 +287,12 @@ export default function Shell() {
   // The startup board needs no engine, so build it while the WASM downloads.
   const startupBoardRef = useRef(null);
   useEffect(() => {
-    if (initialPuzzleQueryRef.current || fixedStartingBoard) return;
+    if (initialPuzzleQueryRef.current || (!commanderStartup && fixedStartingBoard)) return;
     const lobbyQuery = initialLobbyQueryRef.current;
     if (lobbyQuery.lobbyId || lobbyQuery.deckText || lobbyQuery.commanderText) return;
-    startupBoardRef.current = prefetchRandomStartingBoard(tableSeatNames(playerNames), startingLife, semanticThreshold);
+    startupBoardRef.current = prefetchRandomStartingBoard(
+      tableSeatNames(playerNames), startingLife, commanderStartup ? 0 : semanticThreshold
+    );
     // Mount-time settings are the ones the first init reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -298,7 +307,17 @@ export default function Shell() {
           await game.setSemanticThreshold(semanticThreshold);
         }
         const initialPuzzle = initialPuzzleQueryRef.current;
-        if (initialPuzzle) {
+        if (commanderStartup) {
+          // This URL is an explicit preset, independent of saved table/board
+          // settings and deck fidelity filters. Four seats choose EDH or PDH.
+          const payload = await loadRandomStartingBoard(tableSeatNames(playerNames), 40, 0, {
+            initialPayload: await startupBoardRef.current?.payload.catch(() => null),
+            apply: (built) => applyStartingBoard(game, built),
+          });
+          startupBoardRef.current = null;
+          setStartingLife(payload.match.startingLife);
+          await refresh("WASM loaded", { throwOnError: true });
+        } else if (initialPuzzle) {
           const loaded = await applyPuzzleToGame(game, initialPuzzle);
           setPlayerNames(loaded.playerNamesList.join(","));
           setStartingLife(loaded.defaultStartingLife);
@@ -327,7 +346,10 @@ export default function Shell() {
             ? await prefetched.payload.catch(() => null)
             : null;
           if (prefetchedPayload && !fixedStartingBoard) {
-            await applyStartingBoard(game, prefetchedPayload);
+            await loadRandomStartingBoard(names, startingLife, semanticThreshold, {
+              initialPayload: prefetchedPayload,
+              apply: (built) => applyStartingBoard(game, built),
+            });
           } else {
             await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           }
@@ -625,21 +647,10 @@ export default function Shell() {
 
   const handleChangePerspective = useCallback(
     async (playerIndex) => {
-      return runWasmInteraction(async () => {
-        if (!game) return;
-        if (multiplayer.matchStarted) {
-          setStatus("Perspective is fixed during multiplayer matches", true);
-          return;
-        }
-        try {
-          await game.setPerspective(playerIndex);
-          await refresh(`Viewing as player ${playerIndex}`);
-        } catch (err) {
-          setStatus(`Change player failed: ${err}`, true);
-        }
-      });
+      if (multiplayer.matchStarted) return;
+      return changeGoldfishPlayer(playerIndex);
     },
-    [game, multiplayer.matchStarted, refresh, runWasmInteraction, setStatus]
+    [multiplayer.matchStarted, changeGoldfishPlayer]
   );
 
   if (loading) {
@@ -913,8 +924,9 @@ async function resetStartingBoard(game, names, startingLife, fixed, semanticThre
     await addFixedStartingBoardPreset(game, names.length);
     return;
   }
-  const payload = await buildRandomStartingBoard(names, startingLife, semanticThreshold);
-  await applyStartingBoard(game, payload);
+  await loadRandomStartingBoard(names, startingLife, semanticThreshold, {
+    apply: (built) => applyStartingBoard(game, built),
+  });
 }
 
 // Commander tables start as real matches; other formats load a seeded board.
@@ -925,7 +937,10 @@ async function applyStartingBoard(game, payload) {
     ...payload.match,
     seed: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
   });
-  if (typeof game.setPerspective === "function") await game.setPerspective(0);
+  if (typeof game.setPerspective === "function") {
+    const state = await game.uiState();
+    await game.setPerspective(state.active_player);
+  }
 }
 
 async function applyPuzzleToGame(game, payload) {

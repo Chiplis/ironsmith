@@ -32,11 +32,15 @@ fn definitions() -> [CardDefinition; 3] {
     assert!(!direct_loss.is_lossy(), "direct route: {}", direct_loss.reasons_text());
     [direct, materialized, ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&decoded).unwrap()]
 }
-struct Choices { target: Option<ObjectId>, pay: bool, offers: Vec<(PlayerId, Option<ObjectId>)> }
-impl Default for Choices { fn default() -> Self { Self { target: None, pay: true, offers: Vec::new() } } }
+struct Choices { target: Option<ObjectId>, pay: bool, offers: Vec<(PlayerId, Option<ObjectId>)>, payment_requests: usize }
+impl Default for Choices { fn default() -> Self { Self { target: None, pay: true, offers: Vec::new(), payment_requests: 0 } } }
 impl DecisionMaker for Choices {
     fn decide_boolean(&mut self, _: &GameState, context: &BooleanContext) -> bool {
         self.offers.push((context.player, context.source)); self.pay && context.can_accept
+    }
+    fn decide_mana_payment(&mut self, game: &GameState, context: &ironsmith::decisions::context::ManaPaymentContext) -> ironsmith::mana_payment::ManaPaymentResponse {
+        self.payment_requests += 1;
+        SelectFirstDecisionMaker.decide_mana_payment(game, context)
     }
     fn decide_targets(&mut self, game: &GameState, context: &TargetsContext) -> Vec<Target> {
         if let Some(id) = self.target {
@@ -208,7 +212,11 @@ fn typed_payment_failure_and_missing_or_mismatched_lki_never_become_decline() {
         }
         assert!(game.battlefield.contains(&recipient));
         assert_eq!(game.stack.len(), 1); assert_eq!(game.stack[0].target_id(), stack_target);
-        assert!(dm.offers.is_empty(), "incomplete execution cannot be presented as a payment decision");
+        // Willingness can precede payment preparation; early discovery
+        // failures may also abort before that offer. Neither is a price or
+        // payment acknowledgement, and neither may turn the error into decline.
+        assert!(dm.offers.len() <= 1 && dm.offers.iter().all(|offer| *offer == (B, Some(recipient))));
+        assert_eq!(dm.payment_requests, 0, "incomplete evidence cannot present a payment plan");
         if kind == 0 {
             fund(&mut game, B, &[(ManaSymbol::Red, 1)]);
             resolve_stack_entry_with(&mut game, &mut dm).unwrap();

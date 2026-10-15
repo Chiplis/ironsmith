@@ -2077,7 +2077,7 @@ pub(super) fn each_player_milled_this_way_choice_stays_tied_to_milled_cards() {
             && rendered.contains("relation: IsTaggedObject")
             && rendered.contains("Graveyard")
             && rendered.contains("__sentence_helper_exiled")
-            && rendered.contains("SetBasePowerToughnessEffect")
+            && rendered.contains("dynamic_power_toughness: Some")
             && rendered.contains("TotalPower"),
         "expected milled-this-way choice and X/X token sizing to stay tied to the milled/exiled helper tags, got {rendered}"
     );
@@ -2517,7 +2517,7 @@ pub(super) fn exile_cost_count_can_drive_dynamic_token_power_toughness() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("exile_cost_0")
-            && debug.contains("SetBasePowerToughnessEffect")
+            && debug.contains("dynamic_power_toughness: Some")
             && debug.contains("Scaled(")
             && debug.contains("Count("),
         "expected token power/toughness to count cards exiled as an activation cost, got {debug}"

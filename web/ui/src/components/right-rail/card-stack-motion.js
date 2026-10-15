@@ -21,6 +21,23 @@ import { samePlayerId } from "@/lib/player-display";
 const MATERIALIZE_MS = 1100;
 const ARRIVAL_WATCHDOG_MS = 3500;
 export const PILE_EXIT_MS = 620;
+const BATTLEFIELD_IMPACT_REVEAL_MS = 120;
+
+// Keep the destination measurable while the star is in flight. A rule also
+// covers cards mounted/replaced during that flight, without owning their
+// inline styles. The flight outlives the departing stack entry.
+function holdBattlefieldReveal(objectId) {
+  if (objectId == null) return () => {};
+  const style = document.createElement("style");
+  style.textContent = `.game-card[data-object-id="${CSS.escape(String(objectId))}"]:not([data-card-stack-pile] *) { visibility: hidden !important; }`;
+  document.head.appendChild(style);
+  const reveal = () => {
+    window.clearTimeout(watchdog);
+    style.remove();
+  };
+  const watchdog = window.setTimeout(reveal, ARRIVAL_WATCHDOG_MS);
+  return reveal;
+}
 
 const PLAYER_ZONES = [
   ["battlefield", "battlefield"],
@@ -272,13 +289,21 @@ export function playExit({ node, entry, state, inspectId, owner, rgb, onMotion }
 
   if (toZone === "battlefield") {
     // Collapse into a star that lands on the new permanent.
+    const reveal = holdBattlefieldReveal(moved?.new_object_id);
     const target = () => objectRect(moved?.new_object_id) || zoneRect(state, moved?.controller ?? owner, "battlefield");
-    window.setTimeout(() => {
-      launchComet({ from: rect, to: target, rgb, style: "star", size: 1.15 }).then((point) => {
+    window.setTimeout(async () => {
+      try {
+        const point = await launchComet({ from: rect, to: target, rgb, style: "star", size: 1.15 });
         if (!point) return;
         shockwave({ at: point, rgb, radius: 70 });
         burst({ at: point, rgb, kind: "impact", count: 30 });
-      });
+        // Let the explosion bloom before the permanent becomes visible.
+        await new Promise((resolve) => window.setTimeout(resolve, BATTLEFIELD_IMPACT_REVEAL_MS));
+      } catch (error) {
+        console.error("[card stack] battlefield arrival animation failed", error);
+      } finally {
+        reveal();
+      }
     }, 160);
     onMotion(createTimeline({ autoplay: true }).add(node, {
       scale: [1, 1.06, 0.18],

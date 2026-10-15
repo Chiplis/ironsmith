@@ -428,6 +428,20 @@ mod tests {
 pub(in crate::compiled_text) fn describe_shared_dynamic_token_pair(
     effects: &[Effect],
 ) -> Option<String> {
+    if let [first, second] = effects {
+        let first_create = unwrap_basic_tag_wrappers(first)
+            .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+        let second_create = unwrap_basic_tag_wrappers(second)
+            .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+        if first_create.controller_target.is_some()
+            || second_create.controller_target.is_some()
+            || first_create.dynamic_power_toughness.is_none()
+            || first_create.dynamic_power_toughness != second_create.dynamic_power_toughness
+        {
+            return None;
+        }
+        return describe_joint_subject_pair(first, second);
+    }
     let [first, first_pt, second, second_pt] = effects else {
         return None;
     };

@@ -13,6 +13,7 @@ pub(crate) struct ManifestPreparation {
     pub(crate) object_id: ObjectId,
     stable_id: StableId,
     original_abilities: std::sync::Arc<Vec<crate::ability::Ability>>,
+    original_ward: Option<bool>,
     overlay_applied: bool,
 }
 
@@ -24,7 +25,13 @@ pub(crate) fn prepare_manifest_card(
     let card = game.object_mut(card_id)?;
     let stable_id = card.stable_id;
     let original_abilities = card.abilities.clone();
-    let overlay_applied = card.apply_face_down_cast_overlay();
+    let original_ward = card.face_down_cast_state.as_ref().map(|state| state.disguise_ward);
+    let overlay_applied = card.apply_face_down_cast_overlay_with_disguise_ward(cloak);
+    if let Some(state) = card.face_down_cast_state.as_mut() {
+        // Layer 1b reconstructs the overlay from this retained state.
+        // Cloak supplies ward even when the underlying card has no disguise.
+        state.disguise_ward = cloak;
+    }
     // Disguise's shared face-down overlay adds ward {2}, but manifesting a
     // disguise card does not make the disguise action's ward apply. Cloak has
     // ward {2} independently, so normalize the overlay before adding it.
@@ -49,6 +56,7 @@ pub(crate) fn prepare_manifest_card(
         object_id: card_id,
         stable_id,
         original_abilities,
+        original_ward,
         overlay_applied,
     })
 }
@@ -67,6 +75,9 @@ pub(crate) fn rollback_manifest_preparation(
         card.end_face_down_cast_overlay();
     } else {
         card.abilities = preparation.original_abilities.clone();
+        if let (Some(state), Some(ward)) = (card.face_down_cast_state.as_mut(), preparation.original_ward) {
+            state.disguise_ward = ward;
+        }
     }
 }
 

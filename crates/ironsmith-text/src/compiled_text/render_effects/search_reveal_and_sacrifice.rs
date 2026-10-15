@@ -4721,15 +4721,10 @@ pub(super) fn is_zero_zero_blue_zombie_token(create: &crate::effects::CreateToke
 pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_token(
     effects: &[Effect],
 ) -> Option<String> {
-    let [
-        mill_effect,
-        choose_effect,
-        exile_effect,
-        create_effect,
-        set_pt_effect,
-    ] = effects
-    else {
-        return None;
+    let (mill_effect, choose_effect, exile_effect, create_effect, set_pt_effect) = match effects {
+        [mill, choose, exile, create] => (mill, choose, exile, create, None),
+        [mill, choose, exile, create, set] => (mill, choose, exile, create, Some(set)),
+        _ => return None,
     };
 
     let for_players = mill_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
@@ -4774,7 +4769,8 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
         return None;
     }
 
-    let (created_tag, create) = tagged_create_token_effect(create_effect)?;
+    let create = unwrap_basic_tag_wrappers(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
     if create.count != Value::Fixed(1)
         || create.controller != PlayerFilter::You
         || create.enters_tapped
@@ -4784,17 +4780,19 @@ pub(super) fn describe_each_player_mill_exile_milled_creatures_create_power_toke
         return None;
     }
 
-    let set_pt = set_pt_effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
-    if !matches!(set_pt.target.base(), ChooseSpec::Tagged(tag) if tag == created_tag)
-        || !value_is_total_power_of_tagged_exiled_cards(&set_pt.power, &choose.tag, exile_effect_id)
-        || !value_is_total_power_of_tagged_exiled_cards(
-            &set_pt.toughness,
-            &choose.tag,
-            exile_effect_id,
-        )
-    {
-        return None;
-    }
+    let (power, toughness) = if let Some(set_pt_effect) = set_pt_effect {
+        let set_pt = set_pt_effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
+        let created_tag = structural_effect_tag(create_effect)?;
+        if !matches!(set_pt.target.base(), ChooseSpec::Tagged(tag) if tag == created_tag)
+            || set_pt.duration != Until::Forever { return None; }
+        (&set_pt.power, &set_pt.toughness)
+    } else {
+        let (power, toughness) = create.dynamic_power_toughness.as_ref()?;
+        (power, toughness)
+    };
+    if !value_is_total_power_of_tagged_exiled_cards(power, &choose.tag, exile_effect_id)
+        || !value_is_total_power_of_tagged_exiled_cards(toughness, &choose.tag, exile_effect_id)
+    { return None; }
 
     Some("Each player mills three cards. Exile up to two creature cards put into graveyards this way. Create an X/X blue Zombie creature token, where X is the total power of the cards exiled this way".to_string())
 }
