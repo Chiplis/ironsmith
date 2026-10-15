@@ -110,6 +110,18 @@ impl WasmGame {
         result
     }
 
+    /// An automation snapshot (`dispatchForAutomation`) keeps the pending
+    /// pass-only priority view: its caller passes or stops, and a stop reads
+    /// `uiState`, which builds the presentation menu then. Such a snapshot is
+    /// never reused from the cache as a full one.
+    pub(super) fn refresh_priority_presentation_unless_automating(&mut self) -> Result<(), ironsmith::effects::ExecutionError> {
+        if self.automation_snapshot {
+            self.cached_snapshot = None;
+            return Ok(());
+        }
+        self.refresh_priority_affordability_display()
+    }
+
     fn refresh_priority_affordability_display(&mut self) -> Result<(), ironsmith::effects::ExecutionError> {
         let Some(DecisionContext::Priority(ctx)) = self.pending_decision.as_ref() else { return Ok(()); };
         if self.pregame.is_some() { return Ok(()); }
@@ -340,6 +352,65 @@ mod priority_analysis_tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    fn main_phase_with(wasm: &mut WasmGame, name: &str, text: &str, zone: ironsmith::Zone) -> ObjectId {
+        let alice = PlayerId::from_index(0);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        wasm.game.turn.step = None;
+        let definition = ironsmith_registry_test::compile_to_runtime_definition(name, text, false).unwrap();
+        wasm.game.create_object_from_definition(&definition, alice, zone)
+    }
+
+    #[test]
+    fn presentation_assumes_mana_for_activations_that_also_tap_their_source() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            let source = main_phase_with(&mut wasm, "Tapping draw stone",
+                "Mana cost: {2}\nType: Artifact\n{2}, {T}: Draw a card.", ironsmith::Zone::Battlefield);
+            let activation = |action: &LegalAction| matches!(action,
+                LegalAction::ActivateAbility { source: id, .. } if *id == source);
+            // No mana: the exact menu refuses it ...
+            let exact = ironsmith::game_loop::analyze_priority_context(&wasm.game, alice).unwrap();
+            assert!(!exact.actions.iter().any(activation));
+            // ... while presentation assumes mana and offers it to announce.
+            // The tap cost reserves its source, which used to route this check
+            // into a full payment search on every deferred snapshot.
+            let presented = ironsmith::decision::compute_actions_assuming_mana_for_presentation(
+                &wasm.game, alice, Some(source)).unwrap();
+            assert!(presented.iter().any(activation), "presented: {presented:?}");
+        });
+    }
+
+    #[test]
+    fn automation_snapshots_keep_the_pass_only_priority_view() {
+        with_fixture_stack(|| {
+            let _ids = crate::test_id_counter_guard();
+            let (mut wasm, _restore) = fixture();
+            let alice = PlayerId::from_index(0);
+            let spell = main_phase_with(&mut wasm, "Cheap sorcery",
+                "Mana cost: {R}\nType: Sorcery\nYou gain 1 life.", ironsmith::Zone::Hand);
+            wasm.game.player_mut(alice).unwrap().mana_pool.red = 1;
+            wasm.pending_decision = Some(DecisionContext::Priority(
+                ironsmith::game_loop::priority_context(&wasm.game, alice).unwrap(),
+            ));
+            let presented = |wasm: &WasmGame| {
+                let Some(DecisionContext::Priority(ctx)) = wasm.pending_decision.as_ref() else { panic!() };
+                assert_eq!(ctx.actions.to_vec(), vec![LegalAction::PassPriority]);
+                assert!(!ctx.analysis_complete);
+                ctx.presentation_actions.iter().any(|action| matches!(action,
+                    LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))
+            };
+            wasm.automation_snapshot = true;
+            wasm.refresh_priority_presentation_unless_automating().unwrap();
+            assert!(!presented(&wasm), "an auto-passed snapshot skips the presentation menu");
+            wasm.automation_snapshot = false;
+            wasm.refresh_priority_presentation_unless_automating().unwrap();
+            assert!(presented(&wasm), "the published snapshot still presents the castable spell");
+        });
     }
     #[test]
     fn free_and_warp_methods_are_published_before_normal_payment_finishes() {

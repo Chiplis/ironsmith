@@ -42,7 +42,7 @@ pub(crate) use legal_actions::{
 use legal_actions::*;
 #[allow(unused_imports)]
 use mana::*;
-pub(crate) use mana::{AvailableManaSource, can_pay_mana_cost_with_available_sources, payment_requires_stateful_sources};
+pub(crate) use mana::{AvailableManaSource, can_pay_mana_cost_with_available_sources, mana_payment_is_assumed, payment_requires_stateful_sources};
 #[allow(unused_imports)]
 use perf::*;
 #[allow(unused_imports)]

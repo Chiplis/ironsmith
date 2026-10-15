@@ -872,21 +872,24 @@ fn execute_untap_step_inner(
         &mut ctx,
         true,
         |game, ctx| {
-            let mut receipts = Vec::new();
-            for (id, actor, original) in prepared {
-                let mut child =
-                    crate::effects::ExecutionContext::new(id, actor, &mut *ctx.decision_maker);
-                let receipt = crate::events::processing::commit_prepared_untap_with_outputs(
-                    game, &mut child, original,
-                )?;
-                let receipt =
-                    crate::effects::composition::with_original_execution_context(receipt, &child);
-                receipts.push(receipt);
-                if child.decision_maker.awaiting_choice() {
-                    return Ok(Vec::new());
+            game.with_batched_untaps(|game| {
+                let mut receipts = Vec::new();
+                for (id, actor, original) in prepared {
+                    let mut child =
+                        crate::effects::ExecutionContext::new(id, actor, &mut *ctx.decision_maker);
+                    let receipt = crate::events::processing::commit_prepared_untap_with_outputs(
+                        game, &mut child, original,
+                    )?;
+                    let receipt = crate::effects::composition::with_original_execution_context(
+                        receipt, &child,
+                    );
+                    receipts.push(receipt);
+                    if child.decision_maker.awaiting_choice() {
+                        return Ok(Vec::new());
+                    }
                 }
-            }
-            Ok(receipts)
+                Ok(receipts)
+            })
         },
         |game, _, receipts| {
             let mut observed: Vec<_> = receipts

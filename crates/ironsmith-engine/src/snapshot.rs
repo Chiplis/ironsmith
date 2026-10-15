@@ -863,7 +863,7 @@ impl ObjectSnapshot {
             // Non-copiable state (from game state extension maps)
             counters: obj.counters.counts().clone(),
             is_token: obj.kind == ObjectKind::Token,
-            tapped: game.is_tapped(obj.id),
+            tapped: game.is_tapped_for_capture(obj.id),
             attacking: game
                 .combat
                 .as_ref()

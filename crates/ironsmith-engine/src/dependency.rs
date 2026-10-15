@@ -263,7 +263,9 @@ fn chars_class_key(
     chars.supertypes.as_slice().hash(&mut hasher);
     chars.colors.hash(&mut hasher);
     matches!(obj.kind, crate::object::ObjectKind::Token).hash(&mut hasher);
-    game.is_tapped(obj.id).hash(&mut hasher);
+    // Only refines the classes; a probe filter that reads tapped state
+    // records that read itself.
+    game.is_tapped_for_capture(obj.id).hash(&mut hasher);
     game.is_face_down(obj.id).hash(&mut hasher);
     for ability in chars.static_abilities.iter() {
         ability.id().hash(&mut hasher);
@@ -1105,11 +1107,11 @@ fn object_matches_filter_with_chars(
         return false;
     }
 
-    let is_tapped = game.is_tapped(object.id);
-    if filter.tapped && !is_tapped {
-        return false;
-    }
-    if filter.untapped && is_tapped {
+    // Read tapped state only for a filter that asks (see continuous.rs).
+    if (filter.tapped || filter.untapped) && {
+        let is_tapped = game.is_tapped(object.id);
+        (filter.tapped && !is_tapped) || (filter.untapped && is_tapped)
+    } {
         return false;
     }
 

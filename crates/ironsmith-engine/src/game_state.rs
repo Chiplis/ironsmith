@@ -1320,6 +1320,22 @@ struct RuntimeCacheState {
     /// Memo of whether any continuous effect can change when a permanent taps
     /// or a mana pool changes, keyed on the continuous-effects revision.
     tap_sensitivity: Cell<Option<(u64, bool)>>,
+    /// While a batch of simultaneous untaps runs, `untap` records that the
+    /// can't-effect tracker is stale here instead of rebuilding it once per
+    /// permanent. `None` outside a batch; `Some(pending)` inside one.
+    cant_update_deferral: Cell<Option<bool>>,
+    /// Depth of derivations (layer calculation, static generation, controller
+    /// resolution, restriction/replacement publication) whose results are
+    /// retained in caches. Reads of tapped state inside one are recorded.
+    derived_tap_read_depth: Cell<u32>,
+    /// Whether any derivation since the last global invalidation read tapped
+    /// state. While false, no retained derived result depends on which
+    /// permanents are tapped, so a tap or untap only invalidates the object.
+    derived_state_read_tapped: Cell<bool>,
+    /// Reads recorded before the global invalidations since the last
+    /// regeneration. Restored if the state is marked clean without one
+    /// (`retain_continuous_state_after_mana_activation`).
+    derived_tap_reads_before_dirty: Cell<bool>,
     effects_snapshot: RefCell<Option<(u64, Arc<Vec<ContinuousEffect>>)>>,
     controller_cache: RefCell<Option<ControllerCache>>,
     payment_restriction_presence: Cell<Option<PaymentRestrictionPresenceCache>>,
@@ -1367,6 +1383,11 @@ impl Clone for RuntimeCacheState {
             continuous_state_turn_number: Cell::new(self.continuous_state_turn_number.get()),
             turn_sensitivity: Cell::new(self.turn_sensitivity.get()),
             tap_sensitivity: Cell::new(self.tap_sensitivity.get()),
+            cant_update_deferral: Cell::new(self.cant_update_deferral.get()),
+            // A clone taken inside a derivation is not itself inside one.
+            derived_tap_read_depth: Cell::new(0),
+            derived_state_read_tapped: Cell::new(self.derived_state_read_tapped.get()),
+            derived_tap_reads_before_dirty: Cell::new(self.derived_tap_reads_before_dirty.get()),
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
             continuous_state_step: Cell::new(self.continuous_state_step.get()),
@@ -1415,6 +1436,10 @@ impl RuntimeCacheState {
             continuous_state_turn_number: Cell::new(1),
             turn_sensitivity: Cell::new(None),
             tap_sensitivity: Cell::new(None),
+            cant_update_deferral: Cell::new(None),
+            derived_tap_read_depth: Cell::new(0),
+            derived_state_read_tapped: Cell::new(false),
+            derived_tap_reads_before_dirty: Cell::new(false),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
             continuous_state_step: Cell::new(Some(Step::Untap)),
@@ -1580,6 +1605,17 @@ impl ControllerCache {
             && self.active_player == game.turn.active_player
             && self.phase == game.turn.phase
             && self.step == game.turn.step
+    }
+}
+
+/// Scope of a derivation tracked by `GameState::derived_tap_read_scope`.
+pub(crate) struct DerivedTapReadScope<'a> {
+    depth: &'a Cell<u32>,
+}
+
+impl Drop for DerivedTapReadScope<'_> {
+    fn drop(&mut self) {
+        self.depth.set(self.depth.get().saturating_sub(1));
     }
 }
 
@@ -5441,6 +5477,44 @@ impl GameState {
         }
     }
 
+    /// Marks the start of a derivation whose result may be retained across a
+    /// tap (see `derived_state_read_tapped`). Reads of tapped state are
+    /// recorded until the returned scope drops.
+    pub(crate) fn derived_tap_read_scope(&self) -> DerivedTapReadScope<'_> {
+        let depth = &self.runtime_cache.derived_tap_read_depth;
+        depth.set(depth.get().saturating_add(1));
+        DerivedTapReadScope { depth }
+    }
+
+    /// `derived_tap_read_scope` for derivations that need `&mut self`; pair
+    /// with `exit_derived_tap_reads`. An unpaired enter only over-records.
+    pub(crate) fn enter_derived_tap_reads(&self) {
+        let depth = &self.runtime_cache.derived_tap_read_depth;
+        depth.set(depth.get().saturating_add(1));
+    }
+
+    pub(crate) fn exit_derived_tap_reads(&self) {
+        let depth = &self.runtime_cache.derived_tap_read_depth;
+        depth.set(depth.get().saturating_sub(1));
+    }
+
+    pub(crate) fn note_tapped_state_read(&self) {
+        if self.runtime_cache.derived_tap_read_depth.get() > 0 {
+            if !self.runtime_cache.derived_state_read_tapped.get()
+                && std::env::var_os("TAP_READ_TRACE").is_some()
+            {
+                eprintln!("TAPREAD {}", std::backtrace::Backtrace::force_capture());
+            }
+            self.runtime_cache.derived_state_read_tapped.set(true);
+        }
+    }
+
+    /// Whether a derivation retained since the last global invalidation read
+    /// tapped state, so a tap or untap must invalidate it.
+    pub(crate) fn derived_state_read_tapped(&self) -> bool {
+        self.runtime_cache.derived_state_read_tapped.get()
+    }
+
     pub(crate) fn mark_continuous_state_dirty(&self) {
         let counter = &self
             .runtime_cache
@@ -5456,6 +5530,13 @@ impl GameState {
                 .saturating_add(1),
         );
         self.runtime_cache.continuous_state_dirty.set(true);
+        // Every retained derivation is recomputed after this, re-recording its
+        // reads. A derivation still running may cache its result afterwards,
+        // so its reads must survive.
+        if self.runtime_cache.derived_tap_read_depth.get() == 0 {
+            let before = &self.runtime_cache.derived_tap_reads_before_dirty;
+            before.set(before.get() | self.runtime_cache.derived_state_read_tapped.replace(false));
+        }
         // A characteristic query can populate the cache while another refresh
         // is pending. Every later context mutation must invalidate that view.
         self.runtime_cache.characteristics_cache.bump_epoch();
@@ -5686,6 +5767,9 @@ impl GameState {
             self.runtime_cache.characteristics_cache.bump_epoch();
         }
         self.runtime_cache.continuous_state_dirty.set(false);
+        // Static effects were just regenerated and the characteristics cache
+        // was cleared by the invalidation, so earlier reads are gone.
+        self.runtime_cache.derived_tap_reads_before_dirty.set(false);
         self.runtime_cache
             .continuous_state_revision
             .set(self.effect_store.continuous_effects.revision());
@@ -5716,6 +5800,12 @@ impl GameState {
     /// Diagnostics accessor: whether cached continuous state can be reused.
     pub fn continuous_state_is_clean_public(&self) -> bool {
         self.continuous_state_is_clean()
+    }
+
+    /// Diagnostics: discard every derived continuous result, so the next
+    /// refresh recomputes from scratch (differential tests of fast paths).
+    pub fn invalidate_continuous_state_public(&self) {
+        self.mark_continuous_state_dirty();
     }
 
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
@@ -5976,6 +6066,10 @@ impl GameState {
         // same mutation and immediately invalidates the retained state.
         *self.runtime_cache.observed_players.borrow_mut() = Some(self.players.cursor());
         self.runtime_cache.continuous_state_dirty.set(false);
+        // Nothing was rederived, so the retained state keeps its recorded reads.
+        let before = self.runtime_cache.derived_tap_reads_before_dirty.replace(false);
+        let read = &self.runtime_cache.derived_state_read_tapped;
+        read.set(read.get() | before);
         true
     }
 

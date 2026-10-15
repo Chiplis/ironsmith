@@ -104,7 +104,10 @@ impl<'a> ObjectSubject<'a> {
     pub(crate) fn tapped(self, game: &GameState) -> bool {
         match self {
             Self::Live(object) => game.is_tapped(object.id),
-            Self::Snapshot(snapshot) => snapshot.tapped,
+            Self::Snapshot(snapshot) => {
+                game.note_tapped_state_read();
+                snapshot.tapped
+            }
         }
     }
     pub(crate) fn ring_bearer(self, game: &GameState) -> bool {

@@ -14,6 +14,7 @@ pub use resumable::ManaAnalysisSession;
 pub(super) use resumable::{
     analysis_failure, with_assumed_mana_for_presentation, with_checked_query,
 };
+pub(crate) use resumable::mana_payment_is_assumed;
 
 pub use mechanics::*;
 

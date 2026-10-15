@@ -187,9 +187,22 @@ fn corpus(out_dir: &str, limit: Option<usize>) {
         .into_values()
         .filter(|r| r.type_line.as_deref().is_some_and(is_permanent_type))
         .collect();
+    let skip: std::collections::HashSet<String> = std::env::var("SKIP_CARDS_FILE")
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|t| t.lines().map(str::to_string).collect())
+        .unwrap_or_default();
+    items.retain(|r| !skip.contains(&r.payload.name));
     if let Some(n) = limit {
         items.truncate(n);
     }
+    let progress = std::sync::Mutex::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!("{out_dir}/progress.log"))
+            .unwrap(),
+    );
     let fx_forest = {
         let recs = ironsmith_tools::load_card_payloads_by_name(
             default_cards_path().to_str().unwrap(),
@@ -228,6 +241,11 @@ fn corpus(out_dir: &str, limit: Option<usize>) {
                 if n % 2000 == 0 {
                     eprintln!("{n}/{total} {:?}", t0.elapsed());
                 }
+                {
+                    let mut f = progress.lock().unwrap();
+                    let _ = writeln!(f, "S\t{}", rec.payload.name);
+                }
+                let row = (|| {
                 let edhrec_rank = serde_json::from_str::<serde_json::Value>(&rec.raw_card_json)
                     .ok()
                     .and_then(|v| v.get("edhrec_rank").and_then(|r| r.as_u64()));
@@ -291,6 +309,12 @@ fn corpus(out_dir: &str, limit: Option<usize>) {
                             "COMBINATION_OR_NONSTATIC".into()
                         });
                     }
+                }
+                row
+                })();
+                {
+                    let mut f = progress.lock().unwrap();
+                    let _ = writeln!(f, "E\t{}", rec.payload.name);
                 }
                 row
             })
@@ -404,18 +428,7 @@ fn build_board(
     let names: Vec<String> = (0..4).map(|i| format!("P{i}")).collect();
     let mut game = GameState::new(names, 40);
     let bear = vanilla("Probe Bear");
-    let nonland = [
-        "Llanowar Elves",
-        "Elvish Mystic",
-        "Glorious Anthem",
-        "Elvish Archdruid",
-        "Sol Ring",
-        "Arcane Signet",
-        "Rhystic Study",
-        "Smothering Tithe",
-        "Intangible Virtue",
-        "Lord of Atlantis",
-    ];
+    let nonland = board_cards();
     let mut p0_lands = Vec::new();
     let mut p0_attackers = Vec::new();
     for p in 0..4 {
@@ -428,11 +441,11 @@ fn build_board(
             }
         }
         let mut placed = lands;
-        for name in nonland {
+        for name in &nonland {
             if placed >= per_player {
                 break;
             }
-            let id = game.create_object_from_definition(&defs[name], pid, Zone::Battlefield);
+            let id = game.create_object_from_definition(&defs[name.as_str()], pid, Zone::Battlefield);
             game.remove_summoning_sickness(id);
             placed += 1;
         }
@@ -469,27 +482,33 @@ fn build_board(
     Board { game, p0_lands, p0_attackers }
 }
 
+fn board_cards() -> Vec<String> {
+    std::env::var("BOARD_CARDS")
+        .unwrap_or_else(|_| {
+            "Llanowar Elves,Elvish Mystic,Glorious Anthem,Elvish Archdruid,Sol Ring,Arcane Signet,Rhystic Study,Smothering Tithe,Intangible Virtue,Lord of Atlantis".into()
+        })
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn warm(game: &GameState) -> GameState {
+    let mut g = game.clone();
+    g.refresh_continuous_state().unwrap();
+    let _ = compute_legal_actions(&g, PlayerId::from_index(0));
+    g.refresh_continuous_state().unwrap();
+    assert!(g.continuous_state_is_clean_public());
+    g
+}
+
 fn min_ms<F: FnMut() -> f64>(runs: usize, mut f: F) -> f64 {
     (0..runs).map(|_| f()).fold(f64::INFINITY, f64::min)
 }
 
 fn cost(globalizer: &str, runs: usize) {
-    let mut wanted: Vec<String> = [
-        "Forest",
-        "Llanowar Elves",
-        "Elvish Mystic",
-        "Glorious Anthem",
-        "Elvish Archdruid",
-        "Sol Ring",
-        "Arcane Signet",
-        "Rhystic Study",
-        "Smothering Tithe",
-        "Intangible Virtue",
-        "Lord of Atlantis",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
+    let mut wanted: Vec<String> = vec!["Forest".to_string()];
+    wanted.extend(board_cards());
     wanted.push(globalizer.to_string());
     let payloads =
         ironsmith_tools::load_card_payloads_by_names(default_cards_path().to_str().unwrap(), &wanted)
@@ -516,29 +535,83 @@ fn cost(globalizer: &str, runs: usize) {
 
             // (a) refresh after one tap
             let refresh = min_ms(runs, || {
-                let mut g = board.game.clone();
+                let mut g = warm(&board.game);
                 g.tap(board.p0_lands[0]);
                 let t = Instant::now();
                 g.refresh_continuous_state().unwrap();
                 t.elapsed().as_secs_f64() * 1e3
             });
+            let refresh_noop = min_ms(runs, || {
+                let mut g = warm(&board.game);
+                let t = Instant::now();
+                g.refresh_continuous_state().unwrap();
+                t.elapsed().as_secs_f64() * 1e3
+            });
+            let mana_probe = {
+                let mut g = warm(&board.game);
+                let c0 = g.work_counters();
+                let actions = compute_legal_actions(&g, p0).unwrap();
+                let action = actions
+                    .into_iter()
+                    .find(|a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == board.p0_lands[0]))
+                    .expect("land mana action");
+                let c1 = g.work_counters();
+                let mut queue = TriggerQueue::default();
+                let mut state = PriorityLoopState::new(g.players_in_game());
+                apply_priority_response_with_dm(&mut g, &mut queue, &mut state, &PriorityResponse::PriorityAction(action), &mut SelectFirstDecisionMaker).unwrap();
+                let c2 = g.work_counters();
+                format!("legal={:?} activate={:?}", delta(&c0, &c1), delta(&c1, &c2))
+            };
+            let tap_only = min_ms(runs, || {
+                let mut g = warm(&board.game);
+                let t = Instant::now();
+                g.tap(board.p0_lands[0]);
+                t.elapsed().as_secs_f64() * 1e3
+            });
+            let (clean_after_tap, second_refresh) = {
+                let mut g = warm(&board.game);
+                g.tap(board.p0_lands[0]);
+                let rev_before = board.game.effect_store.continuous_effects.revision();
+                let rev_after = g.effect_store.continuous_effects.revision();
+                let clean = g.continuous_state_is_clean_public();
+                let c0 = g.work_counters();
+                let t1 = Instant::now();
+                g.refresh_continuous_state().unwrap();
+                let first = t1.elapsed().as_secs_f64() * 1e3;
+                let c1 = g.work_counters();
+                let tc = Instant::now();
+                let cl = g.clone();
+                let clone_ms = tc.elapsed().as_secs_f64() * 1e3;
+                drop(cl);
+                println!("  first refresh after tap {first:.3}ms; game.clone() {clone_ms:.3}ms; effects revision {rev_before}->{rev_after}");
+                let t = Instant::now();
+                g.refresh_continuous_state().unwrap();
+                (clean, format!("refresh work: regens={} recomputes={} effects={} global_inval_during_refresh={}; second refresh {:.3}ms",
+                    c1.static_ability_regens - c0.static_ability_regens,
+                    c1.characteristics_full_recomputes - c0.characteristics_full_recomputes,
+                    c1.effects_considered - c0.effects_considered,
+                    c1.continuous_global_invalidations - c0.continuous_global_invalidations,
+                    t.elapsed().as_secs_f64() * 1e3))
+            };
+            println!("  board={bf} {label}: tap_only={tap_only:.3} clean_after_tap={clean_after_tap} {second_refresh}");
+            println!("  board={bf} {label}: refresh_noop={refresh_noop:.3} one priority mana activation (global,local): {mana_probe}");
             // (b) legal actions right after one tap (no explicit refresh)
             let legal_after_tap = min_ms(runs, || {
-                let mut g = board.game.clone();
+                let mut g = warm(&board.game);
                 g.tap(board.p0_lands[0]);
                 let t = Instant::now();
                 let _ = compute_legal_actions(&g, p0).unwrap();
                 t.elapsed().as_secs_f64() * 1e3
             });
             let legal_clean = min_ms(runs, || {
-                let g = board.game.clone();
+                let g = warm(&board.game);
                 let t = Instant::now();
                 let _ = compute_legal_actions(&g, p0).unwrap();
                 t.elapsed().as_secs_f64() * 1e3
             });
             // (b') tap + refresh + legal actions, the realistic sequence
             let tap_refresh_legal = min_ms(runs, || {
-                let mut g = board.game.clone();
+                let mut g = warm(&board.game);
                 let t = Instant::now();
                 g.tap(board.p0_lands[0]);
                 g.refresh_continuous_state().unwrap();

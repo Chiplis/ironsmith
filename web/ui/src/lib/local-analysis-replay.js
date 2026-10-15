@@ -140,7 +140,11 @@ export function createLocalAnalysisReplica(createGame, { restoreSeed = null } = 
           else args[0] = 0; // Native expired-handle behavior, never our analysis branch.
         }
         let result, error, failed = false;
-        try { result = await game[operation.method](...args); }
+        // The authoritative worker answers dispatchForAutomation with dispatch
+        // on an engine that predates it; replicas run the same engine.
+        const method = operation.method === 'dispatchForAutomation' && typeof game.dispatchForAutomation !== 'function'
+          ? 'dispatch' : operation.method;
+        try { result = await game[method](...args); }
         catch (caught) { error = caught; failed = true; }
         if (failed !== operation.failed || (failed && errorMessage(error) !== operation.error)) {
           rebuild = true;

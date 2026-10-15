@@ -4882,6 +4882,9 @@ pub struct WasmGame {
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
     cached_snapshot: Option<CachedSnapshot>,
     defer_mana_options: bool,
+    /// Set only while `dispatchForAutomation` builds its result: the caller
+    /// reads the decision to auto-pass, so the snapshot omits presentation work.
+    automation_snapshot: bool,
     mana_activation_inventory_cache: std::cell::RefCell<Option<(u64, Vec<ManaActivationOptionView>)>>,
 }
 

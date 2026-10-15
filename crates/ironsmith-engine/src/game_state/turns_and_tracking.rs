@@ -3807,6 +3807,14 @@ impl GameState {
 
     /// Check if a permanent is tapped.
     pub fn is_tapped(&self, id: ObjectId) -> bool {
+        self.note_tapped_state_read();
+        self.battlefield_flags.tapped_permanents.contains(&id)
+    }
+
+    /// Reads tapped state into a captured record (an `ObjectSnapshot`)
+    /// without counting as a derivation's read; whoever consumes the captured
+    /// value records it then (`FilterSubject::tapped`).
+    pub(crate) fn is_tapped_for_capture(&self, id: ObjectId) -> bool {
         self.battlefield_flags.tapped_permanents.contains(&id)
     }
 
@@ -3854,7 +3862,27 @@ impl GameState {
             self.mark_continuous_state_dirty();
         }
         // Static restrictions may themselves depend on tapped state.
-        self.update_cant_effects();
+        match self.runtime_cache.cant_update_deferral.get() {
+            Some(_) => self.runtime_cache.cant_update_deferral.set(Some(true)),
+            None => self.update_cant_effects(),
+        }
+    }
+
+    /// Runs `untaps`, a set of simultaneous untap events, rebuilding the
+    /// can't-effect tracker once afterwards rather than once per permanent.
+    /// Untapping one permanent of the set cannot change whether another of
+    /// the same set can untap: every replacement was already prepared.
+    pub(crate) fn with_batched_untaps<T>(&mut self, untaps: impl FnOnce(&mut Self) -> T) -> T {
+        let outer = self.runtime_cache.cant_update_deferral.replace(Some(false));
+        let result = untaps(self);
+        let pending = self.runtime_cache.cant_update_deferral.replace(outer) == Some(true);
+        if pending {
+            match outer {
+                Some(_) => self.runtime_cache.cant_update_deferral.set(Some(true)),
+                None => self.update_cant_effects(),
+            }
+        }
+        result
     }
 
     fn mark_tapped_state_changed(&mut self, id: ObjectId) {
@@ -3866,14 +3894,14 @@ impl GameState {
     }
 
     fn tapped_state_change_can_stay_local(&self, id: ObjectId) -> bool {
-        // Keyword/static ability presence alone does not make a tap observable
-        // to layers. Use the same conservative dependency proof as payment
-        // projection, including values and copied-ability donor filters.
+        // Every retained derivation records whether it read tapped state
+        // (`derived_tap_read_scope`). If none did since the last global
+        // invalidation, no cached result can change when this permanent taps.
         self.continuous_state_is_clean()
             && self
                 .object(id)
                 .is_some_and(|object| object.zone == Zone::Battlefield)
-            && !self.continuous_effects_are_tap_sensitive()
+            && !self.derived_state_read_tapped()
     }
 
     fn characteristic_extension_change_can_stay_local(

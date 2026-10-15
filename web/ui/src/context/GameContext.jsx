@@ -744,6 +744,26 @@ function readDispatchPerf(state) {
   return state && typeof state === "object" && state.__perf ? state.__perf : null;
 }
 
+// Results that only feed finalizeState (local commands, auto-passes, default
+// declarations) skip the engine's priority presentation menu: castable
+// highlights and their payment searches, wasted on every priority that is
+// passed automatically. finalizeState fetches the full view once, for the
+// state it actually publishes.
+const automationSnapshots = new WeakSet();
+
+function needsPresentation(state) {
+  return automationSnapshots.has(state)
+    && state.decision?.kind === "priority"
+    && state.decision.analysis_complete === false;
+}
+
+async function dispatchForAutomation(game, command) {
+  if (typeof game.dispatchForAutomation !== "function") return game.dispatch(command);
+  const state = await game.dispatchForAutomation(command);
+  if (state && typeof state === "object") automationSnapshots.add(state);
+  return state;
+}
+
 function recordPerfEvent(label, payload) {
   if (typeof window === "undefined") return;
   const bucket = Array.isArray(window.__ironsmithPerfEvents)
@@ -1221,7 +1241,7 @@ export function GameProvider({ children }) {
 
         const stepStartedAt = performance.now();
         const decisionBefore = summarizeDecision(st?.decision || null);
-        st = await currentGame.dispatch(priorityCommandForAction(passAction));
+        st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
         autoPasses += 1;
         const elapsedMs = performance.now() - stepStartedAt;
         const workerPerf = readDispatchPerf(st);
@@ -1318,7 +1338,7 @@ export function GameProvider({ children }) {
               const command = await buildOpponentDecisionCommand(st, currentGame);
               if (!command) { holdReason = "no automatic priority response available"; break; }
               const decisionBefore = summarizeDecision(st.decision);
-              st = await currentGame.dispatch(command);
+              st = await dispatchForAutomation(currentGame, command);
               autoPasses += 1;
               trace.push({ kind: "opponent_required_priority_choice", decision_before: decisionBefore,
                 decision_after: summarizeDecision(st?.decision || null) });
@@ -1329,7 +1349,7 @@ export function GameProvider({ children }) {
               if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
               const stepStartedAt = performance.now();
               const decisionBefore = summarizeDecision(st?.decision || null);
-              st = await currentGame.dispatch(priorityCommandForAction(passAction));
+              st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
               autoPasses += 1;
               const elapsedMs = performance.now() - stepStartedAt;
               const workerPerf = readDispatchPerf(st);
@@ -1355,7 +1375,7 @@ export function GameProvider({ children }) {
             if (autoPasses >= maxAutoPasses) { holdReason = "auto-pass safety limit reached"; break; }
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await currentGame.dispatch(priorityCommandForAction(passAction));
+            st = await dispatchForAutomation(currentGame, priorityCommandForAction(passAction));
             autoPasses += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1382,7 +1402,7 @@ export function GameProvider({ children }) {
             if (!command) { holdReason = "no legal attacker response available"; break; }
             const stepStartedAt = performance.now();
             const decisionBefore = summarizeDecision(st?.decision || null);
-            st = await currentGame.dispatch(command);
+            st = await dispatchForAutomation(currentGame, command);
             autoDeclares += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1403,7 +1423,7 @@ export function GameProvider({ children }) {
               ? await currentGame.getDefaultSelectionCommand()
               : { type: "declare_blockers", declarations: [] };
             if (!command) { holdReason = "no legal blocker response available"; break; }
-            st = await currentGame.dispatch(command);
+            st = await dispatchForAutomation(currentGame, command);
             autoDeclares += 1;
             const elapsedMs = performance.now() - stepStartedAt;
             const workerPerf = readDispatchPerf(st);
@@ -1422,7 +1442,7 @@ export function GameProvider({ children }) {
           const decisionBefore = summarizeDecision(st.decision);
           st = command.type === "cancel_decision"
             ? await currentGame.cancelDecision()
-            : await currentGame.dispatch(command);
+            : await dispatchForAutomation(currentGame, command);
           autoDeclares += 1;
           trace.push({ kind: "opponent_effect_decision", decision_before: decisionBefore,
             decision_after: summarizeDecision(st?.decision || null) });
@@ -1492,7 +1512,7 @@ export function GameProvider({ children }) {
         try {
           const dispatchStartedAt = performance.now();
           const decisionBefore = summarizeDecision(st?.decision || null);
-          st = await currentGame.dispatch(auto.cmd);
+          st = await dispatchForAutomation(currentGame, auto.cmd);
           resolved++;
           const dispatchMs = performance.now() - dispatchStartedAt;
           const dispatchWorker = readDispatchPerf(st);
@@ -1598,6 +1618,11 @@ export function GameProvider({ children }) {
         : { state: st, resolved: 0, trace: [] };
       const trivialAutoResolveMs = performance.now() - trivialResolveStartedAt;
       st = autoResolved.state;
+      const presentationStartedAt = performance.now();
+      if (needsPresentation(st) && typeof currentGame.uiState === "function") {
+        st = await currentGame.uiState();
+      }
+      const presentationMs = performance.now() - presentationStartedAt;
       const stickyStartedAt = performance.now();
       // Background verification and provisional transactions must not mutate
       // presentation caches before their controller publishes the result.
@@ -1631,6 +1656,7 @@ export function GameProvider({ children }) {
         perf: {
           settle_priority_ms: settlePriorityMs,
           trivial_auto_resolve_ms: trivialAutoResolveMs,
+          presentation_ms: presentationMs,
           apply_sticky_viewed_cards_ms: applyStickyViewedCardsMs,
           total_finalize_ms: totalFinalizeMs,
         },
@@ -2238,8 +2264,8 @@ export function GameProvider({ children }) {
           const dispatchStartedAt = performance.now();
           if (isTargetSubmit) armTargetSubmitDebounce();
           priorityCheckpoint = priorityStops.beforeCommand(command, stateRef.current);
-          let st = await game.dispatch(command);
-          st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => game.dispatch(nextCommand));
+          let st = await dispatchForAutomation(game, command);
+          st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => dispatchForAutomation(game, nextCommand));
           const workerRoundTripMs = performance.now() - dispatchStartedAt;
           if (isTargetSubmit) settleTargetSubmitDebounce();
           const workerPerf = readDispatchPerf(st);

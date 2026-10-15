@@ -289,19 +289,26 @@ impl crate::effects::SimultaneousEffectProposal for UntapInstructionProposal {
         let selection = self.selection.take().ok_or_else(|| {
             ExecutionError::InternalError("untap selection was not retained".into())
         })?;
-        let mut receipts = Vec::new();
-        for original in prepared {
-            let mut receipt =
-                crate::events::processing::commit_prepared_untap_with_outputs(game, ctx, original)?;
-            selection.bind_actor(&mut receipt.outcome.outcome);
-            receipt.outcome.synchronize_observations();
-            receipts.push(receipt);
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::SimultaneousEffectCommit::finished(
-                    crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-                ));
+        let receipts = game.with_batched_untaps(|game| {
+            let mut receipts = Vec::new();
+            for original in prepared {
+                let mut receipt = crate::events::processing::commit_prepared_untap_with_outputs(
+                    game, ctx, original,
+                )?;
+                selection.bind_actor(&mut receipt.outcome.outcome);
+                receipt.outcome.synchronize_observations();
+                receipts.push(receipt);
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(None);
+                }
             }
-        }
+            Ok::<_, ExecutionError>(Some(receipts))
+        })?;
+        let Some(receipts) = receipts else {
+            return Ok(crate::effects::SimultaneousEffectCommit::finished(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        };
         let projection = selection.clone();
         let receipt = crate::effects::composition::compose_original_commits_with_projection_outputs(
             receipts,

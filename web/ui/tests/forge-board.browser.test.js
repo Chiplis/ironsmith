@@ -40,7 +40,7 @@ test('forge follows crowded zones, preserves input, resizes, and releases GPU re
       assert.deepEqual([...new Set(measurements.zones.filter(z => z.battlefield).map(z => z.owner))], scenario.counts.map((_, i) => String(i)));
       if (scenario.piles) {
         for (let owner = 0; owner < scenario.counts.length; owner++) {
-          for (const type of ['graveyard', 'exile']) assert.ok(measurements.zones.some(z => z.owner === String(owner) && z.type === type));
+          for (const type of ['graveyard', 'exile']) assert.ok(!measurements.zones.some(z => z.owner === String(owner) && z.type === type));
         }
       }
       for (const { rect } of measurements.zones) assert.ok(rect.left >= 0 && rect.top >= 0 && rect.right <= 1280 && rect.bottom <= 800);

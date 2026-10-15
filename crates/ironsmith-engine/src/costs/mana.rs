@@ -278,6 +278,13 @@ impl CostPayer for ManaPaymentCost {
         ctx: &CostContext,
         query: &crate::costs::PotentialManaQuery<'_, '_>,
     ) -> Result<(), CostPaymentError> {
+        // Presentation enumeration assumes mana (payment is validated when
+        // the action is taken). Every other affordability path honours this;
+        // the reserved-source branch below used to run a full payment search
+        // in each deferred UI snapshot.
+        if crate::decision::mana_payment_is_assumed() {
+            return Ok(());
+        }
         let x_value = ctx.x_value.unwrap_or(0);
         if self.cost.has_waterbend_obligation()
             || query.payment.is_some()

@@ -32,6 +32,7 @@ const WORKER_METHODS = [
   "replayTrustedMatch",
   "replayTrustedActions",
   "dispatch",
+  "dispatchForAutomation",
   "drawCard",
   "drawOpeningHands",
   // End-of-match disclosure and forced-reveal completeness checks

@@ -17,6 +17,13 @@
 }
 .phase-track-cell[data-stop="once"] .phase-track-stop-icon { fill: #bd8aff; }
 .phase-track--combat { min-height: 31px; }
+/* The current step reads at a glance: larger label and icon than its neighbours. */
+.table-shell .phase-track-cell[data-phase-active="true"] { overflow: visible; }
+.table-shell .topbar-phase-shell .phase-track-cell[data-phase-active="true"] .phase-track-step-label {
+  font-size: clamp(11px, 0.78vw, 14px) !important; font-weight: 800;
+}
+.phase-track-cell[data-phase-active="true"] .phase-track-stop-icon { width: 22px; height: 22px; flex-basis: 22px; }
+.phase-track-cell[data-phase-active="true"] .phase-track-step-marker { width: 11px; height: 11px; flex-basis: 11px; }
 
 /* The shrinking yellow face exposes the black face and its yellow text.
    Both labels share the same layout; there is no numeric countdown. */

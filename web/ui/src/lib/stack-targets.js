@@ -1,7 +1,6 @@
 import { getPlayerAccent } from "./player-colors.js";
 import { samePlayerId } from "./player-display.js";
-
-const PILE_ZONES = ["graveyard", "exile"];
+import { pileZonesFor } from "./zone-piles.js";
 
 // Ability snapshot ids can be shared by triggers from the same event or by
 // copies. React keys must identify occurrences, not just those snapshot ids.
@@ -198,8 +197,10 @@ export function hoveredObjectZoneViews(state, hoveredObjectId, zoneViews = []) {
   // Graveyard and exile are piles, not inline zone bodies (shouldShowZoneBody
   // refuses them), so a zone view cannot reveal them -- and changing the view
   // remounts the pile, throwing away the open state it is opening itself with.
-  // ZonePile watches the hovered object directly instead.
-  if (PILE_ZONES.includes(resolved.zone)) return [];
+  // ZonePile watches the hovered object directly instead. On a commander
+  // table the command zone is a pile too, and a view would open a command
+  // list on every player panel at once.
+  if (pileZonesFor(state).includes(resolved.zone)) return [];
   const activeZones = new Set(normalizeZoneViews(zoneViews));
   return activeZones.has(resolved.zone) ? [] : [resolved.zone];
 }

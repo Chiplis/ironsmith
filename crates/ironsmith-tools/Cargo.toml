@@ -191,6 +191,16 @@ name = "probe_tap_invalidation"
 path = "src/bin/probe_tap_invalidation.rs"
 test = false
 
+[[bin]]
+name = "probe_turn_phases"
+path = "src/bin/probe_turn_phases.rs"
+test = false
+
+[[bin]]
+name = "probe_tap_differential"
+path = "src/bin/probe_tap_differential.rs"
+test = false
+
 # BEGIN GENERATED NATIVE TEST SUITES
 # Regenerate with python3 scripts/generate-native-test-suites.py.
 

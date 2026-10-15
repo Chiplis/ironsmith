@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
+import { PILE_ZONES, pileZonesFor } from "@/lib/zone-piles";
 import ZoneCountIcon from "./ZoneCountIcon";
 import { useCastPlayerHovered, useCastTargeting } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
@@ -72,9 +73,11 @@ function buildZoneEntries(player, zoneViews) {
   }));
 }
 
-function shouldShowZoneBody(player, entry, activity = null) {
+function shouldShowZoneBody(player, entry, activity = null, pileZones = PILE_ZONES) {
   if (!entry?.active) return false;
-  if (entry.zone === "graveyard" || entry.zone === "exile") return false;
+  // Piled zones (graveyard, exile, and command on a commander table) open as
+  // pile strips, never as an inline zone body.
+  if (pileZones.includes(entry.zone)) return false;
   if (entry.zone === "library") return false;
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
@@ -152,7 +155,8 @@ function buildActivatableMap(decision, perspective) {
 
 function ZoneCountInline({ player, onOpenDecklist = null }) {
   const ui = useUiText();
-  const counts = zoneCounts(player);
+  // Ante only matters in ante games; an empty one would just crowd the header.
+  const counts = zoneCounts(player).filter((entry) => entry.zone !== "ante" || entry.count > 0);
   const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
   return (
     <span className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
@@ -368,8 +372,9 @@ function OpponentSlot({
   const transientZoneViews = Object.keys(zoneActivity || {});
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
+  const pileZones = pileZonesFor(state);
   const displayZoneEntries = activeZoneEntries.filter((entry) =>
-    shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null)
+    shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null, pileZones)
   );
   const supportZoneEntries = displayZoneEntries.filter((entry) => entry.zone !== "battlefield");
   const denseSupportLayout = supportZoneEntries.length > 0;

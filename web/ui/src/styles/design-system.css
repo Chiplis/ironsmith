@@ -5089,7 +5089,9 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] .topbar-phase-shell {
     position: fixed !important;
     left: 50%;
-    bottom: max(100px, calc(env(safe-area-inset-bottom) + 92px));
+    /* Clear the fanned hand: its peek grows with the hand scale, and the
+       rotated cards rise ~10px above the 8px-inset dock. */
+    bottom: max(100px, calc(env(safe-area-inset-bottom) + 92px), calc(var(--hand-peek-height, 72px) + 22px));
     z-index: 160;
     display: block;
     width: min(560px, 56vw, calc(100vw - 360px));
@@ -5378,7 +5380,8 @@ html[data-hand-pointer-suspended="true"] * {
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .opponent-battlefield-heading {
-    padding-right: clamp(112px, 10vw, 152px);
+    /* The fixed brand/tools cluster sits 12px from the right edge. */
+    padding-right: calc(var(--header-utility-width, 140px) + 24px);
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .battlefield-name {
@@ -5389,6 +5392,14 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] .battlefield-opponents-grid > [data-opponent-zone]:last-child .battlefield-life {
     font-size: 20px !important;
+  }
+
+  /* Three opponent columns leave the last header too narrow for its counters
+     beside the wordmark; the tool icons stay. */
+  @media (max-width: 1799px) {
+    .table-shell[data-focused-hud="true"]:has(.battlefield-opponents-grid > [data-opponent-zone]:nth-child(3)) .player-header-utility-controls .toolbar-brand {
+      display: none;
+    }
   }
 
   .table-shell .battlefield-panel--opponents .battlefield-zones-shell {

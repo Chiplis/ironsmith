@@ -1,7 +1,9 @@
 import { clipRect, unionRect } from '../../../lib/forge-board-layout.js';
 
 const SEATS = '[data-arena-owner], [data-player-drop-target]';
-const ZONES = '.battlefield-row, .hand-zone-surface, [data-zone-id], [data-zone-anchor], .zone-pile-slot';
+// Graveyard/exile/command piles and the header zone counters get no stone
+// plinth: under the table's perspective it read as a slanted shadow slab.
+const ZONES = '.battlefield-row, .hand-zone-surface, [data-zone-id]';
 const CARD_FOOTPRINT = '.game-card, .battlefield-row-card, .battlefield-counter-rail, .battlefield-group-badge, .battlefield-token-side-badge';
 const OBSTACLES = `${CARD_FOOTPRINT}, .zone-viewer, .battlefield-overlay-zone, .table-action-bar, .battlefield-panel-header, .battlefield-human-action-dock, .hand-reveal-shell, .zone-pile-slot, .table-middle-toolbars, .toolbar-brand, button, [role="button"], input, select, [data-player-target]`;
 export const FORGE_MEASURE_SELECTOR = `${ZONES}, ${OBSTACLES}, ${SEATS}`;
@@ -35,13 +37,11 @@ export function createForgeMeasurer(root) {
       const battlefield = el.matches('.battlefield-row');
       // Containers with a battlefield child would duplicate its platform.
       if (!battlefield && el.querySelector('.battlefield-row')) continue;
-      if (el.matches('[data-zone-anchor]') && !['library', 'command'].includes(el.dataset.zoneAnchor)) continue;
       if (el.matches('.zone-viewer, .battlefield-overlay-zone')) continue;
-      const pile = el.querySelector('[data-zone-pile]');
       const type = battlefield ? 'battlefield' : el.matches('.hand-zone-surface') ? 'hand'
-        : pile?.dataset.zonePile || el.dataset.zoneAnchor || el.dataset.zoneId || 'zone';
+        : el.dataset.zoneId || 'zone';
       const ownerNode = el.closest('[data-arena-owner], [data-zone-anchor-player], [data-player-drop-target]');
-      const owner = pile?.dataset.zoneOwner ?? ownerNode?.dataset.arenaOwner
+      const owner = ownerNode?.dataset.arenaOwner
         ?? ownerNode?.dataset.zoneAnchorPlayer ?? ownerNode?.dataset.playerDropTarget ?? 'local';
       let rect = bounds;
       if (battlefield) {

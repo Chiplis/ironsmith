@@ -87,6 +87,16 @@ impl GameState {
     pub fn update_replacement_effects(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        // Replacement sources' conditions can read tapped state.
+        self.enter_derived_tap_reads();
+        let result = self.update_replacement_effects_inner();
+        self.exit_derived_tap_reads();
+        result
+    }
+
+    fn update_replacement_effects_inner(
+        &mut self,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
         use crate::replacement_ability_processor::generate_replacement_effects_from_abilities;
         // Establish completeness before clearing the previously published set.
         let effects = generate_replacement_effects_from_abilities(self)?;

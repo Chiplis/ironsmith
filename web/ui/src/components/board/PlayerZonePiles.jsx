@@ -218,12 +218,15 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const stackTargeted = isStackTargeted(card);
     const hoverSource = isHoverSource(card);
     const hoverLabel = cardHoverLabel(card);
+    // A face-up card opens the preview, which names it already; a bare-name
+    // native tooltip would sit on top of that preview.
+    const previews = isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-");
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
     return <span key={card.id} className="zone-pile-card-slot" data-stack-target={stackTargeted ? "true" : undefined} data-hover-source={hoverSource ? "true" : undefined}>
       <button type="button" className={`zone-pile-card-row${chosen ? " is-chosen" : ""}`}
         aria-label={card.name || ui("Face-down card")}
-        title={hoverLabel}
+        title={previews && hoverLabel === card.name ? undefined : hoverLabel}
         data-object-id={String(card.id).startsWith("look-top-") ? undefined : card.id} data-zone-card={zone}
         data-target-legal={legal ? "true" : undefined} data-stack-target={stackTargeted ? "true" : undefined}
         data-hover-source={hoverSource ? "true" : undefined} aria-disabled={disabled || undefined}

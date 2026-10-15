@@ -1689,6 +1689,14 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   isolation: isolate;
 }
 
+/* Each roulette cycle isolates its own z-order, so the cycle holding the
+   active card has to rise too, or the next cycle paints over the zoomed card. */
+.hand-reveal-shell .hand-zone-cycle:has(> .hand-layout-item:is(.hand-layout-item--hovered, .hand-layout-item--selected)),
+.hand-reveal-shell .hand-zone-cycle:has(> .hand-layout-item > .game-card.hand-card:is(:hover, .hovered, .inspected, .keyboard-selected)) {
+  position: relative;
+  z-index: 2;
+}
+
 .hand-reveal-shell .hand-layout-item {
   position: relative;
   overflow: visible;

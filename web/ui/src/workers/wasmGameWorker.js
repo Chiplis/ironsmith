@@ -78,6 +78,7 @@ const SNAPSHOT_METHODS = new Set([
   "applyVerifiedHiddenLibraryShuffle",
   "cancelDecision",
   "dispatch",
+  "dispatchForAutomation",
   "forfeitPlayer",
   "injectTranscriptRandomSeeds",
   "revealHiddenObject",
@@ -93,10 +94,15 @@ const DISPATCH_TRACE_METHODS = new Set([
   "advancePhase",
   "cancelDecision",
   "dispatch",
+  "dispatchForAutomation",
   "forfeitPlayer",
 ]);
+// The UI auto-passes these results; the snapshot it publishes is read with
+// uiState, which starts the background priority analysis instead.
+const AUTOMATION_METHODS = new Set(["dispatchForAutomation"]);
 const RUNTIME_EVALUATION_METHODS = new Set([
   "dispatch",
+  "dispatchForAutomation",
   "previewCryptoRequirements",
   "previewCryptoRequirementsWithMaterial",
   "previewCastTargets",
@@ -443,7 +449,8 @@ function collectNamesForMethod(method, args) {
     case "isKnownCardName":
       names.push(args?.[0]);
       break;
-    case "dispatch": {
+    case "dispatch":
+    case "dispatchForAutomation": {
       const command = args?.[0] || {};
       if (command?.type === "text_choice") {
         names.push(command.value);
@@ -1086,6 +1093,8 @@ function handleCall(msg) {
       : method === "replayTrustedActions" ? (actions, sequence) => replayTrustedActions(game, actions, sequence, replayOptions)
       : method === "previewCryptoRequirementsWithMaterial" ? (command, material) => previewCryptoRequirementsWithMaterial(game, command, material)
       : method === "replaceHandWithCustomCards" ? (player, drafts) => replaceHandWithCustomCards(game, player, drafts)
+      // An engine without the lean variant still answers with a full snapshot.
+      : method === "dispatchForAutomation" && typeof game.dispatchForAutomation !== "function" ? game.dispatch
       : game[method];
     if (typeof fn !== "function") {
       throw new Error(`Unknown game method: ${method}`);
@@ -1204,7 +1213,7 @@ function handleCall(msg) {
       // pending menu behind an unpublished worker generation.
       const visibleRevision = game && game.priorityAnalysisIdentity() === priorityIdentity
         ? priorityViewRevision : priorityAnalysis.revision();
-      priorityAnalysis.start(visibleRevision);
+      if (!AUTOMATION_METHODS.has(method)) priorityAnalysis.start(visibleRevision);
       if (!backgroundCompileDone) {
         scheduleBackgroundCompile(0);
       }

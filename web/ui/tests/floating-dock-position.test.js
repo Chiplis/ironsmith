@@ -76,3 +76,19 @@ test("moves above the hand when zone piles push the dock into its lane", () => {
   assert.ok(position.top + 150 <= handBounds.top - 12);
   assert.ok(position.left + 280 <= 1100 - 12);
 });
+
+test("steps beside a pile column above the hand instead of climbing it", () => {
+  // 4-player desktop: local piles stack in the right column just above the
+  // hand's corner, and a full-width dock sits within clearance of the hand.
+  const handBounds = { left: 358, top: 804, right: 1236, bottom: 1006 };
+  const protectedZones = [
+    { left: 1535, top: 383, right: 1591, bottom: 481 },
+    { left: 1535, top: 487, right: 1591, bottom: 585 },
+    { left: 1535, top: 591, right: 1591, bottom: 696 },
+  ];
+  const position = anchorFloatingDock({
+    viewportWidth: 1600, viewportHeight: 900, dockWidth: 340, dockHeight: 92,
+    bottomLimit: 884, handBounds, protectedZones,
+  });
+  assert.deepEqual(position, { left: 1535 - 12 - 340, top: 804 - 12 - 92 });
+});

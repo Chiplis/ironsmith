@@ -3239,6 +3239,7 @@ fn calculate_characteristics_layer_batch_with_effects(
     commanders: &HashSet<ObjectId>,
     game: &crate::game_state::GameState,
 ) -> HashMap<ObjectId, CalculatedCharacteristics> {
+    let _tap_reads = game.derived_tap_read_scope();
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
@@ -3791,6 +3792,7 @@ pub(super) fn calculate_characteristics_with_effects_simple_internal(
     game: &crate::game_state::GameState,
     include_ability_counters: bool,
 ) -> Option<CalculatedCharacteristics> {
+    let _tap_reads = game.derived_tap_read_scope();
     if let Some(chars) = in_progress_characteristics(game, object_id) {
         return Some(chars);
     }
@@ -4190,6 +4192,7 @@ fn calculate_with_layers_direct_internal(
     sort_mode: DependencySortMode,
     include_ability_counters: bool,
 ) -> CalculatedCharacteristics {
+    let _tap_reads = game.derived_tap_read_scope();
     use crate::dependency::needs_baseline_dependency_sort;
     use crate::dependency::sort_layer_effects;
     use crate::dependency::sort_layer_effects_with_baseline_and_started_groups;
@@ -4275,9 +4278,12 @@ fn calculate_with_layers_direct_internal(
                 continue;
             }
         };
-        let needs_source_tracking =
-            layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
+        let reaches_object =
+            layer_effects_may_reach_object(layer_effects, &started_groups, object, objects);
+        let needs_source_tracking = reaches_object
+            && layer_needs_source_activity_tracking(layer_effects, effects.iter(), layer);
         let needs_sort_baseline = matches!(sort_mode, DependencySortMode::Baseline)
+            && reaches_object
             && needs_baseline_dependency_sort(layer_effects, game);
         let baseline = needs_sort_baseline.then(|| {
             build_layer_baseline(objects, effects, battlefield, commanders, game, layer, None)
@@ -4471,8 +4477,10 @@ fn calculate_with_layers_direct_internal(
 
     // Now process Layer 7 effects from continuous effects
     if let Some(pt_effects) = effects_by_layer.get(&Layer::PowerToughness) {
-        let needs_source_tracking =
-            layer_needs_source_activity_tracking(pt_effects, effects.iter(), Layer::PowerToughness);
+        let reaches_object =
+            layer_effects_may_reach_object(pt_effects, &started_groups, object, objects);
+        let needs_source_tracking = reaches_object
+            && layer_needs_source_activity_tracking(pt_effects, effects.iter(), Layer::PowerToughness);
         let tracked_source_ids =
             needs_source_tracking.then(|| tracked_source_ids_for_layer(pt_effects));
         let mut source_state = if needs_source_tracking {
@@ -4496,7 +4504,7 @@ fn calculate_with_layers_direct_internal(
         let sorted_pt = match sort_mode {
             DependencySortMode::Heuristic => sort_layer_effects(pt_effects),
             DependencySortMode::Baseline => {
-                if needs_baseline_dependency_sort(pt_effects, game) {
+                if reaches_object && needs_baseline_dependency_sort(pt_effects, game) {
                     let baseline = build_layer_baseline(
                         objects,
                         effects,
@@ -4747,6 +4755,7 @@ pub(crate) fn continuous_effect_condition_is_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {
+    let _tap_reads = game.derived_tap_read_scope();
     let Some(condition) = &effect.condition else {
         return true;
     };
@@ -4766,6 +4775,7 @@ pub(crate) fn continuous_effect_condition_is_active_for_object(
     game: &crate::game_state::GameState,
     recipient: ObjectId,
 ) -> bool {
+    let _tap_reads = game.derived_tap_read_scope();
     let Some(condition) = &effect.condition else {
         return true;
     };
@@ -4929,8 +4939,31 @@ fn effect_target_definitely_excludes_object(
                     source.attached_to != Some(crate::object::AttachmentTarget::Object(object.id))
                 })
         }
-        EffectTarget::Filter(_) => false,
+        // Both layered matching paths reject these identity fields before
+        // anything else, and a continuous filter's source is the effect's.
+        // "This creature has flying as long as ..." compiles to one.
+        EffectTarget::Filter(filter) => {
+            filter.specific.is_some_and(|id| id != object.id)
+                || (filter.source && effect.source != object.id)
+        }
     }
+}
+
+/// Whether any of a layer's effects can apply to `object`. When none can, the
+/// order of that layer's effects cannot change `object`, so its CR 613.8
+/// dependency baseline (every object's characteristics) and source tracking
+/// are skipped. A graveyard card's lookup otherwise recomputed the whole
+/// battlefield, including each delirium creature reading that graveyard.
+fn layer_effects_may_reach_object(
+    layer_effects: &[&ContinuousEffect],
+    started_groups: &HashSet<ContinuousEffectGroupId>,
+    object: &Object,
+    objects: &ObjectMap,
+) -> bool {
+    layer_effects.iter().any(|effect| {
+        continuous_effect_group_started(effect, started_groups)
+            || !effect_target_definitely_excludes_object(effect, object, objects)
+    })
 }
 
 fn effect_target_applies_to_direct(
@@ -5217,6 +5250,7 @@ fn continuous_effect_duration_is_active(
     effect: &ContinuousEffect,
     game: &crate::game_state::GameState,
 ) -> bool {
+    let _tap_reads = game.derived_tap_read_scope();
     match effect.duration {
         Until::ObjectIsCast {
             ref object,
@@ -5337,6 +5371,7 @@ pub(crate) fn continuous_duration_predicate_matches(
     predicate: &ironsmith_core::ContinuousDurationPredicate,
     game: &crate::game_state::GameState,
 ) -> bool {
+    let _tap_reads = game.derived_tap_read_scope();
     use ironsmith_core::ContinuousDurationPredicate as Predicate;
 
     match predicate {
@@ -5776,11 +5811,12 @@ fn filter_matches_layered_fast(
     {
         return Some(false);
     }
-    let is_tapped = game.is_tapped(object.id);
-    if filter.tapped && !is_tapped {
-        return Some(false);
-    }
-    if filter.untapped && is_tapped {
+    // Read tapped state only for a filter that asks: an unconditional read
+    // would make every layer calculation observe taps.
+    if (filter.tapped || filter.untapped) && {
+        let is_tapped = game.is_tapped(object.id);
+        (filter.tapped && !is_tapped) || (filter.untapped && is_tapped)
+    } {
         return Some(false);
     }
     if let Some(mana_value_cmp) = &filter.mana_value {

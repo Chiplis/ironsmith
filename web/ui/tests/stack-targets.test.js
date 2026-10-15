@@ -142,6 +142,20 @@ test("hovering a card in any hand never expands all player hands implicitly", ()
   assert.deepEqual(hoveredObjectZoneViews(state, 21, ["battlefield", "hand"]), []);
 });
 
+test("hovering a commander on a commander table never opens a command list on every panel", () => {
+  const state = {
+    perspective: 0,
+    turn_number: 1,
+    players: [
+      { id: 0, command_size: 1, command_cards: [{ id: 31, name: "Tymna the Weaver" }] },
+      { id: 1, command_size: 1, command_cards: [{ id: 41, name: "Kraum, Ludevic's Opus" }] },
+    ],
+  };
+
+  assert.deepEqual(hoveredObjectZoneViews(state, 31, ["battlefield"]), []);
+  assert.deepEqual(hoveredObjectZoneViews(state, 41, ["battlefield"]), []);
+});
+
 test("hovering a stack object targeting the local hand does not reveal every hand", () => {
   const state = {
     perspective: 0,

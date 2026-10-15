@@ -511,6 +511,7 @@ fn effect_is_characteristic_defining(effect: &ContinuousEffect, source: ObjectId
 pub fn generate_continuous_effects_from_static_abilities(
     game: &GameState,
 ) -> Vec<ContinuousEffect> {
+    let _tap_reads = game.derived_tap_read_scope();
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
@@ -564,6 +565,7 @@ pub(crate) fn generate_continuous_effects_from_static_abilities_cached(
     game: &GameState,
     cache: &mut StaticEffectsCache,
 ) -> Vec<ContinuousEffect> {
+    let _tap_reads = game.derived_tap_read_scope();
     let registered_effects: Vec<ContinuousEffect> =
         game.effect_store.continuous_effects.effects().to_vec();
     let text_box_scope = text_box_query_scope(&registered_effects);
@@ -861,6 +863,7 @@ pub fn try_generate_continuous_effects_from_static_abilities(
     game: &GameState,
     limits: StaticEffectDiscoveryLimits,
 ) -> Result<Vec<ContinuousEffect>, StaticEffectDiscoveryError> {
+    let _tap_reads = game.derived_tap_read_scope();
     validate_mana_scalar_domain(game)?;
     let mut mana_pt = false;
     let registered = game.effect_store.continuous_effects.effects().to_vec();

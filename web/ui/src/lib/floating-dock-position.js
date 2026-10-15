@@ -73,18 +73,29 @@ export function anchorFloatingDock({
 
   const maxLeft = Math.max(DOCK_EDGE_PADDING, viewportWidth - dockWidth - DOCK_EDGE_PADDING);
   left = Math.round(clamp(left, DOCK_EDGE_PADDING, maxLeft));
-  // A pile can push the dock into the hand's reserved lane. Grow/move upward
-  // there instead of letting the hand cover the decision controls.
-  const obstacles = [handBounds, ...protectedZones].filter(Boolean);
-  for (let pass = 0; handBounds && pass < obstacles.length; pass += 1) {
-    for (const obstacle of obstacles) {
-      if (left < obstacle.right + ZONE_CLEARANCE
-        && left + dockWidth > obstacle.left - ZONE_CLEARANCE
-        && top < obstacle.bottom + ZONE_CLEARANCE
-        && top + dockHeight > obstacle.top - ZONE_CLEARANCE) {
-        top = Math.max(DOCK_MIN_TOP, obstacle.top - ZONE_CLEARANCE - dockHeight);
+  // A pile can push the dock into the hand's reserved lane. Move upward
+  // there instead of letting the hand cover the decision controls. Once
+  // lifted, a pile in the way still sends the dock left of it: climbing over
+  // a pile column (3-4 players stack the local piles above the hand's corner)
+  // would fling the dock to the top of the board.
+  const collides = (zone) => left < zone.right + ZONE_CLEARANCE
+    && left + dockWidth > zone.left - ZONE_CLEARANCE
+    && top < zone.bottom + ZONE_CLEARANCE
+    && top + dockHeight > zone.top - ZONE_CLEARANCE;
+  const zones = protectedZones.filter(zone => zone && [zone.left, zone.top, zone.right, zone.bottom].every(Number.isFinite));
+  for (let pass = 0; handBounds && pass <= zones.length; pass += 1) {
+    let moved = false;
+    if (collides(handBounds)) {
+      top = Math.max(DOCK_MIN_TOP, handBounds.top - ZONE_CLEARANCE - dockHeight);
+      moved = true;
+    }
+    for (const zone of zones) {
+      if (collides(zone)) {
+        left = Math.round(Math.max(DOCK_EDGE_PADDING, zone.left - ZONE_CLEARANCE - dockWidth));
+        moved = true;
       }
     }
+    if (!moved) break;
   }
   return { left, top };
 }

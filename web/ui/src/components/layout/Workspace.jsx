@@ -1899,6 +1899,7 @@ export default function Workspace({
       ref={workspaceRef}
       className="relative min-h-0 h-full w-full min-w-0 overflow-visible"
       data-workspace-shell
+      style={{ "--hand-peek-height": `${HAND_PEEK_HEIGHT}px` }}
     >
       {battlefieldAppearance.compactCards && !deckLoadingMode && !puzzleSetupMode && !showRematchSideboarding && (
         <ForgeBoard state={state} playerAccentOverrides={playerAccentOverrides} interactionLocked={Boolean(dragState || state?.decision?.kind === "targets")} />

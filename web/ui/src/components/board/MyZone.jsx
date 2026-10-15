@@ -1,5 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
+import { PILE_ZONES, pileZonesFor } from "@/lib/zone-piles";
 import ZoneCountIcon from "./ZoneCountIcon";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import RollingPanel from "./RollingPanel";
@@ -83,9 +84,11 @@ function buildZoneEntries(player, zoneViews) {
   }));
 }
 
-function shouldShowZoneBody(player, entry, activity = null) {
+function shouldShowZoneBody(player, entry, activity = null, pileZones = PILE_ZONES) {
   if (!entry?.active) return false;
-  if (entry.zone === "graveyard" || entry.zone === "exile") return false;
+  // Piled zones (graveyard, exile, and command on a commander table) open as
+  // pile strips, never as an inline zone body.
+  if (pileZones.includes(entry.zone)) return false;
   if (entry.zone === "library") return false;
   if (activity) return true;
   if (entry.zone === "battlefield") return true;
@@ -326,8 +329,9 @@ export default function MyZone({
   const zoneEntries = buildZoneEntries(player, [...zoneViews, ...transientZoneViews]);
   const activeZoneEntries = zoneEntries.filter((entry) => entry.active);
   const mobileHandRailVisible = mergedMobileHeader && !hideMobileHandRail && Boolean(player?.can_view_hand);
+  const pileZones = pileZonesFor(state);
   const displayZoneEntries = activeZoneEntries.filter((entry) =>
-    shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null)
+    shouldShowZoneBody(player, entry, zoneActivity?.[entry.zone] || null, pileZones)
   );
   const supportZoneEntries = displayZoneEntries.filter((entry) =>
     entry.zone !== "battlefield" && entry.zone !== "hand"
