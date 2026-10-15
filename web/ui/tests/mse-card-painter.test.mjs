@@ -94,3 +94,23 @@ test('missing artwork uses native checker cells, clips partial checks and applie
   await paintMseCard(narrow.target,narrow.context,{},narrow.renderer,narrow);
   assert.equal(narrow.surfaces.length,1);
 });
+
+test('template corners are cut away instead of painted as white paper',async()=>{
+  const composites=async(name,value)=>{
+    const s=setup([{name,type:'choice',value,props:{render_style:'image'}}]);
+    s.context.textMeasurements.set(`card.${name}`,{result:{image:{width:2,height:1,hasAlpha:true,data:new Uint8ClampedArray([255,255,255,255,255,255,255,0])}}});
+    const create=s.createCanvas;
+    s.createCanvas=(width,height)=>{
+      const canvas=create(width,height),dc=canvas.getContext(),draw=dc.drawImage;
+      dc.drawImage=(...v)=>{dc.calls.push(['composite',dc.globalCompositeOperation??'source-over']);draw(...v);};
+      return canvas;
+    };
+    await paintMseCard(s.target,s.context,{},s.renderer,s);
+    return s.surfaces[0].getContext().calls.filter(call=>call[0]==='composite').map(call=>call[1]);
+  };
+  assert.deepEqual(await composites('corners','rounded and antialiased'),['destination-out']);
+  assert.deepEqual(await composites('corners 2','rounded'),['destination-out']);
+  // Square corners take the border color, so they still paint.
+  assert.deepEqual(await composites('corners','none'),['source-over']);
+  assert.deepEqual(await composites('watermark','rounded'),['source-over']);
+});

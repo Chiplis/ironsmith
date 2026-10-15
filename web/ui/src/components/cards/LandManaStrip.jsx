@@ -9,7 +9,14 @@ export default function LandManaStrip({ colors, choices = [], open = false, over
   const ui = useUiText();
   const sections = open && choices.length ? choices : (colors || []).map(color => ({ color }));
   if (!sections.length) return null;
+  // The strip paints its own colors under the sections, so while it grows
+  // open every pixel of it is already filled, never the board behind it.
+  const fill = `linear-gradient(to right, ${sections.map(({ color }, index) => {
+    const background = LAND_MANA_COLORS[color].background;
+    return `${background} ${(index / sections.length) * 100}% ${((index + 1) / sections.length) * 100}%`;
+  }).join(', ')})`;
   return <div className="arena-land-mana-strip" data-open={open && choices.length ? 'true' : undefined} data-overlay={overlay ? 'true' : undefined}
+    style={{ backgroundImage: fill }}
     role={open ? 'group' : undefined}
     aria-label={open ? ui('Tap {0} for mana', { 0: cardName || '' }) : `Produces ${sections.map(({ color }) => LAND_MANA_COLORS[color].name.toLowerCase()).join(', ')} mana`}>
     {sections.map(({ color, action }) => open && action

@@ -2,6 +2,7 @@
 name = "ironsmith-status-db"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 ironsmith-card-source = { path = "../ironsmith-card-source", default-features = false }

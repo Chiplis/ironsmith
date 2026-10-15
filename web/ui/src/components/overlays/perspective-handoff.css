@@ -1,0 +1,67 @@
+.perspective-handoff {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: perspective-handoff-veil 1600ms ease both;
+  background: radial-gradient(ellipse at center, rgba(var(--player-accent-rgb, 216, 191, 122), 0.18), transparent 65%);
+}
+
+.perspective-handoff-band {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 14px 16px;
+  color: #f4ead2;
+  text-align: center;
+  background: linear-gradient(90deg,
+    transparent,
+    rgb(12 10 8 / 0.86) 18%,
+    rgb(12 10 8 / 0.86) 82%,
+    transparent);
+  border-block: 1px solid rgba(var(--player-accent-rgb, 216, 191, 122), 0.7);
+  box-shadow: 0 0 32px rgba(var(--player-accent-rgb, 216, 191, 122), 0.35);
+  animation: perspective-handoff-sweep 1600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.perspective-handoff-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--player-accent, #d8bf7a);
+}
+
+.perspective-handoff-name {
+  font-size: clamp(22px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+.perspective-handoff-subtitle {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(244 234 210 / 0.72);
+}
+
+@keyframes perspective-handoff-veil {
+  0% { opacity: 0; }
+  12%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes perspective-handoff-sweep {
+  0% { transform: translateX(-28%) scaleY(0.6); opacity: 0; clip-path: inset(0 100% 0 0); }
+  22% { transform: translateX(0) scaleY(1); opacity: 1; clip-path: inset(0 0 0 0); }
+  78% { transform: translateX(0); opacity: 1; clip-path: inset(0 0 0 0); }
+  100% { transform: translateX(22%); opacity: 0; clip-path: inset(0 0 0 100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .perspective-handoff-band { animation: perspective-handoff-veil 1600ms linear both; }
+}

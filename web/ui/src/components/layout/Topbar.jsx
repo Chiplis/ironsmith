@@ -217,7 +217,6 @@ export default function Topbar({
           puzzleSetupMode={puzzleSetupMode}
           onAddCardNotice={onAddCardNotice}
           triggerIcon="menu"
-          showQuickActions
         />
       </header>
     );

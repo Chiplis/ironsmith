@@ -18,6 +18,7 @@ import { canHoverInspectorObject, objectExistsInState, resolveStackInspectObject
 
 import { requestInspectorDetails } from "@/lib/inspector-details-cache";
 import { stackFramePreview, visibleFrameCards } from "@/lib/stack-frame-preview";
+import useCardStackMode from "@/hooks/useCardStackMode";
 
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
@@ -280,7 +281,13 @@ export default function FloatingCardPreview({
   const disabled = externallyDisabled || previewSuppressed;
   const { game, state, dispatch, cancelDecision, cancelBackgroundDispatch } = useGame();
   const [rememberedCards, setRememberedCards] = useState([]);
-  const automaticPreview = useMemo(() => stackFramePreview(state, rememberedCards), [state, rememberedCards]);
+  // The compact appearance's card pile already shows every stack entry at
+  // full frame size: no second frame opens for one.
+  const cardStackMode = useCardStackMode();
+  const automaticPreview = useMemo(
+    () => (cardStackMode ? null : stackFramePreview(state, rememberedCards)),
+    [cardStackMode, state, rememberedCards],
+  );
   useEffect(() => {
     // Keep public snapshots only, including sources that disappear on resolution.
     queueMicrotask(() => setRememberedCards(previous => {
@@ -365,7 +372,9 @@ export default function FloatingCardPreview({
   // Anchored previews are explicit card-name clicks, so they may inspect a
   // spell on the stack or a card in another zone even though passive hand
   // hovers remain excluded from this surface.
-  const anchoredObjectId = !disabled && !dragState && objectExistsInState(state, anchoredCardPreview?.objectId)
+  const anchoredObjectId = !disabled && !dragState
+    && !(cardStackMode && anchoredCardPreview?.placement === "stack")
+    && objectExistsInState(state, anchoredCardPreview?.objectId)
     ? String(anchoredCardPreview.objectId)
     : null;
   // Explicit selections bypass passive-hover exclusions. Hand cards stay
@@ -375,6 +384,7 @@ export default function FloatingCardPreview({
     && !dragState
     && !targetingMode
     && state?.decision?.kind !== "mana_payment"
+    && !(cardStackMode && getVisibleStackObjects(state).some((entry) => String(entry.id) === String(pinnedObjectId)))
     && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;

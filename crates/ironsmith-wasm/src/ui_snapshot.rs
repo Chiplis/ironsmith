@@ -107,6 +107,7 @@ struct PermanentObjectView {
     pt_modified_by_effect: bool,
     counters: Vec<CounterSnapshot>,
     intrinsic_mana: Vec<&'static str>,
+    color_identity: Vec<&'static str>,
     card_types: Vec<&'static str>,
     colors: Vec<&'static str>,
 }
@@ -118,6 +119,25 @@ fn color_names(colors: ironsmith::color::ColorSet) -> Vec<&'static str> {
         .filter(|color| colors.contains(*color))
         .map(|color| color.name())
         .collect()
+}
+
+/// Color identity (CR 903.4) as mana letters in WUBRG order; empty when
+/// colorless. Read from the object's own printed values, so a face-down
+/// permanent stays colorless instead of revealing its hidden face.
+fn color_identity_codes(object: &ironsmith::object::Object) -> Vec<&'static str> {
+    use ironsmith::color::Color;
+    let identity = object.color_identity();
+    [
+        (Color::White, "W"),
+        (Color::Blue, "U"),
+        (Color::Black, "B"),
+        (Color::Red, "R"),
+        (Color::Green, "G"),
+    ]
+    .into_iter()
+    .filter(|(color, _)| identity.contains(*color))
+    .map(|(_, code)| code)
+    .collect()
 }
 
 /// Colors of the intrinsic mana abilities a land has from its basic land
@@ -762,6 +782,7 @@ impl SnapshotObjectViewCache {
                     stable_id: object.stable_id.0.0,
                     name: object.name.to_string(),
                     mana_cost: object.mana_cost.as_ref().map(|cost| cost.to_oracle()),
+                    color_identity: color_identity_codes(object),
                     oracle_text: object.compiled_card_text.to_string(),
                     power_toughness: match (object.power(), object.toughness()) {
                         (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
@@ -963,6 +984,7 @@ impl SnapshotObjectViewCache {
             pt_modified_by_effect,
             counters: counter_snapshots_for_object(obj),
             intrinsic_mana,
+            color_identity: color_identity_codes(obj),
             card_types,
             colors,
         });
@@ -2003,6 +2025,9 @@ fn grouped_battlefield_for_ids(
             let intrinsic_mana = representative
                 .map(|view| view.intrinsic_mana.clone())
                 .unwrap_or_default();
+            let color_identity = representative
+                .map(|view| view.color_identity.clone())
+                .unwrap_or_default();
             let card_types = representative
                 .map(|view| view.card_types.clone())
                 .unwrap_or_default();
@@ -2031,6 +2056,7 @@ fn grouped_battlefield_for_ids(
                 counter_signature: key.counter_signature.clone(),
                 counters,
                 intrinsic_mana,
+                color_identity,
                 card_types,
                 colors,
             }
@@ -2215,6 +2241,7 @@ fn build_zone_card_snapshot_with_grants(
         mana_cost: visible
             .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
             .flatten(),
+        color_identity: visible.then(|| color_identity_codes(object)),
         oracle_text: if visible {
             object.compiled_card_text.to_string()
         } else {
@@ -2279,6 +2306,8 @@ pub(super) struct PermanentSnapshot {
     pub(super) counters: Vec<CounterSnapshot>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(super) intrinsic_mana: Vec<&'static str>,
+    /// Color identity as mana letters; an empty list means colorless.
+    pub(super) color_identity: Vec<&'static str>,
     /// Current card types ("land", "creature"), so the UI can tell a land
     /// creature such as Dryad Arbor apart from its lane.
     pub(super) card_types: Vec<&'static str>,
@@ -2411,6 +2440,7 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) type_line_display: String,
     pub(super) type_line_badges: Vec<String>,
     pub(super) mana_cost: Option<String>,
+    pub(super) color_identity: Vec<&'static str>,
     pub(super) oracle_text: String,
     pub(super) power: Option<i32>,
     pub(super) toughness: Option<i32>,
@@ -2753,6 +2783,7 @@ pub(super) struct HandCardSnapshot {
     pub(super) stable_id: u64,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
+    pub(super) color_identity: Vec<&'static str>,
     pub(super) oracle_text: String,
     pub(super) power_toughness: Option<String>,
     pub(super) loyalty: Option<u32>,
@@ -2767,6 +2798,10 @@ pub(super) struct ZoneCardSnapshot {
     pub(super) face_down: bool,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
+    /// Absent for a card hidden from this perspective, so it reads as unknown
+    /// rather than colorless.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) color_identity: Option<Vec<&'static str>>,
     pub(super) oracle_text: String,
     pub(super) power_toughness: Option<String>,
     pub(super) loyalty: Option<u32>,
@@ -3519,6 +3554,7 @@ pub(super) fn build_object_details_snapshot(
         type_line_display,
         type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
+        color_identity: color_identity_codes(obj),
         oracle_text,
         power,
         toughness,
@@ -5491,6 +5527,54 @@ mod tests {
         assert_eq!(snapshot(arbor).card_types, vec!["land", "creature"]);
         assert_eq!(snapshot(arbor).colors, vec!["green"]);
         assert_eq!(snapshot(arbor).intrinsic_mana, vec!["G"]);
+    }
+
+    #[test]
+    fn snapshots_report_color_identity_from_cost_indicator_and_rules_text() {
+        use ironsmith::color::ColorSet;
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        // A land without basic land types gets its identity from the mana
+        // symbols in its rules text ("{T}: Add {U} or {R}.").
+        let mut canal = CardBuilder::new(CardId::from_raw(90_111), "Spirebluff Canal")
+            .card_types(vec![CardType::Land])
+            .build();
+        canal.rules_text_color_identity = ColorSet::BLUE.union(ColorSet::RED);
+        let canal = game.create_object_from_card(&canal, alice, Zone::Battlefield);
+        let wastes = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(90_112), "Wastes")
+                .card_types(vec![CardType::Land])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let arbor = game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(90_113), "Dryad Arbor")
+                .card_types(vec![CardType::Land, CardType::Creature])
+                .subtypes(vec![Subtype::Forest, Subtype::Dryad])
+                .color_indicator(ColorSet::GREEN)
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &HashSet::new());
+        let identity = |id: ObjectId| {
+            battlefield
+                .iter()
+                .find(|permanent| permanent.member_ids.contains(&id.0))
+                .expect("permanent in battlefield snapshot")
+                .color_identity
+                .clone()
+        };
+        assert_eq!(identity(canal), vec!["U", "R"]);
+        assert!(identity(wastes).is_empty());
+        assert_eq!(identity(arbor), vec!["G"]);
+
+        let details = build_object_details_snapshot(&game, canal, None).expect("details");
+        assert_eq!(details.color_identity, vec!["U", "R"]);
     }
 
     #[test]

@@ -1,0 +1,78 @@
+/* Play / Table / Settings / Developer tabs in the hamburger sheet. */
+.settings-sheet-tablist[data-slot="tabs-list"] {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  width: 100%;
+  height: auto;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 12px 0;
+  background: inherit;
+  background-color: var(--flat-panel, #15110d);
+  border-bottom: 1px solid rgba(205, 180, 132, 0.18);
+}
+
+.settings-sheet-tab[data-slot="tabs-trigger"] {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 36px;
+  gap: 5px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(231, 217, 188, 0.6);
+}
+
+.settings-sheet-tab[data-slot="tabs-trigger"]:hover { color: #e7d9bc; }
+
+.settings-sheet-tab[data-slot="tabs-trigger"][data-state="active"] {
+  color: #d8bf7a;
+}
+
+.settings-sheet-tab[data-slot="tabs-trigger"]::after {
+  background: #d8bf7a;
+  bottom: -1px !important;
+}
+
+@media (max-width: 380px) {
+  .settings-sheet-tab[data-slot="tabs-trigger"] { letter-spacing: 0.06em; }
+  .settings-sheet-tab[data-slot="tabs-trigger"] svg { display: none; }
+}
+
+/* Every action pill in a tab gets the same filled look. Sheet triggers
+   (Random Game, Custom cards, Compile Card) lose data-slot="button" to Radix
+   and would otherwise fall back to the sheet's transparent pill. */
+.settings-sheet [data-slot="tabs-content"] .stone-pill:not(.settings-reset-button) {
+  background: var(--flat-control, rgb(23, 24, 27)) !important;
+}
+
+/* Play tab seats: name field with a remove button once there are 3+ seats. */
+.settings-seat-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.settings-seat-row > input { min-width: 0; flex: 1 1 auto; }
+
+.settings-seat-remove {
+  display: grid;
+  flex: 0 0 32px;
+  place-items: center;
+  color: rgba(231, 217, 188, 0.6);
+  background: var(--flat-control, rgb(23, 24, 27));
+  border: 0;
+  border-radius: 2px;
+}
+
+.settings-seat-remove:hover:not(:disabled),
+.settings-seat-remove:focus-visible { color: #f0a9a0; }
+.settings-seat-remove:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.settings-add-seat { min-height: 38px; }

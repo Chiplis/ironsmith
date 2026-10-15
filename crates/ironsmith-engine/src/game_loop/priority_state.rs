@@ -203,6 +203,9 @@ pub struct PendingCast {
     /// Simple additional-cost alternatives announced before targets and total-cost locking.
     /// Each entry replaces one occurrence of an effect-backed cost at payment time.
     pub announced_cost_replacements: Option<Vec<(crate::costs::Cost, Vec<crate::costs::Cost>)>>,
+    /// CR 601.2b: X was announced ahead of the modes, so the mode choice
+    /// resumes after it and sees each mode's legality under that X.
+    pub x_announced_before_modes: bool,
     /// CR 601.2b resource choice for a cost reduction, paid only in 601.2h.
     pub cost_resource_announced: bool,
     pub cost_resource: Option<ObjectId>,
@@ -322,6 +325,7 @@ impl PendingCast {
             effect_alternative_base_generic_reduction: 0,
             effect_miracle_cast: false,
             announced_cost_replacements: None,
+            x_announced_before_modes: false,
             cost_resource_announced: false,
             cost_resource: None,
             cost_resource_reduction: 0,

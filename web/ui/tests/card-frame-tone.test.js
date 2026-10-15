@@ -53,5 +53,6 @@ test('a colorless land takes the tone of the mana its current land types make', 
 
 test('a Yavimaya Forest keeps the colors its rules text produces', () => {
   assert.equal(cardFrameTone({cards: [{oracle_text: '{T}, Pay 1 life: Add {U} or {R}.', intrinsic_mana: ['G']}], typeLine: 'Land — Forest'}).tone, 'gold');
-  assert.equal(cardFrameTone({cards: [{oracle_text: '{T}: Add {U} or {R}.'}], typeLine: 'Land'}).tone, 'land');
+  // Live snapshots omit identity; a land without basic land types (Spirebluff Canal) uses its rules text.
+  assert.equal(cardFrameTone({cards: [{oracle_text: '{T}: Add {U} or {R}.'}], typeLine: 'Land'}).tone, 'gold');
 });

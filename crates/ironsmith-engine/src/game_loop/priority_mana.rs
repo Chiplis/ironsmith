@@ -1871,6 +1871,19 @@ pub(super) fn apply_modes_response(
                 return Err(error);
             }
         };
+    // CR 601.2b: "Choose X." — the number of modes chosen is the announced X,
+    // and the chosen modes are checked under it.
+    let x_from_modes = extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
+        .filter(|modal_spec| {
+            super::priority_cast::x_defined_mode_count_range(game, &pending, modal_spec).is_some()
+        })
+        .and_then(|modal_spec| super::priority_cast::mode_point_total(&modal_spec, modes))
+        .map(|total| total as u32);
+    if let Some(x) = x_from_modes
+        && let Some(spell) = game.object_mut(pending.spell_id)
+    {
+        spell.x_value = Some(x);
+    }
     let mut hypothetical_game = required_optional_cost.map(|optional_cost_index| {
         let mut hypothetical = game.clone();
         if let Some(spell) = hypothetical.object_mut(pending.spell_id) {
@@ -1953,16 +1966,8 @@ pub(super) fn apply_modes_response(
             )
         });
 
-    // CR 601.2b: "Choose X." — the number of modes chosen is the announced X.
-    if let Some(modal_spec) = extract_modal_spec_from_spell(game, pending.spell_id, pending.caster)
-        && super::priority_cast::x_defined_mode_count_range(game, &pending, &modal_spec).is_some()
-        && let Some(total) = super::priority_cast::mode_point_total(&modal_spec, modes)
-    {
-        let x = total as u32;
-        pending.x_value = Some(x);
-        if let Some(spell) = game.object_mut(pending.spell_id) {
-            spell.x_value = Some(x);
-        }
+    if x_from_modes.is_some() {
+        pending.x_value = x_from_modes;
     }
     // Continue through splice and additional/optional costs before announcing X.
     check_splice_or_continue(game, trigger_queue, state, pending, decision_maker)

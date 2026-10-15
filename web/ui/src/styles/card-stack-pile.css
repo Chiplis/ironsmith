@@ -1,0 +1,599 @@
+/* The compact appearance's stack: a pile of MSE-rendered cards floating over
+   the board (CardStackPile.jsx). Each card glows with its owner's color
+   (--glow-rgb from StackCard); the newest sits in front, the older ones rise
+   behind it with their title lines showing. anime.js owns the transform of
+   .card-stack-motion (arrival/exit), CSS owns the slot's (pile position). */
+
+@property --card-stack-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Above the battlefield, below the target arrows (z 80): an arrow from the
+   top card to an entry pulled out beside it is drawn over both cards. */
+.card-stack-pile {
+  position: fixed;
+  z-index: 78;
+  pointer-events: none;
+  --card-stack-radius: 4.8% / 3.4%;
+  --stack-font: var(--ironsmith-ui-font, "Rajdhani"), system-ui, sans-serif;
+}
+
+.card-stack-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Depth shrinks a card from its top edge, so its peek stays full height. */
+  transform-origin: 50% 0%;
+  transition:
+    transform 460ms cubic-bezier(0.2, 1.25, 0.34, 1),
+    filter 320ms ease;
+  filter: brightness(calc(1 - min(var(--card-stack-depth), 5) * 0.09)) saturate(calc(1 - min(var(--card-stack-depth), 5) * 0.06));
+}
+
+.card-stack-pile--fanned .card-stack-slot,
+.card-stack-slot[data-viewed="true"] {
+  filter: none;
+}
+
+.card-stack-slot[data-leaving="true"] {
+  transition: none;
+}
+
+.card-stack-cards {
+  position: absolute;
+  inset: 0;
+}
+
+.card-stack-motion {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+
+/* Every card hovers gently over the board, each out of step with the next. */
+.card-stack-float {
+  width: 100%;
+  height: 100%;
+  animation: card-stack-float 5.6s ease-in-out infinite;
+  animation-delay: calc(var(--card-stack-depth, 0) * -1.35s);
+  will-change: transform;
+}
+
+.card-stack-slot[data-pulled="true"] .card-stack-float {
+  animation-delay: -2.8s;
+}
+
+.game-card.stack-card--frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--card-stack-radius);
+  pointer-events: auto;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 220ms cubic-bezier(0.2, 1.2, 0.4, 1);
+}
+
+.game-card.stack-card--frame::before,
+.game-card.stack-card--frame::after {
+  display: none;
+}
+
+.game-card.stack-card--frame:hover {
+  --card-scale: 1;
+  --card-translate-y: 0;
+  transform: translateY(-6px) scale(1.035);
+  box-shadow: none;
+}
+
+.card-stack-face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--card-stack-radius);
+  background: #0b0a10;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55),
+    0 14px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Owner glow: a soft aura, plus a rim of light that sweeps the edge. */
+.card-stack-glow {
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  border-radius: 6% / 4.4%;
+  pointer-events: none;
+  opacity: 0.5;
+  box-shadow:
+    0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+    0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+    0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  transition: opacity 260ms ease;
+}
+
+.card-stack-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 3px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--card-stack-angle),
+    rgba(var(--glow-rgb), 0) 0deg,
+    rgba(var(--glow-rgb), 0) 200deg,
+    rgba(var(--glow-rgb), 0.9) 280deg,
+    rgba(255, 255, 255, 0.95) 310deg,
+    rgba(var(--glow-rgb), 0.9) 330deg,
+    rgba(var(--glow-rgb), 0) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: blur(0.6px);
+  opacity: 0;
+  transition: opacity 260ms ease;
+}
+
+.card-stack-slot[data-viewed="true"] .card-stack-glow {
+  opacity: 1;
+  animation: card-stack-breathe 2.6s ease-in-out infinite;
+}
+
+.card-stack-slot[data-viewed="true"] .card-stack-glow::before {
+  opacity: 1;
+  animation: card-stack-rim 3.4s linear infinite;
+}
+
+.card-stack-slot[data-pulled="true"] .card-stack-glow,
+.game-card.stack-card--frame:hover .card-stack-glow,
+.game-card.stack-card--frame.stack-card-active .card-stack-glow {
+  opacity: 1;
+}
+
+.game-card.stack-card--frame.stack-card-active .card-stack-glow {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 14px 3px rgba(var(--glow-rgb), 0.85),
+    0 0 40px 10px rgba(var(--glow-rgb), 0.38);
+}
+
+/* A spell being aimed at the stack lights its targets the way the board does. */
+.game-card.stack-card--frame.target-legal {
+  outline: 2px solid var(--ui-target) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 22px rgba(103, 199, 255, 0.62) !important;
+}
+
+/* Light that crosses the face as a card lands. */
+.card-stack-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: var(--card-stack-radius);
+  pointer-events: none;
+}
+
+.card-stack-sheen::before {
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.05) 30%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0.05) 70%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-12deg);
+  opacity: 0;
+}
+
+.card-stack-motion[data-arriving="true"] .card-stack-sheen::before {
+  animation: card-stack-sheen 760ms cubic-bezier(0.3, 0.6, 0.3, 1) 260ms both;
+}
+
+.card-stack-motion[data-arriving="true"] .card-stack-glow {
+  animation: card-stack-land 1000ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.card-stack-slot[data-leaving="true"] .card-stack-glow {
+  opacity: 1;
+  animation: card-stack-flare 360ms ease-out both;
+}
+
+@keyframes card-stack-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  30% { transform: translate3d(0, -5px, 0) rotate(-0.35deg); }
+  65% { transform: translate3d(0, 2px, 0) rotate(0.3deg); }
+}
+
+@keyframes card-stack-rim {
+  to { --card-stack-angle: 360deg; }
+}
+
+@keyframes card-stack-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+      0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 1),
+      0 0 18px 4px rgba(var(--glow-rgb), 0.85),
+      0 0 48px 14px rgba(var(--glow-rgb), 0.4);
+  }
+}
+
+@keyframes card-stack-land {
+  0% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.9),
+      0 0 26px 10px rgba(var(--glow-rgb), 1),
+      0 0 80px 30px rgba(var(--glow-rgb), 0.6);
+  }
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+      0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  }
+}
+
+@keyframes card-stack-flare {
+  0% {
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+      0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  }
+  40% {
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 1),
+      0 0 30px 12px rgba(var(--glow-rgb), 1),
+      0 0 90px 36px rgba(var(--glow-rgb), 0.6);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(255, 255, 255, 0),
+      0 0 40px 18px rgba(var(--glow-rgb), 0),
+      0 0 110px 44px rgba(var(--glow-rgb), 0);
+  }
+}
+
+@keyframes card-stack-sheen {
+  0% { left: -60%; opacity: 0; }
+  15% { opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-stack-slot { transition: none; }
+  .card-stack-float { animation: none; }
+  .card-stack-slot[data-viewed="true"] .card-stack-glow,
+  .card-stack-slot[data-viewed="true"] .card-stack-glow::before,
+  .card-stack-motion[data-arriving="true"] .card-stack-sheen::before,
+  .card-stack-motion[data-arriving="true"] .card-stack-glow { animation: none; }
+}
+
+/* The viewed entry's position, with chevrons to step through the stack. It
+   sits in the strip the geometry keeps free under the front card. */
+.card-stack-pager {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+  height: 24px;
+  padding: 0 2px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(12, 10, 21, 0.86);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  color: #ece4ff;
+  font-family: var(--stack-font);
+  pointer-events: auto;
+}
+
+.card-stack-pager-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 999px;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 140ms ease, opacity 140ms ease;
+}
+
+.card-stack-pager-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.card-stack-pager-button:hover:not(:disabled),
+.card-stack-pager-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+.card-stack-pager-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.card-stack-pager-label {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the viewed entry is: Spell, Trigger or Activation. */
+.card-stack-pager-kind {
+  margin-right: 4px;
+  color: rgba(var(--card-stack-kind-rgb, 221, 211, 241), 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: card-stack-tick 300ms ease-out;
+}
+
+.card-stack-pager-index {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.card-stack-pager-total {
+  color: rgba(221, 211, 241, 0.72);
+}
+
+.card-stack-pager-place {
+  margin-left: 2px;
+  color: rgba(221, 211, 241, 0.72);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* The old Stack rail's box anchors the pile (MyZone renders it empty in card
+   mode). It reaches down the board; the pile clamps it above the player
+   header, sizes its front card like the hover frame, and widens the box to
+   what it covers (--card-stack-extent). */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail[data-card-stack-anchor] {
+    bottom: 0;
+    height: auto;
+    max-height: none;
+    width: var(--card-stack-extent, var(--stack-frame-rail-width, 360px));
+    padding: 0;
+  }
+}
+
+/* ---- Motion ------------------------------------------------------------ */
+
+.stack-fx-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 86;
+  display: none;
+  pointer-events: none;
+}
+
+@property --card-stack-burn {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+/* A comet's landing ignites the frame from the point of impact. */
+.card-stack-motion[data-materialize="true"] .card-stack-face {
+  animation: card-stack-materialize 640ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+
+/* A resolved spell burns away from the bottom edge up. */
+.card-stack-motion[data-burning="true"] .card-stack-face {
+  --card-stack-burn: 0%;
+  -webkit-mask-image: linear-gradient(to top, transparent var(--card-stack-burn), #000 calc(var(--card-stack-burn) + 14%));
+  mask-image: linear-gradient(to top, transparent var(--card-stack-burn), #000 calc(var(--card-stack-burn) + 14%));
+  animation: card-stack-burn 560ms ease-in forwards;
+}
+
+.card-stack-motion[data-burning="true"] .card-stack-glow {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 170, 90, 0.9),
+    0 0 24px 8px rgba(255, 120, 40, 0.65);
+}
+
+/* Left on top after the card above it resolved. */
+.card-stack-motion[data-promoted="true"] .card-stack-glow {
+  animation: card-stack-promote 900ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Still being cast (targets, costs): the rim races. */
+.card-stack-slot[data-casting="true"] .card-stack-glow::before {
+  opacity: 1;
+  animation: card-stack-rim 1.1s linear infinite;
+}
+
+.card-stack-slot[data-casting="true"] .card-stack-face {
+  animation: card-stack-casting 1.6s ease-in-out infinite;
+}
+
+/* Pulled out beside the entry aiming at it. */
+.card-stack-slot[data-pulled="true"] .card-stack-motion:not([data-arriving]) .card-stack-glow {
+  animation: card-stack-unsheathe 720ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+/* Legal target for a spell being aimed: the outline breathes. */
+.game-card.stack-card--frame.target-legal {
+  animation: card-stack-target 1.2s ease-in-out infinite;
+}
+
+.card-stack-slot[data-landscape="true"] {
+  --card-stack-radius: 3.4% / 4.8%;
+}
+
+/* Pager: fades in with the first entry, out after the last; numbers roll. */
+.card-stack-pager {
+  animation: card-stack-pager-in 320ms cubic-bezier(0.2, 0.9, 0.3, 1.2) backwards;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.card-stack-pager[data-empty="true"] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.card-stack-pager-roll {
+  display: inline-grid;
+  overflow: hidden;
+  height: 1.25em;
+  line-height: 1.25em;
+}
+
+.card-stack-pager-index[data-direction="1"] {
+  animation: card-stack-roll-up 280ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.card-stack-pager-index[data-direction="-1"] {
+  animation: card-stack-roll-down 280ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.card-stack-pager-total,
+.card-stack-pager-place {
+  animation: card-stack-tick 300ms ease-out;
+}
+
+.card-stack-pager-button:not(:disabled):active svg {
+  transform: scale(0.82);
+}
+
+.card-stack-pager-button svg {
+  transition: transform 120ms ease;
+}
+
+@keyframes card-stack-materialize {
+  0% {
+    clip-path: circle(0% at 50% 42%);
+    filter: brightness(3.2) saturate(0);
+  }
+  45% {
+    filter: brightness(1.8) saturate(0.6);
+  }
+  100% {
+    clip-path: circle(150% at 50% 42%);
+    filter: none;
+  }
+}
+
+@keyframes card-stack-burn {
+  to { --card-stack-burn: 100%; }
+}
+
+@keyframes card-stack-promote {
+  0% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7);
+  }
+  35% {
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.95),
+      0 0 30px 10px rgba(var(--glow-rgb), 0.95),
+      0 0 70px 24px rgba(var(--glow-rgb), 0.45);
+  }
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+      0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  }
+}
+
+@keyframes card-stack-casting {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.12) saturate(1.1); }
+}
+
+@keyframes card-stack-unsheathe {
+  0% {
+    opacity: 1;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 36px 12px rgba(var(--glow-rgb), 0.9);
+  }
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1.5px rgba(var(--glow-rgb), 0.85),
+      0 0 12px 2px rgba(var(--glow-rgb), 0.7),
+      0 0 34px 8px rgba(var(--glow-rgb), 0.3);
+  }
+}
+
+@keyframes card-stack-target {
+  0%, 100% { outline-offset: 3px; }
+  50% { outline-offset: 6px; }
+}
+
+@keyframes card-stack-pager-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes card-stack-roll-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes card-stack-roll-down {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes card-stack-tick {
+  from { opacity: 0.2; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-stack-motion[data-materialize="true"] .card-stack-face,
+  .card-stack-motion[data-burning="true"] .card-stack-face,
+  .card-stack-motion[data-promoted="true"] .card-stack-glow,
+  .card-stack-slot[data-casting="true"] .card-stack-face,
+  .card-stack-slot[data-pulled="true"] .card-stack-glow,
+  .game-card.stack-card--frame.target-legal,
+  .card-stack-pager,
+  .card-stack-pager-index,
+  .card-stack-pager-total,
+  .card-stack-pager-place {
+    animation: none;
+  }
+}

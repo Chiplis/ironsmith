@@ -13,7 +13,7 @@ function mergeEntries(live, leaving) {
 
 // Keep removed occurrences mounted for their exit motion, including the last
 // card. Bottom-counted keys distinguish abilities sharing a snapshot id.
-export default function useStackPresence(objects) {
+export default function useStackPresence(objects, exitMs = STACK_EXIT_MS) {
   const keys = stackEntryRenderKeys(objects);
   // Compare snapshot contents: resolving entries can arrive as a fresh array
   // on every render. Save text changes too, so an exit uses the latest card.
@@ -54,9 +54,9 @@ export default function useStackPresence(objects) {
           ...previous,
           leaving: previous.leaving.filter(candidate => candidate !== entry),
         }));
-      }, STACK_EXIT_MS));
+      }, exitMs));
     }
-  }, [presence]);
+  }, [exitMs, presence]);
   useEffect(() => {
     const timers = timersRef.current;
     return () => {

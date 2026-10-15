@@ -2,6 +2,7 @@
 name = "ironsmith-verifier-wasm"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 ironsmith-verifier = { path = "../ironsmith-verifier", default-features = false }

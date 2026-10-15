@@ -10,6 +10,7 @@ import BattlefieldRow from "./BattlefieldRow";
 import HandZone from "./HandZone";
 import ManaPool from "@/components/left-rail/ManaPool";
 import StackTimelineRail from "@/components/right-rail/StackTimelineRail";
+import useCardStackMode from "@/hooks/useCardStackMode";
 import { useHoverActions } from "@/context/HoverContext";
 import { DEFAULT_PLAYER_ACCENT, getPlayerAccent } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
@@ -312,6 +313,7 @@ export default function MyZone({
   const headerActionBarElement = embeddedActionBar || headerActionBar;
   const hasHeaderActionBar = Boolean(headerActionBarElement);
   const showHeader = !hideHeader;
+  const cardStackMode = useCardStackMode();
   const showBodyStackRail = !mergedMobileHeader
     && dockStackRail
     && (
@@ -898,7 +900,11 @@ export default function MyZone({
             {zoneActionControls}
           </RollingPanel>
         ) : null}
-        {!mergedMobileHeader && dockStackRail ? (
+        {!mergedMobileHeader && dockStackRail && cardStackMode ? (
+          // The card pile (CardStackPile) floats over this spot.
+          <aside className="my-zone-stack-rail min-h-0" data-card-stack-anchor="true" aria-hidden="true" />
+        ) : null}
+        {!mergedMobileHeader && dockStackRail && !cardStackMode ? (
           <aside className="my-zone-stack-rail min-h-0">
             <StackTimelineRail
               selectedObjectId={selectedObjectId}

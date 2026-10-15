@@ -1226,6 +1226,19 @@ pub(super) fn check_modes_or_continue(
         if let Some(chooser) = pending.mode_chooser {
             game.set_chosen_player(pending.spell_id, chooser);
         }
+        // CR 601.2b: modes and X are both announced before targets. Announce
+        // X first so each mode's legality is read under the X it will have
+        // ("Exile target creature with mana value X or less"); an unannounced
+        // X satisfies no comparison. "Choose X." spells keep deriving X from
+        // the number of modes chosen.
+        if pending.x_value.is_none()
+            && !pending.x_announced_before_modes
+            && x_defined_mode_count_range(game, &pending, &modal_spec).is_none()
+            && pending_cast_base_mana_cost(game, &pending).is_some_and(|cost| cost.has_x())
+        {
+            pending.x_announced_before_modes = true;
+            return check_x_or_continue(game, trigger_queue, state, pending, decision_maker);
+        }
         let mode_player = pending.mode_chooser.unwrap_or(pending.caster);
         let player = pending.caster;
         let source = pending.spell_id;
@@ -1281,6 +1294,14 @@ pub(super) fn check_modes_or_continue(
                 false
             };
         if !base_has_legal_targets && !conditional_has_legal_targets {
+            if pending.x_announced_before_modes {
+                // The announced X left no mode castable (CR 601.2c): reverse
+                // the proposal rather than strand the cast.
+                state.rollback_action(game);
+                return Err(GameLoopError::ActionCancelled(
+                    "No mode can be chosen with the announced X".to_string(),
+                ));
+            }
             return Err(GameLoopError::InvalidState(
                 "No legal mode/target combination available".to_string(),
             ));
@@ -3354,7 +3375,7 @@ pub(super) fn check_x_or_continue(
         if let Some(spell) = game.object_mut(pending.spell_id) {
             spell.x_value = Some(0);
         }
-        return continue_to_targeting_or_finalize(
+        return continue_after_x_announcement(
             game,
             trigger_queue,
             state,
@@ -3446,6 +3467,21 @@ pub(super) fn check_x_or_continue(
         ));
     }
 
+    continue_after_x_announcement(game, trigger_queue, state, pending, decision_maker)
+}
+
+/// After X is announced (or found not to be needed): an X announced ahead of
+/// the modes resumes the mode choice; otherwise targets follow.
+pub(super) fn continue_after_x_announcement(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    pending: PendingCast,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
+    if pending.x_announced_before_modes && pending.chosen_modes.is_none() {
+        return check_modes_or_continue(game, trigger_queue, state, pending, decision_maker);
+    }
     continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
 }
 

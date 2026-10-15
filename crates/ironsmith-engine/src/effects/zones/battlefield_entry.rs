@@ -1970,6 +1970,74 @@ mod tests {
         }));
     }
 
+    struct DeclineDiscardDm;
+
+    impl DecisionMaker for DeclineDiscardDm {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn declined_mox_redirect_is_a_new_event_other_replacements_apply_to() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let mox_id = game.new_object_id();
+        let mox = CardBuilder::new(CardId::from_raw(mox_id.0 as u32), "Mox Diamond")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let mut mox = Object::from_card(mox_id, &mox, alice, Zone::Hand);
+        mox.abilities_mut().push(Ability::static_ability(
+            StaticAbility::discard_or_redirect_replacement(
+                ObjectFilter::land().in_zone(Zone::Hand),
+                Zone::Graveyard,
+            ),
+        ));
+        game.add_object(mox);
+        let land_id = game.new_object_id();
+        let land = CardBuilder::new(CardId::from_raw(land_id.0 as u32), "Kept Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        game.add_object(Object::from_card(land_id, &land, alice, Zone::Hand));
+        // Rest in Peace: "If a card or token would be put into a graveyard
+        // from anywhere, exile it instead."
+        let rest_in_peace = ObjectId::from_raw(9_101);
+        game.effect_store.replacement_effects.add_effect(
+            crate::replacement::ZoneReplacementSpec::new(ObjectFilter::default(), Zone::Exile)
+                .to_zone(Zone::Graveyard)
+                .build(rest_in_peace, alice),
+        );
+
+        // Declining the discard puts the Mox into the graveyard instead, and
+        // Rest in Peace replaces that new event (CR 614.6, 616.1f).
+        let mut dm = DeclineDiscardDm;
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(9_102), alice, &mut dm);
+        move_to_battlefield_with_options(
+            &mut game,
+            &mut ctx,
+            mox_id,
+            BattlefieldEntryOptions::preserve(false),
+        )
+        .expect("redirected entry resolves");
+
+        assert!(game.battlefield.iter().all(|id| {
+            game.object(*id)
+                .is_none_or(|object| object.name != "Mox Diamond")
+        }));
+        assert!(
+            game.player(alice)
+                .is_some_and(|player| player.graveyard.is_empty())
+        );
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Mox Diamond")
+        }));
+    }
+
     #[test]
     fn multiplayer_800_4b_keeps_object_in_zone_when_entering_controller_left() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Charlie".into()], 20);

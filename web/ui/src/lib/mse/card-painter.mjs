@@ -13,6 +13,9 @@ import { resizeArtwork } from './artwork-sampling.mjs';
 import { combineChannel } from './image-combine.mjs';
 import { drawCombinedLayer } from './field-blend.mjs';
 
+// magic-modules corners fields: "corners", then "corners 2"/"corners 3" per face.
+const CORNER_FIELD=/^corners(?:[ _]\d+)?$/;
+
 // Draw into a private surface so a failed field never commits a partial card.
 // Unsupported drawing paths remain explicit until their native behavior exists.
 export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(w,h)=>new OffscreenCanvas(w,h),loadCardImage,onFieldDrawn}={}) {
@@ -74,10 +77,14 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
             ...Object.fromEntries(['Left','Right','Top','Bottom'].map(side=>['padding'+side,Number(get('padding_'+side.toLowerCase(),2))])),
           });
         }else{
-          let image;
+          let image,cutAway=false;
           if(isChoiceFieldType(type)){
             const style=choiceRenderFlags(text(get('render_style','text')));
             const value=text(context.field(group,name));
+            // The magic-modules corners paint white "paper" outside the rounded
+            // corners (only "none" uses the border color). Off paper, that
+            // white shows as nicks on every corner, so cut them away instead.
+            cutAway=CORNER_FIELD.test(name)&&group==='card'&&value!=='none'&&value!=='invisible';
             if(value&&!style.hidden){
               image=style.image?context.textMeasurements.get(`${group}.${name}`)?.result?.image:null;
               if(style.text)label={value,font:context.font(name,group),options:{width:w,height:h,alignment:text(get('alignment','stretch')),withImage:style.image,imageWidth:image?.width??null}};
@@ -146,6 +153,7 @@ export async function paintMseCard(target,context,fonts,renderer,{createCanvas=(
             const bitmap=createCanvas(image.width,image.height),dc=bitmap.getContext('2d'),pixels=dc.createImageData(image.width,image.height);
             pixels.data.set(image.data);dc.putImageData(pixels,0,0);
             const offset=alignmentOffset(parseAlignment(text(get('alignment',type==='color'?'left top':'stretch'))),w,h,image.width,image.height);
+            if(cutAway)ctx.globalCompositeOperation='destination-out';
             ctx.drawImage(bitmap,offset.x,offset.y);
           }
         }

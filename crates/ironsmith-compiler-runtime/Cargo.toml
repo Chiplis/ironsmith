@@ -3,6 +3,7 @@ autotests = false
 name = "ironsmith-compiler-runtime"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 ironsmith = { package = "ironsmith-engine", path = "../ironsmith-engine", default-features = false, features = ["compiler-bridge"] }

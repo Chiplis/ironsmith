@@ -7706,6 +7706,52 @@ fn apply_trait_replacement_retaining_damage_branches(
     Ok(result)
 }
 
+/// An entry an interactive replacement redirected ("If you don't, put it into
+/// its owner's graveyard") is a new zone-change event. Other replacements still
+/// apply to it (CR 614.6, 616.1f), so the entry driver reconsiders it rather
+/// than moving the object directly.
+fn interactive_redirect_event(
+    game: &GameState,
+    current_event: &Event,
+    state: &TraitEventProcessingState,
+    object: ObjectId,
+    controller: PlayerId,
+    to: Zone,
+) -> Option<Event> {
+    let from = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(
+        current_event.inner(),
+    )
+    .map(|etb| etb.from)
+    .or_else(|| {
+        state
+            .zone_change_context
+            .as_ref()
+            .map(|context| context.from)
+    })?;
+    let zone_change = match state.zone_change_context.clone() {
+        Some(mut context) => {
+            context.objects = vec![object];
+            context.result_objects.clear();
+            context.from = from;
+            context.to = to;
+            context
+        }
+        None => crate::events::ZoneChangeEvent::with_cause(
+            object,
+            from,
+            to,
+            crate::events::cause::EventCause::from_effect(object, controller),
+            game.object(object).and_then(|object| {
+                crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)
+            }),
+        ),
+    };
+    Some(Event::new_with_provenance(
+        zone_change,
+        current_event.provenance(),
+    ))
+}
+
 fn find_effect_for_choice(
     game: &GameState,
     additional_effects: &[ReplacementEffect],
@@ -11060,6 +11106,19 @@ fn prepare_etb_replacements_inner(
                                 .replacement_effects
                                 .mark_effect_used(effect_id);
                             if !interactive_result.enters {
+                                if let Some(zone) = interactive_result.redirect_zone
+                                    && let Some(redirected) = interactive_redirect_event(
+                                        game,
+                                        &current_event,
+                                        &state,
+                                        object_id,
+                                        controller,
+                                        zone,
+                                    )
+                                {
+                                    current_event = redirected;
+                                    continue;
+                                }
                                 return Ok(EtbEventResult {
                                     prevented: true,
                                     new_destination: interactive_result.redirect_zone,
@@ -11236,6 +11295,19 @@ fn prepare_etb_replacements_inner(
                         .replacement_effects
                         .mark_effect_used(effect_id);
                     if !interactive_result.enters {
+                        if let Some(zone) = interactive_result.redirect_zone
+                            && let Some(redirected) = interactive_redirect_event(
+                                game,
+                                &current_event,
+                                &state,
+                                object_id,
+                                controller,
+                                zone,
+                            )
+                        {
+                            current_event = redirected;
+                            continue;
+                        }
                         return Ok(EtbEventResult {
                             prevented: true,
                             new_destination: interactive_result.redirect_zone,

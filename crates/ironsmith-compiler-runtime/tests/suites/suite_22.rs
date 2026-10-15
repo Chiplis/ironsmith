@@ -59,5 +59,8 @@ mod r#source_comparison_returns;
 #[path = "../static_color_bodies.rs"]
 mod r#static_color_bodies;
 
+#[path = "../unannounced_x_mode_legality.rs"]
+mod r#unannounced_x_mode_legality;
+
 #[path = "../vote_tally_followups.rs"]
 mod r#vote_tally_followups;

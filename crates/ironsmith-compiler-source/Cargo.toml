@@ -2,6 +2,7 @@
 name = "ironsmith-compiler-source"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 ironsmith-compiler-api = { path = "../ironsmith-compiler-api", default-features = false }

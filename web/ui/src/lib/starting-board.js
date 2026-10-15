@@ -1,4 +1,5 @@
 import { buildCatalogRandomGame } from "./catalog-random-game.js";
+import { PUBLIC_FORMATS, usesCommanders } from "./relay/formats.js";
 import { baseAssetUrl } from "./asset-base.js";
 import { CARD_ASSETS_REUSABLE, CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from "./card-asset-cache.js";
 import { cardRouteKey } from "./scryfall.js";
@@ -28,13 +29,50 @@ export function storeFixedStartingBoard(enabled) {
   }
 }
 
+// Two seats play a random constructed format from a seeded mid-game board.
+// Three or more sit down for Commander (or Pauper EDH), which starts as a real
+// match so each player's commander is in the command zone.
+export const TWO_PLAYER_BOARD_FORMATS = Object.freeze(["modern", "legacy", "pioneer", "standard", "vintage", "pauper"]);
+export const COMMANDER_BOARD_FORMATS = Object.freeze(["commander", "paupercommander"]);
+
+export function startingBoardFormats(seatCount) {
+  return seatCount >= 3 ? COMMANDER_BOARD_FORMATS : TWO_PLAYER_BOARD_FORMATS;
+}
+
+function shuffledFormats(formats, rng) {
+  const result = [...formats];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 export async function buildRandomStartingBoard(playerNames, startingLife, semanticThreshold, {
   rng = Math.random,
   fetchImpl = globalThis.fetch,
 } = {}) {
-  return buildCatalogRandomGame({
-    playerNames, startingLife, minScore: semanticThreshold / 100, rng, fetchImpl,
-  });
+  const names = Array.isArray(playerNames) && playerNames.length ? playerNames : ["Alice", "Bob"];
+  const seatCount = Math.max(2, names.length);
+  const minScore = semanticThreshold / 100;
+  let lastError = null;
+  // A format can run out of decks that clear the fidelity threshold; try the
+  // others before giving up.
+  for (const format of shuffledFormats(startingBoardFormats(seatCount), rng)) {
+    const commander = usesCommanders(format);
+    try {
+      const payload = await buildCatalogRandomGame({
+        playerNames: names,
+        startingLife: commander ? PUBLIC_FORMATS[format].startingLife : startingLife,
+        minScore, format, seatCount, asMatch: commander, rng, fetchImpl,
+      });
+      if (payload.match) payload.match.format = PUBLIC_FORMATS[format].engineFormat;
+      return { ...payload, format };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("No random deck meets the selected card threshold");
 }
 
 /**
@@ -62,7 +100,10 @@ async function warmCardAssets(payload, { fetchImpl = globalThis.fetch } = {}) {
   if (await readEmbeddedCardCatalogIndex() !== undefined) return;
   // Without cache reuse the worker revalidates each asset anyway.
   if (!CARD_ASSETS_REUSABLE || typeof fetchImpl !== "function") return Promise.resolve();
-  const names = new Set((payload?.players || []).flatMap((player) => Object.values(player?.zones || {}).flat()));
+  const names = new Set([
+    ...(payload?.players || []).flatMap((player) => Object.values(player?.zones || {}).flat()),
+    ...[...(payload?.match?.decks || []), ...(payload?.match?.commanders || [])].flat(),
+  ]);
   const urls = [...names].map(cardRouteKey).filter(Boolean)
     .map((route) => versionedCardAssetUrl(new URL(`cards/${route}.json`, baseAssetUrl()).href));
   let cursor = 0;

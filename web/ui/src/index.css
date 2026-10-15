@@ -16,6 +16,7 @@
 @import "./styles/compact-desktop.css";
 @import "./styles/desktop-full-cards.css";
 @import "./styles/arena-ambience.css";
+@import "./styles/card-stack-pile.css";
 
 .surrender-button,
 .table-shell button.surrender-button.table-zone-action-button,

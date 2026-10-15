@@ -1,6 +1,5 @@
 import useUiText from "@/i18n/useUiText";
 import CardCreationControls from "@/components/layout/CardCreationControls";
-import DiagnosticsSheet from "@/components/layout/DiagnosticsSheet";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
 import { useCastPlayerHovered } from "@/context/DragContext";
 import { cloneElement, useCallback, useLayoutEffect, useRef, useState } from "react";
@@ -472,15 +471,7 @@ export default function TableCore({
         ) : null}
         {middleUtilityControls ? (
           <div className="player-header-utility-controls">
-            {cloneElement(middleUtilityControls, {
-              showBrand: focusedHudDesktop,
-              children: zoneActionControls ? (
-                <>
-                  <DiagnosticsSheet />
-                  {zoneActionControls}
-                </>
-              ) : null,
-            })}
+            {cloneElement(middleUtilityControls, { showBrand: focusedHudDesktop })}
           </div>
         ) : null}
       </div>

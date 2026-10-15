@@ -123,7 +123,12 @@
 }
 .arena-land-mana-strip > button:hover { filter: brightness(1.18); }
 .arena-land-mana-strip > button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.arena-land-mana-strip > button img { width: auto; height: calc(100% - 4px); max-height: 18px; aspect-ratio: 1; filter: drop-shadow(0 1px 1px #000a); }
+/* Sized from the strip's height variable: the symbol sits inside a tooltip wrapper
+   with no definite height, so a percentage height collapses it to nothing. */
+.arena-land-mana-strip > button img {
+  --mana-strip-icon-size: min(18px, calc(var(--mana-strip-open-height, calc(var(--mana-strip-height, 6px) * 3)) - 4px));
+  width: var(--mana-strip-icon-size); height: var(--mana-strip-icon-size); filter: drop-shadow(0 1px 1px #000a);
+}
 /* Cards without an art tile have no strip; the open one overlays their bottom edge. */
 .arena-land-mana-strip[data-overlay="true"] { --mana-strip-height: clamp(6px, calc(var(--bf-card-height, 96px) * .07), 9px); top: calc(100% - 2px - var(--mana-strip-height)); left: 2px; right: 2px; }
 @media (prefers-reduced-motion: reduce) { .arena-land-mana-strip { transition: none; } }

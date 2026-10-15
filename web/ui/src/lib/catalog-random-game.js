@@ -52,18 +52,23 @@ export function catalogDeckPosition(deck, cards, { rng = Math.random, name, life
   return { name, life, zones };
 }
 
+// Every copy of a deck's cards, as the engine's match setup lists them.
+const expandCards = cards => (cards || []).flatMap(card => Array(card.count).fill(card.name));
+
 export async function buildCatalogRandomGame({
   playerNames = ['Alice', 'Bob'], startingLife = 20, minScore = 0.96,
-  format = 'modern', rng = Math.random, fetchImpl = globalThis.fetch,
+  format = 'modern', seatCount = 2, asMatch = false,
+  rng = Math.random, fetchImpl = globalThis.fetch,
   signal, onProgress,
 } = {}) {
+  const target = Math.max(1, Math.floor(seatCount) || 2);
   const [catalog, index] = await Promise.all([
     loadCatalogIndex({ format, fetchImpl }), loadRandomGameIndex({ fetchImpl }),
   ]);
   const supported = new Map(index.map(card => [key(card.name), card]));
   const selected = [];
   const entries = shuffled(catalog.decks || [], rng);
-  for (let cursor = 0; cursor < entries.length && selected.length < 2; cursor += 12) {
+  for (let cursor = 0; cursor < entries.length && selected.length < target; cursor += 12) {
     signal?.throwIfAborted();
     const details = await Promise.allSettled(entries.slice(cursor, cursor + 12).map(entry => loadCatalogDeckDetail(entry, { format, fetchImpl })));
     for (const result of details) {
@@ -79,14 +84,31 @@ export async function buildCatalogRandomGame({
       const cards = await resolveNamedCards(inventory.map(card => card.name), { fetchImpl });
       if (!inventory.every(card => cards.some(candidate => key(candidate.name) === key(card.name)))) continue;
       selected.push({ deck, cards });
-      if (selected.length === 2) break;
+      if (selected.length === target) break;
     }
-    onProgress?.({ collected: selected.length, target: 2 });
+    onProgress?.({ collected: selected.length, target });
   }
   signal?.throwIfAborted();
   if (!selected.length) throw new Error(`No complete supported ${format} deck meets the selected card threshold`);
-  // A small catalog may have only one supported deck; a mirror match is valid.
-  if (selected.length === 1) selected.push(selected[0]);
+  // A small catalog may run short of supported decks; mirror seats are valid.
+  for (let i = 0; selected.length < target; i++) selected.push(selected[i]);
+  if (asMatch) {
+    // A real match start (pregame, commanders in the command zone) rather than
+    // a seeded mid-game position; formats with commanders need the engine's
+    // own setup, which a board position cannot give them.
+    const names = selected.map((_, i) => playerNames[i] || `Player ${i + 1}`);
+    return {
+      version: PUZZLE_VERSION,
+      players: names.map(name => ({ name, life: startingLife, zones: {} })),
+      match: {
+        playerNames: names,
+        startingLife,
+        decks: selected.map(({ deck }) => expandCards(deck.mainboard)),
+        sideboards: selected.map(() => []),
+        commanders: selected.map(({ deck }) => expandCards(deck.commander)),
+      },
+    };
+  }
   return {
     version: PUZZLE_VERSION,
     players: selected.map(({ deck, cards }, i) => catalogDeckPosition(deck, cards, {

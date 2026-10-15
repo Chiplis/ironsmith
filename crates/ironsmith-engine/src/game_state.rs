@@ -5884,7 +5884,9 @@ impl GameState {
                 player: crate::target::PlayerFilter::You,
                 ..
             } => false,
-            ConditionExpr::YourTurn
+            // Nor can tapping a source and adding mana change a graveyard.
+            ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { .. }
+            | ConditionExpr::YourTurn
             | ConditionExpr::SourceWasCast
             | ConditionExpr::ThisSpellEscaped
             | ConditionExpr::ThisSpellWasCastFromZone(_)

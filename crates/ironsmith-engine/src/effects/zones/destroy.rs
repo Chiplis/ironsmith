@@ -287,6 +287,9 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
             let mut staged_game = decision_view.clone();
             let pinned_lookback =
                 crate::effects::helpers::begin_simultaneous_zone_change_lookback(&mut staged_game);
+            let pinned_replacements = staged_game
+                .begin_simultaneous_replacement_pins()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
             let opened_batch = staged_game.open_simultaneous_action();
             let batch = staged_game
                 .simultaneous_action_batch()
@@ -378,6 +381,9 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                 &mut staged_game,
                 pinned_lookback,
             );
+            staged_game
+                .end_simultaneous_replacement_pins(pinned_replacements)
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
             if graveyard_zone_changes.len() > 1 {
                 let event_objects = graveyard_zone_changes
@@ -944,6 +950,58 @@ mod tests {
         assert_eq!(graveyard_names(&game, alice), vec!["Second", "First"]);
         assert!(game.object(indestructible).is_some_and(|object| {
             object.zone == Zone::Battlefield && object.name == "Indestructible"
+        }));
+    }
+
+    #[test]
+    fn replacement_source_dying_in_the_same_wrath_still_replaces_other_deaths() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        // Kalitas, Traitor of Ghet is created first, so it is committed first.
+        let kalitas = crate::cards::CardDefinitionBuilder::new(
+            CardId::from_raw(60_101),
+            "Kalitas, Traitor of Ghet",
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 4))
+        .with_ability(Ability::static_ability(
+            StaticAbility::exile_would_die_instead_with_damage_source_and_follow_up(
+                ObjectFilter::creature()
+                    .nontoken()
+                    .controlled_by(PlayerFilter::Opponent),
+                None,
+                vec![Effect::create_tokens(create_zombie_token(), 1)],
+            ),
+        ))
+        .build();
+        game.create_object_from_definition(&kalitas, alice, Zone::Battlefield);
+        create_creature(&mut game, bob, "Opponent Bear", 60_102);
+        game.update_replacement_effects()
+            .expect("replacement discovery");
+
+        let mut dm = SelectFirstDecisionMaker;
+        let source = game.new_object_id();
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            DestroyEffect::all(ObjectFilter::creature())
+                .execute(&mut game, &mut ctx)
+                .expect("mass destruction should resolve");
+        }
+
+        assert!(
+            game.player(bob)
+                .is_some_and(|player| player.graveyard.is_empty()),
+            "the opponent's creature dies at the same time as Kalitas, so it is exiled"
+        );
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Opponent Bear")
+        }));
+        assert!(game.battlefield.iter().any(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.name == "Zombie" && game.controller_of(object) == alice
+            })
         }));
     }
 

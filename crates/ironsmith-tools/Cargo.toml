@@ -3,6 +3,7 @@ autotests = false
 name = "ironsmith-tools"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 autobins = false
 
 [dependencies]
@@ -183,6 +184,11 @@ test = false
 [[bin]]
 name = "probe_badgermole_tap"
 path = "src/bin/probe_badgermole_tap.rs"
+test = false
+
+[[bin]]
+name = "probe_tap_invalidation"
+path = "src/bin/probe_tap_invalidation.rs"
 test = false
 
 # BEGIN GENERATED NATIVE TEST SUITES

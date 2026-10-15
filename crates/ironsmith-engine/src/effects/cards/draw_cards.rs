@@ -875,7 +875,11 @@ fn execute_prepared_draw_cards(
             1,
             is_first,
             index == 0,
-            is_during_players_draw_step && cards_previously_drawn_this_draw_step == 0,
+            // Cards this instruction already drew directly are not yet in the
+            // draw-step counter; each card is its own draw (CR 121.2).
+            is_during_players_draw_step
+                && cards_previously_drawn_this_draw_step == 0
+                && direct_drawn.is_empty(),
         );
         let processed = process_trait_event_with_execution_context(
             game,
@@ -1803,6 +1807,38 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(bob).unwrap().hand.len(), 2);
         assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+    }
+
+    #[test]
+    fn only_the_first_card_of_a_multi_card_draw_is_the_first_of_the_draw_step() {
+        // Alhammarret's Archive: "If you would draw a card except the first one
+        // you draw in each of your draw steps, draw two cards instead."
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.phase = crate::game_state::Phase::Beginning;
+        game.turn.step = Some(crate::game_state::Step::Draw);
+        add_cards_to_library(&mut game, alice, 10);
+        add_static_source(
+            &mut game,
+            alice,
+            "Alhammarret's Archive",
+            crate::static_abilities::StaticAbility::draw_extra_cards_replacement_with_options(
+                1,
+                true,
+                false,
+                "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead.",
+            ),
+        );
+        game.update_replacement_effects().unwrap();
+
+        // The first card is drawn normally; the second is each its own draw
+        // (CR 121.2) and becomes two.
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        DrawCardsEffect::new(2, PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .unwrap();
+        assert_eq!(game.player(alice).unwrap().hand.len(), 3);
     }
 
     #[test]

@@ -2108,8 +2108,15 @@ pub(super) fn apply_x_value_response(
         pending.remaining_requirements = requirements;
     }
 
-    // Modes and alternative/additional costs were announced before X.
-    continue_to_targeting_or_finalize(game, trigger_queue, state, pending, decision_maker)
+    // Alternative/additional costs were announced before X; modes were too,
+    // unless X was announced ahead of them.
+    super::priority_cast::continue_after_x_announcement(
+        game,
+        trigger_queue,
+        state,
+        pending,
+        decision_maker,
+    )
 }
 
 // Cancel is an ordinary completed interaction after the special-action

@@ -112,7 +112,80 @@ impl GameState {
                     .add_static_ability_effect(decline);
             }
         }
+        // A pinned source that has left during the current simultaneous event
+        // keeps replacing that event's remaining parts.
+        if let Some(pins) = self
+            .effect_store
+            .replacement_effects
+            .simultaneous_static_pins()
+            .map(<[_]>::to_vec)
+        {
+            for pin in pins {
+                if self
+                    .object(pin.source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+                {
+                    continue;
+                }
+                let key = pin.application_key();
+                if self
+                    .effect_store
+                    .replacement_effects
+                    .effects()
+                    .iter()
+                    .any(|effect| effect.application_key() == key)
+                {
+                    continue;
+                }
+                self.effect_store
+                    .replacement_effects
+                    .add_static_ability_effect(pin);
+            }
+        }
         Ok(())
+    }
+
+    /// Pin the battlefield's static replacement effects for one simultaneous
+    /// event committed object by object. Returns whether this call pinned.
+    pub(crate) fn begin_simultaneous_replacement_pins(
+        &mut self,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if self
+            .effect_store
+            .replacement_effects
+            .simultaneous_static_pins()
+            .is_some()
+        {
+            return Ok(false);
+        }
+        self.update_replacement_effects()?;
+        let pins = self
+            .effect_store
+            .replacement_effects
+            .static_ability_effects()
+            .filter(|effect| {
+                self.object(effect.source)
+                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+            })
+            .cloned()
+            .collect();
+        self.effect_store
+            .replacement_effects
+            .set_simultaneous_static_pins(Some(pins));
+        Ok(true)
+    }
+
+    pub(crate) fn end_simultaneous_replacement_pins(
+        &mut self,
+        pinned: bool,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if !pinned {
+            return Ok(());
+        }
+        self.effect_store
+            .replacement_effects
+            .set_simultaneous_static_pins(None);
+        self.update_replacement_effects()
     }
 
     /// Prepare a complete read-only query view without performing game rules

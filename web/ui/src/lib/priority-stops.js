@@ -12,16 +12,54 @@ const stackKey = state => (state?.stack_objects || []).map(entry => String(entry
 const priorityKey = state => [state?.turn_number, state?.active_player, state?.phase, state?.step, state?.combat_damage_step,
   state?.decision?.player, stackKey(state)].join('|');
 
+// Out of the box a pass stops where most turns need a decision (like Arena):
+// both main phases and the declare-attackers step. "Every time" stops are
+// remembered per browser; "once" stops only live for the current game.
+export const DEFAULT_PRIORITY_STOPS = Object.freeze({
+  'phase:Main': 'always',
+  'step:DeclareAttackers': 'always',
+  'phase:Main2': 'always',
+});
+export const PRIORITY_STOPS_STORAGE_KEY = 'ironsmith.priorityStops';
+
+export function readStoredPriorityStops(storage = globalThis.localStorage) {
+  try {
+    const raw = storage?.getItem(PRIORITY_STOPS_STORAGE_KEY);
+    if (raw == null) return { ...DEFAULT_PRIORITY_STOPS };
+    const saved = JSON.parse(raw);
+    return Object.fromEntries((Array.isArray(saved) ? saved : [])
+      .filter(key => typeof key === 'string' && /^(phase|step):\w+$/.test(key))
+      .map(key => [key, 'always']));
+  } catch {
+    return { ...DEFAULT_PRIORITY_STOPS };
+  }
+}
+
+function storePriorityStops(storage, stops) {
+  try {
+    storage?.setItem(PRIORITY_STOPS_STORAGE_KEY,
+      JSON.stringify(Object.keys(stops).filter(key => stops[key] === 'always')));
+  } catch { /* Stops still work for this session without storage. */ }
+}
+
 // Local preferences gate normal passes; they never change engine priority or
 // submit another player's commands. All automation paths share this controller.
-export function createPriorityStops({ now = () => performance.now(), postActionEnabled = false } = {}) {
+export function createPriorityStops({
+  now = () => performance.now(),
+  postActionEnabled = false,
+  storage = null,
+  initialStops = storage ? readStoredPriorityStops(storage) : {},
+} = {}) {
   const listeners = new Set();
-  let stops = {};
+  let stops = { ...initialStops };
   let window = null;
   let pending = null;
   let heldKey = null;
   let phaseVisit = '', stepVisit = '', phaseSerial = 0, stepSerial = 0;
   let consumed = new Set();
+  // Declaring attackers is the decision a declare-attackers stop exists for;
+  // the priority that follows in the same combat must not stop again.
+  let attackersDeclaredIn = null;
   let sequence = 0;
   let snapshot = { stops, window };
   const publish = () => {
@@ -62,11 +100,13 @@ export function createPriorityStops({ now = () => performance.now(), postActionE
     if (!isLocalTurnDecision(state)) return null;
     if (window || pending) return 'post-action priority window';
     if (heldKey) return 'priority held after action';
-    const stop = candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`));
+    const stop = candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`)
+      && !(key === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
     return stop ? `stop at ${stop[0].split(':')[1]}` : null;
   };
   const releaseStops = state => {
     observe(state);
+    if (state?.decision?.kind === 'attackers') attackersDeclaredIn = phaseSerial;
     let changed = false;
     for (const [key, visit] of candidates(state)) {
       if (!stops[key]) continue;
@@ -94,6 +134,7 @@ export function createPriorityStops({ now = () => performance.now(), postActionE
       if (!stops[key]) stops[key] = 'once';
       else if (stops[key] === 'once') stops[key] = 'always';
       else delete stops[key];
+      if (storage) storePriorityStops(storage, stops);
       // Setting a stop on the current step should take effect immediately.
       for (const [candidate, visit] of candidates(state)) {
         if (candidate === key) consumed.delete(`${candidate}|${visit}`);
@@ -102,7 +143,7 @@ export function createPriorityStops({ now = () => performance.now(), postActionE
     },
     beforeCommand(command, state) {
       observe(state);
-      const checkpoint = { stops: { ...stops }, consumed: new Set(consumed) };
+      const checkpoint = { stops: { ...stops }, consumed: new Set(consumed), attackersDeclaredIn };
       const action = command?.type === 'priority_action'
         ? (state?.decision?.actions || []).find(action => command.action_ref
           ? JSON.stringify(action.action_ref) === JSON.stringify(command.action_ref)
@@ -149,12 +190,15 @@ export function createPriorityStops({ now = () => performance.now(), postActionE
       return !newStop;
     },
     rollbackAction(checkpoint, state) {
-      if (checkpoint) { stops = checkpoint.stops; consumed = checkpoint.consumed; }
+      if (checkpoint) { stops = checkpoint.stops; consumed = checkpoint.consumed; attackersDeclaredIn = checkpoint.attackersDeclaredIn; }
       pending = null; window = null;
       heldKey = isLocalPriority(state) ? priorityKey(state) : null;
       publish();
     },
     cancelAction() { pending = null; if (window) { window = null; publish(); } },
-    reset() { pending = null; window = null; heldKey = null; phaseVisit = ''; stepVisit = ''; consumed = new Set(); publish(); },
+    reset() {
+      pending = null; window = null; heldKey = null; phaseVisit = ''; stepVisit = ''; consumed = new Set();
+      attackersDeclaredIn = null; publish();
+    },
   };
 }

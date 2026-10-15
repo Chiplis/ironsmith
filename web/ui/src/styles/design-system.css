@@ -4038,6 +4038,29 @@ button:disabled,
 .game-card:is(:hover, .hovered, .inspected) > .card-inspector-source-glow {
   opacity: 1;
 }
+
+/* Pseudo-hand cards (playable from graveyard, exile, command or ante) wear
+   their owner's color around the frame. The ring sits over the outer action
+   halo, leaving the inner action border to report whether it can be paid. */
+.card-pseudo-hand-owner-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px rgba(var(--pseudo-hand-owner-rgb), 0.95),
+    0 0 10px 3px rgba(var(--pseudo-hand-owner-rgb), 0.7),
+    0 0 22px 6px rgba(var(--pseudo-hand-owner-rgb), 0.3);
+  animation: pseudo-hand-owner-glow 2.4s ease-in-out infinite;
+}
+@keyframes pseudo-hand-owner-glow {
+  50% { opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-pseudo-hand-owner-glow {
+    animation: none;
+  }
+}
 .game-card.battlefield-token-card:not(.battlefield-arena-card) > .card-inspector-source-glow {
   border-radius: 50%;
 }

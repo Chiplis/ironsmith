@@ -21,6 +21,7 @@ import {
   effectOrderingSubmitLabel,
 } from "@/lib/effect-ordering";
 import { normalizeDecisionText } from "./decisionText";
+import { useEffectOrderingRailVisible } from "@/lib/effect-ordering-rail";
 import { useTranslatedDecisionText } from "@/i18n/useTranslatedDecisionText";
 import { useI18n } from "@/i18n/I18nContext";
 import DecisionSummary from "./DecisionSummary";
@@ -1303,6 +1304,10 @@ function OrderingDecision({
   const effectOrdering = isEffectOrderingDecision(decision);
   const replacementOrdering = isReplacementOrderingDecision(decision);
   const effectOrderingKey = buildEffectOrderingKey(decision);
+  // Without a visible stack rail the pending cards have nowhere to render, so
+  // the decision lists (and reorders) the triggers itself.
+  const effectOrderingOnRail = useEffectOrderingRailVisible(effectOrdering ? effectOrderingKey : null);
+  const effectOrderingHintOnly = effectOrdering && effectOrderingOnRail;
   const localOrderingKey = useMemo(
     () =>
       `${decision.description || ""}|${optionsSignature(decision.options || [])}`,
@@ -1450,7 +1455,7 @@ function OrderingDecision({
     </div>
   );
 
-  if (effectOrdering && stripLayout) {
+  if (effectOrderingHintOnly && stripLayout) {
     return null;
   }
 
@@ -1478,7 +1483,7 @@ function OrderingDecision({
             </div>
           )}
           <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
-          {effectOrdering ? effectOrderingHint : (
+          {effectOrderingHintOnly ? effectOrderingHint : (
             <div
               className="decision-ordering-options-scroll"
               role="region"
@@ -1500,7 +1505,7 @@ function OrderingDecision({
               />
             )}
             <SectionHeader text={ui(replacementOrdering ? "Replacement order" : effectOrdering ? "Stack Order" : "Order")} />
-            {effectOrdering ? effectOrderingHint : standardRows}
+            {effectOrderingHintOnly ? effectOrderingHint : standardRows}
           </div>
         </ScrollArea>
       )}

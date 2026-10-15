@@ -57,6 +57,10 @@ export function getZoneAnchorRect(playerKey, zone, { isPerspective = false } = {
   const chipRect = queryVisible(`[data-zone-anchor="${zoneId}"][data-zone-anchor-player="${key}"]`);
   if (chipRect) return chipRect;
 
+  // The board's graveyard/exile piles (PlayerZonePiles).
+  const pileRect = queryVisible(`[data-zone-pile="${zoneId}"][data-zone-owner="${key}"]`);
+  if (pileRect) return pileRect;
+
   // Fall back to the player's HUD target, then to a viewport-edge guess.
   const playerRect = getPlayerTargetRect(key);
   if (playerRect) return playerRect;

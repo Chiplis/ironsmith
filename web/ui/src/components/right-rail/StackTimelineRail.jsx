@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { isEffectOrderingDecision } from "@/lib/effect-ordering";
 import { samePlayerId } from "@/lib/player-display";
+import useCardStackMode from "@/hooks/useCardStackMode";
 
 const STACK_EDGE_MARGIN = 6;
 const STACK_MIN_HEIGHT = 44;
@@ -47,7 +48,10 @@ export default function StackTimelineRail({
   const inlineAnchorRef = useRef(null);
   const flowRailRef = useRef(null);
   const [inlineRect, setInlineRect] = useState(null);
-  const shouldShowRail = orderingEntryCount > 0 || displayedStackObjects.length > 0;
+  // The compact appearance shows the stack as CardStackPile instead.
+  const cardStackMode = useCardStackMode();
+  const shouldShowRail = !cardStackMode
+    && (orderingEntryCount > 0 || displayedStackObjects.length > 0);
 
   useLayoutEffect(() => {
     if (inlineFlow) return undefined;

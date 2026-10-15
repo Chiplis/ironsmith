@@ -9,7 +9,7 @@ export function reconcilePseudoHand(previous, current, state) {
   for (const player of state.players || []) {
     for (const zone of ["graveyard", "exile", "command", "ante"]) {
       for (const card of player[`${zone}_cards`] || []) {
-        zones.set(Number(card.id), { card, zone });
+        zones.set(Number(card.id), { card, zone, ownerId: player.id });
       }
     }
   }
@@ -17,7 +17,7 @@ export function reconcilePseudoHand(previous, current, state) {
     const visible = zones.get(id);
     if (!next.has(id) && visible && visible.zone === cached.fromZone) {
       next.set(id, { ...cached, card: visible.card, name: visible.card.name,
-        actions: [] });
+        ownerId: visible.ownerId ?? cached.ownerId, actions: [] });
     }
   }
   return next;

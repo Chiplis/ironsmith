@@ -8,6 +8,9 @@ mod r#consumer_mana_spending;
 #[path = "../copular_contraction_animation.rs"]
 mod r#copular_contraction_animation;
 
+#[path = "../delirium_graveyard_lookups.rs"]
+mod r#delirium_graveyard_lookups;
+
 #[path = "../effect_granted_casting_prices.rs"]
 mod r#effect_granted_casting_prices;
 

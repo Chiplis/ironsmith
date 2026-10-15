@@ -28,6 +28,7 @@ import {
 } from "@/lib/hand-cast-keyboard";
 
 import { reconcilePseudoHand } from "@/lib/pseudo-hand";
+import { handKeyboardEntryCard, onHandOpenChange, useHandOpen } from "@/lib/hand-open";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -65,7 +66,7 @@ function handGlowFromTypes(cardTypes) {
  */
 function buildPlayableMaps(state, player) {
   const handPlayable = new Map();   // objectId → actions[] (from hand)
-  const extraPlayable = new Map();  // objectId → { name, card, actions[], fromZone, glowKind }
+  const extraPlayable = new Map();  // objectId → { name, card, actions[], fromZone, glowKind, ownerId }
 
   const actions =
     state?.decision?.kind === "priority"
@@ -80,20 +81,25 @@ function buildPlayableMaps(state, player) {
   // surface cross-owner play-from cards such as Ragavan hits in exile.
   const cardNameById = new Map();
   const cardSnapshotById = new Map();
-  const addZoneCards = (cards) => {
+  // Graveyard, exile, command and ante are owner zones, so the player whose
+  // zone lists a card is the card's owner.
+  const ownerById = new Map();
+  const addZoneCards = (cards, ownerId) => {
     for (const card of cards || []) {
       const objId = Number(card?.id);
       if (!Number.isFinite(objId)) continue;
       cardNameById.set(objId, card.name);
       cardSnapshotById.set(objId, card);
+      ownerById.set(objId, ownerId);
     }
   };
   for (const snapshotPlayer of state?.players || []) {
-    addZoneCards(snapshotPlayer?.graveyard_cards);
-    addZoneCards(snapshotPlayer?.exile_cards);
-    addZoneCards(snapshotPlayer?.command_cards);
-    addZoneCards(snapshotPlayer?.ante_cards);
-    addZoneCards(snapshotPlayer?.hand_cards);
+    const ownerId = snapshotPlayer?.id;
+    addZoneCards(snapshotPlayer?.graveyard_cards, ownerId);
+    addZoneCards(snapshotPlayer?.exile_cards, ownerId);
+    addZoneCards(snapshotPlayer?.command_cards, ownerId);
+    addZoneCards(snapshotPlayer?.ante_cards, ownerId);
+    addZoneCards(snapshotPlayer?.hand_cards, ownerId);
   }
 
   for (const action of actions) {
@@ -130,6 +136,7 @@ function buildPlayableMaps(state, player) {
           actions: [],
           fromZone: action.from_zone || "other",
           glowKind: card?.pseudo_hand_glow_kind || "extra",
+          ownerId: ownerById.get(objId) ?? null,
         });
       }
       extraPlayable.get(objId).actions.push(action);
@@ -150,6 +157,7 @@ function buildPlayableMaps(state, player) {
           actions: [],
           fromZone,
           glowKind: card.pseudo_hand_glow_kind || "extra",
+          ownerId: ownerById.get(objId) ?? null,
         });
       }
     }
@@ -768,6 +776,7 @@ export default function HandZone({
         fromZone: data.fromZone,
         actions: actionsPausedForSync ? [] : data.actions,
         glowKind: data.glowKind,
+        ownerId: data.ownerId,
       });
     }
     return cards;
@@ -1257,6 +1266,38 @@ export default function HandZone({
     setHoveredHandObjectId(null);
   }, [suspendHandPointer]);
 
+  // With the docked hand opened by ".", the arrows step into it even though
+  // no card has focus yet: Right starts at the first card, Left at the last.
+  // Once a card has focus, GameCard's own arrow handling takes over.
+  const handOpen = useHandOpen();
+  useEffect(() => {
+    if (!handOpen) return undefined;
+    const onKeyDown = (event) => {
+      const list = handListRef.current;
+      if (!list?.closest(".hand-reveal-shell")) return;
+      const card = handKeyboardEntryCard(event, list);
+      if (!card) return;
+      event.preventDefault();
+      handleKeyboardNavigation();
+      card.focus({ preventScroll: true });
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [handOpen, handleKeyboardNavigation]);
+  // Closing the hand with "." puts every card back down, keyboard selection
+  // and focus included.
+  useEffect(() => onHandOpenChange((open) => {
+    const list = handListRef.current;
+    if (open || !list?.closest(".hand-reveal-shell")) return;
+    if (list.contains(document.activeElement)) document.activeElement.blur();
+    keyboardNavigationRef.current = false;
+    setKeyboardNavigationActive(false);
+    setKeyboardSelectedObjectId(null);
+    setPinnedHandObjectId(null);
+    clearHover();
+    clearAnchoredCardPreview();
+  }), [clearAnchoredCardPreview, clearHover]);
+
   const handleCardFocus = useCallback((_event, card) => {
     handleHoverEnter(card.id);
     // Focus selects the same rendered card in the hand. It deliberately does
@@ -1739,6 +1780,7 @@ export default function HandZone({
           isPlayable={isPlayable}
           paymentProven={plays.some(action => action.payment_proven !== false)}
           glowKind={glowKind}
+          pseudoHandOwnerId={extra.ownerId}
           handCircuitMode="full"
           suppressTooltip={isMobileFan}
           isHovered={isHovered}
@@ -1904,6 +1946,7 @@ export default function HandZone({
             isPlayable={isPlayable}
             paymentProven={plays.some(action => action.payment_proven !== false)}
             glowKind={glowKind}
+            pseudoHandOwnerId={extra.ownerId}
             isNew={isPrimaryCycle}
             handCircuitMode={isExpanded ? "full" : "top"}
             suppressTooltip={isMobileFan}

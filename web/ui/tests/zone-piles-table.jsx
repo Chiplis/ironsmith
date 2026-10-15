@@ -9,6 +9,7 @@ import { TooltipProvider } from "../src/components/ui/tooltip";
 import TableCore from "../src/components/board/TableCore";
 import Topbar from "../src/components/layout/TopBar";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
+import CardStackPile from "../src/components/right-rail/CardStackPile";
 import "../src/index.css";
 import useBattlefieldAppearance from "../src/hooks/useBattlefieldAppearance";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
@@ -27,6 +28,7 @@ function Fixture(){
  return <I18nProvider><GameContext.Provider value={{state,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer,playerAccentOverrides:{},game:null,holdRule:"never",setHoldRule:()=>{},dispatch:async()=>{},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
  <main style={{height:"96vh"}}><button onClick={()=>setAppearance("compactCards",!appearance.compactCards)}>Toggle battlefield style</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore onChangePerspective={setPerspective} legalTargetObjectIds={targetLook ? new Set([7001,7002]) : targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  <FloatingCardPreview />
+ {appearance.compactCards ? <CardStackPile onInspectObject={(id)=>setResult(String(id))} /> : null}
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);

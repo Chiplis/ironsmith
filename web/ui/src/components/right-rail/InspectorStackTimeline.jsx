@@ -9,6 +9,7 @@ import { stagger } from "@/lib/motion/anime";
 import useLayoutReflow from "@/lib/motion/useLayoutReflow";
 import { cn } from "@/lib/utils";
 import { stackEntryRenderKeys } from "@/lib/stack-targets";
+import { useReportEffectOrderingRail } from "@/lib/effect-ordering-rail";
 import {
   buildEffectOrderingEntries,
   buildEffectOrderingKey,
@@ -102,6 +103,7 @@ export default function InspectorStackTimeline({
   const liveEntryCount = timelineEntries.filter(entry => !entry.__leaving).length;
   const itemCount = liveEntryCount || stackPreview.length;
   const timelineSignature = timelineEntries.map((entry) => entry.__timeline_key).join("|");
+  useReportEffectOrderingRail(bodyRef, pendingOrderingEntries.length > 0 ? effectOrderingKey : null);
   useLayoutReflow(bodyRef, timelineSignature, {
     children: ".stack-timeline-entry",
     disabled: timelineEntries.length === 0,

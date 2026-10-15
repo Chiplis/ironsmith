@@ -4710,8 +4710,11 @@ impl WasmGame {
     }
 
     #[wasm_bindgen(js_name = sampleLoadedDeckSeed)]
-    pub fn sample_loaded_deck_seed(&mut self, player_index: u8) -> Result<JsValue, JsValue> {
-        let seed = self.build_loaded_deck_seed(player_index)?;
+    pub fn sample_loaded_deck_seed(
+        &mut self,
+        exclude_name: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let seed = self.build_loaded_deck_seed(exclude_name.as_deref())?;
         serde_wasm_bindgen::to_value(&seed)
             .map_err(|e| JsValue::from_str(&format!("failed to serialize custom card seed: {e}")))
     }

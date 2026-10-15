@@ -3,6 +3,8 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { parseNames } from "@/lib/constants";
 import { installMainDecisionShortcut } from "@/lib/main-decision-shortcut";
+import { installHandToggleShortcut } from "@/lib/hand-open";
+import { readTableSetup, storeTableSetup, tableSeatNames } from "@/lib/table-setup";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
 import { withSupportedCards } from "@/lib/unsupported-card-substitution";
@@ -30,6 +32,8 @@ import TableErrorBoundary from "./TableErrorBoundary";
 import MobileLandscapeGate from "./MobileLandscapeGate";
 import ArenaAmbience from "./ArenaAmbience";
 import LogDrawer from "@/components/overlays/LogDrawer";
+import PerspectiveHandoffBanner from "@/components/overlays/PerspectiveHandoffBanner";
+import KeyboardShortcutsOverlay from "@/components/overlays/KeyboardShortcutsOverlay";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import {
   addFixedStartingBoardPreset,
@@ -41,6 +45,7 @@ import {
 export default function Shell() {
   const ui = useUiText();
   useEffect(() => installMainDecisionShortcut(document), []);
+  useEffect(() => installHandToggleShortcut(document), []);
   const {
     game,
     state,
@@ -60,8 +65,9 @@ export default function Shell() {
   useTabAttention();
   const initialPuzzleQueryRef = useRef(readPuzzleQueryParams());
   const syncedLobbyUrlRef = useRef("");
+  const [savedTableSetup] = useState(readTableSetup);
   const [playerNames, setPlayerNames] = useState(
-    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || "Alice,Bob"
+    () => initialPuzzlePlayerNames(initialPuzzleQueryRef.current) || savedTableSetup.playerNames
   );
 
   useEffect(() => {
@@ -84,8 +90,18 @@ export default function Shell() {
     syncedLobbyUrlRef.current = "";
   }, [multiplayer?.hostPeerId, multiplayer?.lobbyId, multiplayer?.mode]);
   const [startingLife, setStartingLife] = useState(
-    () => initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? 20
+    () => initialPuzzleStartingLife(initialPuzzleQueryRef.current) ?? savedTableSetup.startingLife
   );
+  // Menu edits are the player's table setup, so they are saved; loads that
+  // bring their own names (puzzles, goldfish) use the raw setters instead.
+  const editPlayerNames = useCallback((value) => {
+    setPlayerNames(value);
+    storeTableSetup({ playerNames: value, startingLife });
+  }, [startingLife]);
+  const editStartingLife = useCallback((value) => {
+    setStartingLife(value);
+    storeTableSetup({ playerNames, startingLife: value });
+  }, [playerNames]);
   const [logOpen, setLogOpen] = useState(false);
   const [lobbyOpen, setLobbyOpen] = useState(false);
   const [zoneViews, setZoneViews] = useState(["battlefield"]);
@@ -267,7 +283,7 @@ export default function Shell() {
     if (initialPuzzleQueryRef.current || fixedStartingBoard) return;
     const lobbyQuery = initialLobbyQueryRef.current;
     if (lobbyQuery.lobbyId || lobbyQuery.deckText || lobbyQuery.commanderText) return;
-    startupBoardRef.current = prefetchRandomStartingBoard(parseNames(playerNames), startingLife, semanticThreshold);
+    startupBoardRef.current = prefetchRandomStartingBoard(tableSeatNames(playerNames), startingLife, semanticThreshold);
     // Mount-time settings are the ones the first init reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -304,14 +320,14 @@ export default function Shell() {
           await game.resetEmpty(parseNames(playerNames), startingLife);
           await refresh("WASM loaded", { throwOnError: true });
         } else {
-          const names = parseNames(playerNames);
+          const names = tableSeatNames(playerNames);
           const prefetched = startupBoardRef.current;
           startupBoardRef.current = null;
           const prefetchedPayload = prefetched?.key === startingBoardKey(names, startingLife, semanticThreshold)
             ? await prefetched.payload.catch(() => null)
             : null;
           if (prefetchedPayload && !fixedStartingBoard) {
-            await applyPuzzleToGame(game, prefetchedPayload);
+            await applyStartingBoard(game, prefetchedPayload);
           } else {
             await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           }
@@ -380,7 +396,7 @@ export default function Shell() {
         return;
       }
       try {
-        const names = parseNames(playerNames);
+        const names = tableSeatNames(playerNames);
         await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
         setDeckLoadingMode(false);
         await refresh("Game reset");
@@ -702,9 +718,9 @@ export default function Shell() {
   const utilityControlsElement = (
     <TopbarUtilityControls
       playerNames={playerNames}
-      setPlayerNames={setPlayerNames}
+      setPlayerNames={editPlayerNames}
       startingLife={startingLife}
-      setStartingLife={setStartingLife}
+      setStartingLife={editStartingLife}
       onReset={handleReset}
       onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
       onToggleLog={() => setLogOpen((o) => !o)}
@@ -724,16 +740,15 @@ export default function Shell() {
         setLobbyOpen(true);
       }}
       onAddCardNotice={pushNotice}
-      showInlineControls={!dockToolbarsInTable && !nonDesktopViewport && !tabletCompactViewport}
     />
   );
   const topbarElement = (
     <Topbar
       utilityControls={utilityControlsElement}
       playerNames={playerNames}
-      setPlayerNames={setPlayerNames}
+      setPlayerNames={editPlayerNames}
       startingLife={startingLife}
-      setStartingLife={setStartingLife}
+      setStartingLife={editStartingLife}
       onReset={handleReset}
       onRefresh={() => void runWasmInteraction(() => refresh("Refreshed"))}
       onToggleLog={() => setLogOpen((o) => !o)}
@@ -837,6 +852,8 @@ export default function Shell() {
         />
       </TableErrorBoundary>
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
+      {!multiplayer.matchStarted ? <PerspectiveHandoffBanner /> : null}
+      <KeyboardShortcutsOverlay />
       {lobbyOpen ? (
         <LobbyOverlay
           key={lobbyOverlayInitial.mode}
@@ -897,7 +914,18 @@ async function resetStartingBoard(game, names, startingLife, fixed, semanticThre
     return;
   }
   const payload = await buildRandomStartingBoard(names, startingLife, semanticThreshold);
-  await applyPuzzleToGame(game, payload);
+  await applyStartingBoard(game, payload);
+}
+
+// Commander tables start as real matches; other formats load a seeded board.
+async function applyStartingBoard(game, payload) {
+  if (!payload?.match) return applyPuzzleToGame(game, payload);
+  if (typeof game.startMatch !== "function") throw new Error("This engine cannot start a Commander match");
+  await game.startMatch({
+    ...payload.match,
+    seed: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+  });
+  if (typeof game.setPerspective === "function") await game.setPerspective(0);
 }
 
 async function applyPuzzleToGame(game, payload) {

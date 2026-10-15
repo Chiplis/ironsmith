@@ -4896,6 +4896,11 @@ impl GameState {
         if self.continuous_state_is_clean() {
             return self.cached_continuous_effects_snapshot_arc();
         }
+        if let Some(context) = crate::continuous::nested_regeneration_context(self) {
+            return crate::continuous::regenerate_in_context(context, || {
+                crate::static_ability_processor::get_all_continuous_effects(self)
+            });
+        }
         Arc::new(crate::static_ability_processor::get_all_continuous_effects(
             self,
         ))
@@ -5111,7 +5116,23 @@ impl GameState {
             return cached;
         }
 
-        let all_effects = self.all_continuous_effects();
+        if !self.continuous_state_is_clean()
+            && let Some(context) = crate::continuous::nested_regeneration_context(self)
+        {
+            // A dirty read inside another calculation (a delirium count reading
+            // each graveyard card) repeats in an identical layer context.
+            return crate::continuous::characteristics_in_context(context, id, || {
+                let all_effects = self.all_continuous_effects_arc();
+                self.runtime_cache
+                    .work_counters
+                    .bump_characteristics_full_recomputes();
+                self.runtime_cache
+                    .work_counters
+                    .add_effects_considered(all_effects.len() as u64);
+                self.calculated_characteristics_with_effects(id, &all_effects)
+            });
+        }
+        let all_effects = self.all_continuous_effects_arc();
         self.runtime_cache
             .work_counters
             .bump_characteristics_full_recomputes();
@@ -5868,14 +5889,14 @@ impl GameState {
 
     /// Get the calculated subtypes of an object (with continuous effects applied).
     pub fn calculated_subtypes(&self, id: ObjectId) -> Vec<crate::types::Subtype> {
-        self.calculated_characteristics(id)
+        self.calculated_characteristics_arc(id)
             .map(|c| c.subtypes.to_vec())
             .unwrap_or_default()
     }
 
     /// Get the calculated card types of an object (with continuous effects applied).
     pub fn calculated_card_types(&self, id: ObjectId) -> Vec<crate::types::CardType> {
-        self.calculated_characteristics(id)
+        self.calculated_characteristics_arc(id)
             .map(|c| c.card_types.to_vec())
             .unwrap_or_default()
     }

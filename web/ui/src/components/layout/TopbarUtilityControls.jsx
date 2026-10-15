@@ -13,11 +13,10 @@ export default function TopbarUtilityControls({
   onToggleLog,
   onOpenPuzzleSetup,
   onOpenLobby,
+  onGenerateRandomGame,
   puzzleSetupMode = false,
   onAddCardNotice,
-  showInlineControls = true,
   showBrand = false,
-  children,
 }) {
   const ui = useUiText();
   return (
@@ -69,11 +68,10 @@ export default function TopbarUtilityControls({
         onToggleLog={onToggleLog}
         onOpenPuzzleSetup={onOpenPuzzleSetup}
         onOpenLobby={onOpenLobby}
+        onGenerateRandomGame={onGenerateRandomGame}
         puzzleSetupMode={puzzleSetupMode}
         onAddCardNotice={onAddCardNotice}
         triggerIcon="menu"
-        showQuickActions={!showInlineControls && !children}
-        tableTools={children}
       />
     </div>
   );

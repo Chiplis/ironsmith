@@ -8,6 +8,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 844, height: 390 
  const browser = await chromium.launch();
  try {
   const page = await browser.newPage({ viewport });
+  // The automatic frame belongs to the rail: the "Full cards" appearance.
+  // ("Compact artwork" shows the stack as a pile of full-size frames.)
+  await page.addInitScript(() => localStorage.setItem('ironsmith.battlefieldAppearance', JSON.stringify({ compactCards: false })));
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.route('https://**scryfall**/**', route => route.fulfill({ status:404, body:'' }));
@@ -94,23 +97,27 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   const geometry=await page.evaluate(()=>{
    const board=document.querySelector('[data-my-zone] .my-zone-board-shell');
    const rect=el=>el.getBoundingClientRect().toJSON();
-   return {opponent:rect(document.querySelector('.battlefield-panel--opponents')),board:rect(board),rail:rect(board.querySelector('.my-zone-stack-rail')),look:rect(board.querySelector('.player-look-pile')),mana:rect(document.querySelector('.local-player-mana-dock')),identity:rect(document.querySelector('.table-shared-player-header')),preview:rect(document.querySelector('[data-automatic-stack-preview="true"]')),top:board.style.getPropertyValue('--stack-area-top')};
+   return {opponent:rect(document.querySelector('.battlefield-panel--opponents')),board:rect(board),rail:rect(board.querySelector('.my-zone-stack-rail')),look:rect(board.querySelector('.player-look-pile')),mana:rect(document.querySelector('.local-player-mana-dock')),identity:rect(document.querySelector('.table-shared-player-header')),pile:rect(document.querySelector('.card-stack-slot[data-top="true"] .stack-card--frame')),pager:rect(document.querySelector('.card-stack-pager')),automaticFrames:document.querySelectorAll('[data-automatic-stack-preview="true"]').length,top:board.style.getPropertyValue('--stack-area-top')};
   });
   await page.screenshot({path:'/tmp/stack-look-layout.png'});
   assert.ok(geometry.rail.top>=geometry.look.bottom+6,'stack clears Look');
   assert.ok(geometry.look.left<16,'Look sits on the far left');
   assert.ok(Math.abs(geometry.rail.left)<1,'stack begins at screen edge');
   const firstColumn=await page.locator('[data-my-zone] .battlefield-row .game-card').evaluateAll(cards=>Math.min(...cards.map(card=>card.getBoundingClientRect().left)));
-  assert.ok(Math.abs(firstColumn-geometry.rail.right-8)<2,'stack stops before the first field column');
+  // The compact appearance's card pile narrows the old rail box to its cards.
+  assert.ok(geometry.rail.right<=firstColumn-6,'stack stops before the first field column');
   assert.equal(geometry.top,'12px','Look never moves the stack anchor');
   const lookSlot=await page.locator('.player-look-pile .zone-pile-slot').boundingBox();
   assert.ok(Math.abs(geometry.rail.top-lookSlot.y-lookSlot.height-8)<2,'enlarged Look remains above the stack');
   assert.ok(geometry.mana.top>=geometry.identity.bottom,'mana sits beneath identity');
   assert.ok(geometry.mana.bottom<=900 && geometry.mana.bottom>=875,'mana sits at the screen bottom');
-  assert.ok(geometry.preview.bottom<=geometry.mana.top-6,'frame clears mana');
-  assert.ok(Math.abs(geometry.preview.left-geometry.rail.right-12)<2,'compact preview sits beside the stack');
-  assert.ok(Math.abs(geometry.preview.top-geometry.rail.top)<2,'compact preview aligns with the stack top');
-  assert.ok(geometry.rail.width>=300,'stack gains a battlefield column');
+  // The pile is the stack's frame: no second, automatic one opens.
+  assert.equal(geometry.automaticFrames,0,'no duplicate stack frame');
+  assert.ok(geometry.pager.bottom<=geometry.identity.top,'pile and pager clear the player header');
+  assert.ok(Math.abs(geometry.pile.left-geometry.rail.left-12)<3,'front card sits in the stack box');
+  // Allow for the cards' gentle float (up to 5px).
+  assert.ok(geometry.pile.top>=geometry.rail.top-6,'front card stays inside the stack box');
+  assert.ok(geometry.rail.width>=150,'stack holds a readable card');
   const lookTile=await page.locator('[data-zone-pile="look"]').boundingBox();
   assert.ok(lookTile.x>=0,'enlarged Look stays inside the left screen edge');
   await page.locator('[data-zone-pile="look"]').hover();
@@ -130,12 +137,12 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   assert.ok(hoveredLook.x>=0 && hoveredLook.y>=0,'hover-enlarged Look card stays on screen');
   assert.ok(hoveredMenu.x>=0 && hoveredMenu.x+hoveredMenu.width<=1440,'hovered Look strip stays within the viewport');
   await page.mouse.move(1400,20);
-  await page.locator('[data-automatic-stack-preview="true"][data-visible="true"]').waitFor();
   await page.locator('.player-look-pile').evaluate(el=>el.style.display='none');
-  await page.waitForTimeout(400);
-  const after=await page.locator('[data-automatic-stack-preview="true"]').boundingBox();
-  assert.ok(Math.abs(after.height-geometry.preview.height)<2,'hiding Look does not change preview height');
-  assert.ok(Math.abs(after.y-geometry.preview.top)<2,'hiding Look does not move the frame');
+  await page.waitForTimeout(600);
+  const after=await page.locator('.card-stack-slot[data-top="true"] .stack-card--frame').boundingBox();
+  assert.ok(Math.abs(after.height-geometry.pile.height)<2,'hiding Look does not change the stack card size');
+  // Allow for the float.
+  assert.ok(Math.abs(after.y-geometry.pile.top)<7,'hiding Look does not move the stack');
   await page.screenshot({path:'/tmp/stack-look-layout.png'});
  } finally {await browser.close();await vite.close();}
 });

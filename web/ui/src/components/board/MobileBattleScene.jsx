@@ -28,6 +28,7 @@ import PhaseTrack from "@/components/board/PhaseTrack";
 import MobileTurnActionStack from "@/components/board/mobile/MobileTurnActionStack";
 import MobileBattlefieldBand from "@/components/board/mobile/MobileBattlefieldBand";
 import MobileHandFan from "@/components/board/mobile/MobileHandFan";
+import { TOGGLE_HAND_EVENT } from "@/lib/hand-open";
 import MobileHandFullscreen from "@/components/board/mobile/MobileHandFullscreen";
 import MobileViewToggle from "@/components/board/mobile/MobileViewToggle";
 import MobileStackRail from "@/components/board/mobile/MobileStackRail";
@@ -650,6 +651,11 @@ export default function MobileBattleScene({
     if (typeof setMobileViewMode !== "function") return;
     setMobileViewMode((current) => (current === "hand" ? "battlefield" : "hand"));
   }, [setMobileViewMode]);
+  // The "." shortcut opens and closes the full-screen hand here.
+  useEffect(() => {
+    window.addEventListener(TOGGLE_HAND_EVENT, handleToggleView);
+    return () => window.removeEventListener(TOGGLE_HAND_EVENT, handleToggleView);
+  }, [handleToggleView]);
 
   // --- Zone open ----------------------------------------------------------
   const [openZone, setOpenZone] = useState(null);

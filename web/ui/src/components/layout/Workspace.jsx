@@ -11,6 +11,9 @@ import useViewportLayout from "@/hooks/useViewportLayout";
 import useManabrewHandScale from "@/hooks/useManabrewHandScale";
 import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import ForgeBoard from "@/components/board/ForgeBoard";
+import CardStackPile from "@/components/right-rail/CardStackPile";
+import useCardStackMode from "@/hooks/useCardStackMode";
+import { noteCastDrag, noteCastRelease } from "@/lib/stack-cast-origins";
 import TableCore from "@/components/board/TableCore";
 import HandZone from "@/components/board/HandZone";
 import RematchDeckView from "@/components/board/RematchDeckView";
@@ -48,6 +51,7 @@ import {
   targetDecisionAllowsNoTargets,
 } from "@/lib/hand-drag-intent";
 import { requestObjectSelection } from "@/lib/object-selection";
+import { useHandOpen, useHandShellLift } from "@/lib/hand-open";
 import {
   HAND_KEYBOARD_CAST_EVENT,
   handKeyboardCastNeedsPointer,
@@ -750,6 +754,9 @@ export default function Workspace({
   const [transientInspectorPreviewIndex, setTransientInspectorPreviewIndex] = useState(0);
   const [opponentsZoneHostRect, setOpponentsZoneHostRect] = useState(null);
   const workspaceRef = useRef(null);
+  const handShellRef = useRef(null);
+  const handOpen = useHandOpen();
+  useHandShellLift(handShellRef, handOpen);
   const previousStackIdsRef = useRef([]);
   const previousZoneTransitionSnapshotRef = useRef(null);
   const previousCardRectsRef = useRef(new Map());
@@ -1663,6 +1670,8 @@ export default function Workspace({
       const placementSlot = activeBattlefieldPlacementSlot();
       const ds = endDrag();
       if (!ds || !ds.actions || ds.actions.length === 0) return;
+      // The card stack launches the spell's comet from here.
+      noteCastRelease(ds.cardName, e.clientX, e.clientY);
       const el = document.elementFromPoint(e.clientX, e.clientY);
       if (ds.castIntent) {
         const candidate = dropTargetCandidateAtPoint(e.clientX, e.clientY);
@@ -1871,6 +1880,12 @@ export default function Workspace({
     clearTransientInspectorPreviews,
   ]);
 
+  const cardStackMode = useCardStackMode();
+  const castDragName = dragState?.cardName ?? null;
+  useEffect(() => {
+    noteCastDrag(castDragName);
+  }, [castDragName]);
+
   const closeFloatingCardPreview = useCallback(() => {
     setSelectedObjectId(null);
     setPinnedInspectorObjectId(null);
@@ -1887,6 +1902,13 @@ export default function Workspace({
     >
       {battlefieldAppearance.compactCards && !deckLoadingMode && !puzzleSetupMode && !showRematchSideboarding && (
         <ForgeBoard state={state} playerAccentOverrides={playerAccentOverrides} interactionLocked={Boolean(dragState || state?.decision?.kind === "targets")} />
+      )}
+      {cardStackMode && !deckLoadingMode && !puzzleSetupMode && !showRematchSideboarding && (
+        <CardStackPile
+          selectedObjectId={selectedObjectId}
+          focusedStackObjectId={focusedStackObjectId}
+          onInspectObject={handleInspectObject}
+        />
       )}
       <DragOverlay />
       {handActionMenu?.anchorRect && (
@@ -2094,9 +2116,10 @@ export default function Workspace({
             data-hand-dock-lane
           >
             <div
+              ref={handShellRef}
               className="hand-reveal-shell absolute left-1/2 bottom-0"
-              data-open="false"
-              aria-expanded="false"
+              data-open={handOpen ? "true" : "false"}
+              aria-expanded={handOpen ? "true" : "false"}
               style={{
                 height: `${HAND_COLLAPSED_SHELL_HEIGHT}px`,
               }}

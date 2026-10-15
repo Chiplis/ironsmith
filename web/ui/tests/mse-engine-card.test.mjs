@@ -25,7 +25,7 @@ test('face indicators stay separate and native overrides remain authoritative',(
 test('engine snapshots map current stats and preserve symbol and literal text boundaries',()=>{
   const source={id:7,name:'Trial',mana_cost:'{2}{W/U}{B/P}',type_line:'Legendary Creature — Wizard',oracle_text:'{T}: Add {U}. <b> is literal.',power_toughness:'3/4',power:'5',rarity:'mythic',flavor_text:'A <b>literal</b> story.'};
   const result=engineCardToMse(source);
-  assert.equal(result.card.casting_cost,'2W/UB/P');
+  assert.equal(result.card.casting_cost,'2W/UH/B');
   assert.equal(result.card.super_type,'Legendary Creature');assert.equal(result.card.sub_type,'Wizard');
   assert.equal(result.card.rule_text,'<sym>T</sym>: Add <sym>U</sym>. \u0001b> is literal.');
   assert.equal(result.card.power,'5');assert.equal(result.card.toughness,'4');
@@ -41,6 +41,9 @@ test('multiple faces retain separate rules, and explicit active-face selection u
   assert.equal(active.card.name,'Display name');assert.equal(active.card.rule_text,'Updated <sym>U</sym>.');assert.equal(active.card.name_2,undefined);
   assert.throws(()=>engineCardToMse(snapshot,{faceIndex:2}),{code:'engine-face'});
   assert.equal(engineRulesToMse('Pay {2/W}.\nThen draw.'),'Pay <sym>2/W</sym>.\nThen draw.');
+  // Phyrexian and half mana use the MSE font's own spellings.
+  assert.equal(engineRulesToMse('{B/P}{G/U/P}{H}{HW}{½}{C/W}{S}{P}{CHAOS}{E}'),
+    '<sym>H/B</sym><sym>H/G/U</sym><sym>H</sym><sym>|W</sym><sym>.5</sym><sym>C/W</sym><sym>S</sym><sym>pawprint</sym><sym>chaos</sym><sym>E</sym>');
 });
 
 test('planeswalker costs use paragraph slots while preserving static abilities and symbol markup',()=>{
@@ -128,5 +131,6 @@ test('a land renders in the colors of its current intrinsic mana (Yavimaya makes
 test('a Yavimaya Forest keeps the colors its rules text produces',()=>{
   assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}, Pay 1 life: Add {U} or {R}. (Reminder {B}.)',intrinsic_mana:['G']}).card.card_color,'blue, red, green, land, multicolor');
   assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}: Add {U}.',color_identity:['U'],intrinsic_mana:['G']}).card.card_color,'blue, green, land, multicolor');
-  assert.equal(engineCardToMse({type_line:'Land',oracle_text:'{T}: Add {U} or {R}.'}).card.card_color,undefined);
+  // The template does not infer colors from rules text, so Spirebluff Canal needs them too.
+  assert.equal(engineCardToMse({type_line:'Land',oracle_text:'{T}: Add {U} or {R}.'}).card.card_color,'blue, red, land, multicolor');
 });

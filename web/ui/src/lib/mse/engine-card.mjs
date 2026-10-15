@@ -3,11 +3,26 @@ import {MseError} from './document.mjs';
 // Engine/printing snapshots are plain text. Escape literal markup before adding
 // MSE symbol tags so a card description cannot inject template formatting.
 const plain=value=>String(value??'').replaceAll('<','\u0001');
+// The engine writes symbols the way Scryfall does; the MSE mana fonts spell a
+// few differently: Phyrexian {B/P} is H/B ({G/U/P} is H/G/U; generic {H} is
+// shared), half mana {HW} is |W, {½} is .5, the pawprint {P} is "pawprint"
+// and {CHAOS} is "chaos". Everything else is shared.
+export function engineSymbolToMse(symbol){
+  const value=String(symbol).toUpperCase();
+  const phyrexian=/^((?:[WUBRGC]\/)*[WUBRGC])\/P$/.exec(value)||/^P\/((?:[WUBRGC]\/)*[WUBRGC])$/.exec(value);
+  if(phyrexian)return `H/${phyrexian[1]}`;
+  if(value==='P')return 'pawprint';
+  if(value==='CHAOS')return 'chaos';
+  const half=/^H([WUBRGC])$/.exec(value);
+  if(half)return `|${half[1]}`;
+  if(value==='½'||value==='1/2')return '.5';
+  return symbol;
+}
 export function engineRulesToMse(value){
-  return plain(value).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>`<sym>${symbol}</sym>`);
+  return plain(value).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>`<sym>${engineSymbolToMse(symbol)}</sym>`);
 }
 export function engineManaToMse(value){
-  return plain(value).replace(/\{([^{}\n]+)\}/g,'$1');
+  return plain(value).replace(/\{([^{}\n]+)\}/g,(_,symbol)=>engineSymbolToMse(symbol));
 }
 const colorNames={W:'white',U:'blue',B:'black',R:'red',G:'green'};
 function printableColors(value){
@@ -121,14 +136,15 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
     // snapshot drops its indicator) takes its frame from its color identity
     // plus the intrinsic mana of its current basic land types (Yavimaya makes
     // itself a Forest); the template already infers basics. Identity is a
-    // whole-card value, so only single-faced snapshots use it. Live snapshots
-    // omit identity, so intrinsic mana joins the symbols in the rules text
-    // instead, as the template would infer them (Fiery Islet stays U/R).
+    // whole-card value, so only single-faced snapshots use it. Without one
+    // (custom cards, older snapshots), intrinsic mana joins the symbols in the
+    // rules text instead (Fiery Islet stays U/R). The template does not infer
+    // colors from rules text, so a land without basic land types (Spirebluff
+    // Canal) needs them too.
     const listed=value=>value==null?[]:Array.isArray(value)?value:String(value).split(/[,\s]+/);
     const intrinsic=face===snapshot?listed(snapshot.intrinsic_mana):[];
     const printedIdentity=face===snapshot?snapshot.color_identity??snapshot.colorIdentity:null;
-    const identity=printedIdentity==null&&!intrinsic.length?null
-      :printableColors([...(printedIdentity==null?textManaColors(face.oracle_text):listed(printedIdentity)),...intrinsic]);
+    const identity=printableColors([...(printedIdentity==null?textManaColors(face.oracle_text):listed(printedIdentity)),...intrinsic]);
     if(/\bLand\b/.test(canonicalType)&&!/\bBasic\b/.test(canonicalType)&&!colors?.length&&identity?.length)colors=identity;
     const costColors=Object.keys(colorNames).filter(code=>String(face.mana_cost??'').includes(code));
     // Preserve template-specific hybrid/land/artifact inference when its mana

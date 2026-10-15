@@ -2,6 +2,7 @@
 name = "ironsmith-artifact-baker"
 version = "0.1.0"
 edition = "2024"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
 ironsmith-compiled-artifact = { path = "../ironsmith-compiled-artifact", default-features = false }

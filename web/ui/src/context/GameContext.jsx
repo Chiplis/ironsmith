@@ -54,6 +54,7 @@ import { DEFAULT_UI_FONT, uiFontStack } from "@/lib/ui-fonts";
 import { readFixedStartingBoard, storeFixedStartingBoard } from "@/lib/starting-board";
 import { hexToRgbString } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
+import { hotseatFollowTarget, readFollowActivePlayer, storeFollowActivePlayer } from "@/lib/hotseat-follow";
 import { forcedObjectSelectionCommand, localForcedObjectSelectionCommand } from "@/lib/forced-object-selection";
 
 import { GameContext } from "./GameContext.shared";
@@ -839,7 +840,10 @@ export function GameProvider({ children }) {
   const autoResolveEnabledRef = useRef(autoResolveEnabled);
   const [phasePassing, setPhasePassing] = useState(false);
   const [holdRule, setHoldRule] = useState("never");
-  const [priorityStops] = useState(() => createPriorityStops({ postActionEnabled: autoResolveEnabled }));
+  const [priorityStops] = useState(() => createPriorityStops({
+    postActionEnabled: autoResolveEnabled,
+    storage: typeof window === "undefined" ? null : window.localStorage,
+  }));
   const setAutoResolveEnabled = useCallback(value => {
     const enabled = Boolean(typeof value === "function" ? value(autoResolveEnabledRef.current) : value);
     autoResolveEnabledRef.current = enabled;
@@ -901,6 +905,17 @@ export function GameProvider({ children }) {
   // Returning a non-empty string suppresses *local* auto-pass without touching the engine
   // or multiplayer sync — opponent priority and explicit user actions are unaffected.
   const externalAutoPassGateRef = useRef(null);
+  const [followActivePlayer, setFollowActivePlayerRaw] = useState(readFollowActivePlayer);
+  const followActivePlayerRef = useRef(followActivePlayer);
+  const setFollowActivePlayer = useCallback((value) => {
+    const enabled = Boolean(value);
+    followActivePlayerRef.current = enabled;
+    setFollowActivePlayerRaw(enabled);
+    storeFollowActivePlayer(enabled);
+  }, []);
+  // Bumped whenever hotseat automation hands the table to another seat; the
+  // handoff banner keys its animation on `seq`.
+  const [perspectiveHandoff, setPerspectiveHandoff] = useState(null);
   const setExternalAutoPassGate = useCallback((gate) => {
     externalAutoPassGateRef.current = typeof gate === "function" ? gate : null;
   }, []);
@@ -1264,6 +1279,7 @@ export function GameProvider({ children }) {
       const maxPhaseAdvances = Math.max(24, playerCount * 12);
       const maxSettleIterations = maxPhaseAdvances + playerCount * 4;
 
+      let perspectiveSwitches = 0;
       for (let i = 0; i < maxSettleIterations; i++) {
         while (
           st
@@ -1273,6 +1289,26 @@ export function GameProvider({ children }) {
             || st.active_player !== st.perspective
           )
         ) {
+          const followTarget = followActivePlayerRef.current && typeof currentGame.setPerspective === "function"
+            ? hotseatFollowTarget(st)
+            : null;
+          if (followTarget !== null && perspectiveSwitches < playerCount * 4) {
+            const decisionBefore = summarizeDecision(st.decision);
+            await currentGame.setPerspective(followTarget);
+            st = await currentGame.uiState();
+            perspectiveSwitches += 1;
+            const handoffTurn = st?.turn_number ?? null;
+            const handoffReason = st?.decision?.kind === "priority" ? "turn" : st?.decision?.kind || "decision";
+            setPerspectiveHandoff(current => ({
+              player: followTarget,
+              turn: handoffTurn,
+              reason: handoffReason,
+              seq: (current?.seq || 0) + 1,
+            }));
+            trace.push({ kind: "hotseat_follow", player: followTarget, decision_before: decisionBefore,
+              decision_after: summarizeDecision(st?.decision || null) });
+            continue;
+          }
           if (st.decision.kind === "priority") {
             const isLocalOffTurnPriority = samePlayerId(st.decision.player, st.perspective);
             const passAction = (st.decision.actions || []).find((a) => a.kind === "pass_priority");
@@ -2378,13 +2414,10 @@ export function GameProvider({ children }) {
     resolveAllRef.current = null;
     setPhasePassing(false);
   }, []);
-  const pausePassing = useCallback(() => {
-    stopResolveAll();
-    // A phase pause ends automation, including the independent stack resolver.
-    // Consuming the stop with a manual action must not restart either path.
-    setAutoPassEnabled(false);
-    setAutoResolveEnabled(false);
-  }, [stopResolveAll]);
+  // A stop ends the current phase run. It must not switch off auto-pass or
+  // the saved auto-resolve preference: the stop itself keeps holding until the
+  // player acts, and with default stops a paused run is the normal outcome.
+  const pausePassing = stopResolveAll;
   const startResolveAll = useCallback(() => {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
@@ -2415,6 +2448,12 @@ export function GameProvider({ children }) {
       || current.decision?.kind === "mana_payment") return;
     // Explicitly resume automation, but leave phase/step stops intact.
     priorityStops.resume(current);
+    // Clicking Pass while sitting at a stop moves on from it; later stops
+    // still pause the run.
+    const pass = findPassPriorityAction(current.decision);
+    if (pass && samePlayerId(current.decision?.player, current.perspective)) {
+      priorityStops.beforeCommand(priorityCommandForAction(pass), current);
+    }
     setAutoPassEnabled(true);
     setHoldRule("never");
     resolveAllRef.current = {
@@ -3192,6 +3231,9 @@ export function GameProvider({ children }) {
       submitMultiplayerAddCardCheat,
       cancelBackgroundDispatch,
       setExternalAutoPassGate,
+      followActivePlayer,
+      setFollowActivePlayer,
+      perspectiveHandoff,
       startResolveAll,
       phasePassing,
       togglePhasePassing,
@@ -3231,6 +3273,9 @@ export function GameProvider({ children }) {
       sendLobbyChat,
       submitMultiplayerAddCardCheat,
       setExternalAutoPassGate,
+      followActivePlayer,
+      setFollowActivePlayer,
+      perspectiveHandoff,
       startResolveAll,
       phasePassing,
       togglePhasePassing,

@@ -11,19 +11,20 @@ export const CARD_FRAME_RENDER_HEIGHT = 531;
 const WIDTH = CARD_FRAME_RENDER_WIDTH;
 const HEIGHT = CARD_FRAME_RENDER_HEIGHT;
 
-export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0 }) {
+// A landscape frame (a battle, a plane) passes its own composition size.
+export default function MiniatureCardFrame({ card, imageUrl, faceIndex=0, renderWidth=WIDTH, renderHeight=HEIGHT }) {
   const host = useRef(null);
   const [scale, setScale] = useState(0);
   useLayoutEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
-      setScale(Math.min(entry.contentRect.width / WIDTH, entry.contentRect.height / HEIGHT));
+      setScale(Math.min(entry.contentRect.width / renderWidth, entry.contentRect.height / renderHeight));
     });
     observer.observe(host.current);
     return () => observer.disconnect();
-  }, []);
+  }, [renderWidth, renderHeight]);
   return <div ref={host} className="battlefield-prepared-frame" style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',overflow:'hidden'}} aria-hidden="true" inert>
     <div className="battlefield-prepared-frame__composition" style={{
-      width: WIDTH, height: HEIGHT,
+      width: renderWidth, height: renderHeight,
       position:'absolute',left:'50%',top:'50%',
       transform: `translate(-50%, -50%) scale(${scale})`, transformOrigin:'center', visibility: scale > 0 ? 'visible' : 'hidden',
     }}>

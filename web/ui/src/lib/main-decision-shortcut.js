@@ -6,10 +6,12 @@ function visible(element) {
 
 export function installMainDecisionShortcut(document) {
   const onKeyDown = event => {
-    if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing
+    // Space mirrors Enter, like the pass / confirm key in Arena and Forge.
+    // A focused hand card handles Space itself and prevents the default first.
+    if ((event.key !== 'Enter' && event.key !== ' ') || event.defaultPrevented || event.isComposing
         || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
     const target = event.target;
-    // Let editing, focused controls, and modal dialogs keep native Enter behavior.
+    // Let editing, focused controls, and modal dialogs keep native Enter/Space behavior.
     if (target?.closest?.('input, textarea, select, button, a, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"]')) return;
     if ([...document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog[open]')].some(visible)) return;
     const buttons = [...document.querySelectorAll('button.decision-main-button')].filter(button =>

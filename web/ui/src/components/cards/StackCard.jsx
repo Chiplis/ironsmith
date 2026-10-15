@@ -13,18 +13,8 @@ import { cancelMotion, createTimeline, uiSpring } from "@/lib/motion/anime";
 import { getPlayerAccent, playerAccentVars } from "@/lib/player-colors";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { cn } from "@/lib/utils";
+import { stackEntryKindLabel } from "@/lib/stack-entry-kind";
 import { ArrowDown, ArrowUp } from "lucide-react";
-
-// The short word under a tile's name: what kind of thing is waiting.
-function stackEntryKindLabel(entry) {
-  const abilityKind = String(entry?.ability_kind || "").trim();
-  const normalized = abilityKind.toLowerCase();
-  if (!abilityKind) return "Spell";
-  if (normalized === "triggered") return "Trigger";
-  if (normalized === "activated") return "Activation";
-  if (normalized === "replacement") return "Replacement";
-  return `${abilityKind} ability`;
-}
 
 // One line of what the entry does. A pending trigger carries its own text
 // (the ordering option's detail); a live ability shows its printed line; a
@@ -48,9 +38,11 @@ export default function StackCard({
   variant = "default",
   positionLabel = null,
   density = "default",
+  children = null,
+  arrowRoute = undefined,
 }) {
   const ui = useUiText();
-  const { state } = useGame();
+  const { state, playerAccentOverrides } = useGame();
   const {
     hoverCard,
     clearHover,
@@ -95,7 +87,10 @@ export default function StackCard({
     || (entry.power != null && entry.toughness != null
       ? `${entry.power}/${entry.toughness}`
       : null);
-  const stackAccent = getPlayerAccent(state?.players || [], entry?.controller, state?.perspective);
+  // The card pile glows with the owner of the card it renders; tiles keep the
+  // controller's color.
+  const accentPlayer = variant === "frame" ? (entry?.__frame_owner ?? entry?.controller) : entry?.controller;
+  const stackAccent = getPlayerAccent(state?.players || [], accentPlayer, state?.perspective, playerAccentOverrides);
   const stackAccentStyle = stackAccent
     ? {
       ...playerAccentVars(stackAccent),
@@ -129,12 +124,14 @@ export default function StackCard({
     // Anchor to the stack, not to this tile: the frame then holds one position
     // for every entry, and sits flush against the stack so the pointer can
     // reach it. Falling back to the tile keeps standalone usages working.
+    // The card pile's cards are full-size frames already.
+    if (variant === "frame") return;
     const anchor = event.currentTarget.closest("[data-stack-preview-anchor]") || event.currentTarget;
     // Previewed by *this entry's* id, not the card's. That is what the frame
     // matches to highlight the one ability that is on the stack, and it is
     // what a click would have set -- so a click has nothing left to change.
     showAnchoredCardPreview(previewObjectId, anchor, { placement: "stack" });
-  }, [canPreview, entry, hoverCard, inspectObjectId, previewObjectId, setHoverLinkedObjects, showAnchoredCardPreview]);
+  }, [canPreview, entry, hoverCard, inspectObjectId, previewObjectId, setHoverLinkedObjects, showAnchoredCardPreview, variant]);
   const handleHoverLeave = useCallback(() => {
     clearHover();
     // Not a dismissal: the pointer may be on its way into the frame, which
@@ -173,7 +170,9 @@ export default function StackCard({
 
   useLayoutEffect(() => {
     const node = rootRef.current;
-    if (!node) return undefined;
+    // The card pile animates its own wrappers: anime.js owns the whole
+    // transform, so the card itself must stay still.
+    if (!node || variant === "frame") return undefined;
 
     cancelMotion(motionRef.current);
     motionRef.current = null;
@@ -203,7 +202,7 @@ export default function StackCard({
         },
       });
     }
-  }, [entryMotion, isLeaving, isNew]);
+  }, [entryMotion, isLeaving, isNew, variant]);
 
   useEffect(() => () => {
     cancelMotion(motionRef.current);
@@ -233,6 +232,24 @@ export default function StackCard({
     isCastTargetHovered && "hovered",
     isLeaving && "pointer-events-none",
   );
+
+  // A rendered card in the compact appearance's pile (CardStackPile). The
+  // pile supplies the face; the tile keeps every hover, pick and arrow path.
+  if (variant === "frame") {
+    return (
+      <div
+        {...sharedProps}
+        className={cn("game-card stack-card stack-card--frame", stateClasses, className)}
+        data-arrow-anchor="stack"
+        data-arrow-route={arrowRoute}
+        role="button"
+        tabIndex={-1}
+        aria-label={name}
+      >
+        {children}
+      </div>
+    );
+  }
 
   // Compact tiles (mobile stack rail): full-bleed art with the name over a
   // bottom scrim -- the default layout's title can't fit a ~56px tile.

@@ -193,6 +193,14 @@ function calculatePaths(arrows) {
       const initialTo = targetIsPlayerAnchor || targetIsStackAnchor
         ? pointBeforeRect(sourceCenter, toRect, targetGap)
         : centerOf(toRect);
+      // A stack entry pulled out beside the top card (the compact
+      // appearance's card pile) takes a straight shot across the gap.
+      if (sourceIsStackAnchor && toEl?.getAttribute("data-arrow-route") === "direct") {
+        const directFrom = pointAfterRect(fromRect, centerOf(toRect), 4);
+        const directTo = pointBeforeRect(directFrom, toRect, targetGap);
+        result.push({ d: curvedArrowPath(directFrom.x, directFrom.y, directTo.x, directTo.y), color: arrow.color || "#ff3b30", key: arrow.key });
+        continue;
+      }
       const stackToStack = sourceIsStackAnchor && targetIsStackAnchor;
       const stackToBoard = sourceIsStackAnchor && !targetIsStackAnchor;
       const from = stackToStack || stackToBoard

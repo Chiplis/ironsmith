@@ -2336,13 +2336,19 @@ impl CharacteristicCalculationKey {
 }
 
 thread_local! {
-    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<CharacteristicCalculationKey, Vec<CalculatedCharacteristics>>> =
+    /// Each entry carries the context revision at which its partial
+    /// characteristics were last written, which identifies that layer view.
+    static IN_PROGRESS_CHARACTERISTIC_CALCULATIONS: RefCell<HashMap<CharacteristicCalculationKey, Vec<(u64, CalculatedCharacteristics)>>> =
         RefCell::new(HashMap::new());
     static CHARACTERISTIC_CONTEXT_REVISION: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-fn bump_characteristic_context_revision() {
-    CHARACTERISTIC_CONTEXT_REVISION.with(|revision| revision.set(revision.get().wrapping_add(1)));
+fn bump_characteristic_context_revision() -> u64 {
+    CHARACTERISTIC_CONTEXT_REVISION.with(|revision| {
+        let next = revision.get().wrapping_add(1);
+        revision.set(next);
+        next
+    })
 }
 
 /// Pass-local memo tables distinguish their game's intermediate layer context
@@ -2372,14 +2378,14 @@ impl<'game> CharacteristicCalculationGuard<'game> {
         chars: &CalculatedCharacteristics,
     ) -> Self {
         let key = CharacteristicCalculationKey::new(game, object_id);
+        let stamp = bump_characteristic_context_revision();
         IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
             calculations
                 .borrow_mut()
                 .entry(key)
                 .or_default()
-                .push(chars.clone());
+                .push((stamp, chars.clone()));
         });
-        bump_characteristic_context_revision();
         Self { key, _game: game }
     }
 
@@ -2390,8 +2396,7 @@ impl<'game> CharacteristicCalculationGuard<'game> {
                 .get_mut(&self.key)
                 .and_then(|entries| entries.last_mut())
             {
-                *entry = chars.clone();
-                bump_characteristic_context_revision();
+                *entry = (bump_characteristic_context_revision(), chars.clone());
             }
         });
     }
@@ -2409,10 +2414,157 @@ impl Drop for CharacteristicCalculationGuard<'_> {
             };
             if should_remove {
                 calculations.remove(&self.key);
+                if !calculations.keys().any(|key| key.game == self.key.game) {
+                    // The outermost calculation for this game is over; the game
+                    // may be mutated (or its address reused) from here on.
+                    NESTED_EFFECT_REGENERATIONS.with(|memo| {
+                        memo.borrow_mut()
+                            .retain(|(context, _)| context.game != self.key.game);
+                    });
+                }
             }
         });
         bump_characteristic_context_revision();
     }
+}
+
+/// Everything a nested regeneration of the continuous effects can observe
+/// besides the (immutably borrowed) game: the layer views of calculations in
+/// progress and the condition/duration re-entry guards.
+#[derive(PartialEq, Eq)]
+pub(crate) struct NestedRegenerationContext {
+    game: usize,
+    effects_revision: u64,
+    characteristics: Vec<(ObjectId, u64)>,
+    conditions: Vec<(ObjectId, Option<ObjectId>, usize)>,
+    durations: Vec<u64>,
+}
+
+thread_local! {
+    /// Regenerations performed while this game's characteristics are being
+    /// calculated, keyed by their exact context. Counting graveyard card types
+    /// (delirium) reads each graveyard card while the state is dirty, and each
+    /// read regenerated every effect in the same context. Cleared when the
+    /// game's outermost calculation finishes.
+    static NESTED_EFFECT_REGENERATIONS: RefCell<Vec<(NestedRegenerationContext, NestedResult)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+#[derive(Clone)]
+enum NestedResult {
+    Effects(Arc<Vec<ContinuousEffect>>, bool),
+    Characteristics(ObjectId, Option<Arc<CalculatedCharacteristics>>, bool),
+}
+
+pub(crate) fn nested_regeneration_context(
+    game: &crate::game_state::GameState,
+) -> Option<NestedRegenerationContext> {
+    let address = std::ptr::from_ref(game) as usize;
+    let mut characteristics = IN_PROGRESS_CHARACTERISTIC_CALCULATIONS.with(|calculations| {
+        calculations
+            .borrow()
+            .iter()
+            .filter(|(key, _)| key.game == address)
+            .flat_map(|(key, entries)| entries.iter().map(|(stamp, _)| (key.object_id, *stamp)))
+            .collect::<Vec<_>>()
+    });
+    if characteristics.is_empty() {
+        return None;
+    }
+    characteristics.sort_unstable();
+    let conditions = IN_PROGRESS_CONDITION_PREDICATES.with(|in_progress| {
+        in_progress
+            .borrow()
+            .iter()
+            .map(|(source, recipient, condition)| (*source, *recipient, *condition as usize))
+            .collect()
+    });
+    let mut durations = IN_PROGRESS_DURATION_PREDICATES.with(|in_progress| {
+        in_progress
+            .borrow()
+            .iter()
+            .map(|id| id.0)
+            .collect::<Vec<_>>()
+    });
+    durations.sort_unstable();
+    Some(NestedRegenerationContext {
+        game: address,
+        effects_revision: game.effect_store.continuous_effects.revision(),
+        characteristics,
+        conditions,
+        durations,
+    })
+}
+
+/// Regenerate in `context` once; later identical requests reuse the result
+/// and re-signal any provisional condition fallback it depended on.
+pub(crate) fn regenerate_in_context(
+    context: NestedRegenerationContext,
+    regenerate: impl FnOnce() -> Vec<ContinuousEffect>,
+) -> Arc<Vec<ContinuousEffect>> {
+    let cached = find_nested_result(&context, |result| match result {
+        NestedResult::Effects(effects, provisional) => Some((Arc::clone(effects), *provisional)),
+        NestedResult::Characteristics(..) => None,
+    });
+    if let Some(effects) = cached {
+        return effects;
+    }
+    let before = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get);
+    let effects = Arc::new(regenerate());
+    let provisional = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get) != before;
+    NESTED_EFFECT_REGENERATIONS.with(|memo| {
+        memo.borrow_mut().push((
+            context,
+            NestedResult::Effects(Arc::clone(&effects), provisional),
+        ));
+    });
+    effects
+}
+
+/// The same memo for one object's characteristics computed from the
+/// regenerated effects of `context`.
+pub(crate) fn characteristics_in_context(
+    context: NestedRegenerationContext,
+    object_id: ObjectId,
+    calculate: impl FnOnce() -> Option<CalculatedCharacteristics>,
+) -> Option<Arc<CalculatedCharacteristics>> {
+    let cached = find_nested_result(&context, |result| match result {
+        NestedResult::Characteristics(id, chars, provisional) if *id == object_id => {
+            Some((chars.clone(), *provisional))
+        }
+        _ => None,
+    });
+    if let Some(chars) = cached {
+        return chars;
+    }
+    let before = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get);
+    let chars = calculate().map(Arc::new);
+    let provisional = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get) != before;
+    NESTED_EFFECT_REGENERATIONS.with(|memo| {
+        memo.borrow_mut().push((
+            context,
+            NestedResult::Characteristics(object_id, chars.clone(), provisional),
+        ));
+    });
+    chars
+}
+
+/// A hit re-signals any provisional condition fallback its result depended
+/// on, so enclosing calculations still decline to cache what they build.
+fn find_nested_result<T>(
+    context: &NestedRegenerationContext,
+    select: impl Fn(&NestedResult) -> Option<(T, bool)>,
+) -> Option<T> {
+    let (value, provisional) = NESTED_EFFECT_REGENERATIONS.with(|memo| {
+        memo.borrow()
+            .iter()
+            .filter(|(candidate, _)| candidate == context)
+            .find_map(|(_, result)| select(result))
+    })?;
+    if provisional {
+        CONDITION_REENTRY_FALLBACKS.with(|count| count.set(count.get().wrapping_add(1)));
+    }
+    Some(value)
 }
 
 /// Recursive snapshots may be returned to their own calculation, but cannot
@@ -2439,7 +2591,7 @@ pub(crate) fn in_progress_characteristics(
         calculations
             .borrow()
             .get(&key)
-            .and_then(|entries| entries.last().cloned())
+            .and_then(|entries| entries.last().map(|(_, chars)| chars.clone()))
     })
 }
 
@@ -2561,15 +2713,49 @@ fn refresh_active_static_abilities(
     // Direct continuous restrictions are installed in both representations
     // by `push_static_ability_once`; retaining a prior cache entry here loses
     // its originating effect duration (for example, EOT unblockability).
-    chars.static_abilities = extract_static_abilities(&chars.abilities)
-        .into_iter()
-        .filter(|ability| ability.is_active(game, source))
+    //
+    // CR 113.6: off the battlefield and stack, a conditional static ability
+    // that does not function in this zone grants nothing, so its condition is
+    // not asked. Asking it was the cost multiplier: a graveyard Dragon's Rage
+    // Channeler's delirium counts graveyard card types, which computes every
+    // other graveyard card, each of which asked its own delirium again.
+    let dormant_zone = game
+        .object(source)
+        .map(|object| object.zone)
+        .filter(|zone| !matches!(zone, Zone::Battlefield | Zone::Stack));
+    chars.static_abilities = chars
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some((ability, static_ability)),
+            _ => None,
+        })
+        .filter(|(ability, static_ability)| {
+            if let Some(zone) = dormant_zone
+                && !ability.functions_in(&zone)
+                && static_ability_has_condition(static_ability)
+            {
+                return false;
+            }
+            static_ability.is_active(game, source)
+        })
+        .map(|(_, static_ability)| static_ability.clone())
         .collect::<Vec<_>>()
         .into();
     chars.aura_attach_filter = chars
         .static_abilities
         .iter()
         .find_map(|ability| ability.enchant_filter().cloned());
+}
+
+fn static_ability_has_condition(ability: &StaticAbility) -> bool {
+    ability.granted_inline_condition().is_some()
+        || ability.compiled_model().is_some_and(|model| {
+            matches!(
+                model.payload,
+                ironsmith_core::StaticAbilityPayload::Conditional { .. }
+            )
+        })
 }
 
 fn apply_copy_effect_exceptions(

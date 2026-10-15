@@ -604,7 +604,10 @@ export default function CreateCardForgeSheet({
       if (!game || typeof game.sampleLoadedDeckSeed !== "function") {
         throw new Error("This WASM build does not expose sampleLoadedDeckSeed");
       }
-      const seed = cloneDraft(await game.sampleLoadedDeckSeed(selectedPlayer));
+      // Samples any nonland card in the decks at the table; a reroll skips the
+      // card already shown so the button always visibly changes the sample.
+      const excludeName = reroll ? seedDraft?.faces?.[0]?.name || null : null;
+      const seed = cloneDraft(await game.sampleLoadedDeckSeed(excludeName));
       setSeedDraft(seed);
       setDraft(seed);
       setActiveFace("face-0");
@@ -613,19 +616,21 @@ export default function CreateCardForgeSheet({
         setStatus(`Seeded forge with ${seed.faces?.[0]?.name || "a deck card"}`);
       }
     } catch {
+      if (reroll && seedDraft) {
+        setStatus("No other deck card is available to sample");
+        return;
+      }
       const fallback = blankDraft();
       setSeedDraft(fallback);
       setDraft(fallback);
       setActiveFace("face-0");
       setPreview(null);
       setPreviewError("");
-      setStatus(
-        `No loaded deck seed available for ${players.find((player) => player.id === selectedPlayer)?.name || "that player"}; starting from a blank card`
-      );
+      setStatus("No deck cards at the table to sample; starting from a blank card");
     } finally {
       setSeedLoading(false);
     }
-  }, [game, players, selectedPlayer, setStatus]);
+  }, [game, seedDraft, setStatus]);
 
   const handleOpenChange = useCallback((nextOpen) => {
     setOpen(nextOpen);
@@ -802,7 +807,7 @@ export default function CreateCardForgeSheet({
           const sampledDraft = seedDraft?.faces?.[0]?.name
             ? seedDraft
             : (typeof game.sampleLoadedDeckSeed === "function"
-              ? await game.sampleLoadedDeckSeed(selectedPlayer).catch(() => null)
+              ? await game.sampleLoadedDeckSeed(null).catch(() => null)
               : null);
           const artSourceName = sampledDraft?.faces?.[0]?.name || draft.faces?.[0]?.name;
           if (!artSourceName) return;
@@ -869,7 +874,7 @@ export default function CreateCardForgeSheet({
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
             <div className="card-forge-eyebrow">{ui("Forge")}</div>
             <SheetTitle>{ui("Compile Card")}</SheetTitle>
-            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Seeded from a random nonland card in the loaded deck. The sample is only a teaching aid, and every printed characteristic can be rewritten before the card enters this goldfishing session.")}</SheetDescription>
+            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Seeded from a random nonland card in the decks at the table. The sample is only a teaching aid, and every printed characteristic can be rewritten before the card enters this goldfishing session.")}</SheetDescription>
           </SheetHeader>
 
           <div className="card-forge-toolbar">

@@ -646,6 +646,7 @@ export default function GameCard({
   hasAvailableAction = isPlayable,
   isInspected = false,
   glowKind: requestedGlowKind = null,
+  pseudoHandOwnerId = null,
   isHovered = false,
   isDragging = false,
   isNew = false,
@@ -679,6 +680,11 @@ export default function GameCard({
   const ui = useUiText();
   const { game, inspectorDebug, state, playerAccentOverrides } = useGame();
   const sourceAccent = getPlayerAccent(state?.players || [], card.owner ?? card.controller, state?.perspective, playerAccentOverrides);
+  // Cards the pseudo-hand surfaces from another zone glow in their owner's
+  // color so they stand apart from the real hand.
+  const pseudoHandOwnerAccent = variant === "hand" && pseudoHandOwnerId != null
+    ? getPlayerAccent(state?.players || [], pseudoHandOwnerId, state?.perspective, playerAccentOverrides)
+    : null;
   const castIntent = useCastTargeting();
   const targetDecision = state?.decision?.kind === "targets" ? state.decision : castIntent?.targetDecision;
   const targetingMode = Boolean(castIntent) || state?.decision?.kind === "targets";
@@ -1432,6 +1438,7 @@ export default function GameCard({
       style={{
         ...style,
         "--inspected-object-rgb": sourceAccent?.rgb || "255, 224, 131",
+        ...(pseudoHandOwnerAccent ? { "--pseudo-hand-owner-rgb": pseudoHandOwnerAccent.rgb } : undefined),
         "--aura-delay-1": auraDelay1,
         "--aura-delay-2": auraDelay2,
         "--aura-rot-1-pos": auraRot1Pos,
@@ -1476,6 +1483,7 @@ export default function GameCard({
         </>
       )}
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
+      {pseudoHandOwnerAccent && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
       <div className="game-card-surface">
         {(usePortraitBattlefield || (variant === "hand" && compiledCustomCard && !hasCustomPrint) || (showHandLoadingFrame && !hasCustomPrint)) && (
           <MiniatureCardFrame card={card} imageUrl={artUrl} />

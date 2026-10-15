@@ -1450,24 +1450,40 @@ impl WasmGame {
 
     fn build_loaded_deck_seed(
         &mut self,
-        player_index: u8,
+        exclude_name: Option<&str>,
     ) -> Result<CustomCardSeedResult, JsValue> {
-        let Some(deck) = self.loaded_decks.get(player_index as usize) else {
-            return Err(JsValue::from_str("no loaded deck found for that player"));
-        };
-        if deck.is_empty() {
-            return Err(JsValue::from_str("loaded deck is empty"));
-        }
+        // Sample from every deck at the table: the decklists that were loaded
+        // plus every physical card the game holds. Random boards and puzzles
+        // never record `loaded_decks`, so the game objects keep the pool full
+        // without fetching anything.
+        let names = self
+            .loaded_decks
+            .iter()
+            .flatten()
+            .cloned()
+            .chain(
+                self.game
+                    .objects_in_deterministic_order()
+                    .into_iter()
+                    .filter(|object| object.kind == ironsmith::object::ObjectKind::Card)
+                    .map(|object| object.name.to_string()),
+            )
+            .collect::<std::collections::BTreeSet<_>>();
 
-        let eligible = deck
+        let mut eligible = names
             .iter()
             .filter_map(|name| self.find_card_definition(name).cloned())
             .filter(|definition| !definition.card.is_land())
             .collect::<Vec<_>>();
         if eligible.is_empty() {
             return Err(JsValue::from_str(
-                "loaded deck has no nonland cards available for sampling",
+                "no nonland cards at the table are available for sampling",
             ));
+        }
+        if let Some(exclude) = exclude_name
+            && eligible.len() > 1
+        {
+            eligible.retain(|definition| !definition.card.name.eq_ignore_ascii_case(exclude));
         }
 
         let sample_index = loaded_deck_sample_index(eligible.len());
