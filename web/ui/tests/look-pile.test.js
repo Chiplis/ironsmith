@@ -17,3 +17,22 @@ test("temporary hidden-zone visibility is not an ongoing permission", () => {
 test("Look merges identical objects and excludes hidden names", () => {
   assert.equal(mergeLookCards([{id: 1, name: "Island"}], [{id: 1, name: "Island"}, {id: 2, name: "Hidden card"}]).length, 1);
 });
+
+test("public reveals from our own hand do not start a Look acknowledgement", () => {
+  const view = {zone: "Hand", subject: 0, visibility: "public", cards: [{id: 12, name: "Island"}]};
+  assert.equal(temporaryLookView({perspective: 0, viewed_cards: view}), null);
+  assert.equal(temporaryLookView({perspective: "0", viewed_cards: view}), null);
+  assert.equal(temporaryLookView({perspective: 1, viewed_cards: view}), view,
+    "opponents still need to see the revealed card");
+  assert.equal(temporaryLookView({viewed_cards: view}), view,
+    "a missing perspective must not be mistaken for player zero");
+});
+
+test("library reveals still need Look even after moving into our hand", () => {
+  const card = {id: 12, name: "Island"};
+  const view = {zone: "Library", subject: 0, visibility: "public", cards: [card]};
+  const state = {perspective: 0, players: [{id: 0, hand_cards: [card]}], viewed_cards: view};
+  assert.equal(temporaryLookView(state), view);
+  const privateView = {...view, zone: "Hand", visibility: "private"};
+  assert.equal(temporaryLookView({...state, viewed_cards: privateView}), privateView);
+});

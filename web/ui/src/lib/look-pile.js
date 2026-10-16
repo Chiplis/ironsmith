@@ -10,7 +10,15 @@ export function lookViewKey(view, decision) {
 
 export function temporaryLookView(state) {
   const view = state?.viewed_cards;
-  return view && !view.inspector_only && !view.inspectorOnly ? view : null;
+  if (!view || view.inspector_only || view.inspectorOnly) return null;
+  // Revealing our own hand gives opponents information, not this perspective.
+  // Use the source zone: a library reveal still needs acknowledgement even if
+  // the revealed card has since moved into our hand.
+  const ownHandReveal = view.visibility === "public"
+    && String(view.zone).toLowerCase() === "hand"
+    && view.subject != null && state?.perspective != null
+    && String(view.subject) === String(state.perspective);
+  return ownHandReveal ? null : view;
 }
 
 function visibleName(card) {

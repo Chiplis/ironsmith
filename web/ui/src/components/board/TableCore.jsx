@@ -291,6 +291,9 @@ export default function TableCore({
 
       const zoneElements = [...document.querySelectorAll(FLOATING_DOCK_PROTECTED_ZONES)]
         .filter((element) => element !== dock && !dock.contains(element));
+      const zoneRail = table.querySelector('[data-local-zone-piles="true"]');
+      observe(zoneRail);
+      const navigationRight = zoneRail?.getBoundingClientRect().right ?? window.innerWidth - 6;
       const commandPile = document.querySelector('[data-local-zone-piles="true"] [data-zone-pile="command"]');
       observe(commandPile);
       const commandRect = commandPile && visibleRect(commandPile);
@@ -321,6 +324,7 @@ export default function TableCore({
         opponentCards.forEach(observe);
         const opponentCardBottom = opponentCards.map(visibleRect).filter(Boolean).reduce((bottom, rect) => Math.max(bottom, rect.bottom), 48);
         const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom, handRight, handTop, commandZoneMidpoint });
+        next.navigationRight = navigationRight;
         next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
         setHumanActionDockPosition(previous => Object.keys(next).every(key => previous?.[key] === next[key]) ? previous : next);
         if (performance.now() < handMotionUntil) schedule();
@@ -336,9 +340,10 @@ export default function TableCore({
         handTop,
         commandZoneMidpoint,
       });
+      next.navigationRight = navigationRight;
       next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
       setHumanActionDockPosition((previous) => (
-        previous?.panelMaxHeight === next.panelMaxHeight && previous?.left === next.left && previous?.top === next.top
+        previous?.navigationRight === next.navigationRight && previous?.panelMaxHeight === next.panelMaxHeight && previous?.left === next.left && previous?.top === next.top
           && previous?.maxWidth === next.maxWidth && previous?.maxHeight === next.maxHeight
           ? previous
           : next
@@ -637,7 +642,10 @@ export default function TableCore({
         </div>
       </div>
       {dockDecisionUtilities && middleUtilityControls ? (
-        <div className="decision-header-utility-controls">
+        <div className="decision-header-utility-controls" style={humanActionDockPosition ? {
+          position: "relative",
+          left: `calc(${humanActionDockPosition.navigationRight - humanActionDockPosition.left}px - 100%)`,
+        } : undefined}>
           {cloneElement(middleUtilityControls, { showBrand: true })}
         </div>
       ) : null}

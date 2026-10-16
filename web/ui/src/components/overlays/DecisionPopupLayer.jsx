@@ -1,7 +1,7 @@
 import { selectedPriorityAdvanceLabel } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import useUiText from "@/i18n/useUiText";
-import { LOOK_DONE_EVENT } from "@/lib/look-pile";
+import { LOOK_DONE_EVENT, temporaryLookView } from "@/lib/look-pile";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGame } from "@/context/GameContext";
@@ -1002,10 +1002,6 @@ function buildViewedCardsIdentity(viewedCards) {
   ].join("|");
 }
 
-function isInspectorOnlyViewedCards(viewedCards) {
-  return Boolean(viewedCards?.inspector_only || viewedCards?.inspectorOnly);
-}
-
 function isHiddenCardName(name) {
   return String(name || "").trim().toLowerCase() === "hidden card";
 }
@@ -1684,8 +1680,7 @@ function MobileBattleDecisionLayer({
     decision?.plan_id || "",
     decision?.request_hash || "",
   ].join("|");
-  const rawViewedCards = state?.viewed_cards || null;
-  const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
+  const viewedCards = temporaryLookView(state);
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
   const viewedCardsIdentity = useMemo(
     () => buildViewedCardsIdentity(viewedCards),
@@ -2581,8 +2576,7 @@ function PriorityBar({
   const decisionDetailsExpanded = decisionDetailsState.identity !== decisionIdentity
     || decisionDetailsState.expanded;
   const rolloutRef = useDecisionRollout(decisionIdentity, true);
-  const rawViewedCards = state?.viewed_cards || null;
-  const viewedCards = isInspectorOnlyViewedCards(rawViewedCards) ? null : rawViewedCards;
+  const viewedCards = temporaryLookView(state);
   const viewedCardsLabel = viewedCards?.visibility === "public" ? "Revealed" : "Look";
   const viewedCardsIdentity = useMemo(
     () => buildViewedCardsIdentity(viewedCards),

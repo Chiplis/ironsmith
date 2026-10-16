@@ -1,3 +1,4 @@
+import { zonePreviewLayout as placeZonePreview } from "@/lib/zone-preview-layout";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap, manaPaymentFrameActions, manaActivationCommand } from "@/lib/mana-payment-actions";
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
@@ -77,43 +78,22 @@ function objectFamilyIds(state, objectId) {
   return ids;
 }
 
+function zoneDecisionBounds() {
+  return [...document.querySelectorAll(".battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions")]
+    .filter(element => getComputedStyle(element).visibility !== "hidden")
+    .map(element => element.getBoundingClientRect())
+    .filter(rect => rect.width > 0 && rect.height > 0);
+}
+
 function zonePreviewLayout(anchorRect, size, source = null) {
-  const margin = 8;
-  const gap = 8;
-  // Exclude the whole expanded strip, including its padding.
-  anchorRect = source?.closest?.(".zone-pile-menu")?.getBoundingClientRect() ?? anchorRect;
-  const minimumTop = phaseToolbarTop(margin);
-  const maximumBottom = window.innerHeight - margin;
-  const availableHeight = Math.max(0, maximumBottom - minimumTop);
-  const aboveSpace = Math.max(0, anchorRect.top - gap - minimumTop);
-  const belowSpace = Math.max(0, maximumBottom - anchorRect.bottom - gap);
-  const sideAvailableHeight = Math.max(aboveSpace, belowSpace);
-  const height = Math.min(
-    size.height,
-    availableHeight,
-    sideAvailableHeight,
-    (window.innerWidth - margin * 2) * 88 / 63
-  );
-  const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
-  // Keep the preview clear of the entire expanded zone. Prefer above; when the
-  // toolbar or viewport leaves too little room, flip it below automatically.
-  const placeAbove = aboveSpace >= height;
-  const top = placeAbove
-    ? anchorRect.top - gap - height
-    : anchorRect.bottom + gap;
-  const minimumLeft = previewLeftInset({ top, height, minimumLeft: margin });
-  const maximumLeft = Math.max(minimumLeft, window.innerWidth - width - margin);
-  let left = anchorRect.right + gap;
-  if (left + width > window.innerWidth - margin) {
-    left = anchorRect.left - width - gap;
-  }
-  left = Math.max(minimumLeft, Math.min(maximumLeft, left));
-  return {
-    left: Math.round(left),
-    top: Math.round(top),
-    right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(Math.min(sideAvailableHeight, availableHeight, (window.innerWidth - margin * 2) * 88 / 63)))}px`,
-  };
+  return placeZonePreview({
+    anchor: source?.closest?.(".zone-pile-menu")?.getBoundingClientRect() ?? anchorRect,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    minimumTop: phaseToolbarTop(8),
+    height: Math.max(size.height, FALLBACK_SIZE.height),
+    obstacles: zoneDecisionBounds(),
+  });
 }
 
 function zonePreviewPosition(source, size) {
@@ -609,7 +589,7 @@ function CardPreviewSurface({
       const source = [...document.querySelectorAll("[data-zone-card][data-object-id]")]
         .find(element => element.dataset.objectId === String(renderedObjectId));
       const rect = source?.closest(".zone-pile-menu")?.getBoundingClientRect();
-      const next = rect ? [rect.left, rect.top, rect.right, rect.bottom, window.innerWidth, window.innerHeight].join(",") : null;
+      const next = rect ? [rect.left, rect.top, rect.right, rect.bottom, window.innerWidth, window.innerHeight, ...zoneDecisionBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",") : null;
       setZoneBounds(previous => previous === next ? previous : next);
       frame = requestAnimationFrame(measure);
     };
