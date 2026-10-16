@@ -273,6 +273,8 @@ test('opponent deck and all zone labels fit inside the clipped panel', async () 
             return {zone:slot.querySelector('[data-zone-pile]').dataset.zonePile, top:rect.top, bottom:rect.bottom, panelTop:panel.top, panelBottom:panel.bottom};
           });
         });
+        assert.deepEqual(geometry.map(rect => rect.zone),
+          commander ? ['command', 'library', 'graveyard', 'exile'] : ['library', 'graveyard', 'exile']);
         for (const rect of geometry) {
           assert.ok(rect.top >= rect.panelTop && rect.bottom <= rect.panelBottom - 3,
             JSON.stringify({viewport, commander, ...rect}));

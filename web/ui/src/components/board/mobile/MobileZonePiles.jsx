@@ -3,11 +3,13 @@ import useUiText from "@/i18n/useUiText";
 import ZonePileArt from "@/components/board/ZonePileArt";
 import { zonePileCards } from "@/lib/zone-piles";
 
-export default function MobileZonePiles({ player, onOpenZone, legalTargetObjectIds }) {
+export default function MobileZonePiles({ player, onOpenZone, legalTargetObjectIds, mirrored = false }) {
   const ui = useUiText();
   if (!player) return null;
+  const zones = ["exile", "graveyard", "library"];
+  if (mirrored) zones.reverse();
   return <aside className="mobile-zone-piles" data-player-zone-piles aria-label={ui("{0}'s zones", { 0: player.name })}>
-    {["exile", "graveyard", "library"].map((zone) => {
+    {zones.map((zone) => {
       if (zone === "library") return <LibraryZonePile key={zone} player={player} />;
       const cards = zonePileCards(player, zone);
       const count = Number(player[`${zone}_size`] ?? cards.length);

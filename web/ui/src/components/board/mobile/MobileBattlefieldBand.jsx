@@ -83,7 +83,7 @@ export default function MobileBattlefieldBand({
       <div className="mobile-battlefield-lanes" {...wrapperProps}>
         {isOpponent ? [resourceRow, combatRow] : [combatRow, resourceRow]}
       </div>
-      <MobileZonePiles player={player} onOpenZone={onOpenZone} legalTargetObjectIds={legalTargetObjectIds} />
+      <MobileZonePiles mirrored={side === "opponent"} player={player} onOpenZone={onOpenZone} legalTargetObjectIds={legalTargetObjectIds} />
     </section>
   );
 }

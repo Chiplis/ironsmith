@@ -1,7 +1,8 @@
 .perspective-handoff {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  /* Above the phase tracker (160) and player controls (180). */
+  z-index: 200;
   display: grid;
   place-items: center;
   pointer-events: none;

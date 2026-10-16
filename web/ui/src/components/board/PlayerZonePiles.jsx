@@ -508,15 +508,15 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
   }, [player]);
   const isLocal = samePlayerId(player.id ?? player.index, state?.perspective);
+  const zones = ["exile", ...pileZonesFor(state).map(zone => zone === "exile" ? "library" : zone)];
+  if (!isLocal) zones.reverse();
   return <>
     <div ref={ref} className="player-zone-piles" data-player-zone-piles
       data-local-zone-piles={isLocal ? "true" : undefined}
       data-opponent-zone-piles={!isLocal ? "true" : undefined}>
       {/* Spans the piles' own height, so anything here lines up with them. */}
       {leadingRail}
-      <ZonePile player={player} zone="exile"
-        onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />
-      {pileZonesFor(state).map((zone) => zone === "exile"
+      {zones.map((zone) => zone === "library"
         ? <LibraryZonePile key="library" player={player} />
         : <ZonePile key={zone} player={player} zone={zone}
           onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
