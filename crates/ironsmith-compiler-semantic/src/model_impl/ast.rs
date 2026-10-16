@@ -299,6 +299,7 @@ pub enum TriggerSpec {
     ThisBecomesTapped,
     AttachmentChanged { attachment: ObjectFilter, recipient: ObjectFilter, attached: bool },
     PermanentBecomesTapped(ObjectFilter),
+    PermanentTappedToPayCost { filter: ObjectFilter, cost_kind: ironsmith_core::OptionalCostKind },
     PermanentBecomesTappedOneOrMore(ObjectFilter),
     ThisBecomesUntapped,
     PlayerChangesTapState {
@@ -429,6 +430,7 @@ pub enum TriggerSpec {
     IsDealtDamage(ObjectFilter),
     IsDealtCombatDamage(ObjectFilter),
     IsDealtExcessNoncombatDamage(ObjectFilter),
+    IsDealtExcessDamage { filter: ObjectFilter, combat_only: bool },
     YouGainLife,
     PlayerGainsLife { player: PlayerFilter, during_turn: Option<PlayerFilter> },
     YouGainLifeCausedBy(ObjectFilter),

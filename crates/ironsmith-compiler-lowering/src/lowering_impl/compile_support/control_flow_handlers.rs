@@ -1287,7 +1287,7 @@ pub fn compile_effects_in_iterated_player_context(
     let mut iterated_frame = saved_frame.clone();
     if !effects
         .iter()
-        .any(effect_references_typed_removed_counter_metric)
+        .any(effect_references_outer_metric_through_iteration)
     {
         iterated_frame.last_effect_id = None;
     }
@@ -1346,7 +1346,7 @@ pub fn compile_effects_in_iterated_object_context(
     // `that player` filters continue to resolve to the saved antecedent.
     if !effects
         .iter()
-        .any(effect_references_typed_removed_counter_metric)
+        .any(effect_references_outer_metric_through_iteration)
     {
         iterated_frame.last_effect_id = None;
     }

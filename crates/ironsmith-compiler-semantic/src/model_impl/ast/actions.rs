@@ -466,8 +466,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::Library(LibraryActionAst::ReorderGraveyard) => f.write_str("ReorderGraveyard"),
             Self::Choices(ChoiceActionAst::ChooseColor) => f.write_str("ChooseColor"),
-            Self::Choices(ChoiceActionAst::ChooseCardType { options }) => {
-                f.debug_tuple("ChooseCardType").field(options).finish()
+            Self::Choices(ChoiceActionAst::ChooseCardType { options, shared_among }) => {
+                let mut debug = f.debug_tuple("ChooseCardType");
+                debug.field(options);
+                if let Some(domain) = shared_among { debug.field(domain); }
+                debug.finish()
             }
             Self::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).field("source_owned", source_owned).finish(),
             Self::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {

@@ -2856,6 +2856,8 @@ fn trait_effect_matches_event(
 #[derive(Debug, Clone)]
 pub struct ReplacementEventContext {
     pub event: Event,
+    /// Inputs retained by the enclosing move for prospective entry programs.
+    pub entry_program_imports: std::collections::HashMap<crate::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     /// The event participant captured before original commitment can remove or change its object.
     pub affected_player: PlayerId,
     pub zone_change_context: Option<crate::events::ZoneChangeEvent>,
@@ -2896,6 +2898,7 @@ impl ReplacementEventContext {
         let affected_player = event.inner().affected_player(game);
         Self {
             event,
+            entry_program_imports: Default::default(),
             affected_player,
             zone_change_context: state.zone_change_context.clone(),
             applied_effects: state.applied_effects.clone(),
@@ -2912,6 +2915,7 @@ impl ReplacementEventContext {
         let affected_player = event.inner().affected_player(game);
         Self {
             event,
+            entry_program_imports: Default::default(),
             affected_player,
             zone_change_context: None,
             applied_effects: scope.suppressed_replacement_effects.clone(),
@@ -10468,6 +10472,10 @@ fn prepare_etb_replacements_inner(
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::EnterBattlefield),
         };
+        let mut entry_program_choices = crate::game_state::PreparedEtbChoices::default();
+        if let Some(context) = zone_context.as_ref() {
+            entry_program_choices.as_enters_tagged_objects = context.entry_program_imports.clone();
+        }
         let mut current_event = Event::new_with_provenance(
             EnterBattlefieldEvent {
                 object,
@@ -10492,7 +10500,7 @@ fn prepare_etb_replacements_inner(
                 controller_override: entering_controller,
                 prepared_choices: None,
                 pending_program: None,
-                program_choices: Default::default(),
+                program_choices: entry_program_choices,
             },
             etb_event_provenance,
         );

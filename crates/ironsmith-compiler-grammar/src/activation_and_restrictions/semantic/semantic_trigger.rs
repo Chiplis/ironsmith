@@ -3550,6 +3550,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(trigger);
     }
 
+    if let Some(trigger) = permanent_tap_state::parse_cost_qualified_tap_trigger(tokens)? {
+        return Ok(trigger);
+    }
+
     if let Some(trigger) = permanent_tap_state::parse_permanent_tap_state_trigger(tokens)? {
         return Ok(trigger);
     }
@@ -3831,6 +3835,21 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             damaged_player_one_or_more: has_leading_one_or_more(&tokens[recipient]),
             during_turn: None,
         });
+    }
+
+    for (suffix, combat_only) in [
+        (&["is", "dealt", "excess", "damage"][..], false),
+        (&["is", "dealt", "excess", "combat", "damage"][..], true),
+        (&["are", "dealt", "excess", "damage"][..], false),
+        (&["are", "dealt", "excess", "combat", "damage"][..], true),
+    ] {
+        if let Some(subject) = words.strip_suffix(suffix) {
+            let token_end = trigger_word_token_start(tokens, subject.len()).unwrap_or(tokens.len());
+            if let Some(mut filter) = parse_trigger_subject_filter_lexed(&tokens[..token_end])? {
+                if has_leading_one_or_more(&tokens[..token_end]) { filter.set_union_one_or_more(true); }
+                return Ok(TriggerSpec::IsDealtExcessDamage { filter, combat_only });
+            }
+        }
     }
 
     if let Some(is_word_idx) = dealt_excess_noncombat_damage_subject_word_idx(&words) {

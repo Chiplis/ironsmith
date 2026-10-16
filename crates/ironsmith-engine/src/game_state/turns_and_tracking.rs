@@ -2438,6 +2438,7 @@ impl GameState {
         source_object_id: ObjectId,
         trigger_id: TriggerIdentity,
     ) {
+        *self.turn_store.triggers_fired_per_object.entry((source_object_id, trigger_id)).or_default() += 1;
         *self
             .turn_store
             .turn_history
@@ -2462,6 +2463,10 @@ impl GameState {
             .get(&(source_object_id, trigger_id))
             .copied()
             .unwrap_or(0)
+    }
+
+    pub fn trigger_fire_count_per_object(&self, source: ObjectId, identity: TriggerIdentity) -> u32 {
+        self.turn_store.triggers_fired_per_object.get(&(source, identity)).copied().unwrap_or(0)
     }
 
     /// Record that a triggered ability's "Do this only once each turn"

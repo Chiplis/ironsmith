@@ -5343,7 +5343,17 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options }),
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options, shared_among: None }),
+        )
+    }
+
+    pub fn subject_verb_choose_shared_card_type(player: PlayerAst, filter: ObjectFilter, count: u32) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType {
+                options: Vec::new(), shared_among: Some((filter, count)),
+            }),
         )
     }
 

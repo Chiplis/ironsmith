@@ -2303,6 +2303,8 @@ impl SearchLibrarySlot {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SearchLibraryEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub participant_tag: Option<crate::tag::TagKey>,
     pub filter: ObjectFilter,
     pub destination: crate::zone::Zone,
     pub chooser: PlayerFilter,
@@ -2322,6 +2324,7 @@ impl SearchLibraryEffect {
         reveal: bool,
     ) -> Self {
         Self {
+            participant_tag: None,
             filter,
             destination,
             chooser,
@@ -3699,6 +3702,11 @@ impl<E> ForEachObjectCorrelatedResultEffect<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseObjectsEffect {
+    /// "and/or" permits a nonempty subset of the authored search zones.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub optional_search_zones: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub search_participant_tag: Option<crate::tag::TagKey>,
     pub filter: ObjectFilter,
     pub count: ChoiceCount,
     pub count_value: Option<Value>,
@@ -3747,6 +3755,7 @@ impl ChooseObjectsEffect {
         tag: impl Into<crate::tag::TagKey>,
     ) -> Self {
         Self {
+            search_participant_tag: None,
             filter,
             count: count.into(),
             count_value: None,
@@ -3756,6 +3765,7 @@ impl ChooseObjectsEffect {
             additional_zones: Vec::new(),
             tag: tag.into(),
             description: "Choose".to_string(),
+            optional_search_zones: false,
             is_search: false,
             reveal: false,
             reveal_is_presentation_only: Some(false),

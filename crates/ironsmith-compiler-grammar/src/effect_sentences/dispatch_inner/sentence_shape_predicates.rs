@@ -402,6 +402,7 @@ pub fn lower_where_x_shape(
             let tag = crate::tag::CompilerReferenceTag::WhereXCommanderManaValue.bind();
             let choice =
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    optional_search_zones: false,
                     filter,
                     count: ChoiceCount::exactly(1),
                     count_value: None,

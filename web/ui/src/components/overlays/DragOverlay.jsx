@@ -1,3 +1,5 @@
+import GameCard from "@/components/cards/GameCard";
+import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import { useDragState } from "@/context/DragContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import {
@@ -80,6 +82,7 @@ function placementArrowPath(source, target) {
 
 export default function DragOverlay() {
   const dragState = useDragState();
+  const [appearance] = useBattlefieldAppearance();
   const imageUrl = useScryfallImageUrl(dragState?.cardName || "", "normal");
   if (!dragState) return null;
 
@@ -169,7 +172,8 @@ export default function DragOverlay() {
   }
 
   const width = Math.max(88, Math.min(148, Number(sourceRect?.width) || 112));
-  const height = width * (88 / 63);
+  const compactMove = isBattlefieldMove && appearance.compactCards;
+  const height = compactMove ? width * ((sourceRect?.height || width) / (sourceRect?.width || width)) : width * (88 / 63);
   const rotation = Math.max(-7, Math.min(7, (currentX - startX) * 0.035));
 
   return (
@@ -179,6 +183,7 @@ export default function DragOverlay() {
       aria-hidden="true"
     >
       <div
+        data-compact-drag={compactMove || undefined}
         className={`dragged-full-card overflow-hidden rounded-[5%]${isBattlefieldMove ? " dragged-full-card--battlefield-move" : ""}`}
         style={{
           width,
@@ -189,7 +194,9 @@ export default function DragOverlay() {
           opacity: isBattlefieldMove ? 0.66 : 1,
         }}
       >
-        {imageUrl ? (
+        {compactMove ? (
+          <GameCard card={dragState.card} suppressTooltip style={{width: "100%", height: "100%", "--bf-card-width": `${width}px`, "--bf-card-height": `${height}px`}} />
+        ) : imageUrl ? (
           <img className="h-full w-full object-cover" src={imageUrl} alt={cardName} draggable="false" />
         ) : (
           <div className="flex h-full w-full items-start bg-[#0b1119] p-2 text-[12px] font-bold text-[#d8e8ff]">

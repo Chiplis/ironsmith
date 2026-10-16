@@ -200,6 +200,29 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             predicate
         });
     }
+    // An existential typed source ("a Giant, Wizard, or spell you controlled")
+    // reads the source's receipt, not its current characteristics or controller.
+    let body_tokens = crate::grammar::primitives::strip_lexed_suffix_phrase(tokens, &["this", "turn"])?;
+    for (phrase, combat) in [
+        (&["dealt", "damage", "to"][..], None),
+        (&["dealt", "combat", "damage", "to"][..], Some(true)),
+        (&["dealt", "noncombat", "damage", "to"][..], Some(false)),
+    ] {
+        let Some((split, (), recipient)) = crate::grammar::primitives::find_prefix(body_tokens, || crate::grammar::primitives::phrase(phrase)) else { continue; };
+        if split == 0 || !matches!(body_tokens[0].as_word(), Some("a" | "an" | "another")) { continue; }
+        let recipient = reference(&crate::lexer::token_word_refs(recipient))?;
+        let mut source_tokens = body_tokens[..split].to_vec();
+        if source_tokens.len() >= 2 && source_tokens[source_tokens.len()-2].is_word("you")
+            && source_tokens.last().is_some_and(|token| token.is_word("controlled")) {
+            source_tokens.last_mut()?.replace_word("control");
+        }
+        let sources = crate::object_filters::parse_object_filter(&source_tokens, false).ok()?;
+        return Some(compared(DamageHistoryQuery {
+            sources: DamageHistorySources::Matching(sources),
+            recipients: DamageHistoryRecipients::Reference(Box::new(recipient)),
+            combat, reduction: DamageHistoryReduction::Total,
+        }, ValueComparisonOperator::GreaterThan, 0));
+    }
     None
 }
 
@@ -219,6 +242,22 @@ mod tests {
             _ => panic!("{predicate:?}"),
         }
     }
+    #[test]
+    fn typed_source_history_preserves_permanent_or_spell_domains() {
+        let parsed = predicate("a Giant, Wizard, or spell you controlled dealt damage to it this turn");
+        let DamageHistorySources::Matching(filter) = &query(&parsed).sources else { panic!("typed sources required"); };
+        assert_eq!(filter.controller, Some(crate::filter::PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.zone, None, "mixed domains must stay branch-local: {filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        for (branch, subtype) in filter.any_of[..2].iter().zip([crate::Subtype::Giant, crate::Subtype::Wizard]) {
+            assert_eq!(branch.subtypes, vec![subtype]);
+            assert!(branch.card_types.is_empty(), "a subtype permanent need not be a creature");
+            assert_eq!(branch.zone, Some(crate::Zone::Battlefield), "{branch:#?}");
+        }
+        assert_eq!(filter.any_of[2].zone, Some(crate::Zone::Stack));
+        assert_eq!(filter.any_of[2].stack_kind, Some(crate::filter::StackObjectKind::Spell));
+    }
+
     #[test]
     fn predicates_distinguish_actual_totals_per_source_and_distinct_source_counts() {
         assert_eq!(

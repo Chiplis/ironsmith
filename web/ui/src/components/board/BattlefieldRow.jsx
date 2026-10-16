@@ -219,7 +219,7 @@ function buildPaperBattlefieldLayout(cards, battlefieldSide, alignStart = false,
   const gridPositionById = new Map();
   const maxCols = Math.max(
     1,
-    ...orderedRows.map((row) => Math.max(row.cards.length, row.minSlots || 0)),
+    ...orderedRows.map((row) => Math.max(row.cards.length + 1, row.minSlots || 0)),
     cards.length === 0 ? EMPTY_PAPER_SLOT_COLUMNS : 0
   );
 
@@ -1543,17 +1543,15 @@ export default function BattlefieldRow({
     const visibleBoundaryFromBottomOcclusion = hasMeasuredBottomOcclusion
       ? Math.max(0, Math.min(height, bottomOcclusionViewportTop - rowRect.top))
       : null;
-    const phaseBounds = multiplayerBoard && !useMobileBattlefieldToken
-      ? [...document.querySelectorAll('.phase-track')].map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0 && rect.top >= rowRect.top)
-      : [];
-    const phaseTop = phaseBounds.length ? Math.min(...phaseBounds.map(rect => rect.top)) - 12 : Infinity;
+    // Floating decisions (including the phase track and payment panel) must
+    // never participate in battlefield sizing. Reserve stable board space.
     const effectiveHeight = Math.max(
       minHeight,
-      Math.min(height, battlefieldSide === "bottom" ? phaseTop - rowRect.top : Infinity)
+      height
       - rowPaddingTop
       - (battlefieldSide === "top" ? Number.parseFloat(rowStyles.paddingBottom) || 0 : 0)
       - (
-        isPaperBattlefieldLayout && battlefieldSide === "bottom" && !hasMeasuredBottomOcclusion && !Number.isFinite(phaseTop)
+        isPaperBattlefieldLayout && battlefieldSide === "bottom" && !hasMeasuredBottomOcclusion
           ? bottomSafeInset
           : 0
       )
@@ -1867,12 +1865,6 @@ export default function BattlefieldRow({
       window.cancelAnimationFrame(frameId);
     };
   }, [shouldFreezePaperLayout]);
-
-  useEffect(() => {
-    // Priority menus change every phase without changing the card grid.
-    // Check dimensions once rather than forcing three fits and snapshot scans.
-    scheduleFitCards();
-  }, [scheduleFitCards, state?.decision?.actions?.length, state?.decision?.kind]);
 
   useEffect(() => {
     if (!isMobileBattleBottomLayout) return undefined;

@@ -1,3 +1,4 @@
+import { readRecentlyPlayedDecks, pickFeaturedDecks, rememberDeckChoice } from "@/lib/recent-decks";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useUiText from "@/i18n/useUiText";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,6 @@ const selectStyle = {
   backgroundSize: "0.9rem",
 };
 const FEATURED_COLLECTION = "last-major-events";
-const FEATURED_SIZE = 3;
 const manaOptions = ["W", "U", "B", "R", "G", "C"];
 const catalogFormats = [
   { id: "commander", label: "Commander" },
@@ -88,19 +88,17 @@ function matchesManaFilters(entry, activeMana, manaMatchMode) {
   return activeMana.every((color) => colors.includes(color));
 }
 
-// The featured strip is the catalog's `last-major-events` collection: the decks
-// that placed at the most recent majors, with their art rather than a row.
+// Played decks stay above the scrolling catalog; new players get three suggestions.
 const FeaturedDeck = memo(function FeaturedDeck({ entry, isBusy, isCopying, isCopied, targetName, onSelect, onCopy }) {
   const ui = useUiText();
   const actionKey = `featured-${entry.id}`;
   return (
-    <article className="flex min-w-0 flex-col overflow-hidden rounded-sm bg-[#131418]" data-featured-deck={entry.id}>
-      <DeckArt entry={entry} className="h-[72px] w-full" />
-      <div className="grid gap-1 p-1.5">
-        <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={entry.name || entry.archetype}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
-        <div className="truncate text-[10px] text-[#8b806b]">{entry.event || ui("Unknown event")}</div>
+    <article className="flex min-w-0 items-center gap-2 overflow-hidden rounded-sm bg-[#131418] p-1.5" data-featured-deck={entry.id}>
+      <DeckArt entry={entry} className="h-16 w-12 shrink-0" />
+      <div className="grid min-w-0 flex-1 gap-1">
+        <div className="truncate text-[13px] font-bold text-[#e7d9bc]" title={[entry.name || entry.archetype, entry.event].filter(Boolean).join(" · ")}>{entry.name || entry.archetype || ui("Unnamed deck")}</div>
         <ManaPips colors={entryColors(entry)} />
-        <div className="mt-1 flex gap-1">
+        <div className="flex gap-1">
           <Button type="button" variant="ghost" size="sm" className="h-7 flex-1 px-1 text-[10px] font-bold uppercase tracking-wide flat-button-gold" disabled={isBusy || isCopying} onClick={() => onSelect(entry, actionKey)} title={targetName ? ui("Use in {0}", { 0: targetName }) : ui("Use deck")}>
             {isBusy ? <ActionSpinner /> : ui("Use")}
           </Button>
@@ -174,6 +172,7 @@ const SavedDeckRow = memo(function SavedDeckRow({ preset, isBusy, onSelect, targ
 export default function CompetitiveDeckBrowser({ onSelect, targetName = "", savedDecks = [], initialFormat = "modern", onFormatChange }) {
   const ui = useUiText();
   const [catalog, setCatalog] = useState(null);
+  const [recentDecks] = useState(readRecentlyPlayedDecks);
   const [catalogFormat, setCatalogFormat] = useState(initialFormat);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -269,8 +268,8 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
   );
 
   const featuredResults = useMemo(
-    () => sortDeckEntries(manaFilteredResults.filter(isMajorCollectionEntry), sortMode, usageCounts).slice(0, FEATURED_SIZE),
-    [manaFilteredResults, sortMode, usageCounts],
+    () => pickFeaturedDecks(recentDecks, catalog?.decks || []),
+    [recentDecks, catalog],
   );
 
   const availableMana = useMemo(
@@ -308,8 +307,10 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     setBusyId(actionKey);
     setError("");
     try {
-      const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
-      onSelect(importDeckCatalogEntry(detail));
+      const deck = entry.deckText ? { deckText: entry.deckText, commanderText: entry.commanderText, deckName: entry.name }
+        : importDeckCatalogEntry(await loadCatalogDeckDetail(entry, { format: catalogFormat }));
+      rememberDeckChoice(deck, { ...entry, catalogId: entry.catalogId || entry.id });
+      onSelect(deck);
     } catch (selectError) {
       setError(selectError.message || ui("Could not import this deck"));
     } finally {
@@ -328,8 +329,9 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
     setCopyingId(actionKey);
     setError("");
     try {
-      const detail = await loadCatalogDeckDetail(entry, { format: catalogFormat });
-      const text = deckCatalogEntryToMtgoText(detail);
+      const text = entry.deckText
+        ? [entry.commanderText ? `Commander\n${entry.commanderText}\n\nDeck` : "", entry.deckText].filter(Boolean).join("\n")
+        : deckCatalogEntryToMtgoText(await loadCatalogDeckDetail(entry, { format: catalogFormat }));
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
       } else {
@@ -402,11 +404,11 @@ export default function CompetitiveDeckBrowser({ onSelect, targetName = "", save
         <Button type="button" variant="ghost" size="sm" className={`h-6 rounded-full px-2 text-[9px] font-bold uppercase tracking-wide ${manaMatchMode === "exact" ? "bg-[#3d2f1c] text-[#f2d9a3]" : "text-[#6f6759] hover:text-[#e7d9bc]"}`} aria-pressed={manaMatchMode === "exact"} title={ui("Only these colors; C mana may be auxiliary")} onClick={() => { setManaMatchMode("exact"); resetScroll(); }}>{ui("Only these")}</Button>
       </div> : null}
 
-      {!showingSaved && featuredResults.length ? (
+      {featuredResults.length ? (
         <section className="grid gap-1" aria-label={ui("Featured decks")} data-featured-decks="">
           <div className="flex items-baseline gap-2">
-            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Featured decks")}</h3>
-            <p className="truncate text-[10px] text-[#8b806b]">{ui("Decks from the last major events")}</p>
+            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui(recentDecks.length ? "Recently played" : "Try a deck")}</h3>
+            <p className="truncate text-[10px] text-[#8b806b]">{ui(recentDecks.length ? "Pick up where you left off" : "Three decks to get you started")}</p>
           </div>
           <div className="grid grid-cols-3 gap-2">
             {featuredResults.map((entry) => (

@@ -446,6 +446,29 @@ fn read_opponent_special_shape(
 fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let outer = input.outer;
     let clause_text = input.clause_text;
+    if let Some(((), controlled)) = primitives::parse_prefix(outer.inner_tokens, primitives::phrase(&["who", "controlled"]))
+        && let Some((returned, (), body)) = primitives::find_prefix(controlled, || primitives::phrase(&["returned", "this", "way"]))
+        && returned > 0 && !body.is_empty()
+    {
+        let mut filter = parse_object_filter(&controlled[..returned], false)?;
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+        let mut query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::Count,
+        ).with_filter(filter).with_action(ironsmith_core::PriorEffectAction::Returned);
+        query.use_origin_memory = true;
+        let effects = parse_effect_chain_inner(crate::lexer::trim_lexed_commas(body))?;
+        return Ok(Some(wrap_opponents(&input.iteration_filter, vec![
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: Value::PendingPriorEffectMetric(query),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                    right: Value::Fixed(0),
+                },
+                if_true: effects, if_false: Vec::new(),
+            }),
+        ])));
+    }
     if let Some((_, effect_tokens)) = primitives::parse_prefix(outer.inner_tokens, (
         primitives::phrase(&["who", "discarded"]),
         opt(primitives::kw("a")), primitives::kw("card"),

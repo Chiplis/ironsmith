@@ -22,14 +22,14 @@ export default function CardFramePresentation({card,imageUrl,faceIndex=0,rulesVi
     : <CardGlintFrame snapshot={snapshot} imageUrl={imageUrl} faceIndex={faceIndex}
       rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}
       details={[counters,...(badges||[])].filter(Boolean).join(' · ')}
-      fallback={<SimpleCardFrame card={fallbackCard} imageUrl={imageUrl} faceIndex={faceIndex}
+      fallback={<SimpleCardFrame baked card={fallbackCard} imageUrl={imageUrl} faceIndex={faceIndex}
         details={[counters,...(badges||[])].filter(Boolean).join(' · ')}
         rulesContent={rulesView&&<CardFrameRules name={card.name} rulesView={rulesView} onActivate={onActivate} highlighted={highlighted}/>}/>}/>}
-    </div>
     {source && <a className="card-frame-source-link" href={source.href} target="_blank" rel="noopener noreferrer"
       title={source.href} aria-label={`Open original post on ${source.host}`}
       onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>
       Original post · {source.host} <span aria-hidden="true">↗</span>
     </a>}
+    </div>
   </div>;
 }

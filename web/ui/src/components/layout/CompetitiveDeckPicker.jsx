@@ -8,6 +8,7 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
   return (
     <div className="lobby-deck-picker flex h-[560px] min-w-0 flex-col bg-[#0e0f11] p-3">
       <CompetitiveDeckBrowser
+        key={format}
         initialFormat={format}
         savedDecks={savedDecks}
         onSelect={(deck) => onApply?.({

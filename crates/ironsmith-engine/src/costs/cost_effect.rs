@@ -168,6 +168,8 @@ fn sacrifice_target_cost_object(
             && game.controller_of(object) == ctx.payer
             && !game.is_phased_out(*id)
             && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
+            && (!ctx.reason.is_cast_or_ability_payment()
+                || !game.player_cant_sacrifice_object_to_cast_or_activate(ctx.payer, *id))
     }).then_some(*id).ok_or(CostPaymentError::NoValidSacrificeTarget)
 }
 
@@ -246,8 +248,7 @@ fn sacrifice_cost_precheck(
         return Some(Ok(()));
     }
 
-    let lands_only = ctx.reason.is_cast_or_ability_payment()
-        && game.player_cant_sacrifice_nonland_to_cast_or_activate(ctx.payer);
+    let cast_or_activate = ctx.reason.is_cast_or_ability_payment();
     let filter_ctx = execution.filter_context(game);
     let available = game
         .battlefield
@@ -255,7 +256,7 @@ fn sacrifice_cost_precheck(
         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
         .filter(|(id, obj)| {
             game.controller_of(obj) == ctx.payer
-                && (!lands_only || game.current_has_card_type(*id, crate::types::CardType::Land))
+                && (!cast_or_activate || !game.player_cant_sacrifice_object_to_cast_or_activate(ctx.payer, *id))
                 && filter.matches(obj, &filter_ctx, game)
                 && game.can_be_sacrificed_with_cause(*id, &ctx.event_cause())
         })

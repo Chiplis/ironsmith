@@ -5351,6 +5351,11 @@ fn evaluate_condition_in_context(
                 .map(|id| game.do_this_action_count_this_turn(ctx.source, id) < *limit)
                 .unwrap_or(true))
         }
+        Condition::MaxTriggersPerObject(limit) => {
+            let Some(ctx) = ctx.external() else { return Ok(true); };
+            if ctx.options.ignore_trigger_limits { return Ok(true); }
+            Ok(ctx.trigger_identity.map(|identity| game.trigger_fire_count_per_object(ctx.source, identity) < *limit).unwrap_or(true))
+        }
         Condition::MaxTimesEachTurn(limit) => {
             let Some(ctx) = ctx.external() else {
                 return Ok(true);

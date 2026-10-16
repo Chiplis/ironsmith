@@ -106,6 +106,14 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
+fn can_sacrifice_in_execution(game: &GameState, ctx: &ExecutionContext, object: ObjectId) -> bool {
+    game.can_be_sacrificed_with_cause(object, &ctx.cause)
+        && !(ctx.cause.cause_type == crate::events::cause::CauseType::Cost
+            && ctx.mana.payment_reason.is_some_and(crate::costs::PaymentReason::is_cast_or_ability_payment)
+            && game.object(object).is_some_and(|subject|
+                game.player_cant_sacrifice_object_to_cast_or_activate(game.controller_of(subject), object)))
+}
+
 fn choose_objects_to_sacrifice(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -124,7 +132,7 @@ fn choose_objects_to_sacrifice(
         .filter(|(id, obj)| {
             game.controller_of(obj) == player_id
                 && filter.matches(obj, &filter_ctx, game)
-                && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
+                && can_sacrifice_in_execution(game, ctx, *id)
         })
         .map(|(id, _)| id)
         .collect();
@@ -172,7 +180,7 @@ fn max_sacrifice_cost_x(
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
+                    && can_sacrifice_in_execution(game, &ctx, *id)
             })
             .count() as u32,
     )
@@ -512,7 +520,7 @@ impl EffectExecutor for SacrificeEffect {
                         .filter(|(id, obj)| {
                             game.controller_of(obj) == player_id
                                 && self.filter.matches(obj, &filter_ctx, game)
-                                && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
+                                && can_sacrifice_in_execution(game, ctx, *id)
                         })
                         .map(|(id, _)| id)
                         .collect();
@@ -648,7 +656,7 @@ impl SacrificeEffect {
             .filter(|(id, obj)| {
                 game.controller_of(obj) == player_id
                     && self.filter.matches(obj, &filter_ctx, game)
-                    && game.can_be_sacrificed_with_cause(*id, &ctx.cause)
+                    && can_sacrifice_in_execution(game, ctx, *id)
             })
             .map(|(id, _)| id)
             .collect();
@@ -787,7 +795,7 @@ impl PreparedSacrifices {
         let eligible = chosen
             .iter()
             .copied()
-            .filter(|id| game.can_be_sacrificed_with_cause(*id, &ctx.cause))
+            .filter(|id| can_sacrifice_in_execution(game, ctx, *id))
             .collect();
         let source_snapshot = snapshot(ctx.source)?.or_else(|| {
             ctx.source_snapshot
@@ -1096,8 +1104,7 @@ fn sacrifice_cost_choice_candidate_is_eligible(
             && filter.matches(subject, &execution.filter_context(game), game)
             && game.can_be_sacrificed_with_cause(object, &execution.cause)
             && !(reason.is_cast_or_ability_payment()
-                && game.player_cant_sacrifice_nonland_to_cast_or_activate(execution.controller)
-                && !game.current_has_card_type(object, crate::types::CardType::Land))
+                && game.player_cant_sacrifice_object_to_cast_or_activate(execution.controller, object))
     }))
 }
 
@@ -1141,10 +1148,8 @@ impl CostExecutableEffect for SacrificeEffect {
     ) -> Result<(), crate::effects::CostValidationError> {
         use crate::effects::CostValidationError;
 
-        if reason.is_cast_or_ability_payment()
-            && game.player_cant_sacrifice_nonland_to_cast_or_activate(controller)
-        {
-            let filter = self.filter.clone().with_type(crate::types::CardType::Land);
+        if reason.is_cast_or_ability_payment() {
+            let filter = self.filter.clone();
             let required = match self.count {
                 crate::effect::Value::Fixed(count) => count.max(0) as usize,
                 _ => 1,
@@ -1157,6 +1162,7 @@ impl CostExecutableEffect for SacrificeEffect {
                 .filter(|(id, obj)| {
                     game.controller_of(obj) == controller
                         && filter.matches(obj, &filter_ctx, game)
+                        && !game.player_cant_sacrifice_object_to_cast_or_activate(controller, *id)
                         && game.can_be_sacrificed(*id)
                 })
                 .count();
@@ -1451,10 +1457,7 @@ impl CostExecutableEffect for SacrificeTargetEffect {
         use crate::effects::CostValidationError;
 
         if reason.is_cast_or_ability_payment()
-            && game.player_cant_sacrifice_nonland_to_cast_or_activate(controller)
-            && !game
-                .calculated_characteristics(source)
-                .is_some_and(|chars| chars.card_types.contains(&crate::types::CardType::Land))
+            && game.player_cant_sacrifice_object_to_cast_or_activate(controller, source)
         {
             return Err(CostValidationError::CannotSacrifice);
         }

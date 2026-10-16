@@ -93,3 +93,12 @@ fn regnal_number_suffix_keeps_the_complete_multiword_alias() {
     assert_eq!(parse_short_self_reference_name("Brago, King Eternal"), "Brago");
     assert_eq!(parse_short_self_reference_name("Ajani Vengeant"), "Ajani");
 }
+
+#[test]
+fn multiword_name_before_an_epithet_stays_intact() {
+    assert_eq!(parse_short_self_reference_name("Vial Smasher the Fierce"), "Vial Smasher");
+    assert_eq!(parse_short_self_reference_name("Captain Example the Bold"), "Captain Example");
+    assert_eq!(parse_short_self_reference_name("Brago, King Eternal"), "Brago");
+    assert_ne!(parse_short_self_reference_name("Oath of the Gatewatch"), "Oath of");
+    assert_ne!(parse_short_self_reference_name("Journey to the Unknown"), "Journey to");
+}

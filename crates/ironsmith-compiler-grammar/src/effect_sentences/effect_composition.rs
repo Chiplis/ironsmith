@@ -968,6 +968,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     let chosen_tag = crate::tag::CompilerReferenceTag::OutsideGameOrExileSelected.bind();
     let effects = vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: choose_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -1010,6 +1011,7 @@ pub(super) fn parse_reveal_from_outside_game_to_hand(
     let wish_tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
     let effects = vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
@@ -1057,6 +1059,7 @@ pub(super) fn parse_put_from_outside_game(
         let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
         return Ok(Some(vec![
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter,
                 count: ChoiceCount::up_to(shape.maximum as usize),
                 count_value: None,
@@ -1085,6 +1088,7 @@ pub(super) fn parse_put_from_outside_game(
     let tag = crate::tag::CompilerReferenceTag::SearchedOutsideGame.bind();
     let effects = vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -1781,6 +1785,7 @@ fn multi_zone_search_destination_effects(
     let searched_tag = crate::tag::CompilerReferenceTag::SearchedMultiZone.bind();
     vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: shape.filter.clone(),
             count: shape.count,
             count_value: None,

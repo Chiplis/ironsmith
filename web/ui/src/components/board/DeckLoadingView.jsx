@@ -410,7 +410,7 @@ export default function DeckLoadingView({ onTestDecks, onCancel, embedded = fals
         aria-label={ui("Deck catalog and player decks")}
         data-deck-workspace=""
       >
-        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-[60%] lg:shrink-0">
+        <div className="flex min-h-[360px] min-w-0 flex-col bg-[#0e0f11] p-2.5 lg:min-h-0 lg:w-[70%] lg:shrink-0">
           <CompetitiveDeckBrowser
             onFormatChange={handleFormatChange}
             onSelect={handleCatalogSelect}

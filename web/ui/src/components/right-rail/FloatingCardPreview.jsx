@@ -79,8 +79,9 @@ function objectFamilyIds(state, objectId) {
   return ids;
 }
 
-function zoneDecisionBounds() {
-  return [...document.querySelectorAll(".battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
+// Include every expanded pile, not just the hovered card's source zone.
+function previewObstacleBounds() {
+  return [...document.querySelectorAll(".zone-pile-menu, .battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
     .filter(element => getComputedStyle(element).visibility !== "hidden")
     .map(element => element.getBoundingClientRect())
     .filter(rect => rect.width > 0 && rect.height > 0);
@@ -93,7 +94,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     viewportHeight: window.innerHeight,
     minimumTop: phaseToolbarTop(8),
     height: Math.max(size.height, FALLBACK_SIZE.height),
-    obstacles: zoneDecisionBounds(),
+    obstacles: previewObstacleBounds(),
   });
 }
 
@@ -148,7 +149,7 @@ function battlefieldPreviewLayout(rect, size) {
   return placeCardPreview({
     preferred: { left, top }, height,
     bounds: { left: margin, right: window.innerWidth - margin, top: minimumTop, bottom: window.innerHeight - margin },
-    obstacles: [...zoneDecisionBounds(), rect],
+    obstacles: [...previewObstacleBounds(), rect],
   });
 }
 
@@ -186,7 +187,7 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
     return placeCardPreview({
       preferred: { left: railBounds.right + 12, top }, height: size.height,
       bounds: { left: margin, right: window.innerWidth - margin, top: phaseToolbarTop(margin), bottom },
-      obstacles: [...zoneDecisionBounds(), railBounds],
+      obstacles: [...previewObstacleBounds(), railBounds],
     });
   }
   const minimumTop = phaseToolbarTop(margin);
@@ -206,7 +207,7 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
     },
     height: Math.min(size.height, availableHeight),
     bounds: { left: margin, right: window.innerWidth - margin, top: minimumTop, bottom: window.innerHeight - margin },
-    obstacles: [...zoneDecisionBounds(), { ...anchorRect, top: minimumTop, bottom: window.innerHeight }],
+    obstacles: [...previewObstacleBounds(), { ...anchorRect, top: minimumTop, bottom: window.innerHeight }],
   });
 }
 
@@ -243,7 +244,7 @@ function anchoredPreviewPosition(anchorRect, size) {
   return placeCardPreview({
     preferred: { left, top }, height,
     bounds: { left: bounds.left + margin, right: bounds.right - margin, top: minimumTop, bottom: bounds.bottom - margin },
-    obstacles: [...zoneDecisionBounds(), anchorRect],
+    obstacles: [...previewObstacleBounds(), anchorRect],
   });
 }
 
@@ -588,7 +589,7 @@ function CardPreviewSurface({
       const source = [...document.querySelectorAll("[data-zone-card][data-object-id]")]
         .find(element => element.dataset.objectId === String(renderedObjectId));
       const rect = (source?.closest(".zone-pile-menu") ?? source)?.getBoundingClientRect();
-      const next = [rect?.left, rect?.top, rect?.right, rect?.bottom, window.innerWidth, window.innerHeight, ...zoneDecisionBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",");
+      const next = [rect?.left, rect?.top, rect?.right, rect?.bottom, window.innerWidth, window.innerHeight, ...previewObstacleBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",");
       setZoneBounds(previous => previous === next ? previous : next);
       frame = requestAnimationFrame(measure);
     };

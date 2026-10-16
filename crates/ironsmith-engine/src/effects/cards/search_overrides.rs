@@ -2272,3 +2272,43 @@ mod replacement_invalid_found_card_answer_contract_tests {
     #[test] fn found_card_out_of_range_answer_is_invalid() { invalid(vec![usize::MAX]); }
     #[test] fn found_card_multiple_answers_are_invalid() { invalid(vec![0, 1]); }
 }
+
+/// Retain actual original search participants, including successful searches
+/// that found no card. Auxiliary replacement searches do not join this set.
+pub(crate) fn retain_search_participants(
+    ctx: &mut ExecutionContext,
+    tag: Option<&crate::tag::TagKey>,
+    outcome: &crate::effect::EffectOutcome,
+) {
+    let Some(tag) = tag else { return; };
+    let mut players = ctx.get_tagged_players(tag.as_str()).cloned().unwrap_or_default();
+    for event in &outcome.instruction_result().events {
+        if let Some(search) = event.downcast::<crate::events::SearchLibraryEvent>()
+            && !players.contains(&search.player) { players.push(search.player); }
+    }
+    ctx.set_tagged_players(tag.clone(), players);
+}
+
+#[cfg(test)]
+mod participant_capture_tests {
+    use super::*;
+    #[test]
+    fn search_participants_count_empty_original_searches_exclude_auxiliary_and_deduplicate() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let tag = crate::tag::TagKey::from("searched");
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let search = |player| crate::effect::EffectOutcome::count(0).with_event(crate::triggers::TriggerEvent::new(
+            crate::events::SearchLibraryEvent::new(player, Some(player)), Default::default(),
+        ));
+        retain_search_participants(&mut ctx, Some(&tag), &crate::effect::EffectOutcome::prevented());
+        assert_eq!(ctx.get_tagged_players(&tag), Some(&Vec::new()));
+        let outcome = crate::effect::EffectOutcome::aggregate_replacement_outcomes(search(alice), [search(bob)]);
+        retain_search_participants(&mut ctx, Some(&tag), &outcome);
+        assert_eq!(ctx.get_tagged_players(&tag).unwrap(), &vec![alice]);
+        retain_search_participants(&mut ctx, Some(&tag), &search(alice));
+        retain_search_participants(&mut ctx, Some(&tag), &search(bob));
+        assert_eq!(ctx.get_tagged_players(&tag).unwrap(), &vec![alice, bob]);
+    }
+}

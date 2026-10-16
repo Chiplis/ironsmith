@@ -573,6 +573,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             attached,
         } => Trigger::attachment_changed(attachment, recipient, attached),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),
+        TriggerSpec::PermanentTappedToPayCost { filter, cost_kind } => Trigger::permanent_tapped_to_pay_cost(filter, cost_kind),
         TriggerSpec::PermanentBecomesTapped(filter) => Trigger::permanent_becomes_tapped(filter),
         TriggerSpec::PermanentBecomesTappedOneOrMore(filter) => {
             let display = format!(
@@ -818,6 +819,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),
         TriggerSpec::IsDealtCombatDamage(filter) => {
             Trigger::is_dealt_combat_damage(ChooseSpec::Object(filter))
+        }
+        TriggerSpec::IsDealtExcessDamage { filter, combat_only } => {
+            Trigger::is_dealt_excess_damage(ChooseSpec::Object(filter), combat_only)
         }
         TriggerSpec::IsDealtExcessNoncombatDamage(filter) => {
             Trigger::is_dealt_excess_noncombat_damage(ChooseSpec::Object(filter))
@@ -1736,6 +1740,7 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
             | TriggerSpec::IsDealtExcessNoncombatDamage(_)
+                    | TriggerSpec::IsDealtExcessDamage { .. }
             | TriggerSpec::ThisDealsDamage
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsDamageToPlayer { .. }

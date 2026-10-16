@@ -2286,6 +2286,7 @@ pub(super) fn lower_special_rewrite_triggered_divvy(
         ));
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(1),
                 count_value: None,

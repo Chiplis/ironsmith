@@ -6,6 +6,9 @@
   .battlefield-arena-card .arena-permanent { position: absolute; inset: 2px; overflow: hidden; border: 2px solid var(--arena-frame); border-radius: 4px; background: #0d1116; box-shadow: 0 .5px 1px #000, inset 0 0 0 1px #101215; transform-origin: center; }
   .arena-permanent-art { position: absolute; inset: 2px; overflow: hidden; }
   .arena-permanent-art > img { width: 100%; height: 100%; object-fit: cover; }
+  /* Saga illustrations are tall: favor the upper subject when cropping to a
+     landscape tile. This also applies to land Sagas, regardless of their lane. */
+  .arena-permanent-art[data-saga-art] > img { object-position: center 25%; }
   .arena-permanent-stat { position: absolute; right: 0; bottom: 0; min-width: 20px; padding: 0 3px; border: 1px solid #c2c7c7; border-radius: 4px 0 0 0; background: #d9dfdf; color: #12171c; font: 700 clamp(10px, calc(var(--bf-card-height, 90px) * .19), 16px)/1.05 Georgia, serif; text-align: center; }
   .arena-permanent[data-kind="land"] { border-width: 1px; border-radius: 2px; }
   .arena-permanent[data-kind="planeswalker"] { left: 17%; right: 17%; border-radius: 13px 13px 3px 3px; }

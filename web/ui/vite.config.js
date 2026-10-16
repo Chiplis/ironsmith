@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
     // Concurrent LAN, development, and browser-test servers must not replace
     // each other's optimized React chunks underneath an active module graph.
     cacheDir: path.resolve(__dirname, 'node_modules', process.env.NODE_TEST_CONTEXT
-      ? `.vite-test-${process.pid}` : `.vite-${mode}`),
+      ? `.vite-test-${process.pid}` : `.vite-${mode}-${process.pid}`),
     plugins: [react(), tailwindcss(), ...(mode === 'lan' ? [lanLobbyPlugin()] : [])],
     define: { __CARD_GLINT_REVISION__: JSON.stringify(cardGlintRevision), __IRONSMITH_RUNTIME_VERSION__: JSON.stringify(runtimeVersion), 'import.meta.env.VITE_LAN_LOBBY': JSON.stringify(mode === 'lan' ? 'true' : 'false') },
     resolve: {

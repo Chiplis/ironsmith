@@ -305,6 +305,7 @@ pub fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     search_filter.zone = Some(Zone::Library);
     let search_effects = vec![EffectAst::ObjectChoices(
         ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: search_filter,
             count: ChoiceCount::exactly(1),
             count_value: None,
@@ -480,6 +481,7 @@ pub fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
         })
     } else {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter,
             count: choice_count,
             count_value: None,
@@ -694,6 +696,7 @@ fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
             });
 
         let choose = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: choose_filter,
             count: ChoiceCount::up_to(1),
             count_value: None,

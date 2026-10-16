@@ -734,6 +734,10 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
         }
+        R::CastOrActivatePayments { player, sacrifice, .. } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            if let Some(filter) = sacrifice { *filter = rewrite_filter_words(filter, change)?; }
+        }
         R::LoseUnspentMana(player, color) => {
             *player = rewrite_player_filter_words(player, change)?;
             if let Some(color) = color { change.replace_color_word(color); }

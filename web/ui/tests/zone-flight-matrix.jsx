@@ -1,3 +1,4 @@
+import { HoverProvider } from '../src/context/HoverContext';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GameContext } from '../src/context/GameContext.shared';
@@ -8,7 +9,7 @@ import { ANIMATION_ZONES, ZONE_COLORS } from '../src/lib/game-effect-events';
 import '../src/index.css';
 function Fixture() {
   const [state, setState] = useState({ perspective: 0, snapshot_id: 1, players: [{ id: 0, life: 20, library_size: 40, hand_size: 0, battlefield: [{ stable_id: 1, abilities: [] }] }] });
-  return <I18nProvider><GameContext.Provider value={{ state }}>
+  return <I18nProvider><GameContext.Provider value={{ state }}><HoverProvider>
     <main style={{ padding: 40, background: '#101723', minHeight: '100vh', color: '#eef' }}>
       <h1>Zone movement palette</h1>
       <div style={{ display: 'flex', gap: 48, marginTop: 80 }}>
@@ -29,6 +30,6 @@ function Fixture() {
           hand_size: current.players[0].hand_size + 1 }] }))}>Hidden draw</button>
       <GameEffectAnimations />
     </main>
-  </GameContext.Provider></I18nProvider>;
+  </HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);

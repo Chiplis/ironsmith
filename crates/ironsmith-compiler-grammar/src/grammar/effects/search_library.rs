@@ -1653,6 +1653,14 @@ pub fn parse_search_library_object_filter_lexed(
     };
     let (filter_tokens, distinct_names) =
         strip_search_library_different_names_clause_lexed(&filter_tokens);
+    // "named" inside a draft-note group identifies whose recorded names
+    // are read. It is not a literal name constraint on the searched card.
+    if crate::object_filters::split_drafted_noted_name_qualifier_tokens(&filter_tokens).is_some() {
+        let mut filter = parse_object_filter(&filter_tokens, false)?;
+        if let Some(color_count) = color_count { filter.color_count = Some(color_count); }
+        filter.distinct_names |= distinct_names;
+        return Ok(filter);
+    }
     let raw_filter_words = parser_token_word_refs(&filter_tokens);
     let filter_words = crate::util::non_article_word_refs(&raw_filter_words);
     let parser_words = parser_token_word_positions(&filter_tokens);

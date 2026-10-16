@@ -134,7 +134,12 @@ function CardFlight({ effect, onDone }) {
     const duration = effect.durationMs;
     const spin = effect.spin ?? (effect.tumble ? (effect.seed % 2 === 0 ? 200 : -160) : (effect.seed % 2 === 0 ? 10 : -10));
 
-    motionRef.current = createTimeline({ autoplay: true }).add(node, {
+    const revealHandCard = () => {
+      if (effect.handObjectId != null) window.dispatchEvent(new CustomEvent(
+        "ironsmith:hand-flight-landed", { detail: { objectId: effect.handObjectId } }
+      ));
+    };
+    motionRef.current = createTimeline({ autoplay: true, onComplete: revealHandCard }).add(node, {
       keyframes: [
         { translateX: 0, translateY: 0, scale: 0.5, opacity: 0, rotate: 0, duration: 0 },
         { scale: 0.96, opacity: 1, duration: duration * 0.18, ease: "out(2)" },
@@ -166,6 +171,7 @@ function CardFlight({ effect, onDone }) {
     return () => {
       window.clearTimeout(timer);
       cancelMotion(motionRef.current);
+      revealHandCard();
     };
   }, [effect, onDoneRef]);
 
@@ -1004,8 +1010,14 @@ function flightSpawn(event, spawned, { perspective, previousRectsByStableId }) {
   if (!toRect) {
     toRect = getZoneAnchorRect(destinationPlayer, event.toZone, { isPerspective: String(perspective) === destinationPlayer });
   }
-  if (!fromRect || !toRect) return;
+  if (!fromRect || !toRect) {
+    if (event.toZone === "hand" && event.objectId != null) requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("ironsmith:hand-flight-landed", { detail: { objectId: event.objectId } }));
+    });
+    return;
+  }
   spawned.push({
+    handObjectId: event.toZone === "hand" ? event.objectId : null,
     component: "flight",
     id: `${event.id}:${nextEffectInstanceId += 1}`,
     fromRect,
@@ -1335,6 +1347,12 @@ export default function GameEffectAnimations({ suspended = false }) {
     });
 
     if (suspended || firstFrame || playerSetChanged || reducedMotion || events.length === 0) {
+      // A suppressed flourish must not leave a draw waiting for a landing.
+      for (const event of events) {
+        if (event.toZone === "hand" && event.objectId != null) requestAnimationFrame(() => {
+          window.dispatchEvent(new CustomEvent("ironsmith:hand-flight-landed", { detail: { objectId: event.objectId } }));
+        });
+      }
       return () => cancelAnimationFrame(rectFrame);
     }
 

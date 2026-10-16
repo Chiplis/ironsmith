@@ -196,6 +196,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 tag: pool.clone(),
             },
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(pool.clone()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -343,6 +344,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
         let mut effects = vec![
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: search_filter,
                 count: ChoiceCount::exactly(5),
                 count_value: None,
@@ -386,6 +388,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_sequence(first_effect_tokens)?;
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(source_tag.clone()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
@@ -698,6 +701,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -778,6 +782,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -866,6 +871,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 crate::tag::CompilerReferenceTag::DivvySource.bind(),
             ),
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::any_number(),
                 count_value: None,
@@ -915,6 +921,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ));
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(1),
                 count_value: None,
@@ -975,6 +982,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ));
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
@@ -1023,6 +1031,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(source_tag.clone()),
                 count: ChoiceCount::exactly(2),
                 count_value: None,
@@ -1067,6 +1076,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         ));
         effects.push(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::DivvySource.bind()),
                 count: ChoiceCount::exactly(1),
                 count_value: None,

@@ -1754,6 +1754,9 @@ if filter.zone == Some(Zone::Hand)
     if let Some(choose_card_type) = effect.downcast_ref::<crate::effects::ChooseCardTypeEffect>() {
         let chooser = describe_player_filter(&choose_card_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        if let Some((filter, count)) = &choose_card_type.shared_among {
+            return format!("{chooser} {choose_verb} a card type shared among {count} {}", filter.description());
+        }
         let permanent_type_options = [
             crate::types::CardType::Artifact,
             crate::types::CardType::Creature,

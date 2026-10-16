@@ -1,0 +1,312 @@
+/* The board has three destinations; action size communicates their hierarchy. */
+.table-shell .home-navigation { display: flex; align-items: center; gap: 7px; }
+.table-shell .home-navigation .home-action, .learn-placeholder .home-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 34px; padding: 0 15px; border: 1px solid #9a83c566;
+  background: #131221df; color: #e4ddf5; border-radius: 3px;
+  font: 700 12px/1 var(--ironsmith-ui-font); text-transform: uppercase;
+  letter-spacing: .12em; cursor: pointer; transition: filter 140ms, border-color 140ms;
+}
+.table-shell .home-navigation .home-action-play, .learn-placeholder .home-action-play {
+  height: 42px; min-width: 108px; font-size: 16px; border-color: #c3a1ff;
+  background: linear-gradient(120deg, #7150ab, #39245f); border-radius: 3px 13px 3px 3px;
+  box-shadow: inset 3px 0 #c9acff, 0 3px 16px #0006;
+}
+.table-shell .home-navigation .home-action-learn { border: 0; background: transparent; padding-inline: 9px; }
+.table-shell .home-navigation .home-action-build { border-radius: 3px; border-bottom: 2px solid #a986dd; }
+.home-navigation .home-action:hover:not(:disabled) { filter: brightness(1.25); }
+.home-navigation .home-action:focus-visible { outline: 2px solid #bce5ff; outline-offset: 3px; }
+.home-navigation .home-action:disabled { opacity: .45; cursor: not-allowed; }
+.learn-placeholder { display: grid; gap: 24px; padding: 32px; }
+
+/* Full viewport on every Play tab, including a lobby already in progress. */
+.lobby-sheet.play-workspace {
+  width: 100dvw !important; max-width: none !important; height: 100dvh !important;
+  max-height: 100dvh !important; border: 0 !important; border-radius: 0 !important;
+  overflow: hidden !important;
+}
+.play-workspace .lobby-sheet-body, .play-workspace .lobby-sheet-setup {
+  display: flex !important; flex: 1; flex-direction: column; min-height: 0;
+  overflow: hidden !important; gap: 12px !important;
+}
+.play-workspace .lobby-sheet-body { padding: 12px 20px 18px !important; }
+.play-workspace .fantasy-sheet-header { padding: 16px 52px 12px 20px !important; flex: none; }
+.play-workspace .lobby-sheet-setup > .flex:not(.deck-loading-screen) { flex: none; }
+.play-workspace .play-setup-grid {
+  display: grid; grid-template-columns: minmax(210px, .75fr) minmax(420px, 2.2fr) minmax(260px, 1fr);
+  flex: 1; gap: 18px; min-height: 0; overflow: hidden;
+}
+.play-session-controls, .play-deck-sidebar, .play-deck-discovery { min-width: 0; min-height: 0; }
+.play-session-controls { display: flex; flex-direction: column; gap: 14px; }
+.play-workspace .lobby-sheet-setup-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; }
+.play-workspace .lobby-sheet-setup-fields > label:first-child { grid-column: 1 / -1; }
+.play-workspace .lobby-sheet-connection-panel { display: flex; flex-direction: column; gap: 12px !important; padding: 12px !important; }
+.play-workspace .lobby-sheet-connection-panel > label { width: 100%; }
+.play-workspace .lobby-sheet-mode-panel > div { grid-template-columns: 1fr !important; }
+.play-workspace .play-session-controls label { font-size: 11px !important; }
+.play-workspace .play-session-controls .fantasy-field { min-height: 36px !important; }
+.play-workspace .play-deck-discovery { display: flex; }
+.play-workspace .play-deck-discovery .lobby-deck-picker {
+  flex: 1; height: 100% !important; min-height: 0; padding: 12px !important; overflow: hidden;
+}
+.play-workspace .lobby-deck-picker > section { overflow: hidden !important; min-height: 0; }
+[data-deck-catalog] > :not([data-deck-catalog-list]) { flex-shrink: 0; }
+[data-featured-decks] { flex-shrink: 0; }
+[data-featured-deck] { min-height: 0; }
+.play-deck-sidebar { display: flex; flex-direction: column; gap: 12px; padding: 14px; background: #14141b; border-top: 2px solid #9e7fd1; }
+.play-workspace .play-deck-sidebar > label:first-child {
+  display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px !important;
+}
+.play-workspace .play-deck-sidebar textarea {
+  min-height: 0 !important; resize: none; font-size: 12px !important; line-height: 1.5 !important;
+}
+.play-workspace .play-deck-sidebar > label:first-child textarea { flex: 1; height: 0; min-height: 80px !important; }
+.play-workspace .play-deck-sidebar .lobby-sheet-commander-input { height: 84px; }
+.play-workspace .play-deck-sidebar .lobby-sheet-panel { padding: 0 !important; gap: 12px !important; background: transparent !important; }
+.play-workspace .play-deck-sidebar .lobby-sheet-panel > div { font-size: 12px; line-height: 1.4; }
+.play-workspace .play-deck-sidebar .ui-primary-action { min-height: 44px !important; width: 100%; }
+.play-workspace .lobby-sheet-tournaments { min-height: 0; flex: 1; align-content: start; }
+@media (max-height: 800px) {
+  .play-workspace .fantasy-sheet-header { padding-block: 8px !important; }
+  .play-workspace .fantasy-sheet-header [data-slot="sheet-description"] { display: none; }
+  .play-workspace .lobby-sheet-body { gap: 6px !important; padding: 8px 12px !important; }
+  .play-workspace .play-session-controls { gap: 8px; }
+  .play-workspace .lobby-sheet-connection-panel { gap: 6px !important; }
+  .play-workspace .lobby-sheet-mode-panel label { padding: 6px !important; }
+  .play-workspace .lobby-sheet-mode-panel label > span:last-child { font-size: 11px !important; line-height: 1.3 !important; }
+}
+@media (max-width: 1100px) {
+  .play-workspace .play-setup-grid { grid-template-columns: 190px minmax(300px, 1fr) 230px; gap: 10px; }
+  .play-workspace [data-deck-catalog-list] { grid-template-columns: 1fr; }
+  .play-workspace [data-featured-deck] [data-deck-art] { height: 55px; }
+}
+/* Small windows keep the full workspace accessible instead of clipping controls. */
+@media (max-width: 760px), (max-height: 560px) {
+  .play-workspace .play-setup-grid { overflow: auto; grid-template-columns: 190px minmax(340px, 1fr) 230px; min-height: 480px; }
+  .play-workspace .lobby-sheet-body { overflow: auto !important; }
+  .play-workspace .lobby-sheet-setup { overflow: visible !important; }
+}
+.play-workspace .play-session-controls > .grid { grid-template-columns: 1fr; }
+.play-workspace .play-session-controls > section { padding: 12px !important; gap: 8px !important; }
+.play-workspace .play-session-controls > section button { min-height: 28px; }
+.play-workspace .play-session-controls > section input { min-width: 0; width: 100%; }
+
+/* Navigation and utilities form one left-hand group; available mana belongs
+   to the measured decision dock, so it stays clear of cards as it grows. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .player-header-card-controls {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 7px !important;
+  }
+  .navigation-utility-controls { display: flex; pointer-events: auto; }
+  .navigation-utility-controls .topbar-minor-controls--utility { justify-content: flex-start; gap: 5px; }
+  .table-shell[data-focused-hud="true"] .navigation-utility-controls .toolbar-brand {
+    display: block !important; font-size: 14px; letter-spacing: .1em;
+  }
+  .decision-mana-dock { display: flex; justify-content: flex-end; flex: 0 0 auto; max-width: 100%; pointer-events: auto; }
+  .decision-mana-dock .mana-pool-inline { justify-content: flex-end; align-items: center; gap: 6px; margin: 0; min-height: 20px; }
+  .decision-mana-dock .mana-pool-chip { flex: 0 0 auto; gap: 4px; padding: 2px; }
+  .decision-mana-dock .mana-pool-chip[data-mana-active="true"] > span:last-child { font-size: 16px; color: #f2eaff; }
+  .decision-mana-dock .mana-pool-chip[data-mana-active="false"] { opacity: .4; }
+}
+@media (min-width: 1024px) {
+  .decision-mana-dock .mana-pool-inline {
+    min-width: 0; max-width: 100%; width: max-content; flex-wrap: wrap !important;
+  }
+}
+@media (min-width: 1024px) {
+  .decision-mana-dock .mana-pool-chip[data-mana-active="true"] { position: relative; gap: 0; }
+  .decision-mana-dock .mana-pool-chip[data-mana-active="true"] > span:last-child {
+    position: absolute; right: -2px; bottom: -1px; z-index: 1;
+    min-width: 15px; padding: 2px 3px; border-radius: 3px;
+    background: #171321; box-shadow: 0 0 0 1px #a889d355;
+    font-size: 12px; line-height: 1;
+  }
+}
+@media (min-width: 1024px) {
+  /* Offline chat renders no content; its old slot must not lift the identity
+     away from the navigation beneath it. */
+  .table-shell[data-focused-hud="true"] .player-header-chat-dock:empty { display: none !important; }
+}
+
+/* One primary action footprint, independent of phase names and translations. */
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
+      box-sizing: border-box !important;
+      width: 190px !important; min-width: 190px !important; max-width: 190px !important;
+      height: 40px !important; min-height: 40px !important; max-height: 40px !important;
+      flex: 0 0 190px !important;
+      white-space: normal !important; overflow-wrap: anywhere;
+      padding: 4px 12px !important; line-height: 1.15 !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region {
+      width: 190px !important; min-width: 190px !important; max-width: 190px !important;
+      height: 40px !important; min-height: 40px !important; max-height: 40px !important;
+      flex: 0 0 190px !important;
+    }
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .decision-mana-dock img { transition: width 240ms ease, height 240ms ease; }
+  .decision-mana-dock .mana-pool-chip { transition: opacity 180ms ease, padding 240ms ease, gap 240ms ease; }
+  .priority-pass-label-current, .priority-pass-label-advance { animation: decision-label-in 160ms ease-out; }
+  .priority-pass-label-current, .priority-pass-label-advance,
+  .action-strip-main-text-stack { transition: font-size 180ms ease, opacity 180ms ease, transform 180ms ease; }
+}
+@keyframes decision-label-in { from { opacity: .35; translate: 0 2px; } to { opacity: 1; translate: 0 0; } }
+
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+      --hud-action-h: 40px;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region:has(> .action-strip-main-region) {
+      width: 190px !important;
+      min-width: 190px !important;
+      max-width: 190px !important;
+      flex: 0 0 190px !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-text-stack {
+      box-sizing: border-box;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.action-strip-main-title-row, .action-strip-main-title-text) {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      line-height: 1.15 !important;
+    }
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .battlefield-human-action-dock .action-strip-main-title-text { animation: decision-label-in 160ms ease-out; }
+}
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls) {
+      flex-wrap: wrap !important;
+      justify-content: flex-end;
+      height: auto !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls) > .action-strip-layout {
+      flex: 1 0 190px !important;
+      min-width: 190px !important;
+    }
+  }
+}
+@layer decision-stability {
+  @media (prefers-reduced-motion: reduce) {
+    .table-shell :is(.battlefield-human-action-dock, .topbar-phase-status, .table-shared-player-header),
+    .table-shell :is(.battlefield-human-action-dock, .topbar-phase-status, .table-shared-player-header) * {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
+
+/* Anchor the desktop identity and navigation close to the viewport edge. */
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .table-shared-player-header {
+      bottom: max(6px, env(safe-area-inset-bottom)) !important;
+    }
+  }
+}
+
+.table-shell .navigation-utility-controls .home-action-learn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 0 4px;
+  color: #e4ddf5; background: transparent; border: 0;
+  font: 700 10px/1 var(--ironsmith-ui-font); text-transform: uppercase;
+  cursor: pointer; white-space: nowrap;
+}
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-pregame-button),
+    .table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-pregame-button),
+    .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice {
+      height: auto !important; min-height: 0 !important; max-height: none !important;
+      background: transparent !important; border: 0 !important; box-shadow: none !important;
+      overflow: visible !important;
+    }
+    .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice {
+      gap: 8px !important; align-items: flex-end !important;
+    }
+    .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice .action-strip-command-region {
+      height: 40px !important; min-height: 40px !important; max-height: 40px !important;
+      flex: 0 0 40px !important; align-self: flex-end !important;
+    }
+    .table-shell[data-focused-hud="true"] .action-strip-pregame-button {
+      background: linear-gradient(180deg, #397dc4, #164a82) !important;
+      border-color: #85c8ff !important; color: #f1f8ff !important;
+    }
+  }
+}
+
+/* Animate the actual grid dimensions, so cards and their drop cells agree
+   throughout the shrink instead of snapping to a new row fit. */
+@property --bf-card-width { syntax: '<length>'; inherits: true; initial-value: 72px; }
+@property --bf-card-height { syntax: '<length>'; inherits: true; initial-value: 101px; }
+@media (prefers-reduced-motion: no-preference) {
+  .battlefield-row { transition: --bf-card-width 240ms ease-out, --bf-card-height 240ms ease-out; }
+}
+
+/* Keep simple decisions in one fixed row, including looking and combat. */
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.priority-inline-panel--main-only):not(:has(.action-strip-pregame-button)) {
+      width: 340px !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.priority-inline-panel--main-only):not(:has(.action-strip-pregame-button)) .battlefield-human-decision-dock {
+      width: 100% !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel:has(.priority-inline-panel--main-only):not(:has(.action-strip-pregame-button)) {
+      width: 100% !important;
+      height: 52px !important;
+      min-height: 52px !important;
+      padding: 6px !important;
+      overflow: visible !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel--main-only:not(:has(.action-strip-pregame-button)):has(> .decision-quick-controls) {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) 132px;
+      gap: 6px !important;
+      width: 100% !important;
+      height: 40px !important;
+      padding: 0 !important;
+      align-items: center !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel--main-only:not(:has(.action-strip-pregame-button)):has(> .decision-quick-controls) > .action-strip-layout {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: 40px !important;
+      min-height: 40px !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel--main-only:not(:has(.action-strip-pregame-button)) :is(.action-strip-command-region, .action-strip-main-region, .decision-main-button) {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      flex: 0 0 100% !important;
+      margin: 0 !important;
+    }
+    .combat-floating-hint {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      right: 0;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.86);
+      color: #f4edff;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+  }
+}

@@ -710,21 +710,17 @@ export default function GameCard({
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
   const artUrl = sourceImageUrl || resolvedArtUrl;
-  // A card compiled in the forge may carry an existing card's name, and both
-  // the hand and the portrait battlefield show that printing's scan whole.
-  // Its printed text is the template's, not this card's, so the live frame is
-  // drawn over it instead -- with no art to borrow, the frame draws itself,
-  // which is also why a compiled card does not wait for a prepared frame.
+  // Render hand text and frames locally; only custom supplied prints retain
+  // their complete image. The selected printing still supplies art/metadata.
   const compiledCustomCard = isCompiledCardName(name);
   const hasCustomPrint = compiledCustomCard && Boolean(customCardAssets(name));
+  const useHandFrame = variant === "hand" && !hasCustomPrint;
   const imageLoading = variant === "hand" ? "eager" : "lazy";
   const imageFetchPriority = variant === "hand" ? "high" : "auto";
   const [repairedHandArt, setRepairedHandArt] = useState(null);
   const displayedArtUrl = variant === "hand" && repairedHandArt?.source === artUrl
     ? repairedHandArt.url || artUrl
     : artUrl;
-  const showHandLoadingFrame = variant === "hand" && (isHovered || isCastTargetHovered || isInspected)
-    && (!artUrl || repairedHandArt?.source !== artUrl);
   const useArenaBattlefield = compactArtwork;
   const useTokenBattlefield = useArenaBattlefield;
   const count = Number(card.count);
@@ -1486,7 +1482,7 @@ export default function GameCard({
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       {pseudoHandOwnerAccent && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
       <div className="game-card-surface">
-        {(usePortraitBattlefield || (variant === "hand" && compiledCustomCard && !hasCustomPrint) || (showHandLoadingFrame && !hasCustomPrint)) && (
+        {(usePortraitBattlefield || useHandFrame) && (
           <MiniatureCardFrame card={card} imageUrl={artUrl} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
@@ -1495,7 +1491,7 @@ export default function GameCard({
         {chosenObjectId != null && (
           <SelectionCheckBadge objectId={chosenObjectId} />
         )}
-        {(variant !== "battlefield" || !useTokenBattlefield) && (
+        {!useHandFrame && (variant !== "battlefield" || !useTokenBattlefield) && (
           <LoadingCardArt
             sourceKey={artUrl}
             colors={cardArtColors(resolvedBattlefieldCard)}

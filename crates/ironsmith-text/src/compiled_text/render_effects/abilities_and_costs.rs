@@ -1584,6 +1584,9 @@ pub(crate) fn describe_ability(
                 );
             }
             match trigger_frequency {
+                Some(TriggerFrequencySurface::AbilityMaxTriggersPerObject(max)) => {
+                    line.push_str(&if max == 1 { ". This ability triggers only once".to_string() } else { format!(". This ability triggers only {max} times") });
+                }
                 Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(max)) => {
                     if max == 1
                         && line.to_ascii_lowercase().contains(

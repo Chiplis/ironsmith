@@ -110,6 +110,8 @@ pub(crate) struct BattlefieldEntryOptions {
     pub entry_attachment: Option<crate::object::AttachmentTarget>,
     /// An Aura spell becomes unattached if replacement makes it a non-Aura.
     pub entry_attachment_requires_aura: bool,
+    /// Captured inputs supplied by the enclosing instruction to entry programs.
+    pub entry_tagged_objects: std::collections::HashMap<crate::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 impl BattlefieldEntryOptions {
@@ -126,6 +128,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_tagged_objects: Default::default(),
         }
     }
 
@@ -142,6 +145,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_tagged_objects: Default::default(),
         }
     }
 
@@ -158,6 +162,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_tagged_objects: Default::default(),
         }
     }
 
@@ -826,6 +831,7 @@ fn prepare_battlefield_entry_batch_inner(
             scope.event = crate::events::Event::new_with_provenance(zone.clone(), ctx.provenance);
             scope.zone_change_context = Some(zone);
         }
+        scope.entry_program_imports.extend(options.entry_tagged_objects.clone());
         deferred_programs[index].extend(programs);
         proposal_lookbacks.insert(index, lookback);
         // Store only source presentations overlaid for this proposal. Instead
@@ -1976,8 +1982,10 @@ mod tests {
         fn decide_objects(
             &mut self,
             _game: &GameState,
-            _ctx: &crate::decisions::context::SelectObjectsContext,
+            ctx: &crate::decisions::context::SelectObjectsContext,
         ) -> Vec<ObjectId> {
+            assert_eq!(ctx.min, 0, "discard-or-redirect must allow declining with a land in hand");
+            assert_eq!(ctx.max, Some(1));
             Vec::new()
         }
     }

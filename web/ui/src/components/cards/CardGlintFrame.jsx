@@ -18,8 +18,8 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
   }, [imageUrl]);
   const face = useMemo(() => cardGlintFace(card,{imageUrl,faceIndex,printing}), [card,imageUrl,faceIndex,printing]);
   useLayoutEffect(() => {
-    // Avoid painting a provisional frame before the selected printing arrives.
-    if (imageUrl && printing === undefined) return;
+    // Paint from live card data immediately; printing metadata can refine
+    // the decoration later without blocking text, art, or interactions.
     let cancelled = false;
     const paint = result => {
       if (cancelled) return;

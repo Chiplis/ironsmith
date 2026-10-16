@@ -64,6 +64,44 @@ test('live preview relocates around controls and restores its position when they
       const r = document.querySelector('.floating-card-preview[data-visible="true"]').getBoundingClientRect();
       return Math.abs(r.left - initial.x) < 1 && Math.abs(r.top - initial.y) < 1;
     }, initial);
+    // Keep Look expanded while Exile opens across the preview's current
+    // position, then move Exile as a popover collision adjustment would.
+    for (const zone of ['look', 'exile']) {
+      const before = await preview.boundingBox();
+      await page.evaluate(({ zone, before }) => {
+        const strip = document.createElement('div');
+        strip.className = `zone-pile-menu${zone === 'look' ? ' zone-pile-menu--look' : ''}`;
+        strip.dataset.testZone = zone;
+        Object.assign(strip.style, { position: 'fixed', left: `${before.x}px`,
+          top: `${before.y + 100}px`, width: `${before.width}px`, height: '90px', pointerEvents: 'none' });
+        document.body.append(strip);
+      }, { zone, before });
+      await page.waitForFunction(() => {
+        const r = document.querySelector('.floating-card-preview[data-visible="true"]').getBoundingClientRect();
+        return [...document.querySelectorAll('.zone-pile-menu')].every(el => {
+          const o = el.getBoundingClientRect();
+          return r.right <= o.left - 7 || r.left >= o.right + 7 || r.bottom <= o.top - 7 || r.top >= o.bottom + 7;
+        });
+      });
+    }
+    assert.equal(await page.locator('.zone-pile-menu').count(), 2);
+    const beforeMove = await preview.boundingBox();
+    await page.locator('[data-test-zone="exile"]').evaluate((strip, r) => {
+      strip.style.left = `${r.x}px`;
+      strip.style.top = `${r.y + 20}px`;
+    }, beforeMove);
+    await page.waitForFunction(() => {
+      const r = document.querySelector('.floating-card-preview[data-visible="true"]').getBoundingClientRect();
+      return [...document.querySelectorAll('.zone-pile-menu')].every(el => {
+        const o = el.getBoundingClientRect();
+        return r.right <= o.left - 7 || r.left >= o.right + 7 || r.bottom <= o.top - 7 || r.top >= o.bottom + 7;
+      });
+    });
+    await page.locator('[data-test-zone]').evaluateAll(els => els.forEach(el => el.remove()));
+    await page.waitForFunction(initial => {
+      const r = document.querySelector('.floating-card-preview[data-visible="true"]').getBoundingClientRect();
+      return Math.abs(r.left - initial.x) < 1 && Math.abs(r.top - initial.y) < 1;
+    }, initial);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

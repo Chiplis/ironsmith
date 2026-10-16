@@ -476,6 +476,11 @@ impl GameState {
                     )?
                 });
             }
+            if let Some(event) = entry_event {
+                for (tag, snapshots) in &event.program_choices.as_enters_tagged_objects {
+                    context.set_tagged_objects(tag.clone(), snapshots.clone());
+                }
+            }
             context.replacement.entry_counter_source = preparing_entry.then_some(source);
             context.replacement.entry_event = entry_event.cloned().map(Box::new);
             context.replacement.entry_reserved_objects = entry_reserved_objects.clone();

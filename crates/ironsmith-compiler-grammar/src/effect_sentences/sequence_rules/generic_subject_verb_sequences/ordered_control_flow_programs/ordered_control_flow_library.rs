@@ -326,6 +326,7 @@ pub(crate) fn compose_choose_from_looked_cards_onto_battlefield_and_into_hand_re
 
     vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: battlefield_filter,
             count: ChoiceCount::up_to(1),
             count_value: None,
@@ -344,6 +345,7 @@ pub(crate) fn compose_choose_from_looked_cards_onto_battlefield_and_into_hand_re
             tag: crate::tag::TagRef::of(kept_tag.clone()),
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: hand_filter,
             count: ChoiceCount::up_to(1),
             count_value: None,

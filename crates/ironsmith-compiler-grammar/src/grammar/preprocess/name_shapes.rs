@@ -123,6 +123,16 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
         return alias.to_string();
     }
 
+    // An epithet can follow a multiword name. Keep that entire name rather
+    // than replacing its first word and leaving a spurious subject noun.
+    if let Some(title) = tokens.iter().position(|token| token.is_word("the"))
+        && title >= 2
+        && !tokens[title - 1].is_any_word(&["of", "and", "in", "on", "to", "from", "with", "at"])
+        && let Some(alias) = trimmed.get(..tokens[title].span.start)
+    {
+        return alias.trim().to_string();
+    }
+
     // A regnal numeral is omitted from self-references while the preceding
     // multiword name remains intact. Falling back to the first word would
     // rewrite only the title and leave the rest as a spurious target noun.

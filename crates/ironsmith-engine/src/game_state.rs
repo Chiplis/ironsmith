@@ -1034,6 +1034,8 @@ pub struct TurnStore {
     pub exhaust_activations_in_progress: HashSet<(ObjectId, usize)>,
     /// Activation totals that survive turns and control changes, but not object identity changes.
     pub ability_activations_per_object: HashMap<(ObjectId, crate::continuous::AbilityOrigin), u32>,
+    /// Trigger totals that survive turns and control changes, scoped to incarnation/acquisition.
+    pub triggers_fired_per_object: HashMap<(ObjectId, crate::triggers::TriggerIdentity), u32>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
     /// Objects that assign no combat damage for the rest of the current turn.
@@ -1865,6 +1867,17 @@ pub struct LandPlayRestrictionFilter {
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ScopedCastOrActivatePaymentRestriction {
+    pub iterated_player: Option<PlayerId>,
+    pub payer: PlayerId,
+    pub controller: PlayerId,
+    pub source: Option<ObjectId>,
+    pub pay_life: bool,
+    pub sacrifice: Option<crate::target::ObjectFilter>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+}
+
 /// Tracks active "can't" effects in the game.
 ///
 /// Per Rule 614.17, "can't" effects are not replacement effects - they are
@@ -1872,6 +1885,7 @@ pub struct LandPlayRestrictionFilter {
 /// checked BEFORE attempting an action or event.
 #[derive(Debug, Clone, Default)]
 pub struct CantEffectTracker {
+    pub cast_or_activate_payment_restrictions: Vec<ScopedCastOrActivatePaymentRestriction>,
     /// Players who can't gain life.
     /// Example: Sulfuric Vortex, Erebos, God of the Dead
     pub cant_gain_life: HashSet<PlayerId>,
@@ -2711,6 +2725,7 @@ impl CantEffectTracker {
     }
 
     pub fn merge(&mut self, other: CantEffectTracker) {
+        self.cast_or_activate_payment_restrictions.extend(other.cast_or_activate_payment_restrictions);
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
         self.cant_search_own_library_from_own_effects
@@ -2882,6 +2897,7 @@ impl CantEffectTracker {
     /// Clear all tracked "can't" effects.
     /// Called when rebuilding the tracker from current game state.
     pub fn clear(&mut self) {
+        self.cast_or_activate_payment_restrictions.clear();
         self.cant_gain_life.clear();
         self.cant_search.clear();
         self.cant_search_own_library_from_own_effects.clear();

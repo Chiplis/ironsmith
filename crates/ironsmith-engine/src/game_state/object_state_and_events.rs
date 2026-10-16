@@ -3243,6 +3243,51 @@ impl GameState {
         }
     }
 
+    /// Carry only a captured collection to a source's new incarnation. Older
+    /// linked cards retain their old owner and cannot contaminate a new entry.
+    pub(crate) fn transfer_captured_exiled_with_source_links(
+        &mut self,
+        old_source_id: ObjectId,
+        new_source_id: ObjectId,
+        objects: &[ObjectId],
+    ) {
+        if old_source_id == new_source_id { return; }
+        let selected = objects.iter().copied().collect::<HashSet<_>>();
+        let mut return_zones = HashMap::new();
+        let transfer_return = {
+            let tracking = self.exile_tracking_mut();
+            if let Some(links) = tracking.exiled_with_source.get_mut(&old_source_id) {
+                links.retain(|id| !selected.contains(id));
+            }
+            if let Some(zones) = tracking.exiled_with_source_return_zones.get_mut(&old_source_id) {
+                for id in &selected {
+                    if let Some(zone) = zones.remove(id) { return_zones.insert(*id, zone); }
+                }
+            }
+            let transfer_return = tracking.return_exiled_when_source_leaves.contains(&old_source_id)
+                && !return_zones.is_empty();
+            if tracking.exiled_with_source.get(&old_source_id).is_some_and(Vec::is_empty) {
+                tracking.exiled_with_source.remove(&old_source_id);
+                tracking.return_exiled_when_source_leaves.remove(&old_source_id);
+            }
+            if tracking.exiled_with_source_return_zones.get(&old_source_id).is_some_and(HashMap::is_empty) {
+                tracking.exiled_with_source_return_zones.remove(&old_source_id);
+            }
+            transfer_return
+        };
+        let mut installed = HashSet::new();
+        for &id in objects {
+            if installed.insert(id) { self.add_exiled_with_source_link(new_source_id, id); }
+        }
+        if !return_zones.is_empty() {
+            self.exile_tracking_mut().exiled_with_source_return_zones
+                .entry(new_source_id).or_default().extend(return_zones);
+        }
+        if transfer_return {
+            self.exile_tracking_mut().return_exiled_when_source_leaves.insert(new_source_id);
+        }
+    }
+
     /// Remove an exiled card from all source-link lists.
     pub fn remove_exiled_with_source_link(&mut self, exiled_card_id: ObjectId) {
         let tracking = self.exile_tracking_mut();

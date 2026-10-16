@@ -358,6 +358,17 @@ pub(super) fn read_choose_card_type(
             false,
         ),
     };
+    if let Some(((), remainder)) = crate::grammar::primitives::parse_prefix(
+        choice_tokens, crate::grammar::primitives::phrase(&["choose", "a", "card", "type", "shared", "among"]),
+    ) {
+        let Some((count, filter_tokens)) = remainder.split_first() else {
+            return Err(CardTextError::ParseError("missing shared card-type domain".into()));
+        };
+        let count = crate::util::parse_number_word_u32(count.parser_text()).filter(|count| *count > 0)
+            .ok_or_else(|| CardTextError::ParseError("invalid shared card-type count".into()))?;
+        let filter = parse_object_filter(filter_tokens, false)?;
+        return Ok(Some(EffectAst::subject_verb_choose_shared_card_type(choice_player, filter, count)));
+    }
     if let Some((consumed, options)) = parse_choose_card_type_phrase_words(&choice_words)?
         && consumed == choice_words.len()
     {

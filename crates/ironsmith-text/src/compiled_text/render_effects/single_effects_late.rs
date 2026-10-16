@@ -3185,6 +3185,15 @@ pub(super) fn describe_craft_material_filter(
     filter: &ObjectFilter,
     count: ChoiceCount,
 ) -> Option<String> {
+    if filter.shares_card_type && count.min >= 2 && count == ChoiceCount::exactly(count.min) {
+        let mut independent = filter.clone();
+        independent.shares_card_type = false;
+        if shared_craft_material_filter(&independent) == Some(ObjectFilter::default()) {
+            let amount = u32::try_from(count.min).ok()?;
+            let number = small_number_word(amount).unwrap_or_else(|| amount.to_string());
+            return Some(format!("{number} that share a card type"));
+        }
+    }
     if let Some(material) = shared_craft_material_filter(filter) {
         if count == ChoiceCount::at_least(1) && material == ObjectFilter::default() {
             return Some("one or more".to_string());
@@ -5941,6 +5950,7 @@ pub(crate) fn fold_condition_exprs(
 pub(crate) enum TriggerFrequencySurface {
     FirstTimeThisTurn,
     AbilityMaxTimesEachTurn(u32),
+    AbilityMaxTriggersPerObject(u32),
     DoThisMaxTimesEachTurn(u32),
 }
 
@@ -5957,6 +5967,7 @@ pub(crate) fn split_trigger_intervening_if(
     let mut first_time_this_turn = false;
     let mut do_this_max_times_each_turn: Option<u32> = None;
     let mut max_times_each_turn: Option<u32> = None;
+    let mut max_triggers_per_object: Option<u32> = None;
     for item in flat {
         match item {
             crate::ConditionExpr::FirstTimeThisTurn => {
@@ -5971,6 +5982,7 @@ pub(crate) fn split_trigger_intervening_if(
                     None => limit,
                 });
             }
+            crate::ConditionExpr::MaxTriggersPerObject(limit) => { max_triggers_per_object = Some(limit); }
             crate::ConditionExpr::MaxTimesEachTurn(limit) => {
                 max_times_each_turn = Some(match max_times_each_turn {
                     Some(existing) => existing.min(limit),
@@ -5981,7 +5993,9 @@ pub(crate) fn split_trigger_intervening_if(
         }
     }
 
-    let frequency = if first_time_this_turn {
+    let frequency = if let Some(limit) = max_triggers_per_object {
+        Some(TriggerFrequencySurface::AbilityMaxTriggersPerObject(limit))
+    } else if first_time_this_turn {
         Some(TriggerFrequencySurface::FirstTimeThisTurn)
     } else if let Some(limit) = do_this_max_times_each_turn {
         Some(TriggerFrequencySurface::DoThisMaxTimesEachTurn(limit))
@@ -6243,6 +6257,14 @@ mod craft_material_surface_tests {
             material.clone().in_zone(Zone::Battlefield).controlled_by(PlayerFilter::You).other(),
             material.in_zone(Zone::Graveyard).owned_by(PlayerFilter::You).other(),
         ], ..Default::default() }
+    }
+    #[test]
+    fn shared_card_type_materials_keep_the_selection_relation() {
+        let mut filter = materials(ObjectFilter::default());
+        filter.shares_card_type = true;
+        assert_eq!(describe_craft_material_filter(&filter, ChoiceCount::exactly(2)), Some("two that share a card type".into()));
+        filter.any_of[0].colors = Some(crate::color::ColorSet::RED);
+        assert!(describe_craft_material_filter(&filter, ChoiceCount::exactly(2)).is_none());
     }
     #[test]
     fn counts_types_and_subtypes_preserve_the_complete_material_surface() {

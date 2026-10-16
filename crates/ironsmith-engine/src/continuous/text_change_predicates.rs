@@ -595,7 +595,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::SourceBlockedOrBecameBlockedSinceLastUpkeep | Condition::TargetObjectsHaveDifferentColorSets
         | Condition::TargetIsSoulbondPaired | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::ThisAbilityActivatedThisTurnAtLeast(_)
-        | Condition::FirstTimeThisTurn | Condition::SourceFirstCrewedThisTurn | Condition::MaxTimesEachTurn(_)
+        | Condition::FirstTimeThisTurn | Condition::SourceFirstCrewedThisTurn | Condition::MaxTimesEachTurn(_) | Condition::MaxTriggersPerObject(_)
         | Condition::DoThisMaxTimesEachTurn(_) | Condition::TriggeringObjectWasEnchanted
         | Condition::TriggeringObjectBecameTappedFirstTimeThisTurn | Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn
         | Condition::TriggeringObjectHadToAttackThisCombat | Condition::YouWonTriggeringClash

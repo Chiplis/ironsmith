@@ -54,7 +54,10 @@ pub(super) fn read_deals_damage_word_view(
         let body = trim_edge_punctuation(&tokens[body_start..]);
         let historical_union =
                 super::super::super::super::verb_handlers::is_historical_player_object_damage_recipient_clause(&body);
-        if historical_union {
+        let prior_player_union = (verb_word_idx == 0
+            || (verb_word_idx == 2 && words.first() == Some(&"this")))
+            && super::super::super::super::verb_handlers::is_prior_player_or_controlled_planeswalker_damage_clause(&body);
+        if historical_union || prior_player_union {
             crate::parse_trace::event(
                 "effect-route: subject-verb verb=Deal subject=source recognizer=historical-player-object-union",
             );

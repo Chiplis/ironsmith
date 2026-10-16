@@ -1,16 +1,19 @@
-import {useLayoutEffect,useRef,useState} from 'react';
+import {useLayoutEffect,useRef} from 'react';
 import {ManaCostIcons,SymbolText} from '@/lib/mana-symbols';
 import {cardFrameTone} from '@/lib/card-frame-tone';
 import {cardArtCropUrl} from '@/lib/card-image-variants';
 import {cardFrameRules} from '@/lib/card-frame-snapshot.mjs';
+import LoadingCardArt from './LoadingCardArt';
+import {cardArtColors} from '@/lib/card-art-colors';
+import {fallbackCardFrameColors} from '@/lib/default-card-frames';
+import stockFrames from '@/lib/default-card-frames.generated.json';
 import useUiText from '@/i18n/useUiText';
 import {rulesSourceFrame} from '@/lib/rules-source-frame';
 import './card-frame-presentation.css';
 
-// One self-contained fallback. Artwork may load or fail, but the frame and
-// live text never depend on a scan, generated mask, or stock-frame image.
-export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,details}) {
-  const ui=useUiText(),rules=useRef(null),[failedImage,setFailedImage]=useState(null);
+// Shipped stock frames need no renderer; rules-source cards keep their CSS frame.
+export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,details,baked=false}) {
+  const ui=useUiText(),rules=useRef(null);
   const faces=card.card_faces?.length?card.card_faces:[card];
   const multipart=['split','adventure'].includes(card.layout);
   const face=faces[faceIndex]??faces[0];
@@ -19,6 +22,17 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const tone=cardFrameTone({cards:[face,card],manaCost:face.mana_cost??card.mana_cost,typeLine:type});
   const art=cardArtCropUrl(imageUrl);
   const sourceFrame=rulesSourceFrame(card);
+  const colors=cardArtColors(face);
+  const frameColors=/\bLand\b/i.test(type||'')
+    ? fallbackCardFrameColors({cards:[face,card],typeLine:type}) : colors;
+  const frameKey=frameColors.join('')||(/\bLand\b/i.test(type||'')?'land':/\bArtifact\b/i.test(type||'')?'C':'colorless');
+  const stock=baked&&!sourceFrame?stockFrames[frameKey]:null;
+  const box=name=>stock?{
+    left:`${100*stock.style[`--printed-${name}-x`]/stock.style['--printed-scan-width']}%`,
+    top:`${100*stock.style[`--printed-${name}-y`]/stock.style['--printed-scan-height']}%`,
+    width:`${100*stock.style[`--printed-${name}-width`]/stock.style['--printed-scan-width']}%`,
+    height:`${100*stock.style[`--printed-${name}-height`]/stock.style['--printed-scan-height']}%`,
+  }:undefined;
   const textKey=shown.map(value=>cardFrameRules(value)+'\n'+(value.flavor_text??'')).join('\n');
   useLayoutEffect(()=>{
     const box=rules.current;
@@ -41,17 +55,18 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   },[textKey]);
   const stats=face.power!=null&&face.toughness!=null?`${face.power}/${face.toughness}`
     :face.power_toughness??face.defense??face.loyalty;
-  return <article className="simple-card-frame" data-frame-mode="simple" data-card-frame-tone={tone.tone}
+  return <article className="simple-card-frame" data-frame-mode={stock?"baked":"simple"} data-card-frame-tone={tone.tone}
     data-rules-source={sourceFrame ? card.source_kind : undefined}
     style={{...tone.style,...(sourceFrame ? {'--rules-source-color':sourceFrame.color} : {})}} aria-label={face.name||card.name||ui('Card details')}>
-    <header className="simple-card-frame__heading"><strong>{face.name||card.name}</strong>
+    {stock&&<img className="simple-card-frame__stock" src={`${import.meta.env.BASE_URL}card-frames/default/${frameKey}.webp`} alt=""/>}
+    <header className="simple-card-frame__heading" style={box('title')}><strong>{face.name||card.name}</strong>
       <ManaCostIcons cost={face.mana_cost??card.mana_cost} size="1em" /></header>
-    <div className="simple-card-frame__art">
+    <div className="simple-card-frame__art" style={box('art')}>
       {sourceFrame&&<div className="rules-source-emblem" aria-hidden="true"><span>{sourceFrame.symbol}</span><strong>{sourceFrame.label}</strong></div>}
-      {art&&failedImage!==art&&<img src={art} alt="" decoding="async" referrerPolicy="no-referrer" onError={()=>setFailedImage(art)}/>}
+      {(art||!sourceFrame)&&<LoadingCardArt src={art} pending={!imageUrl} colors={colors} variant="hand" alt="" decoding="async" referrerPolicy="no-referrer"/>}
     </div>
-    <div className="simple-card-frame__type">{type||ui('Card')}</div>
-    <div className="simple-card-frame__rules" ref={rules}>
+    <div className="simple-card-frame__type" style={box('type')}>{type||ui('Card')}</div>
+    <div className="simple-card-frame__rules" ref={rules} style={box('rules')}>
       {rulesContent?<>{rulesContent}{face.flavor_text&&<p className="simple-card-frame__flavor">{face.flavor_text}</p>}</>:shown.map((part,index)=><section key={index}>
         {index>0&&<><header className="simple-card-frame__heading"><strong>{part.name}</strong><ManaCostIcons cost={part.mana_cost} size="1em"/></header>
           <div className="simple-card-frame__type">{part.type_line_display??part.type_line}</div></>}

@@ -47,7 +47,7 @@ async function openWorkspace(server, browser, {locale} = {}) {
   return {page, errors};
 }
 
-test('the featured strip is the last-major-events collection and assigns to the selected player', async () => {
+test('three suggested decks stay visible and assign to the selected player', async () => {
   const server = await createServer({server: {host: '127.0.0.1', port: 0}, logLevel: 'silent'});
   await server.listen();
   const browser = await chromium.launch();
@@ -57,14 +57,11 @@ test('the featured strip is the last-major-events collection and assigns to the 
     assert.equal(await workspace.locator('[data-deck-catalog]').count(), 1);
     assert.equal(await workspace.locator('[data-player-tabs]').count(), 1);
 
-    // Featured shows only decks tagged last-major-events, newest first.
+    // First-time visitors get three distinct suggestions, fixed above the list.
     const featured = page.locator('[data-featured-decks] [data-featured-deck]');
     await featured.first().waitFor();
     assert.equal(await featured.count(), 3);
-    assert.deepEqual(
-      await featured.locator('.text-\\[13px\\]').allTextContents(),
-      ['Boros Energy 4', 'Boros Energy 3', 'Boros Energy 2'],
-    );
+    assert.equal(new Set(await featured.evaluateAll(nodes => nodes.map(n => n.dataset.featuredDeck))).size, 3);
 
     // The collection chips narrow the list below to that same collection.
     const list = page.locator('[data-deck-catalog-list]');
@@ -192,7 +189,7 @@ test('the workspace reads its copy from the translation catalog', async () => {
   const browser = await chromium.launch();
   try {
     const {page, errors} = await openWorkspace(server, browser, {locale: 'es'});
-    for (const label of ['Explorar mazos', 'Mazos destacados', 'Jugadores / asignación de mazos', 'Todos los mazos', 'Mis mazos']) {
+    for (const label of ['Explorar mazos', 'Prueba un mazo', 'Jugadores / asignación de mazos', 'Todos los mazos', 'Mis mazos']) {
       await assert.doesNotReject(page.getByText(label, {exact: true}).first().waitFor(), label);
     }
     await assert.doesNotReject(page.getByPlaceholder('Buscar por nombre, arquetipo, carta, evento…').waitFor());
@@ -201,4 +198,37 @@ test('the workspace reads its copy from the translation catalog', async () => {
     await browser.close();
     await server.close();
   }
+});
+
+
+test('Goldfish catalog scrolls inside the lobby and suggestions stay compact', async () => {
+  const server = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await server.listen();
+  const browser = await chromium.launch();
+  try {
+    const {page, errors} = await openWorkspace(server, browser);
+    await page.route('**/catalog/*/index.json', route=>route.fulfill({json:{...index,decks:Array.from({length:120},(_,i)=>({...entries[i % entries.length],id:`scroll-${i}`}))}}));
+    for (const viewport of [{width:1440,height:900},{width:1280,height:720}]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/deck-loading-layout.html?embedded`);
+      await page.getByRole('button',{name:'x1',exact:true}).click();
+      const list = page.locator('[data-deck-catalog-list]');
+      await list.locator('[data-deck-row]').first().waitFor();
+      const bounds = await list.boundingBox();
+      assert.ok(bounds.height > 150 && bounds.y + bounds.height < viewport.height, 'catalog fits within the window');
+      const featured = page.locator('[data-featured-decks]');
+      const before = await featured.boundingBox();
+      assert.ok(before.height < 115, `compact suggestions: ${before.height}px`);
+      await page.screenshot({path:`/tmp/ironsmith-goldfish-compact-${viewport.width}.png`});
+      await list.hover();
+      await page.mouse.wheel(0,500);
+      await page.waitForFunction(()=>document.querySelector('[data-deck-catalog-list]').scrollTop > 0);
+      assert.deepEqual(await featured.boundingBox(),before,'suggestions stay fixed while the list scrolls');
+      await list.evaluate(el=>el.scrollTop=el.scrollHeight);
+      await list.locator('[data-deck-row]').last().getByRole('button',{name:'Use',exact:true}).click();
+      await page.locator('[data-player-tab="0"]').click();
+      await page.waitForFunction(()=>document.querySelector('[data-player-panel="0"] textarea')?.value.includes('60 Mountain'));
+    }
+    assert.deepEqual(errors,[]);
+  } finally {await browser.close();await server.close();}
 });

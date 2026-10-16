@@ -548,6 +548,8 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
 fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     use Restriction::*;
     match restriction {
+        CastOrActivatePayments { player, sacrifice, .. } => player.mentions_iterated_player()
+            || sacrifice.as_ref().is_some_and(object_filter_mentions_iterated_player),
         AdditionalLandPlays(player, _)
         | NoMaximumHandSize(player)
         | DrawFromBottom(player)

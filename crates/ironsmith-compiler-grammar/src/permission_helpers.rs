@@ -2301,6 +2301,7 @@ pub fn parse_look_tagged_exile_permission(tokens: &[OwnedLexToken]) -> Result<Op
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_bounded_filtered_exile_free_cast(tokens)? { return Ok(Some(effect)); }
     if let Some(effect) = effect_cast_prices::parse(tokens)? {
         return Ok(Some(effect));
     }
@@ -3027,4 +3028,23 @@ pub(crate) fn parse_independent_recent_graveyard_permissions(
             })
             .collect(),
     )
+}
+
+/// A bounded series of immediate cast offers. Each offer recomputes legal
+/// spells from the current exile pool after the previous cast has completed.
+pub(crate) fn parse_bounded_filtered_exile_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(((), rest)) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "cast", "up", "to"])) else { return Ok(None); };
+    let Some((count, used)) = parse_value_prefix_lexed(rest) else { return Ok(None); };
+    let Some(((), pool)) = primitives::parse_prefix(&rest[used..], primitives::phrase(&["spells", "from", "among"])) else { return Ok(None); };
+    let Some(pool) = primitives::strip_lexed_suffix_phrase(pool, &["without", "paying", "their", "mana", "costs"]) else { return Ok(None); };
+    let Some(pool) = primitives::strip_lexed_suffix_phrase(pool, &["from", "exile"]) else { return Ok(None); };
+    let mut filter = crate::object_filters::parse_object_filter(pool, false)?;
+    filter.zone = Some(Zone::Exile);
+    if !filter.excluded_card_types.contains(&CardType::Land) { filter.excluded_card_types.push(CardType::Land); }
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count,
+        effects: vec![EffectAst::may_cast_matching_spell_without_paying_mana_cost(PlayerAst::You, filter, Zone::Exile)],
+    })))
 }

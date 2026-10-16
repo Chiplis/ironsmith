@@ -7887,6 +7887,13 @@ html[data-hand-pointer-suspended="true"] * {
     z-index: 160;
   }
 
+  /* Active icons and labels are larger; reserve their height even when
+     the combat row is concealed or Untap has no priority-stop icon. */
+  .table-shell[data-focused-hud="true"] > .table-phase-divider .phase-track-stop-button {
+    height: 40px;
+    min-height: 40px;
+  }
+
   .table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell {
     position: relative !important;
     top: auto;

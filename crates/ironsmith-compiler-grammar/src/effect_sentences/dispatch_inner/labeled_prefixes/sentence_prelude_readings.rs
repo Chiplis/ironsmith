@@ -1033,6 +1033,7 @@ fn read_cast_any_number_graveyard_free(
         let tag = crate::tag::CompilerReferenceTag::ChosenCastFromGraveyard.bind();
         return Ok(Some(vec![
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter,
                 count: ChoiceCount::any_number(),
                 count_value: None,

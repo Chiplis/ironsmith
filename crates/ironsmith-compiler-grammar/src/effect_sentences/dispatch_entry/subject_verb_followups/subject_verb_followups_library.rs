@@ -527,6 +527,7 @@ pub(super) fn bind_prior_exiled_card_to_source_link(effect: &mut EffectAst) {
         // create/cast the copy. This is the same generic program used for the
         // explicit "a card exiled with this artifact" wording.
         *effect = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
                 crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                 crate::target::TaggedOpbjectRelation::IsTaggedObject,

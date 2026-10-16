@@ -159,6 +159,10 @@ pub struct PriorEffectMetricQuery {
     /// rather than its selected set, source LKI, or replacement-added moves.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub original_destination: Option<crate::zone::Zone>,
+    /// Read source snapshots of original moves that reached their authored
+    /// destination (or `original_destination` when supplied), including tokens.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub use_origin_memory: bool,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub color_choice: Option<ColorChoiceReference>,
 }
@@ -172,6 +176,7 @@ impl PriorEffectMetricQuery {
             player: None,
             action: None,
             original_destination: None,
+            use_origin_memory: false,
             color_choice: None,
             counter_type: None,
         }
@@ -1301,6 +1306,13 @@ pub enum Restriction {
     /// can't venture again, including through the initiative (CR 701.49).
     /// Appended.
     VentureMoreThanOnceEachTurn(PlayerFilter),
+    /// Prohibit payment components only when casting or activating (mana abilities included).
+    /// Appended for wire stability; other payment reasons remain unaffected.
+    CastOrActivatePayments {
+        player: PlayerFilter,
+        pay_life: bool,
+        sacrifice: Option<ObjectFilter>,
+    },
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -2508,6 +2520,8 @@ pub enum Condition {
     /// control." (Withering Wisps): a per-turn activation cap read when the
     /// ability is activated (CR 602.5b). Appended for wire stability.
     MaxActivationsPerTurnCount(AnthemCountExpression),
+    /// Trigger cap for this exact object incarnation and ability acquisition.
+    MaxTriggersPerObject(u32),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

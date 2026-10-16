@@ -253,6 +253,8 @@ fn restriction_references_identity(
     use crate::effect::Restriction;
 
     match restriction {
+        Restriction::CastOrActivatePayments { player, sacrifice, .. } => player_filter_references_identity(player, identity)
+            || sacrifice.as_ref().is_some_and(|filter| object_filter_references_identity(filter, identity)),
         Restriction::AdditionalLandPlays(player, _)
         | Restriction::NoMaximumHandSize(player)
         | Restriction::DrawFromBottom(player)

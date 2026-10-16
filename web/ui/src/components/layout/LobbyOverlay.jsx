@@ -363,13 +363,12 @@ export default function LobbyOverlay({
     }}>
       <SheetContent
         side="center"
-        className={`fantasy-sheet lobby-sheet flex ${!lobbyActive && mode === "goldfish" ? "lobby-sheet-goldfish h-[100dvh] max-h-[100dvh] w-screen max-w-none" : "max-h-[96vh] w-[min(96vw,1120px)]"} flex-col p-0${lobbyActive ? " lobby-sheet-active" : ""}`}
-        // Goldfish is a full workspace (catalog + every seat's list), so it
-        // takes the whole viewport instead of floating as a dialog.
-        style={!lobbyActive && mode === "goldfish" ? { maxHeight: "100dvh" } : undefined}
+        className={`fantasy-sheet lobby-sheet play-workspace flex flex-col p-0${mode === "goldfish" ? " lobby-sheet-goldfish" : ""}${lobbyActive ? " lobby-sheet-active" : ""}`}
+        data-play-mode={lobbyActive ? "active" : mode}
+        style={{ width: "100dvw", maxWidth: "none", height: "100dvh", maxHeight: "100dvh" }}
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Multiplayer")}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Play")}</div>
           <SheetTitle>
             {lobbyActive ? ui("Multiplayer Lobby") : mode === "join" ? ui("Join Lobby") : mode === "tournaments" ? ui("Tournaments") : mode === "goldfish" ? ui("Goldfish") : ui("Create Lobby")}
           </SheetTitle>
@@ -420,7 +419,59 @@ export default function LobbyOverlay({
                 >{ui("Goldfish")}</button>
               </div>
 
-              {mode === 'create' && <div className={`${panelClass} lobby-sheet-connection-panel`}>
+              {mode === "goldfish" ? (
+                <DeckLoadingView embedded onTestDecks={onStartGoldfish} onCancel={handleClose} />
+              ) : mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
+                <div className="play-setup-grid">
+                  <div className="play-session-controls">
+                    <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <label className={labelClass}>{ui("Your Name")}<input
+                          className={inputClass}
+                          disabled={transport === 'tournament'}
+                          title={transport === 'tournament' ? ui("Tournament seats use the name on your invite") : undefined}
+                          value={transport === 'tournament'
+                            ? (tournamentCertificates.find(entry => entry.tournamentId === createTournamentId)?.playerName || createName)
+                            : createName}
+                          onChange={(event) => setCreateName(event.target.value)}
+                          placeholder={ui("Host name")}
+                        />
+                      </label>
+                      <label className={labelClass}>{ui("Format")}<select
+                          className={inputClass}
+                          aria-label={ui("Format")}
+                          value={createFormat}
+                          onChange={(event) => handleCreateFormatChange(event.target.value)}
+                        >
+                          {relayTransport ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
+                            <option value={MATCH_FORMAT_NORMAL}>{ui("Normal")}</option>
+                            <option value={MATCH_FORMAT_COMMANDER}>{ui("Commander")}</option>
+                            <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
+                          </>}
+                        </select>
+                      </label>
+                      <label className={labelClass}>{ui("Starting Life")}<input
+                          className={inputClass}
+                          type="number"
+                          min={1}
+                          value={startingLife}
+                          disabled={relayTransport}
+                          onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
+                        />
+                      </label>
+                      <label className={labelClass}>{ui("Players")}<select
+                          className={inputClass}
+                          aria-label={ui("Players")}
+                          value={desiredPlayers}
+                          disabled={relayTransport && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
+                          onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
+                        >
+                          <option value={2}>{ui("2 Players")}</option>
+                          <option value={3}>{ui("3 Players")}</option>
+                          <option value={4}>{ui("4 Players")}</option>
+                        </select>
+                      </label>
+                    </div>
+              <div className={`${panelClass} lobby-sheet-connection-panel`}>
                 <label className={labelClass}>{ui("Connection")}<select aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
                     const value = event.target.value;
                     setTransport(value);
@@ -489,68 +540,20 @@ export default function LobbyOverlay({
                     })}
                   </div>
                 </fieldset>}
-              </div>}
-              {mode === "goldfish" ? (
-                <DeckLoadingView embedded onTestDecks={onStartGoldfish} onCancel={handleClose} />
-              ) : mode === "tournaments" ? <TournamentPanel /> : mode === "create" ? (
-                <div className="lobby-sheet-setup-grid grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-                  <div className="lobby-sheet-setup-main grid gap-4">
-                    <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                      <label className={labelClass}>{ui("Your Name")}<input
-                          className={inputClass}
-                          disabled={transport === 'tournament'}
-                          title={transport === 'tournament' ? ui("Tournament seats use the name on your invite") : undefined}
-                          value={transport === 'tournament'
-                            ? (tournamentCertificates.find(entry => entry.tournamentId === createTournamentId)?.playerName || createName)
-                            : createName}
-                          onChange={(event) => setCreateName(event.target.value)}
-                          placeholder={ui("Host name")}
-                        />
-                      </label>
-                      <label className={labelClass}>{ui("Format")}<select
-                          className={inputClass}
-                          aria-label={ui("Format")}
-                          value={createFormat}
-                          onChange={(event) => handleCreateFormatChange(event.target.value)}
-                        >
-                          {relayTransport ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
-                            <option value={MATCH_FORMAT_NORMAL}>{ui("Normal")}</option>
-                            <option value={MATCH_FORMAT_COMMANDER}>{ui("Commander")}</option>
-                            <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
-                          </>}
-                        </select>
-                      </label>
-                      <label className={labelClass}>{ui("Starting Life")}<input
-                          className={inputClass}
-                          type="number"
-                          min={1}
-                          value={startingLife}
-                          disabled={relayTransport}
-                          onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
-                        />
-                      </label>
-                      <label className={labelClass}>{ui("Players")}<select
-                          className={inputClass}
-                          aria-label={ui("Players")}
-                          value={desiredPlayers}
-                          disabled={relayTransport && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
-                          onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
-                        >
-                          <option value={2}>{ui("2 Players")}</option>
-                          <option value={3}>{ui("3 Players")}</option>
-                          <option value={4}>{ui("4 Players")}</option>
-                        </select>
-                      </label>
-                    </div>
-                    {createFormat === MATCH_FORMAT_NORMAL ? (
+              </div>
+                  </div>
+                  <div className="play-deck-discovery">
+                    {(
                       <CompetitiveDeckPicker
-                        format="modern"
+                        format={createFormat === MATCH_FORMAT_NORMAL || createFormat === MATCH_FORMAT_PLANECHASE ? "modern" : createFormat}
                         onApply={({ deckText, commanderText }) => {
                           setCreateDeckText(deckText);
                           setCreateCommanderText(commanderText);
                         }}
                       />
-                    ) : null}
+                    )}
+                  </div>
+                  <div className="play-deck-sidebar">
                     <label className={`${labelClass} lobby-sheet-main-deck-field`}>{ui("Main Deck")}<PreservingTextarea
                         className={`${textareaClass} lobby-sheet-main-deck`}
                         value={createDeckText}
@@ -579,10 +582,7 @@ export default function LobbyOverlay({
                           }
                         />
                       </label>
-                    ) : null}
-                  </div>
-
-                  <div className={panelClass}>
+                    ) : null}                  <div className={panelClass}>
                     <div className={infoTextClass}>
                       <span>{ui("Format:") + " "}{ui(formatName(createFormat))}</span>
                       <span>{ui("Main deck:")}{" "}
@@ -606,10 +606,11 @@ export default function LobbyOverlay({
                       onClick={handleCreate}
                     >{ui("Create Lobby")}</Button>
                   </div>
+                  </div>
                 </div>
               ) : (
-                <div className="lobby-sheet-setup-grid grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-                  <div className="grid gap-4">
+                <div className="play-setup-grid">
+                  <div className="play-session-controls">
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
@@ -630,6 +631,8 @@ export default function LobbyOverlay({
                     {relayBaseUrl() && <label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={relayOnly} onChange={e => { setRelayOnly(e.target.checked); writeRelayOnlyPreference(e.target.checked); }} />{ui("Hide my IP address in WebSocket and tournament lobbies (relay only, slower)")}</label>}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
+                  </div>
+                  <div className="play-deck-discovery">
                     <CompetitiveDeckPicker
                       format="modern"
                       onApply={({ deckText, commanderText }) => {
@@ -637,6 +640,8 @@ export default function LobbyOverlay({
                         setJoinCommanderText(commanderText);
                       }}
                     />
+                  </div>
+                  <div className="play-deck-sidebar">
                     <label className={labelClass}>{ui("Main Deck")}<PreservingTextarea
                         className={textareaClass}
                         value={joinDeckText}
@@ -650,10 +655,7 @@ export default function LobbyOverlay({
                         onChange={(event) => setJoinCommanderText(event.target.value)}
                         placeholder={ui("Optional until you see the host format.\nAdd 1 or 2 commanders for Commander, or at least 10 unique planar cards for Planechase.")}
                       />
-                    </label>
-                  </div>
-
-                  <div className={panelClass}>
+                    </label>                  <div className={panelClass}>
                     <div className={infoTextClass}>
                       <span>{ui("Main deck:") + " "}{joinDeckCount}{" " + ui("cards")}</span>
                       <span>{ui("Supplemental cards:") + " "}{joinCommanderCount}</span>
@@ -666,6 +668,7 @@ export default function LobbyOverlay({
                       disabled={!joinCode.trim()}
                       onClick={handleJoin}
                     >{ui("Join Lobby")}</Button>
+                  </div>
                   </div>
                 </div>
               )}

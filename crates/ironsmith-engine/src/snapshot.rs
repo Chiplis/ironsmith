@@ -423,6 +423,8 @@ pub struct ObjectSnapshot {
     pub stack_kind: Option<crate::filter::StackObjectKind>,
     /// Noncopiable choices needed by abilities after this exact object leaves.
     pub chosen_subtype: Option<Subtype>,
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub chosen_card_type: Option<CardType>,
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub numeric_choice_memory: Option<Arc<crate::source_numbers::NumberChoiceMemory>>,
     pub chosen_object: Option<Box<ObjectSnapshot>>,
@@ -656,6 +658,7 @@ impl ObjectSnapshot {
         Self {
             stack_kind: None,
             chosen_subtype: None,
+            chosen_card_type: None,
             numeric_choice_memory: None,
             chosen_object: None,
             secret_chosen_subtype: None,
@@ -842,6 +845,7 @@ impl ObjectSnapshot {
                 .map(crate::continuous::AbilityOrigin::Printed).collect())),
             aura_attach_filter: obj.aura_attach_filter_owned(),
             chosen_subtype: game.chosen_subtype(obj.id),
+            chosen_card_type: game.chosen_card_type(obj.id),
             numeric_choice_memory: Some(Arc::new(game.numeric_choice_memory(obj.id))),
             chosen_object: game.chosen_object(obj.id).cloned().map(Box::new),
             secret_chosen_subtype: game.secret_subtype_snapshot(obj.id),
@@ -1264,6 +1268,7 @@ impl ObjectSnapshot {
             object_id,
             stable_id: object_id.into(),
             chosen_subtype: None,
+            chosen_card_type: None,
             numeric_choice_memory: None,
             secret_chosen_subtype: None,
             chosen_object: None,

@@ -796,6 +796,9 @@ fn read_exile_cast_permission(
     // "You may cast a [<card type>] spell from among cards you own in exile
     // [with <kind> counters on them] without paying its mana cost."
     // (Goliath Daydreamer, Dragon-Kami's Egg)
+    if let Some(effect) = crate::permission_helpers::parse_bounded_filtered_exile_free_cast(input.tokens)? {
+        return Ok(Some(vec![effect]));
+    }
     Ok(parse_owned_exile_free_cast(input.tokens))
 }
 

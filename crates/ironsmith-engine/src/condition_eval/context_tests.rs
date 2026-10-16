@@ -428,3 +428,28 @@ fn quantified_opponent_count_keeps_controller_perspective_in_every_phase() {
         game.create_object_from_card(&extra, bob, Zone::Battlefield);
     }
 }
+
+#[test]
+fn lifetime_trigger_caps_preserve_registration_history_across_turns() {
+    let (mut game, alice, _, source, other) = fixture();
+    let identity = TriggerIdentity(99110);
+    let condition = Condition::MaxTriggersPerObject(2);
+    let mut external = ExternalEvaluationContext {
+        controller: alice, source, trigger_identity: Some(identity), ..Default::default()
+    };
+    assert!(evaluate_condition_external(&game, &condition, &external));
+    game.record_trigger_fired(source, identity);
+    game.next_turn();
+    assert_eq!(game.trigger_fire_count_this_turn(source, identity), 0);
+    assert_eq!(game.trigger_fire_count_per_object(source, identity), 1);
+    assert!(evaluate_condition_external(&game, &condition, &external));
+    game.record_trigger_fired(source, identity);
+    assert!(!evaluate_condition_external(&game, &condition, &external));
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.trigger_identity = Some(identity);
+    assert!(evaluate_condition_resolution(&game, &condition, &ctx).unwrap(), "already registered triggers still resolve");
+    external.trigger_identity = Some(TriggerIdentity(99111));
+    assert!(evaluate_condition_external(&game, &condition, &external), "independent acquisition");
+    external.source = other; external.trigger_identity = Some(identity);
+    assert!(evaluate_condition_external(&game, &condition, &external), "independent incarnation");
+}

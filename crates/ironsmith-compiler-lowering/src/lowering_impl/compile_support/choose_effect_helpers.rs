@@ -25,11 +25,13 @@ pub fn compile_choose_objects_across_zones_with_subject(
     zones: Vec<Zone>,
     search_mode: Option<crate::effect::SearchSelectionMode>,
     default_search: bool,
+    optional_search_zones: bool,
 ) -> (Vec<Effect>, Vec<ChooseSpec>) {
     let chooser = subject.as_chooser();
     let mut choose_effect = crate::effects::ChooseObjectsEffect::new(filter, count, chooser, tag)
         .with_count_value_opt(count_value)
         .in_zones(zones);
+    choose_effect.optional_search_zones = optional_search_zones;
     if let Some(search_mode) = search_mode {
         choose_effect = match search_mode {
             crate::effect::SearchSelectionMode::Exact => choose_effect.as_search(),

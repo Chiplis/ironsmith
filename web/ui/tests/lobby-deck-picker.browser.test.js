@@ -82,7 +82,7 @@ test('the lobby picker shows catalog decks with art and applies one flatly', asy
     assert.equal(await rows.count(), 6);
 
     // Every deck is offered as art plus a single Use, like the workspace.
-    await page.waitForFunction(() => document.querySelectorAll('[data-deck-art="loaded"]').length === 6);
+    await page.waitForFunction(() => document.querySelectorAll('[data-deck-row] [data-deck-art="loaded"]').length === 6);
     assert.equal(await page.locator('[data-deck-row] button').count(), 6);
 
     await page.locator('[data-catalog-tab="mono-color"]').click();

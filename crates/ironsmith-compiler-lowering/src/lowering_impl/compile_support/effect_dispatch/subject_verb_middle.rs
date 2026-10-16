@@ -2833,10 +2833,9 @@ pub(super) fn compile_subject_verb_middle(
             if !source_tags.is_empty() {
                 effect = effect.from_tagged_sources(
                     source_tags
-                        .clone()
-                        .into_iter()
-                        .map(ironsmith_compiler_semantic::TagKey::from)
-                        .collect::<Vec<_>>(),
+                        .iter()
+                        .map(|source| resolve_it_tag_key(&source.key, &current_reference_env(ctx)))
+                        .collect::<Result<Vec<_>, _>>()?,
                 );
             }
             effect.filter_source_snapshots = *filter_source_snapshots;

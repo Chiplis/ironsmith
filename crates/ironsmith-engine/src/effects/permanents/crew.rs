@@ -386,7 +386,10 @@ impl EffectExecutor for CrewCostEffect {
                     ));
                 }
 
-                let taps = super::tap::tap_cost_objects_with_outputs(game, ctx, &chosen)?;
+                let taps = super::tap::tap_cost_objects_for_kind_with_outputs(
+                    game, ctx, &chosen,
+                    self.teamwork.then_some(ironsmith_core::OptionalCostKind::Teamwork),
+                )?;
                 let batch = taps
                     .outcome
                     .events

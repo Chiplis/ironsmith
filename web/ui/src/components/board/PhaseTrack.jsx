@@ -14,12 +14,15 @@ const combatIcons = {
   FirstStrikeDamage: Zap, CombatDamage: Sword, EndCombat: CircleCheck,
 };
 
-export default function PhaseTrack({ compact = false }) {
+export default function PhaseTrack({ compact = false, reserveCombatSpace = false }) {
   const { state, priorityStops = {}, cyclePriorityStop } = useGame();
   const { t } = useI18n();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
-  const renderTrack = (entries, current, kind) => (
+  const renderTrack = (entries, current, kind, concealed = false) => (
     <nav className={`phase-track phase-track--sequence${kind === 'step' ? ' phase-track--combat' : ''}`}
+      style={concealed ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+      aria-hidden={concealed || undefined}
+      inert={concealed || undefined}
       data-compact={compact ? 'true' : 'false'} aria-label={kind === 'step' ? 'Combat steps' : t('game.phaseTrack', null, 'Turn phases')}>
       <ol className="phase-track-steps">
         {entries.map((entry, index) => {
@@ -50,7 +53,7 @@ export default function PhaseTrack({ compact = false }) {
   );
   return (
     <div className="phase-track-group">
-      {active === 'Combat' && renderTrack(COMBAT_STEPS, priorityStepKey(state), 'step')}
+      {(active === 'Combat' || reserveCombatSpace) && renderTrack(COMBAT_STEPS, priorityStepKey(state), 'step', active !== 'Combat')}
       {renderTrack(PHASE_TRACK, active, 'phase')}
     </div>
   );

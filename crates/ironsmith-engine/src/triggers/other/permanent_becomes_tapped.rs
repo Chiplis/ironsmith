@@ -9,6 +9,7 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PermanentBecomesTappedTrigger {
+    pub cost_kind: Option<ironsmith_core::OptionalCostKind>,
     pub filter: ObjectFilter,
     pub one_or_more: bool,
 }
@@ -16,6 +17,7 @@ pub struct PermanentBecomesTappedTrigger {
 impl PermanentBecomesTappedTrigger {
     pub fn new(filter: ObjectFilter) -> Self {
         Self {
+            cost_kind: None,
             filter,
             one_or_more: false,
         }
@@ -30,6 +32,10 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
         let Some(e) = event.downcast::<PermanentTappedEvent>() else {
             return false;
         };
+        if self.cost_kind.as_ref().is_some_and(|kind| e.cost_kind.as_ref() != Some(kind)) {
+            return false;
+        }
+        if self.filter.source && e.permanent != ctx.source_id { return false; }
         if let Some(snapshot) = &e.snapshot {
             self.filter
                 .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
@@ -58,6 +64,9 @@ impl TriggerMatcher for PermanentBecomesTappedTrigger {
     }
 
     fn display(&self) -> String {
+        if let Some(kind) = &self.cost_kind {
+            return format!("Whenever {} becomes tapped to pay a {} cost", self.filter.description(), kind.canonical_label().to_ascii_lowercase());
+        }
         if self.one_or_more {
             let mut filter = self.filter.clone();
             filter.set_plural_object_noun_surface(true);

@@ -2982,3 +2982,52 @@ fn anonymous_hidden_epochs_do_not_reuse_an_earlier_incarnation_even_with_the_sam
     assert!(game.reserve_hidden_incarnation_epoch().is_err());
     assert_eq!(game.player(alice).unwrap().library, library);
 }
+
+#[test]
+fn scoped_cast_activation_payment_restrictions_filter_objects_and_refresh_when_dirty() {
+    use crate::ability::Ability;
+    use crate::static_abilities::StaticAbility;
+    use crate::effect::Restriction;
+    use crate::target::{ObjectFilter, PlayerFilter};
+    use crate::costs::{Cost, PaymentReason};
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    let lock = CardDefinitionBuilder::new(CardId::new(), "Filtered cost restriction")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(StaticAbility::restriction(Restriction::CastOrActivatePayments {
+            player: PlayerFilter::Opponent, pay_life: true, sacrifice: Some(ObjectFilter::creature()),
+        }, "Opponent casting and activation payment restriction".to_string()))).build();
+    let lock = game.create_object_from_definition(&lock, alice, Zone::Battlefield);
+    let card = |types| CardDefinitionBuilder::new(CardId::new(), "Cost subject").card_types(types).build();
+    let creature = game.create_object_from_definition(&card(vec![CardType::Creature]), bob, Zone::Battlefield);
+    let land_creature = game.create_object_from_definition(&card(vec![CardType::Land,CardType::Creature]), bob, Zone::Battlefield);
+    let artifact = game.create_object_from_definition(&card(vec![CardType::Artifact]), bob, Zone::Battlefield);
+    // Dirty queries must see a newly introduced prohibition before an explicit refresh.
+    assert!(game.player_cant_pay_life_to_cast_or_activate(bob));
+    assert!(!game.player_cant_pay_life_to_cast_or_activate(alice));
+    for reason in [PaymentReason::CastSpell, PaymentReason::ActivateAbility, PaymentReason::ActivateManaAbility] {
+        assert!(!game.can_pay_life_with_reason(bob, 1, reason));
+        assert!(game.can_pay_life_with_reason(alice, 1, reason));
+        assert!(game.validate_cost_for_payment_reason(bob,creature,&Cost::life(0),reason).is_ok(), "zero life is a legal payment");
+        for subject in [creature,land_creature] { assert!(game.validate_cost_for_payment_reason(bob,subject,&Cost::sacrifice_self(),reason).is_err()); }
+        assert!(game.validate_cost_for_payment_reason(bob,artifact,&Cost::sacrifice_self(),reason).is_ok());
+    }
+    game.refresh_continuous_state().unwrap();
+    assert!(game.can_pay_life_with_reason(bob, 1, PaymentReason::Effect));
+    assert!(game.validate_cost_for_payment_reason(bob,creature,&Cost::sacrifice_self(),PaymentReason::Effect).is_ok());
+    game.object_mut(creature).unwrap().card_types = vec![CardType::Artifact].into();
+    assert!(!game.player_cant_sacrifice_object_to_cast_or_activate(bob,creature), "current derived types, not printed types");
+    game.move_object_by_effect(lock, Zone::Graveyard).unwrap();
+    assert!(!game.player_cant_pay_life_to_cast_or_activate(bob), "dirty source removal invalidates cached restriction");
+    assert!(!game.player_cant_sacrifice_object_to_cast_or_activate(bob,land_creature));
+    let alice_creature = game.create_object_from_definition(&card(vec![CardType::Creature]), alice, Zone::Battlefield);
+    game.refresh_continuous_state().unwrap();
+    let mut tracker = CantEffectTracker::default();
+    crate::effect::RestrictionExt::apply(&Restriction::CastOrActivatePayments {
+        player: PlayerFilter::Any, pay_life: false,
+        sacrifice: Some(ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer)),
+    }, &mut game, &mut tracker, alice, None, Some(bob));
+    game.effect_store.cant_effects.merge(tracker);
+    assert!(game.player_cant_sacrifice_object_to_cast_or_activate(bob,land_creature), "retain the generating iteration's binding");
+    assert!(!game.player_cant_sacrifice_object_to_cast_or_activate(alice,alice_creature));
+}

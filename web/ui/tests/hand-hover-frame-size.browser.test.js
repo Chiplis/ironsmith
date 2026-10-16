@@ -126,15 +126,16 @@ test('hovered hand cards show live text before their image URL and art arrive', 
     await card.waitFor();
     const box = await card.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + 24);
-    const frame = card.locator('[data-loading-frame="true"]');
+    const frame = card.locator('.battlefield-prepared-frame');
     await frame.waitFor();
-    assert.match(await frame.innerText(), /Myr Moonvessel/);
-    assert.match(await frame.innerText(), /When this creature dies/);
+    assert.match(await frame.locator("canvas").getAttribute("aria-label"), /Myr Moonvessel.*When this creature dies/);
     releaseLookup();
     await page.waitForFunction(() => Boolean(document.querySelector('.hand-card.hovered')?.dataset.cardImageUrl));
     assert.equal(await frame.isVisible(), true, 'frame remains while the actual image downloads');
     releaseArt();
-    await page.waitForFunction(() => !document.querySelector('.hand-card.hovered .battlefield-prepared-frame'));
+    await card.locator('[data-card-glint-frame="ready"]').waitFor();
+    assert.equal(await frame.isVisible(), true, "local frame remains after artwork arrives");
+    assert.equal(await card.locator(".game-card-surface > img").count(), 0, "no full printing scan is mounted");
     assert.deepEqual(errors, []);
   } finally { releaseLookup(); releaseArt(); await browser.close(); await vite.close(); }
 });

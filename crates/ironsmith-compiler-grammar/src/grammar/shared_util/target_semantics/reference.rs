@@ -1010,6 +1010,19 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         ));
     }
 
+    if matches!(remaining_words.as_slice(),
+        ["that", "player", "or", "a", "planeswalker", "that", "player", "controls"]
+        | ["that", "player", "or", "planeswalker", "that", "player", "controls"]
+        | ["that", "player", "or", "a", "planeswalker", "they", "control"]
+        | ["that", "player", "or", "planeswalker", "they", "control"])
+    {
+        let filter = ObjectFilter::default().in_zone(Zone::Battlefield)
+            .with_type(CardType::Planeswalker).controlled_by(PlayerFilter::IteratedPlayer);
+        return Ok(wrap_target_count(TargetAst::ObjectOrPlayer(
+            filter, PlayerFilter::IteratedPlayer, target_span,
+        ), target_count));
+    }
+
     let opponent_or_planeswalker = [
         &["opponent", "or", "planeswalker"][..],
         &["opponents", "or", "planeswalkers"][..],

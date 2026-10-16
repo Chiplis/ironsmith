@@ -5486,6 +5486,13 @@ fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
 
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
+        crate::effect::Restriction::CastOrActivatePayments { player, pay_life, sacrifice } => {
+            let mut components = Vec::new();
+            if *pay_life { components.push("pay life".to_string()); }
+            if let Some(filter) = sacrifice { components.push(format!("sacrifice {}", pluralize_noun_phrase(&filter.description()))); }
+            format!("{} can't {} to cast spells or activate abilities", describe_player_set_filter(player), components.join(" or "))
+        }
+
         crate::effect::Restriction::AdditionalLandPlays(filter, count) => {
             if *count == u32::MAX {
                 format!(

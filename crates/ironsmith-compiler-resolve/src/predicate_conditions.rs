@@ -862,6 +862,7 @@ pub fn resolve_condition_from_predicate(
         }
         PredicateAst::CurrentTurnIsExtra => Condition::CurrentTurnIsExtra,
         PredicateAst::TriggerFrequency(frequency) => match frequency {
+            TriggerFrequencyPredicateAst::MaxTriggersPerObject(limit) => Condition::MaxTriggersPerObject(*limit),
             TriggerFrequencyPredicateAst::FirstTimeThisTurn => Condition::FirstTimeThisTurn,
             TriggerFrequencyPredicateAst::SourceFirstCrewedThisTurn => {
                 Condition::SourceFirstCrewedThisTurn

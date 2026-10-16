@@ -12,6 +12,8 @@ use crate::snapshot::ObjectSnapshot;
 /// Triggered when a permanent becomes tapped.
 #[derive(Debug, Clone)]
 pub struct PermanentTappedEvent {
+    /// Optional additional cost whose payment caused this exact transition.
+    pub cost_kind: Option<ironsmith_core::OptionalCostKind>,
     /// The permanent that became tapped
     pub permanent: ObjectId,
     /// Characteristics when the state transition completed.
@@ -27,6 +29,7 @@ impl PermanentTappedEvent {
     /// Create a new permanent tapped event.
     pub fn new(permanent: ObjectId) -> Self {
         Self {
+            cost_kind: None,
             permanent,
             snapshot: None,
             actor: None,
@@ -38,6 +41,7 @@ impl PermanentTappedEvent {
     /// can change its characteristics or controller.
     pub fn capture(game: &GameState, permanent: ObjectId, actor: Option<PlayerId>) -> Self {
         Self {
+            cost_kind: None,
             permanent,
             snapshot: game.object(permanent).and_then(|object| {
                 ObjectSnapshot::capture_for_execution(object, game)
@@ -45,6 +49,11 @@ impl PermanentTappedEvent {
             actor,
             before_snapshot: None,
         }
+    }
+
+    pub fn with_cost_kind(mut self, kind: ironsmith_core::OptionalCostKind) -> Self {
+        self.cost_kind = Some(kind);
+        self
     }
 
     pub fn with_before_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {

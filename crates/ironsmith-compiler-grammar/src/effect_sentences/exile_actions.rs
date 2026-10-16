@@ -168,6 +168,7 @@ fn exile_iterated_hand_cards_and_permanents(
     let tag = helper_tag_for_tokens(tokens, "exiled");
     vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter,
             count,
             count_value,

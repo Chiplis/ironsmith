@@ -318,6 +318,7 @@ impl EffectExecutor for SearchLibraryEffect {
             });
         }
         instruction.map(|outcome| {
+            super::search_overrides::retain_search_participants(ctx, self.participant_tag.as_ref(), &outcome);
             let mut outputs =
                 crate::effects::CompletedEffectOutputs::from_children(retained_children, |_| {
                     outcome

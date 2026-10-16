@@ -16784,7 +16784,10 @@ pub(super) fn describe_triggered_inline_ability(
     }
 
     match trigger_frequency {
-        Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(max)) => {
+        Some(TriggerFrequencySurface::AbilityMaxTriggersPerObject(max)) => {
+                    line.push_str(&if max == 1 { ". This ability triggers only once".to_string() } else { format!(". This ability triggers only {max} times") });
+                }
+                Some(TriggerFrequencySurface::AbilityMaxTimesEachTurn(max)) => {
             if max == 1 {
                 line.push_str(". This ability triggers only once each turn");
             } else if max == 2 {

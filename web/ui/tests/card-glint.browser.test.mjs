@@ -51,6 +51,17 @@ test('card-glint paints a real Magic face and keeps live ability actions', {time
     await page.route('**/card-glint/**/magic-presentation.js',route=>route.abort());
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html`);
     await page.locator('[data-card-glint-frame="error"]').waitFor({state:'attached'});
+    const fallback=page.locator('[data-frame-mode="baked"]');
+    await fallback.waitFor();
+    await fallback.locator('.simple-card-frame__stock').evaluate(image=>image.decode());
+    const artBox=await fallback.locator('.simple-card-frame__art').boundingBox();
+    const loaderBox=await fallback.locator('[data-card-art-loader]').boundingBox();
+    assert.ok(loaderBox.x>=artBox.x-1 && loaderBox.y>=artBox.y-1);
+    assert.ok(loaderBox.x+loaderBox.width<=artBox.x+artBox.width+1);
+    assert.ok(loaderBox.y+loaderBox.height<=artBox.y+artBox.height+1);
+    assert.equal(await fallback.locator('[data-mana-color="U"]').count(),1);
+    await page.screenshot({path:'test-results/card-glint-baked-fallback.png'});
+
     await page.locator('.simple-card-frame').getByRole('button',{name:'Glint Test Adept: {T}: Draw a card.'}).click();
     assert.equal(await page.evaluate(()=>window.glintActivated),'draw');
   } finally {await browser.close();await vite.close();}
@@ -158,8 +169,10 @@ test('custom Island uses a default glint frame with local art and source attribu
     const href='https://www.reddit.com/r/custommagic/comments/ch910l/bob_ross_basic_lands/';
     assert.equal(await source.getAttribute('href'),href);
     const linkBox=await source.boundingBox(),frameBox=await page.locator('[data-card-glint-frame="ready"]').boundingBox();
-    assert.ok(linkBox.y>=frameBox.y+frameBox.height,'attribution does not cover the card or its controls');
-    await page.screenshot({path:'/tmp/custom-island-source-link.png'});
+    assert.ok(linkBox.y>=frameBox.y+frameBox.height*.93,'attribution stays in the bottom black border');
+    assert.ok(linkBox.y+linkBox.height<frameBox.y+frameBox.height,'attribution stays inside the card');
+    assert.ok(linkBox.x>=frameBox.x && linkBox.x+linkBox.width<=frameBox.x+frameBox.width,'attribution fits horizontally');
+    await page.locator('.card-frame-presentation').screenshot({path:'/tmp/custom-island-source-link.png'});
     await page.context().route('https://www.reddit.com/**',route=>route.fulfill({contentType:'text/html',body:'Original post'}));
     const popupPromise=page.waitForEvent('popup');
     await source.click();

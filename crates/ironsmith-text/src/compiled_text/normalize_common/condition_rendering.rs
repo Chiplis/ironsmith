@@ -3774,6 +3774,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "this is the {} time this ability has resolved this turn",
             ordinal_number_word(*count)
         ),
+        Condition::MaxTriggersPerObject(limit) => format!("this ability has triggered fewer than {limit} times"),
         Condition::MaxTimesEachTurn(limit) => {
             format!("this ability has triggered fewer than {limit} times this turn")
         }

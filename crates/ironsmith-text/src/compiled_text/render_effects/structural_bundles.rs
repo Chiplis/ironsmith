@@ -11270,6 +11270,10 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         return Some(compact);
     }
 
+    if let Some(compact) = describe_search_participant_offer_sequence(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_greatest_mana_value_tie_break_sequence(effects) {
         return Some(compact);
     }
@@ -14367,4 +14371,42 @@ mod tie_break_render_tests {
         assert!(describe_greatest_mana_value_tie_break_sequence(&sequence("other-round", 1)).is_none());
         assert!(describe_greatest_mana_value_tie_break_sequence(&sequence("round", 0)).is_none());
     }
+}
+
+/// Recover a searched-player qualifier only from the exact capture and
+/// consumption links; resolution-local tags are not public player names.
+fn describe_search_participant_offer_sequence(effects: &[Effect]) -> Option<String> {
+    let [seed, initial, offers, rewards, final_action] = effects else { return None; };
+    let seed = seed.downcast_ref::<crate::effects::TagPlayersEffect>()?;
+    let offers = offers.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let rewards = rewards.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let final_action = final_action.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect>()?;
+    if seed.filter != PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Any)
+        || offers.filter != PlayerFilter::Opponent || offers.starting_with_controller || offers.stop_after_first_happened
+        || rewards.filter != PlayerFilter::excluding(PlayerFilter::TaggedPlayer(seed.tag.clone()), PlayerFilter::your_team())
+        || !rewards.sequential || rewards.starting_with_controller || rewards.stop_after_first_happened
+        || final_action.tag != seed.tag || !final_action.require_evidence { return None; }
+    let [shuffle] = final_action.effects.as_slice() else { return None; };
+    let shuffle = shuffle.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.player != PlayerFilter::IteratedPlayer || shuffle.target_spec.is_some() { return None; }
+    fn captures(effect: &Effect, tag: &TagKey, count: &mut usize) -> bool {
+        if let Some(search) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            if search.is_search { *count += 1; return search.search_participant_tag.as_ref() == Some(tag); }
+        }
+        if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>() {
+            *count += 1; return search.participant_tag.as_ref() == Some(tag);
+        }
+        let mut valid = true;
+        effect.visit_child_effects(&mut |child| valid &= captures(child, tag, count));
+        valid
+    }
+    for effects in [std::slice::from_ref(initial), offers.effects.as_slice(), rewards.effects.as_slice()] {
+        let mut count = 0;
+        if !effects.iter().all(|effect| captures(effect, &seed.tag, &mut count)) || count == 0 { return None; }
+    }
+    let initial_text = describe_effect(initial);
+    let offers_text = describe_effect(&Effect::new(offers.clone()));
+    let reward_text = describe_effect_list(&rewards.effects);
+    Some(format!("{}. {}. For each opponent who searches a library this way, {}. Then each player who searched a library this way shuffles",
+        initial_text.trim_end_matches('.'), offers_text.trim_end_matches('.'), lowercase_first(reward_text.trim_end_matches('.'))))
 }

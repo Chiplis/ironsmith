@@ -27,6 +27,7 @@ pub enum TriggerFrequencyPredicateAst {
     MaxTimesEachTurn(u32),
     /// A maximum stated on the effect rather than the trigger
     DoThisMaxTimesEachTurn(u32),
+    MaxTriggersPerObject(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

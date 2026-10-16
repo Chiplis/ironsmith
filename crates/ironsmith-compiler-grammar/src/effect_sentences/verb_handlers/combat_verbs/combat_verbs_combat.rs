@@ -293,7 +293,7 @@ pub fn parse_deal_damage_with_amount(
         combat_grammar::parse_combat_damage_target_shape_lexed(tokens, used).map_err(|error| {
             let message = match error {
                 combat_grammar::CombatDamageTargetShapeError::MissingDamageKeyword => {
-                    "missing damage keyword".to_string()
+                    format!("missing damage keyword after amount at token {used} (clause: '{clause}')")
                 }
                 combat_grammar::CombatDamageTargetShapeError::UnsupportedTrailingIfClause
                 | combat_grammar::CombatDamageTargetShapeError::UnsupportedEmbeddedIfClause => {

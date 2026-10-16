@@ -39,11 +39,11 @@ const HAND_ROULETTE_CYCLE_COUNT = 3;
 const HAND_ROULETTE_CENTER_CYCLE = 1;
 const HAND_SELECTED_LAYOUT_Z_INDEX = 20000;
 const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
-const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
-// Keep in sync with the card-flight stagger in GameEffectAnimations.
+// Safety fallback only; the flight completion event normally reveals the card.
+const DRAW_TO_HAND_REVEAL_DELAY_MS = 3500;
+// Leave room for staggered flights if the animation overlay is unavailable.
 const DRAW_TO_HAND_REVEAL_STAGGER_MS = 150;
 const HAND_ACTION_HOVER_EVENT = "ironsmith:hand-action-hover";
-const HAND_KEYBOARD_EXIT_DELAY_MS = 260;
 const HAND_HOVER_ACTIVATION_DELAY_MS = 35;
 
 /** Map card_types array to a glow kind for hand display. */
@@ -480,7 +480,6 @@ export default function HandZone({
   const hoverActivateTimerRef = useRef(null);
   const pointerHoverTargetRef = useRef(null);
   const keyboardNavigationRef = useRef(false);
-  const keyboardExitTimerRef = useRef(null);
   const handListRef = useRef(null);
   const handScrollRef = useRef(null);
   const centerCycleRef = useRef(null);
@@ -558,7 +557,8 @@ export default function HandZone({
     [rawHandCards]
   );
   const pendingDrawCardIds = useMemo(() => {
-    if (!player?.can_view_hand || !handTransitionsHydrated) return new Set();
+    if (!player?.can_view_hand || !handTransitionsHydrated
+      || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return new Set();
     const ids = new Set();
     for (const item of drawTransitionItems) {
       if (seenHandTransitionIds.has(item.transitionId)) continue;
@@ -589,7 +589,7 @@ export default function HandZone({
       if (seenHandTransitionIds.has(item.transitionId)) continue;
       newlySeenTransitionIds.push(item.transitionId);
       if (!visibleHandIds.has(item.objectId) || drawRevealTimersRef.current.has(item.objectId)) continue;
-      addedHiddenIds.push(item.objectId);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) addedHiddenIds.push(item.objectId);
     }
     for (const item of tuckTransitionItems) {
       if (seenHandTransitionIds.has(item.transitionId)) continue;
@@ -623,7 +623,7 @@ export default function HandZone({
           next.delete(id);
           return next;
         });
-      }, DRAW_TO_HAND_REVEAL_DELAY_MS);
+      }, 1080);
       tuckHideTimersRef.current.set(id, timerId);
     });
     queueMicrotask(() => {
@@ -698,6 +698,21 @@ export default function HandZone({
       });
     });
   }, [departingTuckCardIds, persistHiddenDrawCardIds, rawHandCards]);
+  useLayoutEffect(() => {
+    const reveal = (event) => {
+      const id = String(event.detail.objectId);
+      window.clearTimeout(drawRevealTimersRef.current.get(id));
+      drawRevealTimersRef.current.delete(id);
+      setPersistHiddenDrawCardIds(current => {
+        if (!current.has(id)) return current;
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    };
+    window.addEventListener("ironsmith:hand-flight-landed", reveal);
+    return () => window.removeEventListener("ironsmith:hand-flight-landed", reveal);
+  }, []);
   const hiddenDrawCardIds = useMemo(() => {
     const ids = new Set(departingTuckCardIds);
     for (const id of persistHiddenDrawCardIds) {
@@ -811,10 +826,14 @@ export default function HandZone({
       window.removeEventListener(HAND_ACTION_HOVER_EVENT, handleHandActionHover);
     };
   }, [hoverableHandObjectIds]);
-  const paymentOptionHandObjectId = state?.decision?.kind === "mana_payment"
-    ? [...activeHoveredLinkedObjectIds].find(id => hoverableHandObjectIds.has(id))
-    : null;
-  const activeMenuHoveredHandObjectId = paymentOptionHandObjectId || (
+  // Decision options use the shared hover context; priority action groups
+  // also dispatch the explicit hand-hover event. Both use the normal fan.
+  const optionHoveredHandObjectId = hoverableHandObjectIds.has(String(hoveredObjectId))
+    ? String(hoveredObjectId)
+    : state?.decision?.kind === "mana_payment"
+      ? [...activeHoveredLinkedObjectIds].find(id => hoverableHandObjectIds.has(id))
+      : null;
+  const activeMenuHoveredHandObjectId = optionHoveredHandObjectId || (
     menuHoveredHandObjectId && hoverableHandObjectIds.has(menuHoveredHandObjectId)
       ? menuHoveredHandObjectId
       : null
@@ -832,7 +851,10 @@ export default function HandZone({
   const renderedHandCardCount = handCards.length + extraCards.length;
   const hasExtra = extraCards.length > 0;
   const isMobileFan = layout === "mobile-fan" || layout === "mobile-fullscreen";
-  const handHoverSuppressed = handDropHoverSuppressed || (isMobileFan && mobileHandDismissed);
+  // A fresh menu hover is intentional even after an outside click dismissed
+  // the fan. Keep drag/drop suppression, but let the menu raise its card.
+  const handHoverSuppressed = handDropHoverSuppressed
+    || (isMobileFan && mobileHandDismissed && !activeMenuHoveredHandObjectId);
   const isVerticalRail = layout === "vertical-rail";
   const localPreviewHeight = useLocalPreviewHeight(
     (layout === 'fan' || layout === 'mobile-fan') && !(availableWidth > 0), viewportWidth, viewportHeight
@@ -875,10 +897,12 @@ export default function HandZone({
     : hoveredHandObjectId;
   const activeFanObjectId = dragState || handHoverSuppressed
     ? null
-    : activeMenuHoveredHandObjectId
-      || interactionObjectId
-      || pinnedHandObjectId
-      || selectedObjectIdKey;
+    : keyboardNavigationActive
+      ? keyboardSelectedObjectId
+      : activeMenuHoveredHandObjectId
+        || interactionObjectId
+        || pinnedHandObjectId
+        || selectedObjectIdKey;
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
@@ -1003,7 +1027,6 @@ export default function HandZone({
         setMobileHandDismissed(true);
         window.clearTimeout(hoverActivateTimerRef.current);
         window.clearTimeout(hoverClearTimerRef.current);
-        window.clearTimeout(keyboardExitTimerRef.current);
         pointerHoverTargetRef.current = null;
         setHoveredHandObjectId(null);
         setMenuHoveredHandObjectId(null);
@@ -1108,10 +1131,6 @@ export default function HandZone({
         clearTimeout(hoverActivateTimerRef.current);
         hoverActivateTimerRef.current = null;
       }
-      if (keyboardExitTimerRef.current) {
-        clearTimeout(keyboardExitTimerRef.current);
-        keyboardExitTimerRef.current = null;
-      }
       const handlers = dragHandlersRef.current;
       if (!handlers) return;
       document.removeEventListener("pointermove", handlers.onMove);
@@ -1205,7 +1224,7 @@ export default function HandZone({
     if (hoverActivateTimerRef.current) clearTimeout(hoverActivateTimerRef.current);
     hoverActivateTimerRef.current = window.setTimeout(() => {
       hoverActivateTimerRef.current = null;
-      if (performance.now() < hoverSuppressedUntilRef.current) return;
+      if (keyboardNavigationRef.current || performance.now() < hoverSuppressedUntilRef.current) return;
       setHoveredHandObjectId(normalizedObjectId);
       clearHover();
       clearAnchoredCardPreview();
@@ -1247,10 +1266,6 @@ export default function HandZone({
     keyboardNavigationRef.current = false;
     setKeyboardNavigationActive(false);
     setKeyboardSelectedObjectId(null);
-    if (keyboardExitTimerRef.current) {
-      clearTimeout(keyboardExitTimerRef.current);
-      keyboardExitTimerRef.current = null;
-    }
   }, []);
   const suspendHandPointer = useKeyboardPointerSuspend(resumeHandPointer);
 
@@ -1262,10 +1277,6 @@ export default function HandZone({
     }
     keyboardNavigationRef.current = true;
     setKeyboardNavigationActive(true);
-    if (keyboardExitTimerRef.current) {
-      clearTimeout(keyboardExitTimerRef.current);
-      keyboardExitTimerRef.current = null;
-    }
     if (hoverClearTimerRef.current) {
       clearTimeout(hoverClearTimerRef.current);
       hoverClearTimerRef.current = null;
@@ -1313,6 +1324,7 @@ export default function HandZone({
     if (keyboardNavigationRef.current) setPinnedHandObjectId(String(card.id));
   }, [handleHoverEnter]);
   const handleHoverLeave = useCallback(() => {
+    if (keyboardNavigationRef.current) return;
     if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (hoverActivateTimerRef.current) {
       clearTimeout(hoverActivateTimerRef.current);
@@ -1380,34 +1392,9 @@ export default function HandZone({
   const handleHandPointerMove = useCallback((event) => {
     if (performance.now() < hoverSuppressedUntilRef.current) return;
     if (event.pointerType === "touch" || activePointerIdRef.current != null) return;
-    if (keyboardNavigationRef.current) {
-      const pointerOverHandCard = resolveHandHoverObjectId(event.clientX, event.clientY) != null;
-      // A stationary pointer, or one moving within the hand, must not steal
-      // selection from the keyboard. Leaving the hand is the explicit exit.
-      if (event.movementX === 0 && event.movementY === 0) return;
-      if (pointerOverHandCard) {
-        if (keyboardExitTimerRef.current) {
-          clearTimeout(keyboardExitTimerRef.current);
-          keyboardExitTimerRef.current = null;
-        }
-        // A real pointer movement over a card is an explicit request to
-        // return to mouse mode. Clear the keyboard selection first so the
-        // old centered card cannot remain raised alongside the hovered one.
-        keyboardNavigationRef.current = false;
-        setKeyboardNavigationActive(false);
-        setKeyboardSelectedObjectId(null);
-      } else {
-        if (!keyboardExitTimerRef.current) {
-          keyboardExitTimerRef.current = window.setTimeout(() => {
-            keyboardExitTimerRef.current = null;
-            keyboardNavigationRef.current = false;
-            setKeyboardNavigationActive(false);
-            setKeyboardSelectedObjectId(null);
-          }, HAND_KEYBOARD_EXIT_DELAY_MS);
-        }
-        return;
-      }
-    }
+    // The capture-phase suspension hook resumes us only after coordinates
+    // change. Layout-generated boundary events must never release the lock.
+    if (keyboardNavigationRef.current) return;
 
     const objectId = resolveHandHoverObjectId(event.clientX, event.clientY);
     pointerHoverTargetRef.current = objectId;
@@ -1433,15 +1420,8 @@ export default function HandZone({
 
   const handleHandPointerLeave = useCallback((event) => {
     if (event.pointerType === "touch") return;
+    if (keyboardNavigationRef.current) return;
     pointerHoverTargetRef.current = null;
-    if (keyboardNavigationRef.current && !keyboardExitTimerRef.current) {
-      keyboardExitTimerRef.current = window.setTimeout(() => {
-        keyboardExitTimerRef.current = null;
-        keyboardNavigationRef.current = false;
-        setKeyboardNavigationActive(false);
-        setKeyboardSelectedObjectId(null);
-      }, HAND_KEYBOARD_EXIT_DELAY_MS);
-    }
     handleHoverLeave();
   }, [handleHoverLeave]);
 
@@ -1703,7 +1683,7 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isDragSource = dragSourceObjectId === cardObjectId;
-        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && (hoveredHandObjectId === cardObjectId || isMenuActionPreview);
         const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
         const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
@@ -1771,7 +1751,7 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isDragSource = dragSourceObjectId === extraObjectId;
-      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && (hoveredHandObjectId === extraObjectId || isMenuActionPreview);
       const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)
@@ -1842,7 +1822,7 @@ export default function HandZone({
           : isActionLinkedHover ? "action-link" : baseGlowKind;
         const cardObjectId = String(card.id);
         const isDragSource = dragSourceObjectId === cardObjectId;
-        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === cardObjectId;
+        const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && (hoveredHandObjectId === cardObjectId || isMenuActionPreview);
         const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === cardObjectId;
         const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && cardObjectId === selectedObjectIdKey)
@@ -1921,7 +1901,7 @@ export default function HandZone({
         : isActionLinkedHover ? "action-link" : baseGlowKind;
       const extraObjectId = String(extra.id);
       const isDragSource = dragSourceObjectId === extraObjectId;
-      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && hoveredHandObjectId === extraObjectId;
+      const isHovered = !handHoverSuppressed && !isDragSource && !keyboardNavigationActive && (hoveredHandObjectId === extraObjectId || isMenuActionPreview);
       const isKeyboardSelected = !isDragSource && keyboardNavigationActive && keyboardSelectedObjectId === extraObjectId;
       const isInspected = !handHoverSuppressed && !isDragSource && !isMobileFan && (
           ((selectedObjectIdKey != null && extraObjectId === selectedObjectIdKey)

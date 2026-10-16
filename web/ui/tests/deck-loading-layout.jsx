@@ -16,10 +16,16 @@ function Fixture() {
     game: null,
     setStatus: (message) => { window.__status = message; },
   };
+  const embedded = new URLSearchParams(location.search).has("embedded");
   return (
     <GameContext.Provider value={value}>
       <div style={{ height: '100vh' }}>
-        <DeckLoadingView onTestDecks={() => {}} onCancel={() => {}} />
+        {embedded ? <div className="play-workspace lobby-sheet lobby-sheet-goldfish" style={{height:'100%',display:'flex',flexDirection:'column'}}>
+          <div className="lobby-sheet-body"><div className="lobby-sheet-setup">
+            <div className="flex"><button>Goldfish</button></div>
+            <DeckLoadingView embedded onTestDecks={() => {}} onCancel={() => {}} />
+          </div></div>
+        </div> : <DeckLoadingView onTestDecks={() => {}} onCancel={() => {}} />}
       </div>
     </GameContext.Provider>
   );

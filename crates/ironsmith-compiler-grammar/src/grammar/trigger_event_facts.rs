@@ -222,6 +222,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::BecomesBlockedOneOrMore(filter)
         | TriggerSpec::KeywordActionOneOrMore { source_filter: filter, .. }
         | TriggerSpec::ThisBecomesBlockedByObject(filter)
+        | TriggerSpec::PermanentTappedToPayCost { filter, .. }
         | TriggerSpec::PermanentBecomesTapped(filter)
         | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
         | TriggerSpec::PermanentBecomesUntapped { filter, .. }
@@ -238,6 +239,7 @@ fn trigger_subject(trigger: &TriggerSpec) -> TriggerSubjectAst {
         | TriggerSpec::IsDealtDamage(filter)
         | TriggerSpec::IsDealtCombatDamage(filter)
         | TriggerSpec::IsDealtExcessNoncombatDamage(filter)
+        | TriggerSpec::IsDealtExcessDamage { filter, .. }
         | TriggerSpec::LeavesBattlefield(filter)
         | TriggerSpec::ExiledFromBattlefield(filter)
         | TriggerSpec::Dies(filter)

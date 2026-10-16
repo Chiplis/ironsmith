@@ -52,7 +52,7 @@ use super::reference_helpers::{
 };
 use super::reference_resolution::{
     EffectReferenceResolutionConfig, annotate_effect_sequence,
-    effect_references_prior_prevention_amount, effect_references_typed_removed_counter_metric,
+    effect_references_prior_prevention_amount, effect_references_outer_metric_through_iteration,
     preserves_existing_it_for_power_self_damage_followup,
 };
 use super::runtime_static_ability_helpers::{
@@ -198,6 +198,9 @@ pub fn compile_effects(
     compile_annotated_effects_with_context(&annotated, ctx)
 }
 
+#[path = "compile_support/search_participant_bundles.rs"]
+mod search_participant_bundles;
+
 pub fn compile_annotated_effects_with_context(
     annotated: &AnnotatedEffectSequence,
     ctx: &mut EffectLoweringContext,
@@ -210,6 +213,10 @@ pub fn compile_annotated_effects_with_context(
         id_gen.next_effect_id = id_gen.next_effect_id.max(id.0 + 1);
     }
     ctx.apply_id_gen_context(id_gen);
+    if let Some(compiled) = search_participant_bundles::compile_search_participant_bundle(annotated, ctx)? {
+        apply_local_reference_env(ctx, &annotated.final_env);
+        return Ok(compiled);
+    }
     let mut compiled = Vec::new();
     let mut choices = Vec::new();
     let mut idx = 0;

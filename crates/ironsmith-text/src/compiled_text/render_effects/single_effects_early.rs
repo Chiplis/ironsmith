@@ -3841,7 +3841,8 @@ pub(crate) fn describe_search_origin_zones(
             format!("{owner_text} graveyard, hand, {conjunction} library")
         }
         _ if zones.len() == 2 && has_zone(Zone::Hand) && has_zone(Zone::Library) => {
-            format!("{owner_text} hand and library")
+            let conjunction = if choose.optional_search_zones { "and/or" } else { "and" };
+            format!("{owner_text} hand {conjunction} library")
         }
         [Zone::Library, Zone::Graveyard] => {
             format!("{owner_text} library and/or graveyard")

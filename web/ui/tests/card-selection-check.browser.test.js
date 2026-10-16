@@ -147,3 +147,21 @@ test("Look shows the latest remaining choice when the pointer leaves", async () 
     await vite.close();
   }
 });
+
+
+test("optional object selection can submit no cards while candidates exist", async () => {
+  const vite = await createServer({server: {host: "127.0.0.1", port: 0}, logLevel: "silent"});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-selection-check.html`);
+    const submit = page.getByRole("button", {name: "Submit (0/0-2)", exact: true});
+    await submit.click();
+    assert.deepEqual(JSON.parse(await page.locator("[data-commands]").textContent()),
+      [{type: "select_objects", object_ids: []}]);
+  } finally {
+    await browser.close();
+    await vite.close();
+  }
+});

@@ -897,6 +897,40 @@ impl DamageInstructionInputsExt for DealDamageEffect {
             ));
         }
 
+        if !self.target.is_target()
+            && self.target.count() == crate::effect::ChoiceCount::exactly(1)
+            && let ChooseSpec::ObjectOrPlayer(objects, players) = self.target.base()
+        {
+            // A mixed recipient named without "target" is chosen now. It must
+            // not default to the first permanent or announce a spell target.
+            let filter_ctx = ctx.filter_context(game);
+            let players = crate::effects::helpers::resolve_player_filter_to_list(
+                game, players, &filter_ctx, ctx,
+            )?;
+            let objects = crate::effects::helpers::resolve_objects_from_spec(
+                game, &ChooseSpec::All(objects.clone()), ctx,
+            )?;
+            let mut menu = players.into_iter().map(|player| (
+                DamageTarget::Player(player),
+                game.player(player).map(|player| player.name.clone()).unwrap_or_default(),
+            )).collect::<Vec<_>>();
+            menu.extend(objects.into_iter().filter(|id| object_can_be_dealt_damage(game, *id)).map(|id| (
+                DamageTarget::Object(id), game.object(id).unwrap().name.to_string(),
+            )));
+            if menu.is_empty() {
+                return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
+            }
+            let chooser = ctx.controller;
+            let chosen = crate::effects::composition::scoped_choice::select_typed_option(
+                game, ctx, chooser, "Choose damage recipient", &menu,
+                crate::effects::composition::scoped_choice::SingleChoicePolicy::First,
+            )?;
+            return Ok(match chosen {
+                Some(chosen) => DamageInstructionPlan::single(ctx, chosen, amount, self.source_is_combat, self.unpreventable),
+                None => DamageInstructionPlan::Finished(EffectOutcome::count(0)),
+            });
+        }
+
         if matches!(
             self.target.base(),
             ChooseSpec::AnyTarget

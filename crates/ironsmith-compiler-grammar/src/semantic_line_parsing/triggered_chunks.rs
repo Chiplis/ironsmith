@@ -413,6 +413,9 @@ fn trigger_frequency_condition_from_facts(
     facts: &TriggeredLineSemanticFacts,
     max_triggers_per_turn: Option<u32>,
 ) -> Option<PredicateAst> {
+    if let Some(limit) = facts.frequency.max_triggers_per_object {
+        return Some(PredicateAst::TriggerFrequency(TriggerFrequencyPredicateAst::MaxTriggersPerObject(limit)));
+    }
     max_triggers_per_turn.map(|limit| {
         PredicateAst::TriggerFrequency(
             if limit == 1
@@ -481,9 +484,8 @@ pub fn apply_chosen_option_to_triggered_chunk(
         } => {
             let trigger = apply_frequency_turn_scope(trigger, facts);
             let trigger = apply_trigger_intro_surface(trigger, facts.intro_surface);
-            let merged_max_condition = chunk_max_triggers_per_turn
-                .or(max_triggers_per_turn)
-                .and_then(|count| trigger_frequency_condition_from_facts(facts, Some(count)));
+            let merged_max_condition = trigger_frequency_condition_from_facts(facts,
+                chunk_max_triggers_per_turn.or(max_triggers_per_turn));
             let merged_condition = match (chosen_option, merged_max_condition) {
                 (Some(label), Some(max)) => Some(PredicateAst::And(
                     Box::new(condition_for_chosen_option(label)),

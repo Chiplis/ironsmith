@@ -6,7 +6,7 @@ export default function useDecisionRollout(identity, skipDocked = false) {
   const ref = useRef(null);
   useLayoutEffect(() => {
     const node = ref.current;
-    if (!node || (skipDocked && node.closest('[data-human-action-dock], .mobile-decision-sheet, .mobile-decision-dock'))) return undefined;
+    if (!node || node.closest('[data-human-action-dock]') || (skipDocked && node.closest('[data-human-action-dock], .mobile-decision-sheet, .mobile-decision-dock'))) return undefined;
     if (!node.matches('.mana-payment-editor') && !node.querySelector('.mana-payment-editor')) return undefined;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
     let frame;

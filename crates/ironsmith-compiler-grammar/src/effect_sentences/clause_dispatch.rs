@@ -1501,6 +1501,7 @@ fn lower_direct_clause_shape(
         }
         clause_grammar::DirectClauseShape::CopySourceExiledCard => {
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
                 filter: ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
                     crate::tag::CompilerReferenceTag::SourceExiled.bind(),
                     crate::target::TaggedOpbjectRelation::IsTaggedObject,

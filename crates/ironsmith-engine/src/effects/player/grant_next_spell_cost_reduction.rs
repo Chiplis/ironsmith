@@ -21,6 +21,7 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
             for player in players {
                 let mut filter = self.filter.clone();
                 lock_target_player_filters_for_player(&mut filter, player);
+                if !lock_source_type_choice(&mut filter, game, ctx) { continue; }
                 // The permission is offered on the card before it is cast;
                 // the spell-only facets are checked when the cast consumes it.
                 filter.zone = None;
@@ -61,6 +62,7 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
             for player in players {
                 let mut filter = self.filter.clone();
                 lock_target_player_filters_for_player(&mut filter, player);
+                if !lock_source_type_choice(&mut filter, game, ctx) { continue; }
                 // The registered rule outlives this resolution, so a relative
                 // "that player" in the spell filter must name the player it
                 // meant now, not whoever is iterated when a spell is cast.
@@ -107,6 +109,36 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
         }
         Ok(EffectOutcome::resolved())
     }
+}
+
+/// A temporary rule retains the choice read by the resolving ability, even
+/// after its source leaves or is given a different choice later.
+fn lock_source_type_choice(
+    filter: &mut crate::target::ObjectFilter,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> bool {
+    let snapshot = game.source_departure_snapshot(ctx.source).or_else(|| {
+        ctx.source_snapshot.as_ref().filter(|snapshot| snapshot.object_id == ctx.source)
+    });
+    let card_type = game.chosen_card_type(ctx.source).or_else(|| snapshot.and_then(|snapshot| snapshot.chosen_card_type));
+    if filter.chosen_creature_type && !filter.has_chosen_type_this_way_surface() {
+        let subtype = game.chosen_subtype(ctx.source).or_else(|| snapshot.and_then(|snapshot| snapshot.chosen_subtype));
+        if let Some(subtype) = subtype {
+            filter.all_subtypes.push(subtype);
+        } else if let Some(card_type) = card_type {
+            filter.all_card_types.push(card_type);
+        } else {
+            return false;
+        }
+        filter.chosen_creature_type = false;
+    }
+    if filter.chosen_card_type {
+        let Some(card_type) = card_type else { return false; };
+        filter.all_card_types.push(card_type);
+        filter.chosen_card_type = false;
+    }
+    true
 }
 
 fn lock_target_player_filters_for_player(

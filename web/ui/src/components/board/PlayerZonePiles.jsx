@@ -27,7 +27,7 @@ import {
 const ZONE_TARGET_GROW_MS = 220;
 // Desktop HUD: the local Graveyard/Exile column rises toward the opponent
 // piles above it to leave the decision dock more height underneath.
-const LOCAL_PILES_MAX_LIFT = 120;
+const LOCAL_PILES_MAX_LIFT = 160;
 const LOCAL_PILES_CLEARANCE = 20;
 export const ZONE_PILES_MOVED_EVENT = "ironsmith:zone-piles-moved";
 

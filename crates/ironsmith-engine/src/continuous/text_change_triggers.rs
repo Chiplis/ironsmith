@@ -124,6 +124,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::BecomesBlocked { filter } | K::ThisBecomesBlockedByObject { filter }
         | K::LeavesBattlefield { filter } | K::TurnedFaceUp { filter }
         | K::PermanentBecomesTapped { filter, one_or_more: _ }
+        | K::PermanentTappedToPayCost { filter, .. }
         | K::PermanentBecomesUntapped { filter, one_or_more: _ }
         | K::BecomesTargetedObject { filter } | K::BecomesTargetedBySpell { filter }
         | K::BecomesTargetedByStackObject { filter } | K::ThisDealsDamageTo { filter }
@@ -689,7 +690,12 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     exact!(PlayerRevealsCardTrigger, n, K::PlayerRevealsCard {
         player: n.player.clone(), filter: n.filter.clone(), from_source: n.from_source, first_draw_pair: n.first_draw_pair,
     });
-    exact!(PermanentBecomesTappedTrigger, n, K::PermanentBecomesTapped { filter: n.filter.clone(), one_or_more: n.one_or_more });
+    if let Some(n) = trigger.downcast_ref::<native::PermanentBecomesTappedTrigger>() {
+        let kind = if let Some(cost_kind) = &n.cost_kind {
+            K::PermanentTappedToPayCost { filter: n.filter.clone(), cost_kind: cost_kind.clone() }
+        } else { K::PermanentBecomesTapped { filter: n.filter.clone(), one_or_more: n.one_or_more } };
+        return exact_native_kind(n, kind);
+    }
     exact!(PermanentBecomesUntappedTrigger, n, K::PermanentBecomesUntapped { filter: n.filter.clone(), one_or_more: n.one_or_more });
     exact!(PermanentSacrificedTrigger, n, K::PermanentSacrificed { filter: n.filter.clone() });
     exact!(PermanentDestroyedTrigger, n, K::PermanentDestroyed { filter: n.filter.clone() });

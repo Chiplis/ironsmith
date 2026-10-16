@@ -580,6 +580,22 @@ fn read_players_cant_pay_life_or_sacrifice_line(
     input: &EarlyLine<'_>,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = input.tokens;
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::parser_token_word_refs(trimmed);
+    if (words.starts_with(&["players", "can't", "pay", "life", "or", "sacrifice"])
+        || words.starts_with(&["players", "cant", "pay", "life", "or", "sacrifice"]))
+        && words.ends_with(&["to", "cast", "spells", "or", "activate", "abilities"])
+        && trimmed.len() > 12
+        && !is_players_cant_pay_life_or_sacrifice_line_lexed(tokens)
+    {
+        let filter = crate::object_filters::parse_object_filter(&trimmed[6..trimmed.len()-6], false)?;
+        return Ok(Some(vec![StaticAbility::restriction(
+            crate::effect::Restriction::CastOrActivatePayments {
+                player: PlayerFilter::Any, pay_life: true, sacrifice: Some(filter),
+            }, crate::lexer::render_token_slice(trimmed),
+        ).into()]));
+    }
+
     if is_players_cant_pay_life_or_sacrifice_line_lexed(tokens) {
         return Ok(Some(vec![
             StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate().into(),

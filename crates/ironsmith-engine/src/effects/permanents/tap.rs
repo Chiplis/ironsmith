@@ -14,6 +14,7 @@ pub use ironsmith_core::TapEffect;
 /// Selection/payment constraints belong to the caller; mutation and receipts
 /// belong here, including one before-state world for the complete batch.
 pub(crate) struct TapAction {
+    cost_kind: Option<ironsmith_core::OptionalCostKind>,
     before: std::collections::HashMap<crate::ids::ObjectId, ObjectSnapshot>,
     events: Vec<TriggerEvent>,
     objects: Vec<crate::ids::ObjectId>,
@@ -29,6 +30,7 @@ impl TapAction {
         provenance: crate::provenance::ProvNodeId,
     ) -> Self {
         Self {
+            cost_kind: None,
             before: crate::events::other::before_tap_state_snapshots(game),
             events: Vec::new(),
             objects: Vec::new(),
@@ -36,6 +38,11 @@ impl TapAction {
             actor,
             provenance,
         }
+    }
+
+    fn with_cost_kind(mut self, cost_kind: Option<ironsmith_core::OptionalCostKind>) -> Self {
+        self.cost_kind = cost_kind;
+        self
     }
 
     pub(crate) fn tap(&mut self, game: &mut GameState, id: crate::ids::ObjectId) -> bool {
@@ -64,8 +71,10 @@ impl TapAction {
         }
         self.objects.push(id);
         self.memory.extend(memory);
+        let mut event = PermanentTappedEvent::capture(game, id, Some(self.actor));
+        event.cost_kind = self.cost_kind.clone();
         self.events.push(TriggerEvent::new_with_provenance(
-            PermanentTappedEvent::capture(game, id, Some(self.actor)),
+            event,
             event_provenance,
         ));
         true
@@ -101,11 +110,20 @@ pub(crate) fn tap_cost_objects_with_outputs(
     ctx: &mut ExecutionContext,
     objects: &[crate::ids::ObjectId],
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    tap_cost_objects_for_kind_with_outputs(game, ctx, objects, None)
+}
+
+pub(crate) fn tap_cost_objects_for_kind_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    objects: &[crate::ids::ObjectId],
+    cost_kind: Option<ironsmith_core::OptionalCostKind>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     crate::effects::composition::execute_transaction(
         game,
         ctx,
         || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-        |game, ctx| TapCostObjects(objects.to_vec()).execute_child_with_outputs(game, ctx),
+        |game, ctx| TapCostObjects(objects.to_vec(), cost_kind).execute_child_with_outputs(game, ctx),
     )
 }
 
@@ -113,7 +131,7 @@ pub(crate) fn tap_cost_objects_with_outputs(
 /// The complete payment's observations must be staged before any caller builds
 /// its Crew, Saddle or Conspire completion from post-payment characteristics.
 #[derive(Debug, Clone)]
-struct TapCostObjects(Vec<crate::ids::ObjectId>);
+struct TapCostObjects(Vec<crate::ids::ObjectId>, Option<ironsmith_core::OptionalCostKind>);
 
 impl EffectExecutor for TapCostObjects {
     fn execute(
@@ -124,14 +142,15 @@ impl EffectExecutor for TapCostObjects {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        commit_tap_cost_objects(game, ctx, &self.0)
+        commit_tap_cost_objects_for_kind(game, ctx, &self.0, self.1.clone())
     }
 }
 
-fn commit_tap_cost_objects(
+fn commit_tap_cost_objects_for_kind(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     objects: &[crate::ids::ObjectId],
+    cost_kind: Option<ironsmith_core::OptionalCostKind>,
 ) -> Result<EffectOutcome, ExecutionError> {
     let mut seen = std::collections::HashSet::new();
     if objects
@@ -143,7 +162,7 @@ fn commit_tap_cost_objects(
         ));
     }
     crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
-        let mut action = TapAction::new(game, ctx.controller, ctx.provenance);
+        let mut action = TapAction::new(game, ctx.controller, ctx.provenance).with_cost_kind(cost_kind);
         for id in objects {
             if !action.tap(game, *id) {
                 return Err(ExecutionError::Impossible(
@@ -303,6 +322,35 @@ mod tests {
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
+
+    #[test]
+    fn tap_payment_receipts_keep_typed_cost_and_exact_contributor_before_publication() {
+        for kind in [None, Some(ironsmith_core::OptionalCostKind::Teamwork), Some(ironsmith_core::OptionalCostKind::Conspire)] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let mut filter = crate::target::ObjectFilter::default(); filter.source = true;
+            let ability = crate::ability::Ability::triggered(crate::triggers::Trigger::permanent_tapped_to_pay_cost(filter, ironsmith_core::OptionalCostKind::Teamwork), vec![crate::effect::Effect::gain_life(1)]);
+            let definition = crate::CardDefinitionBuilder::new(CardId::new(), "Contributor")
+                .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2))
+                .with_ability(ability).build();
+            let first = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let second = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let mut ctx = ExecutionContext::new_default(second, alice);
+            let result = crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(TapCostObjects(vec![first], kind.clone())), &mut ctx).unwrap();
+            let event = result.events.iter().find(|event| event.downcast::<PermanentTappedEvent>().is_some()).unwrap();
+            let receipt = event.downcast::<PermanentTappedEvent>().unwrap();
+            assert_eq!(receipt.cost_kind, kind);
+            assert_eq!(receipt.permanent, first);
+            assert!(receipt.snapshot.is_some()); assert!(receipt.before_snapshot.is_some());
+            let mut queue = crate::triggers::TriggerQueue::new();
+            crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+            assert_eq!(queue.entries.len(), usize::from(kind == Some(ironsmith_core::OptionalCostKind::Teamwork)), "cost identity must be present when the tap is matched");
+            let hand = game.move_object_by_effect(first, Zone::Hand).unwrap();
+            let returned = game.move_object_by_effect(hand, Zone::Battlefield).unwrap();
+            assert!(!game.object(returned).unwrap().abilities.is_empty());
+            assert!(crate::triggers::check_triggers(&game, event).is_empty(), "an old occurrence never taps this source's new incarnation");
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

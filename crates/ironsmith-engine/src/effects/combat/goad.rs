@@ -199,6 +199,7 @@ mod tests {
                 ability_origins: None,
                 stack_kind: None,
                 chosen_subtype: None,
+                chosen_card_type: None,
                 numeric_choice_memory: None,
                 secret_chosen_subtype: None,
                 noted_life_total: None,

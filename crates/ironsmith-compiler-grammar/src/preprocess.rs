@@ -303,6 +303,25 @@ fn split_conditional_grant_list(line: &str) -> Option<Vec<String>> {
 }
 
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    // Separate the static tapped-entry ability from a following entry program.
+    // Its pronoun names the same source, so retain the first sentence's subject.
+    if let Some(period) = line_tokens.iter().position(|token| token.kind == TokenKind::Period) {
+        let first = &line_tokens[..period];
+        let second = &line_tokens[period + 1..];
+        if matches!(
+            crate::grammar::activated_lines::parse_enters_tapped_line_shape(first),
+            crate::grammar::activated_lines::EntersTappedLineShape::EntersTapped
+        ) && second.first().is_some_and(|token| token.is_word("as"))
+            && second.get(1).is_some_and(|token| token.is_word("it"))
+            && second.get(2).is_some_and(|token| token.is_word("enters"))
+            && let Some(enters) = first.iter().position(|token| token.is_word("enters"))
+        {
+            return vec![
+                format!("{}.", render_token_slice(first)),
+                format!("As {} {}", render_token_slice(&first[..enters]), render_token_slice(&second[2..])),
+            ];
+        }
+    }
     if let Some(lines) = split_conditional_grant_list(line) {
         return lines;
     }

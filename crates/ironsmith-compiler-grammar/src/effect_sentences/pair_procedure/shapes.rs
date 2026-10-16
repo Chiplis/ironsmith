@@ -179,6 +179,7 @@ pub(super) fn search_two_disposition_then_shuffle(
 
     Ok(Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: search_filter,
             count,
             count_value,

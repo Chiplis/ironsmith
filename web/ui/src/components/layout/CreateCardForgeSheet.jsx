@@ -1,3 +1,5 @@
+import AddCardSheet from "./AddCardSheet";
+import CustomCardsButton from "./CustomCardsButton";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
@@ -543,6 +545,7 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
 
 export default function CreateCardForgeSheet({
   disabled = false,
+  onAddCardNotice,
   players = [],
   selectedPlayer = 0,
   onSelectPlayer,
@@ -555,6 +558,7 @@ export default function CreateCardForgeSheet({
   const ui = useUiText();
   const { game, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
+  const [buildMode, setBuildMode] = useState("search");
   const [seedLoading, setSeedLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -579,7 +583,7 @@ export default function CreateCardForgeSheet({
   }, [activeFaceIndex, draft.faces.length]);
 
   useEffect(() => {
-    if (!open || !game) return undefined;
+    if (!open || buildMode !== "create" || !game) return undefined;
 
     const timeoutId = window.setTimeout(async () => {
       setPreviewLoading(true);
@@ -596,7 +600,7 @@ export default function CreateCardForgeSheet({
     }, 180);
 
     return () => window.clearTimeout(timeoutId);
-  }, [draft, game, open]);
+  }, [draft, game, open, buildMode]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
@@ -636,9 +640,9 @@ export default function CreateCardForgeSheet({
     setOpen(nextOpen);
     if (nextOpen) {
       setSaveMessage("");
-      void loadSeed();
+      setBuildMode("search");
     }
-  }, [loadSeed]);
+  }, []);
 
   const updateFace = useCallback((index, patch) => {
     setDraft((current) => ({
@@ -698,7 +702,7 @@ export default function CreateCardForgeSheet({
       const validation = await game.previewCustomCard(savedDraft);
       if (!validation.canCreate) throw new Error("This card must compile before it can be saved");
       await saveCustomCard(savedDraft);
-      setSaveMessage(`Saved ${savedDraft.faces[0].name}. Enable custom cards in Add Card to use it. Saved on this browser; saving the same name updates it.`);
+      setSaveMessage(`Saved ${savedDraft.faces[0].name}. Enable custom cards in Build’s card search to use it. Saved on this browser; saving the same name updates it.`);
     } catch (error) {
       setSaveMessage(`Save failed: ${String(error?.message || error)}`);
     } finally {
@@ -873,15 +877,30 @@ export default function CreateCardForgeSheet({
         >
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
             <div className="card-forge-eyebrow">{ui("Forge")}</div>
-            <SheetTitle>{ui("Compile Card")}</SheetTitle>
-            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Seeded from a random nonland card in the decks at the table. The sample is only a teaching aid, and every printed characteristic can be rewritten before the card enters this goldfishing session.")}</SheetDescription>
+            <SheetTitle>{ui("Build")}</SheetTitle>
+            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Search supported cards to add to your game, or create a custom card.")}</SheetDescription>
           </SheetHeader>
 
+          <Tabs value={buildMode} onValueChange={(mode) => {
+            setBuildMode(mode);
+            if (mode === "create" && !seedDraft) void loadSeed();
+          }} className="min-h-0 flex-1">
+            <TabsList aria-label={ui("Build mode")} className="mx-4 shrink-0">
+              <TabsTrigger value="search">{ui("Search cards")}</TabsTrigger>
+              <TabsTrigger value="create">{ui("Create card")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="search" className="min-h-0 overflow-y-auto">
+              <div className="mx-auto w-full max-w-xl">
+                <AddCardSheet embedded disabled={disabled} onAddCardNotice={onAddCardNotice} onClose={() => setOpen(false)} />
+              </div>
+            </TabsContent>
+            <TabsContent value="create" className="flex min-h-0 flex-col overflow-hidden data-[state=inactive]:hidden">
           <div className="card-forge-toolbar">
             <div className="card-forge-banner">
               {seedLoading ? ui("Loading deck sample...") : ui("Seed example: {0}", { 0: seedDraft?.faces?.[0]?.name || "Blank custom card" })}
             </div>
             <div className="flex flex-wrap gap-2">
+              <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"
                 variant="secondary"
@@ -1056,6 +1075,8 @@ export default function CreateCardForgeSheet({
               </Button>
             </div>
           </div>
+            </TabsContent>
+          </Tabs>
         </SheetContent>
       </Sheet>
     </>

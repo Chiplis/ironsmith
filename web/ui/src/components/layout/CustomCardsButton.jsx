@@ -5,7 +5,7 @@ import useUiText from "@/i18n/useUiText";
 import { sampleCustomCards } from "@/lib/custom-card-pool";
 import { setCompiledCardNames } from "@/lib/scryfall";
 
-export default function CustomCardsButton({ className = "" }) {
+export default function CustomCardsButton({ className = "", label = "Custom cards" }) {
   const { game, state, multiplayer, runWasmInteraction, refresh, setStatus } = useGame();
   const ui = useUiText();
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,7 @@ export default function CustomCardsButton({ className = "" }) {
     <button type="button" className={className} disabled={locked || busy || !game}
       aria-busy={busy} onClick={() => void refill()}
       title={ui("Replace your hand with 7 random custom cards")}>
-      {ui(busy ? "Loading custom cards…" : "Custom cards")}
+      {ui(busy ? "Loading custom cards…" : label)}
     </button>
   );
 }

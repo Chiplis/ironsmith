@@ -10,6 +10,7 @@ import { arenaFrameColor, arenaPermanentKind } from '@/lib/mobile-arena';
 export default function MobileArenaCardFace({ card, name, artUrl, pending, primary, manaChoices, manaStripOpen, onManaChoice }) {
   const ui = useUiText();
   const kind = arenaPermanentKind(card);
+  const sagaArt = kind === 'saga' || card.layout === 'saga' || /\bSaga\b/i.test(card.type_line || '');
   const manaColors = landManaColors(card);
   const statKind = kind === 'planeswalker' ? 'loyalty' : kind === 'battle' ? 'defense' : null;
   const liveCounter = statKind && (card.counters || []).find?.(counter => String(counter.kind).toLowerCase() === statKind);
@@ -18,7 +19,7 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
   const chapters = [...new Set(String(card.oracle_text || '').match(/^(?:I|II|III|IV|V|VI)(?=\s*[—,])/gm) || [])];
   return <div className="arena-permanent" data-kind={kind} data-mana-strip={manaColors.length ? "true" : undefined} data-token={token || undefined}
     style={{ '--arena-frame': arenaFrameColor(card) }}>
-    <div className="arena-permanent-art">
+    <div className="arena-permanent-art" data-saga-art={sagaArt || undefined}>
       <LoadingCardArt src={cardArtCropUrl(artUrl)} sourceKey={artUrl} pending={pending}
         colors={cardArtColors(card)} variant="battlefield" alt="" draggable={false} />
     </div>

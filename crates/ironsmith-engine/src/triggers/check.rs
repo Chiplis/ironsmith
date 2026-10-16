@@ -465,7 +465,7 @@ pub struct TriggerQueue {
     /// Pending triggered abilities.
     pub entries: Vec<TriggeredAbilityEntry>,
     /// Ability-triggered events generated when entries first become pending.
-    ability_triggered_events: Vec<(TriggerEvent, Option<u32>)>,
+    ability_triggered_events: Vec<(TriggerEvent, Vec<crate::ConditionExpr>)>,
 }
 
 const ATTACHED_SOURCE_TAG: &str = "attached_source";
@@ -507,10 +507,15 @@ impl TriggerQueue {
         }
         // "For the first time each turn" is an event-history gate checked at
         // match time, not a limit on how often the ability triggers.
-        let trigger_limit = match entry.ability.intervening_if.as_ref() {
-            Some(crate::ConditionExpr::MaxTimesEachTurn(limit)) => Some(*limit),
-            _ => None,
-        };
+        fn collect_limits(condition: &crate::ConditionExpr, limits: &mut Vec<crate::ConditionExpr>) {
+            match condition {
+                crate::ConditionExpr::MaxTimesEachTurn(_) | crate::ConditionExpr::MaxTriggersPerObject(_) => limits.push(condition.clone()),
+                crate::ConditionExpr::And(left, right) => { collect_limits(left, limits); collect_limits(right, limits); }
+                _ => {},
+            }
+        }
+        let mut trigger_limit = Vec::new();
+        if let Some(condition) = entry.ability.intervening_if.as_ref() { collect_limits(condition, &mut trigger_limit); }
         self.ability_triggered_events.push((event, trigger_limit));
         self.entries.push(entry);
     }
@@ -528,7 +533,7 @@ impl TriggerQueue {
         self.entries.push(entry);
     }
 
-    pub(crate) fn take_ability_triggered_events(&mut self) -> Vec<(TriggerEvent, Option<u32>)> {
+    pub(crate) fn take_ability_triggered_events(&mut self) -> Vec<(TriggerEvent, Vec<crate::ConditionExpr>)> {
         std::mem::take(&mut self.ability_triggered_events)
     }
 

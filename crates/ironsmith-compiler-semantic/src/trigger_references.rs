@@ -233,6 +233,7 @@ pub fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<TagKey> 
             | TriggerSpec::IsDealtDamage(_)
             | TriggerSpec::IsDealtCombatDamage(_)
             | TriggerSpec::IsDealtExcessNoncombatDamage(_)
+                    | TriggerSpec::IsDealtExcessDamage { .. }
             | TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsDamageTo { .. }
@@ -265,6 +266,7 @@ fn watched_permanent(trigger: &TriggerSpec) -> Option<WatchedPermanent> {
         TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Source, .. } => return Some(WatchedPermanent::Source),
         TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. } if filter.source => return Some(WatchedPermanent::Source),
         TriggerSpec::DamageReceived { target: crate::target::ChooseSpec::Object(filter), .. }
+        | TriggerSpec::PermanentTappedToPayCost { filter, .. }
         | TriggerSpec::PermanentBecomesTapped(filter)
         | TriggerSpec::PermanentBecomesTappedOneOrMore(filter)
         | TriggerSpec::PermanentBecomesUntapped { filter, .. }
@@ -297,7 +299,7 @@ pub fn trigger_binds_excess_damage_amount(trigger: &TriggerSpec) -> bool {
         TriggerSpec::Either(left, right) => {
             trigger_binds_excess_damage_amount(left) && trigger_binds_excess_damage_amount(right)
         }
-        TriggerSpec::IsDealtExcessNoncombatDamage(_) => true,
+        TriggerSpec::IsDealtExcessNoncombatDamage(_) | TriggerSpec::IsDealtExcessDamage { .. } => true,
         _ => false,
     }
 }

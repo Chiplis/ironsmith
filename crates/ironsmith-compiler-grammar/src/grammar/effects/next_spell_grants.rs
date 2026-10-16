@@ -135,6 +135,7 @@ struct RawNextSpellGrant<'a> {
     player: PlayerAst,
     cast_by: PlayerFilter,
     first_subject: &'a [OwnedLexToken],
+    trailing_subject: Option<&'a [OwnedLexToken]>,
     second_subject: Option<&'a [OwnedLexToken]>,
     ability: NextSpellGrantAbilitySurface<'a>,
 }
@@ -261,7 +262,7 @@ fn parse_next_card_play_timing<'a>(input: &mut LexStream<'a>) -> WResult<RawNext
     primitives::sentence_end().parse_next(input)?;
     Ok(RawNextSpellGrant {
         player: PlayerAst::You, cast_by: PlayerFilter::You,
-        first_subject, second_subject: None, ability: NextSpellGrantAbilitySurface::PlayTiming,
+        first_subject, trailing_subject: None, second_subject: None, ability: NextSpellGrantAbilitySurface::PlayTiming,
     })
 }
 
@@ -275,6 +276,11 @@ fn parse_standard_next_spell_grant<'a>(
         .parse_next(input)?;
     let caster = caster_suffix.parse_next(input)?;
     primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    let trailing_subject = opt(alt((
+        primitives::phrase(&["of", "the", "chosen", "card", "type"]),
+        primitives::phrase(&["of", "the", "chosen", "creature", "type"]),
+        primitives::phrase(&["of", "the", "chosen", "type"]),
+    )).take()).parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     let ability = alt((
         (
@@ -291,6 +297,7 @@ fn parse_standard_next_spell_grant<'a>(
         player: caster.player,
         cast_by: caster.cast_by,
         first_subject,
+        trailing_subject,
         second_subject: None,
         ability,
     })
@@ -318,6 +325,7 @@ fn parse_paired_next_spell_grant<'a>(input: &mut LexStream<'a>) -> WResult<RawNe
         player: caster.player,
         cast_by: caster.cast_by,
         first_subject,
+        trailing_subject: None,
         second_subject: Some(second_subject),
         ability,
     })
@@ -349,6 +357,7 @@ fn parse_when_next_spell_grant<'a>(input: &mut LexStream<'a>) -> WResult<RawNext
         player: caster.player,
         cast_by: caster.cast_by,
         first_subject,
+        trailing_subject: None,
         second_subject: None,
         ability,
     })
@@ -405,7 +414,9 @@ pub fn parse_next_spell_grant_tokens(
     ) else {
         return Ok(None);
     };
-    let mut filters = vec![spell_filter(raw.first_subject, raw.cast_by.clone())?];
+    let mut first_subject = raw.first_subject.to_vec();
+    if let Some(qualifier) = raw.trailing_subject { first_subject.extend_from_slice(qualifier); }
+    let mut filters = vec![spell_filter(&first_subject, raw.cast_by.clone())?];
     if let Some(second_subject) = raw.second_subject {
         filters.push(spell_filter(second_subject, raw.cast_by)?);
     }

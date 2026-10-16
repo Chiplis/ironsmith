@@ -283,6 +283,11 @@ fn strip_trigger_frequency_suffix_tokens(
 fn strip_trailing_trigger_cap_suffix_tokens(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], Option<u32>) {
+    if let Some(head) = grammar::strip_lexed_suffix_phrase(tokens, &["this", "ability", "triggers", "only", "once"]) {
+        // The complete authored line's semantic facts retain this lifetime cap.
+        // It must not be represented as a per-turn count.
+        return (head, None);
+    }
     let Some(shape) = document_grammar::parse_trailing_trigger_cap_suffix_tokens(tokens) else {
         return (tokens, None);
     };

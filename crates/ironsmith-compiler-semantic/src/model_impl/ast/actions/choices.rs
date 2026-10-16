@@ -9,6 +9,7 @@ pub enum ChoiceActionAst {
     ChooseNumber { min: u32, max: Option<u32>, source_owned: bool },
     ChooseCardType {
         options: Vec<CardType>,
+        shared_among: Option<(ObjectFilter, u32)>,
     },
     ChooseNamedOption {
         options: Vec<String>,

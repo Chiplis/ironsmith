@@ -156,6 +156,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }));
     }
     let search_zones_override = subject_routing.search_zones_override;
+    let optional_search_zones = search_tokens.iter().take_while(|token| !token.is_word("for")).any(|token| token.is_word("and/or"));
     if search_library_has_unsupported_top_position_probe_lexed(search_tokens) {
         return Err(CardTextError::ParseError(format!(
             "unsupported search-library top-position clause (clause: '{}')",
@@ -496,6 +497,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
 
         let mut per_object_effects = vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones,
                 filter,
                 count,
                 count_value: count_value.clone(),
@@ -576,6 +578,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             normalize_search_library_filter(&mut named_filter);
             sequence.push(EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    optional_search_zones,
                     filter: named_filter,
                     count: named_count,
                     count_value: None,
@@ -615,6 +618,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let search_zones = search_zones_override.unwrap_or_else(|| vec![Zone::Library]);
         let mut sequence = vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones,
                 filter,
                 count,
                 count_value: count_value.clone(),
@@ -651,6 +655,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let shuffle_player = player;
         let mut sequence = vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones,
                 filter,
                 count,
                 count_value: count_value.clone(),
@@ -744,6 +749,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         };
         let mut sequence = vec![EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones,
                 filter,
                 count,
                 count_value: count_value.clone(),
@@ -798,6 +804,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         let searched_tag: TagKey = crate::tag::declared_key("searched_face_down").into();
         let mut sequence = vec![
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones,
                 filter,
                 count,
                 count_value: count_value.clone(),

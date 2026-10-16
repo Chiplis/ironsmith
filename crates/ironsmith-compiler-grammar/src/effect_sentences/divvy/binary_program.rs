@@ -84,6 +84,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
     let mut produced = vec![
         producer,
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: capture_filter(&pool, Zone::Library),
             count: ChoiceCount::any_number(), count_value: None,
             // The private viewer already declared the target, so this is a
@@ -175,6 +176,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
                 ),
                 // You separate the pool: the first pile is any subset of it.
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    optional_search_zones: false,
                     filter: capture_filter(&pool, Zone::Graveyard),
                     count: ChoiceCount::any_number(), count_value: None,
                     player: PlayerAst::You,
@@ -236,6 +238,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
                 ],
                 BinaryPileDestination::OneToHandAndPoolToBottom => vec![
                     EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                        optional_search_zones: false,
                         filter: capture_filter(chosen, source_zone), count: ChoiceCount::exactly(1),
                         count_value: None, player: PlayerAst::You, tag: selected.clone(),
                         zones: vec![Zone::Library], search_mode: None,

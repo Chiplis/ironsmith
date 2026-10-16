@@ -180,6 +180,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::IsDealtDamage(_)
                     | TriggerSpec::IsDealtCombatDamage(_)
                     | TriggerSpec::IsDealtExcessNoncombatDamage(_)
+                    | TriggerSpec::IsDealtExcessDamage { .. }
                     | TriggerSpec::ThisDealsDamage
                     | TriggerSpec::ThisDealsDamageTo(_)
                     | TriggerSpec::DealsDamage { .. }
@@ -5278,7 +5279,7 @@ pub fn effect_references_typed_removed_counter_metric(effect: &EffectAst) -> boo
     references_removed_count
 }
 
-fn effect_references_outer_metric_through_iteration(effect: &EffectAst) -> bool {
+pub fn effect_references_outer_metric_through_iteration(effect: &EffectAst) -> bool {
     if effect_references_typed_removed_counter_metric(effect) {
         return true;
     }
@@ -5291,8 +5292,8 @@ fn effect_references_outer_metric_through_iteration(effect: &EffectAst) -> bool 
             _ => None,
         };
         references_partitioned_exile |= query.is_some_and(|query| {
-            query.action == Some(PriorEffectAction::Exiled)
-                && query.player == Some(PlayerFilter::IteratedPlayer)
+            query.use_origin_memory || (query.action == Some(PriorEffectAction::Exiled)
+                && query.player == Some(PlayerFilter::IteratedPlayer))
         });
     });
     references_partitioned_exile
@@ -11370,6 +11371,7 @@ mod tests {
 
     fn event_amount_library_search() -> EffectAst {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: ObjectFilter::land().in_zone(Zone::Library),
             count: ChoiceCount::up_to_dynamic_x(),
             count_value: Some(Value::EventValue(EventValueSpec::Amount)),
@@ -11386,6 +11388,7 @@ mod tests {
             player: PlayerAst::You,
             effects: vec![EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                    optional_search_zones: false,
                     filter: ObjectFilter::default(),
                     count: ChoiceCount::up_to(1),
                     count_value: None,

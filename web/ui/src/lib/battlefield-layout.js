@@ -159,7 +159,7 @@ export function retainBattlefieldSlots(
   previousLayout,
   { columns = 6, singleRow = false, dense = false } = {}
 ) {
-  const maxCols = Math.max(1, Math.floor(columns));
+  const maxCols = Math.max(1, Math.floor(columns), dense ? 0 : previousLayout?.maxCols || 0);
   const previous = dense ? null : previousLayout;
   const gridPositionById = new Map();
   const occupied = new Set();
@@ -205,11 +205,14 @@ export function retainBattlefieldSlots(
     occupied.add(key(position));
   }
   const positions = [...gridPositionById.values()];
+  const rowCounts = new Map();
+  for (const position of positions) rowCounts.set(position.row, (rowCounts.get(position.row) || 0) + 1);
   return {
     orderedCards: cards,
     gridPositionById,
     rowCount: Math.max(singleRow || dense ? 1 : 2, previous?.rowCount || 0, ...positions.map((p) => p.row)),
-    maxCols: Math.max(maxCols, previous?.maxCols || 0, ...positions.map((p) => p.column)),
+    maxCols: Math.max(maxCols, previous?.maxCols || 0, ...positions.map((p) => p.column),
+      ...[...rowCounts.values()].map((count) => count + 1)),
     signature: positions.map((p) => key(p)).join("|"),
   };
 }

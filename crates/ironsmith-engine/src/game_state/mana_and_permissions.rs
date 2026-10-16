@@ -953,7 +953,32 @@ impl GameState {
         DerivedGameView::new(self).minimum_total_spell_mana_payment()
     }
 
+    fn scoped_cast_or_activate_payment_restrictions(&self) -> Option<Vec<crate::game_state::ScopedCastOrActivatePaymentRestriction>> {
+        if self.continuous_state_is_clean() {
+            return Some(self.effect_store.cant_effects.cast_or_activate_payment_restrictions.clone());
+        }
+        if self.effect_store.cant_effects.cast_or_activate_payment_restrictions.is_empty()
+            && !self.may_have_cast_or_activate_payment_restriction() { return Some(Vec::new()); }
+        let mut refreshed = self.clone();
+        refreshed.refresh_continuous_state().ok()?;
+        Some(refreshed.effect_store.cant_effects.cast_or_activate_payment_restrictions.clone())
+    }
+
+    /// Matching object characteristics are read now, not from the selected cost's printed types.
+    pub fn player_cant_sacrifice_object_to_cast_or_activate(&self, player: PlayerId, object: ObjectId) -> bool {
+        if self.player_cant_sacrifice_nonland_to_cast_or_activate(player)
+            && !self.current_has_card_type(object, crate::types::CardType::Land) { return true; }
+        let Some(rules) = self.scoped_cast_or_activate_payment_restrictions() else { return true; };
+        let Some(subject) = self.object(object) else { return true; };
+        rules.iter().any(|rule| rule.payer == player && rule.sacrifice.as_ref().is_some_and(|filter| {
+            let context = self.filter_context_for(rule.controller, rule.source)
+                .with_iterated_player(rule.iterated_player).with_tagged_objects(&rule.tagged_objects);
+            filter.matches(subject, &context, self)
+        }))
+    }
+
     pub fn player_cant_pay_life_to_cast_or_activate(&self, player: PlayerId) -> bool {
+        if self.scoped_cast_or_activate_payment_restrictions().is_none_or(|rules| rules.iter().any(|rule| rule.payer == player && rule.pay_life)) { return true; }
         if self.player(player).is_none() || !self.may_have_cast_or_activate_payment_restriction() {
             return false;
         }
@@ -975,10 +1000,12 @@ impl GameState {
         {
             return false;
         }
-        self.with_active_battlefield_static_abilities_with_effects(all_effects, |_, _, ability| {
-            ability
-                .forbids_paying_life_for_cast_or_activate()
-                .then_some(true)
+        self.with_active_battlefield_static_abilities_with_effects(all_effects, |source, controller, ability| {
+            let scoped = ability.rule_restriction_parts().is_some_and(|(restriction, _, _)| {
+                matches!(restriction, crate::effect::Restriction::CastOrActivatePayments { player: filter, pay_life: true, .. }
+                    if filter.matches_player(player, &self.filter_context_for(controller, Some(source))))
+            });
+            (ability.forbids_paying_life_for_cast_or_activate() || scoped).then_some(true)
         })
         .unwrap_or(false)
     }
@@ -1063,6 +1090,7 @@ impl GameState {
 
     fn modification_may_introduce_payment_restriction(modification: &Modification) -> bool {
         match modification {
+            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
@@ -1090,6 +1118,7 @@ impl GameState {
     ) -> bool {
         ability.forbids_paying_life_for_cast_or_activate()
             || ability.forbids_sacrificing_nonland_for_cast_or_activate()
+            || ability.rule_restriction_parts().is_some_and(|(restriction, _, _)| matches!(restriction, crate::effect::Restriction::CastOrActivatePayments { .. }))
     }
 
     /// Return the active non-layered battlefield abilities that can make
@@ -1173,6 +1202,7 @@ impl GameState {
 
     fn modification_may_change_enter_as_copy_presence(modification: &Modification) -> bool {
         match modification {
+            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
@@ -1326,6 +1356,7 @@ impl GameState {
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
         match modification {
+            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
@@ -1533,7 +1564,7 @@ impl GameState {
         payer: PlayerId,
         source: ObjectId,
         filter: &crate::filter::ObjectFilter,
-        lands_only: bool,
+        cast_or_activate: bool,
     ) -> usize {
         let filter_ctx = crate::filter::FilterContext::new(payer).with_source(source);
         self.battlefield
@@ -1541,7 +1572,7 @@ impl GameState {
             .filter_map(|&id| self.object(id).map(|obj| (id, obj)))
             .filter(|(id, obj)| {
                 self.controller_of(obj) == payer
-                    && (!lands_only || self.object_is_land_for_cost_restrictions(*id))
+                    && (!cast_or_activate || !self.player_cant_sacrifice_object_to_cast_or_activate(payer, *id))
                     && filter.matches(obj, &filter_ctx, self)
                     && self.can_be_sacrificed(*id)
             })
@@ -1559,14 +1590,20 @@ impl GameState {
             return Ok(());
         }
 
-        if self.player_cant_pay_life_to_cast_or_activate(payer) && cost.is_life_cost() {
+        let life_amount = match cost.compiled_model() {
+            Some(ironsmith_core::Cost::Life(amount)) => Some(amount),
+            _ => cost.effect_ref().and_then(|effect| effect.downcast_ref::<crate::effects::PayLifeEffect>()).map(|payment| &payment.amount),
+        };
+        // Zero life remains payable. Context-dependent amounts are checked by
+        // the actual life-payment owner once X and other operands are known.
+        let known_positive_life = life_amount.map_or(cost.is_life_cost(), |amount|
+            matches!(amount.unhinted(), crate::effect::Value::Fixed(value) if *value > 0));
+        if known_positive_life && self.player_cant_pay_life_to_cast_or_activate(payer) {
             return Err(crate::cost::CostPaymentError::InsufficientLife);
         }
 
-        let lands_only = self.player_cant_sacrifice_nonland_to_cast_or_activate(payer);
-
         if cost.is_sacrifice_self() {
-            if lands_only && !self.object_is_land_for_cost_restrictions(source) {
+            if self.player_cant_sacrifice_object_to_cast_or_activate(payer, source) {
                 return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
             }
             if !self.can_be_sacrificed(source) {
@@ -1583,7 +1620,7 @@ impl GameState {
                 return Ok(());
             }
             let required = self.required_sacrifice_count_for_cost(cost);
-            if self.legal_sacrifice_targets_for_cost(payer, source, filter, lands_only) < required {
+            if self.legal_sacrifice_targets_for_cost(payer, source, filter, true) < required {
                 return Err(crate::cost::CostPaymentError::NoValidSacrificeTarget);
             }
         }
@@ -4508,6 +4545,7 @@ impl GameState {
             // Rewrites the whole ability list or text box, so triggered
             // abilities can appear or disappear. SetAbilities replaces the
             // existing list even when it only sets static abilities.
+            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)

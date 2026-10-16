@@ -278,6 +278,9 @@ pub enum ExecutionFact {
     /// Exact cards disclosed by this reveal instruction. Empty is a completed
     /// empty reveal; absence is unavailable evidence.
     RevealedCards(Vec<OutcomeObjectMemory>),
+    /// Source snapshot, authored destination, and exact original arrival for
+    /// every moved object. Includes tokens and excludes replacement additions.
+    OriginalZoneMoveObjects(Vec<(OutcomeObjectMemory, crate::zone::Zone, OutcomeObjectMemory)>),
 }
 
 impl ExecutionFact {
@@ -1519,6 +1522,16 @@ impl RestrictionExt for Restriction {
                         tracker
                             .cant_search_own_library_from_own_effects
                             .insert(player.id);
+                    }
+                }
+            }
+            Restriction::CastOrActivatePayments { player: filter, pay_life, sacrifice } => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.cast_or_activate_payment_restrictions.push(crate::game_state::ScopedCastOrActivatePaymentRestriction {
+                            iterated_player, payer: player.id, controller, source, pay_life: *pay_life,
+                            sacrifice: sacrifice.clone(), tagged_objects: tagged_objects.clone(),
+                        });
                     }
                 }
             }

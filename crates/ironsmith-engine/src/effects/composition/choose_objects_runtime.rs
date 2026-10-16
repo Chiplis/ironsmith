@@ -1718,6 +1718,35 @@ fn run_choose_objects_phase_with_outputs(
         ));
     }
     game.clear_pending_decision_controllers();
+    if effect.is_search && effect.optional_search_zones {
+        let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
+        let zones = effective_search_zones(effect, game, chooser)?;
+        if zones.is_empty() {
+            ctx.set_tagged_objects(effect.tag.clone(), Vec::new());
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+        }
+        let selected = if zones.len() == 1 { vec![0] } else {
+            let menu = crate::decisions::context::SelectOptionsContext::new(
+                chooser, Some(ctx.source), "Choose zones to search",
+                zones.iter().enumerate().map(|(index, zone)| crate::decisions::context::SelectableOption::new(index, zone.to_string())).collect(),
+                1, zones.len(),
+            );
+            let selected = ctx.decision_maker.decide_options(game, &menu);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+            }
+            if selected.is_empty() || selected.iter().any(|index| *index >= zones.len())
+                || selected.iter().collect::<std::collections::HashSet<_>>().len() != selected.len() {
+                return Err(ExecutionError::InternalError("invalid search-zone selection".into()));
+            }
+            selected
+        };
+        let mut resolved = effect.clone().in_zones(selected.into_iter().map(|index| zones[index]).collect());
+        resolved.optional_search_zones = false;
+        // Search access, events, replacement effects and the shared card limit
+        // all belong to this one search over the selected zone subset.
+        return run_choose_objects_phase_with_outputs(&resolved, game, ctx, prepared_selection);
+    }
     let mut published_cast_outputs = Vec::new();
     let mut retained_children = Vec::new();
     let mut pending_selection_cleared_tag = false;
@@ -2372,6 +2401,7 @@ fn run_choose_objects_phase_with_outputs(
         });
     }
     instruction.map(|outcome| {
+        crate::effects::cards::search_overrides::retain_search_participants(ctx, effect.search_participant_tag.as_ref(), &outcome);
         let mut outputs =
             crate::effects::CompletedEffectOutputs::from_children(retained_children, |_| outcome);
         outputs.retain_published_references(published_cast_outputs);
@@ -2391,6 +2421,38 @@ mod tests {
     use crate::tag::TagKey;
     use crate::target::{ChooseSpec, PlayerFilter};
     use crate::types::CardType;
+
+    #[test]
+    fn optional_search_zones_share_one_card_limit_and_emit_only_selected_library_events() {
+        struct Answers { zones: Vec<usize> }
+        impl DecisionMaker for Answers {
+            fn decide_options(&mut self, _: &GameState, context: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                assert_eq!((context.min, context.max), (1, 2)); self.zones.clone()
+            }
+            fn decide_objects(&mut self, _: &GameState, context: &crate::decisions::context::SelectObjectsContext) -> Vec<ObjectId> {
+                assert_eq!(context.max, Some(1), "searching both zones must not double the card limit");
+                context.candidates.iter().filter(|candidate| candidate.legal).take(1).map(|candidate| candidate.id).collect()
+            }
+        }
+        for selected in [vec![0], vec![1], vec![0, 1]] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let alice = PlayerId::from_index(0);
+            let card = CardBuilder::new(CardId::new(), "Search subject").card_types(vec![CardType::Artifact]).build();
+            let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+            game.create_object_from_card(&card, alice, Zone::Hand);
+            game.create_object_from_card(&card, alice, Zone::Library);
+            let mut choose = ChooseObjectsEffect::new(ObjectFilter::default(), 1, PlayerFilter::You, "found")
+                .in_zones(vec![Zone::Hand, Zone::Library]).as_search();
+            choose.optional_search_zones = true;
+            let mut dm = Answers { zones: selected.clone() };
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            let outcome = crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(choose), &mut ctx).unwrap();
+            let found = ctx.get_tagged_all("found").unwrap();
+            assert_eq!(found.len(), 1);
+            assert!(selected.iter().any(|index| [Zone::Hand, Zone::Library][*index] == found[0].zone));
+            assert_eq!(outcome.events.iter().filter(|event| event.downcast::<crate::events::SearchLibraryEvent>().is_some()).count(), usize::from(selected.contains(&1)));
+        }
+    }
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()

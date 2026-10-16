@@ -68,7 +68,8 @@ function zoneOfObject(state, objectId) {
 
 function stackTransitions(state, entry, direction) {
   const stableId = entry?.stable_id;
-  if (stableId == null) return null;
+  // Abilities share their source identity but do not move that card between zones.
+  if (stableId == null || entry?.ability_kind) return null;
   return (state?.zone_transitions || []).find((transition) => (
     String(transition?.stable_id) === String(stableId)
     && zoneName(direction === "in" ? transition.to_zone : transition.from_zone) === "stack"
@@ -265,7 +266,7 @@ export function playExit({ node, entry, state, inspectId, owner, rgb, onMotion }
     onMotion(createTimeline({ autoplay: true }).add(node, { opacity: [visible ? 1 : 0, 0], duration: 160 }));
     return;
   }
-  const countered = (state?.effect_events || []).some((event) => (
+  const countered = !entry.ability_kind && (state?.effect_events || []).some((event) => (
     event?.kind === "spell_countered"
     && (event.stable_ids || []).some((id) => String(id) === String(entry.stable_id))
   ));

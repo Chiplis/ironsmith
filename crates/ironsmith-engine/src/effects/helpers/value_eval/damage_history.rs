@@ -18,11 +18,21 @@ fn referenced_objects(
                 .map_or(ctx.source, |snapshot| snapshot.object_id),
         ],
         ChooseSpec::SpecificObject(id) => vec![*id],
-        ChooseSpec::Tagged(tag) => ctx
-            .get_tagged_all(&format!("__pre_move_history__{}", tag.as_str()))
-            .or_else(|| ctx.get_tagged_all(tag))
-            .map(|objects| objects.iter().map(|snapshot| snapshot.object_id).collect())
-            .unwrap_or_default(),
+        ChooseSpec::Tagged(tag) => {
+            let explicit = ctx
+                .get_tagged_all(&format!("__pre_move_history__{}", tag.as_str()))
+                .or_else(|| ctx.get_tagged_all(tag));
+            if let Some(objects) = explicit {
+                objects.iter().map(|snapshot| snapshot.object_id).collect()
+            } else {
+                // Trigger event roles (including the damaged recipient) are
+                // captured in the filter context even before stack resolution
+                // has populated explicit tags. Preserve their exact identities.
+                ctx.filter_context(game).tagged_objects.get(tag)
+                    .map(|objects| objects.iter().map(|snapshot| snapshot.object_id).collect())
+                    .unwrap_or_default()
+            }
+        },
         ChooseSpec::Object(_) | ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => {
             matching_object_targets_for_spec(game, spec, ctx)
         }
@@ -263,6 +273,30 @@ mod tests {
             reduction: DamageHistoryReduction::Total,
         }
     }
+    #[test]
+    fn damage_history_resolves_captured_event_recipient_without_explicit_tag() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id; let bob = game.players[1].id;
+        let source = object(&mut game, alice, "Source");
+        let target = object(&mut game, bob, "Recipient");
+        damage(&mut game, source, target, 3, false);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(game.object(target).unwrap(), &game);
+        let event = crate::triggers::TriggerEvent::new(
+            crate::events::DamageEvent::with_cause(source, crate::events::DamageTarget::Object(target), 3, false, crate::events::EventCause::effect())
+                .with_target_snapshot(snapshot),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = ExecutionContext::new_default(source, alice).with_triggering_event(event);
+        assert!(ctx.get_tagged_all("damaged").is_none());
+        let mut query = total(target);
+        query.recipients = DamageHistoryRecipients::Reference(Box::new(ChooseSpec::Tagged("damaged".into())));
+        assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), 3);
+        let graveyard = game.move_object_by_game_rule(target, Zone::Graveyard).unwrap();
+        let returned = game.move_object_by_game_rule(graveyard, Zone::Battlefield).unwrap();
+        assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), 3);
+        assert_eq!(resolve_history_in_context(&game, &total(returned), &ctx).unwrap(), 0);
+    }
+
     #[test]
     fn actual_damage_history_survives_healing_but_excludes_prevention_and_later_incarnations() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);

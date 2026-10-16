@@ -138,6 +138,7 @@ pub(super) fn open(
     let effects = vec![
         // CR 701.23: the searched cards are found and revealed as one group.
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter: search.filter,
             count: search.count,
             count_value: None,

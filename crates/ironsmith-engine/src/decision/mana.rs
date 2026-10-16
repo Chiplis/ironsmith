@@ -331,7 +331,6 @@ fn maximum_emerge_reduction(
     };
 
     let ctx = game.filter_context_for(player, Some(source));
-    let lands_only = game.player_cant_sacrifice_nonland_to_cast_or_activate(player);
     game.battlefield
         .iter()
         .copied()
@@ -340,7 +339,7 @@ fn maximum_emerge_reduction(
             if game.controller_of(obj) != player
                 || !filter.matches(obj, &ctx, game)
                 || !game.can_be_sacrificed(id)
-                || (lands_only && !game.object_has_card_type(id, crate::types::CardType::Land))
+                || game.player_cant_sacrifice_object_to_cast_or_activate(player, id)
             {
                 return None;
             }
@@ -7016,7 +7015,6 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
     }
     let filter_ctx = game.filter_context_for(player, Some(spell.id));
     let cause = crate::events::cause::EventCause::from_cost(spell.id, player);
-    let lands_only = game.player_cant_sacrifice_nonland_to_cast_or_activate(player);
     let sacrificable = choices
         .iter()
         .filter(|choose| {
@@ -7035,7 +7033,7 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
                     game.controller_of(object) == player
                         && choose.filter.matches(object, &filter_ctx, game)
                         && game.can_be_sacrificed_with_cause(*id, &cause)
-                        && (!lands_only || game.current_has_card_type(*id, CardType::Land))
+                        && !game.player_cant_sacrifice_object_to_cast_or_activate(player, *id)
                 })
                 .count();
             choose.count.max.map_or(available, |max| available.min(max))

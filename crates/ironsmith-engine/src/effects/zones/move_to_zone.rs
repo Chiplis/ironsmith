@@ -500,7 +500,7 @@ fn prepare_move_zone_proposals(
             entry.prepend_programs(programs);
             let options = move_entry_options(
                 effect,
-                ctx.controller,
+                game, ctx, object,
                 prepared.counters.get(&object).cloned().unwrap_or_default(),
                 prepared.attachment,
             );
@@ -528,7 +528,9 @@ fn prepare_move_zone_proposals(
 
 fn move_entry_options(
     effect: &MoveToZoneEffect,
-    controller: PlayerId,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    object: crate::ids::ObjectId,
     counters: Vec<(crate::object::CounterType, u32)>,
     attachment: Option<crate::object::AttachmentTarget>,
 ) -> BattlefieldEntryOptions {
@@ -536,14 +538,32 @@ fn move_entry_options(
         BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(effect.enters_tapped),
         BattlefieldController::Owner => BattlefieldEntryOptions::owner(effect.enters_tapped),
         BattlefieldController::You => {
-            BattlefieldEntryOptions::specific(controller, effect.enters_tapped)
+            BattlefieldEntryOptions::specific(ctx.controller, effect.enters_tapped)
         }
     };
-    options
+    let mut options = options
         .with_initial_counters(counters)
         .with_entry_attachment(attachment)
         .transformed(effect.enters_transformed)
-        .face_down(effect.enters_face_down)
+        .face_down(effect.enters_face_down);
+    if effect.transfer_exiled_with_source_links {
+        let captured = ctx.get_tagged_all(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+        let candidates = captured.cloned().unwrap_or_else(|| {
+            game.get_exiled_with_source_links(ctx.source).iter().filter_map(|id| {
+                game.object(*id).map(|object| ObjectSnapshot::from_object(object, game))
+            }).collect()
+        });
+        let mut seen = std::collections::HashSet::new();
+        let materials = candidates.into_iter().filter(|snapshot| {
+            snapshot.object_id != object
+                && game.object(snapshot.object_id).is_some_and(|object| object.zone == Zone::Exile)
+                && seen.insert(snapshot.object_id)
+        }).collect();
+        // The cost/resolution collection wins over old source links. A known
+        // empty set remains empty, including when craft material tokens ceased.
+        options.entry_tagged_objects.insert(crate::tag::SOURCE_EXILED_TAG.into(), materials);
+    }
+    options
 }
 
 impl EffectExecutor for MoveToZoneEffect {
@@ -962,11 +982,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             return if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
                 Ok(EffectOutcome::count(0).with_execution_fact(
                     crate::effect::ExecutionFact::OriginalZoneMoveCards(Vec::new()),
-                ))
+                ).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())))
             } else {
                 Ok(EffectOutcome::target_invalid().with_execution_fact(
                     crate::effect::ExecutionFact::OriginalZoneMoveCards(Vec::new()),
-                ))
+                ).with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(Vec::new())))
             };
         }
         let orders_library = self.zone == Zone::Library && self.library_order.is_some();
@@ -1109,6 +1129,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         let mut authored_facts = Vec::new();
         let mut arrival_counter_programs = Vec::new();
         let mut original_arrivals = Vec::new();
+        let mut original_object_moves = Vec::new();
         let opened_batch = game.open_simultaneous_action();
         let pinned_lookback = self.zone != Zone::Battlefield
             && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
@@ -1163,7 +1184,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             {
                 let options = move_entry_options(
                     self,
-                    ctx.controller,
+                    game, ctx, object_id,
                     authored_counters.remove(&object_id).unwrap_or_default(),
                     entry_attachment,
                 );
@@ -1225,6 +1246,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             prepared_moves.push((
                 object_id,
                 from_zone,
+                requested_zone,
                 target_lki_before_move,
                 source_lki_before_move,
                 additional_effects,
@@ -1235,6 +1257,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         for (
             object_id,
             from_zone,
+            requested_zone,
             target_lki_before_move,
             source_lki_before_move,
             additional_effects,
@@ -1247,7 +1270,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                     proposal.prepend_programs(programs);
                     let options = move_entry_options(
                         self,
-                        ctx.controller,
+                        game, ctx, object_id,
                         authored_counters.remove(&object_id).unwrap_or_default(),
                         entry_attachment,
                     );
@@ -1262,6 +1285,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 original => companion_moves.push((
                     object_id,
                     from_zone,
+                    requested_zone,
                     target_lki_before_move,
                     source_lki_before_move,
                     additional_effects,
@@ -1277,6 +1301,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             for (
                 object_id,
                 from_zone,
+                requested_zone,
                 target_lki_before_move,
                 source_lki_before_move,
                 additional_effects,
@@ -1376,10 +1401,10 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                         };
                         let final_zone = result.final_zone;
                         for &id in &result.new_object_ids {
-                            if let Some(arriving) = game.object(id)
-                                && arriving.kind == crate::object::ObjectKind::Card
-                            {
-                                original_arrivals.push(ObjectSnapshot::try_from_object_with_calculated_characteristics(arriving, game)?);
+                            if let Some(arriving) = game.object(id) {
+                                let arrival = ObjectSnapshot::try_from_object_with_calculated_characteristics(arriving, game)?;
+                                original_object_moves.push((target_lki_before_move.clone(), requested_zone, arrival.clone()));
+                                if arriving.kind == crate::object::ObjectKind::Card { original_arrivals.push(arrival); }
                             }
                         }
                         if final_zone == Zone::Hand {
@@ -1609,11 +1634,11 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 if let EventOutcome::Proceed(change) = &zone_receipt.original {
                     for &id in &change.new_object_ids {
                         if let Some(arriving) = game.object(id)
-                            && arriving.kind == crate::object::ObjectKind::Card
                             && arriving.zone == change.final_zone
                         {
-                            original_arrivals
-                                .push(Clone::clone(&ObjectSnapshot::from_object(arriving, game)));
+                            let arrival = ObjectSnapshot::from_object(arriving, game);
+                            original_object_moves.push((target_lki_before_move.clone(), Zone::Battlefield, arrival.clone()));
+                            if arriving.kind == crate::object::ObjectKind::Card { original_arrivals.push(arrival); }
                         }
                     }
                 }
@@ -1701,7 +1726,15 @@ impl SharedLookbackExecute for MoveToZoneEffect {
         {
             let old_source_id = ctx.source;
             if self.transfer_exiled_with_source_links {
-                game.transfer_exiled_with_source_links(old_source_id, new_source_id);
+                if let Some(captured) = ctx.get_tagged_all(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG) {
+                    let objects = captured.iter().filter_map(|snapshot| {
+                        game.object(snapshot.object_id).filter(|object| object.zone == Zone::Exile)
+                            .map(|object| object.id)
+                    }).collect::<Vec<_>>();
+                    game.transfer_captured_exiled_with_source_links(old_source_id, new_source_id, &objects);
+                } else {
+                    game.transfer_exiled_with_source_links(old_source_id, new_source_id);
+                }
             }
             ctx.source = new_source_id;
         }
@@ -1739,6 +1772,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             EffectOutcome::target_invalid()
         })();
         original.execution_facts.append(&mut authored_facts);
+        original.execution_facts.push(crate::effect::ExecutionFact::OriginalZoneMoveObjects(original_object_moves));
         original
             .execution_facts
             .push(crate::effect::ExecutionFact::OriginalZoneMoveCards(

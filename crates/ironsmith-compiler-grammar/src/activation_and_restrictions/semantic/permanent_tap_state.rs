@@ -1,5 +1,21 @@
 use super::*;
 
+/// A tap qualified by the additional cost it paid retains that typed receipt.
+pub(super) fn parse_cost_qualified_tap_trigger(tokens: &[OwnedLexToken]) -> Result<Option<TriggerSpec>, CardTextError> {
+    let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
+    let [subject @ .., "become" | "becomes", "tapped", "to", "pay", "a" | "an", keyword, "cost"] = words.as_slice() else { return Ok(None); };
+    if subject.is_empty() { return Ok(None); }
+    let cost_kind = ironsmith_core::OptionalCostKind::from_label(keyword);
+    // Only advertise keyword costs whose tap owner publishes this receipt.
+    // Other additional-cost keywords can opt in when their producer is wired.
+    if !matches!(cost_kind, ironsmith_core::OptionalCostKind::Teamwork) { return Ok(None); }
+    let end = trigger_word_token_start(tokens, subject.len()).unwrap_or(tokens.len());
+    let filter = parse_trigger_subject_filter_lexed(&tokens[..end])?.unwrap_or_else(|| {
+        let mut filter = ObjectFilter::default(); filter.source = true; filter
+    });
+    Ok(Some(TriggerSpec::PermanentTappedToPayCost { filter, cost_kind }))
+}
+
 /// Passive state transitions have an object subject, not an action's player.
 /// Preserve plural `become` and complete event-time turn qualifications.
 pub(super) fn parse_permanent_tap_state_trigger(

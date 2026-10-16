@@ -29,3 +29,38 @@ fn actual_destination_queries_require_the_exact_completed_original_receipt() {
     query.original_destination = Some(Zone::Hand);
     assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 0);
 }
+
+#[test]
+fn origin_queries_keep_past_controller_tokens_and_only_successful_original_destinations() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    let source = game.new_object_id();
+    let mut origin = crate::snapshot::ObjectSnapshot::for_testing(game.new_object_id(), bob, "Returned token");
+    origin.owner = alice;
+    origin.zone = Zone::Battlefield;
+    origin.card_types = vec![crate::types::CardType::Creature];
+    origin.kind = crate::object::ObjectKind::Token;
+    let mut arrival = origin.clone(); arrival.object_id = game.new_object_id(); arrival.zone = Zone::Hand;
+    arrival.controller = alice; arrival.card_types = vec![crate::types::CardType::Artifact];
+    let id = crate::effect::EffectId(15);
+    let mut query = PriorEffectMetricQuery::new(EffectMetricSource::AffectedObjects, EffectMetric::Count)
+        .with_filter(crate::target::ObjectFilter::creature().in_zone(Zone::Battlefield).controlled_by(PlayerFilter::IteratedPlayer));
+    query.use_origin_memory = true;
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    ctx.iteration.iterated_player = Some(bob);
+    assert!(matches!(resolve_prior_effect_metric(&game, &ctx, id, &query), Err(ExecutionError::IncompleteEvidence(_))));
+    ctx.store_outcome(id, EffectOutcome::count(0).with_execution_fact(ExecutionFact::OriginalZoneMoveObjects(vec![])));
+    assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 0);
+    let mut redirected = arrival.clone(); redirected.zone = Zone::Exile;
+    let original = EffectOutcome::count(1).with_execution_fact(ExecutionFact::OriginalZoneMoveObjects(vec![
+        (origin.clone(), Zone::Hand, arrival.clone()),
+        (origin.clone(), Zone::Hand, arrival.clone()), // Split arrivals count one source object.
+        (origin.clone(), Zone::Hand, redirected),
+    ]));
+    let mut other = origin.clone(); other.object_id = game.new_object_id();
+    let addition = EffectOutcome::count(1).with_execution_fact(ExecutionFact::OriginalZoneMoveObjects(vec![(other, Zone::Hand, arrival)]));
+    ctx.store_outcome(id, EffectOutcome::aggregate_replacement_outcomes(original, [addition]));
+    assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 1);
+    ctx.iteration.iterated_player = Some(alice);
+    assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 0);
+}

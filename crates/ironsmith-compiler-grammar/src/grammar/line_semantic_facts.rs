@@ -319,6 +319,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
                     .first_time_during_each_of_their_turns,
                 becomes_crewed: trigger_frequency.becomes_crewed,
                 do_this_limit_each_turn: trigger_frequency.do_this_limit_each_turn,
+                max_triggers_per_object: trigger_frequency.max_triggers_per_object,
             },
             leading_unless_surface: has_leading_unless_resolution_surface(tokens),
         },

@@ -1020,7 +1020,24 @@ fn resolve_prior_effect_metric(
     // A movement's affected memory describes its source LKI. A destination
     // result instead reads its exact original arrivals, before any additions
     // can move them again or add unrelated arrivals of their own.
-    let destination_memory = if let Some(destination) = query.original_destination {
+    let destination_memory = if query.use_origin_memory {
+        if query.source != EffectMetricSource::AffectedObjects {
+            return Err(ExecutionError::UnresolvableValue("origin-memory query requires affected objects".into()));
+        }
+        let facts = ctx.get_outcome(effect_id).map(|outcome| &outcome.instruction_result().execution_facts)
+            .ok_or_else(|| ExecutionError::IncompleteEvidence("origin-memory query has no completed producer".into()))?;
+        let receipts = facts.iter().filter_map(|fact| match fact {
+            crate::effect::ExecutionFact::OriginalZoneMoveObjects(objects) => Some(objects), _ => None,
+        }).collect::<Vec<_>>();
+        if receipts.is_empty() {
+            return Err(ExecutionError::IncompleteEvidence("origin-memory query has no original movement receipt".into()));
+        }
+        let mut seen = std::collections::HashSet::new();
+        Some(receipts.into_iter().flatten().filter_map(|(origin, authored, arrival)| {
+            (arrival.zone == query.original_destination.unwrap_or(*authored) && seen.insert(origin.object_id))
+                .then(|| origin.clone())
+        }).collect::<Vec<_>>())
+    } else if let Some(destination) = query.original_destination {
         if query.source != EffectMetricSource::AffectedObjects {
             return Err(ExecutionError::UnresolvableValue(
                 "an original destination query requires arrival memory".into(),

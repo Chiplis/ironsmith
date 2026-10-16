@@ -1737,8 +1737,13 @@ impl Trigger {
         Self::new(PermanentBecomesTappedTrigger::new(filter))
     }
 
+    pub fn permanent_tapped_to_pay_cost(filter: ObjectFilter, cost_kind: ironsmith_core::OptionalCostKind) -> Self {
+        Self::new(PermanentBecomesTappedTrigger { filter, one_or_more: false, cost_kind: Some(cost_kind) })
+    }
+
     pub fn permanent_becomes_tapped_one_or_more(filter: ObjectFilter) -> Self {
         Self::new(PermanentBecomesTappedTrigger {
+            cost_kind: None,
             filter,
             one_or_more: true,
         })

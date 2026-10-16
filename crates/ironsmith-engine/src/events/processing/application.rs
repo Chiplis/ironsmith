@@ -958,8 +958,9 @@ pub(super) fn apply_trait_replacement(
                                 discard_phrase, source_name, redirect_phrase
                             ),
                             candidates,
-                            // The owner may hold no matching card at all.
-                            usize::from(!hidden_hand_choice),
+                            // Discarding is optional even when a matching card is visible.
+                            // An empty selection redirects the entering object instead.
+                            0,
                             Some(1),
                         ),
                         hidden_hand_choice,

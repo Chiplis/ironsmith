@@ -102,7 +102,7 @@ fn per_player_type_choice_phase_out_keeps_one_shared_card_type() {
                     player: PlayerAst::That,
                     ..
                 },
-            action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options }),
+            action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options, .. }),
             ..
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {

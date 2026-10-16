@@ -160,6 +160,7 @@ pub struct TriggerFrequencyFacts {
     pub first_time_during_each_of_their_turns: bool,
     pub becomes_crewed: bool,
     pub do_this_limit_each_turn: Option<u32>,
+    pub max_triggers_per_object: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

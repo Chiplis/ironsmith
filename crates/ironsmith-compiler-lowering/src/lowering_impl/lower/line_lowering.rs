@@ -544,6 +544,9 @@ fn trigger_frequency_condition(
     maximum: Option<u32>,
     facts: &crate::model::facts::TriggerFrequencyFacts,
 ) -> Option<PredicateAst> {
+    if let Some(limit) = facts.max_triggers_per_object {
+        return Some(PredicateAst::TriggerFrequency(TriggerFrequencyPredicateAst::MaxTriggersPerObject(limit)));
+    }
     maximum.map(|limit| {
         PredicateAst::TriggerFrequency(
             if limit == 1 && facts.first_time_each_or_this_turn && facts.becomes_crewed {

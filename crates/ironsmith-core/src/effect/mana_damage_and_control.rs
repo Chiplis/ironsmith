@@ -3289,11 +3289,20 @@ impl DiscardHandEffect {
 pub struct ChooseCardTypeEffect {
     pub chooser: PlayerFilter,
     pub options: Vec<CardType>,
+    /// Restrict choices to types occurring on at least this many distinct
+    /// matching objects. An empty resulting domain offers no choice.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub shared_among: Option<(ObjectFilter, u32)>,
 }
 
 impl ChooseCardTypeEffect {
     pub fn new(chooser: PlayerFilter, options: Vec<CardType>) -> Self {
-        Self { chooser, options }
+        Self { chooser, options, shared_among: None }
+    }
+
+    pub fn shared_among(mut self, filter: ObjectFilter, count: u32) -> Self {
+        self.shared_among = Some((filter, count));
+        self
     }
 
     pub fn all_card_types() -> &'static [CardType] {

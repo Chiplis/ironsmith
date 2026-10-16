@@ -36,6 +36,9 @@ export default function AddCardSheet({
   trigger,
   onAddCardNotice,
   triggerClassName = "",
+  embedded = false,
+  onClose,
+  disabled = false,
 }) {
   const ui = useUiText();
   const {
@@ -51,7 +54,7 @@ export default function AddCardSheet({
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState("");
   const [selectedOption, setSelectedOption] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(embedded);
   const [cardName, setCardName] = useState("");
   const [zone, setZone] = useState("hand");
   const [playerIndex, setPlayerIndex] = useState(null);
@@ -68,7 +71,7 @@ export default function AddCardSheet({
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
   const selectedPlayer = playerIndex ?? perspective;
-  const addLocked = multiplayer.mode !== "idle" && !multiplayer.matchStarted;
+  const addLocked = disabled || (multiplayer.mode !== "idle" && !multiplayer.matchStarted);
 
   const visibleAutocompleteOptions =
     addLocked || !cardName.trim() ? [] : autocompleteOptions;
@@ -159,9 +162,10 @@ export default function AddCardSheet({
 
   const closeSheet = useCallback(() => {
     setOpen(false);
+    onClose?.();
     setAutocompleteOpen(false);
     setAutocompleteIndex(-1);
-  }, []);
+  }, [onClose]);
 
   const handleAdd = useCallback(async (requestedName = selectedOption || cardName) => {
     return runWasmInteraction(async () => {
@@ -259,21 +263,7 @@ export default function AddCardSheet({
     });
   }, []);
 
-  return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        {trigger}
-      </SheetTrigger>
-      <SheetContent
-        side="center"
-        className={`fantasy-sheet add-card-sheet w-[min(92vw,460px)] p-0 ${triggerClassName}`}
-      >
-        <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Tools")}</div>
-          <SheetTitle>{ui("Add Card")}</SheetTitle>
-          <SheetDescription className="max-w-[34ch] text-[13px] leading-5">{ui("Inject a card directly into a player zone for testing and board setup.")}</SheetDescription>
-        </SheetHeader>
-
+  const body = (
         <div className="add-card-sheet-body grid gap-4 p-4">
           <label className="toolbar-checkbox flex items-center gap-2 text-[13px]">
             <Checkbox checked={includeCustom} disabled={addLocked} onCheckedChange={(checked) => {
@@ -435,6 +425,25 @@ export default function AddCardSheet({
             >{ui("Add to Game")}</Button>
           </div>
         </div>
+  );
+  if (embedded) return body;
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        {trigger}
+      </SheetTrigger>
+      <SheetContent
+        side="center"
+        className={`fantasy-sheet add-card-sheet w-[min(92vw,460px)] p-0 ${triggerClassName}`}
+      >
+        <SheetHeader className="fantasy-sheet-header pr-12">
+          <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Tools")}</div>
+          <SheetTitle>{ui("Add Card")}</SheetTitle>
+          <SheetDescription className="max-w-[34ch] text-[13px] leading-5">{ui("Inject a card directly into a player zone for testing and board setup.")}</SheetDescription>
+        </SheetHeader>
+
+        {body}
       </SheetContent>
     </Sheet>
   );

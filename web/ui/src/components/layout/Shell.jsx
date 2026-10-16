@@ -1,3 +1,4 @@
+import { recordPlayedDeck } from "@/lib/recent-decks";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -546,6 +547,10 @@ export default function Shell() {
   // Goldfish games are local. Normal ones reuse the deck-test path (bots keep
   // the demo deck in empty seats); Commander needs a real commander setup, so
   // it starts a full match where empty seats mirror a loaded deck.
+  useEffect(() => {
+    if (multiplayer.matchStarted) recordPlayedDeck(readDefaultLobbyDeck());
+  }, [multiplayer.matchStarted]);
+
   const handleStartGoldfish = useCallback(async (payload) => {
     let started = false;
     // Same rule as hosted lobbies, in every format: an unloadable card becomes
@@ -625,6 +630,11 @@ export default function Shell() {
       });
     }
     if (started) {
+      const seat = payload?.perspectivePlayerIndex || 0;
+      recordPlayedDeck({
+        deckText: (payload?.decks?.[seat] || []).map(name => `1 ${name}`).join("\n") + "\n\nSideboard\n" + (payload?.sideboards?.[seat] || []).map(name => `1 ${name}`).join("\n"),
+        commanderText: (payload?.commanders?.[seat] || []).map(name => `1 ${name}`).join("\n"),
+      });
       setLobbyOpen(false);
       // Mirrored seats repeat the same swaps; list each card once.
       const replaced = [...new Map(substitutions.map((entry) => [entry.from, entry])).values()];

@@ -60,6 +60,7 @@ pub enum ObjectChoiceEffectAst {
         tag: TagRef,
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
+        optional_search_zones: bool,
     },
     /// A player-facing modal choice: the player picks one mode, and only that
     /// mode's effects resolve. Lowers to `Effect::choose_one`.

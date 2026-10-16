@@ -2242,7 +2242,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::ThisAbilityResolvedThisTurnExactly(_)
         | C::FirstTimeThisTurn
         | C::SourceFirstCrewedThisTurn
-        | C::MaxTimesEachTurn(_)
+        | C::MaxTimesEachTurn(_) | C::MaxTriggersPerObject(_)
         | C::DoThisMaxTimesEachTurn(_)
         | C::TriggeringObjectWasEnchanted
         | C::TriggeringEventCausedBy { .. }

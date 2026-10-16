@@ -169,6 +169,19 @@ impl ZoneMovementInstruction for ReturnToHandEffect {
                     &snapshots,
                     pending_start,
                 )?;
+                let mut original_moves = Vec::new();
+                for (_, change, origin) in &originals {
+                    for &id in &change.new_object_ids {
+                        if let Some(arriving) = game.object(id) {
+                            let arrival = ObjectSnapshot::try_from_object_with_calculated_characteristics(arriving, game)?;
+                            original_moves.push((
+                                crate::effect::OutcomeObjectMemory::from_snapshot(origin),
+                                Zone::Hand,
+                                crate::effect::OutcomeObjectMemory::from_snapshot(&arrival),
+                            ));
+                        }
+                    }
+                }
                 let affected = originals
                     .iter()
                     .flat_map(|(_, change, _)| change.new_object_ids.iter().copied())
@@ -189,7 +202,8 @@ impl ZoneMovementInstruction for ReturnToHandEffect {
                 };
                 Ok(outcome
                     .with_affected_objects(affected)
-                    .with_affected_object_memory(memories))
+                    .with_affected_object_memory(memories)
+                    .with_execution_fact(crate::effect::ExecutionFact::OriginalZoneMoveObjects(original_moves)))
             },
         ))
     }

@@ -10,6 +10,7 @@ export default function ManaPool({
   player,
   alwaysVisible = false,
   compact = false,
+  activeScale = 1,
   className = "",
 }) {
   const ui = useUiText();
@@ -23,6 +24,7 @@ export default function ManaPool({
     return (
       <span
         key={key}
+        data-mana-active={safeAmount > 0 ? "true" : "false"}
         className={cn(
           "mana-pool-chip inline-flex items-center gap-0.5 bg-background/70 rounded-none px-1 py-px",
           safeAmount <= 0 && "mana-pool-chip--empty",
@@ -30,7 +32,7 @@ export default function ManaPool({
         )}
       >
         <span aria-label={ui("{0} {1} mana in pool", { 0: safeAmount, 1: ui(label) })} className="inline-flex items-center">
-          <ManaSymbol sym={symbol} size={compact ? 12 : 14} />
+          <ManaSymbol sym={symbol} size={(compact ? 12 : 14) * (safeAmount > 0 ? activeScale : 1)} />
         </span>
         <span className="min-w-[7px] text-center text-[11px] leading-none font-bold text-foreground">
           {safeAmount}

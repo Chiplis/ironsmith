@@ -128,6 +128,7 @@ fn mixed_permanent_private_card_exile(
     let tag = crate::util::helper_tag_for_tokens(tokens, "exiled");
     Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            optional_search_zones: false,
             filter,
             count: ChoiceCount::dynamic_x(),
             count_value: Some(count),

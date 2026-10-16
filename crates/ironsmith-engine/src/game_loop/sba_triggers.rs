@@ -539,15 +539,16 @@ fn drain_ability_triggered_events(
             .into_iter()
             .filter_map(|(event, trigger_limit)| {
                 let ability_event = event.downcast::<crate::events::AbilityTriggeredEvent>()?;
-                if let Some(trigger_limit) = trigger_limit {
+                if !trigger_limit.is_empty() {
                     let key = (ability_event.source, ability_event.trigger_identity);
-                    let already_fired = game.trigger_fire_count_this_turn(
-                        ability_event.source,
-                        ability_event.trigger_identity,
-                    );
                     let announced = announced_counts.get(&key).copied().unwrap_or(0);
-                    if already_fired.saturating_add(announced) >= trigger_limit {
-                        return None;
+                    for limit in trigger_limit {
+                        let (already_fired, maximum) = match limit {
+                            crate::ConditionExpr::MaxTimesEachTurn(maximum) => (game.trigger_fire_count_this_turn(key.0, key.1), maximum),
+                            crate::ConditionExpr::MaxTriggersPerObject(maximum) => (game.trigger_fire_count_per_object(key.0, key.1), maximum),
+                            _ => unreachable!("queue retains only typed trigger limits"),
+                        };
+                        if already_fired.saturating_add(announced) >= maximum { return None; }
                     }
                     *announced_counts.entry(key).or_default() += 1;
                 }
@@ -1307,7 +1308,7 @@ pub(super) fn can_stack_trigger_this_turn(
             // "For the first time each turn" is an event-history gate decided
             // at match time; every instance from that first event may be
             // stacked (CR 603.2d).
-            crate::ConditionExpr::MaxTimesEachTurn(_) => out.push(condition.clone()),
+            crate::ConditionExpr::MaxTimesEachTurn(_) | crate::ConditionExpr::MaxTriggersPerObject(_) => out.push(condition.clone()),
             crate::ConditionExpr::And(first, second) => {
                 once_per_turn_limits(first, out);
                 once_per_turn_limits(second, out);

@@ -40,9 +40,14 @@ pub(crate) fn split_drafted_noted_name_qualifier_tokens(
 ) -> Option<(Vec<OwnedLexToken>, String)> {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
-    let qualifier_start =
-        crate::word_primitives::parse_sequence_start(&words, DRAFTED_NOTED_NAME_QUALIFIER)?;
-    let name_start = qualifier_start + DRAFTED_NOTED_NAME_QUALIFIER.len();
+    let (qualifier_start, qualifier_len) = [
+        DRAFTED_NOTED_NAME_QUALIFIER,
+        &["with", "a", "name", "noted", "as", "you", "drafted", "cards", "named"][..],
+    ].into_iter().find_map(|phrase| {
+        crate::word_primitives::parse_sequence_start(&words, phrase)
+            .map(|start| (start, phrase.len()))
+    })?;
+    let name_start = qualifier_start + qualifier_len;
     if qualifier_start == 0 || name_start >= words.len() {
         return None;
     }
@@ -738,6 +743,13 @@ pub fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
     else {
         return false;
     };
+    // A noun immediately after a conjunction is its own arm: "Giant,
+    // Wizard, or spell" includes subtype permanents and arbitrary spells.
+    // In "Giant or Wizard spell", the terminal noun is instead shared.
+    if tokens[..noun_idx].iter().rev().find_map(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "or" | "and" | "and/or")) {
+        return false;
+    }
     if tokens[..=noun_idx]
         .iter()
         .filter(|token| is_shared_noun(token))

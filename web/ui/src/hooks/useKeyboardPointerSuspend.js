@@ -33,7 +33,7 @@ export default function useKeyboardPointerSuspend(onResume) {
       event.preventDefault();
       event.stopImmediatePropagation();
     };
-    const events = ["mousemove", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "pointerover", "pointerout", "mouseover", "mouseout"];
+    const events = ["mousemove", "pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "pointerover", "pointerout", "pointerenter", "pointerleave", "mouseover", "mouseout", "mouseenter", "mouseleave"];
     window.addEventListener("pointermove", move, true);
     events.forEach((name) => window.addEventListener(name, block, true));
     return () => {

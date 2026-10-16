@@ -15,10 +15,13 @@ test('departures leave holes and arrivals fill them without moving survivors', (
   assert.deepEqual(added.gridPositionById.get('5'), initial.gridPositionById.get('2'));
 });
 
-test('overflow and dense counts append slots without changing grid width or existing positions', () => {
+test('overflow reserves a spare column without changing existing positions', () => {
   const initial = layout([card(1), card(2, 'lands')]);
   const crowded = layout([...initial.orderedCards, ...Array.from({length: 60}, (_, i) => card(i + 3))], initial);
-  assert.equal(crowded.maxCols, initial.maxCols);
+  assert.equal(crowded.maxCols, initial.maxCols + 1);
+  const counts = new Map();
+  for (const p of crowded.gridPositionById.values()) counts.set(p.row, (counts.get(p.row) || 0) + 1);
+  assert.ok([...counts.values()].every(count => count < crowded.maxCols));
   assert.equal(new Set([...crowded.gridPositionById.values()].map(p => `${p.row}:${p.column}`)).size, 62);
   const removed = layout(initial.orderedCards, crowded);
   for (const id of ['1', '2']) {
@@ -38,4 +41,12 @@ test('automatic placement starts at the center and expands outward in each row',
   const result = layout([card(1), card(2), card(3), card(4), card(5, 'lands')]);
   assert.deepEqual([1, 2, 3, 4].map(id => result.gridPositionById.get(String(id)).column), [3, 4, 2, 5]);
   assert.deepEqual(result.gridPositionById.get('5'), { row: 2, column: 3, groupId: 'back' });
+});
+
+test('the next arrival can use the reserved cell in the same row', () => {
+  const cards = Array.from({length:6}, (_,i)=>card(i+1));
+  const full = layout(cards);
+  const added = layout([...cards, card(7)], full);
+  assert.equal(added.gridPositionById.get('7').row, 1);
+  assert.equal(added.maxCols, 8);
 });

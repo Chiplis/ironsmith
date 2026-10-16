@@ -13,6 +13,7 @@ pub struct TriggerFrequencySurface {
     pub first_time_during_each_of_their_turns: bool,
     pub becomes_crewed: bool,
     pub do_this_limit_each_turn: Option<u32>,
+    pub max_triggers_per_object: Option<u32>,
 }
 
 fn has_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -62,6 +63,7 @@ pub fn parse_trigger_frequency_tokens(tokens: &[OwnedLexToken]) -> TriggerFreque
         first_time_during_each_of_their_turns,
         becomes_crewed: has_phrase(tokens, &["becomes", "crewed"]),
         do_this_limit_each_turn: parse_do_this_only_each_turn_limit_tokens(tokens),
+        max_triggers_per_object: primitives::strip_lexed_suffix_phrase(tokens, &["this", "ability", "triggers", "only", "once"]).map(|_| 1),
     }
 }
 
@@ -74,8 +76,11 @@ pub fn parse_trigger_frequency_condition_tokens(
     tokens: &[OwnedLexToken],
     max_triggers_per_turn: Option<u32>,
 ) -> Option<PredicateAst> {
+    let frequency = parse_trigger_frequency_tokens(tokens);
+    if let Some(limit) = frequency.max_triggers_per_object {
+        return Some(PredicateAst::TriggerFrequency(TriggerFrequencyPredicateAst::MaxTriggersPerObject(limit)));
+    }
     max_triggers_per_turn.map(|limit| {
-        let frequency = parse_trigger_frequency_tokens(tokens);
         PredicateAst::TriggerFrequency(
             if limit == 1 && frequency.first_time_each_or_this_turn && frequency.becomes_crewed {
                 TriggerFrequencyPredicateAst::SourceFirstCrewedThisTurn

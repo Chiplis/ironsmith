@@ -549,6 +549,29 @@ pub fn is_historical_player_object_damage_recipient_clause(tokens: &[OwnedLexTok
     )
 }
 
+/// One recipient chosen during resolution: the prior player or a planeswalker
+/// controlled by that same player. The `or` stays inside the damage action.
+pub fn is_prior_player_or_controlled_planeswalker_damage_clause(tokens: &[OwnedLexToken]) -> bool {
+    let head = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
+    let target = if let Some(equal) = combat_grammar::parse_combat_damage_equal_shape_lexed(head.body_tokens) {
+        equal.target_tokens
+    } else {
+        let Some((_, used)) = parse_value(head.body_tokens) else { return false; };
+        let Ok(combat_grammar::CombatDamageTargetShape::General { target_tokens }) =
+            combat_grammar::parse_combat_damage_target_shape_lexed(head.body_tokens, used)
+        else { return false; };
+        target_tokens
+    };
+    let words = crate::lexer::token_word_refs(target).into_iter().filter(|word| *word != "a").collect::<Vec<_>>();
+    if !matches!(words.as_slice(),
+        ["that", "player", "or", "planeswalker", "that", "player", "controls"]
+        | ["that", "player", "or", "planeswalker", "they", "control"])
+    { return false; }
+    matches!(parse_target_phrase(target), Ok(TargetAst::ObjectOrPlayer(filter, PlayerFilter::IteratedPlayer, _))
+        if filter == ObjectFilter::default().in_zone(Zone::Battlefield)
+            .with_type(CardType::Planeswalker).controlled_by(PlayerFilter::IteratedPlayer))
+}
+
 /// "that player and each creature that player controls" (Cerebral
 /// Eruption): a named player recipient plus a quantified object set. The
 /// player half is an ordinary player reference or target; the object half is

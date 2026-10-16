@@ -1277,9 +1277,14 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_color(subject.into_player_filter())
             })
         }
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options }) => {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { options, shared_among }) => {
+            let shared_among = shared_among.as_ref().map(|(filter, count)| {
+                resolve_it_tag(filter, &current_reference_env(ctx)).map(|filter| (filter, *count))
+            }).transpose()?;
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::choose_card_type(subject.into_player_filter(), options.clone())
+                let mut effect = crate::effects::ChooseCardTypeEffect::new(subject.into_player_filter(), options.clone());
+                effect.shared_among = shared_among.clone();
+                Effect::new(effect)
             })
         }
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => {

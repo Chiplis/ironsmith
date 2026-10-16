@@ -1,3 +1,4 @@
+import { LearnButton } from "./PlayNavigation";
 import { Github } from "lucide-react";
 import useUiText from "@/i18n/useUiText";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ export default function TopbarUtilityControls({
   onAddCardNotice,
   showBrand = false,
   menuFirst = false,
+  showLearn = false,
 }) {
   const ui = useUiText();
   const menu = (
@@ -77,6 +79,7 @@ export default function TopbarUtilityControls({
           </svg>
         </a>
       </Button>
+      {showLearn ? <LearnButton onOpenLobby={onOpenLobby} /> : null}
       {!menuFirst ? menu : null}
     </div>
   );
