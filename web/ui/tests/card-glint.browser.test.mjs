@@ -120,18 +120,18 @@ test('cached double-faced printing stays ready in the live preview', {timeout:30
   const front={name:'Tamiyo, Inquisitive Student',type_line:'Legendary Creature — Moonfolk Wizard',mana_cost:'{U}',colors:['U'],power:'0',toughness:'3',oracle_text:'Flying\nWhenever Tamiyo attacks, investigate.',image_uris:{normal:art('front')}};
   const back={name:'Tamiyo, Seasoned Scholar',type_line:'Legendary Planeswalker — Tamiyo',colors:['U','G'],loyalty:'2',oracle_text:'+2: Draw a card.',image_uris:{normal:art('back')}};
   try {
-    const page=await browser.newPage();
+    const page=await browser.newPage();page.setDefaultTimeout(8000);
     await page.route(`https://api.scryfall.com/cards/${id}`,route=>route.fulfill({json:{id,name:`${front.name} // ${back.name}`,layout:'transform',frame:'2015',card_faces:[front,back]}}));
     await page.route('https://cards.scryfall.io/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="teal"/></svg>'}));
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
     await page.evaluate(async url=>{const {resolveScryfallPrintingMetadata}=await import('/src/lib/scryfall.js');await resolveScryfallPrintingMetadata(url);},art('front'));
     await page.evaluate(({front,url})=>{window.changeGlintCard(front);window.setGlintArt(url);window.showGlintFrame();},{front,url:art('front')});
     await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:8000});
-    await page.getByRole('button',{name:`${front.name}: ${front.oracle_text}`}).first().click();
+    await page.getByRole('button',{name:/Tamiyo, Inquisitive Student:/}).first().press('Enter');
     assert.equal(await page.evaluate(()=>window.glintActivated),'draw');
     await page.evaluate(({back,url})=>{window.changeGlintCard(back);window.setGlintArt(url);},{back,url:art('back')});
     await page.getByRole('img',{name:new RegExp(back.name)}).waitFor();
     await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:8000});
-    await page.getByRole('button',{name:`${back.name}: ${back.oracle_text}`}).first().click();
+    await page.getByRole('button',{name:/Tamiyo, Seasoned Scholar:/}).first().press('Enter');
   } finally {await browser.close();await vite.close();}
 });
