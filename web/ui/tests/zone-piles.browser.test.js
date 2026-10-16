@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('local graveyard and exile inspectors match the battlefield size and stay on the local field', async () => {
+test('zone hover inspectors stay outside the expanded strip', async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
   const browser = await chromium.launch();
@@ -11,30 +11,21 @@ test('local graveyard and exile inspectors match the battlefield size and stay o
     const page = await browser.newPage();
     for (const viewport of [{width:1440,height:900}, {width:1280,height:720}]) {
       await page.setViewportSize(viewport);
-      let battlefieldBox;
-      for (const zone of ['battlefield', 'graveyard', 'exile']) {
-        await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html`);
-        let card;
-        if (zone === 'battlefield') {
-          card = page.locator('[data-my-zone] .battlefield-row-card').first();
-        } else {
-          await page.locator(`[data-zone-pile="${zone}"][data-zone-owner="0"]`).hover();
-          card = page.locator(`[data-local-zone-strip="true"] [data-zone-card="${zone}"][data-object-id="${zone === 'graveyard' ? 1000 : 2000}"]`);
-        }
+      for (const zone of ['graveyard', 'exile', 'look']) {
+        await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look`, {waitUntil: "domcontentloaded"});
+        await page.locator(`[data-zone-pile="${zone}"][data-zone-owner="0"]`).dispatchEvent("pointerover", {pointerType: "mouse"});
+        const card = page.locator(`[data-local-zone-strip="true"] [data-zone-card="${zone}"][data-object-id="${zone === 'graveyard' ? 1000 : zone === 'exile' ? 2000 : 7001}"]`);
         await card.hover();
         const objectId = await card.getAttribute('data-object-id');
         const preview = page.locator(`[data-card-hover-preview][data-visible="true"][data-preview-object-id="${objectId}"]`);
         await preview.waitFor();
         await page.waitForTimeout(350);
         const bounds = await preview.boundingBox();
-        const board = await page.locator('[data-my-zone] .my-zone-board-shell').boundingBox();
-        assert.ok(bounds.y >= board.y - 1, `${zone} stays below the local field's top`);
-        assert.ok(bounds.y + bounds.height <= viewport.height - 7, `${zone} fits the viewport`);
-        if (zone === 'battlefield') battlefieldBox = bounds;
-        else {
-          assert.ok(Math.abs(bounds.height - battlefieldBox.height) < 2, `${zone} matches battlefield height`);
-          assert.ok(Math.abs(bounds.width - battlefieldBox.width) < 2, `${zone} matches battlefield width`);
-        }
+        const strip = await page.locator(`[data-local-zone-strip="true"]:has([data-zone-card="${zone}"])`).boundingBox();
+        assert.ok(bounds.height > 50, 'preview remains visible');
+        assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= viewport.height, 'preview fits vertically');
+        assert.ok(bounds.y + bounds.height <= strip.y - 7 || bounds.y >= strip.y + strip.height + 7,
+          JSON.stringify({zone, viewport, bounds, strip}));
       }
     }
   } finally { await browser.close(); await vite.close(); }
@@ -258,6 +249,35 @@ test('zone card inspectors leave the clicked card and expanded strip uncovered',
         await page.locator('.zone-pile-menu').waitFor({state:'hidden'});
       }
       await page.close();
+    }
+  } finally { await browser.close(); await vite.close(); }
+});
+
+test('opponent deck and all zone labels fit inside the clipped panel', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    for (const viewport of [{width:1440,height:900}, {width:1280,height:720}, {width:1440,height:650}]) {
+      await page.setViewportSize(viewport);
+      for (const commander of [false, true]) {
+        await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?singleOpponent&${commander ? 'commander' : ''}`, {waitUntil:'domcontentloaded'});
+        const rail = page.locator('[data-opponent-zone-piles="true"]').first();
+        await rail.waitFor();
+        await page.waitForTimeout(350);
+        const geometry = await rail.evaluate(element => {
+          const panel = element.closest('.battlefield-subpanel').getBoundingClientRect();
+          return [...element.querySelectorAll(':scope > .zone-pile-slot')].map(slot => {
+            const rect = slot.getBoundingClientRect();
+            return {zone:slot.querySelector('[data-zone-pile]').dataset.zonePile, top:rect.top, bottom:rect.bottom, panelTop:panel.top, panelBottom:panel.bottom};
+          });
+        });
+        for (const rect of geometry) {
+          assert.ok(rect.top >= rect.panelTop && rect.bottom <= rect.panelBottom - 3,
+            JSON.stringify({viewport, commander, ...rect}));
+        }
+      }
     }
   } finally { await browser.close(); await vite.close(); }
 });

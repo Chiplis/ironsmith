@@ -27,6 +27,7 @@ function Fixture(){
  const multiplayer = new URLSearchParams(location.search).has('multiplayer') ? {mode:'in_match',role:'client'} : {mode:'idle'};
  const [targeting,setTargeting]=useState(false);
  const state={viewed_cards: new URLSearchParams(location.search).has("look") ? {cards:[{id:7001,name:"Island"},{id:7002,name:"Forest"}]} : undefined,players,perspective,priority_player:0,active_player:0,decision:targeting?{kind:"targets",player:0,requirements:[{description:"Target card in a graveyard",min_targets:1,max_targets:1,legal_targets:[{kind:"object",object:1000},{kind:"object",object:1001}]}]}:{kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0}]},stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ if (new URLSearchParams(location.search).has("singleOpponent")) state.players = players.slice(0,2);
  if (new URLSearchParams(location.search).has("decisionDock")) {
    state.decision = {kind:"targets",player:0,description:"Target player creates X 0/1 colorless Eldrazi Spawn creature tokens.",requirements:Array.from({length:2},(_,i)=>({description:i ? "Target player scries X, then draws a card." : "Target player creates X tokens.",min_targets:1,max_targets:1,legal_targets:Array.from({length:Number(new URLSearchParams(location.search).get("options") || 2)},(_,j)=>({kind:"player",player:j,name:players[j]?.name || `Player ${j}`}))}))};
  }

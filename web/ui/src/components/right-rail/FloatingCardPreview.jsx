@@ -80,8 +80,8 @@ function objectFamilyIds(state, objectId) {
 function zonePreviewLayout(anchorRect, size, source = null) {
   const margin = 8;
   const gap = 8;
-  const localStrip = source?.closest?.('[data-local-zone-strip="true"]');
-  if (localStrip) return battlefieldPreviewLayout(anchorRect, size, source);
+  // Exclude the whole expanded strip, including its padding.
+  anchorRect = source?.closest?.(".zone-pile-menu")?.getBoundingClientRect() ?? anchorRect;
   const minimumTop = phaseToolbarTop(margin);
   const maximumBottom = window.innerHeight - margin;
   const availableHeight = Math.max(0, maximumBottom - minimumTop);
@@ -95,7 +95,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     (window.innerWidth - margin * 2) * 88 / 63
   );
   const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
-  // Keep the preview clear of the hovered zone card. Prefer above; when the
+  // Keep the preview clear of the entire expanded zone. Prefer above; when the
   // toolbar or viewport leaves too little room, flip it below automatically.
   const placeAbove = aboveSpace >= height;
   const top = placeAbove
@@ -112,7 +112,7 @@ function zonePreviewLayout(anchorRect, size, source = null) {
     left: Math.round(left),
     top: Math.round(top),
     right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(height))}px`,
+    maxHeight: `${Math.max(0, Math.floor(Math.min(sideAvailableHeight, availableHeight, (window.innerWidth - margin * 2) * 88 / 63)))}px`,
   };
 }
 
@@ -573,8 +573,7 @@ function CardPreviewSurface({
     onRequestClose?.();
   };
 
-  const lookStackPreview = directLookHover && renderedObjectId === directlyRequestedObjectId;
-  const stackPreview = lookStackPreview || isStackSource(renderedObjectId);
+  const stackPreview = isStackSource(renderedObjectId);
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
     && readyObjectId === renderedObjectId;
   const [stackAnchorRect, setStackAnchorRect] = useState(null);
@@ -584,8 +583,7 @@ function CardPreviewSurface({
     const measure = () => {
       const rect = [...document.querySelectorAll('[data-stack-preview-anchor]')]
         .map(element => element.getBoundingClientRect())
-        .find(bounds => bounds.width > 0 && bounds.height > 0)
-        || (lookStackPreview ? document.querySelector('[data-my-zone] .my-zone-stack-rail')?.getBoundingClientRect() : null);
+        .find(bounds => bounds.width > 0 && bounds.height > 0);
       const topEntry = document.querySelector('[data-my-zone] .my-zone-stack-rail .stack-timeline-entry:not([data-leaving="true"])')?.getBoundingClientRect();
       const table = document.querySelector('.table-shell[data-focused-hud="true"]');
       const floor = stackFrameFloor();
@@ -601,10 +599,25 @@ function CardPreviewSurface({
     };
     frame = requestAnimationFrame(measure);
     return () => cancelAnimationFrame(frame);
-  }, [stackPreview, lookStackPreview]);
+  }, [stackPreview]);
+  // Collision adjustment and scrolling can move a popover without resizing it.
+  const [zoneBounds, setZoneBounds] = useState(null);
+  useLayoutEffect(() => {
+    if (renderedObjectId == null || stackPreview) return undefined;
+    let frame;
+    const measure = () => {
+      const source = [...document.querySelectorAll("[data-zone-card][data-object-id]")]
+        .find(element => element.dataset.objectId === String(renderedObjectId));
+      const rect = source?.closest(".zone-pile-menu")?.getBoundingClientRect();
+      const next = rect ? [rect.left, rect.top, rect.right, rect.bottom, window.innerWidth, window.innerHeight].join(",") : null;
+      setZoneBounds(previous => previous === next ? previous : next);
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    return () => cancelAnimationFrame(frame);
+  }, [renderedObjectId, stackPreview]);
   const positionStyle = useMemo(
     () => {
-      if (lookStackPreview) return stackAnchoredPreviewPosition(stackAnchorRect, size);
       if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
         if (anchoredCardPreview?.placement === "zone") {
           return zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size);
@@ -621,7 +634,7 @@ function CardPreviewSurface({
       }
       return previewPosition(renderedObjectId, size);
     },
-    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview, stackAnchorRect, lookStackPreview]
+    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview, stackAnchorRect, zoneBounds]
   );
   const accentStyle = accent
     ? {
@@ -638,7 +651,6 @@ function CardPreviewSurface({
       className="floating-card-preview"
       data-card-hover-preview="true"
       data-automatic-stack-preview={lockedObjectId === automaticObjectId && automaticObjectId != null ? "true" : undefined}
-      data-look-stack-preview={lookStackPreview ? "true" : undefined}
       data-stack-preview={stackPreview ? "true" : "false"}
       data-preview-object-id={renderedObjectId || undefined}
       data-visible={visible ? "true" : "false"}

@@ -425,7 +425,21 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const boardBounds = board?.getBoundingClientRect();
       const pilesBounds = board ? piles.getBoundingClientRect() : null;
       const containerClientTop = container.clientTop;
-      const pileWidth = Math.min(56, cardWidth * 0.7);
+      let pileWidth = Math.min(56, cardWidth * 0.7);
+      if (piles.dataset.opponentZonePiles === "true"
+        && window.innerWidth >= 1024
+        && piles.closest('.table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])')) {
+        // This rail starts at the top of the lane. Fit every pile and label
+        // inside the opponent panel, whose overflow clips the last card.
+        const panelBottom = container.closest(".battlefield-subpanel")?.getBoundingClientRect().bottom ?? bounds.bottom;
+        const slots = piles.querySelectorAll(":scope > .zone-pile-slot").length;
+        const available = Math.max(0, Math.min(bounds.bottom, panelBottom) - bounds.top - 16);
+        if (slots > 0) {
+          // Reserve the label plus border/rounding space for each card.
+          const cardHeight = Math.max(0, (available - slots * 22 - (slots - 1) * 6) / slots);
+          pileWidth = Math.min(pileWidth, cardHeight * 63 / 88);
+        }
+      }
       piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
