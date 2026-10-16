@@ -343,6 +343,23 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await page.waitForFunction(() => window.context.phasePassing === false);
     assert.equal(await page.evaluate(() => window.submissions.length), 3);
 
+    // Devourer's pregame reveal and acknowledged upkeep look must not strand
+    // phase passing on a retained viewed_cards snapshot.
+    const reveal = {subject:0, zone:'Hand', visibility:'public', card_ids:[7], cards:[{id:7,name:'Devourer of Destiny'}]};
+    for (const view of [reveal, {...reveal, zone:'Library', visibility:'private', acknowledged:true}]) {
+      await load(priority(200, {phase:'beginning phase', step:'upkeep', viewed_cards:view}));
+      await page.evaluate(() => window.context.startPhaseAdvance());
+      await page.waitForFunction(() => window.submissions.length === 1);
+    }
+    // A genuinely new Look still pauses; Done Looking releases it without
+    // needing an unrelated engine snapshot or toggling Go To twice.
+    await load(priority(210, {phase:'beginning phase', step:'upkeep', viewed_cards:{...reveal, zone:'Library', visibility:'private'}}));
+    await page.evaluate(() => window.context.startPhaseAdvance());
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await page.evaluate(() => window.dispatchEvent(new Event('ironsmith:look-done')));
+    await page.waitForFunction(() => window.submissions.length === 1);
+
     await load(priority(110, { decision: { kind: 'mana_payment', player: 0 } }));
     assert.equal(await page.getByRole('button', {name:'Auto-pass', exact:true}).count(), 0);
     assert.deepEqual(errors, []);

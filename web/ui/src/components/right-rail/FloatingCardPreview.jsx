@@ -588,7 +588,7 @@ function CardPreviewSurface({
     const measure = () => {
       const source = [...document.querySelectorAll("[data-zone-card][data-object-id]")]
         .find(element => element.dataset.objectId === String(renderedObjectId));
-      const rect = source?.closest(".zone-pile-menu")?.getBoundingClientRect();
+      const rect = (source?.closest(".zone-pile-menu") ?? source)?.getBoundingClientRect();
       const next = rect ? [rect.left, rect.top, rect.right, rect.bottom, window.innerWidth, window.innerHeight, ...zoneDecisionBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",") : null;
       setZoneBounds(previous => previous === next ? previous : next);
       frame = requestAnimationFrame(measure);

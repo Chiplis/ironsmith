@@ -95,3 +95,27 @@ test("Look cards can be inspected regardless of selection legality", { timeout: 
     await vite.close();
   }
 });
+
+test('hovering decision cards previews the collapsed zone without expanding it', async () => {
+  const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
+  await vite.listen();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({viewport:{width:1200,height:800}});
+    await page.route('**/api.scryfall.com/**', route => route.fulfill({json:{name:'x',image_uris:{}}}));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles.html?option-hover`,{waitUntil:'domcontentloaded'});
+    for (const [id,zone] of [[19,'graveyard'],[31,'exile']]) {
+      await page.getByRole('button',{name:`Choose ${id}`,exact:true}).hover();
+      const pile = page.locator(`[data-zone-pile="${zone}"]`);
+      await page.waitForFunction(({id,zone}) => document.querySelector(`[data-zone-pile="${zone}"]`).dataset.objectId === String(id), {id,zone});
+      await page.locator(`[data-card-hover-preview][data-visible="true"][data-preview-object-id="${id}"]`).waitFor();
+      await page.waitForTimeout(250);
+      assert.equal(await pile.getAttribute('data-option-hovered'),'true');
+      assert.equal(await pile.getAttribute('aria-expanded'),'false');
+      assert.equal(await page.locator('.zone-pile-menu').count(),0);
+      await page.mouse.move(600,750);
+      await page.waitForFunction(zone => !document.querySelector(`[data-zone-pile="${zone}"]`).hasAttribute('data-option-hovered'),zone);
+      assert.equal(await pile.getAttribute('data-object-id'),null);
+    }
+  } finally {await browser.close();await vite.close();}
+});

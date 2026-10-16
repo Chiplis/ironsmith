@@ -133,13 +133,8 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     const timer = setTimeout(() => setOpen(true), 160);
     return () => clearTimeout(timer);
   }, [hoverOpensZone]);
-  // A decision option can stand for a card sitting in this pile, and graveyard
-  // and exile never expand inline (see shouldShowZoneBody) -- the pile is the
-  // only way to see into them. So hovering such an option opens the pile, and
-  // moving on closes it, at the same unhurried pace a pointer gets. Only a
-  // pile opened this way closes again, so one the player is holding stays put.
-  // A hovered stack object links the cards it is aimed at the same way, so a
-  // spell pointed at a card in this pile opens it and marks that card.
+  // Stack target hovers may open their linked zones. Decision choices instead
+  // preview their card on the collapsed pile without moving the options.
   const isStackTargeted = (card) => card != null && hoveredLinkedObjectIds.has(String(card.id));
   // The card a hover elsewhere stands for -- a dies trigger on the stack whose
   // source is already in here -- is marked the way an aimed-at card is. A card
@@ -150,9 +145,11 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     && hoveredObjectId != null
     && String(card.id) === String(hoveredObjectId)
     && String(rowHoveredId) !== String(card.id);
-  const holdsHoveredCard = (hoveredObjectId != null
+  const optionHoveredCard = canChoose && (choosingOption || choosingObject || choosingTarget)
+    ? cards.find(card => isHoverSource(card) && isFaceUpZoneCard(card)) : null;
+  const holdsHoveredCard = !optionHoveredCard && ((hoveredObjectId != null
     && cards.some((card) => String(card?.id) === String(hoveredObjectId)))
-    || cards.some(isStackTargeted);
+    || cards.some(isStackTargeted));
   const openedByHoverRef = useRef(false);
   useEffect(() => {
     if (holdsHoveredCard) {
@@ -195,7 +192,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       .map((id) => cards.find((card) => String(card.id) === String(id)))
       .find(Boolean)
     : null;
-  const collapsedCard = latestChosenCard || topCard;
+  const collapsedCard = optionHoveredCard || latestChosenCard || topCard;
   const chosenInPile = !open && choosingObject
     ? latestChosenCard || cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
     : null;
@@ -303,6 +300,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
           data-zone-owner={String(player.id ?? player.index)}
+          data-option-hovered={optionHoveredCard ? "true" : undefined}
+          data-zone-card={!open && optionHoveredCard ? zone : undefined}
+          data-object-id={!open && optionHoveredCard ? optionHoveredCard.id : undefined}
           data-has-targets={hasLegalCards ? "true" : undefined}
           aria-label={ui("{0}'s {1}, {2} cards. Open zone", { 0: player.name, 1: ui(label), 2: count })}
           onPointerEnter={(event) => {

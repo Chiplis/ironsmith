@@ -1,3 +1,4 @@
+import { LOOK_DONE_EVENT, lookViewKey, temporaryLookView } from "@/lib/look-pile";
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
 import { selectGoldfishPlayer } from "@/lib/goldfish-player.js";
@@ -2445,6 +2446,19 @@ export function GameProvider({ children }) {
   // for still prompt; the run resumes after they are answered.
   const [resolveAllTick, setResolveAllTick] = useState(0);
   const resolveAllRef = useRef(null);
+  const completedLookRef = useRef("");
+  useEffect(() => {
+    const completeLook = () => {
+      completedLookRef.current = lookViewKey(temporaryLookView(stateRef.current), null);
+      setResolveAllTick(tick => tick + 1);
+    };
+    window.addEventListener(LOOK_DONE_EVENT, completeLook);
+    return () => window.removeEventListener(LOOK_DONE_EVENT, completeLook);
+  }, [stateRef]);
+  useEffect(() => {
+    const key = lookViewKey(temporaryLookView(state), null);
+    if (key !== completedLookRef.current) completedLookRef.current = "";
+  }, [state]);
   const stopResolveAll = useCallback(() => {
     resolveAllRef.current = null;
     setPhasePassing(false);
@@ -2566,7 +2580,9 @@ export function GameProvider({ children }) {
       if (run?.phases || stopReason?.startsWith("stop at ")) pausePassing();
       return;
     }
-    if (run?.phases && state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return;
+    const pendingLook = temporaryLookView(state);
+    if (run?.phases && pendingLook && !pendingLook.acknowledged
+      && lookViewKey(pendingLook, null) !== completedLookRef.current) return;
     const passAction = findPassPriorityAction(decision);
     if (!passCombat && (!passAction || (passAction.label && passAction.label !== "Pass priority"))) {
       stopResolveAll();

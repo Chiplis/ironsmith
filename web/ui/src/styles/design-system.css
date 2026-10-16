@@ -7907,3 +7907,9 @@ html[data-hand-pointer-suspended="true"] * {
     margin-top: 0;
   }
 }
+
+/* Option previews light the pile without expanding or scaling its hit area. */
+.zone-pile[data-option-hovered="true"] {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .85), 0 0 14px rgba(255, 255, 255, .65);
+}

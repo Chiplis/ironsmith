@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { DragProvider, useDragActions, useDragState } from "../src/context/DragContext";
-import { HoverProvider } from "../src/context/HoverContext";
+import { HoverProvider, useHover } from "../src/context/HoverContext";
 import { SymbolText } from "../src/lib/mana-symbols";
 import FloatingCardPreview from "../src/components/right-rail/FloatingCardPreview";
 import { I18nProvider } from "../src/i18n/I18nContext";
@@ -11,6 +11,8 @@ import PlayerZonePiles from "../src/components/board/PlayerZonePiles";
 import "../src/index.css";
 
 function Fixture() {
+  const { hoverCard, clearHover } = useHover();
+  const optionHover = new URLSearchParams(location.search).has("option-hover");
   const [actionsOpen, setActionsOpen] = useState(false);
   const drag = useDragState();
   const { startDrag, markCastIntent, setCastTargetPreview, updateDrag } = useDragActions();
@@ -34,6 +36,7 @@ function Fixture() {
     state.viewed_cards = { cards: [{id:41,name:"Island"}, {id:42,name:"Duress"}] };
     state.decision = {kind:"select_objects",player:0,candidates:[{id:41,legal:false},{id:42,legal:true}]};
   }
+  if (optionHover) state.decision = {kind:"select_options",player:0,options:[{index:0,object_id:19},{index:1,object_id:31}]};
   return <GameContext.Provider value={{state}}>
     {new URLSearchParams(location.search).has("glossary") && selected != null && (
       <aside data-card-hover-preview="true" data-visible="true" data-preview-object-id={selected}
@@ -42,6 +45,9 @@ function Fixture() {
       </aside>
     )}
     {!new URLSearchParams(location.search).has("glossary") && !actionsOpen && <FloatingCardPreview pinnedObjectId={targeting ? null : selected} />}
+    {optionHover && [19,31].map(id => <button key={id} data-decision-option-object={id}
+      onPointerEnter={() => hoverCard(id)} onPointerLeave={clearHover}
+      onFocus={() => hoverCard(id)} onBlur={clearHover}>Choose {id}</button>)}
     <button onClick={() => setActionsOpen(true)}>Show cast choices</button>
     {actionsOpen && <div style={{position:"relative",zIndex:1,transform:"translateZ(0)"}}>
       <div className="floating-card-preview" style={{position:"fixed",inset:0}} />
