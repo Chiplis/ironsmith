@@ -9439,9 +9439,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 filter,
                 ..
             }) => bind_unresolved_it_in_filter(filter, seed_tag),
-            SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. } => {
-                bind_unresolved_it_in_filter(filter, seed_tag)
-                    + bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
+            SubjectVerbActionAst::TagMatchingObjects { filter, tag, source_tags, .. } => {
+                let mut bound = bind_unresolved_it_in_filter(filter, seed_tag)
+                    + bind_unresolved_it_in_tag(&mut tag.key, seed_tag);
+                for source in source_tags {
+                    bound += bind_unresolved_it_in_tag(&mut source.key, seed_tag);
+                }
+                bound
             }
             SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
                 target,

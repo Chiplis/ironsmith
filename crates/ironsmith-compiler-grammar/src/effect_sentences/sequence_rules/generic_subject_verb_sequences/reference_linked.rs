@@ -752,6 +752,7 @@ pub fn parse_reciprocal_creature_control_sequence(
                 zones: vec![Zone::Battlefield],
                 tag: your_tag,
                 source_tags: Vec::new(),
+                filter_source_snapshots: false,
             },
         ),
         EffectAst::subject_verb(
@@ -762,6 +763,7 @@ pub fn parse_reciprocal_creature_control_sequence(
                 zones: vec![Zone::Battlefield],
                 tag: target_tag,
                 source_tags: Vec::new(),
+                filter_source_snapshots: false,
             },
         ),
     ];

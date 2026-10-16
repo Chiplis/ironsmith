@@ -2816,6 +2816,7 @@ pub(super) fn compile_subject_verb_middle(
             zones,
             tag,
             source_tags,
+            filter_source_snapshots,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             // Reference resolution can relocate the pool (a looked-at hand
@@ -2838,6 +2839,7 @@ pub(super) fn compile_subject_verb_middle(
                         .collect::<Vec<_>>(),
                 );
             }
+            effect.filter_source_snapshots = *filter_source_snapshots;
             ctx.last_object_tag = Some(tag.clone().into());
             Ok((vec![Effect::new(effect)], Vec::new()))
         }

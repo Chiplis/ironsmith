@@ -154,6 +154,19 @@ test('custom Island uses a default glint frame with local art and source attribu
     });
     await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:15000});
     assert.equal(await page.locator('[data-card-glint-frame="error"]').count(),0);
+    const source=page.getByRole('link',{name:'Open original post on reddit.com'});
+    const href='https://www.reddit.com/r/custommagic/comments/ch910l/bob_ross_basic_lands/';
+    assert.equal(await source.getAttribute('href'),href);
+    const linkBox=await source.boundingBox(),frameBox=await page.locator('[data-card-glint-frame="ready"]').boundingBox();
+    assert.ok(linkBox.y>=frameBox.y+frameBox.height,'attribution does not cover the card or its controls');
+    await page.screenshot({path:'/tmp/custom-island-source-link.png'});
+    await page.context().route('https://www.reddit.com/**',route=>route.fulfill({contentType:'text/html',body:'Original post'}));
+    const popupPromise=page.waitForEvent('popup');
+    await source.click();
+    const popup=await popupPromise;
+    await popup.waitForLoadState();
+    assert.equal(popup.url(),href);
+    await popup.close();
   }finally{await browser.close();await vite.close();}
 });
 

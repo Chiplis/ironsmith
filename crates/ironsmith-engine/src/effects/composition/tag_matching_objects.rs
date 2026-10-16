@@ -49,8 +49,22 @@ impl EffectExecutor for TagMatchingObjectsEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         if !self.source_tags.is_empty() {
             let mut snapshots = Vec::new();
+            let filter_ctx = ctx.filter_context(game);
             for source_tag in &self.source_tags {
-                for snapshot in ctx.get_tagged_all(source_tag).into_iter().flatten() {
+                let Some(source) = ctx.get_tagged_all(source_tag) else {
+                    if self.filter_source_snapshots {
+                        return Err(ExecutionError::IncompleteEvidence(
+                            "filtered tagged capture has no producer collection".into(),
+                        ));
+                    }
+                    continue;
+                };
+                for snapshot in source {
+                    if self.filter_source_snapshots
+                        && !self.filter.matches_snapshot(snapshot, &filter_ctx, game)
+                    {
+                        continue;
+                    }
                     if !snapshots
                         .iter()
                         .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
@@ -126,6 +140,43 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
             .card_types(vec![CardType::Creature])
             .build()
+    }
+
+    #[test]
+    fn filtered_captured_union_keeps_snapshot_identity_without_rescanning() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let own = game.create_object_from_card(&make_card("Own captured card"), alice, Zone::Hand);
+        let foreign = game.create_object_from_card(&make_card("Foreign captured card"), bob, Zone::Hand);
+        let source = game.create_object_from_card(&make_card("Uncaptured card"), alice, Zone::Battlefield);
+        let own_snapshot = ObjectSnapshot::from_object_id(&game, own).unwrap();
+        let captured = vec![own_snapshot.clone(), ObjectSnapshot::from_object_id(&game, foreign).unwrap()];
+        let moved = game.move_object_by_effect(own, Zone::Exile).unwrap();
+        assert_ne!(moved, own);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("prior", captured);
+        let mut filter = crate::target::ObjectFilter::default();
+        filter.owner = Some(crate::target::PlayerFilter::You);
+        let filtered = TagMatchingObjectsEffect::new(filter.clone(), "own")
+            .from_filtered_tagged_sources(["prior".into()]);
+        filtered.execute(&mut game, &mut ctx).unwrap();
+        let subset = ctx.get_tagged_all("own").unwrap();
+        assert_eq!(subset.len(), 1);
+        assert_eq!(subset[0].object_id, own_snapshot.object_id);
+        assert_eq!(subset[0].stable_id, own_snapshot.stable_id);
+        let legacy = TagMatchingObjectsEffect::new(filter.clone(), "legacy")
+            .from_tagged_sources(["prior".into()]);
+        legacy.execute(&mut game, &mut ctx).unwrap();
+        assert_eq!(ctx.get_tagged_all("legacy").unwrap().len(), 2);
+        let missing = TagMatchingObjectsEffect::new(filter.clone(), "missing")
+            .from_filtered_tagged_sources(["absent_producer".into()]);
+        assert!(matches!(missing.execute(&mut game, &mut ctx), Err(ExecutionError::IncompleteEvidence(_))));
+        ctx.set_tagged_objects("empty", Vec::new());
+        TagMatchingObjectsEffect::new(filter, "empty_subset")
+            .from_filtered_tagged_sources(["empty".into()])
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(ctx.get_tagged_all("empty_subset").unwrap().is_empty());
     }
 
     #[test]

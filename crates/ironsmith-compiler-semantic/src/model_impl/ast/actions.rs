@@ -220,6 +220,7 @@ pub enum SubjectVerbActionAst {
         zones: Vec<Zone>,
         tag: TagRef,
         source_tags: Vec<TagRef>,
+        filter_source_snapshots: bool,
     },
     Cant {
         restriction: crate::effect::Restriction,
@@ -1468,6 +1469,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 zones,
                 tag,
                 source_tags,
+                filter_source_snapshots,
             } => {
                 let mut debug = f.debug_struct("TagMatchingObjects");
                 debug
@@ -1476,6 +1478,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     .field("tag", tag);
                 if !source_tags.is_empty() {
                     debug.field("source_tags", source_tags);
+                }
+                if *filter_source_snapshots {
+                    debug.field("filter_source_snapshots", &true);
                 }
                 debug.finish()
             }

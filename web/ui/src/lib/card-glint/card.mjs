@@ -1,3 +1,4 @@
+import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
 
@@ -34,10 +35,10 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing} = {}) {
   const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
   const text = rules(face);
   // Imported custom-card catalogs may store a source URL as flavor text.
-  // Attribution links are not printed flavor and can overflow the painter's
+  // Attribution links are shown below the inspector and can overflow the painter's
   // unbroken-word layout, rejecting an otherwise valid default frame.
   const flavor = String(face.flavor_text ?? print.flavor_text ?? '').trim();
-  const printableFlavor = /^https?:\/\/\S+$/i.test(flavor) ? '' : flavor;
+  const printableFlavor = cardFlavorSource(flavor) ? '' : flavor;
   const [power, toughness] = String(face.power_toughness ?? '').split('/');
   const result = {
     ...CARD_GLINT_DEFAULT_FRAME,

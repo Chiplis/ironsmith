@@ -5953,6 +5953,10 @@ pub struct TagMatchingObjectsEffect {
     /// of objects that were actually affected by preceding effects, including
     /// objects that have since changed zones.
     pub source_tags: Vec<crate::tag::TagKey>,
+    /// Apply `filter` to the captured snapshots before retaining the union.
+    /// Legacy unions use the filter only as descriptive provenance.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub filter_source_snapshots: bool,
 }
 
 impl std::fmt::Debug for TagMatchingObjectsEffect {
@@ -5966,6 +5970,9 @@ impl std::fmt::Debug for TagMatchingObjectsEffect {
         if !self.source_tags.is_empty() {
             debug.field("source_tags", &self.source_tags);
         }
+        if self.filter_source_snapshots {
+            debug.field("filter_source_snapshots", &true);
+        }
         debug.finish()
     }
 }
@@ -5978,6 +5985,7 @@ impl TagMatchingObjectsEffect {
             additional_zones: Vec::new(),
             tag: tag.into(),
             source_tags: Vec::new(),
+            filter_source_snapshots: false,
         }
     }
 
@@ -5989,6 +5997,15 @@ impl TagMatchingObjectsEffect {
         source_tags: impl IntoIterator<Item = crate::tag::TagKey>,
     ) -> Self {
         self.source_tags = source_tags.into_iter().collect();
+        self
+    }
+
+    pub fn from_filtered_tagged_sources(
+        mut self,
+        source_tags: impl IntoIterator<Item = crate::tag::TagKey>,
+    ) -> Self {
+        self.source_tags = source_tags.into_iter().collect();
+        self.filter_source_snapshots = true;
         self
     }
 

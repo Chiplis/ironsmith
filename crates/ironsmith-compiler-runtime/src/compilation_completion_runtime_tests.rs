@@ -373,3 +373,58 @@ fn commander_mana_value_choice_drives_both_draw_and_life_loss() {
         assert_eq!(game.player(alice).unwrap().hand.len(), amount as usize);
     }
 }
+
+#[test]
+fn shared_discard_types_compare_only_this_resolution_and_reveal_after_choices() {
+    #[derive(Debug, Default)]
+    struct DiscardChoices { chosen: usize, selected: Vec<ironsmith::ObjectId>, public_views: Vec<usize> }
+    impl ironsmith::decision::DecisionMaker for DiscardChoices {
+        fn decide_objects(&mut self, game: &ironsmith::GameState, ctx: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ironsmith::ObjectId> {
+            assert!(self.selected.iter().all(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Hand)),
+                "all players must finish choosing before any selected card moves");
+            let picked: Vec<_> = ctx.candidates.iter().filter(|candidate| candidate.legal).take(1).map(|candidate| candidate.id).collect();
+            self.chosen += usize::from(!picked.is_empty());
+            self.selected.extend(picked.iter().copied());
+            picked
+        }
+        fn view_cards(&mut self, _: &ironsmith::GameState, _: PlayerId, _: &[ironsmith::ObjectId], ctx: &ironsmith::decisions::context::ViewCardsContext) {
+            if ctx.public { self.public_views.push(self.chosen); }
+        }
+    }
+    let definition = compile_to_runtime_definition("Creeping Dread",
+        "Type: Enchantment\nAt the beginning of your upkeep, each player discards a card. Each opponent who discarded a card that shares a card type with the card you discarded loses 3 life. (Players reveal the discarded cards simultaneously.)", false).unwrap();
+    let program = definition.abilities.iter().find_map(|ability| match &ability.kind {
+        ironsmith::ability::AbilityKind::Triggered(trigger) => Some(&trigger.effects), _ => None,
+    }).unwrap();
+    let cases = [
+        (Some(vec![CardType::Creature]), Some(vec![CardType::Artifact, CardType::Creature]), Some(vec![CardType::Kindred, CardType::Instant]), [17, 20]),
+        (None, Some(vec![CardType::Creature]), Some(vec![CardType::Creature]), [20, 20]),
+        (Some(vec![CardType::Land]), Some(vec![CardType::Creature]), Some(vec![CardType::Instant]), [20, 20]),
+        (Some(vec![CardType::Artifact, CardType::Creature]), Some(vec![CardType::Artifact, CardType::Creature]), Some(vec![CardType::Land]), [17, 20]),
+        (None, None, None, [20, 20]),
+    ];
+    for (your_types, bob_types, carol_types, expected) in cases {
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into(), "Dan".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let card = |types| CardBuilder::new(CardId::new(), "Discard witness")
+            .card_types(types).subtypes(vec![Subtype::Elf])
+            .supertypes(vec![ironsmith::types::Supertype::Legendary]).build();
+        game.create_object_from_card(&card(vec![CardType::Creature]), alice, Zone::Graveyard);
+        let hands = [your_types, bob_types, carol_types];
+        let chosen_count = hands.iter().filter(|hand| hand.is_some()).count();
+        for (index, types) in hands.into_iter().enumerate() {
+            if let Some(types) = types { game.create_object_from_card(&card(types), PlayerId::from_index(index as u8), Zone::Hand); }
+        }
+        let mut dm = DiscardChoices::default();
+        let mut ctx = ironsmith::effects::EffectContext::new(source, alice, &mut dm);
+        for effect in program.all_effects() { ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap(); }
+        drop(ctx);
+        assert_eq!(game.player(PlayerId::from_index(1)).unwrap().life, expected[0]);
+        assert_eq!(game.player(PlayerId::from_index(2)).unwrap().life, expected[1]);
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert_eq!(game.player(PlayerId::from_index(3)).unwrap().life, 20);
+        for index in 0..4 { assert!(game.player(PlayerId::from_index(index)).unwrap().hand.is_empty()); }
+        assert!(dm.public_views.iter().all(|choices| *choices == chosen_count), "discard openings must wait for every selection: {:?}", dm.public_views);
+    }
+}

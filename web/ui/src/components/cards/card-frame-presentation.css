@@ -69,3 +69,7 @@
 
 .card-glint-surface{position:relative;flex:none;container-type:inline-size;width:min(100cqw,71.765cqh);height:min(100cqh,139.344cqw)}
 .card-glint-surface>canvas{display:block;width:100%;height:100%}
+
+.card-frame-source-link{flex:none;align-self:center;max-width:100%;box-sizing:border-box;padding:5px 10px;margin-top:4px;border:1px solid #9ab5d050;border-radius:6px;background:#101822ed;color:#c5e4ff;font:12px/1.35 system-ui,sans-serif;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;pointer-events:auto}
+.card-frame-source-link:hover{background:#24364a;color:#fff}
+.card-frame-source-link:focus-visible{outline:2px solid #73c8ff;outline-offset:2px}

@@ -2352,6 +2352,7 @@ impl EffectAst {
                 zones,
                 tag,
                 source_tags: Vec::new(),
+                filter_source_snapshots: false,
             },
         )
     }
@@ -2370,6 +2371,25 @@ impl EffectAst {
                 zones,
                 tag,
                 source_tags,
+                filter_source_snapshots: false,
+            },
+        )
+    }
+
+    pub fn subject_verb_filtered_tagged_objects(
+        filter: ObjectFilter,
+        tag: TagRef,
+        source_tags: Vec<TagRef>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::TagMatchingObjects {
+                filter,
+                zones: Vec::new(),
+                tag,
+                source_tags,
+                filter_source_snapshots: true,
             },
         )
     }
