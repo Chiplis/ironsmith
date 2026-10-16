@@ -135,7 +135,13 @@ Notes:
     the registry DB, and the frontend card assets are all created on the first run.
   - Cargo builds WASM with the fast-to-compile wasm-release profile; --release uses the
     size-optimized wasm-dist profile (opt-level "z", fat LTO, one codegen unit) instead.
-  - Native corpus tools use the optimized release profile.
+  - The WASM cargo build starts right after the dependency check and runs in the background
+    (its lines are prefixed with [wasm]) while the Scryfall sync, card bake, and catalogue
+    build run in the foreground. The catalogue is appended to the packaged engine afterwards
+    (scripts/inject-wasm-card-catalog.py), so the Rust build never waits for the bake.
+  - Native corpus tools use the optimized release profile; the card baker uses the
+    artifact-bake profile (see Cargo.toml), and starts building early ([baker] lines) when the
+    card assets were baked by a different compiler.
   - Development builds run wasm-opt -O1 on the engine so source compilation fits browser worker stacks.
   - --release optimizes all three modules at IRONSMITH_WASM_OPT_LEVEL.
   - Scryfall Default Cards are downloaded to $DEFAULT_CARDS_FILE when Scryfall publishes a newer bulk-data updated_at.
@@ -158,6 +164,7 @@ write_frontend_cards_cache_manifest() {
   python3 - "$ROOT_DIR" "$DB_PATH" "$target" "$ARTIFACT_COMPILER_FINGERPRINT" <<'PY'
 import hashlib
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -175,6 +182,39 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def registry_content_sha256(path: Path) -> str:
+    """Digest exactly the rows generate_baked_registry.py reads.
+
+    The DB file itself is tens of gigabytes and its bytes change on every sync
+    (status history, page reuse) even when no card does, so hashing the file
+    made this cache miss on every run.
+    """
+    digest = hashlib.sha256()
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        queries = (
+            "SELECT card_name, raw_card_json FROM registry_card ORDER BY card_name",
+            """
+            SELECT card_name, similarity_score
+            FROM latest_card_compilation
+            WHERE parse_status = 'strict_compiled'
+              AND parse_error IS NULL
+              AND has_unimplemented = 0
+              AND normalized_oracle_text IS NOT NULL
+              AND compiled_text IS NOT NULL
+            ORDER BY card_name
+            """,
+        )
+        for query in queries:
+            digest.update(b"\x00query")
+            for row in conn.execute(query):
+                digest.update(json.dumps(row, separators=(",", ":")).encode("utf-8"))
+                digest.update(b"\n")
+    finally:
+        conn.close()
+    return digest.hexdigest()
+
+
 inputs = [
     ("rebuild-wasm.sh", root / "rebuild-wasm.sh"),
     ("scripts/generate_baked_registry.py", root / "scripts" / "generate_baked_registry.py"),
@@ -182,11 +222,10 @@ inputs = [
     ("dungeon-sources", root / "crates" / "ironsmith-card-source" / "data" / "dungeons.json"),
     ("artifact-baker", root / "crates" / "ironsmith-artifact-baker" / "src" / "main.rs"),
     ("artifact-compiler-fingerprint", root / "scripts" / "artifact_compiler_fingerprint.py"),
-    ("registry-db", db_path),
 ]
 
 payload = {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "artifactCompilerFingerprint": artifact_compiler_fingerprint,
     "inputs": [
         {
@@ -195,6 +234,13 @@ payload = {
             "sha256": file_sha256(path),
         }
         for label, path in inputs
+    ]
+    + [
+        {
+            "label": "registry-db-content",
+            "path": str(db_path.relative_to(root) if db_path.is_relative_to(root) else db_path),
+            "sha256": registry_content_sha256(db_path),
+        }
     ],
 }
 checksum_payload = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -329,6 +375,18 @@ print(
 PY
 }
 
+# Run work that does not gate the browser build at utility QoS. On Apple
+# silicon the scheduler then prefers the efficiency cores for it, so the
+# browser build's single-threaded engine compile and LTO links keep the
+# performance cores. (Background QoS would starve it outright under load.)
+off_critical_path() {
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v taskpolicy >/dev/null 2>&1; then
+    taskpolicy -c utility "$@"
+  else
+    "$@"
+  fi
+}
+
 scryfall_sync_enabled() {
   case "$SYNC_SCRYFALL_CARDS" in
     1|true|TRUE|yes|YES|on|ON)
@@ -435,7 +493,7 @@ EOF
   esac
 
   echo "[INFO] syncing registry DB with cards not already present..."
-  cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- \
+  off_critical_path cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- \
     --cards "$CARDS_FILE" \
     --db-path "$DB_PATH" \
     --insert-missing-only \
@@ -532,6 +590,212 @@ case "$WASM_OPT_LEVEL" in
   *) echo "IRONSMITH_WASM_OPT_LEVEL must be -O1, -O2, -Os, or -Oz" >&2; exit 1 ;;
 esac
 
+report_wasm_build_settings() {
+  if feature_enabled "generated-registry"; then
+    export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
+    echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
+  else
+    echo "[INFO] generated Rust registry disabled; the packaged engine embeds the compressed card catalogue and loads definitions on demand"
+  fi
+  echo "[INFO] wasm build profile: $WASM_CARGO_PROFILE"
+  if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
+    echo "[INFO] cargo default features: disabled"
+  else
+    echo "[INFO] cargo default features: enabled"
+  fi
+  if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
+    echo "[INFO] wasm-opt: enabled"
+  else
+    echo "[INFO] wasm-opt: engine-only -O1 (browser worker stack safety)"
+  fi
+}
+
+load_wasm_opt_library() {
+  local library="$ROOT_DIR/scripts/lib/wasm-opt.sh"
+  if [[ ! -f "$library" ]]; then
+    cat >&2 <<EOF
+[ERROR] missing optimizer helper: $library
+Drop --release to package the unoptimized WASM, or point IRONSMITH_WASM_OPT at a
+Binaryen wasm-opt and restore the helper from the repository.
+EOF
+    return 1
+  fi
+  # shellcheck source=scripts/lib/wasm-opt.sh
+  source "$library"
+}
+
+start_wasm_cargo_build() {
+  local engine_features
+  local cargo_args
+  local cargo_packages
+
+  engine_features="$(printf '%s' "$FEATURES" | sed 's/[[:space:]]//g; s/,/,ironsmith-engine-wasm\//g; s/^/ironsmith-engine-wasm\//')"
+  cargo_packages=(
+    -p ironsmith-engine-wasm
+    -p ironsmith-compiler-wasm
+    -p ironsmith-verifier-wasm
+  )
+  cargo_args=(
+    build
+    "${cargo_packages[@]}"
+    --target wasm32-unknown-unknown
+    --profile "$WASM_CARGO_PROFILE"
+  )
+  if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
+    cargo_args+=(--no-default-features)
+  fi
+  cargo_args+=(--features "$engine_features")
+  # The browser build is independent of the card bake (the catalogue is
+  # injected after linking), so it runs alongside the native preflight, bake,
+  # and catalogue steps. Its output is prefixed to tell the two streams apart.
+  (
+    cargo "${cargo_args[@]}" 2>&1 | awk '{ print "[wasm] " $0; fflush() }'
+  ) &
+  WASM_BUILD_PID="$!"
+  # The browser build is the long pole: its critical path is one engine crate
+  # and one fat-LTO link, each single-threaded. Everything this script starts
+  # from here on (sync, bake, catalogue) runs at a lower priority so it fills
+  # the remaining cores instead of stalling that path.
+  renice -n 10 -p "$$" >/dev/null 2>&1 || true
+}
+
+wait_wasm_cargo_build() {
+  local pid="$WASM_BUILD_PID"
+  WASM_BUILD_PID=""
+  if ! wait "$pid"; then
+    echo "[ERROR] browser cargo build failed (see the [wasm] lines above)" >&2
+    exit 1
+  fi
+}
+
+# The fingerprint the current card assets were baked with, or nothing.
+recorded_artifact_compiler_fingerprint() {
+  python3 - "$FRONTEND_CARDS_DIR/$FRONTEND_CARDS_CACHE_MANIFEST_NAME" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("artifactCompilerFingerprint", ""))
+except (OSError, ValueError, AttributeError):
+    print("")
+PY
+}
+
+# The baker (and the catalogue tool the next step needs) compile in the
+# background, overlapping the Scryfall sync and the registry snapshot export.
+start_artifact_baker_build() {
+  (
+    (
+      IRONSMITH_ARTIFACT_COMPILER_FINGERPRINT="$ARTIFACT_COMPILER_FINGERPRINT" \
+        cargo build --profile artifact-bake -p ironsmith-artifact-baker --bin bake_card_artifacts
+      cargo build --release -p ironsmith-card-catalog --features build --bin build_card_catalog
+    ) 2>&1 | awk '{ print "[baker] " $0; fflush() }'
+  ) &
+  BAKER_BUILD_PID="$!"
+}
+
+finish_artifact_baker_build() {
+  local pid="$BAKER_BUILD_PID"
+  BAKER_BUILD_PID=""
+  if [[ -z "$pid" ]]; then
+    IRONSMITH_ARTIFACT_COMPILER_FINGERPRINT="$ARTIFACT_COMPILER_FINGERPRINT" \
+      cargo build --profile artifact-bake -p ironsmith-artifact-baker --bin bake_card_artifacts
+  elif ! wait "$pid"; then
+    echo "[ERROR] artifact baker build failed (see the [baker] lines above)" >&2
+    exit 1
+  fi
+}
+
+stop_background_builds() {
+  local pid
+  for pid in "$WASM_BUILD_PID" "$BAKER_BUILD_PID"; do
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      pkill -TERM -P "$pid" 2>/dev/null || true
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
+package_split_wasm() {
+  local wasm_opt
+  local raw_wasm_files
+  local artifact_names
+  local generated_wasm
+  local artifact
+  local artifact_name
+  local index
+  local engine_opt_pid
+  local compiler_opt_pid
+  local verifier_opt_pid
+
+  raw_wasm_files=(
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_engine_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_compiler_wasm.wasm"
+    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_verifier_wasm.wasm"
+  )
+  artifact_names=(engine compiler verifier)
+  for artifact in "${raw_wasm_files[@]}"; do
+    [[ -f "$artifact" ]] || { echo "[ERROR] missing split wasm artifact: $artifact" >&2; return 1; }
+  done
+
+  rm -rf -- "$PKG_DIR"
+  mkdir -p "$PKG_DIR"
+  for ((index = 0; index < ${#raw_wasm_files[@]}; index += 1)); do
+    wasm-bindgen "${raw_wasm_files[$index]}" \
+      --target web \
+      --out-dir "$PKG_DIR" \
+      --out-name "${artifact_names[$index]}"
+  done
+
+  generated_wasm=()
+  for artifact_name in "${artifact_names[@]}"; do
+    generated_wasm+=("$PKG_DIR/${artifact_name}_bg.wasm")
+  done
+
+  load_wasm_opt_library || return 1
+  wasm_opt="$(resolve_wasm_opt)" || {
+    echo "[ERROR] browser packaging requires the pinned Binaryen $IRONSMITH_BINARYEN_VERSION wasm-opt (or IRONSMITH_WASM_OPT)" >&2
+    return 1
+  }
+  if ! wasm_opt_matches_pin "$wasm_opt"; then
+    echo "[WARN] wasm-opt override reports '$("$wasm_opt" --version 2>/dev/null)'; the pinned optimizer is Binaryen $IRONSMITH_BINARYEN_VERSION" >&2
+  fi
+  if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
+    echo "[INFO] optimizing split artifacts with $("$wasm_opt" --version) at $WASM_OPT_LEVEL and at most two wasm-opt processes"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized" &
+    engine_opt_pid="$!"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[1]}" -o "${generated_wasm[1]}.optimized" &
+    compiler_opt_pid="$!"
+    wait "$compiler_opt_pid"
+    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[2]}" -o "${generated_wasm[2]}.optimized" &
+    verifier_opt_pid="$!"
+    wait "$engine_opt_pid"
+    wait "$verifier_opt_pid"
+    for artifact in "${generated_wasm[@]}"; do
+      mv -f "$artifact.optimized" "$artifact"
+    done
+  else
+    # LLVM opt-level 0 leaves the recursive source parser too deep for browser
+    # worker stacks (e.g. Endurance after rejecting a stale baked artifact).
+    # A trap strands the wasm-bindgen mutable borrow and poisons every later
+    # engine call. Keep fast Cargo builds, but never ship that raw engine.
+    echo "[INFO] optimizing development engine at -O1 for browser worker stack safety"
+    "$wasm_opt" -O1 "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized"
+    mv -f "${generated_wasm[0]}.optimized" "${generated_wasm[0]}"
+  fi
+
+  python3 "$ROOT_DIR/scripts/inject-wasm-card-catalog.py" "${generated_wasm[0]}" "$EMBEDDED_CARD_CATALOG"
+
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.js" "$PKG_DIR/ironsmith.js"
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.d.ts" "$PKG_DIR/ironsmith.d.ts"
+  node "$ROOT_DIR/scripts/prepare-exact-build-snapshots.mjs" "$PKG_DIR"
+  cp -f "$ROOT_DIR/npm/ironsmith-wasm/package.template.json" "$PKG_DIR/package.json"
+  if [[ -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" ]]; then
+    cp -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" "$PKG_DIR/README.md"
+  fi
+}
+
 cd "$ROOT_DIR"
 require_cmd cargo
 require_cmd python3
@@ -540,8 +804,27 @@ ensure_wasm_bindgen_cli
 
 mkdir -p "$ROOT_DIR/target"
 ensure_cargo_dependencies_available
+WASM_BUILD_PID=""
+BAKER_BUILD_PID=""
+trap stop_background_builds EXIT
+# A generated registry is compiled from the DB, so that build waits for the sync.
+if ! feature_enabled "generated-registry"; then
+  report_wasm_build_settings
+  start_wasm_cargo_build
+fi
 ARTIFACT_COMPILER_FINGERPRINT="$(python3 "$ROOT_DIR/scripts/artifact_compiler_fingerprint.py")"
+# Card assets baked by another compiler are always rebaked, so start the baker
+# now. (A registry change alone is only known after the sync; that case builds
+# the baker when the bake starts.)
+if [[ "$(recorded_artifact_compiler_fingerprint)" != "$ARTIFACT_COMPILER_FINGERPRINT" ]]; then
+  echo "[INFO] artifact compiler changed since the last card bake; building the baker in the background"
+  start_artifact_baker_build
+fi
 sync_scryfall_cards_for_rebuild
+if feature_enabled "generated-registry"; then
+  report_wasm_build_settings
+  start_wasm_cargo_build
+fi
 
 if [[ ! -f "$DB_PATH" ]]; then
   cat >&2 <<EOF
@@ -628,9 +911,8 @@ PY
     --db-path "$DB_PATH" \
     --out "$ROOT_DIR/target/generated_registry_for_frontend_assets.rs" \
     --frontend-cards-dir "$FRONTEND_CARDS_DIR"
-  IRONSMITH_ARTIFACT_COMPILER_FINGERPRINT="$ARTIFACT_COMPILER_FINGERPRINT" \
-    cargo run --release -p ironsmith-artifact-baker --bin bake_card_artifacts -- \
-      --cards-dir "$FRONTEND_CARDS_DIR"
+  finish_artifact_baker_build
+  "$ROOT_DIR/target/artifact-bake/bake_card_artifacts" --cards-dir "$FRONTEND_CARDS_DIR"
   mkdir -p "$FRONTEND_CARDS_DIR"
   mv -f "$PENDING_FRONTEND_CARDS_CACHE_MANIFEST" "$FRONTEND_CARDS_CACHE_MANIFEST"
   echo "[INFO] synced frontend card compilation assets: $FRONTEND_CARDS_DIR"
@@ -647,141 +929,20 @@ else
   EMBEDDED_CARD_CATALOG="$ROOT_DIR/target/embedded-card-catalog.bin"
   CATALOG_QUALITY=9
 fi
-cargo run --release -p ironsmith-card-catalog --features build --bin build_card_catalog -- \
+if [[ -n "$BAKER_BUILD_PID" ]]; then
+  finish_artifact_baker_build
+fi
+# Without a bake the catalogue finishes long before the browser build; after one
+# it can be the last step, so it keeps normal scheduling.
+catalog_runner=()
+if [[ "$FRONTEND_JSON_CACHE_CURRENT" -eq 1 ]]; then
+  catalog_runner=(off_critical_path)
+fi
+${catalog_runner[@]+"${catalog_runner[@]}"} cargo run --release -p ironsmith-card-catalog --features build --bin build_card_catalog -- \
   --cards-dir "$FRONTEND_CARDS_DIR" --output "$EMBEDDED_CARD_CATALOG" --quality "$CATALOG_QUALITY"
-export IRONSMITH_EMBEDDED_CARD_CATALOG="$EMBEDDED_CARD_CATALOG"
 
-if feature_enabled "generated-registry"; then
-  export IRONSMITH_REGISTRY_DB_PATH="$DB_PATH"
-  echo "[INFO] registry DB source: $IRONSMITH_REGISTRY_DB_PATH"
-else
-  echo "[INFO] generated Rust registry disabled; WASM embeds the compressed card catalogue and loads definitions on demand"
-fi
-echo "[INFO] wasm build profile: $WASM_CARGO_PROFILE"
-if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
-  echo "[INFO] cargo default features: disabled"
-else
-  echo "[INFO] cargo default features: enabled"
-fi
-if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
-  echo "[INFO] wasm-opt: enabled"
-else
-  echo "[INFO] wasm-opt: engine-only -O1 (browser worker stack safety)"
-fi
-
-load_wasm_opt_library() {
-  local library="$ROOT_DIR/scripts/lib/wasm-opt.sh"
-  if [[ ! -f "$library" ]]; then
-    cat >&2 <<EOF
-[ERROR] missing optimizer helper: $library
-Drop --release to package the unoptimized WASM, or point IRONSMITH_WASM_OPT at a
-Binaryen wasm-opt and restore the helper from the repository.
-EOF
-    return 1
-  fi
-  # shellcheck source=scripts/lib/wasm-opt.sh
-  source "$library"
-}
-
-build_split_wasm_package() {
-  local engine_features
-  local wasm_opt
-  local cargo_args
-  local cargo_packages
-  local raw_wasm_files
-  local artifact_names
-  local generated_wasm
-  local artifact
-  local artifact_name
-  local index
-  local engine_opt_pid
-  local compiler_opt_pid
-  local verifier_opt_pid
-
-  engine_features="$(printf '%s' "$FEATURES" | sed 's/[[:space:]]//g; s/,/,ironsmith-engine-wasm\//g; s/^/ironsmith-engine-wasm\//')"
-  cargo_packages=(
-    -p ironsmith-engine-wasm
-    -p ironsmith-compiler-wasm
-    -p ironsmith-verifier-wasm
-  )
-  cargo_args=(
-    build
-    "${cargo_packages[@]}"
-    --target wasm32-unknown-unknown
-    --profile "$WASM_CARGO_PROFILE"
-  )
-  if [[ "$NO_DEFAULT_FEATURES" -eq 1 ]]; then
-    cargo_args+=(--no-default-features)
-  fi
-  cargo_args+=(--features "$engine_features")
-  cargo "${cargo_args[@]}"
-
-  raw_wasm_files=(
-    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_engine_wasm.wasm"
-    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_compiler_wasm.wasm"
-    "$ROOT_DIR/target/wasm32-unknown-unknown/$WASM_CARGO_PROFILE/ironsmith_verifier_wasm.wasm"
-  )
-  artifact_names=(engine compiler verifier)
-  for artifact in "${raw_wasm_files[@]}"; do
-    [[ -f "$artifact" ]] || { echo "[ERROR] missing split wasm artifact: $artifact" >&2; return 1; }
-  done
-
-  rm -rf -- "$PKG_DIR"
-  mkdir -p "$PKG_DIR"
-  for ((index = 0; index < ${#raw_wasm_files[@]}; index += 1)); do
-    wasm-bindgen "${raw_wasm_files[$index]}" \
-      --target web \
-      --out-dir "$PKG_DIR" \
-      --out-name "${artifact_names[$index]}"
-  done
-
-  generated_wasm=()
-  for artifact_name in "${artifact_names[@]}"; do
-    generated_wasm+=("$PKG_DIR/${artifact_name}_bg.wasm")
-  done
-
-  load_wasm_opt_library || return 1
-  wasm_opt="$(resolve_wasm_opt)" || {
-    echo "[ERROR] browser packaging requires the pinned Binaryen $IRONSMITH_BINARYEN_VERSION wasm-opt (or IRONSMITH_WASM_OPT)" >&2
-    return 1
-  }
-  if ! wasm_opt_matches_pin "$wasm_opt"; then
-    echo "[WARN] wasm-opt override reports '$("$wasm_opt" --version 2>/dev/null)'; the pinned optimizer is Binaryen $IRONSMITH_BINARYEN_VERSION" >&2
-  fi
-  if [[ "$OPTIMIZE_WASM" -eq 1 ]]; then
-    echo "[INFO] optimizing split artifacts with $("$wasm_opt" --version) at $WASM_OPT_LEVEL and at most two wasm-opt processes"
-    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized" &
-    engine_opt_pid="$!"
-    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[1]}" -o "${generated_wasm[1]}.optimized" &
-    compiler_opt_pid="$!"
-    wait "$compiler_opt_pid"
-    "$wasm_opt" "$WASM_OPT_LEVEL" "${generated_wasm[2]}" -o "${generated_wasm[2]}.optimized" &
-    verifier_opt_pid="$!"
-    wait "$engine_opt_pid"
-    wait "$verifier_opt_pid"
-    for artifact in "${generated_wasm[@]}"; do
-      mv -f "$artifact.optimized" "$artifact"
-    done
-  else
-    # LLVM opt-level 0 leaves the recursive source parser too deep for browser
-    # worker stacks (e.g. Endurance after rejecting a stale baked artifact).
-    # A trap strands the wasm-bindgen mutable borrow and poisons every later
-    # engine call. Keep fast Cargo builds, but never ship that raw engine.
-    echo "[INFO] optimizing development engine at -O1 for browser worker stack safety"
-    "$wasm_opt" -O1 "${generated_wasm[0]}" -o "${generated_wasm[0]}.optimized"
-    mv -f "${generated_wasm[0]}.optimized" "${generated_wasm[0]}"
-  fi
-
-  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.js" "$PKG_DIR/ironsmith.js"
-  cp -f "$ROOT_DIR/npm/ironsmith-wasm/split-facade.d.ts" "$PKG_DIR/ironsmith.d.ts"
-  node "$ROOT_DIR/scripts/prepare-exact-build-snapshots.mjs" "$PKG_DIR"
-  cp -f "$ROOT_DIR/npm/ironsmith-wasm/package.template.json" "$PKG_DIR/package.json"
-  if [[ -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" ]]; then
-    cp -f "$ROOT_DIR/npm/ironsmith-wasm/README.md" "$PKG_DIR/README.md"
-  fi
-}
-
-build_split_wasm_package
+wait_wasm_cargo_build
+package_split_wasm
 
 rm -rf -- "$DEMO_PKG_DIR"
 mkdir -p "$DEMO_PKG_DIR"
