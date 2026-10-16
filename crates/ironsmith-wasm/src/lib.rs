@@ -3255,7 +3255,7 @@ impl DecisionView {
                 })
         };
         let resolve_source_id = |source: Option<ObjectId>| -> Option<u64> {
-            source.and_then(|id| decision_object_visible(id).then_some(id.0))
+            ui_source_object_id(source.filter(|id| decision_object_visible(*id)))
         };
         let context_text = || ctx.context_text().map(str::to_string);
         let consequence_text = || ctx.consequence_text().map(str::to_string);
@@ -3824,7 +3824,7 @@ impl DecisionView {
                             .collect(),
                     })
                     .collect(),
-                source_id: Some(targets.source.0),
+                source_id: ui_source_object_id(Some(targets.source)),
                 source_name: resolve_source_name(Some(targets.source)),
                 context_text: context_text(),
                 consequence_text: consequence_text(),

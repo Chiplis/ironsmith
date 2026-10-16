@@ -80,6 +80,7 @@ impl GameState {
     pub fn mark_damage(&mut self, id: ObjectId, amount: u32) {
         if amount > 0 {
             self.object_store.changes.record(id);
+            self.object_store.render_changes.record(id);
             *self
                 .battlefield_flags_mut()
                 .damage_marked
@@ -91,6 +92,7 @@ impl GameState {
     /// Set the exact damage marked on an object.
     pub fn set_damage_marked(&mut self, id: ObjectId, amount: u32) {
         self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
         if amount == 0 {
             self.battlefield_flags_mut().damage_marked.remove(&id);
         } else {
@@ -230,6 +232,7 @@ impl GameState {
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
         self.object_store.changes.record(id);
+        self.object_store.render_changes.record(id);
         self.battlefield_flags_mut().damage_marked.remove(&id);
     }
 
@@ -322,6 +325,7 @@ impl GameState {
 
         for id in self.battlefield_flags.damage_marked.keys().copied() {
             self.object_store.changes.record(id);
+            self.object_store.render_changes.record(id);
         }
         let BattlefieldFlags {
             damage_marked,

@@ -2492,19 +2492,18 @@ export function GameProvider({ children }) {
     setResolveAllTick((tick) => tick + 1);
   }, [stateRef, priorityStops]);
 
-  const togglePhasePassing = useCallback(() => {
+  const beginPhasePassing = useCallback((ignoreStops = false) => {
     if (resolveAllRef.current?.phases) {
       stopResolveAll();
       return;
     }
     const current = stateRef.current;
     if (!current || current.game_over
-      || !samePlayerId(current.active_player, current.perspective)
-      || current.decision?.kind === "mana_payment") return;
+      || (ignoreStops && !samePlayerId(current.active_player, current.perspective))
+      || current.mana_payment || current.decision?.kind === "mana_payment") return;
     // Explicitly resume automation, but leave phase/step stops intact.
     priorityStops.resume(current);
-    // Clicking Pass while sitting at a stop moves on from it; later stops
-    // still pause the run.
+    // Release the starting stop; Go To honors later stops and End turn bypasses them.
     const pass = findPassPriorityAction(current.decision);
     if (pass && samePlayerId(current.decision?.player, current.perspective)) {
       priorityStops.beforeCommand(priorityCommandForAction(pass), current);
@@ -2513,6 +2512,7 @@ export function GameProvider({ children }) {
     setHoldRule("never");
     resolveAllRef.current = {
       phases: true,
+      ignoreStops,
       turn: current.turn_number ?? null,
       stackSize: Number(current.stack_size || 0),
       passes: 0,
@@ -2522,6 +2522,8 @@ export function GameProvider({ children }) {
     setPhasePassing(true);
     setResolveAllTick(tick => tick + 1);
   }, [stateRef, stopResolveAll, priorityStops]);
+  const togglePhasePassing = useCallback(() => beginPhasePassing(true), [beginPhasePassing]);
+  const startPhaseAdvance = useCallback(() => beginPhasePassing(false), [beginPhasePassing]);
 
   useEffect(() => {
     const run = resolveAllRef.current;
@@ -2549,8 +2551,8 @@ export function GameProvider({ children }) {
     if (decision?.kind !== "priority" && !passCombat) return;
     if (passCombat && (
       (decision.attacker_options || []).some(option => option.must_attack)
-      || priorityStopsState.stops['phase:Combat']
-      || COMBAT_STEPS.some(step => priorityStopsState.stops[`step:${step}`])
+      || (!run.ignoreStops && (priorityStopsState.stops['phase:Combat']
+        || COMBAT_STEPS.some(step => priorityStopsState.stops[`step:${step}`])))
     )) {
       // A combat stop also opts out of declaring no attackers automatically:
       // otherwise that declaration would remove the later blocking window.
@@ -2558,7 +2560,8 @@ export function GameProvider({ children }) {
       return;
     }
     if (run?.dispatchedFrom === state) return;
-    const stopReason = priorityStops.stopReason(state);
+    const reason = priorityStops.stopReason(state);
+    const stopReason = run?.ignoreStops && reason?.startsWith("stop at ") ? null : reason;
     if (stopReason || holdRule === "always") {
       if (run?.phases || stopReason?.startsWith("stop at ")) pausePassing();
       return;
@@ -3293,6 +3296,7 @@ export function GameProvider({ children }) {
       startResolveAll,
       phasePassing,
       togglePhasePassing,
+      startPhaseAdvance,
     }),
     [
       setState,
@@ -3335,6 +3339,7 @@ export function GameProvider({ children }) {
       startResolveAll,
       phasePassing,
       togglePhasePassing,
+      startPhaseAdvance,
     ]
   );
 

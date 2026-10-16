@@ -55,6 +55,7 @@ struct BattlefieldGroupKey {
     lane: BattlefieldLane,
     name: String,
     tapped: bool,
+    damage: u32,
     summoning_sick: bool,
     has_active_aura: bool,
     characteristic_signature: String,
@@ -75,6 +76,7 @@ struct PermanentObjectViewCacheKey {
     phase: u8,
     step: Option<u8>,
     tapped: bool,
+    damage: u32,
     summoning_sick: bool,
     has_active_aura: bool,
     flipped: bool,
@@ -92,6 +94,7 @@ struct PermanentObjectView {
     name: String,
     token: bool,
     tapped: bool,
+    damage: u32,
     lane: BattlefieldLane,
     characteristic_signature: String,
     counter_signature: String,
@@ -544,6 +547,7 @@ impl IncrementalBattlefieldGroups {
                 lane: view.lane,
                 name: view.name.clone(),
                 tapped: view.tapped,
+                damage: view.damage,
                 summoning_sick: game.is_summoning_sick(id),
                 has_active_aura: view.has_active_aura,
                 characteristic_signature: view.characteristic_signature.clone(),
@@ -878,6 +882,7 @@ impl SnapshotObjectViewCache {
                 StaticAbilityId::CanAttackAsThoughHaste,
             );
         let tapped = game.is_tapped(obj.id);
+        let damage = game.damage_on(obj.id);
         let counter_signature = counter_signature_for_group(obj);
         let key = PermanentObjectViewCacheKey {
             dependency_revision: self
@@ -895,6 +900,7 @@ impl SnapshotObjectViewCache {
             phase: game.turn.phase as u8,
             step: game.turn.step.map(|step| step as u8),
             tapped,
+            damage,
             summoning_sick,
             has_active_aura: has_active_aura(game, obj),
             flipped: game.is_flipped(obj.id),
@@ -971,6 +977,7 @@ impl SnapshotObjectViewCache {
             name,
             token: matches!(obj.kind, ironsmith::object::ObjectKind::Token),
             tapped,
+            damage,
             lane: battlefield_lane_for_card_types(current_card_types),
             characteristic_signature: object_characteristic_signature(game, obj, true),
             counter_signature,
@@ -1966,6 +1973,7 @@ fn grouped_battlefield_for_ids(
             lane: view.lane,
             name: view.name.clone(),
             tapped: view.tapped,
+            damage: view.damage,
             summoning_sick: game.is_summoning_sick(obj.id),
             has_active_aura: view.has_active_aura,
             characteristic_signature: view.characteristic_signature.clone(),
@@ -2041,6 +2049,7 @@ fn grouped_battlefield_for_ids(
                 name,
                 token: key.token,
                 tapped: key.tapped,
+                damage: key.damage,
                 count: member_ids.len().max(1),
                 member_ids,
                 member_stable_ids,
@@ -2290,6 +2299,7 @@ pub(super) struct PermanentSnapshot {
     pub(super) name: String,
     pub(super) token: bool,
     pub(super) tapped: bool,
+    pub(super) damage: u32,
     pub(super) count: usize,
     pub(super) member_ids: Vec<u64>,
     pub(super) member_stable_ids: Vec<u64>,
@@ -2338,15 +2348,21 @@ pub(super) struct BattlefieldTransitionSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ZoneTransitionSnapshot {
+    // Event identity is only for deduplication, never a card tracking key.
     pub(super) id: u64,
-    pub(super) old_object_id: u64,
-    pub(super) new_object_id: u64,
-    pub(super) stable_id: u64,
+    pub(super) identity_hidden: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) old_object_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) new_object_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) stable_id: Option<u64>,
     pub(super) owner: u8,
     pub(super) controller: u8,
     pub(super) from_zone: String,
     pub(super) to_zone: String,
-    pub(super) card: ZoneCardSnapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) card: Option<ZoneCardSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2402,27 +2418,27 @@ fn zone_transition_snapshots(
 ) -> Vec<ZoneTransitionSnapshot> {
     let hidden_label = hidden_object_label().to_ascii_lowercase();
     game.ui_zone_transitions()
-        .filter_map(|transition| {
-            let object = game.object(transition.new_object_id)?;
-            if !object_visible_to_perspective(game, perspective, viewed_cards, object.id) {
-                return None;
-            }
-            let card =
-                build_zone_card_snapshot(game, perspective, viewed_cards, object, transition.to);
-            if card.name.trim().to_ascii_lowercase() == hidden_label {
-                return None;
-            }
-            Some(ZoneTransitionSnapshot {
+        .map(|transition| {
+            // A bounded event can outlive its destination object (several moves
+            // may resolve in one action). Keep the movement, but never recover
+            // identity from a later object via its stable ID.
+            let card = game.object(transition.new_object_id)
+                .filter(|object| object_visible_to_perspective(game, perspective, viewed_cards, object.id))
+                .map(|object| build_zone_card_snapshot(game, perspective, viewed_cards, object, transition.to))
+                .filter(|card| card.name.trim().to_ascii_lowercase() != hidden_label);
+            let visible = card.is_some();
+            ZoneTransitionSnapshot {
                 id: transition.id,
-                old_object_id: transition.old_object_id.0,
-                new_object_id: transition.new_object_id.0,
-                stable_id: transition.stable_id.0.0,
+                identity_hidden: !visible,
+                old_object_id: visible.then_some(transition.old_object_id.0),
+                new_object_id: visible.then_some(transition.new_object_id.0),
+                stable_id: visible.then_some(transition.stable_id.0.0),
                 owner: transition.owner.0,
                 controller: transition.controller.0,
                 from_zone: transition.from.to_string(),
                 to_zone: transition.to.to_string(),
                 card,
-            })
+            }
         })
         .collect()
 }
@@ -3337,6 +3353,7 @@ impl GameSnapshot {
             stack_objects.insert(
                 0,
                 super::StackObjectSnapshot {
+                    source_kind: None,
                     id: stack_id.0,
                     inspect_object_id: Some(stack_id.0),
                     target_object_id: Some(stack_id.0),
@@ -3438,7 +3455,7 @@ impl GameSnapshot {
                                 .0
                         })
                         .collect(),
-                    source: view.source.map(|id| id.0),
+                    source: super::ui_source_object_id(view.source),
                     description: view.description.clone(),
                 }),
             decision: decision.map(|ctx| {
@@ -3692,6 +3709,60 @@ mod tests {
     use ironsmith_registry_test::cards::builders::CardDefinitionBuilder;
 
     #[test]
+    fn dungeon_search_and_target_snapshots_have_only_js_safe_numbers() {
+        fn assert_safe(value: &serde_json::Value, path: &str) {
+            match value {
+                serde_json::Value::Number(number) => {
+                    if let Some(raw) = number.as_u64() {
+                        assert!(raw <= super::super::JS_SAFE_INTEGER_MAX, "{path}: {raw}");
+                    }
+                }
+                serde_json::Value::Object(fields) => for (key, value) in fields {
+                    assert_safe(value, &format!("{path}.{key}"));
+                },
+                serde_json::Value::Array(items) => for (index, value) in items.iter().enumerate() {
+                    assert_safe(value, &format!("{path}[{index}]"));
+                },
+                _ => {}
+            }
+        }
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = game.create_object_from_card(&test_bears_card(), alice, Zone::Library);
+        for raw in [u64::MAX - 0x1_0000, u64::MAX - 0x1_0001, u64::MAX - 1, u64::MAX, card.0] {
+            let source = ObjectId::from_raw(raw);
+            let view = ActiveViewedCards {
+                acknowledged_by: vec![], viewer: alice, subject: alice,
+                zone: Zone::Library, cards: vec![card],
+                card_stable_ids: vec![game.object(card).unwrap().stable_id],
+                public: false, source: Some(source), description: "Search your library".into(),
+            };
+            let decision = DecisionContext::SelectObjects(SelectObjectsContext::new(
+                alice, Some(source), "Choose a card",
+                vec![SelectableObject::new(card, "Grizzly Bears")], 0, Some(1),
+            ));
+            let snapshot = GameSnapshot::from_game(
+                &game, alice, Some(&decision), None, None, None, None, vec![],
+                Some(&view), false, None, 1,
+            );
+            assert_safe(&serde_json::to_value(&snapshot).unwrap(), "snapshot");
+            let viewed = snapshot.viewed_cards.unwrap();
+            assert_eq!(viewed.cards[0].name, "Grizzly Bears");
+            assert_eq!(viewed.source, (raw == card.0).then_some(raw));
+            // Presentation must not erase the engine's source identity.
+            assert_eq!(view.source, Some(source));
+            let targets = DecisionContext::Targets(
+                ironsmith::decisions::context::TargetsContext::new(alice, source, "Room target", vec![]),
+            );
+            let snapshot = GameSnapshot::from_game(
+                &game, alice, Some(&targets), None, None, None, None, vec![],
+                None, false, None, 2,
+            );
+            assert_safe(&serde_json::to_value(snapshot).unwrap(), "target_snapshot");
+        }
+    }
+
+    #[test]
     fn land_sagas_use_the_land_presentation_lane() {
         assert_eq!(
             battlefield_lane_for_card_types(&[CardType::Enchantment, CardType::Land]),
@@ -3709,6 +3780,84 @@ mod tests {
             .subtypes(vec![Subtype::Bear])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build()
+    }
+
+    fn assert_anonymous_zone_transition(event: &ZoneTransitionSnapshot) {
+        let value = serde_json::to_value(event).expect("serialize transition");
+        let keys: std::collections::BTreeSet<_> = value.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["id", "identity_hidden", "owner", "controller", "from_zone", "to_zone"].into_iter().collect());
+        assert_eq!(value["identity_hidden"], true);
+    }
+
+    #[test]
+    fn hidden_zone_moves_emit_only_anonymous_animation_metadata() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for from in [Zone::Library, Zone::Hand, Zone::Battlefield, Zone::Graveyard,
+            Zone::Stack, Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame] {
+            for to in [Zone::Library, Zone::Hand, Zone::OutsideGame] {
+                if from == to { continue; }
+                let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let object = game.create_object_from_card(&test_bears_card(), alice, from);
+                game.move_object_by_effect(object, to).expect("move card");
+                let events = zone_transition_snapshots(&game, bob, None);
+                assert_eq!(events.len(), 1, "{from} -> {to}");
+                assert_anonymous_zone_transition(&events[0]);
+                assert_eq!(events[0].from_zone, from.to_string());
+                assert_eq!(events[0].to_zone, to.to_string());
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_zone_moves_respect_each_viewers_visibility() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let library = game.create_object_from_card(&test_bears_card(), alice, Zone::Library);
+        let hand = game.move_object_by_effect(library, Zone::Hand).unwrap();
+        let owner = zone_transition_snapshots(&game, alice, None);
+        let opponent = zone_transition_snapshots(&game, bob, None);
+        assert!(!owner[0].identity_hidden);
+        assert_eq!(owner[0].new_object_id, Some(hand.0));
+        assert_eq!(owner[0].card.as_ref().unwrap().name, "Grizzly Bears");
+        assert_anonymous_zone_transition(&opponent[0]);
+        assert_eq!(owner[0].id, opponent[0].id);
+        let deck = game.move_object_by_effect(hand, Zone::Library).unwrap();
+        for viewer in [alice, bob] {
+            let events = zone_transition_snapshots(&game, viewer, None);
+            assert_eq!(events.len(), 2);
+            for event in &events { assert_anonymous_zone_transition(event); }
+        }
+        // Revealing this card later must not recover the vanished intermediate
+        // objects through their shared stable ID.
+        game.move_object_by_effect(deck, Zone::Graveyard).unwrap();
+        let events = zone_transition_snapshots(&game, bob, None);
+        assert_eq!(events.len(), 3);
+        assert_anonymous_zone_transition(&events[0]);
+        assert_anonymous_zone_transition(&events[1]);
+        assert!(!events[2].identity_hidden);
+        assert_eq!(events[2].card.as_ref().unwrap().name, "Grizzly Bears");
+    }
+
+    #[test]
+    fn hidden_zone_moves_keep_face_down_and_vanished_objects_anonymous() {
+        let _guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let hand = game.create_object_from_card(&test_bears_card(), alice, Zone::Hand);
+        let exile = game.move_object_by_effect(hand, Zone::Exile).unwrap();
+        game.set_face_down(exile);
+        let events = zone_transition_snapshots(&game, bob, None);
+        assert_eq!(events.len(), 1);
+        assert_anonymous_zone_transition(&events[0]);
+        game.remove_object(exile);
+        let events = zone_transition_snapshots(&game, bob, None);
+        assert_eq!(events.len(), 1);
+        assert_anonymous_zone_transition(&events[0]);
     }
 
     #[test]
@@ -6025,6 +6174,45 @@ mod tests {
     }
 
     #[test]
+    fn battlefield_damage_updates_split_and_rejoin_groups() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = test_bears_card();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+        let views = SnapshotObjectViewCache::default();
+        let mut groups = IncrementalBattlefieldGroups::default();
+        let protected = HashSet::new();
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 1);
+        game.mark_damage(first, 1);
+        groups.update(&game, &protected, &views);
+        let damaged = groups.for_player(alice).0;
+        assert_eq!(damaged.len(), 2);
+        assert_eq!(damaged.iter().find(|group| group.id == first.0).unwrap().damage, 1);
+        game.set_damage_marked(first, 2);
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.for_player(alice).0.iter().find(|group| group.id == first.0).unwrap().damage, 2);
+        game.clear_damage(first);
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 1);
+        assert_eq!(groups.for_player(alice).0[0].damage, 0);
+        game.mark_damage(first, 1);
+        groups.update(&game, &protected, &views);
+        game.set_damage_marked(first, 0);
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 1);
+        game.mark_damage(first, 1);
+        groups.update(&game, &protected, &views);
+        ironsmith::turn::execute_cleanup_step(&mut game);
+        groups.update(&game, &protected, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 1);
+        assert_eq!(groups.for_player(alice).0[0].damage, 0);
+    }
+
+    #[test]
     fn incremental_groups_reuse_unchanged_members_and_match_full_rebuild_after_rollback() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
@@ -6041,17 +6229,18 @@ mod tests {
         let checkpoint = game.clone();
         game.mark_damage(first, 1);
         groups.update(&game, &protected, &views);
-        assert!(Arc::ptr_eq(&original, &groups.for_player(alice).0));
+        assert!(!Arc::ptr_eq(&original, &groups.for_player(alice).0));
+        assert_eq!(groups.for_player(alice).0.iter().find(|group| group.id == first.0).unwrap().damage, 1);
         groups.update(&game, &protected, &views);
-        assert_eq!(groups.objects_updated, 2);
-        assert_eq!(groups.groups_rebuilt, 2);
+        assert_eq!(groups.objects_updated, 3);
+        assert_eq!(groups.groups_rebuilt, 3);
         game.tap(first);
         groups.update(&game, &protected, &views);
         assert_eq!(
-            groups.objects_updated, 3,
+            groups.objects_updated, 4,
             "one local mutation must visit one object"
         );
-        assert_eq!(groups.groups_rebuilt, 3);
+        assert_eq!(groups.groups_rebuilt, 4);
         let after = groups.for_player(alice).0;
         let unchanged = after.iter().find(|group| group.id == second.0).unwrap();
         assert!(Arc::ptr_eq(

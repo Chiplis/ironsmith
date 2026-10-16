@@ -1,3 +1,4 @@
+import LibraryZonePile from "@/components/board/LibraryZonePile";
 import useUiText from "@/i18n/useUiText";
 import ZonePileArt from "@/components/board/ZonePileArt";
 import { PILE_ZONES, zonePileCards } from "@/lib/zone-piles";
@@ -6,6 +7,7 @@ export default function MobileZonePiles({ player, onOpenZone, legalTargetObjectI
   const ui = useUiText();
   if (!player) return null;
   return <aside className="mobile-zone-piles" data-player-zone-piles aria-label={ui("{0}'s zones", { 0: player.name })}>
+    <LibraryZonePile player={player} />
     {PILE_ZONES.map((zone) => {
       const cards = zonePileCards(player, zone);
       const count = Number(player[`${zone}_size`] ?? cards.length);

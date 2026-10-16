@@ -4,8 +4,8 @@ import { useGame } from "@/context/GameContext";
 
 export default function PriorityHoldControl({ compact = false }) {
   const ui = useUiText();
-  const { autoResolveEnabled, setAutoResolveEnabled } = useGame();
-  if (compact) return null;
+  const { state, autoResolveEnabled, setAutoResolveEnabled } = useGame();
+  if (compact || state?.mana_payment || state?.decision?.kind === "mana_payment") return null;
   return <button type="button" className="player-priority-hold"
     aria-label={ui("Auto-pass")} aria-pressed={!!autoResolveEnabled}
     title={ui("Show a timed Hold Priority button after casting or activating. Turn off to resolve manually.")}

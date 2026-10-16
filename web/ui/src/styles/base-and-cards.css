@@ -3880,3 +3880,23 @@
   box-shadow: none !important;
   filter: none !important;
 }
+
+/* Marked damage sits above P/T and below the side counter rail. */
+.game-card > .battlefield-damage-badge {
+  position: absolute;
+  right: 2px;
+  bottom: calc(clamp(15px, calc(var(--bf-card-height, 96px) * .18), 20px) + 4px);
+  z-index: 30;
+  min-width: 22px;
+  padding-inline: 5px;
+  color: #fff;
+  border-color: #ffa28c;
+  background: linear-gradient(150deg, #ee6255 0%, #ac202c 46%, #600d1d 100%);
+  text-shadow: 0 1px 2px #390710;
+  box-shadow: inset 0 1px 2px #ffb29b80, inset 0 -2px 3px #40041699, 0 2px 5px #0009;
+  letter-spacing: 0;
+  pointer-events: auto;
+}
+.game-card:has(.arena-permanent[data-mana-strip="true"]) > .battlefield-damage-badge {
+  bottom: calc(var(--mana-strip-height, 12px) + clamp(15px, calc(var(--bf-card-height, 96px) * .18), 20px) + 7px);
+}

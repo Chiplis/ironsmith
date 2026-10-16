@@ -11,6 +11,8 @@
 //!
 //! Set PROBE_MANA=1 to exercise mana credits (each color and colorless,
 //! including a second credit on an already warm pool) and losses instead.
+//! Set PROBE_ISOLATION=1 to retain a warmed sibling GameState before each
+//! mutation and verify that its characteristics remain unchanged afterward.
 
 use ironsmith::cards::{CardDefinition, generated_definition_has_unimplemented_content};
 use ironsmith::game_state::{GameState, Phase};
@@ -236,6 +238,8 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
     for step in steps {
         // Warm every cached result the fast path must keep correct.
         let _ = fingerprint(&game);
+        let sibling = std::env::var_os("PROBE_ISOLATION")
+            .map(|_| (game.clone(), fingerprint(&game)));
         let before = game.work_counters();
         match step {
             Mutation::Tap(id, tap) => {
@@ -245,15 +249,15 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
                 if tap { game.tap(id); } else { game.untap(id); }
             }
             Mutation::Credit(source, player, symbol) => {
-                use ironsmith::effects::{EffectExecutor, ExecutionContext, AddManaEffect};
+                use ironsmith::effects::{EffectExecutor, EffectContext, AddManaEffect};
                 AddManaEffect::you(vec![symbol])
-                    .execute(&mut game, &mut ExecutionContext::new_default(source, player))
+                    .execute(&mut game, &mut EffectContext::new_default(source, player))
                     .map_err(|error| format!("mutation_err:{error:?}"))?;
             }
             Mutation::Empty(source, player) => {
-                use ironsmith::effects::{EffectExecutor, ExecutionContext, EmptyManaPoolEffect};
+                use ironsmith::effects::{EffectExecutor, EffectContext, EmptyManaPoolEffect};
                 EmptyManaPoolEffect::new(ironsmith::target::PlayerFilter::You)
-                    .execute(&mut game, &mut ExecutionContext::new_default(source, player))
+                    .execute(&mut game, &mut EffectContext::new_default(source, player))
                     .map_err(|error| format!("mutation_err:{error:?}"))?;
             }
         }
@@ -265,6 +269,12 @@ fn run(forest: &CardDefinition, bear: &CardDefinition, card: &CardDefinition) ->
         }
         refresh(&mut game)?;
         let fast = fingerprint(&game);
+        if let Some((sibling, before)) = &sibling {
+            if fingerprint(sibling) != *before {
+                outcome.mismatch = Some(format!("{step:?} changed the retained sibling state"));
+                return Ok(outcome);
+            }
+        }
         let full_state = game.clone();
         full_state.invalidate_continuous_state_public();
         let mut full_state = full_state;
@@ -298,6 +308,9 @@ fn main() {
         .map(|v| v.split('|').map(str::to_string).collect());
     std::fs::create_dir_all(out_dir).unwrap();
     let t0 = Instant::now();
+    if std::env::var_os("PROBE_ISOLATION").is_some() {
+        eprintln!("retained sibling isolation: enabled");
+    }
     let records = load_registry_cards(default_cards_path().to_str().unwrap()).unwrap();
     let mut items: Vec<_> = records
         .into_values()

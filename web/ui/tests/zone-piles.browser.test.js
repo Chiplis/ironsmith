@@ -86,7 +86,9 @@ test('zone piles align, scroll, animate and require a separate target click', as
     const labelBox = await page.locator('.zone-pile-label').first().boundingBox();
     assert.ok(labelBox.y + labelBox.height <= pileBox.y);
     assert.equal(await pile.locator('.zone-pile-label').count(), 0);
-    assert.ok(Math.abs(pileBox.y-cardBox.y) < 2);
+    const deckBox = await page.locator('[data-zone-pile="library"]').boundingBox();
+    assert.ok(Math.abs(deckBox.x-pileBox.x) < 2, 'Deck shares the zone column');
+    assert.ok(deckBox.y + deckBox.height < pileBox.y, 'Deck sits above Graveyard');
     assert.ok(pileBox.x > cardBox.x);
     const exileBox = await page.locator('[data-zone-pile="exile"]').boundingBox();
     assert.ok(Math.abs(exileBox.x-pileBox.x)<1);
@@ -150,7 +152,7 @@ test('all four players can browse piles and select a graveyard target on the ful
     const page = await browser.newPage({viewport:{width:1600,height:1000}});
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html`);
     await page.locator('[data-zone-pile]').first().waitFor();
-    assert.equal(await page.locator('[data-zone-pile]').count(),8);
+    assert.equal(await page.locator('[data-zone-pile]').count(),12);
     await page.waitForTimeout(350);
     const stack = await page.locator('.my-zone-stack-rail').boundingBox();
     const field = await page.locator('[data-my-zone] .my-zone-board-shell').boundingBox();

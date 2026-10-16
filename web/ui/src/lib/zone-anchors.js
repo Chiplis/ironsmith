@@ -46,6 +46,18 @@ export function getZoneAnchorRect(playerKey, zone, { isPerspective = false } = {
     if (handRect) return handRect;
   }
 
+  // Prefer the persistent pile over a compact HUD count.
+  const persistentPile = queryVisible(`[data-zone-pile="${zoneId}"][data-zone-owner="${key}"]`);
+  if (persistentPile) return persistentPile;
+  if (zoneId === "stack") {
+    const stack = queryVisible('[data-card-stack-anchor="true"]');
+    if (stack) return stack;
+  }
+  if (zoneId === "battlefield") {
+    const field = queryVisible(`[data-player-drop-target="${key}"] .battlefield-row`);
+    if (field) return field;
+  }
+
   // An expanded zone panel, when open, is the most truthful anchor.
   const panelRect = queryVisible(
     `[data-zone-anchor-player="${key}"][data-zone-id="${zoneId}"], `

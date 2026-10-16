@@ -75,8 +75,8 @@ export default function StackCard({
     && samePlayerId(targetDecision?.player, state?.perspective);
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
   const name = entry.name || `Object#${entry.id}`;
-  const artUrl = useScryfallImageUrl(name, "art_crop");
-  const scryfallUrl = useScryfallImageUrl(name);
+  const artUrl = useScryfallImageUrl(entry.source_kind ? "" : name, "art_crop");
+  const scryfallUrl = useScryfallImageUrl(entry.source_kind ? "" : name);
   const isCastEntry = !entry.ability_kind;
   const isPendingTrigger = Boolean(entry?.__trigger_ordering);
   const isPendingReplacement = Boolean(entry?.__replacement_ordering);

@@ -1019,3 +1019,49 @@
     min-height: 0 !important;
   }
 }
+
+/* Destination-colored comet envelopes keep even unknown cards readable. */
+.game-fx-flight {
+  filter: drop-shadow(0 0 8px var(--flight-color, #80aaff));
+}
+.game-fx-flight::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1px solid var(--flight-color, #80aaff);
+  border-radius: 8px;
+  box-shadow: 0 0 16px var(--flight-color, #80aaff), inset 0 0 10px var(--flight-color, #80aaff);
+}
+.library-zone-pile { border-color: #789cd2; box-shadow: 3px 3px 0 #283c5d, 6px 6px 0 #142238; }
+.library-zone-pile img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.game-fx-semantic { position: absolute; color: var(--semantic-color); }
+.game-fx-semantic-ring {
+  position: absolute; inset: -5px; border: 2px solid currentColor; border-radius: 22%;
+  box-shadow: 0 0 22px currentColor, inset 0 0 16px currentColor;
+  animation: semantic-shield 1000ms ease-out both;
+}
+.game-fx-semantic-ring--echo { animation-delay: 130ms; }
+.game-fx-semantic--impact .game-fx-semantic-ring { border-radius: 50%; animation-name: semantic-impact; }
+.game-fx-semantic-label {
+  position: absolute; top: -20px; left: 50%; white-space: nowrap; text-transform: uppercase;
+  font-size: 11px; font-weight: 800; letter-spacing: .09em;
+  text-shadow: 0 2px 4px #000, 0 0 8px currentColor;
+  animation: semantic-label 1100ms ease-out both;
+}
+@keyframes semantic-shield {
+  0% { transform: scale(.7) rotate(-8deg); opacity: 0; }
+  25% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1.25) rotate(4deg); opacity: 0; }
+}
+@keyframes semantic-impact {
+  0% { transform: scale(.3); opacity: 1; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes semantic-label {
+  0% { transform: translate(-50%, 10px); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translate(-50%, -16px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-fx-semantic, .game-fx-flight { display: none; }
+}

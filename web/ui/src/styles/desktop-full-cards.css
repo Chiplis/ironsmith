@@ -589,7 +589,7 @@
      option shows without scrolling when the table has room; TableCore's
      --dock-max-height still keeps the dock clear of anything above it. */
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
-    max-height: min(70vh, 560px, var(--dock-max-height, 560px)) !important;
+    max-height: var(--dock-max-height, calc(100vh - 64px)) !important;
   }
 
   /* The decision title already names it ("Choose targets"); the stage chip

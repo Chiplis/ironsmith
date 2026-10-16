@@ -1,3 +1,4 @@
+import LibraryZonePile from "@/components/board/LibraryZonePile";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -72,7 +73,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       // Target scaling animates back to normal as the strip opens. Its
       // transformed width must not become a permanent negative popover offset.
       const cardWidth = zone === "look" ? trigger.offsetWidth : anchor.width;
-      setStripBounds({ width: Math.max(0, (zone === "look" ? Math.min(field.right, window.innerWidth - 8) - anchor.left : anchor.right - Math.max(field.left, 8)) + 6), cardWidth });
+      setStripBounds({ width: Math.max(0, (anchor.right - Math.max(field.left, 8)) + 6), cardWidth });
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -85,7 +86,8 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   // The inspector and its portaled glossary are part of this pile's surface.
   const isPreviewTarget = (target) => {
     if (!(target instanceof Element)) return false;
-    const preview = document.querySelector('[data-card-hover-preview="true"][data-visible="true"]');
+    const preview = [...document.querySelectorAll('[data-card-hover-preview="true"][data-visible="true"]')]
+      .find(element => cards.some(card => String(card.id) === element.dataset.previewObjectId));
     if (!preview || !cards.some(card => String(card.id) === preview.dataset.previewObjectId)) return false;
     if (preview.contains(target)) return true;
     const tooltip = target.closest('[data-ui-layer="tooltip"]');
@@ -328,8 +330,8 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         />
       ) : null}
       </div>
-      {/* Look expands upward above the stack; follow its animated target scale. */}
-      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side={zone === "look" ? "right" : "left"} align={zone === "look" ? "end" : "start"} sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
+      {/* Keep the top card over its pile and extend the strip to the left. */}
+      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
         updatePositionStrategy={zone === "look" ? "always" : "optimized"}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
@@ -422,16 +424,14 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       // another synchronous layout of the entire battlefield.
       const boardBounds = board?.getBoundingClientRect();
       const pilesBounds = board ? piles.getBoundingClientRect() : null;
-      const lookHeight = look?.offsetHeight || 0;
       const containerClientTop = container.clientTop;
       const pileWidth = Math.min(56, cardWidth * 0.7);
       piles.style.setProperty("--zone-pile-width", `${pileWidth}px`);
       if (board) {
         board.style.setProperty("--battlefield-objects-top", `${Math.max(0, top - boardBounds.top)}px`);
         const zoneTop = Math.max(0, top - boardBounds.top);
-        // Targeted Look cards grow upward from their fixed bottom edge.
-        const canEnlargeLook = boardBounds.height >= (lookHeight + pileWidth * 88 / 63);
-        look?.style.setProperty("--zone-pile-target-scale", canEnlargeLook ? "1.5" : "1");
+        // Grow down from Look so target highlighting cannot overlap Exile/Command.
+        look?.style.setProperty("--zone-pile-target-scale", "1.5");
         look?.style.setProperty("--zone-pile-width", `${pileWidth}px`);
         const pilesTop = Math.max(0, boardBounds.top + zoneTop - bounds.top - containerClientTop);
         const nextPilesTop = bounds.top + containerClientTop + pilesTop;
@@ -455,11 +455,8 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         }
         // Chat hangs 6px under Exile; give it whatever the board has left.
         piles.style.setProperty("--exile-chat-room", `${Math.max(0, boardBounds.bottom - nextPilesTop - pilesBounds.height - 12)}px`);
-        // Look grows above a fixed stack anchor, never consuming preview height.
+        // The stack anchor is independent of the zone column.
         const stackTop = 12;
-        const lookTop = boardBounds.top + stackTop - 8 - lookHeight - nextPilesTop;
-        piles.style.setProperty("--look-area-top", `${lookTop}px`);
-        piles.style.setProperty("--look-area-left", "0px");
         board.style.setProperty("--stack-area-top", `${stackTop}px`);
         // Overlay the unused left edge without removing a battlefield column.
         const fieldCards = [...(row?.querySelectorAll('.game-card') || [])]
@@ -503,6 +500,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       data-opponent-zone-piles={!isLocal ? "true" : undefined}>
       {/* Spans the piles' own height, so anything here lines up with them. */}
       {leadingRail}
+      <LibraryZonePile player={player} />
       {pileZonesFor(state).map((zone) => <ZonePile key={zone} player={player} zone={zone}
         onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
       {isLocal &&

@@ -1078,6 +1078,13 @@ pub(super) fn hidden_object_label() -> String {
 
 pub(super) const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
+/// A UI source reference is an inspectable card id, not an engine rules-source
+/// sentinel. Keep synthetic identities in engine state and frame metadata;
+/// never round them into JavaScript numbers or turn them into clickable cards.
+pub(super) fn ui_source_object_id(source: Option<ObjectId>) -> Option<u64> {
+    source.map(|id| id.0).filter(|id| *id <= JS_SAFE_INTEGER_MAX)
+}
+
 pub(super) fn redacted_choice_id(index: usize) -> u64 {
     JS_SAFE_INTEGER_MAX.saturating_sub(index as u64)
 }

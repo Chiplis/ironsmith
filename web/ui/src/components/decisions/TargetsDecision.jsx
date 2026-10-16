@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { deadZoneAimPoint } from "@/lib/aim-dead-zone";
 import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
 import { cn } from "@/lib/utils";
-import { getCardRect, centerOf } from "@/hooks/useCardPositions";
+import { getCardRect, getPlayerTargetRect, centerOf } from "@/hooks/useCardPositions";
+import { castNavigationKeyAllowed } from "@/lib/cast-keyboard-navigation";
 import {
   buildInspectableObjectIdSet,
   buildObjectControllerById,
@@ -231,6 +232,7 @@ function ActiveRequirementTargets({
   clearHover,
   inspectableObjectIds,
   onSelectTarget,
+  onAimTarget,
   onSkipRequirement,
   showSkip,
   skipLabel,
@@ -375,6 +377,8 @@ function ActiveRequirementTargets({
           onSelectTarget(target, reqIdx, { toggleExisting: true, strictRequirement: true });
         }}
         aria-pressed={isSelected}
+        data-keyboard-target="true"
+        onFocus={(event) => onAimTarget(target, event.currentTarget)}
         ref={(node) => {
           if (node) {
             targetButtonRefs.current.set(listKey, node);
@@ -509,7 +513,57 @@ export default function TargetsDecision({
     stripLayout
     && typeof window !== "undefined"
     && window.matchMedia("(max-width: 720px) and (orientation: portrait)").matches;
-  const { hoveredObjectId, hoverCard, clearHover } = useHover();
+  const { hoveredObjectId, hoverCard, clearHover, showAnchoredCardPreview, clearAnchoredCardPreview } = useHover();
+  const targetControlsRef = useRef(null);
+  const keyboardPreviewRef = useRef(false);
+  const handleAimTarget = useCallback((target, button) => {
+    keyboardPreviewRef.current = true;
+    const objectId = targetObjectId(target);
+    const rect = (objectId != null ? getCardRect(objectId) : getPlayerTargetRect(target.player))
+      || button.getBoundingClientRect();
+    const point = centerOf(rect);
+    updateDragArrow(point.x, point.y);
+    if (objectId != null) {
+      hoverCard(objectId);
+      showAnchoredCardPreview(objectId, rect);
+    } else {
+      clearHover();
+      clearAnchoredCardPreview();
+    }
+  }, [clearAnchoredCardPreview, clearHover, hoverCard, showAnchoredCardPreview, updateDragArrow]);
+  useEffect(() => {
+    if (!canAct || handCastTargetGestureActive) return undefined;
+    const onKeyDown = event => {
+      if (!castNavigationKeyAllowed(event) || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+      const buttons = [...(targetControlsRef.current?.querySelectorAll('[data-keyboard-target]:not(:disabled)') || [])]
+        .filter(button => button.getClientRects().length > 0);
+      if (!buttons.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const step = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+      const current = buttons.indexOf(document.activeElement);
+      const index = current < 0 ? (step > 0 ? 0 : buttons.length - 1)
+        : (current + step + buttons.length) % buttons.length;
+      buttons[index].scrollIntoView({ block: "nearest", inline: "nearest" });
+      buttons[index].focus({ preventScroll: true });
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [canAct, handCastTargetGestureActive]);
+  useEffect(() => {
+    const resumePointer = () => {
+      if (!keyboardPreviewRef.current) return;
+      keyboardPreviewRef.current = false;
+      clearAnchoredCardPreview();
+      clearHover();
+    };
+    document.addEventListener("pointermove", resumePointer, true);
+    return () => document.removeEventListener("pointermove", resumePointer, true);
+  }, [clearAnchoredCardPreview, clearHover]);
+  useEffect(() => () => {
+    clearHover();
+    clearAnchoredCardPreview();
+  }, [clearAnchoredCardPreview, clearHover]);
   const inspectableObjectIds = useMemo(
     () => buildInspectableObjectIdSet(state),
     [state],
@@ -894,11 +948,12 @@ export default function TargetsDecision({
     // must not survive the decision transition and become a regular inspector
     // request when the target decision disappears.
     clearHover();
+    clearAnchoredCardPreview();
     dispatch(
       { type: "select_targets", targets: allSelections.map(toDispatchTarget) },
       "Targets selected"
     );
-  }, [dispatch, allSelections, canAct, canSubmit, clearHover]);
+  }, [dispatch, allSelections, canAct, canSubmit, clearHover, clearAnchoredCardPreview]);
 
   // Placed through the very handler a click on the opponent runs, so a forced
   // target is indistinguishable from a manual pick: same selection state, same
@@ -949,7 +1004,7 @@ export default function TargetsDecision({
   if (requirements.length === 0) return null;
 
   return (
-    <div className={cn(
+    <div ref={targetControlsRef} className={cn(
       "flex w-full min-w-0 flex-col gap-1.5",
       stripLayout && !compactStripLayout && "gap-1"
     )}>
@@ -1079,6 +1134,7 @@ export default function TargetsDecision({
                     clearHover={clearHover}
                     inspectableObjectIds={inspectableObjectIds}
                     onSelectTarget={handleSelectTarget}
+                    onAimTarget={handleAimTarget}
                     onSkipRequirement={handleSkipRequirement}
                     showSkip={isActive && (isOptional || currentMet) && !allDone}
                     skipLabel={isOptional ? ui("Skip (optional)") : <>{ui("Next requirement") + " "}<ArrowRight className="size-3 inline" /></>}

@@ -1288,7 +1288,8 @@ export default function BattlefieldRow({
   ]);
   const placementPreviewCard = Boolean(placementGridSlot && heldPermanentPlacement);
   const placementGridCells = useMemo(() => {
-    if (!pointerInsideBattlefield || !isPaperBattlefieldLayout) return [];
+    const keyboardPlacement = dragState?.keyboard && livePermanentPlacement && canPreviewHeldPlacement;
+    if ((!pointerInsideBattlefield && !keyboardPlacement) || !isPaperBattlefieldLayout) return [];
     const cells = [];
     for (let row = 1; row <= paperLayout.rowCount; row += 1) {
       for (let column = 1; column <= paperLayout.maxCols; column += 1) {
@@ -1303,6 +1304,9 @@ export default function BattlefieldRow({
     }
     return cells;
   }, [
+    dragState?.keyboard,
+    livePermanentPlacement,
+    canPreviewHeldPlacement,
     isPaperBattlefieldLayout,
     occupiedPaperSlots,
     paperLayout.maxCols,

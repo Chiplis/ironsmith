@@ -1,3 +1,4 @@
+import { battlefieldKeywords, keywordGainEvents } from "@/lib/effect-palette";
 import useUiText from "@/i18n/useUiText";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -126,9 +127,12 @@ function CardFlight({ effect, onDone }) {
     startedAtRef.current = performance.now();
     const fromCenter = rectCenter(effect.fromRect);
     const toCenter = rectCenter(effect.toRect);
-    const { dx, dy, px, py } = flightArcOffset(fromCenter, toCenter);
+    const arc = flightArcOffset(fromCenter, toCenter);
+    const { dx, dy } = arc;
+    const px = arc.px * (effect.arcScale ?? 1);
+    const py = arc.py * (effect.arcScale ?? 1);
     const duration = effect.durationMs;
-    const spin = effect.tumble ? (effect.seed % 2 === 0 ? 200 : -160) : (effect.seed % 2 === 0 ? 10 : -10);
+    const spin = effect.spin ?? (effect.tumble ? (effect.seed % 2 === 0 ? 200 : -160) : (effect.seed % 2 === 0 ? 10 : -10));
 
     motionRef.current = createTimeline({ autoplay: true }).add(node, {
       keyframes: [
@@ -195,6 +199,7 @@ function CardFlight({ effect, onDone }) {
         width: FLIGHT_CARD_WIDTH,
         height: FLIGHT_CARD_HEIGHT,
         opacity: 0,
+        "--flight-color": effect.color || "#80aaff",
       }}
     >
       <div
@@ -986,14 +991,18 @@ function playDamageLunge(event) {
   });
 }
 
-function flightSpawn(event, spawned, { isPerspective }) {
-  const fromRect = getZoneAnchorRect(event.playerKey, event.fromZone, { isPerspective });
+function flightSpawn(event, spawned, { perspective, previousRectsByStableId }) {
+  const sourcePlayer = ["battlefield", "stack"].includes(event.fromZone)
+    ? (event.sourcePlayerKey ?? event.playerKey) : event.playerKey;
+  const destinationPlayer = event.destinationPlayerKey ?? event.playerKey;
+  const fromRect = previousRectsByStableId.get(event.stableId)
+    || getZoneAnchorRect(sourcePlayer, event.fromZone, { isPerspective: String(perspective) === sourcePlayer });
   let toRect = null;
-  if (event.toZone === "battlefield" && event.objectId != null) {
+  if (["battlefield", "stack", "hand"].includes(event.toZone) && event.objectId != null) {
     toRect = getCardRect(event.objectId);
   }
   if (!toRect) {
-    toRect = getZoneAnchorRect(event.playerKey, event.toZone, { isPerspective });
+    toRect = getZoneAnchorRect(destinationPlayer, event.toZone, { isPerspective: String(perspective) === destinationPlayer });
   }
   if (!fromRect || !toRect) return;
   spawned.push({
@@ -1002,11 +1011,14 @@ function flightSpawn(event, spawned, { isPerspective }) {
     fromRect,
     toRect,
     cardName: event.cardName,
+    color: event.color,
     revealsFace: event.revealsFace,
     tumble: event.kind === "mill" || event.kind === "discard",
     tint: event.kind === "reanimate" ? "necro" : null,
-    durationMs: FLIGHT_MS,
-    delayMs: (spawned.filter((effect) => effect.component === "flight").length) * FLIGHT_STAGGER_MS,
+    arcScale: event.toZone === "battlefield" ? 1.65 : event.toZone === "hand" ? 0.65 : 1,
+    spin: event.toZone === "exile" ? 100 : event.toZone === "command" ? 0 : undefined,
+    durationMs: event.toZone === "command" ? 1100 : event.toZone === "library" ? 720 : FLIGHT_MS,
+    delayMs: Math.min(spawned.filter((effect) => effect.component === "flight").length, 6) * FLIGHT_STAGGER_MS,
     seed: nextEffectInstanceId,
   });
 }
@@ -1020,6 +1032,10 @@ const HUD_FLOURISH_LABELS = {
 function engineEffectSpawn(event, spawned, previousRectsByStableId) {
   if (event.kind === "damage") {
     playDamageLunge(event);
+    const rect = event.stableIds.length > 1 ? elementRectByStableId(event.stableIds[1])
+      : getPlayerTargetRect(event.otherPlayerKey || event.playerKey);
+    if (rect) spawned.push({ component: "semantic-pulse", id: `${event.id}:${nextEffectInstanceId += 1}`,
+      rect, color: "#ff5265", label: `−${event.value ?? ""}`, flavor: "impact" });
     return;
   }
 
@@ -1162,8 +1178,12 @@ function buildSpawnedEffects(events, { perspective, previousRectsByStableId }) {
   const spawned = [];
   for (const event of events) {
     const isPerspective = String(perspective ?? "") === event.playerKey;
-    if (event.type === "zone-flight") {
-      flightSpawn(event, spawned, { isPerspective });
+    if (event.type === "keyword-gain") {
+      const rect = elementRectByStableId(event.stableId);
+      if (rect) spawned.push({ ...event, component: "semantic-pulse", rect,
+        id: `${event.id}:${nextEffectInstanceId += 1}` });
+    } else if (event.type === "zone-flight") {
+      flightSpawn(event, spawned, { perspective, previousRectsByStableId });
     } else if (event.type === "engine-effect") {
       engineEffectSpawn(event, spawned, previousRectsByStableId);
     } else if (event.type === "draw-burst") {
@@ -1234,7 +1254,24 @@ function collectRectsByStableId() {
   return rects;
 }
 
+function SemanticPulse({ effect, onDone }) {
+  const ui = useUiText();
+  const done = useStableCallbackRef(onDone);
+  useEffect(() => {
+    const timer = setTimeout(() => done.current(), 1200);
+    return () => clearTimeout(timer);
+  }, [done]);
+  return <div className={`game-fx-semantic game-fx-semantic--${effect.flavor || "shield"}`}
+    style={{ left: effect.rect.left, top: effect.rect.top, width: effect.rect.width,
+      height: effect.rect.height, "--semantic-color": effect.color }}>
+    <span className="game-fx-semantic-ring" />
+    <span className="game-fx-semantic-ring game-fx-semantic-ring--echo" />
+    <span className="game-fx-semantic-label">{ui(effect.label)}</span>
+  </div>;
+}
+
 const EFFECT_COMPONENTS = {
+  "semantic-pulse": SemanticPulse,
   flight: CardFlight,
   peek: LibraryPeek,
   shuffle: ShuffleBurst,
@@ -1255,6 +1292,7 @@ export default function GameEffectAnimations({ suspended = false }) {
   const { state } = useGame();
   const [effects, setEffects] = useState([]);
   const previousVitalsRef = useRef(null);
+  const previousKeywordsRef = useRef(new Map());
   const previousViewedSignatureRef = useRef("");
   const processedTransitionIdsRef = useRef(new Set());
   const previousRectsByStableIdRef = useRef(new Map());
@@ -1280,6 +1318,9 @@ export default function GameEffectAnimations({ suspended = false }) {
       previousViewedSignature: previousViewedSignatureRef.current,
       frameToken: String(state.snapshot_id ?? performance.now()),
     });
+    const keywords = battlefieldKeywords(state);
+    events.push(...keywordGainEvents(previousKeywordsRef.current, keywords));
+    previousKeywordsRef.current = keywords;
     const firstFrame = previousVitalsRef.current === null;
     const playerSetChanged = !firstFrame
       && Object.keys(previousVitalsRef.current).join(",") !== Object.keys(vitals).join(",");

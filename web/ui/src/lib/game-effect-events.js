@@ -3,10 +3,14 @@
 // Pure data logic: DOM anchor resolution and rendering live in
 // components/overlays/GameEffectAnimations.jsx.
 
-// Zone pairs (from the engine's runtime zone_transitions stream) that get a
-// card-flight animation. Battlefield-involved pairs are excluded: leaving the
-// battlefield is handled by ZoneMoveEffects/ghost cards, and entering it by
-// the new-card entry spring.
+// Every ordered pair has a flight; marquee departures are delegated below.
+export const ANIMATION_ZONES = ["library", "hand", "battlefield", "graveyard", "exile", "stack", "command", "ante", "outside_game"];
+export const ZONE_COLORS = {
+  library: "#80aaff", hand: "#5ee7ef", battlefield: "#ffc875",
+  graveyard: "#bf8de8", exile: "#efbaff", stack: "#84a0ff", command: "#ffe18a",
+  ante: "#eeaa73", outside_game: "#b9c5d4",
+};
+
 const ZONE_FLIGHT_KINDS = new Map([
   ["library->graveyard", "mill"],
   ["hand->graveyard", "discard"],
@@ -50,7 +54,8 @@ function toCount(value) {
 }
 
 function normalizeZone(zone) {
-  return String(zone || "").trim().toLowerCase();
+  const normalized = String(zone || "").trim().toLowerCase();
+  return normalized === "outside the game" ? "outside_game" : normalized;
 }
 
 function playerKeyOf(player) {
@@ -97,8 +102,16 @@ export function collectZoneFlightEvents(state, processedTransitionIds) {
 
     const fromZone = normalizeZone(transition.from_zone ?? transition.fromZone);
     const toZone = normalizeZone(transition.to_zone ?? transition.toZone);
-    const kind = ZONE_FLIGHT_KINDS.get(`${fromZone}->${toZone}`);
-    if (!kind) continue;
+    if (!ANIMATION_ZONES.includes(fromZone) || !ANIMATION_ZONES.includes(toZone)) continue;
+    const identityHidden = transition.identity_hidden === true || !transition.card;
+    // Existing source collapses and particle streams own these departures.
+    if (!identityHidden && fromZone === "battlefield" && toZone === "graveyard") continue;
+    const stableId = identityHidden ? "" : String(transition.stable_id ?? transition.card?.stable_id ?? "");
+    if (!identityHidden && fromZone === "battlefield" && toZone === "exile" && (state.battlefield_transitions || [])
+      .some(event => event.kind === "exiled" && String(event.stable_id) === stableId)) continue;
+    if (!identityHidden && fromZone === "stack" && ["graveyard", "exile"].includes(toZone) && (state.effect_events || [])
+      .some(event => event.kind === "spell_countered" && (event.stable_ids || []).some(id => String(id) === stableId))) continue;
+    const kind = ZONE_FLIGHT_KINDS.get(`${fromZone}->${toZone}`) || `${fromZone}-to-${toZone}`;
 
     const playerKey = String(transition.owner ?? transition.controller ?? "");
     events.push({
@@ -108,9 +121,17 @@ export function collectZoneFlightEvents(state, processedTransitionIds) {
       playerKey,
       fromZone,
       toZone,
-      cardName: String(transition?.card?.name || ""),
-      objectId: transition.new_object_id ?? transition.newObjectId ?? transition?.card?.id ?? null,
-      revealsFace: FACE_DOWN_SOURCE_ZONES.has(fromZone),
+      stableId,
+      sourcePlayerKey: String(transition.controller ?? transition.owner ?? ""),
+      destinationPlayerKey: String(["battlefield", "stack"].includes(toZone)
+        ? (transition.card?.controller ?? transition.controller ?? transition.owner ?? "")
+        : (transition.owner ?? "")),
+      color: ZONE_COLORS[toZone],
+      cardName: identityHidden || transition?.card?.face_down || transition?.card?.is_face_down
+        || /^(hidden card|face.down card|unknown card)$/i.test(transition?.card?.name || "")
+        ? "" : String(transition?.card?.name || ""),
+      objectId: identityHidden ? null : (transition.new_object_id ?? transition.newObjectId ?? transition?.card?.id ?? null),
+      revealsFace: !identityHidden && FACE_DOWN_SOURCE_ZONES.has(fromZone),
     });
   }
   return events;
@@ -201,8 +222,7 @@ export function collectGameEffectEvents({
       // A library that grew by more than one card in a single frame was
       // almost certainly shuffled (wheel, Brainstorm put-backs come one at a
       // time as tuck flights, searches shuffle on completion).
-      const animatedReturns = (flightCounts.get(`${playerKey}:tuck`) || 0)
-        + (flightCounts.get(`${playerKey}:recycle`) || 0);
+      const animatedReturns = flightEvents.filter(event => event.playerKey === playerKey && event.toZone === "library" && event.fromZone !== "library").length;
       if (libraryDelta - animatedReturns >= 2) {
         events.push({
           type: "shuffle",

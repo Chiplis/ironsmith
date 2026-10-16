@@ -21,41 +21,10 @@ const CUSTOM_CARD_COUNTER_OVERRIDES_STORAGE_KEY = "ironsmith-custom-card-counter
 const CARD_PRINT_PREFERENCES_STORAGE_KEY = "ironsmith-card-print-preferences";
 const COMPILED_CARD_NAMES_STORAGE_KEY = "ironsmith-compiled-card-names";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
-const HIDDEN_CARD_BACK_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 680" role="img" aria-label="Hidden card">
-  <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#21150f"/>
-      <stop offset="0.42" stop-color="#12151d"/>
-      <stop offset="1" stop-color="#08090d"/>
-    </linearGradient>
-    <radialGradient id="core" cx="50%" cy="42%" r="58%">
-      <stop offset="0" stop-color="#8e6be8" stop-opacity="0.85"/>
-      <stop offset="0.46" stop-color="#7b4ed6" stop-opacity="0.32"/>
-      <stop offset="1" stop-color="#04050a" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="rim" x1="0" x2="1" y1="0" y2="1">
-      <stop offset="0" stop-color="#f2d492"/>
-      <stop offset="0.52" stop-color="#7f5bca"/>
-      <stop offset="1" stop-color="#e9b15f"/>
-    </linearGradient>
-  </defs>
-  <rect x="8" y="8" width="472" height="664" rx="28" fill="#050507"/>
-  <rect x="19" y="19" width="450" height="642" rx="22" fill="url(#bg)" stroke="url(#rim)" stroke-width="5"/>
-  <rect x="37" y="37" width="414" height="606" rx="14" fill="none" stroke="#d7b66c" stroke-opacity="0.48" stroke-width="2"/>
-  <circle cx="244" cy="290" r="210" fill="url(#core)"/>
-  <g fill="none" stroke="#e7d09a" stroke-opacity="0.72" stroke-width="8">
-    <path d="M244 128c54 72 112 117 178 136-66 19-124 64-178 136-54-72-112-117-178-136 66-19 124-64 178-136Z"/>
-    <path d="M244 186c27 36 56 59 89 69-33 10-62 33-89 69-27-36-56-59-89-69 33-10 62-33 89-69Z"/>
-  </g>
-  <g fill="#f2dcaa" font-family="Alegreya Sans SC, Georgia, serif" text-anchor="middle">
-    <text x="244" y="492" font-size="40" font-weight="800" letter-spacing="4">IRONSMITH</text>
-    <text x="244" y="535" font-size="20" font-weight="700" letter-spacing="5" opacity="0.78">HIDDEN CARD</text>
-  </g>
-</svg>`.trim();
-
+// Standard Magic card back, bundled so hidden-card animations need no network request.
+// Source: https://backs.scryfall.io/normal/0/a/0aeebaf5-8c7d-4636-9e82-8c27447861f7.jpg
 export const HIDDEN_CARD_BACK_IMAGE_URL =
-  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(HIDDEN_CARD_BACK_SVG)}`;
+  new URL("../assets/mtg-card-back.jpg", import.meta.url).href;
 
 const resolvedCardImageUrlCache = new Map();
 const cardJsonCache = new Map();
@@ -368,6 +337,7 @@ function standardPrintingSearchUrl(cardName, printPreference = null) {
     unique: "prints",
     order: "released",
     dir: "desc",
+    include_extras: "true",
   });
   return `https://api.scryfall.com/cards/search?${params.toString()}`;
 }
@@ -462,9 +432,20 @@ export async function resolveScryfallFlavorText(imageUrl) {
   }
 }
 
+function tokenArtworkName(cardName) {
+  return String(cardName || "").trim().replace(/\s+token$/i, "");
+}
+
+function isTokenPrinting(card) {
+  return card?.layout === "token" || card?.layout === "double_faced_token";
+}
+
 function imageUrlForResolvedCard(cardName, card, version) {
+  const imageName = isTokenPrinting(card) ? tokenArtworkName(cardName) : cardName;
+  const face = card?.card_faces?.find(face =>
+    customArtKey(face.name) === customArtKey(imageName) && face.image_uris);
   return card && !isStandardPrinting(card) && customCardArtUrl(cardName)
-    || imageUrlFromScryfallCard(card, version);
+    || imageUrlFromScryfallCard(face || card, version);
 }
 
 function cacheResolvedImageUrls(cardName, card, printPreference = null) {
@@ -657,6 +638,31 @@ async function fetchScryfallCardJson(cardName, printPreference = null) {
       cacheResolvedImageUrls(query, card, preference);
       return card;
     }
+    // Tokens and other extra objects can have only full-art printings. Search
+    // those explicitly when named lookups cannot resolve them.
+    // Engine-generated tokens carry a UI suffix ("Monk Token"). Only strip
+    // it in a token-only fallback, after trying the actual name unchanged.
+    for (const extraQuery of new Set([query, tokenArtworkName(query)])) {
+      const tokenAlias = extraQuery !== query;
+      const extraParams = new URLSearchParams({
+        q: `!"${extraQuery.replace(/"/g, '\\"')}" ${tokenAlias ? "is:token" : "(is:token or t:emblem or t:dungeon)"}`,
+        include_extras: "true", unique: "art", order: "released", dir: "desc",
+      });
+      const extraResponse = await fetchScryfallApiJson(`https://api.scryfall.com/cards/search?${extraParams}`);
+      if (extraResponse.ok) {
+        const payload = await extraResponse.json();
+        const card = (payload.data || []).find(candidate =>
+          (!tokenAlias || isTokenPrinting(candidate))
+          && scryfallCardMatchesName(candidate, extraQuery) && imageUrlFromScryfallCard(candidate));
+        if (card) {
+          cacheResolvedImageUrls(query, card, preference);
+          return card;
+        }
+      } else if (extraResponse.status !== 404) {
+        throw new Error(`Extra printing search failed: HTTP ${extraResponse.status}`);
+      }
+    }
+
     const customUrl = customCardArtUrl(query);
     if (customUrl) {
       const card = { name: query, full_art: true, image_uris: { normal: customUrl } };

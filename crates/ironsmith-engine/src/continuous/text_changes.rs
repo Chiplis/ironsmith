@@ -159,7 +159,7 @@ pub(crate) fn apply_text_change(
         // only. Basic-land mana is supplied later by its own type-line origin.
         let attachment = chars.aura_attach_filter.as_ref()
             .map(|filter| rewrite_attachment_words(filter, change)).transpose()?;
-        let program = match &chars.spell_effect {
+        let program = match chars.spell_effect.as_ref() {
             crate::snapshot::SpellProgramState::Unavailable if object.zone == crate::zone::Zone::Stack =>
                 return Err(TextChangeDomainError::SpellProgram),
             crate::snapshot::SpellProgramState::Present(program) => crate::snapshot::SpellProgramState::Present(
@@ -172,7 +172,7 @@ pub(crate) fn apply_text_change(
         change.replace_subtype_words(&mut subtypes);
         chars.abilities = abilities;
         chars.aura_attach_filter = attachment;
-        chars.spell_effect = program;
+        chars.spell_effect = std::sync::Arc::new(program);
         chars.text_changes.push(change);
         chars.subtypes = subtypes.into();
         chars.static_abilities = crate::ability::extract_static_abilities(&chars.abilities).into();

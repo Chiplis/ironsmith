@@ -1,4 +1,4 @@
-import { normalizePhaseStep, normalizeStepKey } from './constants.js';
+import { normalizePhaseStep, normalizeStepKey, currentPriorityPhaseLabel } from './constants.js';
 
 export const PRIORITY_HOLD_WINDOW_MS = 2000;
 export const COMBAT_STEPS = ['BeginCombat', 'DeclareAttackers', 'DeclareBlockers', 'FirstStrikeDamage', 'CombatDamage', 'EndCombat'];
@@ -11,6 +11,39 @@ const isLocalTurnDecision = state => ['priority', 'attackers', 'blockers'].inclu
 const stackKey = state => (state?.stack_objects || []).map(entry => String(entry.id)).join(',');
 const priorityKey = state => [state?.turn_number, state?.active_player, state?.phase, state?.step, state?.combat_damage_step,
   state?.decision?.player, stackKey(state)].join('|');
+
+const TURN_STOPS = [
+  ['Upkeep'], ['Draw'], ['Main'],
+  ...COMBAT_STEPS.map(step => ['Combat', step]),
+  ['Main2'], ['End'], ['Cleanup'],
+];
+
+export function nextSelectedPriorityStop(state, stops = {}) {
+  const phase = normalizePhaseStep(state?.phase, state?.step);
+  const step = priorityStepKey(state);
+  const current = TURN_STOPS.findIndex(([candidatePhase, candidateStep]) =>
+    candidatePhase === phase && (!candidateStep || candidateStep === step));
+  return TURN_STOPS.slice(current + 1).find(([candidatePhase, candidateStep]) =>
+    (candidatePhase !== phase && stops[`phase:${candidatePhase}`])
+    || (candidateStep && stops[`step:${candidateStep}`])) || null;
+}
+
+export function selectedPriorityAdvanceLabel(state, stops, passing, t) {
+  if (passing) return t('action.skippingPhase', {
+    phase: currentPriorityPhaseLabel(state?.phase, priorityStepKey(state), t),
+  });
+  const target = nextSelectedPriorityStop(state, stops);
+  if (target && !stops?.[`phase:${target[0]}`]
+    && ['DeclareAttackers', 'DeclareBlockers'].includes(target[1])) {
+    return t(`game.step.${target[1]}`);
+  }
+  const destination = target
+    ? target[1] && !stops?.[`phase:${target[0]}`]
+      ? t(`game.step.${target[1]}`)
+      : t(`game.track.${target[0]}`)
+    : t('game.advance.nextTurn');
+  return t('action.goToPhase', { phase: destination });
+}
 
 // Out of the box a pass stops where most turns need a decision (like Arena):
 // both main phases and the declare-attackers step. "Every time" stops are

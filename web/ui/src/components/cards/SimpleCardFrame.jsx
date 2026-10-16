@@ -4,6 +4,7 @@ import {cardFrameTone} from '@/lib/card-frame-tone';
 import {cardArtCropUrl} from '@/lib/card-image-variants';
 import {cardFrameRules} from '@/lib/card-frame-snapshot.mjs';
 import useUiText from '@/i18n/useUiText';
+import {rulesSourceFrame} from '@/lib/rules-source-frame';
 import './card-frame-presentation.css';
 
 // One self-contained fallback. Artwork may load or fail, but the frame and
@@ -17,6 +18,7 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const type=face.type_line_display??face.type_line??card.type_line_display??card.type_line;
   const tone=cardFrameTone({cards:[face,card],manaCost:face.mana_cost??card.mana_cost,typeLine:type});
   const art=cardArtCropUrl(imageUrl);
+  const sourceFrame=rulesSourceFrame(card);
   const textKey=shown.map(value=>cardFrameRules(value)+'\n'+(value.flavor_text??'')).join('\n');
   useLayoutEffect(()=>{
     const box=rules.current;
@@ -40,10 +42,12 @@ export default function SimpleCardFrame({card,imageUrl,faceIndex=0,rulesContent,
   const stats=face.power!=null&&face.toughness!=null?`${face.power}/${face.toughness}`
     :face.power_toughness??face.defense??face.loyalty;
   return <article className="simple-card-frame" data-frame-mode="simple" data-card-frame-tone={tone.tone}
-    style={tone.style} aria-label={face.name||card.name||ui('Card details')}>
+    data-rules-source={sourceFrame ? card.source_kind : undefined}
+    style={{...tone.style,...(sourceFrame ? {'--rules-source-color':sourceFrame.color} : {})}} aria-label={face.name||card.name||ui('Card details')}>
     <header className="simple-card-frame__heading"><strong>{face.name||card.name}</strong>
       <ManaCostIcons cost={face.mana_cost??card.mana_cost} size="1em" /></header>
     <div className="simple-card-frame__art">
+      {sourceFrame&&<div className="rules-source-emblem" aria-hidden="true"><span>{sourceFrame.symbol}</span><strong>{sourceFrame.label}</strong></div>}
       {art&&failedImage!==art&&<img src={art} alt="" decoding="async" referrerPolicy="no-referrer" onError={()=>setFailedImage(art)}/>}
     </div>
     <div className="simple-card-frame__type">{type||ui('Card')}</div>

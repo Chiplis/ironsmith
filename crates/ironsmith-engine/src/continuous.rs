@@ -70,6 +70,8 @@ pub(crate) fn next_turn_end_prediction_correction(
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod cow_snapshot_tests;
+#[cfg(test)]
 mod text_change_spell_tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2114,7 +2116,9 @@ impl ContinuousEffect {
 /// Calculated characteristics for an object after applying continuous effects.
 #[derive(Debug, Clone)]
 pub struct CalculatedCharacteristics {
-    pub(crate) copy_values: Option<Box<CopiableValues>>,
+    // Frozen layer-1 payload shared by calculation snapshots. Mutations must
+    // detach with Arc::make_mut; live P/T and controller remain local below.
+    pub(crate) copy_values: Option<Arc<CopiableValues>>,
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
@@ -2153,7 +2157,7 @@ pub struct CalculatedCharacteristics {
     pub abilities: CalculatedAbilities,
     /// Current layer-derived spell program. Raw object programs and captured
     /// stack abilities remain immutable, separately owned definitions.
-    pub spell_effect: crate::snapshot::SpellProgramState<crate::effect::Effect>,
+    pub spell_effect: Arc<crate::snapshot::SpellProgramState<crate::effect::Effect>>,
     /// Directed substitutions used to reread a spell's announced target specs.
     pub text_changes: Vec<ironsmith_core::TextChange>,
     /// Static abilities currently applying (including from effects).
@@ -2632,7 +2636,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         |combined| combined.supertypes.clone(),
     );
     let mut chars = CalculatedCharacteristics {
-        copy_values: Some(Box::new(CopiableValues::from_object(object))),
+        copy_values: Some(Arc::new(CopiableValues::from_object(object))),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object.mana_cost_owned(),
@@ -2657,7 +2661,7 @@ fn initial_text_box_characteristics(object: &Object) -> CalculatedCharacteristic
         loyalty: object.base_loyalty,
         defense: object.base_defense,
         abilities: abilities.clone().into(),
-        spell_effect: crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned()),
+        spell_effect: Arc::new(crate::snapshot::SpellProgramState::from_option(object.spell_effect_owned())),
         text_changes: Vec::new(),
         static_abilities: extract_static_abilities(&abilities).into(),
         numeric_range_error: None,
@@ -2818,13 +2822,13 @@ fn copy_characteristics_from_copiable_values(
     add_supertypes: &[Supertype],
     origin: Option<AbilityEffectOrigin>,
 ) {
-    chars.copy_values = Some(Box::new(values.clone()));
+    chars.copy_values = Some(Arc::new(values.clone()));
     chars.name = values.name.clone().into();
     chars.alternate_name = None;
     chars.mana_cost = values.mana_cost.clone();
     chars.linked_face_mana_value = None;
     chars.compiled_card_text = values.compiled_card_text.clone().into();
-    chars.spell_effect = values.spell_effect.clone();
+    chars.spell_effect = Arc::new(values.spell_effect.clone());
     chars.text_changes.clear();
     chars.ability_labels = values.ability_labels.clone().into();
     chars.power = values.power;
@@ -3853,6 +3857,7 @@ pub(crate) fn copiable_values_with_effects(
         {
             let normal = unflipped.as_ref().unwrap_or(object);
             if let Some(other) = game.linked_face_definition_by_name_or_id(normal.other_face_name.as_deref(), normal.other_face) {
+                let values = Arc::make_mut(values);
                 values.copy_face_layout = normal.linked_face_layout;
                 let other = Object::from_card_definition(crate::ids::ObjectId::from_raw(0), &other, normal.owner, normal.zone);
                 let mut other_values = CopiableValues::from_object(&other);
@@ -4145,7 +4150,7 @@ fn apply_text_box_modification_to_chars(
                 Some(effect.into()),
             );
             if *retain_original_name {
-                if let Some(other) = chars.copy_values.as_mut().and_then(|values| values.other_copy_face.as_mut()) { other.name = retained_other_name; }
+                if let Some(other) = chars.copy_values.as_mut().filter(|values| values.other_copy_face.is_some()).and_then(|values| Arc::make_mut(values).other_copy_face.as_mut()) { other.name = retained_other_name; }
             }
         }
         Modification::ChangeController(new_controller) => {
@@ -6331,7 +6336,7 @@ fn apply_modification_to_chars(
                 Some(effect.into()),
             );
             if *retain_original_name {
-                if let Some(other) = chars.copy_values.as_mut().and_then(|values| values.other_copy_face.as_mut()) { other.name = retained_other_name; }
+                if let Some(other) = chars.copy_values.as_mut().filter(|values| values.other_copy_face.is_some()).and_then(|values| Arc::make_mut(values).other_copy_face.as_mut()) { other.name = retained_other_name; }
             }
         }
 

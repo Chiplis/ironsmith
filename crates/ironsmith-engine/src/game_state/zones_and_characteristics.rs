@@ -207,7 +207,7 @@ impl GameState {
                 ),
             );
         }
-        match chars.spell_effect {
+        match Arc::unwrap_or_clone(chars.spell_effect) {
             crate::snapshot::SpellProgramState::Present(program) => Ok(program),
             crate::snapshot::SpellProgramState::Absent => Ok(Default::default()),
             crate::snapshot::SpellProgramState::Unavailable => Err(
@@ -4991,7 +4991,7 @@ impl GameState {
             numeric_range_error: None,
             numeric_choice_error: None,
             text_change_error: None,
-            spell_effect: crate::snapshot::SpellProgramState::Absent,
+            spell_effect: Arc::new(crate::snapshot::SpellProgramState::Absent),
             text_changes: Vec::new(),
             ability_gain_prohibitions: Vec::new(),
             aura_attach_filter: None,
@@ -5305,9 +5305,9 @@ impl GameState {
                     numeric_range_error: None,
                     numeric_choice_error: None,
                     text_change_error: None,
-                    spell_effect: crate::snapshot::SpellProgramState::from_option(
+                    spell_effect: Arc::new(crate::snapshot::SpellProgramState::from_option(
                         object.spell_effect_owned(),
-                    ),
+                    )),
                     text_changes: Vec::new(),
                     ability_gain_prohibitions: Vec::new(),
                     aura_attach_filter: object.aura_attach_filter_owned(),

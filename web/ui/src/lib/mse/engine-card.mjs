@@ -132,10 +132,10 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
     if(indicator!==null)put('indicator',frameColor(indicator,''));
     const signature=String(face.characteristic_signature??'').match(/^colors:([^\n]*)/m);
     let colors=printableColors(signature?signature[1]:face.colors)??indicator;
-    // A nonbasic land with no colors of its own (Dryad Arbor when the
+    // A land with no colors of its own (Dryad Arbor when the
     // snapshot drops its indicator) takes its frame from its color identity
     // plus the intrinsic mana of its current basic land types (Yavimaya makes
-    // itself a Forest); the template already infers basics. Identity is a
+    // itself a Forest). This includes basic lands. Identity is a
     // whole-card value, so only single-faced snapshots use it. Without one
     // (custom cards, older snapshots), intrinsic mana joins the symbols in the
     // rules text instead (Fiery Islet stays U/R). The template does not infer
@@ -145,7 +145,7 @@ export function engineCardToMse(snapshot,{faceIndex=null,rulesText,nativeCard={}
     const intrinsic=face===snapshot?listed(snapshot.intrinsic_mana):[];
     const printedIdentity=face===snapshot?snapshot.color_identity??snapshot.colorIdentity:null;
     const identity=printableColors([...(printedIdentity==null?textManaColors(face.oracle_text):listed(printedIdentity)),...intrinsic]);
-    if(/\bLand\b/.test(canonicalType)&&!/\bBasic\b/.test(canonicalType)&&!colors?.length&&identity?.length)colors=identity;
+    if(/\bLand\b/.test(canonicalType)&&!colors?.length&&identity?.length)colors=identity;
     const costColors=Object.keys(colorNames).filter(code=>String(face.mana_cost??'').includes(code));
     // Preserve template-specific hybrid/land/artifact inference when its mana
     // colors agree. Explicit live colors and indicators can override that

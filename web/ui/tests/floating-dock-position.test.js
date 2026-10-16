@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { anchorFloatingDock, anchorManaPaymentDock, handSideReserve } from "../src/lib/floating-dock-position.js";
+import { anchorDecisionDock, anchorFloatingDock, anchorManaPaymentDock, handSideReserve } from "../src/lib/floating-dock-position.js";
 
 test("anchors the dock to the bottom-right corner above the hand", () => {
   const position = anchorFloatingDock({
@@ -91,4 +91,27 @@ test("steps beside a pile column above the hand instead of climbing it", () => {
     bottomLimit: 884, handBounds, protectedZones,
   });
   assert.deepEqual(position, { left: 1535 - 12 - 340, top: 804 - 12 - 92 });
+});
+
+
+test("decision width uses the gap after the hand and reserves zones at every height", () => {
+  for (const dockHeight of [100, 900]) {
+    const position = anchorDecisionDock({viewportWidth:1440,viewportHeight:900,dockWidth:500,dockHeight,
+      handRight:1000,protectedZones:[{left:1350,top:200,right:1430,bottom:450}]});
+    assert.equal(position.maxWidth, 322);
+    assert.equal(position.left, 1016);
+    assert.ok(position.left + position.maxWidth <= 1338);
+    assert.equal(position.maxHeight, 684);
+    assert.ok(position.top >= 200);
+    assert.equal(position.top + Math.min(dockHeight, position.maxHeight), 884);
+  }
+});
+
+test("a wide hand lifts decisions above the cards without covering the zone column", () => {
+  const position = anchorDecisionDock({ viewportWidth: 1280, viewportHeight: 800,
+    dockWidth: 500, dockHeight: 900, handRight: 1100, handTop: 650,
+    protectedZones: [{left: 1190, top: 190, right: 1270, bottom: 600}] });
+  assert.equal(position.left + position.maxWidth, 1178);
+  assert.equal(position.top, 190);
+  assert.equal(position.top + position.maxHeight, 634);
 });

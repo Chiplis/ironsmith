@@ -149,6 +149,9 @@ export function nextPriorityAdvanceLabel(phase, step, stackSize, t = null) {
 export function priorityAdvanceButtonLabel(phase, step, stackSize, t) {
   const destination = nextPriorityAdvanceLabel(phase, step, stackSize, t);
   if (stackSize > 0) return destination;
+  const currentStep = normalizeStepKey(step);
+  if (currentStep === "BeginCombat") return t("game.step.DeclareAttackers");
+  if (currentStep === "DeclareAttackers") return t("game.step.DeclareBlockers");
   return t("action.goToPhase", { phase: destination });
 }
 

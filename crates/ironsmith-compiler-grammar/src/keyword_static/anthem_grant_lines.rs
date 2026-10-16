@@ -1473,6 +1473,22 @@ pub fn parse_granted_keyword_static_line(
         tail_tokens = leading;
     }
 
+    // Per-recipient color conditions belong to each keyword segment, not
+    // to a single source-wide trailing condition. Let the complete list
+    // reader own them before splitting at the first `if`.
+    if trailing_clause_tokens.is_empty()
+        && let Some(compiled) = parse_color_filtered_keyword_grants(
+            &subject_tokens,
+            &tail_tokens,
+            prefix_condition.clone(),
+            &clause_words.join(" "),
+        )?
+    {
+        return Ok(Some(compiled.into_iter().map(|ability| {
+            with_leading_set_quantifier_surface(ability, &subject_tokens)
+        }).collect()));
+    }
+
     let mut keyword_tokens = tail_tokens.clone();
     let mut suffix_condition = None;
     let mut suffix_condition_is_trailing_if = false;
@@ -4924,6 +4940,53 @@ fn fixed_anthem_clause(
 mod dynamic_anthem_tests {
     use super::*;
     use crate::lexer::lex_line;
+
+    #[test]
+    fn recipient_color_keyword_list_keeps_each_independent_filter() {
+        let tokens = lex_line(
+            "Each creature you control has vigilance if it's white, hexproof if it's blue, lifelink if it's black, first strike if it's red, and trample if it's green.", 0,
+        ).unwrap();
+        let abilities = parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        assert_eq!(abilities.len(), 5);
+        for (ability, (color, expected_action)) in abilities.iter().zip([
+            (Color::White, KeywordAction::Vigilance),
+            (Color::Blue, KeywordAction::Hexproof),
+            (Color::Black, KeywordAction::Lifelink),
+            (Color::Red, KeywordAction::FirstStrike),
+            (Color::Green, KeywordAction::Trample),
+        ]) {
+            let StaticAbilityAst::GrantKeywordAction { filter, action, condition } = ability else {
+                panic!("expected recipient-filtered keyword: {ability:#?}");
+            };
+            assert_eq!(*action, expected_action);
+            assert!(condition.is_none());
+            assert_eq!(filter.colors, Some(ColorSet::from(color)));
+            assert_eq!(filter.controller, ObjectFilter::creature().you_control().controller);
+            assert_eq!(filter.card_types, ObjectFilter::creature().card_types);
+        }
+    }
+
+    #[test]
+    fn recipient_color_keyword_grant_accepts_single_and_reordered_segments() {
+        for text in [
+            "A creature you control has trample if it's green.",
+            "A creature you control has trample if it's green, and flying if it's blue.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let abilities = parse_granted_keyword_static_line(&tokens).unwrap().unwrap();
+            assert!(matches!(abilities[0], StaticAbilityAst::GrantKeywordAction {
+                action: KeywordAction::Trample, condition: None, ..
+            }));
+        }
+    }
+
+    #[test]
+    fn recipient_color_keyword_list_rejects_unowned_tail() {
+        let tokens = lex_line(
+            "Each creature you control has vigilance if it's white, and hexproof if it's blue nonsense.", 0,
+        ).unwrap();
+        assert!(!matches!(parse_granted_keyword_static_line(&tokens), Ok(Some(_))));
+    }
 
     #[test]
     fn trailing_during_your_turn_keeps_a_typed_keyword_condition() {

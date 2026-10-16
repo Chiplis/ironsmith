@@ -220,6 +220,7 @@ function isLandscapeCard(card) {
 function frameCardForEntry(entry, source) {
   const base = {
     ...(source || {}),
+    source_kind: entry.source_kind,
     name: entry.name || source?.name || "",
   };
   if (!entry.ability_kind) {
@@ -333,7 +334,7 @@ function CardStackPileEntry({
   const animationRef = useRef(null);
   const { inspectId, source } = useStackEntrySource(entry);
   const frameCard = useMemo(() => frameCardForEntry(entry, source), [entry, source]);
-  const artUrl = useScryfallImageUrl(entry.name || source?.name || "", "art_crop");
+  const artUrl = useScryfallImageUrl(entry.source_kind ? "" : entry.name || source?.name || "", "art_crop");
   const isAbility = Boolean(entry.ability_kind);
   const owner = source?.owner ?? entry.controller;
   const accent = getPlayerAccent(state?.players || [], owner, state?.perspective, playerAccentOverrides);

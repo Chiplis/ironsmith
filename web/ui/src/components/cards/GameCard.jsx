@@ -812,6 +812,7 @@ export default function GameCard({
   );
   const standardCounterBadges = counterBadges.filter(
     (badge) => badge.variant !== "power-toughness"
+      && !(useArenaBattlefield && arenaPermanentKind(card) === "planeswalker" && badge.variant === "loyalty")
   );
   const totalBattlefieldCounters = counterBadges.reduce(
     (sum, badge) => sum + (badge.sourceCount ?? badge.amount),
@@ -1745,6 +1746,12 @@ export default function GameCard({
         )}
 
       </div>
+      {variant === "battlefield" && arenaPermanentKind(card) === "creature" && Number(card.damage) > 0 && (
+        <span className="battlefield-pt-badge battlefield-damage-badge"
+          title={`${card.damage} damage marked`} aria-label={`${card.damage} damage marked`}>
+          {card.damage}
+        </span>
+      )}
       {variant === "battlefield" && (!useTokenBattlefield || useArenaBattlefield) && powerToughnessCounterBadges.length > 0 && (
         <div
           className="battlefield-counter-rail battlefield-counter-rail--power-toughness"

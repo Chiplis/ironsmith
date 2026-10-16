@@ -124,6 +124,7 @@ export function resolveStackInspectObjectId(state, entry) {
 
 export function canHoverInspectorObject(state, objectId) {
   if (!objectExistsInState(state, objectId)) return false;
+  if ((state?.players || []).some(player => (player.battlefield || []).some(card => String(card.id) === String(objectId)))) return true;
   return !getVisibleStackObjects(state).some((entry) =>
     [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(objectId))
   );

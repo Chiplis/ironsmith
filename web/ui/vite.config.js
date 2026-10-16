@@ -6,9 +6,10 @@ import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import process from 'node:process'
 import { lanLobbyPlugin } from './scripts/lan/service.mjs'
-import { mseDeploymentPlugin } from './scripts/mse-deploy/vite-plugin.mjs'
+
 
 export default defineConfig(({ mode }) => {
+  const {revision: cardGlintRevision} = JSON.parse(readFileSync(path.resolve(__dirname, 'node_modules/.cache/card-glint/current.json'), 'utf8'));
   const runtimeHash = createHash('sha256');
   for (const file of ['engine.js', 'engine_bg.wasm', 'compiler.js', 'compiler_bg.wasm', 'verifier.js', 'verifier_bg.wasm', 'ironsmith.js']) {
     runtimeHash.update(file).update(readFileSync(path.resolve(__dirname, '../wasm_demo/pkg', file)));
@@ -38,8 +39,8 @@ export default defineConfig(({ mode }) => {
     // each other's optimized React chunks underneath an active module graph.
     cacheDir: path.resolve(__dirname, 'node_modules', process.env.NODE_TEST_CONTEXT
       ? `.vite-test-${process.pid}` : `.vite-${mode}`),
-    plugins: [react(), tailwindcss(), mseDeploymentPlugin(), ...(mode === 'lan' ? [lanLobbyPlugin()] : [])],
-    define: { __IRONSMITH_RUNTIME_VERSION__: JSON.stringify(runtimeVersion), 'import.meta.env.VITE_LAN_LOBBY': JSON.stringify(mode === 'lan' ? 'true' : 'false') },
+    plugins: [react(), tailwindcss(), ...(mode === 'lan' ? [lanLobbyPlugin()] : [])],
+    define: { __CARD_GLINT_REVISION__: JSON.stringify(cardGlintRevision), __IRONSMITH_RUNTIME_VERSION__: JSON.stringify(runtimeVersion), 'import.meta.env.VITE_LAN_LOBBY': JSON.stringify(mode === 'lan' ? 'true' : 'false') },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {

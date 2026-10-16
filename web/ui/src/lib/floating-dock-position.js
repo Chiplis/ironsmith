@@ -25,13 +25,14 @@ export function dockMaxWidth(viewportWidth) {
  * Its top boundary is the bottom of the opponents' first card row; scrolling
  * consumes excess content, never that protected battlefield space.
  */
-export function anchorManaPaymentDock({ viewportWidth, viewportHeight, protectedZones = [], opponentCardBottom = 48 }) {
-  const bottom = viewportHeight - DECISION_DOCK_BOTTOM_INSET;
+export function anchorManaPaymentDock({ viewportWidth, viewportHeight, protectedZones = [], opponentCardBottom = 48, handRight = viewportWidth - handSideReserve(viewportWidth), handTop = viewportHeight }) {
   const topLimit = Math.max(DOCK_MIN_TOP, opponentCardBottom + ZONE_CLEARANCE);
-  const handRight = viewportWidth - handSideReserve(viewportWidth);
   const zoneLeft = protectedZones.reduce((left, zone) => Math.min(left, zone.left), viewportWidth - DOCK_RIGHT_INSET);
   const right = zoneLeft - ZONE_CLEARANCE;
-  const maxWidth = Math.max(1, Math.min(320, right - handRight - HAND_DOCK_GAP));
+  const laneWidth = right - handRight - HAND_DOCK_GAP;
+  const aboveHand = laneWidth < 220;
+  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? handTop - HAND_DOCK_GAP : viewportHeight);
+  const maxWidth = Math.max(1, Math.min(320, aboveHand ? right - DOCK_EDGE_PADDING : laneWidth));
   const maxHeight = Math.max(1, Math.floor(bottom - topLimit));
   return { left: Math.round(right - maxWidth), top: bottom - maxHeight, maxWidth: Math.floor(maxWidth), maxHeight: Math.floor(maxHeight) };
 }
@@ -98,4 +99,28 @@ export function anchorFloatingDock({
     if (!moved) break;
   }
   return { left, top };
+}
+
+/** Keep the decision in the horizontal lane beside the actual hand cards.
+ * Reserve the entire zone column, even before the panel grows into it, so
+ * expanding content cannot alternate between two different placements.
+ */
+export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, dockHeight, protectedZones = [], handRight = 0, handTop = viewportHeight }) {
+  const zones = protectedZones.filter(zone => Number.isFinite(zone?.left));
+  const right = zones.reduce((edge, zone) => Math.min(edge, zone.left - ZONE_CLEARANCE), viewportWidth - DOCK_RIGHT_INSET);
+  const leftLimit = Math.max(DOCK_EDGE_PADDING, handRight + HAND_DOCK_GAP);
+  const laneWidth = right - leftLimit;
+  // If a wide hand leaves too little room, use the space above its cards.
+  const aboveHand = laneWidth < 220;
+  const maxWidth = Math.max(1, Math.floor(aboveHand ? Math.min(340, right - DOCK_EDGE_PADDING) : laneWidth));
+  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? handTop - HAND_DOCK_GAP : viewportHeight);
+  const zoneTop = zones.reduce((top, zone) => Number.isFinite(zone.top) ? Math.min(top, zone.top) : top, Infinity);
+  const topLimit = Math.max(DOCK_MIN_TOP, Number.isFinite(zoneTop) ? zoneTop : DOCK_MIN_TOP);
+  const maxHeight = Math.max(1, bottom - topLimit);
+  return {
+    left: Math.round(right - Math.min(dockWidth, maxWidth)),
+    top: Math.round(bottom - Math.min(dockHeight, maxHeight)),
+    maxWidth,
+    maxHeight,
+  };
 }

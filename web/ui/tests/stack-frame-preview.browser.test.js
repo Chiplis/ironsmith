@@ -64,6 +64,22 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 844, height: 390 
     assert.ok(Math.abs(expanded.height-bounds.height)<2,'expanded stack text does not shrink the preview');
   }
 
+  if (viewport.width >= 1024) {
+    for (const id of [10, 20]) {
+      const card = page.locator(`[data-field-card="${id}"]`);
+      await card.hover();
+      const inspector = page.locator(`[data-card-hover-preview][data-visible="true"]:not([data-automatic-stack-preview])[data-preview-object-id="${id}"]`);
+      await inspector.waitFor();
+      assert.match(await inspector.innerText(), id === 10 ? /Resolving source/ : /Wrong card/);
+      assert.equal(await frame.count(), 1, 'stack frame remains while inspecting the battlefield');
+      await card.click();
+      await page.mouse.move(1400, 850);
+      await inspector.waitFor();
+      assert.equal(await frame.count(), 1, 'stack frame remains beside clicked field frame');
+      await page.evaluate(() => window.clearFieldPin());
+    }
+  }
+
   await page.evaluate(() => window.setStackState({ players: [], stack_objects: [], resolving_stack_object: window.stackFixture.entry, decision:{kind:'select_options'} }));
   await frame.waitFor();
   assert.match(await frame.innerText(), /Draw a card/);
@@ -85,13 +101,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 844, height: 390 
 });
 
 
-test('Look stays above a fixed stack without consuming frame height', {timeout:60000}, async()=>{
+for (const commander of [false, true]) test(`Look follows ${commander ? 'Command' : 'Exile'} without consuming stack frame height`, {timeout:60000}, async()=>{
  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
  const browser=await chromium.launch({args:['--disable-webgl']});
  try {
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   await page.route('https://**/*',r=>r.fulfill({status:404,body:''}));
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look&targetLook`,{waitUntil:'domcontentloaded'});
+  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look&targetLook${commander ? "&commander" : ""}`,{waitUntil:'domcontentloaded'});
   await page.locator('[data-zone-pile="look"]').waitFor();
   await page.waitForTimeout(1200);
   const geometry=await page.evaluate(()=>{
@@ -100,15 +116,16 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
    return {opponent:rect(document.querySelector('.battlefield-panel--opponents')),board:rect(board),rail:rect(board.querySelector('.my-zone-stack-rail')),look:rect(board.querySelector('.player-look-pile')),mana:rect(document.querySelector('.local-player-mana-dock')),identity:rect(document.querySelector('.table-shared-player-header')),pile:rect(document.querySelector('.card-stack-slot[data-top="true"] .stack-card--frame')),pager:rect(document.querySelector('.card-stack-pager')),automaticFrames:document.querySelectorAll('[data-automatic-stack-preview="true"]').length,top:board.style.getPropertyValue('--stack-area-top')};
   });
   await page.screenshot({path:'/tmp/stack-look-layout.png'});
-  assert.ok(geometry.rail.top>=geometry.look.bottom+6,'stack clears Look');
-  assert.ok(geometry.look.left<16,'Look sits on the far left');
+  const exile = await page.locator(`[data-my-zone] [data-zone-pile=${commander ? 'command' : 'exile'}]`).boundingBox();
+  assert.ok(geometry.look.top - exile.y - exile.height >= 5 && geometry.look.top - exile.y - exile.height <= 13, `Look immediately follows last zone: ${JSON.stringify({look:geometry.look, exile})}`);
+  assert.ok(Math.abs(geometry.look.right - exile.x - exile.width) < 2, 'Look aligns with the right zone column');
   assert.ok(Math.abs(geometry.rail.left)<1,'stack begins at screen edge');
   const firstColumn=await page.locator('[data-my-zone] .battlefield-row .game-card').evaluateAll(cards=>Math.min(...cards.map(card=>card.getBoundingClientRect().left)));
   // The compact appearance's card pile narrows the old rail box to its cards.
   assert.ok(geometry.rail.right<=firstColumn-6,'stack stops before the first field column');
   assert.equal(geometry.top,'12px','Look never moves the stack anchor');
   const lookSlot=await page.locator('.player-look-pile .zone-pile-slot').boundingBox();
-  assert.ok(Math.abs(geometry.rail.top-lookSlot.y-lookSlot.height-8)<2,'enlarged Look remains above the stack');
+  assert.ok(lookSlot.y >= exile.y + exile.height + 5, 'enlarged Look stays below Exile');
   assert.ok(geometry.mana.top>=geometry.identity.bottom,'mana sits beneath identity');
   assert.ok(geometry.mana.bottom<=900 && geometry.mana.bottom>=875,'mana sits at the screen bottom');
   // The pile is the stack's frame: no second, automatic one opens.
@@ -116,7 +133,7 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   assert.ok(geometry.pager.bottom<=geometry.identity.top,'pile and pager clear the player header');
   assert.ok(Math.abs(geometry.pile.left-geometry.rail.left-12)<3,'front card sits in the stack box');
   // Allow for the cards' gentle float (up to 5px).
-  assert.ok(geometry.pile.top>=geometry.rail.top-6,'front card stays inside the stack box');
+  assert.ok(geometry.pile.top>=0,'enlarged stack frame stays on screen');
   assert.ok(geometry.rail.width>=150,'stack holds a readable card');
   const lookTile=await page.locator('[data-zone-pile="look"]').boundingBox();
   assert.ok(lookTile.x>=0,'enlarged Look stays inside the left screen edge');
@@ -124,6 +141,7 @@ test('Look stays above a fixed stack without consuming frame height', {timeout:6
   await page.locator('.zone-pile-menu--look').waitFor();
   const menu=await page.locator('.zone-pile-menu--look').boundingBox();
   assert.ok(menu.x>=0 && menu.y>=0,'expanded Look stays on screen');
+  assert.ok(menu.x < lookTile.x, 'Look extends left');
   await page.locator('[data-zone-card="look"]').first().hover();
   const lookInspector=page.locator('[data-look-stack-preview="true"][data-visible="true"]');
   await lookInspector.waitFor();

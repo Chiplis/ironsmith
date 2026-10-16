@@ -270,7 +270,15 @@ function anchoredPreviewPosition(anchorRect, size) {
   };
 }
 
-export default function FloatingCardPreview({
+export default function FloatingCardPreview(props) {
+  // Keep stack frames mounted while a separate surface inspects field cards.
+  return <>
+    <CardPreviewSurface {...props} automaticOnly />
+    {!props.automaticOnly && <CardPreviewSurface {...props} automaticOnly={false} />}
+  </>;
+}
+
+function CardPreviewSurface({
   disabled: externallyDisabled = false,
   automaticOnly = false,
   excludedObjectIds = [],
@@ -285,10 +293,11 @@ export default function FloatingCardPreview({
   // full frame size: no second frame opens for one.
   const cardStackMode = useCardStackMode();
   const automaticPreview = useMemo(
-    () => (cardStackMode ? null : stackFramePreview(state, rememberedCards)),
-    [cardStackMode, state, rememberedCards],
+    () => (!automaticOnly || cardStackMode ? null : stackFramePreview(state, rememberedCards)),
+    [automaticOnly, cardStackMode, state, rememberedCards],
   );
   useEffect(() => {
+    if (!automaticOnly) return;
     // Keep public snapshots only, including sources that disappear on resolution.
     queueMicrotask(() => setRememberedCards(previous => {
       const cards = [...visibleFrameCards(state), ...previous];
@@ -300,8 +309,9 @@ export default function FloatingCardPreview({
         return true;
       }).slice(0, 512);
     }));
-  }, [state]);
+  }, [automaticOnly, state]);
   useEffect(() => {
+    if (!automaticOnly) return undefined;
     const preview = stackFramePreview(state);
     const id = preview && resolveStackInspectObjectId(state, preview.entry);
     if (!game || id == null) return undefined;
@@ -314,7 +324,7 @@ export default function FloatingCardPreview({
       setRememberedCards(previous => [card, ...previous].slice(0, 512));
     }).catch(() => {});
     return () => { active = false; };
-  }, [game, state]);
+  }, [automaticOnly, game, state]);
   const paymentEditor = useManaPaymentEditor();
   const manaPaymentActions = useMemo(() => manaPaymentActionMap(state), [state]);
   const hoveredObjectId = useHoveredObjectId();
@@ -337,6 +347,8 @@ export default function FloatingCardPreview({
     () => new Set(excludedObjectIds.filter((id) => id != null).map(String)),
     [excludedObjectIds]
   );
+  const isFieldObject = useCallback(id => (state?.players || []).some(player =>
+    (player.battlefield || []).some(card => String(card.id) === String(id))), [state?.players]);
   const directlyRequestedObjectId = (
     !disabled
     && !automaticOnly
@@ -348,10 +360,11 @@ export default function FloatingCardPreview({
       && document.querySelector(".priority-inline-panel:hover")
       && !document.querySelector("[data-decision-option-object]:hover")
     )
+    && !(cardStackMode && typeof document !== "undefined" && document.querySelector(".stack-card:hover"))
     && hoveredObjectId != null
     && !manaPaymentActions.has(Number(hoveredObjectId))
     && canHoverInspectorObject(state, hoveredObjectId)
-    && !excludedIds.has(String(hoveredObjectId))
+    && (isFieldObject(hoveredObjectId) || !excludedIds.has(String(hoveredObjectId)))
   ) ? String(hoveredObjectId) : null;
   const directHandHover = useMemo(() => {
     if (directlyRequestedObjectId == null) return false;
@@ -372,7 +385,7 @@ export default function FloatingCardPreview({
   // Anchored previews are explicit card-name clicks, so they may inspect a
   // spell on the stack or a card in another zone even though passive hand
   // hovers remain excluded from this surface.
-  const anchoredObjectId = !disabled && !dragState
+  const anchoredObjectId = !automaticOnly && !disabled && !dragState
     && !(cardStackMode && anchoredCardPreview?.placement === "stack")
     && objectExistsInState(state, anchoredCardPreview?.objectId)
     ? String(anchoredCardPreview.objectId)
@@ -380,11 +393,11 @@ export default function FloatingCardPreview({
   // Explicit selections bypass passive-hover exclusions. Hand cards stay
   // excluded from hover previews, but clicking one opens this composed,
   // interactive inspector instead of enlarging the card art in place.
-  const pinnedPreviewObjectId = !disabled
+  const pinnedPreviewObjectId = !automaticOnly && !disabled
     && !dragState
     && !targetingMode
     && state?.decision?.kind !== "mana_payment"
-    && !(cardStackMode && getVisibleStackObjects(state).some((entry) => String(entry.id) === String(pinnedObjectId)))
+    && !(cardStackMode && !isFieldObject(pinnedObjectId) && getVisibleStackObjects(state).some((entry) => String(entry.id) === String(pinnedObjectId)))
     && objectExistsInState(state, pinnedObjectId)
     ? String(pinnedObjectId)
     : null;
@@ -417,7 +430,13 @@ export default function FloatingCardPreview({
   const automaticObjectId = !disabled && !dragState && automaticPreview
     && dismissedAutomaticKey !== automaticPreviewKey
     ? String(automaticPreview.entry.id) : null;
-  const lockedObjectId = directLookHover ? null : ((automaticOnly ? null : anchoredObjectId || pinnedPreviewObjectId)
+  const fieldHoverOverStack = directlyRequestedObjectId != null && isFieldObject(directlyRequestedObjectId)
+    && typeof document !== "undefined"
+    && [...document.querySelectorAll(".game-card[data-object-id]:hover")]
+      .some(element => element.dataset.objectId === directlyRequestedObjectId)
+    && (anchoredCardPreview?.placement === "stack"
+      || (pinnedPreviewObjectId != null && !isFieldObject(pinnedPreviewObjectId)));
+  const lockedObjectId = directLookHover || fieldHoverOverStack ? null : ((automaticOnly ? null : anchoredObjectId || pinnedPreviewObjectId)
     || automaticObjectId);
   const requestedObjectId = lockedObjectId
     || directlyRequestedObjectId
@@ -431,11 +450,11 @@ export default function FloatingCardPreview({
   // stack tile asked for (anchored or pinned) therefore resolves to the stack
   // entry before any zone is searched.
   const lockedStackEntry = useMemo(() => (
-    lockedObjectId == null
+    lockedObjectId == null || (isFieldObject(lockedObjectId) && lockedObjectId !== automaticObjectId && anchoredCardPreview?.placement !== "stack")
       ? null
       : (lockedObjectId === automaticObjectId ? automaticPreview?.entry : null)
         || getVisibleStackObjects(state).find(entry => String(entry.id) === lockedObjectId) || null
-  ), [lockedObjectId, automaticObjectId, automaticPreview?.entry, state]);
+  ), [lockedObjectId, automaticObjectId, automaticPreview?.entry, state, isFieldObject, anchoredCardPreview?.placement]);
   const isStackSource = id => id != null && lockedStackEntry != null && id === lockedObjectId;
   const renderedImageUrl = useDisplayedCardImage(renderedObjectId, isStackSource(renderedObjectId));
 
@@ -555,9 +574,7 @@ export default function FloatingCardPreview({
   };
 
   const lookStackPreview = directLookHover && renderedObjectId === directlyRequestedObjectId;
-  const stackPreview = lookStackPreview || (renderedObjectId != null && getVisibleStackObjects(state).some((entry) =>
-    [entry.id, entry.inspect_object_id].some((id) => id != null && String(id) === String(renderedObjectId))
-  ));
+  const stackPreview = lookStackPreview || isStackSource(renderedObjectId);
   const visible = requestedObjectId != null && renderedObjectId === requestedObjectId
     && readyObjectId === renderedObjectId;
   const [stackAnchorRect, setStackAnchorRect] = useState(null);

@@ -75,10 +75,10 @@ test("blank custom art removes an existing override", () => {
   assert.equal(scryfallImageUrl("Forge Test", "art_crop"), "");
 });
 
-test("hidden card names use the local SVG cardback instead of Scryfall", () => {
+test("hidden card names use the bundled Magic card back instead of a card lookup", () => {
   assert.equal(scryfallImageUrl("Hidden Card", "art_crop"), HIDDEN_CARD_BACK_IMAGE_URL);
   assert.equal(scryfallImageUrl("hidden card"), HIDDEN_CARD_BACK_IMAGE_URL);
-  assert.match(HIDDEN_CARD_BACK_IMAGE_URL, /^data:image\/svg\+xml;charset=utf-8,/);
+  assert.match(HIDDEN_CARD_BACK_IMAGE_URL, /\/assets\/mtg-card-back\.jpg$/);
 });
 
 test("preloading resolves and caches Scryfall image URLs by card name", async () => {
@@ -437,5 +437,70 @@ test("404 API resources are not downloaded again on later card lookups", async (
     ]);
     assert.equal(requests.size, firstCount);
     assert.ok([...requests.values()].every(count => count === 1));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("token searches include extras and retain the matching face artwork", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (!String(url).startsWith('https://api.scryfall.com/')) return new Response(null,{status:404});
+    const params = new URL(url).searchParams;
+    assert.equal(params.get('include_extras'),'true');
+    return {ok:true,json:async()=>({data:[{name:'Goblin // Treasure',layout:'double_faced_token',frame:'2015',
+      card_faces:[{name:'Goblin',image_uris:{normal:'goblin-normal',art_crop:'goblin-art'}},
+        {name:'Treasure',image_uris:{normal:'treasure-normal',art_crop:'treasure-art'}}]}]})};
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl('Treasure','art_crop'),'treasure-art');
+    assert.equal(await resolveScryfallImageUrl('Treasure','normal'),'treasure-normal');
+  } finally { globalThis.fetch=originalFetch; }
+});
+
+test("full-art tokens resolve when standard and named lookups miss", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (!String(url).startsWith('https://api.scryfall.com/')) return new Response(null,{status:404});
+    const params = new URL(url).searchParams;
+    if (!(params.get('q')||'').includes('is:token')) return new Response(null,{status:404});
+    assert.equal(params.get('include_extras'),'true');
+    return {ok:true,json:async()=>({data:[{name:'Servo',layout:'token',full_art:true,image_uris:{normal:'servo-normal',art_crop:'servo-art'}}]})};
+  };
+  try { assert.equal(await resolveScryfallImageUrl('Servo','art_crop'),'servo-art'); }
+  finally { globalThis.fetch=originalFetch; }
+});
+
+test("engine token suffix resolves token-only artwork and caches both image sizes", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async url => {
+    const parsed = new URL(url, 'http://localhost');
+    requests.push(String(url));
+    if (parsed.searchParams.get('q') !== '!"Monk" is:token') return new Response(null, {status:404});
+    assert.equal(parsed.searchParams.get('include_extras'), 'true');
+    return {ok:true,json:async()=>({data:[
+      {name:'Monk',layout:'normal',image_uris:{normal:'wrong-card',art_crop:'wrong-art'}},
+      {name:'Monk',layout:'token',full_art:true,image_uris:{normal:'monk-scan',art_crop:'monk-art'}},
+    ]})};
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl('Monk Token', 'art_crop'), 'monk-art');
+    const count = requests.length;
+    assert.equal(await resolveScryfallImageUrl('Monk Token'), 'monk-scan');
+    assert.equal(scryfallImageUrl('Monk Token', 'art_crop'), 'monk-art');
+    assert.equal(requests.length, count);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("a suffixed double-faced token uses the matching face rather than the first", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (new URL(url, 'http://localhost').searchParams.get('q') !== '!"Phyrexian" is:token') return new Response(null, {status:404});
+    return {ok:true,json:async()=>({data:[{name:'Incubator // Phyrexian',layout:'double_faced_token',
+      card_faces:[{name:'Incubator',image_uris:{normal:'incubator-scan',art_crop:'incubator-art'}},
+        {name:'Phyrexian',image_uris:{normal:'phyrexian-scan',art_crop:'phyrexian-art'}}]}]})};
+  };
+  try {
+    assert.equal(await resolveScryfallImageUrl('Phyrexian Token','art_crop'), 'phyrexian-art');
+    assert.equal(await resolveScryfallImageUrl('Phyrexian Token'), 'phyrexian-scan');
   } finally { globalThis.fetch = originalFetch; }
 });

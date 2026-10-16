@@ -76,6 +76,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
+    await page.addInitScript(() => localStorage.setItem('ironsmith.priorityStops', '[]'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     const load = async state => {
@@ -239,7 +240,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await page.evaluate(() => window.context.setAutoResolveEnabled(true));
     await page.evaluate(() => {
       window.context.cyclePriorityStop('step:DeclareBlockers');
-      window.context.togglePhasePassing();
+      window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.waitForTimeout(100);
@@ -251,10 +252,11 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await page.evaluate(() => window.submissions.length), 2);
     assert.equal(await page.evaluate(() => window.context.priorityStops['step:DeclareBlockers']), 'once');
 
-    // Consuming a pause manually must not restart either passing path.
+    // A tracker pause ends this run while preserving saved automation preferences.
     await page.waitForTimeout(350); // Let the previous automatic pass cooldown finish.
-    assert.equal(await page.evaluate(() => window.context.autoPassEnabled), false);
-    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false);
+    assert.equal(await page.evaluate(() => window.context.autoPassEnabled), true);
+    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), true);
+    await page.evaluate(() => { window.context.setAutoPassEnabled(false); window.context.setAutoResolveEnabled(false); });
     await page.getByRole('button', { name: 'Resolve', exact: true }).click();
     await page.waitForFunction(() => window.submissions.length === 3);
     await page.evaluate(state => window.publish(state), priority(75, {
@@ -268,7 +270,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await page.evaluate(() => window.submissions.length), 3, 'off-turn smart auto-pass stays stopped');
 
     await load(priority(76));
-    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.evaluate(() => window.context.startPhaseAdvance());
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.evaluate(state => window.publish(state), priority(78, {
       phase: 'combat phase', step: 'declare attackers',
@@ -282,7 +284,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await load(priority(90));
     await page.evaluate(() => {
       window.context.cyclePriorityStop('step:DeclareAttackers');
-      window.context.togglePhasePassing();
+      window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.evaluate(state => window.publish(state), priority(92, {
@@ -296,7 +298,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     await load(priority(93));
     await page.evaluate(() => {
       window.context.cyclePriorityStop('step:DeclareBlockers');
-      window.context.togglePhasePassing();
+      window.context.startPhaseAdvance();
     });
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.evaluate(state => window.publish(state), priority(95, {
@@ -307,7 +309,7 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'blockers pause overrides no-attack shortcut');
 
     await load(priority(94));
-    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.evaluate(() => window.context.startPhaseAdvance());
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.evaluate(state => window.publish(state), priority(96, {
       phase: 'combat phase', step: 'declare attackers',
@@ -317,11 +319,32 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'mandatory attacks remain manual');
 
     await load(priority(80));
-    await page.evaluate(() => window.context.togglePhasePassing());
+    await page.evaluate(() => window.context.startPhaseAdvance());
     await page.waitForFunction(() => window.submissions.length === 1);
     await page.evaluate(state => window.publish(state), priority(82, { turn_number: 2 }));
     await page.waitForFunction(() => window.context.phasePassing === false);
     assert.equal(await page.evaluate(() => window.submissions.length), 1, 'does not pass the next turn');
+    // End turn bypasses selected stops, including no-attack combat.
+    await load(priority(100));
+    await page.evaluate(() => {
+      window.context.cyclePriorityStop('phase:Main2');
+      window.context.cyclePriorityStop('step:DeclareAttackers');
+      window.context.togglePhasePassing();
+    });
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await page.evaluate(state => window.publish(state), priority(102, {
+      phase: 'combat phase', step: 'declare attackers',
+      decision: { kind: 'attackers', player: 0, attacker_options: [] },
+    }));
+    await page.waitForFunction(() => window.submissions.length === 2);
+    await page.evaluate(state => window.publish(state), priority(104, { phase: 'second main phase' }));
+    await page.waitForFunction(() => window.submissions.length === 3);
+    await page.evaluate(state => window.publish(state), priority(106, { turn_number: 2 }));
+    await page.waitForFunction(() => window.context.phasePassing === false);
+    assert.equal(await page.evaluate(() => window.submissions.length), 3);
+
+    await load(priority(110, { decision: { kind: 'mana_payment', player: 0 } }));
+    assert.equal(await page.getByRole('button', {name:'Auto-pass', exact:true}).count(), 0);
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await server.close(); }
 });

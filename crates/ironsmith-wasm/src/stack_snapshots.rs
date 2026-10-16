@@ -89,6 +89,7 @@ pub(super) fn deterministic_match_seed(
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct StackObjectSnapshot {
+    pub(super) source_kind: Option<&'static str>,
     pub(super) id: u64,
     pub(super) inspect_object_id: Option<u64>,
     /// The id a targeting decision names for this stack object. An ability
@@ -163,6 +164,18 @@ pub(super) fn build_stack_object_snapshot(
     entry: &ironsmith::game_state::StackEntry,
 ) -> StackObjectSnapshot {
     let obj = game.object(entry.object_id);
+    let source_kind = if entry.is_ability && obj.is_none() {
+        match entry.object_id.0 {
+            0 => Some("monarch"),
+            value if value == u64::MAX - 1 => Some("initiative"),
+            u64::MAX => Some("ring"),
+            value if game.players.iter().any(|player|
+                value == u64::MAX - 0x1_0000 - u64::from(player.id.0)) => Some("dungeon_room"),
+            _ => None,
+        }
+    } else {
+        None
+    };
     let source_obj = entry
         .source_stable_id
         .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
@@ -171,13 +184,27 @@ pub(super) fn build_stack_object_snapshot(
         let provenance_id = entry.provenance.raw();
         if provenance_id != 0 {
             provenance_id.saturating_mul(2).saturating_add(1)
+        } else if entry.object_id.0 > JS_SAFE_INTEGER_MAX {
+            // Rules sources (initiative, Ring, dungeon rooms) use u64
+            // sentinels, not card ids. A stacked ability has its own safe id;
+            // queued previews receive their display id from the caller.
+            entry
+                .ability_id
+                .map(|id| id.0)
+                .unwrap_or_else(|| pending_stack_preview_id(0))
         } else {
             entry.object_id.0.saturating_mul(2).saturating_add(1)
         }
     } else {
         entry.object_id.0.saturating_mul(2)
     };
-    let source_stable_id = entry.source_stable_id.map(|stable_id| stable_id.0.0);
+    // Synthetic rules sources have no card to inspect. Do not expose their
+    // internal u64 sentinels as JavaScript card identities.
+    let source_stable_id = entry
+        .source_stable_id
+        .map(|stable_id| stable_id.0.0)
+        .filter(|id| *id <= JS_SAFE_INTEGER_MAX);
+    let target_object_id = Some(entry.target_id().0).filter(|id| *id <= JS_SAFE_INTEGER_MAX);
     let inspect_object_id = if entry.is_ability {
         source_obj.or(obj).map(|object| object.id.0)
     } else {
@@ -211,9 +238,10 @@ pub(super) fn build_stack_object_snapshot(
             .clone()
             .or_else(|| stack_entry_ability_text(entry, obj));
         StackObjectSnapshot {
+            source_kind,
             id,
             inspect_object_id,
-            target_object_id: Some(entry.target_id().0),
+            target_object_id,
             stable_id,
             source_stable_id,
             controller: entry.controller.0,
@@ -242,9 +270,10 @@ pub(super) fn build_stack_object_snapshot(
             None
         };
         StackObjectSnapshot {
+            source_kind,
             id,
             inspect_object_id,
-            target_object_id: Some(entry.target_id().0),
+            target_object_id,
             stable_id,
             source_stable_id,
             controller: entry.controller.0,
@@ -292,9 +321,45 @@ pub(super) fn insert_pending_stack_object_snapshots(
 #[cfg(test)]
 mod source_ability_tests {
     use super::*;
+    use ironsmith::effect::Effect;
     use ironsmith::game_state::StackEntry;
     use ironsmith::snapshot::ObjectSnapshot;
     use ironsmith_registry_test::compile_to_runtime_definition;
+
+    #[test]
+    fn synthetic_trigger_sources_are_safe_for_javascript_snapshots() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        for (raw, name, kind) in [
+            (u64::MAX - 1, "The Initiative", "initiative"),
+            (u64::MAX, "The Ring", "ring"),
+            (u64::MAX - 0x1_0000, "Secret Entrance", "dungeon_room"),
+        ] {
+            let source = ObjectId::from_raw(raw);
+            let pending = StackEntry::ability(source, alice, vec![Effect::draw(1)])
+                .with_source_info(source.into(), name.into());
+            let preview = build_stack_object_snapshot(&game, alice, None, &pending);
+            assert_eq!(preview.target_object_id, None);
+            assert_eq!(preview.source_stable_id, None);
+            assert!(preview.id <= JS_SAFE_INTEGER_MAX);
+            game.push_to_stack(pending);
+            let entry = game.stack.last().unwrap();
+            let snapshot = build_stack_object_snapshot(&game, alice, None, entry);
+            assert_eq!(snapshot.name, name);
+            assert_eq!(snapshot.source_kind, Some(kind));
+            assert_eq!(snapshot.inspect_object_id, None);
+            assert_eq!(snapshot.source_stable_id, None);
+            assert_eq!(snapshot.target_object_id, Some(entry.target_id().0));
+            // serde_json accepts all u64s; the browser's serializer only accepts
+            // exact JS integers. Check every numeric field against that limit.
+            let value = serde_json::to_value(&snapshot).unwrap();
+            for (field, value) in value.as_object().unwrap() {
+                if let Some(number) = value.as_u64() {
+                    assert!(number <= JS_SAFE_INTEGER_MAX, "{name}: {field}={number}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn stack_source_ability_text_preserves_identity_and_captured_source() {

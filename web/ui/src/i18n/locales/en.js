@@ -1,5 +1,8 @@
 // All interface copy for en. Preserve interpolation placeholders.
 export const messages = {
+  "End turn": "End turn",
+  "End the turn, ignoring phase pauses": "End the turn, ignoring phase pauses",
+  "action.skippingPhase": "Skipping {phase}",
   "Pass through phases until a pause or the next turn": "Pass through phases until a pause or the next turn",
   "Generate a 1v1 board from two lobby catalog decks. Each card comes from its deck; the remaining cards stay in the library.": "Generate a 1v1 board from two lobby catalog decks. Each card comes from its deck; the remaining cards stay in the library.",
   "Payment options could not be loaded.": "Payment options could not be loaded.",

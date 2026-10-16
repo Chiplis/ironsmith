@@ -3,6 +3,9 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, u
 import { castHoverTargetAtPoint } from "@/lib/hand-drag-intent";
 
 import { createFrameStore } from "@/lib/frame-store";
+import { castNavigationKeyAllowed, nextPlacementCell } from "@/lib/cast-keyboard-navigation";
+import { HAND_KEYBOARD_CAST_EVENT } from "@/lib/hand-cast-keyboard";
+import { battlefieldPlacementForDrag } from "@/lib/battlefield-layout";
 
 const DragMotionContext = createContext(null);
 const CastHoverContext = createContext(null);
@@ -187,16 +190,45 @@ export function DragProvider({ children }) {
     if (!dragState?.keyboard) return undefined;
     const onPointerMove = (event) => updateDrag(event.clientX, event.clientY);
     const onKeyDown = (event) => {
+      if (!castNavigationKeyAllowed(event)) return;
+      const held = dragStateRef.current;
+      const placement = battlefieldPlacementForDrag(held);
+      if (held && placement && placement.kind !== "move_battlefield"
+        && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter"].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const cells = [...document.querySelectorAll('[data-battlefield-drop-grid="true"] [data-battlefield-drop-slot]')]
+          .filter(node => node.dataset.occupied !== "true" && node.getBoundingClientRect().width > 0)
+          .map(node => ({ node, row: Number(node.dataset.row), column: Number(node.dataset.column) }));
+        const current = cells.find(cell => cell.node.dataset.active === "true");
+        if (event.key.startsWith("Arrow")) {
+          const next = nextPlacementCell(cells, current, event.key);
+          if (!next) return;
+          next.node.scrollIntoView({ block: "nearest", inline: "nearest" });
+          const rect = next.node.getBoundingClientRect();
+          updateDrag(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        } else if (current && !event.repeat) {
+          const anchorRect = current.node.getBoundingClientRect();
+          endDrag();
+          window.dispatchEvent(new CustomEvent("ironsmith:hand-card-dropped"));
+          window.dispatchEvent(new CustomEvent(HAND_KEYBOARD_CAST_EVENT, { detail: {
+            ...held,
+            anchorRect,
+            placementSlot: { row: current.row, column: current.column, anchorRect },
+          } }));
+        }
+        return;
+      }
       if (event.key !== "Escape" || event.defaultPrevented) return;
       event.preventDefault();
       endDrag();
       clearPendingPlacement();
     };
     document.addEventListener("pointermove", onPointerMove, { passive: true });
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("pointermove", onPointerMove);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [clearPendingPlacement, dragState?.keyboard, endDrag, updateDrag]);
 

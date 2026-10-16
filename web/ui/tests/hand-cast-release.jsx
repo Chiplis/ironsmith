@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider, useDragState } from "../src/context/DragContext";
+import { DragProvider, useDragState, usePlacementSlots } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { useCombatArrows } from "../src/context/useCombatArrows";
 import { ObjectSelectionProvider } from "../src/context/ObjectSelectionContext";
@@ -10,6 +10,9 @@ import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 import Workspace from "../src/components/layout/Workspace";
 import "../src/index.css";
+
+const keyboardPermanent = new URLSearchParams(window.location.search).has("permanent");
+const keyboardTargets = new URLSearchParams(window.location.search).has("keyboardTargets");
 
 const unsummon = {
   id: 5,
@@ -41,10 +44,14 @@ const castAction = {
   object_id: 5,
   kind: "cast_spell",
   label: "Cast Unsummon",
-  drag_requires_targets: true,
+  drag_requires_targets: !keyboardPermanent,
   drag_requires_modes: false,
   action_ref: { kind: "cast_spell", spell_id: 5 },
 };
+
+if (keyboardPermanent) Object.assign(unsummon, {
+  name: "Grizzly Bears", card_types: ["creature"], type_line: "Creature — Bear", power: 2, toughness: 2,
+});
 
 // With something like Omniscience out, the same spell has more than one way
 // to be cast, which keeps the gesture provisional until it is released.
@@ -68,7 +75,10 @@ const targetsDecision = {
     description: "target creature",
     min_targets: 1,
     max_targets: 1,
-    legal_targets: [{ kind: "object", object: 20, name: "Grizzly Bears" }],
+    legal_targets: [
+      { kind: "object", object: 20, name: "Grizzly Bears" },
+      ...(keyboardTargets ? [{ kind: "player", player: 1, name: "Bob" }] : []),
+    ],
   }],
 };
 
@@ -80,7 +90,8 @@ window.__dispatched = [];
 /** The targeting arrow lives in context; the DOM only shows it if it can find
  *  the card it comes from, so the probe reads the state itself. */
 export function ArrowProbe() {
-  const { dragArrow } = useCombatArrows();
+  const { dragArrow, dragArrowRef } = useCombatArrows();
+  useEffect(() => { window.__getArrow = () => dragArrowRef.current; }, [dragArrowRef]);
   useEffect(() => {
     window.__arrow = dragArrow ? { ...dragArrow } : null;
   }, [dragArrow]);
@@ -90,6 +101,8 @@ export function ArrowProbe() {
 /** The gesture's own state, which the arrow follows while it is held. */
 export function DragProbe() {
   const drag = useDragState();
+  const slots = usePlacementSlots();
+  useEffect(() => { window.__placementSlots = Object.fromEntries(slots); }, [slots]);
   useEffect(() => {
     window.__drag = drag
       ? { objectId: drag.objectId, held: Boolean(drag.held), castIntent: Boolean(drag.castIntent), x: drag.currentX, y: drag.currentY }
@@ -144,7 +157,7 @@ export function Fixture() {
 
   const dispatch = useCallback(async (command) => {
     window.__dispatched.push(command);
-    if (command?.type === "priority_action") setDecision(targetsDecision);
+    if (command?.type === "priority_action" && !keyboardPermanent) setDecision(targetsDecision);
   }, []);
 
   const value = useMemo(() => ({

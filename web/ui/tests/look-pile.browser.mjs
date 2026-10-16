@@ -9,9 +9,9 @@ try {
   const pile = page.locator('[data-zone-pile="look"]');
   await pile.waitFor();
   const lookBounds = await pile.boundingBox();
-  const graveyardBounds = await page.locator('[data-zone-pile="graveyard"]').boundingBox();
-  assert.equal(lookBounds.y, graveyardBounds.y, 'Look aligns vertically with graveyard');
-  assert.ok(lookBounds.x < graveyardBounds.x, 'Look sits on the left');
+  const exileBounds = await page.locator('[data-zone-pile="exile"]').boundingBox();
+  assert.ok(lookBounds.y >= exileBounds.y + exileBounds.height, 'Look follows Exile');
+  assert.equal(lookBounds.x, exileBounds.x, 'Look aligns with zone column');
   await pile.hover();
   await page.locator('.zone-pile-menu').waitFor();
   assert.equal(await page.locator('[data-zone-card="look"]').count(), 2);

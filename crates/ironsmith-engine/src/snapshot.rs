@@ -397,7 +397,7 @@ impl CopiableValues {
             loyalty: chars.loyalty,
             defense: chars.defense,
             abilities: Arc::new(chars.abilities.to_vec()),
-            spell_effect: chars.spell_effect.clone(),
+            spell_effect: chars.spell_effect.as_ref().clone(),
             aura_attach_filter: chars.aura_attach_filter.clone(),
         }
     }

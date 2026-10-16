@@ -137,17 +137,10 @@
 }
 .player-zone-piles > .zone-pile-slot,
 .player-look-pile { pointer-events: auto; }
-.player-look-pile { position: absolute; top: 0; left: 0; }
-.player-look-pile .zone-pile-label { left: 0; right: auto; }
-.my-zone-board-shell .player-look-pile {
-  top: var(--look-area-top, 0px);
-  left: var(--look-area-left, 0px);
-}
-.my-zone-board-shell .player-look-pile .zone-pile-slot:first-child {
-  margin-top: 0;
-}
-/* Our piles follow the battlefield's top edge (measured in PlayerZonePiles).
-   Look sits independently beneath the player header to maximize stack space. */
+.player-look-pile { position: relative; }
+.player-look-pile:empty { display: none; }
+.player-look-pile .zone-pile-slot:first-child { margin-top: 0; }
+/* Our zone column follows the battlefield's top edge. Look follows its last pile. */
 .my-zone-board-shell .player-zone-piles {
   top: var(--zone-piles-top, auto);
   bottom: auto;
@@ -195,15 +188,6 @@
 @keyframes look-eye-dissolve {
   0%, 62% { opacity: 1; transform: translateX(-50%) scale(1); }
   100% { opacity: 0; transform: translateX(-50%) scale(1.28); filter: blur(5px) drop-shadow(0 0 10px rgba(121, 220, 255, 0)); }
-}
-.zone-pile-menu.zone-pile-menu--look[data-state="open"] {
-  flex-direction: row-reverse;
-  transform-origin: left center;
-  animation-name: look-strip-expand;
-}
-@keyframes look-strip-expand {
-  from { clip-path: inset(0 calc(100% - var(--zone-strip-card-width) - 12px) 0 0); }
-  to { clip-path: inset(0); }
 }
 
 .zone-pile {
@@ -6983,13 +6967,13 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 @media (min-width: 1024px) {
-  /* The dock's height budget comes from TableCore (room below Graveyard/Exile);
+  /* The dock's height budget comes from TableCore (the lane beside the zones);
      the option list shrinks and scrolls to fit it. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]),
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.combat-decision-panel) {
-    max-height: min(60vh, 420px, var(--dock-max-height, 420px)) !important;
+    max-height: var(--dock-max-height, calc(100vh - 64px)) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
@@ -7175,7 +7159,8 @@ html[data-hand-pointer-suspended="true"] * {
 
 @media (min-width: 1024px) {
   /* Lift computed in PlayerZonePiles; the mana rail rises with the piles. */
-  .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .zone-pile-slot {
+  .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .zone-pile-slot,
+  .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .player-look-pile {
     top: calc(var(--local-piles-lift, 0px) * -1);
   }
 
@@ -7802,9 +7787,9 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Look is on the left edge: target enlargement must grow into the board. */
+/* Keep enlarged Look below the preceding zone and inside the right edge. */
 .my-zone-board-shell .player-look-pile .zone-pile-slot:has(> .zone-pile[data-has-targets="true"]:not([aria-expanded="true"])) {
-  transform-origin: left bottom;
+  transform-origin: right top;
 }
 
 /* Action groups stay inside the hand reserve and gain rows upward. */
@@ -7855,5 +7840,35 @@ html[data-hand-pointer-suspended="true"] * {
     .action-strip-main-title-text {
     white-space: normal !important;
     overflow-wrap: anywhere;
+  }
+}
+
+/* Target requirements contain nested option rows. Only the outer list is a
+   scroll viewport; inner rows must retain their full content height. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
+    .action-strip-decision-content .decision-strip-scroll--vertical-target-options div:has(.decision-strip-options-row) {
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+  }
+}
+
+/* Compact cards: navigation follows the main decision dock. Its height is
+   included in the dock's normal collision and viewport measurements. */
+@media (min-width: 1024px) {
+  .decision-header-utility-controls {
+    display: flex;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    pointer-events: auto;
+  }
+  .decision-header-utility-controls .topbar-minor-controls--utility {
+    justify-content: flex-end;
+    gap: 5px;
+  }
+  .table-shell[data-focused-hud="true"] .decision-header-utility-controls .toolbar-brand {
+    display: block !important;
+    font-size: 14px;
+    letter-spacing: .1em;
   }
 }

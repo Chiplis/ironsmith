@@ -1,3 +1,4 @@
+import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import useUiText from "@/i18n/useUiText";
 import CardCreationControls from "@/components/layout/CardCreationControls";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
@@ -25,12 +26,12 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
-import { anchorFloatingDock, anchorManaPaymentDock, DECISION_DOCK_BOTTOM_INSET, dockMaxWidth } from "@/lib/floating-dock-position";
+import { anchorDecisionDock, anchorManaPaymentDock } from "@/lib/floating-dock-position";
 import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
 // Reserve room for the hand and local Graveyard/Exile column. Measure the
-// hand row rather than animated card highlights to keep hover feedback from
+// hand slots rather than animated card highlights to keep hover feedback from
 // moving the dock under the pointer.
 const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > .zone-pile-slot';
 
@@ -146,7 +147,9 @@ export default function TableCore({
     smallDesktopViewport,
     largeDesktopViewport,
   } = useViewportLayout();
+  const [battlefieldAppearance] = useBattlefieldAppearance();
   const focusedHudDesktop = !nonDesktopViewport && !tabletCompactViewport;
+  const dockCompactUtilities = focusedHudDesktop && battlefieldAppearance.compactCards;
   const players = state?.players || [];
   const perspective = state?.perspective;
 
@@ -239,7 +242,12 @@ export default function TableCore({
   useLayoutEffect(() => {
     const controls = utilityControlsRef.current;
     const table = tableRef.current;
-    if (!controls || !table) return undefined;
+    if (!table) return undefined;
+    if (dockCompactUtilities) {
+      table.style.setProperty("--header-utility-width", "0px");
+      return () => table.style.removeProperty("--header-utility-width");
+    }
+    if (!controls) return undefined;
     const measure = () => {
       table.style.setProperty("--header-utility-width", `${Math.ceil(controls.getBoundingClientRect().width)}px`);
     };
@@ -258,6 +266,13 @@ export default function TableCore({
     if (!focusedHudDesktop || !dock || !table) return undefined;
 
     let frame = 0;
+    let handMotionUntil = 0;
+    const handRoot = (document.querySelector("[data-bottom-dock] .hand-zone-row") || table.querySelector(".hand-zone-row"));
+    const handObserver = new MutationObserver(() => {
+      handMotionUntil = performance.now() + 400;
+      schedule();
+    });
+    if (handRoot) handObserver.observe(handRoot, { attributes: true, attributeFilter: ["style", "class"], childList: true, subtree: true });
     const observedElements = new Set();
     const resizeObserver = typeof ResizeObserver === "function"
       ? new ResizeObserver(schedule)
@@ -274,6 +289,8 @@ export default function TableCore({
       const dockWidth = dockRect.width || dock.offsetWidth;
       const dockHeight = dockRect.height || dock.offsetHeight;
       if (!dockWidth || !dockHeight) return;
+      const dockExtrasHeight = Math.max(0,
+        dockHeight - (decisionRolloutRef.current?.getBoundingClientRect().height || dockHeight));
 
       const zoneElements = [...document.querySelectorAll(FLOATING_DOCK_PROTECTED_ZONES)]
         .filter((element) => element !== dock && !dock.contains(element));
@@ -281,54 +298,44 @@ export default function TableCore({
       observe(dock);
       observe(table);
       const protectedZones = zoneElements.flatMap(element => [element, ...element.querySelectorAll(".zone-pile, .zone-pile-label")]).map(visibleRect).filter(Boolean);
+      // The desktop hand is a sibling of the table. Include visible card
+      // transforms so a fanned or enlarged edge card stays clear of the dock.
+      const hand = (document.querySelector("[data-bottom-dock] .hand-zone-row") || table.querySelector(".hand-zone-row"));
+      observe(hand);
+      const handCards = [...(hand?.querySelectorAll(".hand-layout-item") || [])];
+      handCards.forEach(observe);
+      const handRects = handCards.flatMap(element => [element, ...element.querySelectorAll(".game-card")])
+        .map(visibleRect).filter(Boolean);
+      const handRight = handRects.reduce((right, rect) => Math.max(right, rect.right), 0);
+      const handTop = handRects.reduce((top, rect) => Math.min(top, rect.top), window.innerHeight);
       if (state?.decision?.kind === 'mana_payment' && !surrenderRequested) {
         const opponentRows = [...table.querySelectorAll('.battlefield-panel--opponents [data-zone-anchor-player]')].map(zone => zone.querySelector('.battlefield-row[data-bf-side="top"]')).filter(Boolean);
         const opponentCards = opponentRows.flatMap(row => [...row.querySelectorAll('.battlefield-row-card')]);
         opponentCards.forEach(observe);
         const opponentCardBottom = opponentCards.map(visibleRect).filter(Boolean).reduce((bottom, rect) => Math.max(bottom, rect.bottom), 48);
-        const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom });
+        const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom, handRight, handTop });
+        next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
         setHumanActionDockPosition(previous => Object.keys(next).every(key => previous?.[key] === next[key]) ? previous : next);
+        if (performance.now() < handMotionUntil) schedule();
         return;
       }
-      // Bottom-right corner, beside the hand: the hand keeps a reserve on
-      // its right (see handSideReserve) that bounds the dock's width.
-      // Keep enough room for the decision header, a useful portion of the
-      // choices, and Submit. When the pile column leaves less room than that,
-      // anchorFloatingDock slides the dock beside it; longer lists scroll.
-      const bottomLimit = window.innerHeight - DECISION_DOCK_BOTTOM_INSET;
-      const maxWidth = Math.round(dockMaxWidth(window.innerWidth));
-      const hand = document.querySelector(".hand-zone-row");
-      observe(hand);
-      const position = anchorFloatingDock({
+      const next = anchorDecisionDock({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
         dockWidth,
         dockHeight,
-        bottomLimit,
         protectedZones,
-        handBounds: visibleRect(hand),
+        handRight,
+        handTop,
       });
-      if (!position) return;
-      // With full cards, only piles in the dock's own column cap its height:
-      // once the dock stands beside the pile column it may grow up past the
-      // piles' bottom, so long choice lists show without scrolling. The
-      // compact appearance keeps every pile as a ceiling.
-      const fullCards = table.querySelector('.battlefield-row[data-battlefield-style="full"]') != null;
-      const dockRight = position.left + dockWidth;
-      const pilesBottom = protectedZones
-        .filter(rect => !fullCards || (rect.left < dockRight && rect.right > position.left))
-        .reduce((bottom, rect) => Math.max(bottom, rect.bottom), -Infinity);
-      const minimumDecisionRoom = Math.min(280, Math.round(window.innerHeight * 0.6));
-      const maxHeight = Number.isFinite(pilesBottom)
-        ? Math.max(minimumDecisionRoom, Math.floor(bottomLimit - pilesBottom - 14))
-        : Math.round(window.innerHeight * 0.6);
-      const next = { ...position, maxWidth, maxHeight };
+      next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
       setHumanActionDockPosition((previous) => (
-        previous?.left === next.left && previous?.top === next.top
+        previous?.panelMaxHeight === next.panelMaxHeight && previous?.left === next.left && previous?.top === next.top
           && previous?.maxWidth === next.maxWidth && previous?.maxHeight === next.maxHeight
           ? previous
           : next
       ));
+      if (performance.now() < handMotionUntil) schedule();
     };
     function schedule() {
       if (frame) return;
@@ -342,11 +349,12 @@ export default function TableCore({
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
+      handObserver.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     };
-  }, [focusedHudDesktop, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
+  }, [focusedHudDesktop, dockCompactUtilities, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
 
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
@@ -382,12 +390,12 @@ export default function TableCore({
         type="button"
         className="decision-phase-pass"
         aria-pressed={Boolean(phasePassing)}
-        aria-label={ui("Pass")}
-        title={ui("Pass through phases until a pause or the next turn")}
+        aria-label={ui("End turn")}
+        title={ui("End the turn, ignoring phase pauses")}
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
-      >{ui("Pass")}</button>}
-      <button
+      >{ui("End turn")}</button>}
+      {!state?.mana_payment && state?.decision?.kind !== "mana_payment" && <button
         type="button"
         className="battlefield-auto-pass-toggle"
         data-enabled={autoResolveEnabled ? "true" : "false"}
@@ -402,7 +410,7 @@ export default function TableCore({
           <path d="m10.25 4.5 5.5 5.5-5.5 5.5" />
         </svg>
         <span className="sr-only">{t("action.autoPass")}</span>
-      </button>
+      </button>}
     </div>
   ) : null;
   const middleTopbarElement = middleTopbar;
@@ -488,7 +496,7 @@ export default function TableCore({
             <LobbyChat showOffline onOpenLobby={zoneActionControls?.props?.onOpenLobby} />
           </div>
         ) : null}
-        {middleUtilityControls ? (
+        {middleUtilityControls && !dockCompactUtilities ? (
           <div ref={utilityControlsRef} className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, { showBrand: focusedHudDesktop })}
           </div>
@@ -596,7 +604,7 @@ export default function TableCore({
             top: `${humanActionDockPosition.top}px`,
             maxWidth: `${humanActionDockPosition.maxWidth}px`,
             ...(decision?.kind === 'mana_payment' && !surrenderRequested ? { width: `${humanActionDockPosition.maxWidth}px` } : {}),
-            "--dock-max-height": `${humanActionDockPosition.maxHeight}px`,
+            "--dock-max-height": `${humanActionDockPosition.panelMaxHeight ?? humanActionDockPosition.maxHeight}px`,
             right: "auto",
             bottom: "auto",
             visibility: "visible",
@@ -618,6 +626,11 @@ export default function TableCore({
           />}
         </div>
       </div>
+      {dockCompactUtilities && middleUtilityControls ? (
+        <div className="decision-header-utility-controls">
+          {cloneElement(middleUtilityControls, { showBrand: true })}
+        </div>
+      ) : null}
     </div>
   ) : null;
   if (landscapeMobileViewport) {

@@ -1,4 +1,4 @@
-import { priorityStepKey } from '@/lib/priority-stops';
+import { selectedPriorityAdvanceLabel } from '@/lib/priority-stops';
 import PriorityHoldButton from "@/components/decisions/PriorityHoldButton";
 import useUiText from "@/i18n/useUiText";
 import { LOOK_DONE_EVENT } from "@/lib/look-pile";
@@ -24,7 +24,6 @@ import useDecisionRollout from "@/hooks/useDecisionRollout";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { animate, cancelMotion, snappySpring, stagger } from "@/lib/motion/anime";
 import { KeywordHelpersProvider, ManaSymbol, SymbolText } from "@/lib/mana-symbols";
-import { nextPriorityAdvanceLabel, priorityAdvanceButtonLabel } from "@/lib/constants";
 import HighlightedDecisionText from "@/components/decisions/HighlightedDecisionText";
 import { decisionOptionAccentVars, getPlayerAccent } from "@/lib/player-colors";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
@@ -1646,6 +1645,9 @@ function MobileBattleDecisionLayer({
     dispatch,
     cancelDecision,
     effectOrderingState,
+    priorityStops,
+    phasePassing,
+    startPhaseAdvance,
   } = useGame();
   const {
     hoveredObjectId,
@@ -1770,7 +1772,7 @@ function MobileBattleDecisionLayer({
         ? "Resolve"
         : hasCustomPassLabel
           ? passAction.label
-          : priorityAdvanceButtonLabel(state?.phase, priorityStepKey(state), stackSize, t)
+          : selectedPriorityAdvanceLabel(state, priorityStops, phasePassing, t)
     )
     : passAdvanceLabel;
   const objectNameById = useMemo(
@@ -1831,8 +1833,8 @@ function MobileBattleDecisionLayer({
     if (stackSize > 0) {
       return ui("Resolve {0}", { 0: stackSize });
     }
-    return nextPriorityAdvanceLabel(state?.phase, priorityStepKey(state), stackSize, t);
-  }, [hasCustomPassLabel, stackSize, state?.phase, state?.step, toolbarDecisionSummary, t, ui]);
+    return "";
+  }, [hasCustomPassLabel, stackSize, toolbarDecisionSummary, ui]);
 
   const triggerPriorityAction = useCallback(
     (action) => {
@@ -1840,6 +1842,11 @@ function MobileBattleDecisionLayer({
       dispatchHandActionHover(null);
       clearHoverLinkedObjects();
       clearHover();
+      if (action.kind === "pass_priority" && (!action.label || action.label === "Pass priority")
+        && stackSize === 0 && startPhaseAdvance) {
+        startPhaseAdvance();
+        return;
+      }
       if (action.kind === "untap_land") {
         cancelDecision();
         setActionsSheetState({ key: decisionIdentity, open: false });
@@ -1851,7 +1858,7 @@ function MobileBattleDecisionLayer({
       );
       setActionsSheetState({ key: decisionIdentity, open: false });
     },
-    [canAct, cancelDecision, clearHover, clearHoverLinkedObjects, decisionIdentity, dispatch]
+    [canAct, cancelDecision, clearHover, clearHoverLinkedObjects, decisionIdentity, dispatch, stackSize, startPhaseAdvance]
   );
   const handleActionHoverStart = useCallback(
     (group) => {
@@ -2472,6 +2479,9 @@ function PriorityBar({
     multiplayer,
     playerAccentOverrides,
     startResolveAll,
+    priorityStops,
+    phasePassing,
+    startPhaseAdvance,
     postActionPriorityWindow,
   } = useGame();
   const [decisionToolbarSearchTarget, setDecisionToolbarSearchTarget] = useState(null);
@@ -2536,7 +2546,7 @@ function PriorityBar({
     : (
       hasCustomPassLabel
         ? passAction.label
-        : priorityAdvanceButtonLabel(state?.phase, priorityStepKey(state), stackSize, t)
+        : selectedPriorityAdvanceLabel(state, priorityStops, phasePassing, t)
     );
   const battlefieldFamilies = useMemo(
     () => buildBattlefieldFamilies(state?.players),
@@ -2677,6 +2687,11 @@ function PriorityBar({
       if (peerWaitLocked || !canAct || !action) return;
       dispatchHandActionHover(null);
       clearHover();
+      if (action.kind === "pass_priority" && (!action.label || action.label === "Pass priority")
+        && stackSize === 0 && startPhaseAdvance) {
+        startPhaseAdvance();
+        return;
+      }
       if (action.kind === "untap_land") {
         cancelDecision();
         return;
@@ -2686,7 +2701,7 @@ function PriorityBar({
         action.label
       );
     },
-    [canAct, cancelDecision, clearHover, dispatch, peerWaitLocked]
+    [canAct, cancelDecision, clearHover, dispatch, peerWaitLocked, stackSize, startPhaseAdvance]
   );
   const triggerPassActionFromPointer = useCallback(
     (event) => {

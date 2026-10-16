@@ -17,10 +17,29 @@ export default function TopbarUtilityControls({
   puzzleSetupMode = false,
   onAddCardNotice,
   showBrand = false,
+  menuFirst = false,
 }) {
   const ui = useUiText();
+  const menu = (
+    <TopbarMenuSheet
+      playerNames={playerNames}
+      setPlayerNames={setPlayerNames}
+      startingLife={startingLife}
+      setStartingLife={setStartingLife}
+      onReset={onReset}
+      onRefresh={onRefresh}
+      onToggleLog={onToggleLog}
+      onOpenPuzzleSetup={onOpenPuzzleSetup}
+      onOpenLobby={onOpenLobby}
+      onGenerateRandomGame={onGenerateRandomGame}
+      puzzleSetupMode={puzzleSetupMode}
+      onAddCardNotice={onAddCardNotice}
+      triggerIcon="menu"
+    />
+  );
   return (
     <div className="topbar-minor-controls topbar-minor-controls--utility">
+      {menuFirst ? menu : null}
       {showBrand ? (
         <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
       ) : null}
@@ -58,21 +77,7 @@ export default function TopbarUtilityControls({
           </svg>
         </a>
       </Button>
-      <TopbarMenuSheet
-        playerNames={playerNames}
-        setPlayerNames={setPlayerNames}
-        startingLife={startingLife}
-        setStartingLife={setStartingLife}
-        onReset={onReset}
-        onRefresh={onRefresh}
-        onToggleLog={onToggleLog}
-        onOpenPuzzleSetup={onOpenPuzzleSetup}
-        onOpenLobby={onOpenLobby}
-        onGenerateRandomGame={onGenerateRandomGame}
-        puzzleSetupMode={puzzleSetupMode}
-        onAddCardNotice={onAddCardNotice}
-        triggerIcon="menu"
-      />
+      {!menuFirst ? menu : null}
     </div>
   );
 }

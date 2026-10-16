@@ -28,7 +28,7 @@ import {
 } from "@/lib/hand-cast-keyboard";
 
 import { reconcilePseudoHand } from "@/lib/pseudo-hand";
-import { handKeyboardEntryCard, onHandOpenChange, useHandOpen } from "@/lib/hand-open";
+import { handKeyboardEntryCard, onHandOpenChange, setHandOpen, useHandOpen } from "@/lib/hand-open";
 
 const HAND_ROULETTE_THRESHOLD = 10;
 const HAND_ROULETTE_VISIBLE_CARDS = 7;
@@ -1020,6 +1020,8 @@ export default function HandZone({
   }, [clearAnchoredCardPreview, clearHover, isMobileFan, pinnedHandObjectId]);
 
   const handleKeyboardCardActivate = useCallback((event, card, plays, glowKind) => {
+    // Activating a card tucks the rest of the keyboard-opened hand away.
+    setHandOpen(false);
     const plan = handKeyboardCastPlan({ actions: plays, card });
     if (plan) {
       // Holding the card drops it back into its slot, so the layout item —
