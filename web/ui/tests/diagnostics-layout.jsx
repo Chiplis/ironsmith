@@ -10,10 +10,21 @@ import TableCore from "../src/components/board/TableCore";
 import Topbar from "../src/components/layout/Topbar";
 import "../src/index.css";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
-const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:id,name,life:20,mana_pool:{},
+const sizingParams = new URLSearchParams(location.search);
+const sizingPlayers = Math.max(2, Math.min(4, Number(sizingParams.get('players')) || 4));
+const players = ["Alice", "Bob", "Charlie", "Diana"].slice(0, sizingPlayers).map((name,id)=>({id,index:id,name,life:20,mana_pool:{},
   battlefield:names.map((name,i)=>({id:100*id+i+1,stable_id:100*id+i+1,name,controller:id,owner:id,lane:i<3?"creatures":"lands",type_line:i<3?"Artifact Creature":"Land",power:1,toughness:1,oracle_text:"",semantic_score:1})),
   hand_cards:[],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains",...(id===1?{counters:[{kind:"+1/+1",amount:2}]}:{})},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards:[],library_size:40,
 }));
+if (sizingParams.has('objects')) {
+  for (const player of players) {
+    const count = Number(sizingParams.get(player.id === 1 ? 'opponentObjects' : 'objects') || sizingParams.get('objects'));
+    player.battlefield = Array.from({length: count}, (_, i) => ({
+      ...player.battlefield[i % names.length], id: player.id * 1000 + i + 1,
+      stable_id: player.id * 1000 + i + 1, name: `Object ${i}`, lane: 'creatures',
+    }));
+  }
+}
 function Fixture(){
  const [result,setResult]=useState('none');
  const [holdRule,setHoldRule]=useState('never');

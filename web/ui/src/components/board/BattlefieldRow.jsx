@@ -49,8 +49,6 @@ const BATTLEFIELD_LAYOUT_SETTLE_MAX_MS = 380;
 const GHOST_BASE_ANIMATION_MS = 520;
 const MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO = 0.155;
 const DESKTOP_PORTRAIT_CARD_ASPECT = 63 / 88;
-const DESKTOP_PORTRAIT_MAX_WIDTH_PX = 72;
-const DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO = 0.1;
 // Keep one calm, predictable seam between cards. Cards are rendered at 1.15x
 // on desktop, so this logical gap still leaves a visible, compact gutter
 // after the scaled card edges meet.
@@ -1034,9 +1032,11 @@ export default function BattlefieldRow({
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         const width = row.clientWidth;
+        // Grow tracks with the field instead of manufacturing more 72px slots.
+        const targetWidth = Math.max(44, Math.min(width / 6, row.clientHeight * .3));
         const measuredColumns = Math.floor(
           (width + BATTLEFIELD_GRID_GAP_PX)
-          / (DESKTOP_PORTRAIT_MAX_WIDTH_PX + BATTLEFIELD_GRID_GAP_PX)
+          / (targetWidth + BATTLEFIELD_GRID_GAP_PX)
         );
         const next = Math.max(
           EMPTY_PAPER_SLOT_COLUMNS,
@@ -1056,7 +1056,7 @@ export default function BattlefieldRow({
   const multiplayerBoard = (state?.players?.length || 0) > 2;
   const paperGridMinSlots = useDesktopPortraitBattlefield
     ? Math.max(Number(paperMinSlotsPerRow) || 0, paperColumnCapacity)
-    : paperMinSlotsPerRow ?? (multiplayerBoard && battlefieldSide === "top" ? 4 : null);
+    : paperMinSlotsPerRow ?? (multiplayerBoard && battlefieldSide === "top" ? 3 : null);
   const currentSnapshotId = state?.snapshot_id ?? null;
   const immediateLayoutHolds = useMemo(
     () => (
@@ -1680,46 +1680,27 @@ export default function BattlefieldRow({
     const mobileBattleWidthRatio = (isMobileBattleTopLayout || isMobileBattleBottomLayout)
       ? 0.086
       : multiplayerBoard && battlefieldSide === "top" ? 0.24 : MAX_BATTLEFIELD_CARD_ZONE_WIDTH_RATIO;
-    // Share a size budget across occupied multiplayer boards. This uses the
-    // available tracks, not the currently rendered card sizes, so fitting one
-    // player cannot recursively shrink the others.
-    let multiplayerCardLimit = Infinity;
-    if (multiplayerBoard && isPaperBattlefieldLayout && !useMobileBattlefieldToken && !useDesktopPortraitBattlefield) {
-      const table = row.closest('[data-multiplayer-board="true"]');
-      const budgets = [...(table?.querySelectorAll('.battlefield-row[data-battlefield-grid-rows]') || [])]
-        .filter(field => field.querySelector('.battlefield-artwork-card'))
-        .map(field => {
-          const styles = getComputedStyle(field);
-          const own = field.dataset.bfSide === 'bottom';
-          const rows = Number(field.dataset.battlefieldGridRows) || 1;
-          const cols = Number(field.dataset.battlefieldGridColumns) || 1;
-          const gapX = parseFloat(styles.columnGap) || gap;
-          const gapY = parseFloat(styles.rowGap) || rowGap;
-          const available = Math.min(field.clientHeight, own ? phaseTop - field.getBoundingClientRect().top : Infinity) - (parseFloat(styles.paddingTop) || 0)
-            - (own ? (Number.isFinite(phaseTop) ? 0 : BOTTOM_BATTLEFIELD_SAFE_INSET) : parseFloat(styles.paddingBottom) || 0);
-          const limit = Math.min(
-            (field.clientWidth - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0) - (cols - 1) * gapX) / cols,
-            ((available - (rows - 1) * gapY) / rows) * aspect
-          );
-          return limit / (own ? 1.12 : 1);
-        });
-      if (budgets.length) multiplayerCardLimit = Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.min(...budgets))
-        * (battlefieldSide === "bottom" ? 1.12 : 1);
-    }
+    // Fit each desktop field to its own tracks. A narrow or crowded opponent
+    // must not impose its size on every other player, and fixed pixel caps
+    // prevent sparse fields from growing on larger displays.
+    const desktopPaper = isPaperBattlefieldLayout && !useMobileBattlefieldToken;
+    const visualScale = useDesktopPortraitBattlefield
+      && window.matchMedia?.(DESKTOP_PORTRAIT_VISUAL_SCALE_QUERY)?.matches
+      ? DESKTOP_PORTRAIT_VISUAL_SCALE : 1;
+    const desktopWidthLimit = (width - (best.cols - 1) * gap)
+      / (best.cols + visualScale - 1);
+    // The computed row gap includes the previous fit's scaled overhang.
+    // Derive the new fit from the base gap to avoid size feedback.
+    const desktopHeightLimit = ((effectiveHeight - (best.rows - 1) * gap)
+      / (best.rows * visualScale)) * aspect;
     const maxCardWidth = forceSingleColumn
       ? Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.floor(width - 4))
-      : useDesktopPortraitBattlefield
-        ? Math.max(
-          ABSOLUTE_MIN_CARD_WIDTH,
-          Math.min(
-            DESKTOP_PORTRAIT_MAX_WIDTH_PX,
-            Math.floor(width * DESKTOP_PORTRAIT_MAX_ZONE_WIDTH_RATIO)
-          )
-        )
-        : Math.max(ABSOLUTE_MIN_CARD_WIDTH, Math.min(isPaperBattlefieldLayout && !useMobileBattlefieldToken ? (multiplayerBoard ? multiplayerCardLimit : 144) : Infinity, Math.floor(width * mobileBattleWidthRatio)));
+      : desktopPaper
+        ? Math.min(desktopWidthLimit, desktopHeightLimit)
+        : Math.floor(width * mobileBattleWidthRatio);
     const clampedCardWidth = Math.max(
       isPaperBattlefieldLayout ? ABSOLUTE_MIN_CARD_WIDTH : 22,
-      useDesktopPortraitBattlefield ? maxCardWidth : Math.min(best.cardWidth, maxCardWidth)
+      Math.floor(desktopPaper ? maxCardWidth : Math.min(best.cardWidth, maxCardWidth))
     );
     best = {
       ...best,
