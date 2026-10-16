@@ -1,17 +1,12 @@
 import { useGame } from "@/context/GameContext";
-import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import { isEffectOrderingDecision } from "@/lib/effect-ordering";
 
-// The "Compact artwork" appearance shows the stack as a pile of rendered
-// cards over the board (CardStackPile) instead of the scrolling rail. Phones
-// keep their rails, and ordering triggers or replacements keeps the rail too:
-// its reorder controls have no place on a pile.
+// Both desktop appearances share the rendered card pile. Phones and effect
+// ordering keep the rail, which provides the required reorder controls.
 export default function useCardStackMode() {
-  const [appearance] = useBattlefieldAppearance();
   const { state } = useGame();
   const { nonDesktopViewport } = useViewportLayout();
-  return appearance.compactCards
-    && !nonDesktopViewport
+  return !nonDesktopViewport
     && !isEffectOrderingDecision(state?.decision);
 }

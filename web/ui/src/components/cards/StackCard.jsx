@@ -233,7 +233,7 @@ export default function StackCard({
     isLeaving && "pointer-events-none",
   );
 
-  // A rendered card in the compact appearance's pile (CardStackPile). The
+  // A rendered card in the desktop stack pile (CardStackPile). The
   // pile supplies the face; the tile keeps every hover, pick and arrow path.
   if (variant === "frame") {
     return (

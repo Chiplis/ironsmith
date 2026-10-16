@@ -48,7 +48,7 @@ export default function StackTimelineRail({
   const inlineAnchorRef = useRef(null);
   const flowRailRef = useRef(null);
   const [inlineRect, setInlineRect] = useState(null);
-  // The compact appearance shows the stack as CardStackPile instead.
+  // Desktop appearances show the stack as CardStackPile instead.
   const cardStackMode = useCardStackMode();
   const shouldShowRail = !cardStackMode
     && (orderingEntryCount > 0 || displayedStackObjects.length > 0);

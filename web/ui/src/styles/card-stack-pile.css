@@ -1,4 +1,4 @@
-/* The compact appearance's stack: a pile of MSE-rendered cards floating over
+/* The desktop layouts’ stack: a pile of MSE-rendered cards floating over
    the board (CardStackPile.jsx). Each card glows with its owner's color
    (--glow-rgb from StackCard); the newest sits in front, the older ones rise
    behind it with their title lines showing. anime.js owns the transform of

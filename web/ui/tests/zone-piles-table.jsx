@@ -1,3 +1,4 @@
+import useCardStackMode from "@/hooks/useCardStackMode";
 import TopbarUtilityControls from "../src/components/layout/TopbarUtilityControls";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -19,6 +20,10 @@ const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:i
   battlefield:names.map((name,i)=>({id:100*id+i+1,stable_id:100*id+i+1,name,controller:id,owner:id,lane:i<3?"creatures":"lands",type_line:i<3?"Artifact Creature":"Land",power:1,toughness:1,oracle_text:"",semantic_score:1})),
   can_view_hand: true, hand_cards: new URLSearchParams(location.search).has("decisionDock") && id === 0 ? Array.from({length:Number(new URLSearchParams(location.search).get("hand") || 4)},(_,i)=>({id:8000+i,name:names[i % names.length]})) : [],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains"},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards: new URLSearchParams(location.search).has("commander") ? [{id:3000+id,name:"Commander"}] : [],library_size:40,
 }));
+function FixtureStack({ onInspectObject }) {
+ const enabled = useCardStackMode();
+ return enabled ? <CardStackPile onInspectObject={onInspectObject} /> : null;
+}
 function Fixture(){
  const targetLook = new URLSearchParams(location.search).has("targetLook");
  const [appearance,setAppearance]=useBattlefieldAppearance();
@@ -39,7 +44,7 @@ function Fixture(){
  <main style={{height:"96vh"}}><button onClick={()=>setAppearance("compactCards",!appearance.compactCards)}>Toggle battlefield style</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore middleUtilityControls={new URLSearchParams(location.search).has("utilities") ? <TopbarUtilityControls playerNames={["Alice", "Bob"]} startingLife={20} /> : null} onChangePerspective={setPerspective} legalTargetObjectIds={targetLook ? new Set([7001,7002]) : targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  {new URLSearchParams(location.search).has("decisionDock") && <div data-bottom-dock style={{position:'fixed',left:0,right:0,bottom:8,height:96,pointerEvents:'none'}}><div className="hand-reveal-shell" data-open="false" style={{position:'absolute',left:'50%',bottom:0,height:96}}><div className="hand-reveal-body" style={{height:'100%'}}><HandZone player={players[0]} isExpanded={false} layout="mobile-fan" /></div></div></div>}
  <FloatingCardPreview />
- {appearance.compactCards ? <CardStackPile onInspectObject={(id)=>setResult(String(id))} /> : null}
+ <FixtureStack onInspectObject={(id)=>setResult(String(id))} />
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);

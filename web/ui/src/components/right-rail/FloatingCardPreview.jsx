@@ -269,7 +269,7 @@ function CardPreviewSurface({
   const disabled = externallyDisabled || previewSuppressed;
   const { game, state, dispatch, cancelDecision, cancelBackgroundDispatch } = useGame();
   const [rememberedCards, setRememberedCards] = useState([]);
-  // The compact appearance's card pile already shows every stack entry at
+  // The desktop layouts’ card pile already shows every stack entry at
   // full frame size: no second frame opens for one.
   const cardStackMode = useCardStackMode();
   const automaticPreview = useMemo(

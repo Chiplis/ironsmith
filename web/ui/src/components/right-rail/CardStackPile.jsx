@@ -471,7 +471,7 @@ function CardStackPileEntry({
   );
 }
 
-// The compact appearance's stack: the entries as a literal pile of rendered
+// The desktop layouts’ stack: the entries as a literal pile of rendered
 // cards, newest in front, each glowing with its owner's color. One entry is
 // "viewed" -- the top one unless a click or the chevrons picked another -- and
 // the pager under the pile shows where it sits.
