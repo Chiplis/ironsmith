@@ -228,6 +228,17 @@ pub(super) fn read_demonstrative_descriptor(
         {
             let antecedent_surface = demonstrative_antecedent_surface(predicate_tokens);
             let descriptor_clause = LexedClause::new(&descriptor_tokens);
+            if surface::exact(descriptor_clause, &["renowned"]) {
+                let predicate = demonstrative_match_predicate(ObjectFilter {
+                    renowned: true,
+                    ..Default::default()
+                }, match_time);
+                return Ok(Some(if negative {
+                    PredicateAst::Not(Box::new(predicate))
+                } else {
+                    predicate
+                }));
+            }
             if surface::exact(descriptor_clause, &["exiled"]) {
                 let predicate = demonstrative_match_predicate(
                     ObjectFilter::default().in_zone(Zone::Exile),

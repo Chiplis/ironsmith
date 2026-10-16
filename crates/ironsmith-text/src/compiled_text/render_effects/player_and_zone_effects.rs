@@ -2370,6 +2370,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     if has_extremum {
         card_desc = card_desc.replace("that player controls", "they control");
     }
+    let explicit_owner_needed = !choose.additional_zones.is_empty()
+        && choose.filter.owner == Some(PlayerFilter::You)
+        && card_desc.starts_with("your ");
     for owner_prefix in [
         "target player's ",
         "that player's ",
@@ -2381,6 +2384,9 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             card_desc = rest.to_string();
             break;
         }
+    }
+    if explicit_owner_needed {
+        card_desc.push_str(" you own");
     }
     if let Some(rest) = card_desc.strip_suffix(" hands") {
         card_desc = format!("{rest} hand");
@@ -3977,6 +3983,19 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
                 "from {} hand or graveyard",
                 describe_possessive_player_filter(owner)
             )
+        } else if zones.len() > 1 {
+            let parts = zones.iter().map(|zone| match zone {
+                Zone::Hand => describe_choose_zone_origin(choose, "hand"),
+                Zone::Graveyard => describe_choose_zone_origin(choose, "graveyard"),
+                Zone::Library => describe_choose_zone_origin(choose, "library"),
+                Zone::Command => "from the command zone".to_string(),
+                Zone::Exile => "from exile".to_string(),
+                Zone::Battlefield => "from the battlefield".to_string(),
+                Zone::Stack => "from the stack".to_string(),
+                Zone::Ante => "from ante".to_string(),
+                Zone::OutsideGame => "from outside the game".to_string(),
+            }).collect::<Vec<_>>();
+            join_with_or(&parts)
         } else {
             match primary_zone {
                 Zone::Hand => describe_choose_zone_origin(choose, "hand"),

@@ -37963,6 +37963,58 @@ fn describe_source_line_conditional_animation_group(abilities: &[Ability], subje
         describe_condition(condition?)))
 }
 
+fn describe_complementary_entry_counter_group(abilities: &[Ability], subject: &str) -> Option<String> {
+    fn entry(ability: &Ability) -> Option<(CounterType, &Value, &Condition)> {
+        let AbilityKind::Static(ability) = &ability.kind else { return None; };
+        let ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition {
+            counter, count, condition, added_abilities, ..
+        } = &ability.compiled_model()?.payload else { return None; };
+        if !added_abilities.is_empty() { return None; }
+        Some((*counter, count, condition))
+    }
+    let [ordinary, alternate] = abilities else { return None; };
+    let (counter, base, ordinary_condition) = entry(ordinary)?;
+    let (alternate_counter, replacement, condition) = entry(alternate)?;
+    let Condition::Not(negated) = ordinary_condition else { return None; };
+    if counter != alternate_counter || negated.as_ref() != condition || base == replacement { return None; }
+    let counter = describe_counter_type(counter);
+    let noun = |value: &Value| if matches!(value.unhinted(), Value::Fixed(1)) { "counter" } else { "counters" };
+    Some(format!("{subject} enters with {} {counter} {} on it. If {}, it enters with {} {counter} {} on it instead",
+        describe_value(base), noun(base), describe_condition(condition), describe_value(replacement), noun(replacement)))
+}
+
+#[cfg(test)]
+mod complementary_entry_counter_text_tests {
+    use super::*;
+
+    fn entry(count: i32, condition: Condition) -> Ability {
+        let model: crate::static_abilities::CompiledStaticAbility = ironsmith_core::StaticAbility {
+            id: Some(crate::static_abilities::StaticAbilityId::EnterWithCountersIfCondition),
+            label: String::new(),
+            payload: ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition {
+                counter: CounterType::PlusOnePlusOne,
+                count: Value::Fixed(count),
+                condition,
+                display: String::new(),
+                added_abilities: Vec::new(),
+            },
+        };
+        Ability::static_ability(crate::static_abilities::StaticAbility::from_model(model))
+    }
+
+    #[test]
+    fn complementary_entry_counts_render_the_alternative_instead() {
+        let base = entry(6, Condition::Not(Box::new(Condition::ThisSpellEscaped)));
+        let alternate = entry(12, Condition::ThisSpellEscaped);
+        let text = describe_complementary_entry_counter_group(&[base.clone(), alternate], "This creature").unwrap();
+        assert!(text.contains("6 +1/+1 counters"), "{text}");
+        assert!(text.contains("this spell escaped"), "{text}");
+        assert!(text.contains("12 +1/+1 counters on it instead"), "{text}");
+        assert!(describe_complementary_entry_counter_group(
+            &[base, entry(12, Condition::ThisSpellWasKicked)], "This creature").is_none());
+    }
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,
@@ -37984,7 +38036,8 @@ fn describe_source_line_static_group(
     {
         return Some(text);
     }
-    describe_source_line_conditional_animation_group(members, subject)
+    describe_complementary_entry_counter_group(members, subject)
+        .or_else(|| describe_source_line_conditional_animation_group(members, subject))
         .or_else(|| describe_source_line_attached_animation_group(members))
         .or_else(|| describe_source_line_attached_subtype_and_predicate_group(members))
         .or_else(|| describe_source_line_additive_type_loss_group(members))

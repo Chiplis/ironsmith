@@ -78,6 +78,7 @@ DoubleCountersEffect	ironsmith_core::DoubleCountersEffect	resources
 DoubleManaPoolEffect	ironsmith_core::DoubleManaPoolEffect	resources
 DrawCardsEffect	ironsmith_core::DrawCardsEffect	zone-library
 DrawForEachTaggedMatchingEffect	ironsmith_core::DrawForEachTaggedMatchingEffect	zone-library
+DrawTheGameEffect	ironsmith_core::DrawTheGameEffect	player
 EachPlayerScryEffect	ironsmith_core::EachPlayerScryEffect	zone-library
 EarthbendEffect	ironsmith_core::EarthbendEffect	permanent
 EmitGiftGivenEffect	ironsmith_core::EmitGiftGivenEffect	composition-a-l

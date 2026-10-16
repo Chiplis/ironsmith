@@ -136,6 +136,21 @@ pub fn parse_search_library_leading_effect_prelude_lexed<'a>(
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
     parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<SearchLibraryLeadingPrelude<'a>, CardTextError> {
+    // The final explicit player belongs to the search, after the boundary
+    // between instructions: "draw a card, then you may search ...".
+    // Parsing that player as part of the preceding draw loses the boundary.
+    if subject_tokens.len() >= 3
+        && subject_tokens.last().is_some_and(|token| token.is_word("you"))
+        && subject_tokens[subject_tokens.len() - 2].is_word("then")
+    {
+        let player_start = subject_tokens.len() - 1;
+        let leading = trim_commas(&subject_tokens[..player_start - 1]);
+        let leading_effects = parse_leading_effects_lexed(&leading)?;
+        return Ok(SearchLibraryLeadingPrelude {
+            subject_tokens: &subject_tokens[player_start..],
+            leading_effects,
+        });
+    }
     let typed_effect_head = super::super::chain_splitting::find_chain_verb_tokens(subject_tokens)
         .is_some()
         || super::super::chain_splitting::has_extended_effect_head_tokens(subject_tokens);

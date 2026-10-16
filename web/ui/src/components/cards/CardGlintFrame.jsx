@@ -1,6 +1,6 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {cardGlintFace} from '@/lib/card-glint/card.mjs';
-import {renderCardGlint} from '@/lib/card-glint/session.mjs';
+import {renderCardGlint,peekCardGlintFrame} from '@/lib/card-glint/session.mjs';
 import {peekScryfallPrintingMetadata,resolveScryfallPrintingMetadata} from '@/lib/scryfall';
 import CardGlintInteractions from './CardGlintInteractions';
 import {cardGlintRegions,cardGlintActionsCovered} from '@/lib/card-glint/interactions.mjs';
@@ -17,17 +17,20 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     return () => {cancelled = true;};
   }, [imageUrl]);
   const face = useMemo(() => cardGlintFace(card,{imageUrl,faceIndex,printing}), [card,imageUrl,faceIndex,printing]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Avoid painting a provisional frame before the selected printing arrives.
     if (imageUrl && printing === undefined) return;
     let cancelled = false;
-    renderCardGlint(face).then(result => {
+    const paint = result => {
       if (cancelled) return;
       const target = canvas.current;
       target.width = result.canvas.width; target.height = result.canvas.height;
       target.getContext('2d').drawImage(result.canvas,0,0);
       setFinished({face,result});
-    }).catch(error => {
+    };
+    const cached = peekCardGlintFrame(face);
+    if (cached) {paint(cached);return () => {cancelled=true;};}
+    renderCardGlint(face).then(paint).catch(error => {
       if (!cancelled) {console.error('[card-glint] Card render failed',face.name,error); setFinished({face,error});}
     });
     return () => {cancelled = true;};

@@ -242,13 +242,22 @@ fn force_object_targeting(target: TargetAst, span: TextSpan) -> TargetAst {
         other => other,
     }
 }
-fn expand_graveyard_or_hand_disjunction(
+fn expand_source_zone_disjunction(
     mut target: TargetAst,
     target_tokens: &[OwnedLexToken],
 ) -> TargetAst {
-    if !cca_shapes::contains_graveyard_and_hand(target_tokens) {
+    let target_words = crate::lexer::token_word_refs(target_tokens);
+    let hand_or_command = [
+        &["hand", "or", "from", "the", "command", "zone"][..],
+        &["hand", "or", "the", "command", "zone"][..],
+    ].iter().any(|phrase| crate::word_primitives::sequence_occurs(&target_words, phrase));
+    let zones = if hand_or_command {
+        [Zone::Hand, Zone::Command]
+    } else if cca_shapes::contains_graveyard_and_hand(target_tokens) {
+        [Zone::Hand, Zone::Graveyard]
+    } else {
         return target;
-    }
+    };
 
     // Parse the characteristic prefix independently from the zone
     // disjunction.  Otherwise the generic filter parser can put the
@@ -264,40 +273,32 @@ fn expand_graveyard_or_hand_disjunction(
         target = base;
     }
 
-    let target_words = crate::lexer::token_word_refs(target_tokens);
     let owner = crate::slice_primitives::find_window_by(&target_words, 2, |pair| {
         pair[0].eq_ignore_ascii_case("your")
             && (pair[1].eq_ignore_ascii_case("hand") || pair[1].eq_ignore_ascii_case("graveyard"))
     })
     .is_some();
 
-    fn apply(filter: &ObjectFilter, owner: bool) -> ObjectFilter {
-        let mut hand = filter.clone();
-        hand.any_of.clear();
-        hand.zone = Some(Zone::Hand);
-        if owner {
-            hand.owner = Some(PlayerFilter::You);
-        }
-
-        let mut graveyard = filter.clone();
-        graveyard.any_of.clear();
-        graveyard.zone = Some(Zone::Graveyard);
-        if owner {
-            graveyard.owner = Some(PlayerFilter::You);
-        }
-
+    fn apply(filter: &ObjectFilter, owner: bool, zones: &[Zone]) -> ObjectFilter {
         let mut disjunction = ObjectFilter::default();
-        disjunction.any_of = vec![hand, graveyard];
+        disjunction.any_of = zones.iter().map(|zone| {
+            let mut branch = filter.clone();
+            branch.zone = Some(*zone);
+            if owner {
+                branch.owner = Some(PlayerFilter::You);
+            }
+            branch
+        }).collect();
         disjunction
     }
 
     match &mut target {
         TargetAst::Object(filter, _, _) => {
-            *filter = apply(filter, owner);
+            *filter = apply(filter, owner, &zones);
         }
         TargetAst::WithCount(inner, _) => {
             if let TargetAst::Object(filter, _, _) = inner.as_mut() {
-                *filter = apply(filter, owner);
+                *filter = apply(filter, owner, &zones);
             }
         }
         _ => {}
@@ -318,6 +319,15 @@ fn apply_source_zone_constraint(target: &mut TargetAst, zone: Zone) {
     }
 }
 fn apply_explicit_source_location(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
+    // A complete source-zone disjunction already owns its location. Applying
+    // its first textual zone again would intersect the alternatives with it.
+    if let Some(filter) = crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+        && filter.zone.is_none()
+        && filter.any_of.len() > 1
+        && filter.any_of.iter().all(|branch| branch.zone.is_some())
+    {
+        return;
+    }
     let words = crate::lexer::token_word_refs(tokens);
     let location = if ["owner's", "owners"].iter().any(|owner| {
         crate::word_primitives::sequence_occurs(&words, &["from", "its", owner, "graveyard"])

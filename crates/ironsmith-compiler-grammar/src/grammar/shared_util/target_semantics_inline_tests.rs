@@ -471,3 +471,13 @@ fn attacking_creature_recipient_is_one_non_targeting_damage_action() {
     assert!(!debug.contains("TargetOnly"), "{debug}");
     assert_eq!(debug.matches("DealDamage").count(), 1, "{debug}");
 }
+
+#[test]
+fn type_qualified_card_reference_does_not_require_the_battlefield() {
+    for text in ["that Aura card", "that Equipment card"] {
+        let TargetAst::Object(filter, ..) = parse(text) else { panic!("expected reference: {text}") };
+        assert_eq!(filter.zone, None, "{text}");
+        assert!(filter.tagged_constraints.iter().any(|binding|
+            binding.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()));
+    }
+}

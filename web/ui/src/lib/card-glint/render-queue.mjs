@@ -7,6 +7,7 @@ export class CardGlintRenderQueue {
     this.entries=new Map(); this.pending=[]; this.running=0; this.backgroundRunning=0; this.bytes=0;
   }
   key(face){return JSON.stringify(face);}
+  peek(face){return this.entries.get(this.key(face))?.result;}
   has(face){return this.entries.has(this.key(face));}
   render(face,{background=false}={}){
     const key=this.key(face), existing=this.entries.get(key);
@@ -29,7 +30,7 @@ export class CardGlintRenderQueue {
       this.running++; if(wasBackground)this.backgroundRunning++;
       Promise.resolve().then(()=>this.paint(entry.face)).then(result=>{
         entry.bytes=result.canvas.width*result.canvas.height*4;
-        this.bytes+=entry.bytes; entry.complete=true; this.trim(); entry.resolve(result);
+        this.bytes+=entry.bytes; entry.complete=true; entry.result=result; this.trim(); entry.resolve(result);
       },error=>{this.entries.delete(entry.key); entry.reject(error);}).finally(()=>{
         this.running--; if(wasBackground)this.backgroundRunning--; this.pump();
       });

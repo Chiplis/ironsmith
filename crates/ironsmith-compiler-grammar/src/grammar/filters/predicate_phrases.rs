@@ -436,6 +436,32 @@ fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
 fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && is_source_reference_clause(relation.subject_clause)
+        && let Some(or) = relation.tail_clause.tokens().iter().position(|token| token.is_word("or"))
+    {
+        let tail = relation.tail_clause.tokens();
+        let branch = |location: &[OwnedLexToken]| {
+            let mut tokens = relation.subject_clause.tokens().to_vec();
+            tokens.push(OwnedLexToken::synthetic_word("is"));
+            tokens.extend_from_slice(location);
+            parse_source_zone_predicate(&tokens)
+        };
+        if or > 0 && or + 1 < tail.len()
+            && let (Some(left), Some(right)) = (branch(&tail[..or]), branch(&tail[or + 1..]))
+        {
+            return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
+        }
+    }
+    if let Some(relation) = parse_copula_relation_clauses(tokens)
+        && is_source_reference_clause(relation.subject_clause)
+        && surface::exact_any(relation.tail_clause, &[
+            &["still", "on", "the", "battlefield"],
+            &["still", "on", "battlefield"],
+        ])
+    {
+        return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Battlefield)));
+    }
+    if let Some(relation) = parse_copula_relation_clauses(tokens)
+        && is_source_reference_clause(relation.subject_clause)
         && surface::exact(relation.tail_clause, &["exiled"])
     {
         return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(
@@ -2168,7 +2194,9 @@ fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
 
     let target_clause = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
-    if !is_exact_counter_on_source_tail_clause(target_clause) {
+    if !is_exact_counter_on_source_tail_clause(target_clause)
+        && !is_counter_on_source_pronoun_tail_clause(target_clause)
+    {
         return None;
     }
 
@@ -4122,6 +4150,8 @@ fn parse_single_card_type_card_descriptor_tokens(tokens: &[OwnedLexToken]) -> Op
     {
         return Some(ObjectFilter {
             card_types: vec![card_type],
+            use_face_up_characteristics: true,
+            nontoken: true,
             ..Default::default()
         });
     }

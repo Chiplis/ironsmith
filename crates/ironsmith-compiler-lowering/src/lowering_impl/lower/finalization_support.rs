@@ -39,6 +39,37 @@ pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
     ironsmith_compiler_semantic::model::trigger_zones::base_trigger_functional_zones(trigger)
 }
 
+/// A complete intervening-if source-location alternative owns all its zones.
+/// Keep this typed result after lowering, rather than narrowing it to the
+/// first location found by the legacy textual hints.
+pub fn preserve_triggered_source_zone_alternatives(ability: &mut Ability) {
+    fn zones(condition: &crate::effect::Condition) -> Option<Vec<Zone>> {
+        use crate::effect::Condition;
+        match condition {
+            Condition::SourceIsInZone(zone) => Some(vec![*zone]),
+            Condition::And(left, right) => match (zones(left), zones(right)) {
+                (Some(a), Some(b)) => Some(a.into_iter().filter(|zone| b.contains(zone)).collect()),
+                (a, b) => a.or(b),
+            },
+            Condition::Or(left, right) => {
+                let mut result = zones(left)?;
+                for zone in zones(right)? {
+                    if !result.contains(&zone) { result.push(zone); }
+                }
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(condition) = &triggered.intervening_if
+        && let Some(alternatives) = zones(condition)
+        && alternatives.len() > 1
+    {
+        ability.functional_zones = alternatives;
+    }
+}
+
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),

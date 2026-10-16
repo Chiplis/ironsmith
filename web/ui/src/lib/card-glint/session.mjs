@@ -25,3 +25,5 @@ const queue = new CardGlintRenderQueue(async face => {
 });
 export const renderCardGlint = (face,options) => queue.render(face,options);
 export const hasCardGlintFrame = face => queue.has(face);
+
+export const peekCardGlintFrame = face => queue.peek(face);

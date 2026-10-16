@@ -6,7 +6,7 @@ import { groupManaAbilities } from "@/lib/group-mana-abilities";
 import GroupedManaAbility from "./GroupedManaAbility";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { cachedInspectorDetails, requestInspectorDetails } from "@/lib/inspector-details-cache";
-import { stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView } from "@/lib/inspector-ability-lines";
+import { inspectorRulesLines, stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView } from "@/lib/inspector-ability-lines";
 import "@/styles/card-typography.css";
 import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -981,28 +981,12 @@ export default function HoverArtOverlay({
       .map((line) => String(line || "").trim())
       .filter(Boolean);
   }, [details?.oracle_text]);
-  const compiledRulesLines = useMemo(() => {
-    if (detailCompiledText && detailCompiledText.length > 0) {
-      return detailCompiledText
-        .map((line) => stripInspectorAbilityPrefixes(String(line || "")).trim())
-        .filter(Boolean);
-    }
-    if (detailAbilities && detailAbilities.length > 0) {
-      return detailAbilities
-        .map((line) => stripInspectorAbilityPrefixes(String(line || "")).trim())
-        .filter(Boolean);
-    }
-    const fallback = (
-      stripInspectorAbilityPrefixes(hoveredStackAbilityText).trim()
+  const hasLiveRules = detailCompiledText !== null || detailAbilities !== null;
+  const compiledRulesLines = useMemo(() => inspectorRulesLines(detailCompiledText, detailAbilities,
+    stripInspectorAbilityPrefixes(hoveredStackAbilityText).trim()
       || stripInspectorAbilityPrefixes(hoveredStackEffectText).trim()
-      || stripInspectorAbilityPrefixes(String(oracleText || "")).trim()
-    );
-    if (!fallback) return [];
-    return fallback
-      .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }, [detailAbilities, detailCompiledText, hoveredStackAbilityText, hoveredStackEffectText, oracleText]);
+      || String(oracleText || "")),
+  [detailAbilities, detailCompiledText, hoveredStackAbilityText, hoveredStackEffectText, oracleText]);
   const shouldPreferStackAbilityRules = (
     Boolean(hoveredStackObject?.ability_kind)
     && compiledRulesLines.length > 0
@@ -1023,11 +1007,11 @@ export default function HoverArtOverlay({
     if (compiledRulesLines.length > 0) {
       return landRulesLines;
     }
-    if (oracleRulesLines.length > 0) {
+    if (!hasLiveRules && oracleRulesLines.length > 0) {
       return oracleRulesLines;
     }
     return compiledRulesLines;
-  }, [compiledRulesLines, landRulesLines, oracleRulesLines, shouldPreferStackAbilityRules]);
+  }, [compiledRulesLines, landRulesLines, oracleRulesLines, shouldPreferStackAbilityRules, hasLiveRules]);
   const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
   const baseDisplayObjectName = debugInspector ? null : objectName;
   const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
@@ -1079,7 +1063,7 @@ export default function HoverArtOverlay({
     : null;
   // A hovered stack ability shows that ability's compiled text; the card-level
   // translation covers the whole card, so it must not replace it.
-  const translatedRulesText = !shouldPreferStackAbilityRules && activeCardTranslation?.rulesText;
+  const translatedRulesText = !shouldPreferStackAbilityRules && baseDisplayRulesText && activeCardTranslation?.rulesText;
   // Official printed text follows Oracle ability order, which can differ from
   // the engine's compiled paragraphs. Generated translations follow their input.
   const canonicalRulesText = translatedRulesText && activeCardTranslation?.rulesSource === "scryfall"

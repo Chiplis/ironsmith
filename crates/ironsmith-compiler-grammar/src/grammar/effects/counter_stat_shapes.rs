@@ -277,6 +277,8 @@ pub fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenc
         &["them"],
         &["that"],
         &["that", "card"],
+        &["the", "card"],
+        &["the", "cards"],
         &["those", "cards"],
         &["those"],
         &["this", "card"],
@@ -285,6 +287,12 @@ pub fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenc
         &["the", "chosen", "cards"],
     ];
     if parse_exact(&words, TAGGED).is_some() {
+        return Some(RevealReferenceShape::Tagged);
+    }
+    if let ["the" | "that", descriptor, "card"] = words.as_slice()
+        && (crate::util::parse_card_type(descriptor).is_some()
+            || crate::util::parse_subtype_word(descriptor).is_some())
+    {
         return Some(RevealReferenceShape::Tagged);
     }
     if find_all_words(&words, &["from", "among"]).is_some()

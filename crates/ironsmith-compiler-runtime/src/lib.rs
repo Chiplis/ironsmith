@@ -3774,3 +3774,6 @@ mod compiled_distinct_player_clause_tests {
 
 #[cfg(test)]
 mod keyword_grant_materialization_tests;
+
+#[cfg(test)]
+mod compilation_completion_runtime_tests;

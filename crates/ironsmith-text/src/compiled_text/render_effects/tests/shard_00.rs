@@ -7994,3 +7994,43 @@ pub(super) fn authored_counter_transfer_mode_controls_rendered_operation() {
     assert!(describe_effect(&movement).starts_with("Move all counters from "));
     assert!(describe_effect(&placement).starts_with("Put its counters on "));
 }
+
+#[test]
+pub(super) fn multizone_commander_choice_preserves_owner_and_both_locations() {
+    let mut filter = ObjectFilter::default();
+    filter.is_commander = true;
+    filter.owner = Some(PlayerFilter::You);
+    let choice = crate::effects::ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "commander")
+        .in_zones(vec![Zone::Battlefield, Zone::Command]);
+    let text = describe_effect(&Effect::new(choice));
+    assert!(text.contains("commander you own"), "{text}");
+    assert!(text.contains("on the battlefield or in the command zone"), "{text}");
+}
+
+#[test]
+pub(super) fn multizone_placement_keeps_the_command_zone_alternative() {
+    let mut filter = ObjectFilter::creature();
+    filter.zone = None;
+    filter.owner = Some(PlayerFilter::You);
+    let choice = crate::effects::ChooseObjectsEffect::new(filter, 1, PlayerFilter::You, "chosen")
+        .in_zones(vec![Zone::Hand, Zone::Command]);
+    let movement = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged("chosen".into()), Zone::Battlefield, false);
+    let text = describe_choose_then_move_to_battlefield(&choice, &movement).unwrap();
+    assert!(text.contains("from your hand or from the command zone"), "{text}");
+    assert!(text.contains("onto the battlefield"), "{text}");
+}
+
+#[test]
+pub(super) fn kicked_divided_prevention_describes_the_alternate_amount_instead() {
+    let mut prevention = crate::effects::PreventDamageEffect::new(
+        Value::Add(Box::new(Value::Fixed(3)), Box::new(Value::Scaled(Box::new(Value::WasKicked), 3))),
+        ChooseSpec::WithCount(Box::new(ChooseSpec::AnyTarget), ChoiceCount::any_number()),
+        Until::EndOfTurn);
+    prevention.divided = true;
+    let text = describe_effect(&Effect::new(prevention));
+    assert!(text.contains("Prevent the next 3 damage"), "{text}");
+    assert!(text.contains("If this spell was kicked, prevent the next 6 damage"), "{text}");
+    assert!(text.contains("divided as you choose"), "{text}");
+    assert!(text.ends_with("instead"), "{text}");
+}

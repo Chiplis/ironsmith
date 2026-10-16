@@ -363,6 +363,7 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "LookAtObjectsEffect" => decode_as::<T, ironsmith_core::LookAtObjectsEffect>(effect),
         "LookAtTopCardsEffect" => decode_as::<T, ironsmith_core::LookAtTopCardsEffect>(effect),
         "LoseLifeEffect" => decode_as::<T, ironsmith_core::LoseLifeEffect>(effect),
+        "DrawTheGameEffect" => decode_as::<T, ironsmith_core::DrawTheGameEffect>(effect),
         "LoseTheGameEffect" => decode_as::<T, ironsmith_core::LoseTheGameEffect>(effect),
         "ManaRestrictedEffect" => {
             decode_as::<T, ironsmith_core::ManaRestrictedEffect<wire::WireEffect>>(effect)
@@ -1506,6 +1507,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::LookAtHandEffect,
             crate::effects::LookAtObjectsEffect,
             crate::effects::LookAtTopCardsEffect,
+            crate::effects::DrawTheGameEffect,
             crate::effects::LoseTheGameEffect,
             crate::effects::ManifestObjectsEffect,
             crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect,

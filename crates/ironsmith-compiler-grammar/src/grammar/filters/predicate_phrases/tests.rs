@@ -3170,6 +3170,8 @@ fn parse_predicate_stack_object_targets_object_or_player_keeps_both_domains()
 fn parse_predicate_source_zone_uses_capture_parser() -> Result<(), CardTextError> {
     for (text, expected_zone) in [
         ("If it's on the battlefield", Zone::Battlefield),
+        ("If this creature is still on the battlefield", Zone::Battlefield),
+        ("If this enchantment is still on the battlefield", Zone::Battlefield),
         ("If this card is in your hand", Zone::Hand),
         ("If this creature is in your graveyard", Zone::Graveyard),
         ("If this is in exile", Zone::Exile),

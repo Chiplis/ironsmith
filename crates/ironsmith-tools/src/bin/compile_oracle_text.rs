@@ -8,7 +8,7 @@ use ironsmith_compiler::parse_trace as card_parse_trace;
 use ironsmith_registry::CardRegistry as RegistryCardRegistry;
 use ironsmith_tools::{
     CompilationSnapshot, ParseStatus, build_parse_input,
-    compile_authoritative_snapshot_from_payload, compile_definition_from_payload,
+    compile_authoritative_snapshot_from_payload, compile_runtime_definition_from_payload,
     default_cards_path, load_card_by_name, load_card_payloads_by_name, load_card_payloads_by_names,
     normalize_lookup_name, parse_card_definition_with_runtime_builder,
 };
@@ -258,7 +258,7 @@ fn compile_job_for_name(
             };
             let compiled_definition = {
                 let _scope = card_parse_trace::scope("display definition");
-                compile_definition_from_payload(&card).ok()
+                compile_runtime_definition_from_payload(&card).ok()
             };
             Ok(CompileJob {
                 name,
@@ -300,7 +300,7 @@ fn compile_jobs_for_name(
                     };
                     let compiled_definition = {
                         let _scope = card_parse_trace::scope("display definition");
-                        compile_definition_from_payload(&card).ok()
+                        compile_runtime_definition_from_payload(&card).ok()
                     };
                     Ok(CompileJob {
                         name,

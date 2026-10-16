@@ -64,3 +64,10 @@ test("every admitted card retains fixed stats and calculates variable stats in t
     }
   } finally { game.free(); }
 });
+
+test('lightweight live snapshots format engine types and retain current subtypes',()=>{
+  assert.equal(cardDisplayTypeLine({card_types:['artifact','creature'],characteristic_signature:'types:artifact,creature\nsupertypes:\nsubtypes:Myr\noracle:Forest is just rules text'}),'Artifact Creature — Myr');
+  assert.equal(cardDisplayTypeLine({card_types:['land'],characteristic_signature:'types:land\nsupertypes:legendary\nsubtypes:Mountain'}),'Legendary Land — Mountain');
+  assert.equal(cardDisplayTypeLine({card_types:['creature'],subtypes:['Myr'],characteristic_signature:'types:artifact\nsupertypes:\nsubtypes:'}),'Artifact');
+  assert.equal(cardDisplayTypeLine({card_types:['artifact','creature']}),'Artifact Creature');
+});

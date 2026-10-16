@@ -1587,7 +1587,7 @@ function DistributeDecision({
     <div
       className={cn(
         stripLayout
-          ? "flex items-stretch gap-1.5 px-1 py-1"
+          ? "decision-allocation-rows flex min-w-0 flex-col gap-1 px-1 py-1"
           : "flex flex-col gap-0.5",
       )}
     >
@@ -1602,7 +1602,7 @@ function DistributeDecision({
             className={cn(
               "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
               stripLayout
-                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                ? "decision-option-row decision-option-row--panel w-full min-w-0"
                 : "decision-option-row decision-option-row--panel",
             )}
             style={decisionOptionAccentVars(optionAccent(
@@ -1645,8 +1645,8 @@ function DistributeDecision({
       )}
     >
       {stripLayout ? (
-        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
+        <div className="decision-allocation-scroll min-w-0 overflow-x-hidden overflow-y-auto">
+          <div className="decision-allocation-content flex w-full min-w-0 flex-col items-stretch gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description
@@ -1754,7 +1754,7 @@ function CountersDecision({
     <div
       className={cn(
         stripLayout
-          ? "flex items-stretch gap-1.5 px-1 py-1"
+          ? "decision-allocation-rows flex min-w-0 flex-col gap-1 px-1 py-1"
           : "flex flex-col gap-0.5",
       )}
     >
@@ -1769,7 +1769,7 @@ function CountersDecision({
             className={cn(
               "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
               stripLayout
-                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                ? "decision-option-row decision-option-row--panel w-full min-w-0"
                 : "decision-option-row decision-option-row--panel",
             )}
             style={decisionOptionAccentVars(optionAccent(
@@ -1812,8 +1812,8 @@ function CountersDecision({
       )}
     >
       {stripLayout ? (
-        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
+        <div className="decision-allocation-scroll min-w-0 overflow-x-hidden overflow-y-auto">
+          <div className="decision-allocation-content flex w-full min-w-0 flex-col items-stretch gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description
@@ -1923,7 +1923,7 @@ function RepeatableDecision({
     <div
       className={cn(
         stripLayout
-          ? "flex items-stretch gap-1.5 px-1 py-1"
+          ? "decision-repeatable-rows flex min-w-0 flex-col gap-1 px-1 py-1"
           : "flex flex-col gap-0.5",
       )}
     >
@@ -1938,7 +1938,7 @@ function RepeatableDecision({
             className={cn(
               "decision-field-row flex items-center gap-2 px-2 py-1 text-[13px] transition-all",
               stripLayout
-                ? "decision-option-row decision-option-row--strip min-w-[220px] max-w-[360px] self-stretch"
+                ? "decision-option-row decision-option-row--panel w-full min-w-0"
                 : "decision-option-row decision-option-row--panel",
             )}
             style={decisionOptionAccentVars(optionAccent(
@@ -1981,8 +1981,8 @@ function RepeatableDecision({
       )}
     >
       {stripLayout ? (
-        <div className="decision-strip-scroll min-w-0 overflow-x-auto overflow-y-hidden">
-          <div className="decision-strip-options-row flex w-max min-w-full items-center gap-1.5">
+        <div className="decision-repeatable-scroll min-w-0 overflow-x-hidden overflow-y-auto">
+          <div className="decision-repeatable-content flex w-full min-w-0 flex-col items-stretch gap-1.5">
             {!hideDescription && (
               <div className="shrink-0 px-1">
                 <Description

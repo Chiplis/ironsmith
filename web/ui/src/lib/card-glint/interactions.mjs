@@ -12,13 +12,17 @@ export function cardGlintRegions(result, rulesView) {
     let layouts;
     const kind = api.faceFrame(face);
     if (kind.startsWith('planeswalker')) layouts = api.planeswalkerRuleRows(context,face).map(row => row.layout);
+    else if (kind === 'saga') {
+      const saga = api.sagaRuleLayout(context,face);
+      layouts = [saga.reminder,...saga.rows.map(row => row.layout)];
+    }
     else if (kind === 'normal') layouts = [api.isRetro(face) ? api.retroTextLayout(context,face) : api.ordinaryTextLayout(context,face)];
     else return [];
-    return measuredRegions(layouts.filter(Boolean),context,api.rulesFont,rulesView);
+    return measuredRegions(layouts.filter(Boolean),context,api.rulesFont,rulesView,{saga:kind === 'saga'});
   } finally {context.restore();}
 }
 
-export function measuredRegions(layouts, context, rulesFont, rulesView) {
+export function measuredRegions(layouts, context, rulesFont, rulesView, {saga=false} = {}) {
   const chars = [];
   let lineId = 0;
   for (const layout of layouts) for (const line of layout.lines) {
@@ -42,13 +46,19 @@ export function measuredRegions(layouts, context, rulesFont, rulesView) {
   const text = chars.map(char => char.letter).join(''), regions = [];
   let cursor = 0;
   rulesView.lines.forEach((line,lineIndex) => {
-    let needle = normalize(line), offset = needle ? text.indexOf(needle,cursor) : -1;
-    if (offset < 0) {needle = normalize(line.replace(/^\s*[+−-]?(?:\d+|X)\s*:\s*/i,'')); offset = needle ? text.indexOf(needle,cursor) : -1;}
+    // Saga chapter badges are painted separately; unbadged granted abilities
+    // are drawn before chapters even when they follow them in the live text.
+    const chapterPrefix = saga ? line.match(/^\s*[IVXLCDM]+(?:\s*,\s*[IVXLCDM]+)*\s*[—–-]\s*/)?.[0] || '' : '';
+    const body = line.slice(chapterPrefix.length);
+    const omitted = normalize(chapterPrefix).length;
+    let needle = normalize(body), offset = needle ? text.indexOf(needle,cursor) : -1;
+    if (offset < 0 && saga && needle) offset = text.indexOf(needle);
+    if (offset < 0) {needle = normalize(body.replace(/^\s*[+−-]?(?:\d+|X)\s*:\s*/i,'')); offset = needle ? text.indexOf(needle,cursor) : -1;}
     if (offset < 0) return;
     cursor = offset + needle.length;
     const group = rulesView.manaGroups?.get(lineIndex), targets = [];
     if (rulesView.ranges) {
-      for (const range of rulesView.ranges.get(lineIndex) || []) targets.push({start:offset+normalize(line.slice(0,range.start)).length,
+      for (const range of rulesView.ranges.get(lineIndex) || []) targets.push({start:offset+Math.max(0,normalize(line.slice(0,range.start)).length-omitted),
         length:normalize(line.slice(range.start,range.end)).length,helper:range.helper,actions:[]});
     } else if (group) {
       let prefix = group.prefix;

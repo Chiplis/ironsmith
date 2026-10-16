@@ -7,6 +7,21 @@ const source = process.cwd();
 const {build} = await import(pathToFileURL(path.join(source, 'node_modules/vite/dist/node/index.js')).href);
 const result = await build({
   configFile:false,
+  plugins:[{
+    name:'ironsmith-live-saga-palette',
+    enforce:'pre',
+    transform(code,id) {
+      // Upstream's land Saga plate currently overrides even explicit live
+      // frame colors. Keep the neutral plate only when the palette is empty.
+      if (id.endsWith('/presentation/saga-frame.ts')) {
+        return code.replace("if (/\\bLand\\b/.test(face.typeLine ?? '') || face.land)",
+          "if (!colors.length && (/\\bLand\\b/.test(face.typeLine ?? '') || face.land))");
+      }
+      if (id.endsWith('/presentation/saga-colors.ts')) {
+        return code.replace("face.layout === 'transform' ||\n    face.land ||\n    /\\bLand\\b/.test(face.typeLine ?? '')", "face.layout === 'transform'");
+      }
+    },
+  }],
   resolve:{alias:{'@card-glint/browser':path.join(source,'packages/browser/src/index.ts')}},
   build:{
     target:'es2022',outDir:'dist/lib',emptyOutDir:true,
@@ -17,7 +32,7 @@ const result = await build({
   },
 });
 const presentation = [result].flat().flatMap(bundle => bundle.output).find(chunk => chunk.type === 'chunk' && chunk.name === 'magic-presentation');
-for (const name of ['loadCanvasImages','composeCardTexture','ordinaryTextLayout','retroTextLayout','planeswalkerRuleRows','faceFrame','hasExtraRules','isRetro','rulesFont']) {
+for (const name of ['loadCanvasImages','composeCardTexture','ordinaryTextLayout','retroTextLayout','planeswalkerRuleRows','sagaRuleLayout','faceFrame','hasExtraRules','isRetro','rulesFont']) {
   if (!presentation?.exports.includes(name)) throw new Error(`card-glint no longer exports required API: ${name}`);
 }
 for (const name of ['renderer','pixels']) await cp(`packages/browser/generated/${name}_bg.wasm`,`dist/lib/${name}_bg.wasm`);

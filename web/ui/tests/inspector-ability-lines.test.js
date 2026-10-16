@@ -66,3 +66,14 @@ test('keyword lines pair with their translations in order so printed paragraphs 
   const split = interactiveRulesView('Flying\nTrample', 'Vuela.\n(Reminder.)\nArrolla.', []);
   assert.deepEqual(split.sourceLines, [[], [], []]);
 });
+
+test('empty live abilities suppress printed rules after ability removal', async()=>{
+  const {inspectorRulesLines}=await import('../src/lib/inspector-ability-lines.js');
+  const printed='Each land is a Forest in addition to its other land types.';
+  assert.deepEqual(inspectorRulesLines([],[],printed),[]);
+  assert.deepEqual(inspectorRulesLines([], [printed],printed),[]);
+  assert.deepEqual(inspectorRulesLines(null,[],printed),[]);
+  assert.deepEqual(inspectorRulesLines(null,null,printed),[printed]);
+  assert.deepEqual(inspectorRulesLines([printed],[],printed),[printed]);
+  assert.deepEqual(inspectorRulesLines(['Mana ability: {T}: Add {R}.'],[],printed),['{T}: Add {R}.']);
+});

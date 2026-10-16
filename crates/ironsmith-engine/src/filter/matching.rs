@@ -9,6 +9,9 @@ pub(super) fn matches_subject(
     allow_calculated_pt: bool,
     view: Option<&crate::derived_view::DerivedGameView<'_>>,
 ) -> bool {
+    if filter.renowned && !game.is_renowned(subject.object_id()) {
+        return false;
+    }
     // Numeric comparisons can already bind an outer candidate. Preserve that
     // lexical binding; otherwise relative owner/controller predicates refer
     // to the object being matched, for live objects and snapshots alike.

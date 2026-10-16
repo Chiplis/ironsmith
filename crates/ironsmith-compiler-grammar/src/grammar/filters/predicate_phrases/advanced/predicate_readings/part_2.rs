@@ -8,7 +8,7 @@ use crate::registry::HeadDiscriminator;
 pub(super) fn read_source_exiled_with_counter_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = input.tokens;
+    let tokens = input.predicate_tokens;
     if let Some(predicate) = parse_source_exiled_with_counter_predicate(tokens) {
         return Ok(Some(predicate));
     }

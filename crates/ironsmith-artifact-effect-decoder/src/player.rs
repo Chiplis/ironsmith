@@ -109,6 +109,7 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "IncreaseSpeedEffect" => {
             decode_as::<ironsmith_core::IncreaseSpeedEffect>(payload).map(Some)
         }
+        "DrawTheGameEffect" => decode_as::<ironsmith_core::DrawTheGameEffect>(payload).map(Some),
         "LoseTheGameEffect" => decode_as::<ironsmith_core::LoseTheGameEffect>(payload).map(Some),
         "MayCastMatchingSpellWithoutPayingManaCostEffect" => {
             decode_as::<ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect>(payload)
@@ -336,6 +337,9 @@ pub(super) fn map_card_ids(
             ironsmith_core::IncreaseSpeedEffect,
         >(payload, context)
         .map(Some),
+        "DrawTheGameEffect" => {
+            super::card_graph::map_payload_as::<ironsmith_core::DrawTheGameEffect>(payload, context).map(Some)
+        }
         "LoseTheGameEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::LoseTheGameEffect>(payload, context)
                 .map(Some)

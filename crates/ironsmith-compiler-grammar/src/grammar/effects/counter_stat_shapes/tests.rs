@@ -89,3 +89,15 @@ fn unstated_half_life_uses_the_same_downward_default_as_other_fraction_values() 
     assert!(shape.rounded_down);
     assert!(!parse_half_life(&["half", "their", "life", "rounded", "up"]).unwrap().rounded_down);
 }
+
+#[test]
+fn definite_typed_card_reveals_reference_the_existing_card() {
+    for text in ["the Aura card", "that Equipment card", "the creature card", "the card"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert_eq!(parse_reveal_reference(&tokens), Some(RevealReferenceShape::Tagged), "{text}");
+    }
+    for text in ["the mystery card", "the Aura card from your hand"] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert_ne!(parse_reveal_reference(&tokens), Some(RevealReferenceShape::Tagged), "{text}");
+    }
+}

@@ -3001,6 +3001,25 @@
         return "Add one mana of any of the exiled card's colors".to_string();
     }
     if let Some(prevent_damage) = effect.downcast_ref::<crate::effects::PreventDamageEffect>() {
+        if prevent_damage.follow_up_effects.is_empty()
+            && let Value::Add(left, right) = prevent_damage.amount.unhinted()
+            && let Some((base, bonus)) = [(left.unhinted(), right.unhinted()), (right.unhinted(), left.unhinted())]
+                .into_iter().find_map(|(base, bonus)| match (base, bonus) {
+                    (Value::Fixed(base), Value::Scaled(flag, bonus))
+                        if matches!(flag.unhinted(), Value::WasKicked) => Some((*base, *bonus)),
+                    _ => None,
+                })
+            && let Some(kicked) = base.checked_add(bonus)
+            && base >= 0 && kicked >= 0 && bonus != 0
+        {
+            let mut ordinary = prevent_damage.clone();
+            ordinary.amount = Value::Fixed(base);
+            let mut alternate = prevent_damage.clone();
+            alternate.amount = Value::Fixed(kicked);
+            return format!("{}. If this spell was kicked, {} instead",
+                describe_effect(&Effect::new(ordinary)),
+                lowercase_first(&describe_effect(&Effect::new(alternate))));
+        }
         let filter = &prevent_damage.damage_filter;
         let is_default_filter = !filter.combat_only
             && !filter.noncombat_only
@@ -3082,6 +3101,9 @@
             source_text,
             where_x_suffix
         );
+        if prevent_damage.divided {
+            rendered.push_str(", divided as you choose");
+        }
         if prevention_gain_life_follow_up(&prevent_damage.follow_up_effects).is_some() {
             rendered.push_str(". You gain life equal to the damage prevented this way");
         }

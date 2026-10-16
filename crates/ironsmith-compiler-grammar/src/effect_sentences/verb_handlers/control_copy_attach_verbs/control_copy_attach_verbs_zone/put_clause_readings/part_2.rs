@@ -121,7 +121,7 @@ pub(super) fn read_destination_first_battlefield(
             } => {
                 let attachment_target = parse_target_phrase(attachment_target_tokens)?;
                 let mut object_target = parse_target_phrase(object_tokens)?;
-                object_target = expand_graveyard_or_hand_disjunction(object_target, object_tokens);
+                object_target = expand_source_zone_disjunction(object_target, object_tokens);
                 object_target = force_object_targeting(object_target, tokens[0].span());
                 return Ok(Some(EffectAst::subject_verb_move_to_zone(
                     object_target,
@@ -685,7 +685,7 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 parse_target_phrase(target_tokens)?
             };
             validate_fixed_entry_reference_tokens(target_tokens, &target)?;
-            target = expand_graveyard_or_hand_disjunction(target, target_tokens);
+            target = expand_source_zone_disjunction(target, target_tokens);
             apply_explicit_source_location(&mut target, target_tokens);
             if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
                 && let Some(filter) = crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
@@ -878,7 +878,7 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         {
             validate_fixed_entry_reference_tokens(target_tokens, &target)?;
         }
-        target = expand_graveyard_or_hand_disjunction(target, target_tokens);
+        target = expand_source_zone_disjunction(target, target_tokens);
         apply_explicit_source_location(&mut target, target_tokens);
         if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
             && let Some(filter) =

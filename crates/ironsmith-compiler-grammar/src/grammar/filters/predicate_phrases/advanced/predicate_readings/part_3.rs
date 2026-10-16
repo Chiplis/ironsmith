@@ -365,6 +365,8 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("implicit-subject-and-predicate")
                 && !input.read_by("repeated-if-or-predicate")
                 && !input.read_by("source-attachment-count-predicate")
+                && !input.read_by("source-exiled-with-counter-predicate")
+                && !input.read_by("source-zone-predicate")
                 && !input.read_by("source-graveyard-cards-above-predicate")
                 && !input.read_by("source-only-creature-card-in-your-graveyard-predicate")
         },

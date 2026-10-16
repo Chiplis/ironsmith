@@ -1305,7 +1305,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
                 && matches!(words.last(), Some(&"card" | &"cards"))
                 && words[1..words.len() - 1]
                     .iter()
-                    .all(|word| crate::util::parse_card_type(word).is_some())
+                    .all(|word| crate::util::parse_card_type(word).is_some()
+                        || crate::util::parse_subtype_word(word).is_some())
             {
                 filter.zone = None;
             }

@@ -48,6 +48,15 @@ function Fixture(){
  attackers: {kind:'attackers',player:0,attacker_options:[{creature:1,name:'Ornithopter',valid_targets:[{kind:'player',player:1}]}]},
  };
 
+ const auditOptions = ['White', 'Blue', 'Black', 'Red', 'Green'].map((description,index)=>({index,description,legal:true,repeatable:true,max_count:2}));
+ if (scenario === 'mana-colors') decisions.select_options = {kind:'select_options',player:0,source_name:'Manamorphose',description:'Add two mana in any combination of colors',reason:'Choose color',min:1,max:2,options:auditOptions};
+ if (scenario === 'distribute') decisions.select_options = {kind:'select_options',player:0,description:'Distribute 3 damage among targets',reason:'distribute',min:3,max:3,options:auditOptions.slice(0,3).map((opt,index)=>({...opt,description:['Alice','Bob','Ornithopter'][index],max_count:3}))};
+ if (scenario === 'counters') decisions.select_options = {kind:'select_options',player:0,description:'Choose counters',reason:'counters',min:0,max:3,options:[{index:0,description:'+1/+1 counters',legal:true,max_count:3},{index:1,description:'Charge counters',legal:true,max_count:3}]};
+ if (scenario === 'ordering') decisions.select_options = {kind:'select_options',player:0,description:'Order cards',reason:'ordering',min:3,max:3,options:['Island','Mountain','Forest'].map((description,index)=>({index,description,legal:true}))};
+ if (scenario === 'single-color') decisions.select_options = {kind:'select_options',player:0,description:'Choose a color',reason:'Choose color',min:1,max:1,options:auditOptions.map(opt=>({...opt,repeatable:false}))};
+ decisions.number = {kind:'number',player:0,description:'Choose a value for X',min:0,max:20};
+ decisions.text_input = {kind:'text_input',player:0,description:'Name a card'};
+
  if (scenario === 'optional-target') {
    decisions.targets = {
      kind: 'targets', player: 0,

@@ -1832,6 +1832,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::DrawTheGameEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::WinTheGameEffect>(&effect) {
         return Ok(converted);
     }

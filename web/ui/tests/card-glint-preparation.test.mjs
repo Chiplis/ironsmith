@@ -93,3 +93,13 @@ test('failed printing lookups still prepare custom cards with default frames', a
   const noPrinting=await prepareCardGlintFace(card,{resolveImage:async()=>art,resolvePrinting:async()=>{throw new Error('offline');}});
   assert.equal(noPrinting.frameStyle,'modern'); assert.equal(noPrinting.illustration,art);
 });
+
+test('warming uses live inspector details, including explicitly removed abilities',async()=>{
+  const snapshot={id:7,name:'Live land',card_types:['land'],oracle_text:'Printed ability'};
+  const details={type_line:'Legendary Land — Mountain',compiled_text:[],abilities:[],flavor_text:'A quiet mountain.'};
+  const face=await prepareCardGlintFace(snapshot,{resolveDetails:async()=>details,resolveImage:async()=>null});
+  assert.equal(face.rulesText,'');
+  assert.equal(face.typeLine,details.type_line);
+  assert.deepEqual(face.frameColors,['R']);
+  assert.equal(face.rulesParagraphs[0].runs[0].text,details.flavor_text);
+});

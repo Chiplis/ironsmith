@@ -1319,7 +1319,7 @@ pub fn hand_exile_filter_and_count(
 
     let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
     normalize_hand_or_graveyard_cross_zone_filter(&mut resolved_filter);
-    let zones = hand_or_graveyard_choice_zones(&resolved_filter);
+    let zones = choice_zones_including_hand(&resolved_filter);
     let Some(zones) = zones else {
         return Ok(None);
     };
@@ -1351,7 +1351,7 @@ pub fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) 
     }
 }
 
-fn hand_or_graveyard_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
+fn choice_zones_including_hand(filter: &ObjectFilter) -> Option<Vec<Zone>> {
     if filter.zone == Some(Zone::Hand) {
         return Some(vec![Zone::Hand]);
     }
@@ -1362,7 +1362,7 @@ fn hand_or_graveyard_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
     let mut zones = Vec::new();
     for option in &filter.any_of {
         let zone = option.zone?;
-        if !matches!(zone, Zone::Hand | Zone::Graveyard) {
+        if !matches!(zone, Zone::Hand | Zone::Graveyard | Zone::Command) {
             return None;
         }
         if !zones.contains(&zone) {
@@ -1474,7 +1474,7 @@ pub fn normalized_hand_or_graveyard_choice_filter(
 ) -> Option<(ObjectFilter, Vec<Zone>)> {
     let mut filter = filter.clone();
     normalize_hand_or_graveyard_cross_zone_filter(&mut filter);
-    let zones = hand_or_graveyard_choice_zones(&filter)?;
+    let zones = choice_zones_including_hand(&filter)?;
     strip_choice_zones_from_filter(&mut filter, &zones);
     Some((filter, zones))
 }

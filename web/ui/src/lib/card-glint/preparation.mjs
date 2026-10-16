@@ -1,3 +1,4 @@
+import {inspectorRulesLines} from '../inspector-ability-lines.js';
 import {isHiddenCardName,resolveScryfallImageUrl,resolveScryfallLocalizedImageUrl,resolveScryfallPrintingMetadata} from '../scryfall.js';
 import {cardFrameSnapshot,cardFrameFaceIndex} from '../card-frame-snapshot.mjs';
 import {cardGlintFace} from './card.mjs';
@@ -21,7 +22,16 @@ function displayedImage(card){
   return [...document.querySelectorAll('[data-object-id][data-card-image-url]')]
     .find(node=>node.dataset.objectId===String(card.id) && !node.classList.contains('stack-card'))?.dataset.cardImageUrl || null;
 }
-export async function prepareCardGlintFace(card,{locale='en',resolveImage,resolvePrinting=resolveScryfallPrintingMetadata}={}){
+export async function prepareCardGlintFace(card,{locale='en',resolveImage,resolveDetails,resolvePrinting=resolveScryfallPrintingMetadata}={}){
+  if (resolveDetails) {
+    const details = await resolveDetails(card);
+    if (details) {
+      card = {...card,...details};
+      if (Array.isArray(details.compiled_text) || Array.isArray(details.abilities)) {
+        card.oracle_text = inspectorRulesLines(details.compiled_text,details.abilities).join('\n');
+      }
+    }
+  }
   let imageUrl = null, printing = null;
   try {
     imageUrl = resolveImage ? await resolveImage(card) : displayedImage(card);

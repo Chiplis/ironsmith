@@ -71,6 +71,8 @@ test('initial hand and battlefield warm without mounted frames and follow live s
     await page.evaluate(()=>window.finishGlintBackground());
     await page.evaluate(()=>window.showGlintBackground());
     await page.locator('[data-card-glint-frame="ready"]').waitFor();
+    await page.waitForFunction(()=>window.glintReadyAtFirstPaint!==undefined);
+    assert.equal(await page.evaluate(()=>window.glintReadyAtFirstPaint),true,'completed background frame is visible on the first paint');
     assert.deepEqual(errors,[]);
   }finally{await browser.close();await vite.close();}
 });
@@ -134,4 +136,74 @@ test('cached double-faced printing stays ready in the live preview', {timeout:30
     await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:8000});
     await page.getByRole('button',{name:/Tamiyo, Seasoned Scholar:/}).first().press('Enter');
   } finally {await browser.close();await vite.close();}
+});
+
+test('custom Island uses a default glint frame with local art and source attribution', {timeout:30000}, async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage();
+    await page.route('https://api.scryfall.com/**',route=>route.abort());
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    await page.evaluate(async()=>{
+      const {customCardAssets,customCardImageUrl}=await import('/src/lib/custom-card-assets.js');
+      const island=customCardAssets('Island');
+      window.changeGlintCard({name:'Island',type_line:island.typeLine,oracle_text:'',color_identity:['U'],flavor_text:island.flavorText});
+      window.setGlintArt(customCardImageUrl('Island'));
+      window.setGlintRules({lines:[],actions:new Map()});window.showGlintFrame();
+    });
+    await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:15000});
+    assert.equal(await page.locator('[data-card-glint-frame="error"]').count(),0);
+  }finally{await browser.close();await vite.close();}
+});
+
+test('land Sagas select plates from live intrinsic mana and revert when it is removed',async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const variants=await page.evaluate(async()=>{
+      const {loadCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      const {cardGlintFace}=await import('/src/lib/card-glint/card.mjs');
+      const {cardFrameSnapshot}=await import('/src/lib/card-frame-snapshot.mjs');
+      const api=await loadCardGlint();
+      const card={name:"Urza's Saga",type_line:'Enchantment Land — Saga',colors:[],color_identity:[],oracle_text:'I — Add {C}.',layout:'saga'};
+      return ['', ' Forest', ' Island Forest', ''].map(extra=>{
+        const face=cardGlintFace(JSON.parse(cardFrameSnapshot({...card,type_line:card.type_line+extra})));
+        return {colors:face.colors,palette:face.frameColors,assets:api.canvasAssetUrls(face).filter(Boolean)};
+      });
+    });
+    assert.deepEqual(variants.map(v=>v.palette),[[],['G'],['U','G'],[]]);
+    for(const v of variants)assert.deepEqual(v.colors,[],'frame tint does not change game colors');
+    assert.ok(variants[0].assets.some(url=>url.endsWith('/saga/regular/l.png')));
+    assert.ok(variants[1].assets.some(url=>url.endsWith('/sagaFrameG.png')));
+    assert.ok(!variants[1].assets.some(url=>url.endsWith('/saga/regular/l.png')));
+    for(const color of ['U','G'])assert.ok(variants[2].assets.some(url=>url.endsWith(`/sagaFrame${color}.png`)));
+    assert.deepEqual(variants[3],variants[0]);
+  }finally{await browser.close();await vite.close();}
+});
+
+test('live land Saga preview retains the glint frame and granted mana actions', {timeout:60000},async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    await page.evaluate(()=>{
+      const lines=[
+        'I — This Saga gains "{T}: Add {C}."',
+        'II — This Saga gains "{2}, {T}: Create a 0/0 colorless Construct artifact creature token with \'This token gets +1/+1 for each artifact you control.\'"',
+        'III — Search your library for an artifact card with mana cost {0} or {1}, put it onto the battlefield, then shuffle.',
+        '{T}: Add {C}.',
+      ];
+      window.changeGlintCard({name:"Urza's Saga",type_line:'Enchantment Land — Urzas Saga Forest',colors:[],color_identity:[],oracle_text:lines.join('\n')});
+      window.setGlintRules({lines,actions:new Map([[2,[{id:'chapter'}]],[3,[{id:'mana'}]]])});window.showGlintFrame();
+    });
+    await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:40000});
+    await page.getByRole('button',{name:/Urza's Saga: III/}).first().press('Enter');
+    assert.equal(await page.evaluate(()=>window.glintActivated),'chapter');
+    await page.getByRole('button',{name:"Urza's Saga: {T}: Add {C}.",exact:true}).first().press('Enter');
+    assert.equal(await page.evaluate(()=>window.glintActivated),'mana');
+  }finally{await browser.close();await vite.close();}
 });

@@ -132,6 +132,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "DoubleManaPoolEffect" => Some(EffectFamily::Resources),
         "DrawCardsEffect" => Some(EffectFamily::ZoneLibrary),
         "DrawForEachTaggedMatchingEffect" => Some(EffectFamily::ZoneLibrary),
+        "DrawTheGameEffect" => Some(EffectFamily::Player),
         "EachPlayerScryEffect" => Some(EffectFamily::ZoneLibrary),
         "EarthbendEffect" => Some(EffectFamily::Permanent),
         "EmitGiftGivenEffect" => Some(EffectFamily::CompositionAL),

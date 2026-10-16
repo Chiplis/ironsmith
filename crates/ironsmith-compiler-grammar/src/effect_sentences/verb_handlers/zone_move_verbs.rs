@@ -185,7 +185,27 @@ pub fn parse_draw(
     {
         let draw_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..then_index]);
         let draw = parse_draw(draw_tokens, subject.clone())?;
-        let discard = parse_discard(&tokens[then_index + 2..], subject)?;
+        let mut discard = parse_discard(&tokens[then_index + 2..], subject)?;
+        // A characteristic mention of the sacrificed object establishes the
+        // antecedent for "its" in the following instruction. Keep the original
+        // sacrifice-result binding, including when replacement leaves it empty.
+        if let (EffectAst::SubjectVerb(draw), EffectAst::SubjectVerb(discard)) = (&draw, &mut discard)
+            && let SubjectVerbActionAst::LifeResources(crate::cards::builders::LifeResourceActionAst::Draw { count }) = &draw.action
+            && count.surface_hints().iter().any(|hint| matches!(hint, ironsmith_core::ValueSurfaceHint::SacrificedObject(_)))
+            && let Value::PowerOf(spec) | Value::ToughnessOf(spec) = count.unhinted()
+            && matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::CompilerReferenceTag::AdditionalCostObject.as_str())
+            && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::Discard { count: discarded, .. }) = &mut discard.action
+        {
+            let words = crate::lexer::parser_token_word_refs(&tokens[then_index + 2..]);
+            let value = match words.as_slice() {
+                ["cards", "equal", "to", "its", "power"] => Some(Value::PowerOf(spec.clone())),
+                ["cards", "equal", "to", "its", "toughness"] => Some(Value::ToughnessOf(spec.clone())),
+                _ => None,
+            };
+            if let Some(value) = value {
+                *discarded = value.with_surface_hints(count.surface_hints().iter().cloned());
+            }
+        }
         return Ok(EffectAst::Sequence { effects: vec![draw, discard] });
     }
     if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))

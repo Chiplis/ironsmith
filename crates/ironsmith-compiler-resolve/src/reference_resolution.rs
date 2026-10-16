@@ -4091,6 +4091,48 @@ fn bind_additional_cost_object_placeholder(effect: &mut EffectAst, env: &Referen
     });
 }
 
+// A source-zone condition establishes the host for the first attachment
+// placement in its consequent. The explicitly named card remains the moved
+// object; its trailing "attached to it" refers back to the tested source.
+fn bind_source_condition_attachment_host(effect: &mut EffectAst) {
+    fn bind_first(effect: &mut EffectAst) {
+        match effect {
+            EffectAst::Sequence { effects } | EffectAst::SourceSentence { effects, .. } => {
+                if let Some(first) = effects.first_mut() { bind_first(first); }
+            }
+            EffectAst::SubjectVerb(subject) => {
+                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    target: TargetAst::Object(filter, ..),
+                    zone: crate::zone::Zone::Battlefield,
+                    attached_to: Some(host), ..
+                }) = &mut subject.action
+                    && filter.tagged_constraints.iter().any(|binding|
+                        binding.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                        && binding.relation == TaggedOpbjectRelation::IsTaggedObject)
+                    && matches!(host, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+                {
+                    if let TargetAst::Tagged(_, span) = host {
+                        *host = TargetAst::Source(span.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::Source(crate::model::ast::SourcePredicateAst::SourceIsInZone(crate::zone::Zone::Battlefield)),
+            if_true, ..
+        }) => {
+            if let Some(first) = if_true.first_mut() { bind_first(first); }
+        }
+        EffectAst::Sequence { effects } | EffectAst::SourceSentence { effects, .. } => {
+            for effect in effects { bind_source_condition_attachment_host(effect); }
+        }
+        _ => {}
+    }
+}
+
 fn annotate_effect_sequence_with_env_internal(
     effects: Vec<EffectAst>,
     mut current_env: ReferenceEnv,
@@ -4119,6 +4161,7 @@ fn annotate_effect_sequence_with_env_internal(
     }
 
     while let Some(mut effect) = effects.next() {
+        bind_source_condition_attachment_host(&mut effect);
         bind_additional_cost_object_placeholder(&mut effect, &current_env);
         let tag_id_floor = id_gen.next_tag_id;
         let in_env = current_env.clone();

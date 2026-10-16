@@ -48,3 +48,17 @@ test('unmatched cards use explicit modern defaults and their own characteristics
   const printed=cardGlintFace({name:'Printed'},{printing:{frame:'1997',border_color:'white'}});
   assert.equal(printed.frameStyle,'retro'); assert.equal(printed.borderColor,'white');
 });
+
+test('custom source URLs are not printed as flavor while actual flavor is preserved',()=>{
+  const card={name:'Custom Island',type_line:'Basic Land — Island',oracle_text:'',flavor_text:'https://www.reddit.com/r/custommagic/comments/ch910l/bob_ross_basic_lands/'};
+  assert.deepEqual(cardGlintFace(card,{printing:null}).rulesParagraphs,[]);
+  const flavor='A quiet shore beneath an endless sky.';
+  assert.deepEqual(cardGlintFace({...card,flavor_text:flavor}).rulesParagraphs,[{role:'flavor',runs:[{text:flavor,italic:true}]}]);
+});
+
+test('background frames preserve type casing and subtypes from lightweight snapshots',()=>{
+  const face=cardGlintFace({name:'Myr Moonvessel',card_types:['artifact','creature'],characteristic_signature:'types:artifact,creature\nsupertypes:\nsubtypes:Myr'});
+  assert.equal(face.typeLine,'Artifact Creature — Myr');
+  assert.equal(face.artifact,true);
+  assert.equal(face.creature,true);
+});

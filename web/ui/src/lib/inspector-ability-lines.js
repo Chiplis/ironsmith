@@ -139,3 +139,12 @@ export function interactiveRulesView(canonicalText, displayedText, actions = [])
   if (restSource.length === restTarget.length) restSource.forEach((index, k) => { sourceLines[restTarget[k]] = [canonical[index]]; });
   return { lines: displayed, actions: projection, sourceLines, translated: true };
 }
+
+// Empty live rules mean abilities were removed; only absent data may use
+// printed text. Keep this distinction before stripping intrinsic mana lines.
+export function inspectorRulesLines(compiledText, abilities, fallback = '') {
+  const source = Array.isArray(compiledText) ? compiledText
+    : Array.isArray(abilities) ? abilities : [fallback];
+  return source.flatMap(line => stripInspectorAbilityPrefixes(String(line ?? '')).split(/\n+/))
+    .map(line => line.trim()).filter(Boolean);
+}

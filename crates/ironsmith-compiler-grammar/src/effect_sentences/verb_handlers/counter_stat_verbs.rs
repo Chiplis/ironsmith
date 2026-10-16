@@ -632,6 +632,15 @@ pub fn parse_reveal(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    if tokens.first().is_some_and(|token| token.is_word("target"))
+        && let Ok(target @ TargetAst::Object(..)) = parse_target_phrase(tokens)
+    {
+        return Ok(EffectAst::Sequence { effects: vec![
+            EffectAst::subject_verb_explicit_target_only(target),
+            EffectAst::subject_verb_reveal_tagged(crate::tag::CompilerReferenceTag::It.bind()),
+        ] });
+    }
+
     if let Some(effects) = crate::effect_sentences::subject_verb_primitives::parse_reveal_selected_hand_tail(
         crate::effect_sentences::SubjectVerbPrimitiveClause::new(tokens), player,
     )? {
@@ -665,9 +674,8 @@ pub fn parse_reveal(
             ],
         });
     }
-    // Many effects split "reveal it/that card/those cards" into a standalone clause.
-    // The engine does not model hidden information, so this compiles to a semantic no-op
-    // that still allows parsing and auditing to proceed.
+    // A standalone anaphoric reveal names the cards identified by the earlier
+    // instruction, including a type-qualified reference such as "the Aura card".
     if counter_grammar::parse_reveal_reference(tokens).is_some() {
         return Ok(EffectAst::subject_verb_reveal_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),

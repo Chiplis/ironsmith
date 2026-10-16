@@ -1,3 +1,4 @@
+import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
 
 const rules = card => {
@@ -20,10 +21,7 @@ export const CARD_GLINT_DEFAULT_FRAME = Object.freeze({
 
 function cardTypeLine(face, card) {
   if (face.type_line ?? card.type_line) return face.type_line ?? card.type_line;
-  const title = value => String(value).replace(/\b[a-z]/g, letter => letter.toUpperCase());
-  const main = [...(face.supertypes ?? card.supertypes ?? []), ...(face.card_types ?? card.card_types ?? [])].map(title).join(' ');
-  const subtypes = face.subtypes ?? card.subtypes ?? [];
-  return main + (subtypes.length ? ` — ${subtypes.map(title).join(' ')}` : '');
+  return cardDisplayTypeLine({...card,...face,type_line_display:undefined});
 }
 
 // Live engine fields take precedence over printing metadata. Printing only supplies decoration.
@@ -35,6 +33,11 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing} = {}) {
   const cost = face.mana_cost ?? card.mana_cost ?? '';
   const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
   const text = rules(face);
+  // Imported custom-card catalogs may store a source URL as flavor text.
+  // Attribution links are not printed flavor and can overflow the painter's
+  // unbroken-word layout, rejecting an otherwise valid default frame.
+  const flavor = String(face.flavor_text ?? print.flavor_text ?? '').trim();
+  const printableFlavor = /^https?:\/\/\S+$/i.test(flavor) ? '' : flavor;
   const [power, toughness] = String(face.power_toughness ?? '').split('/');
   const result = {
     ...CARD_GLINT_DEFAULT_FRAME,
@@ -47,7 +50,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing} = {}) {
     rulesText: text,
     rulesParagraphs: [
       ...text.split('\n').filter(Boolean).map(text => ({role:'rules',runs:[{text}]})),
-      ...(face.flavor_text ? [{role:'flavor',runs:[{text:face.flavor_text,italic:true}]}] : []),
+      ...(printableFlavor ? [{role:'flavor',runs:[{text:printableFlavor,italic:true}]}] : []),
     ],
     illustration: cardArtCropUrl(face.image_uris?.art_crop ?? imageUrl) || null,
     power: face.power ?? (power || undefined), toughness: face.toughness ?? toughness,

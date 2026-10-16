@@ -1086,7 +1086,7 @@ export function resolveScryfallPrintingMetadata(imageUrl) {
 // Already fetched metadata, read synchronously (undefined when not fetched).
 export function peekScryfallPrintingMetadata(imageUrl) {
   const id = printingId(imageUrl);
-  return id && resolvedPrintingMetadata.has(id) ? printingForImageFace(resolvedPrintingMetadata.get(id), imageUrl) : undefined;
+  return !id ? null : resolvedPrintingMetadata.has(id) ? printingForImageFace(resolvedPrintingMetadata.get(id), imageUrl) : undefined;
 }
 
 
