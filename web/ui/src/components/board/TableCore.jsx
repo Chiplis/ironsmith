@@ -30,9 +30,7 @@ import { anchorDecisionDock, anchorManaPaymentDock } from "@/lib/floating-dock-p
 import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
-// Reserve room for the hand and local Graveyard/Exile column. Measure the
-// hand slots rather than animated card highlights to keep hover feedback from
-// moving the dock under the pointer.
+// Reserve the entire local zone column, including its visible labels.
 const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > .zone-pile-slot';
 
 function visibleRect(element) {

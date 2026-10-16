@@ -70,3 +70,13 @@ test('shared decoded assets retain upstream aliases and stay alive until all pai
   assert.deepEqual(closed,['art'],'leased frame cannot be evicted');a.dispose();b.dispose();
   const d=await cache.images(['new'],signal);d.dispose();assert.ok(closed.includes('frame'));
 });
+
+
+test('failed printing lookups still prepare custom cards with default frames', async () => {
+  const card={name:'Custom Golem',card_types:['artifact','creature'],power_toughness:'4/4'};
+  const missing=await prepareCardGlintFace(card,{resolveImage:async()=>{throw new Error('not found');}});
+  assert.equal(missing.frameStyle,'modern'); assert.equal(missing.artifact,true);
+  const art='data:image/png;base64,custom-art';
+  const noPrinting=await prepareCardGlintFace(card,{resolveImage:async()=>art,resolvePrinting:async()=>{throw new Error('offline');}});
+  assert.equal(noPrinting.frameStyle,'modern'); assert.equal(noPrinting.illustration,art);
+});

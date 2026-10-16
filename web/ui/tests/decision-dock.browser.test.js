@@ -73,8 +73,11 @@ test('compact object choices use the height beside the deck and clear the visibl
       await page.locator('.hand-layout-item .game-card').last().hover({force:true});
       await page.waitForTimeout(500);
       const hoveredBounds = await dock.boundingBox();
+      await page.screenshot({path:`/tmp/ironsmith-hover-${viewport.width}.png`});
       const hoveredHand = await page.locator('.hand-layout-item .game-card').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {right:r.right,top:r.top};}));
-      assert.ok(hoveredHand.every(card=>hoveredBounds.x>=card.right || hoveredBounds.y+hoveredBounds.height<=card.top), 'enlarging a hand card cannot cover decision controls');
+      assert.ok(hoveredHand.every(card=>hoveredBounds.x>=card.right || hoveredBounds.y+hoveredBounds.height<=card.top), `enlarging a hand card cannot cover decision controls: ${JSON.stringify({viewport,hoveredBounds,hoveredHand})}`);
+      const submit = await dock.locator('.decision-stack-footer .action-strip-submit-button').boundingBox();
+      assert.ok(submit.x >= hoveredBounds.x && submit.x + submit.width <= hoveredBounds.x + hoveredBounds.width, 'Submit stays inside narrow panels');
     }
   } finally {await browser.close();await vite.close();}
 });

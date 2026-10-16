@@ -18,3 +18,15 @@ test('single-image split/adventure cards retain their complete printing metadata
   assert.equal(printingForImageFace(split,url('front')),split);
   assert.equal(printingForImageFace(null,url('back')),null);
 });
+
+test('cached face metadata has stable identity across image sizes and renders',()=>{
+  const front=printingForImageFace(printing,url('front'));
+  assert.equal(printingForImageFace(printing,url('front','art_crop')),front);
+  assert.equal(printingForImageFace(printing,url('front').replace('?456','?999')),front);
+  const back=printingForImageFace(printing,url('back'));
+  assert.notEqual(back,front);
+  assert.equal(printingForImageFace(printing,url('back','large')),back);
+  const refreshed={...printing,artist:'Updated artist'};
+  const updated=printingForImageFace(refreshed,url('front'));
+  assert.notEqual(updated,front);assert.equal(updated.artist,'Updated artist');
+});

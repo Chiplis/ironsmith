@@ -74,3 +74,64 @@ test('initial hand and battlefield warm without mounted frames and follow live s
     assert.deepEqual(errors,[]);
   }finally{await browser.close();await vite.close();}
 });
+
+test('default frames render custom colors and special card types without a printing', {timeout:120000}, async () => {
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage({viewport:{width:1260,height:900}});
+    await page.route('https://api.scryfall.com/**',route=>route.abort());
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const rendered=await page.evaluate(async()=>{
+      const {cardGlintFace}=await import('/src/lib/card-glint/card.mjs');
+      const {renderCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      const cards=[
+        {name:'Custom Wizard',type_line:'Creature — Wizard',colors:['U'],power:'2',toughness:'3',oracle_text:'Flying'},
+        {name:'Custom Champion',type_line:'Legendary Creature — Warrior',colors:['R','W'],power:'3',toughness:'3',oracle_text:'Vigilance'},
+        {name:'Custom Golem',card_types:['artifact','creature'],colors:[],power_toughness:'4/4'},
+        {name:'Custom Grove',card_types:['land'],colors:[],color_identity:['G'],oracle_text:'{T}: Add {G}.'},
+        {name:'Custom Walker',type_line:'Legendary Planeswalker — Test',colors:['U'],loyalty:3,oracle_text:'+1: Draw a card.\n−2: Tap target creature.'},
+        {name:'Custom History',type_line:'Enchantment — Saga',colors:['W'],oracle_text:'I — Draw a card.\nII — Gain 2 life.\nIII — Create a token.'},
+        {name:'Custom Siege',type_line:'Battle — Siege',colors:['R'],defense:4,oracle_text:'When this enters, draw a card.'},
+      ];
+      document.body.replaceChildren();document.body.style.cssText='display:flex;flex-wrap:wrap;gap:12px;padding:12px;background:#18202d';
+      const results=[];
+      for(const card of cards){
+        const face=cardGlintFace(card,{printing:null});const {canvas}=await renderCardGlint(face);
+        const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
+        copy.getContext('2d').drawImage(canvas,0,0);copy.style.width='230px';copy.style.height='320px';document.body.append(copy);
+        const bytes=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+        let opaque=0;for(let i=3;i<bytes.length;i+=4)if(bytes[i])opaque++;
+        results.push({name:card.name,opaque:opaque/(canvas.width*canvas.height),style:face.frameStyle});
+      }
+      return results;
+    });
+    assert.equal(rendered.length,7);
+    for(const card of rendered){assert.equal(card.style,'modern');assert.ok(card.opaque>.8,`${card.name} has a painted frame`);}
+    await page.screenshot({path:'/tmp/ironsmith-default-glint-frames.png'});
+  } finally {await browser.close();await vite.close();}
+});
+
+test('cached double-faced printing stays ready in the live preview', {timeout:30000}, async () => {
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  const id='12345678-1234-1234-1234-123456789abc';
+  const art=side=>`https://cards.scryfall.io/normal/${side}/1/2/${id}.jpg`;
+  const front={name:'Tamiyo, Inquisitive Student',type_line:'Legendary Creature — Moonfolk Wizard',mana_cost:'{U}',colors:['U'],power:'0',toughness:'3',oracle_text:'Flying\nWhenever Tamiyo attacks, investigate.',image_uris:{normal:art('front')}};
+  const back={name:'Tamiyo, Seasoned Scholar',type_line:'Legendary Planeswalker — Tamiyo',colors:['U','G'],loyalty:'2',oracle_text:'+2: Draw a card.',image_uris:{normal:art('back')}};
+  try {
+    const page=await browser.newPage();
+    await page.route(`https://api.scryfall.com/cards/${id}`,route=>route.fulfill({json:{id,name:`${front.name} // ${back.name}`,layout:'transform',frame:'2015',card_faces:[front,back]}}));
+    await page.route('https://cards.scryfall.io/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="teal"/></svg>'}));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    await page.evaluate(async url=>{const {resolveScryfallPrintingMetadata}=await import('/src/lib/scryfall.js');await resolveScryfallPrintingMetadata(url);},art('front'));
+    await page.evaluate(({front,url})=>{window.changeGlintCard(front);window.setGlintArt(url);window.showGlintFrame();},{front,url:art('front')});
+    await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:8000});
+    await page.getByRole('button',{name:`${front.name}: ${front.oracle_text}`}).first().click();
+    assert.equal(await page.evaluate(()=>window.glintActivated),'draw');
+    await page.evaluate(({back,url})=>{window.changeGlintCard(back);window.setGlintArt(url);},{back,url:art('back')});
+    await page.getByRole('img',{name:new RegExp(back.name)}).waitFor();
+    await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:8000});
+    await page.getByRole('button',{name:`${back.name}: ${back.oracle_text}`}).first().click();
+  } finally {await browser.close();await vite.close();}
+});

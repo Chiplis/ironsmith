@@ -7024,6 +7024,8 @@ html[data-hand-pointer-suspended="true"] * {
     align-self: stretch !important;
     flex: 0 0 auto !important;
     justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
     margin-top: 8px;
     padding: 8px 0 0 !important;
     border-top: 1px solid rgba(183, 146, 235, 0.18);

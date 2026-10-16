@@ -20,12 +20,17 @@ function displayedImage(card){
     .find(node=>node.dataset.objectId===String(card.id) && !node.classList.contains('stack-card'))?.dataset.cardImageUrl || null;
 }
 export async function prepareCardGlintFace(card,{locale='en',resolveImage,resolvePrinting=resolveScryfallPrintingMetadata}={}){
-  let imageUrl=resolveImage ? await resolveImage(card) : displayedImage(card);
-  if(!resolveImage && !imageUrl){
-    imageUrl=locale==='en' ? null : await resolveScryfallLocalizedImageUrl(card.name,locale,'normal');
-    imageUrl ||= await resolveScryfallImageUrl(card.name,'normal');
-  }
-  const printing=imageUrl ? await resolvePrinting(imageUrl) : null;
+  let imageUrl = null, printing = null;
+  try {
+    imageUrl = resolveImage ? await resolveImage(card) : displayedImage(card);
+    if (!resolveImage && !imageUrl) {
+      imageUrl = locale === 'en' ? null : await resolveScryfallLocalizedImageUrl(card.name, locale, 'normal');
+      imageUrl ||= await resolveScryfallImageUrl(card.name, 'normal');
+    }
+  } catch { /* Custom cards and offline lookups still get a default frame. */ }
+  try {
+    printing = imageUrl ? await resolvePrinting(imageUrl) : null;
+  } catch { /* Keep custom art and render with default printing decoration. */ }
   return cardGlintFace(JSON.parse(cardFrameSnapshot(card)),{imageUrl,printing,faceIndex:cardFrameFaceIndex(card,imageUrl)});
 }
 

@@ -2,7 +2,7 @@ import {MSE_PRINTING_FIELDS} from './mse/printing-style.mjs';
 import {cardIntrinsicManaColors,withoutIntrinsicManaLines} from './land-mana-choices.js';
 
 const fields = ['id','stable_id','name','source_kind','source_ability_text','oracle_id','oracleId','oracle_text','flavor_text','rarity',
-  'effect_text','ability_text','compiled_text','abilities','mana_cost','type_line','type_line_display',
+  'card_types','supertypes','subtypes','effect_text','ability_text','compiled_text','abilities','mana_cost','type_line','type_line_display',
   'security_stamp','layout','color_identity','colorIdentity','color_indicator','card_faces','colors','characteristic_signature',
   'keywords','power','toughness','power_toughness','loyalty','defense','printing','mse_style',...MSE_PRINTING_FIELDS];
 

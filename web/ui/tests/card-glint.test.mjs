@@ -29,3 +29,22 @@ test('measured wrapped text creates targets and never claims missing actions are
   assert.equal(cardGlintActionsCovered(regions,view),false);
   view.actions.delete(1); assert.equal(cardGlintActionsCovered(regions,view),true);
 });
+
+
+test('unmatched cards use explicit modern defaults and their own characteristics', () => {
+  const face = cardGlintFace({name:'Custom Sentinel',set:'lea',card_types:['artifact','creature'],
+    supertypes:['legendary'],subtypes:['Golem'],colors:[],power_toughness:'3/7',oracle_text:'Vigilance'}, {printing:null});
+  assert.equal(face.frameStyle,'modern');
+  assert.equal(face.borderColor,'black');
+  assert.equal(face.securityStamp,'none');
+  assert.equal(face.layout,'normal');
+  assert.equal(face.typeLine,'Legendary Artifact Creature — Golem');
+  assert.equal(face.artifact,true); assert.equal(face.creature,true); assert.equal(face.legendary,true);
+  assert.deepEqual(face.colors,[]); assert.equal(face.power,'3'); assert.equal(face.toughness,'7');
+  assert.equal(face.illustration,null); assert.equal(face.artist,undefined);
+  assert.equal(cardGlintFace({type_line:'Battle — Siege',defense:4}).frameTemplate,'battle');
+  const split=cardGlintFace({layout:'split',card_faces:[{name:'Left'},{name:'Right'}]});
+  assert.ok(split.faces.every(face=>face.layout==='normal' && face.frameStyle==='modern'));
+  const printed=cardGlintFace({name:'Printed'},{printing:{frame:'1997',border_color:'white'}});
+  assert.equal(printed.frameStyle,'retro'); assert.equal(printed.borderColor,'white');
+});
