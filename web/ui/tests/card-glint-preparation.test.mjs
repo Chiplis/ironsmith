@@ -16,6 +16,19 @@ test('initial and updated board preparations include our hand first, every battl
   assert.deepEqual(cardGlintZoneCards({...state,perspective:null}).map(c=>c.name),['Enemy field','Our field']);
   assert.deepEqual(cardGlintZoneCards(null),[]);
 });
+test('public zone frames warm for every player and follow zone changes without hidden cards',()=>{
+  const state={perspective:1,players:[
+    {id:0,command_cards:[card('Enemy commander')],exile_cards:[card('Enemy exile'),{...card('Secret exile'),face_down:true}],graveyard_cards:[card('Enemy graveyard')]},
+    {id:1,hand_cards:[card('Our hand')],battlefield:[card('Our field')],command_cards:[card('Our commander')],exile_cards:[card('Our exile'),card('Hidden card')],graveyard_cards:[card('Our graveyard')]},
+  ]};
+  assert.deepEqual(cardGlintZoneCards(state).map(c=>c.name),[
+    'Our hand','Our field','Enemy commander','Our commander','Enemy exile','Our exile','Enemy graveyard','Our graveyard',
+  ]);
+  state.players[1].graveyard_cards.push(state.players[1].battlefield.pop());
+  assert.deepEqual(cardGlintZoneCards(state).map(c=>c.name),[
+    'Our hand','Enemy commander','Our commander','Enemy exile','Our exile','Enemy graveyard','Our graveyard','Our field',
+  ]);
+});
 test('warming builds the exact foreground face, including the displayed reverse face and live snapshot',async()=>{
   const source={name:'Back',layout:'transform',card_faces:[{name:'Front'}, {...card('Back'),power:'3',toughness:'4'}]};
   const imageUrl='https://cards.scryfall.io/normal/back/a/b/test.jpg', printing={set:'isd',frame:'2003'};

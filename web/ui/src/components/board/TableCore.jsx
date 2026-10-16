@@ -292,6 +292,10 @@ export default function TableCore({
 
       const zoneElements = [...document.querySelectorAll(FLOATING_DOCK_PROTECTED_ZONES)]
         .filter((element) => element !== dock && !dock.contains(element));
+      const commandPile = document.querySelector('[data-local-zone-piles="true"] [data-zone-pile="command"]');
+      observe(commandPile);
+      const commandRect = commandPile && visibleRect(commandPile);
+      const commandZoneMidpoint = commandRect ? (commandRect.top + commandRect.bottom) / 2 : null;
       zoneElements.forEach(observe);
       observe(dock);
       observe(table);
@@ -304,14 +308,20 @@ export default function TableCore({
       handCards.forEach(observe);
       const handRects = handCards.flatMap(element => [element, ...element.querySelectorAll(".game-card")])
         .map(visibleRect).filter(Boolean);
-      const handRight = handRects.reduce((right, rect) => Math.max(right, rect.right), 0);
+      const reservedFan = hand?.querySelector('[data-hand-reserved-half-width]');
+      const reservedRect = reservedFan && visibleRect(reservedFan);
+      // Packed hands compress inside a fixed envelope. Animated card edges
+      // would make the dock resize as the last card straightens.
+      const handRight = reservedRect
+        ? (reservedRect.left + reservedRect.right) / 2 + Number(reservedFan.dataset.handReservedHalfWidth)
+        : handRects.reduce((right, rect) => Math.max(right, rect.right), 0);
       const handTop = handRects.reduce((top, rect) => Math.min(top, rect.top), window.innerHeight);
       if (state?.decision?.kind === 'mana_payment' && !surrenderRequested) {
         const opponentRows = [...table.querySelectorAll('.battlefield-panel--opponents [data-zone-anchor-player]')].map(zone => zone.querySelector('.battlefield-row[data-bf-side="top"]')).filter(Boolean);
         const opponentCards = opponentRows.flatMap(row => [...row.querySelectorAll('.battlefield-row-card')]);
         opponentCards.forEach(observe);
         const opponentCardBottom = opponentCards.map(visibleRect).filter(Boolean).reduce((bottom, rect) => Math.max(bottom, rect.bottom), 48);
-        const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom, handRight, handTop });
+        const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom, handRight, handTop, commandZoneMidpoint });
         next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
         setHumanActionDockPosition(previous => Object.keys(next).every(key => previous?.[key] === next[key]) ? previous : next);
         if (performance.now() < handMotionUntil) schedule();
@@ -325,6 +335,7 @@ export default function TableCore({
         protectedZones,
         handRight,
         handTop,
+        commandZoneMidpoint,
       });
       next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
       setHumanActionDockPosition((previous) => (

@@ -17,7 +17,7 @@ import useBattlefieldAppearance from "../src/hooks/useBattlefieldAppearance";
 const names = ["Ornithopter", "Myr Moonvessel", "Omniscience", "Mountain", "Forest", "Island", "Plains", "Swamp"];
 const players = ["Alice", "Bob", "Charlie", "Diana"].map((name,id)=>({id,index:id,name,life:20,mana_pool:{},
   battlefield:names.map((name,i)=>({id:100*id+i+1,stable_id:100*id+i+1,name,controller:id,owner:id,lane:i<3?"creatures":"lands",type_line:i<3?"Artifact Creature":"Land",power:1,toughness:1,oracle_text:"",semantic_score:1})),
-  can_view_hand: true, hand_cards: new URLSearchParams(location.search).has("decisionDock") && id === 0 ? names.slice(0, Number(new URLSearchParams(location.search).get("hand") || 4)).map((name,i)=>({id:8000+i,name})) : [],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains"},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards: new URLSearchParams(location.search).has("commander") ? [{id:3000+id,name:"Commander"}] : [],library_size:40,
+  can_view_hand: true, hand_cards: new URLSearchParams(location.search).has("decisionDock") && id === 0 ? Array.from({length:Number(new URLSearchParams(location.search).get("hand") || 4)},(_,i)=>({id:8000+i,name:names[i % names.length]})) : [],graveyard_size:3,graveyard_cards:[{id:1000+id,name:"Plains"},{id:1100+id,name:"Mountain"},{id:1200+id,name:"Island"}],exile_cards:[{id:2000+id,name:"Swamp"}],command_cards: new URLSearchParams(location.search).has("commander") ? [{id:3000+id,name:"Commander"}] : [],library_size:40,
 }));
 function Fixture(){
  const targetLook = new URLSearchParams(location.search).has("targetLook");

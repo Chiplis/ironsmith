@@ -115,3 +115,17 @@ test("a wide hand lifts decisions above the cards without covering the zone colu
   assert.equal(position.top, 190);
   assert.equal(position.top + position.maxHeight, 634);
 });
+
+test("hovering a tall hand card cannot lift bottom controls above the command midpoint", () => {
+  const geometry = {viewportWidth:1440, viewportHeight:900, dockWidth:340, dockHeight:120,
+    handRight:1300, handTop:220, commandZoneMidpoint:720,
+    protectedZones:[{left:1350,top:200,right:1430,bottom:790}]};
+  const position = anchorDecisionDock(geometry);
+  assert.equal(position.top + geometry.dockHeight, 720);
+  assert.equal(position.maxHeight, 520, 'expanded content keeps the deck-height budget');
+  assert.equal(position.left + position.maxWidth, 1338);
+  const payment = anchorManaPaymentDock({...geometry,opponentCardBottom:220});
+  assert.equal(payment.top + payment.maxHeight, 720);
+  const resting = anchorDecisionDock({...geometry,handTop:850});
+  assert.equal(resting.top + geometry.dockHeight, 834, 'normal hand clearance still applies below the cap');
+});

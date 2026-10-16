@@ -3,14 +3,16 @@ import {cardFrameSnapshot,cardFrameFaceIndex} from '../card-frame-snapshot.mjs';
 import {cardGlintFace} from './card.mjs';
 import {renderCardGlint,hasCardGlintFrame} from './session.mjs';
 
-// Only our visible hand and public battlefield identities are eligible. A
-// compact board or a scan-based hand still warms its full inspection frames.
+// Warm our visible hand first, then battlefields and the remaining public zones.
+// Compact cards and closed zone viewers still need full inspection frames.
 export function cardGlintZoneCards(state){
   const players=state?.players ?? [], cards=[];
   const add=card=>{if(card?.name && !card.face_down && !card.source_kind && !isHiddenCardName(card.name))cards.push(card);};
   const own=state?.perspective == null ? null : players.find((player,index)=>String(player.id ?? player.index ?? index)===String(state.perspective));
   for(const card of own?.hand_cards ?? [])add(card);
   for(const player of players)for(const card of player.battlefield ?? [])add(card);
+  for(const zone of ['command_cards','exile_cards','graveyard_cards'])
+    for(const player of players)for(const card of player[zone] ?? [])add(card);
   return cards;
 }
 

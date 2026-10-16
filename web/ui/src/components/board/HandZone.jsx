@@ -1,3 +1,4 @@
+import { compressedHandSelection, reservedHandHalfWidth } from "@/lib/hand-selection-layout";
 import useUiText from "@/i18n/useUiText";
 import useKeyboardPointerSuspend from "@/hooks/useKeyboardPointerSuspend";
 import { Fragment, useRef, useMemo, useEffect, useLayoutEffect, useCallback, useState } from "react";
@@ -284,8 +285,12 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
   const base = baseLayout[index] || { drop: 0, rot: 0 };
   const isActive = activeIndex === index;
 
+  const compressed = dims.packWidth && spreadAroundActive
+    ? compressedHandSelection(baseLayout, dims, activeIndex) : null;
   let pushX = 0;
-  if (isActive && centerActive && !activeIsPlayable) {
+  if (compressed) {
+    pushX = compressed[index].x - base.x;
+  } else if (isActive && centerActive && !activeIsPlayable) {
     // Keep the active hand card in the visual center, including at either
     // edge, so arrow-key reading never forces the player to chase the fan.
     const totalWidth = Math.max(0, (total - 1) * spread);
@@ -324,7 +329,7 @@ function buildHandCardRowStyle(index, total, { dims, activeIndex = null, activeI
     : `${base.drop.toFixed(1)}px`;
   // De-emphasize the rest of the fan just enough to expose their art and
   // hover targets next to the active reading card.
-  const cardScale = isActive
+  const cardScale = compressed ? compressed[index].scale : isActive
     ? dims.hoverScale
     : (activeIndex !== null && activeIndex >= 0 ? 0.94 : 1);
 
@@ -2021,6 +2026,7 @@ export default function HandZone({
                   <div
                     ref={cycleIndex === HAND_ROULETTE_CENTER_CYCLE ? centerCycleRef : null}
                     className="hand-zone-cycle flex min-h-full flex-nowrap items-end overflow-visible"
+                    data-hand-reserved-half-width={handDimensions.packWidth ? reservedHandHalfWidth(computeManabrewBaseLayout(renderedHandCardCount, handDimensions), handDimensions) : undefined}
                   >
                     {handEntries.map((entry) => renderHandEntry(entry, cycleIndex))}
                   </div>

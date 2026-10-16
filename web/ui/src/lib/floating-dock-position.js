@@ -25,13 +25,13 @@ export function dockMaxWidth(viewportWidth) {
  * Its top boundary is the bottom of the opponents' first card row; scrolling
  * consumes excess content, never that protected battlefield space.
  */
-export function anchorManaPaymentDock({ viewportWidth, viewportHeight, protectedZones = [], opponentCardBottom = 48, handRight = viewportWidth - handSideReserve(viewportWidth), handTop = viewportHeight }) {
+export function anchorManaPaymentDock({ viewportWidth, viewportHeight, protectedZones = [], opponentCardBottom = 48, handRight = viewportWidth - handSideReserve(viewportWidth), handTop = viewportHeight, commandZoneMidpoint = null }) {
   const opponentTopLimit = Math.max(DOCK_MIN_TOP, opponentCardBottom + ZONE_CLEARANCE);
   const zoneLeft = protectedZones.reduce((left, zone) => Math.min(left, zone.left), viewportWidth - DOCK_RIGHT_INSET);
   const right = zoneLeft - ZONE_CLEARANCE;
   const laneWidth = right - handRight - HAND_DOCK_GAP;
   const aboveHand = laneWidth < 180;
-  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? handTop - HAND_DOCK_GAP : viewportHeight);
+  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? Math.max(handTop - HAND_DOCK_GAP, commandZoneMidpoint ?? 0) : viewportHeight);
   const topLimit = aboveHand ? Math.max(DOCK_MIN_TOP, Math.min(opponentTopLimit, bottom - 200)) : opponentTopLimit;
   const maxWidth = Math.max(1, Math.min(320, aboveHand ? right - DOCK_EDGE_PADDING : laneWidth));
   const maxHeight = Math.max(1, Math.floor(bottom - topLimit));
@@ -106,7 +106,7 @@ export function anchorFloatingDock({
  * Reserve the entire zone column, even before the panel grows into it, so
  * expanding content cannot alternate between two different placements.
  */
-export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, dockHeight, protectedZones = [], handRight = 0, handTop = viewportHeight }) {
+export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, dockHeight, protectedZones = [], handRight = 0, handTop = viewportHeight, commandZoneMidpoint = null }) {
   const zones = protectedZones.filter(zone => Number.isFinite(zone?.left));
   const right = zones.reduce((edge, zone) => Math.min(edge, zone.left - ZONE_CLEARANCE), viewportWidth - DOCK_RIGHT_INSET);
   const leftLimit = Math.max(DOCK_EDGE_PADDING, handRight + HAND_DOCK_GAP);
@@ -114,11 +114,11 @@ export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, d
   // If a wide hand leaves too little room, use the space above its cards.
   const aboveHand = laneWidth < 180;
   const maxWidth = Math.max(1, Math.floor(aboveHand ? Math.min(340, right - DOCK_EDGE_PADDING) : laneWidth));
-  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? handTop - HAND_DOCK_GAP : viewportHeight);
+  const bottom = Math.min(viewportHeight - DECISION_DOCK_BOTTOM_INSET, aboveHand ? Math.max(handTop - HAND_DOCK_GAP, commandZoneMidpoint ?? 0) : viewportHeight);
   const zoneTop = zones.reduce((top, zone) => Number.isFinite(zone.top) ? Math.min(top, zone.top) : top, Infinity);
   const deckTop = Math.max(DOCK_MIN_TOP, Number.isFinite(zoneTop) ? zoneTop : DOCK_MIN_TOP);
-  // An enlarged hand card can rise above the deck. In that case allow the
-  // panel to rise too, rather than squeezing its controls into a few pixels.
+  // The command midpoint caps hover-driven lifting of the bottom controls;
+  // expanded decision content can still grow upward toward the deck.
   const topLimit = aboveHand ? Math.max(DOCK_MIN_TOP, Math.min(deckTop, bottom - 200)) : deckTop;
   const maxHeight = Math.max(1, bottom - topLimit);
   return {
