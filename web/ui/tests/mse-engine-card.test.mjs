@@ -8,11 +8,11 @@ test('explicit colors and indicators override mismatched costs without changing 
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{2}{R}',colors:[]}).card.card_color,'colorless');
   assert.equal(engineCardToMse({type_line:'Artifact Creature',mana_cost:'{R}',colors:['U']}).card.card_color,'blue, artifact');
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{W/U}',colors:['W','U']}).card.card_color,undefined);
-  assert.equal(engineCardToMse({type_line:'Basic Land — Forest',colors:[],color_identity:['G']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Basic Land — Forest',colors:[],color_identity:['G']}).card.card_color,'green');
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',colors:['R'],characteristic_signature:'colors: blue\nother: test'}).card.card_color,'blue');
   assert.equal(engineCardToMse({type_line:'Creature',mana_cost:'{R}',characteristic_signature:'colors:-\nother: test'}).card.card_color,'colorless');
   assert.equal(engineCardToMse({type_line:'Creature',color_identity:['U']}).card.card_color,undefined);
-  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',colors:[],color_identity:['G']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',colors:[],color_identity:['G']}).card.card_color,'green');
   assert.equal(engineCardToMse({type_line:'Land',card_faces:[{type_line:'Land'}],color_identity:['G']}).card.card_color,undefined);
 });
 test('face indicators stay separate and native overrides remain authoritative',()=>{
@@ -124,15 +124,15 @@ test('double-faced snapshots become reciprocal linked cards with independent fac
 });
 
 test('a land renders in the colors of its current intrinsic mana (Yavimaya makes itself a Forest)',()=>{
-  assert.equal(engineCardToMse({type_line:'Legendary Land — Forest',intrinsic_mana:['G']}).card.card_color,'green, land');
-  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',intrinsic_mana:['G']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Legendary Land — Forest',intrinsic_mana:['G']}).card.card_color,'green');
+  assert.equal(engineCardToMse({type_line:'Land Creature — Forest Dryad',intrinsic_mana:['G']}).card.card_color,'green');
 });
 
 test('a Yavimaya Forest keeps the colors its rules text produces',()=>{
-  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}, Pay 1 life: Add {U} or {R}. (Reminder {B}.)',intrinsic_mana:['G']}).card.card_color,'blue, red, green, land, multicolor');
-  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}: Add {U}.',color_identity:['U'],intrinsic_mana:['G']}).card.card_color,'blue, green, land, multicolor');
+  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}, Pay 1 life: Add {U} or {R}. (Reminder {B}.)',intrinsic_mana:['G']}).card.card_color,'blue, red, green, multicolor');
+  assert.equal(engineCardToMse({type_line:'Land — Forest',oracle_text:'{T}: Add {U}.',color_identity:['U'],intrinsic_mana:['G']}).card.card_color,'blue, green, multicolor');
   // The template does not infer colors from rules text, so Spirebluff Canal needs them too.
-  assert.equal(engineCardToMse({type_line:'Land',oracle_text:'{T}: Add {U} or {R}.'}).card.card_color,'blue, red, land, multicolor');
+  assert.equal(engineCardToMse({type_line:'Land',oracle_text:'{T}: Add {U} or {R}.'}).card.card_color,'blue, red, multicolor');
 });
 
 
@@ -141,11 +141,29 @@ test('basic land frames use identity or intrinsic mana even with empty rules and
     for(const separator of ['-', '–', '—']){
       const snapshot={name,type_line:`Basic Land ${separator} ${name}`,mana_cost:'',oracle_text:'',colors:[]};
       for(const metadata of [{color_identity:[code]},{colorIdentity:[code]},{intrinsic_mana:[code]}]){
-        assert.equal(engineCardToMse({...snapshot,...metadata}).card.card_color,`${color}, land`);
+        assert.equal(engineCardToMse({...snapshot,...metadata}).card.card_color,`${color}`);
       }
       assert.deepEqual(snapshot.colors,[]);
     }
   }
   assert.equal(engineCardToMse({name:'Wastes',type_line:'Basic Land',colors:[],color_identity:[]}).card.card_color,undefined);
-  assert.equal(engineCardToMse({type_line:'Basic Land — Island',colors:['G'],color_identity:['U']}).card.card_color,'green, land');
+  assert.equal(engineCardToMse({type_line:'Basic Land — Island',colors:['G'],color_identity:['U']}).card.card_color,'green');
+});
+
+
+test('colored lands use full color frames without changing their types or colors',()=>{
+  for(const [type,colors,expected] of [
+    ['Land — Island Mountain',['U','R'],'blue, red, multicolor'],
+    ['Artifact Land',['U'],'blue'],
+    ['Land',['W','U','B','R','G'],'white, blue, black, red, green, multicolor'],
+  ]){
+    const snapshot={type_line:type,colors:[],color_identity:colors};
+    const result=engineCardToMse(snapshot).card;
+    assert.equal(result.card_color,expected);
+    assert.equal(result.super_type,type.split(' — ')[0]);
+    assert.deepEqual(snapshot.colors,[]);
+  }
+  for(const type of ['Land','Basic Land','Artifact Land']){
+    assert.equal(engineCardToMse({type_line:type,colors:[],color_identity:[]}).card.card_color,undefined);
+  }
 });

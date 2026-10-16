@@ -310,3 +310,19 @@
     }
   }
 }
+
+.build-card-search { display: grid; gap: 10px; padding: 16px 24px; border-bottom: 1px solid #bfa36a30; flex: 0 0 auto; }
+.build-card-search-results { display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto; }
+
+.build-card-search-toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.build-card-search-toolbar > .card-forge-field { flex: 1 1 260px; min-width: 0; }
+.build-card-search-options { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.build-card-toolbar-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+.build-card-toolbar-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-left: auto; }
+.build-card-toolbar-actions > button { min-height: 38px; }
+.build-card-toolbar-actions .card-forge-field { width: 140px; }
+.build-card-toolbar-actions select { min-height: 38px; padding-block: 6px; }
+@media (max-width: 600px) {
+  .build-card-toolbar-actions { width: 100%; margin-left: 0; }
+  .build-card-toolbar-actions .card-forge-field { flex: 1 1 120px; width: auto; }
+}

@@ -19,9 +19,9 @@ function stripActionPrefix(label) {
  * card answers by claiming the hover, so the caller can tell whether the card
  * already has a readable surface on screen. Returns true when it was claimed.
  */
-function dispatchHandActionHover(objectId = null) {
+function dispatchHandActionHover(objectId = null, action = null) {
   if (typeof window === "undefined") return false;
-  const detail = { objectId: objectId != null ? String(objectId) : null, claimed: false };
+  const detail = { action, objectId: objectId != null ? String(objectId) : null, claimed: false };
   window.dispatchEvent(new CustomEvent("ironsmith:hand-action-hover", { detail }));
   return detail.claimed === true;
 }
@@ -77,8 +77,8 @@ export default function ActionPopover({
   // The lifted hand card and the frame preview are two answers to the same
   // question, so only one of them runs: the preview is for options whose card
   // no hand is showing.
-  const previewActionCard = useCallback((objectId) => {
-    const liftedInHand = dispatchHandActionHover(objectId);
+  const previewActionCard = useCallback((objectId, action) => {
+    const liftedInHand = dispatchHandActionHover(objectId, action);
     if (objectId && !liftedInHand) hoverCard(objectId);
     else clearHover();
   }, [clearHover, hoverCard]);
@@ -282,8 +282,8 @@ export default function ActionPopover({
               }}
               onMouseEnter={() => {
                 setHoveredIdx(i);
-                if (highlightObjects) { dispatchHandActionHover(objId); setHoverLinkedObjects(objId ? [objId] : []); }
-                else if (previewCards) previewActionCard(objId);
+                if (highlightObjects) { dispatchHandActionHover(objId, action); setHoverLinkedObjects(objId ? [objId] : []); }
+                else if (previewCards) previewActionCard(objId, action);
               }}
               onMouseLeave={() => {
                 setHoveredIdx(-1);
@@ -292,8 +292,8 @@ export default function ActionPopover({
               }}
               onFocus={() => {
                 setHoveredIdx(i);
-                if (highlightObjects) { dispatchHandActionHover(objId); setHoverLinkedObjects(objId ? [objId] : []); }
-                else if (previewCards) previewActionCard(objId);
+                if (highlightObjects) { dispatchHandActionHover(objId, action); setHoverLinkedObjects(objId ? [objId] : []); }
+                else if (previewCards) previewActionCard(objId, action);
               }}
               onBlur={() => {
                 setHoveredIdx(-1);

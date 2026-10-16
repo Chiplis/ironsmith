@@ -1083,3 +1083,95 @@ fn tapped_to_pay_keyword_cost_triggers_only_for_actual_teamwork_contributions() 
         assert_eq!(game.counter_count(other_maria,ironsmith::object::CounterType::PlusOnePlusOne),0);
     }
 }
+
+#[test]
+fn conditional_landwalk_covers_all_basic_types_and_tracks_current_lands_and_controller() {
+    let definition = compile_to_runtime_definition("Magnigoth Treefolk", "Mana cost: {4}{G}\nType: Creature — Treefolk\nPower/Toughness: 2/6\nDomain — For each basic land type among lands you control, this creature has landwalk of that type. (It can't be blocked as long as defending player controls a land of that type.)", false).unwrap();
+    let types = [Subtype::Plains,Subtype::Island,Subtype::Swamp,Subtype::Mountain,Subtype::Forest];
+    assert_eq!(definition.abilities.len(),6);
+    assert!(matches!(&definition.abilities[0].kind,ironsmith::ability::AbilityKind::Static(ability) if matches!(&ability.compiled_model().unwrap().payload, ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup {member_count:5})));
+    for (ability, land_type) in definition.abilities[1..].iter().zip(types) {
+        let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind else {panic!("static conditional required")};
+        let model = ability.compiled_model().unwrap();
+        let ironsmith_core::static_ability_model::StaticAbilityPayload::Conditional {ability,condition,implied_words} = &model.payload else {panic!("typed conditional required")};
+        assert!(*implied_words, "generated type cases must retain word provenance through lowering and transport");
+        assert!(matches!(&ability.payload,ironsmith_core::static_ability_model::StaticAbilityPayload::Landwalk(ironsmith_core::LandwalkKind::Subtype{subtype,snow:false}) if *subtype == land_type));
+        assert_eq!(*condition,ironsmith_core::Condition::YouControl(ironsmith_core::ObjectFilter::land().with_subtype(land_type)));
+    }
+    let surface = ironsmith::runtime_display::compiled_text_lines(&definition).join("\n");
+    assert!(surface.contains("For each basic land type among lands you control"), "{surface}");
+    for bad in ["partial", "duplicate", "snow", "authored", "extra qualifier", "different zone"] {
+        let mut probe = definition.clone();
+        probe.canonical_text = "unrelated cached text".into();
+        if bad == "partial" { probe.abilities.pop(); }
+        else if bad == "different zone" { probe.abilities[1].functional_zones = vec![Zone::Hand]; }
+        else {
+            let ironsmith::ability::AbilityKind::Static(ability) = &mut probe.abilities[1].kind else {unreachable!()};
+            let mut model = ability.compiled_model().unwrap().clone();
+            let ironsmith_core::StaticAbilityPayload::Conditional {ability: inner,condition,implied_words} = &mut model.payload else {unreachable!()};
+            match bad {
+                "duplicate" => {
+                    inner.payload = ironsmith_core::StaticAbilityPayload::Landwalk(ironsmith_core::LandwalkKind::Subtype{subtype:Subtype::Island,snow:false});
+                    *condition = ironsmith_core::Condition::YouControl(ironsmith_core::ObjectFilter::land().with_subtype(Subtype::Island));
+                }
+                "snow" => { inner.payload = ironsmith_core::StaticAbilityPayload::Landwalk(ironsmith_core::LandwalkKind::Subtype{subtype:Subtype::Plains,snow:true}); }
+                "authored" => { *implied_words = false; }
+                "extra qualifier" => {
+                    let ironsmith_core::Condition::YouControl(filter) = condition else {unreachable!()};
+                    filter.supertypes.push(ironsmith::types::Supertype::Basic);
+                }
+                _ => unreachable!(),
+            }
+            *ability = ironsmith::static_abilities::StaticAbility::from_model(model);
+        }
+        let text = ironsmith::runtime_display::compiled_text_lines(&probe).join("\n");
+        assert!(!text.contains("For each basic land type"), "{bad} must not claim the complete generated family: {text}");
+    }
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1); let carol = PlayerId::from_index(2);
+    let land = |subtypes| CardBuilder::new(CardId::new(),"Typed nonbasic land").card_types(vec![CardType::Land]).subtypes(subtypes).build();
+    let blocker_card = CardBuilder::new(CardId::new(),"Blocker").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build();
+    let can_block = |game: &ironsmith::GameState, attacker, blocker| ironsmith::rules::combat::can_block(game.object(attacker).unwrap(),game.object(blocker).unwrap(),game);
+    for mask in 0..32 {
+        for (index, defender_type) in types.iter().enumerate() {
+            let mut game = ironsmith::GameState::new(vec!["Alice".into(),"Bob".into(),"Carol".into()],20);
+            let source = game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+            let blocker = game.create_object_from_card(&blocker_card,bob,Zone::Battlefield);
+            for (bit, land_type) in types.iter().enumerate() {
+                if mask & (1 << bit) != 0 {game.create_object_from_card(&land(vec![*land_type]),alice,Zone::Battlefield);}
+            }
+            game.create_object_from_card(&land(vec![*defender_type]),bob,Zone::Battlefield);
+            game.create_object_from_card(&land(types.to_vec()),carol,Zone::Battlefield);
+            game.refresh_continuous_state().unwrap();
+            assert_eq!(can_block(&game,source,blocker),mask & (1 << index) == 0,"own types {mask:05b}, defender {defender_type:?}; another player's lands never grant abilities");
+        }
+    }
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(),"Bob".into(),"Carol".into()],20);
+    let source = game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+    let blocker = game.create_object_from_card(&blocker_card,bob,Zone::Battlefield);
+    let own = game.create_object_from_card(&land(vec![Subtype::Forest]),alice,Zone::Battlefield);
+    let defending = game.create_object_from_card(&land(vec![Subtype::Forest]),bob,Zone::Battlefield);
+    game.create_object_from_card(&land(vec![Subtype::Swamp]),carol,Zone::Battlefield);
+    assert!(!can_block(&game,source,blocker));
+    game.object_mut(own).unwrap().subtypes = vec![Subtype::Island].into();
+    assert!(can_block(&game,source,blocker),"lost a land type");
+    game.object_mut(defending).unwrap().subtypes = vec![Subtype::Island].into();
+    assert!(!can_block(&game,source,blocker),"current defending land type");
+    game.set_current_controller(source,carol).unwrap();
+    assert!(can_block(&game,source,blocker),"new controller has only Swamp");
+    game.set_current_controller(source,alice).unwrap();
+    assert!(!can_block(&game,source,blocker));
+    game.move_object_by_effect(own,Zone::Graveyard).unwrap();
+    assert!(can_block(&game,source,blocker),"land leaves battlefield");
+    game.create_object_from_card(&land(vec![Subtype::Island,Subtype::Forest]),alice,Zone::Battlefield);
+    assert!(!can_block(&game,source,blocker),"a nonbasic dual land supplies both basic land types");
+    game.object_mut(defending).unwrap().subtypes = vec![Subtype::Forest].into();
+    assert!(!can_block(&game,source,blocker));
+    let rewrite = Effect::new(ironsmith::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::SpecificObject(source),
+        ironsmith::continuous::Modification::RewriteText(ironsmith_core::TextChange::basic_land_type(Subtype::Forest,Subtype::Mountain).unwrap()),
+        ironsmith::effect::Until::EndOfTurn,
+    ));
+    let mut ctx = ironsmith::effects::EffectContext::new_default(source,alice);
+    ironsmith::effects::execute_effect(&mut game,&rewrite,&mut ctx).unwrap();
+    assert!(!can_block(&game,source,blocker),"a text change cannot change unwritten land-type cases generated by the generic domain rule");
+}

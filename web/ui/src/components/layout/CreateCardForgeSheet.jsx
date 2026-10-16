@@ -1,4 +1,4 @@
-import AddCardSheet from "./AddCardSheet";
+import BuildCardSearch from "./BuildCardSearch";
 import CustomCardsButton from "./CustomCardsButton";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
@@ -9,6 +9,7 @@ import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
 import { hideEmptyDefinitionFields } from "@/lib/compiled-definition-display";
 import {
+  fetchCardBuildDraft,
   customCardArtUrl,
   resolveScryfallImageUrl,
   setCustomCardCounterOverrides,
@@ -545,7 +546,6 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
 
 export default function CreateCardForgeSheet({
   disabled = false,
-  onAddCardNotice,
   players = [],
   selectedPlayer = 0,
   onSelectPlayer,
@@ -558,7 +558,7 @@ export default function CreateCardForgeSheet({
   const ui = useUiText();
   const { game, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
-  const [buildMode, setBuildMode] = useState("search");
+  const [catalogCard, setCatalogCard] = useState(null);
   const [seedLoading, setSeedLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -574,7 +574,8 @@ export default function CreateCardForgeSheet({
   const activeFaceIndex = Number(activeFace.replace("face-", "")) || 0;
   const previewFace = preview?.faces?.[activeFaceIndex] || null;
   const primaryName = preview?.faces?.[0]?.name || draft.faces[0]?.name || "Custom Card";
-  const canCompile = !disabled && !submitting && Boolean(preview?.canCreate) && !previewError;
+  const unchangedCatalogCard = catalogCard && JSON.stringify(draft) === catalogCard.snapshot;
+  const canCompile = !disabled && !submitting && !seedLoading && (unchangedCatalogCard || (Boolean(preview?.canCreate) && !previewError && !previewLoading));
 
   useEffect(() => {
     if (activeFaceIndex >= draft.faces.length) {
@@ -583,27 +584,31 @@ export default function CreateCardForgeSheet({
   }, [activeFaceIndex, draft.faces.length]);
 
   useEffect(() => {
-    if (!open || buildMode !== "create" || !game) return undefined;
+    if (!open || !game) return undefined;
 
+    let active = true;
     const timeoutId = window.setTimeout(async () => {
       setPreviewLoading(true);
       try {
         const nextPreview = await game.previewCustomCard(normalizeDraftForApi(draft));
+        if (!active) return;
         setPreview(nextPreview);
         setPreviewError("");
       } catch (error) {
+        if (!active) return;
         setPreview(null);
         setPreviewError(String(error?.message || error));
       } finally {
-        setPreviewLoading(false);
+        if (active) setPreviewLoading(false);
       }
     }, 180);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [draft, game, open, buildMode]);
+    return () => { active = false; window.clearTimeout(timeoutId); };
+  }, [draft, game, open]);
 
   const loadSeed = useCallback(async ({ reroll = false } = {}) => {
     setSeedLoading(true);
+    setCatalogCard(null);
     try {
       if (!game || typeof game.sampleLoadedDeckSeed !== "function") {
         throw new Error("This WASM build does not expose sampleLoadedDeckSeed");
@@ -617,7 +622,7 @@ export default function CreateCardForgeSheet({
       setActiveFace("face-0");
       setPreviewError("");
       if (reroll) {
-        setStatus(`Seeded forge with ${seed.faces?.[0]?.name || "a deck card"}`);
+        setStatus(`Loaded example ${seed.faces?.[0]?.name || "a deck card"}`);
       }
     } catch {
       if (reroll && seedDraft) {
@@ -640,7 +645,7 @@ export default function CreateCardForgeSheet({
     setOpen(nextOpen);
     if (nextOpen) {
       setSaveMessage("");
-      setBuildMode("search");
+
     }
   }, []);
 
@@ -702,7 +707,7 @@ export default function CreateCardForgeSheet({
       const validation = await game.previewCustomCard(savedDraft);
       if (!validation.canCreate) throw new Error("This card must compile before it can be saved");
       await saveCustomCard(savedDraft);
-      setSaveMessage(`Saved ${savedDraft.faces[0].name}. Enable custom cards in Build’s card search to use it. Saved on this browser; saving the same name updates it.`);
+      setSaveMessage(`Saved ${savedDraft.faces[0].name}. Find it with Include custom cards in Build. Saved on this browser; saving the same name updates it.`);
     } catch (error) {
       setSaveMessage(`Save failed: ${String(error?.message || error)}`);
     } finally {
@@ -718,6 +723,12 @@ export default function CreateCardForgeSheet({
       }
       setSubmitting(true);
       try {
+        if (unchangedCatalogCard) {
+          await game.addCardToZone(selectedPlayer, catalogCard.name, zone, skipTriggers);
+          setOpen(false);
+          await refresh(`Added ${catalogCard.name}`);
+          return;
+        }
         await game.createCustomCard({
           draft: normalizeDraftForApi(draft),
           playerIndex: selectedPlayer,
@@ -739,7 +750,7 @@ export default function CreateCardForgeSheet({
         setSubmitting(false);
       }
     });
-  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone]);
+  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard]);
 
   const handleCounterShowcase = useCallback(async () => {
     const result = await runWasmInteraction(async () => {
@@ -876,30 +887,92 @@ export default function CreateCardForgeSheet({
           }}
         >
           <SheetHeader className="fantasy-sheet-header card-forge-header pr-12">
-            <div className="card-forge-eyebrow">{ui("Forge")}</div>
             <SheetTitle>{ui("Build")}</SheetTitle>
-            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Search supported cards to add to your game, or create a custom card.")}</SheetDescription>
+            <SheetDescription className="card-forge-description max-w-[58ch] text-[13px] leading-5">{ui("Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.")}</SheetDescription>
           </SheetHeader>
 
-          <Tabs value={buildMode} onValueChange={(mode) => {
-            setBuildMode(mode);
-            if (mode === "create" && !seedDraft) void loadSeed();
-          }} className="min-h-0 flex-1">
-            <TabsList aria-label={ui("Build mode")} className="mx-4 shrink-0">
-              <TabsTrigger value="search">{ui("Search cards")}</TabsTrigger>
-              <TabsTrigger value="create">{ui("Create card")}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="search" className="min-h-0 overflow-y-auto">
-              <div className="mx-auto w-full max-w-xl">
-                <AddCardSheet embedded disabled={disabled} onAddCardNotice={onAddCardNotice} onClose={() => setOpen(false)} />
-              </div>
-            </TabsContent>
-            <TabsContent value="create" className="flex min-h-0 flex-col overflow-hidden data-[state=inactive]:hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <BuildCardSearch
+            actions={<div className="build-card-toolbar-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="stone-pill"
+                onClick={() => setOpen(false)}
+              >{ui("Cancel")}</Button>
+              <Button type="button" variant="secondary" size="sm" className="stone-pill"
+                disabled={disabled || saving || submitting || seedLoading || !game || draft.faces.some(face => !face.name.trim())}
+                onClick={() => void handleSave()}>{saving ? ui("Saving...") : ui("Save")}</Button>
+              <Button
+                type="button"
+                size="sm"
+                className="card-forge-submit stone-pill"
+                disabled={!canCompile}
+                onClick={() => void handleCompile()}
+              >
+                {submitting ? ui("Adding...") : ui("Add")}
+              </Button>
+                  <label className="card-forge-field">
+                    <span className="card-forge-section-label">{ui("Player")}</span>
+                    <select
+                      className="card-forge-input"
+                      value={selectedPlayer}
+                      onChange={(event) => onSelectPlayer?.(Number(event.target.value))}
+                    >
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="card-forge-field">
+                    <span className="card-forge-section-label">{ui("Zone")}</span>
+                    <select
+                      className="card-forge-input"
+                      value={zone}
+                      onChange={(event) => onZoneChange?.(event.target.value)}
+                    >
+                      {ZONE_OPTIONS.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {ui(label)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+            </div>}
+            secondaryControls={<div className="build-card-toolbar-status">
+              {saveMessage ? <p role="status" className="text-[12px] leading-4 text-foreground">{saveMessage}</p> : null}
+                <label className="toolbar-checkbox flex items-center gap-2 text-[13px] uppercase tracking-wide">
+                  <Checkbox
+                    checked={skipTriggers}
+                    onCheckedChange={(checked) => onSkipTriggersChange?.(checked === true)}
+                    className="h-3.5 w-3.5"
+                  />{ui("Skip triggers")}</label>
+            </div>}
+            disabled={disabled || seedLoading || submitting} onSelect={async (option) => {
+            setSeedLoading(true);
+            setSaveMessage("");
+            try {
+              const next = cloneDraft(option.card?.draft || await fetchCardBuildDraft(option.name));
+              setDraft(next);
+              setSeedDraft(next);
+              setCatalogCard(option.card ? null : { name: option.name, snapshot: JSON.stringify(next) });
+              setActiveFace("face-0");
+              setPreview(null);
+              setPreviewError("");
+            } catch (error) { setSaveMessage(`Could not load card: ${String(error?.message || error)}`); }
+            finally { setSeedLoading(false); }
+          }} />
           <div className="card-forge-toolbar">
             <div className="card-forge-banner">
-              {seedLoading ? ui("Loading deck sample...") : ui("Seed example: {0}", { 0: seedDraft?.faces?.[0]?.name || "Blank custom card" })}
+              {seedLoading ? ui("Loading deck sample...") : ui("Editing: {0}", { 0: draft.faces?.[0]?.name || "New card" })}
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={seedLoading || submitting} onClick={() => { setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
               <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"
@@ -917,7 +990,7 @@ export default function CreateCardForgeSheet({
                 className="stone-pill"
                 disabled={!seedDraft}
                 onClick={resetToSeed}
-              >{ui("Reset Seed")}</Button>
+              >{ui("Reset changes")}</Button>
               <Button
                 type="button"
                 variant="secondary"
@@ -1002,81 +1075,13 @@ export default function CreateCardForgeSheet({
                 ) : null}
               </section>
 
-              <section className="card-forge-panel">
-                <div className="card-forge-panel-title">{ui("Placement")}</div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="card-forge-field">
-                    <span className="card-forge-section-label">{ui("Player")}</span>
-                    <select
-                      className="card-forge-input"
-                      value={selectedPlayer}
-                      onChange={(event) => onSelectPlayer?.(Number(event.target.value))}
-                    >
-                      {players.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {player.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="card-forge-field">
-                    <span className="card-forge-section-label">{ui("Zone")}</span>
-                    <select
-                      className="card-forge-input"
-                      value={zone}
-                      onChange={(event) => onZoneChange?.(event.target.value)}
-                    >
-                      {ZONE_OPTIONS.map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {ui(label)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
-                  <Checkbox
-                    checked={skipTriggers}
-                    onCheckedChange={(checked) => onSkipTriggersChange?.(checked === true)}
-                    className="h-3.5 w-3.5"
-                  />{ui("Skip triggers")}</label>
-              </section>
-
               <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
             </div>
             <CompiledAbilitiesPanel face={previewFace} previewError={previewError} busy={previewLoading} />
           </div>
 
-          <div className="card-forge-footer">
-            {saveMessage
-              ? <p role="status" className="text-[12px] leading-4 text-foreground">{saveMessage}</p>
-              : <div className="card-forge-footer-note">{ui("Live preview is compiled by the engine, so the compiled card uses the same runtime path as built-in cards.")}</div>}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="stone-pill"
-                onClick={() => setOpen(false)}
-              >{ui("Cancel")}</Button>
-              <Button type="button" variant="secondary" size="sm" className="stone-pill"
-                disabled={disabled || saving || submitting || seedLoading || !game || draft.faces.some(face => !face.name.trim())}
-                onClick={() => void handleSave()}>{saving ? ui("Saving...") : ui("Save")}</Button>
-              <Button
-                type="button"
-                size="sm"
-                className="card-forge-submit stone-pill"
-                disabled={!canCompile}
-                onClick={() => void handleCompile()}
-              >
-                {submitting ? ui("Compiling...") : ui("Compile {0}", { 0: primaryName })}
-              </Button>
-            </div>
+
           </div>
-            </TabsContent>
-          </Tabs>
         </SheetContent>
       </Sheet>
     </>

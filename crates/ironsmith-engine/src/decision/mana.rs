@@ -5595,7 +5595,7 @@ pub(crate) fn with_spell_mana_spending_rules(
     ) -> Option<&'a ironsmith_core::mana::ManaSpendingRestriction> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::SpellManaSpendingRestriction(rule) => Some(rule),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. }
                 if crate::condition_eval::evaluate_condition_cast_time(
                     game, condition, player, source,
                 ) =>

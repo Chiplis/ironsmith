@@ -506,7 +506,7 @@ pub(super) fn labeled_turn_animation_preserves_source_and_timing() {
             let AbilityKind::Static(static_ability) = &ability.kind else {
                 continue;
             };
-            let StaticAbilityPayload::Conditional { ability, condition } = &static_ability.payload
+            let StaticAbilityPayload::Conditional { ability, condition, .. } = &static_ability.payload
             else {
                 continue;
             };
@@ -564,7 +564,7 @@ pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_co
                 let AbilityKind::Static(static_ability) = &ability.kind else {
                     return None;
                 };
-                let StaticAbilityPayload::Conditional { ability, condition } =
+                let StaticAbilityPayload::Conditional { ability, condition, .. } =
                     &static_ability.payload
                 else {
                     return None;

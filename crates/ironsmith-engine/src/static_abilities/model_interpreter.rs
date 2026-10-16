@@ -456,7 +456,7 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
                 grant.condition.clone()
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. }
                 if Self::model_has_inline_ability(ability)
                     || Self::model_has_source_grants(ability) =>
             {
@@ -601,7 +601,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(parsed)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_cost_reduction(ability)
                     .map(|reduction| reduction.with_condition(condition.clone()))
             }
@@ -697,7 +697,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(converted)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_activated_ability_cost_reduction(ability)
                     .map(|reduction| reduction.with_static_condition(condition.clone()))
             }
@@ -739,7 +739,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(parsed)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_activated_ability_cost_increase(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
             }
@@ -790,7 +790,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(parsed)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_cost_increase(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
             }
@@ -818,7 +818,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(runtime)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_cost_reduction_mana_cost(ability)
                     .map(|reduction| reduction.with_condition(condition.clone()))
             }
@@ -843,7 +843,7 @@ impl StaticAbilityModelInterpreter {
                 }
                 Some(runtime)
             }
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 Self::cached_cost_increase_mana_cost(ability)
                     .map(|increase| increase.with_condition(condition.clone()))
             }
@@ -1135,14 +1135,14 @@ impl StaticAbilityModelInterpreter {
                 maximum,
                 display,
             } => StaticAbility::counter_limit_rule(*counter_type, *maximum, display.clone()),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } => {
                 // The retained model keeps each authored label. Native leaf
                 // setters receive the complete executable conjunction once,
                 // so an outer designation cannot replace an inner predicate.
                 let mut leaf = ability.as_ref();
                 let mut combined = condition.clone();
                 while let ironsmith_core::StaticAbilityPayload::Conditional {
-                    ability: inner, condition: inner_condition,
+                    ability: inner, condition: inner_condition, ..
                 } = &leaf.payload {
                     combined = inner_condition.clone().and(combined);
                     leaf = inner.as_ref();
@@ -2821,7 +2821,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn labeled_static_condition(&self) -> Option<(String, StaticAbility, crate::ConditionExpr)> {
-        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
             &self.model.payload
         else {
             return None;
@@ -2882,7 +2882,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
-        if let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+        if let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
             &self.model.payload
         {
             let mut inner = ability.as_ref();
@@ -3222,7 +3222,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn conditional_flash_condition(&self) -> Option<&ironsmith_core::Condition> {
         match self.payload() {
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. }
                 if ability.id == Some(StaticAbilityId::Flash) =>
             {
                 Some(condition)

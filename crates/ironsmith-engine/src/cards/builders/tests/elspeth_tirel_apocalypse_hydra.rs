@@ -151,7 +151,7 @@ fn apocalypse_hydra_keeps_the_typed_x_threshold_publicly() {
             )
         })
         .expect("Apocalypse Hydra should retain a conditional counter replacement");
-    let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+    let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
         &conditional.payload
     else {
         unreachable!();

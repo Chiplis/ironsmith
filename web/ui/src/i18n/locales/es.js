@@ -1,5 +1,14 @@
 // All interface copy for es. Preserve interpolation placeholders.
 export const messages = {
+  "Find a card to add or edit": "Busca una carta para añadir o editar",
+  "Find an existing card, edit its details, or start a new card. Preview the result and add it to your game.": "Busca una carta existente, edita sus detalles o crea una nueva. Revisa el resultado y añádela a tu partida.",
+  "Editing: {0}": "Editando: {0}",
+  "New card": "Nueva carta",
+  "Reset changes": "Restablecer cambios",
+  "Compile and add": "Compilar y añadir",
+  "Adding...": "Añadiendo...",
+  "Review the preview, then add your card to the selected player and zone.": "Revisa la vista previa y añade la carta al jugador y la zona seleccionados.",
+
   "End turn": "Terminar turno",
   "End the turn, ignoring phase pauses": "Terminar el turno, ignorando las pausas de fase",
   "action.skippingPhase": "Saltando {phase}",

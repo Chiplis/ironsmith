@@ -1,3 +1,4 @@
+import ZonePileLabel from "./ZonePileLabel";
 import useUiText from "@/i18n/useUiText";
 import { HIDDEN_CARD_BACK_IMAGE_URL } from "@/lib/scryfall";
 import { useGame } from "@/context/GameContext";
@@ -16,7 +17,7 @@ export default function LibraryZonePile({ player, onCardClick, renderExpandedPil
   const inspectable = card && !String(card.id).startsWith("look-top-");
   const preview = () => { if (inspectable) hoverCard(card.id); };
   return <div className="zone-pile-slot library-pile-slot">
-    <span className="zone-pile-label">{ui("Deck")} <strong>{count}</strong></span>
+    <ZonePileLabel label={ui("Deck")} count={count} />
     <button type="button" className="zone-pile library-zone-pile" data-zone-pile="library"
       data-zone-owner={String(player.id ?? player.index)}
       data-object-id={inspectable ? card.id : undefined}

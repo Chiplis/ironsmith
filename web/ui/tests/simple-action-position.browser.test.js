@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('looking and combat keep the primary action in the priority slot', async () => {
+test('looking, combat, and effect ordering keep the primary action in the priority slot', async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch();
@@ -35,6 +35,18 @@ test('looking and combat keep the primary action in the priority slot', async ()
         await page.getByRole('button', { name: 'Next decision', exact: true }).click();
         await page.waitForTimeout(500);
         sameSlot(attacking, await button.boundingBox());
+      }
+      for (const [kind, label, indices] of [
+        ['replacement', 'Apply First', [1]],
+        ['trigger', 'Submit Order', [1, 0]],
+      ]) {
+        await open(`effectOrder=${kind}`);
+        assert.equal((await button.textContent()).trim(), label);
+        sameSlot(attacking, await button.boundingBox());
+        assert.equal(await page.locator('[data-human-action-dock] .action-strip-decision-stack').count(), 0);
+        assert.equal(await page.locator('[data-human-action-dock] .battlefield-decision-disclosure-toggle').count(), 0);
+        await button.click();
+        assert.deepEqual(JSON.parse(await page.locator('output').textContent()), { type: 'select_options', option_indices: indices });
       }
       await page.close();
     }

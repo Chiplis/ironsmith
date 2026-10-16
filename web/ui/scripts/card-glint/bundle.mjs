@@ -8,11 +8,18 @@ const {build} = await import(pathToFileURL(path.join(source, 'node_modules/vite/
 const result = await build({
   configFile:false,
   plugins:[{
-    name:'ironsmith-live-saga-palette',
+    name:'ironsmith-live-land-palette',
     enforce:'pre',
     transform(code,id) {
       // Upstream's land Saga plate currently overrides even explicit live
       // frame colors. Keep the neutral plate only when the palette is empty.
+      if (id.endsWith('/presentation/profile.ts')) {
+        // Land is a rules characteristic, not a forced tan material. Keep
+        // neutral lands neutral; colored land palettes also paint the stock.
+        const before = "const boxes = land\n    ? 'Land'\n    : artifact";
+        if (!code.includes(before)) throw new Error('card-glint land material patch needs updating');
+        return code.replace(before, "const boxes = land && !colors.length\n    ? 'Land'\n    : artifact && !(land && colors.length)");
+      }
       if (id.endsWith('/presentation/saga-frame.ts')) {
         return code.replace("if (/\\bLand\\b/.test(face.typeLine ?? '') || face.land)",
           "if (!colors.length && (/\\bLand\\b/.test(face.typeLine ?? '') || face.land))");

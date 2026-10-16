@@ -185,9 +185,11 @@ pub(crate) fn rewrite_static_model_words(
             abilities_words(&mut grant.additional_abilities, change)?;
             optional_condition(&mut grant.condition, change)?;
         }
-        P::Conditional { ability, condition } => {
-            **ability = rewrite_static_model_words(ability, change)?;
-            *condition = rewrite_condition_words(condition, change)?;
+        P::Conditional { ability, condition, implied_words } => {
+            if !*implied_words {
+                **ability = rewrite_static_model_words(ability, change)?;
+                *condition = rewrite_condition_words(condition, change)?;
+            }
         }
         P::CopyActivatedAbilities(copy) => copy.filter = rewrite_filter_words(&copy.filter, change)?,
         P::CopyStaticAbilityVariants(copy) => copy.filter = rewrite_filter_words(&copy.filter, change)?,
@@ -856,6 +858,31 @@ mod tests {
     }
 
     #[test]
+    fn implied_word_scopes_preserve_authored_outer_conditions() {
+        let forest = Condition::YouControl(ObjectFilter::land().with_subtype(Subtype::Forest));
+        let mountain = Condition::YouControl(ObjectFilter::land().with_subtype(Subtype::Mountain));
+        let change = TextChange::basic_land_type(Subtype::Forest, Subtype::Mountain).unwrap();
+        let leaf = CompiledStaticAbility::landwalk(Subtype::Forest);
+        let literal = leaf.clone().with_condition(forest.clone());
+        let generated = leaf.with_implied_condition(forest.clone());
+        let changed_literal = rewrite_static_model_words(&literal, change).unwrap();
+        let P::Conditional { ability, condition, implied_words: false } = &changed_literal.payload else { panic!("authored conditional"); };
+        assert_eq!(*condition, mountain);
+        assert!(matches!(&ability.payload, P::Landwalk(ironsmith_core::LandwalkKind::Subtype { subtype: Subtype::Mountain, snow: false })));
+        let protected = rewrite_static_model_words(&generated, change).unwrap();
+        let P::Conditional { ability, condition, implied_words: true } = &protected.payload else { panic!("generated conditional"); };
+        assert_eq!(*condition, forest);
+        assert!(matches!(&ability.payload, P::Landwalk(ironsmith_core::LandwalkKind::Subtype { subtype: Subtype::Forest, snow: false })));
+        let nested = generated.with_condition(forest.clone());
+        let changed_nested = rewrite_static_model_words(&nested, change).unwrap();
+        let P::Conditional { ability, condition, implied_words: false } = &changed_nested.payload else { panic!("authored outer scope must not merge into generated rules"); };
+        assert_eq!(*condition, mountain);
+        let P::Conditional { ability, condition, implied_words: true } = &ability.payload else { panic!("preserved generated inner scope"); };
+        assert_eq!(*condition, forest);
+        assert!(matches!(&ability.payload, P::Landwalk(ironsmith_core::LandwalkKind::Subtype { subtype: Subtype::Forest, snow: false })));
+    }
+
+    #[test]
     fn nested_attachment_definition_keeps_links_presentation_mana_and_earlier_capture() {
         let program = crate::resolution::ResolutionProgram::from_effects(vec![word_effect()])
             .with_linked_exile_pair(pair());
@@ -866,6 +893,7 @@ mod tests {
         activated.activation_condition = Some(Condition::YouControl(black()));
         activated.mana_output = Some(vec![ManaSymbol::Black]);
         let original = model(P::Conditional {
+            implied_words: false,
             condition: Condition::YouControl(black()),
             ability: Box::new(model(P::AttachedAbilityGrant(Box::new(
                 ironsmith_core::AttachedAbilityGrant::new(ability, "Black Knight has this ability")
@@ -877,7 +905,7 @@ mod tests {
         let changed = rewrite_static_model_words(&original, change()).unwrap();
         assert_eq!(changed.label, "Black Knight's unchanged label");
         assert_eq!(changed.id, original.id);
-        let P::Conditional { ability, condition } = &changed.payload else { unreachable!() };
+        let P::Conditional { ability, condition, .. } = &changed.payload else { unreachable!() };
         assert_eq!(condition, &Condition::YouControl(blue()));
         let P::AttachedAbilityGrant(grant) = &ability.payload else { unreachable!() };
         assert_eq!(grant.display, "Black Knight has this ability");
@@ -891,7 +919,7 @@ mod tests {
         assert_eq!(activated.choices, vec![ironsmith_core::ChooseSpec::target(ironsmith_core::ChooseSpec::Object(blue()))]);
         assert_eq!(activated.mana_cost.costs()[0].compiled_model(), Some(&ironsmith_core::Cost::Sacrifice(blue())));
         assert_eq!(activated.effects.flattened_default_effects()[0].downcast_ref::<DrawCardsEffect>().unwrap().count, Value::Count(blue()));
-        let P::Conditional { ability, condition } = &captured.payload else { unreachable!() };
+        let P::Conditional { ability, condition, .. } = &captured.payload else { unreachable!() };
         assert_eq!(condition, &Condition::YouControl(black()));
         let P::AttachedAbilityGrant(grant) = &ability.payload else { unreachable!() };
         let ironsmith_core::AbilityKind::Activated(activated) = &grant.ability.kind else { unreachable!() };

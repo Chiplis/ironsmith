@@ -3550,6 +3550,9 @@ button:disabled,
 }
 
 .player-identity-box {
+  position: relative;
+  z-index: 1;
+  background: #000;
   border: 1px solid transparent;
   padding: 2px 4px;
 }

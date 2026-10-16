@@ -383,7 +383,7 @@ fn winter_keeps_the_typed_seven_minus_rule_and_multiplayer_threshold() {
         .expect("Winter should retain its typed maximum-hand-size rule");
     assert!(matches!(
         &winter_rule.payload,
-        ironsmith_core::StaticAbilityPayload::Conditional { ability, condition }
+        ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. }
             if matches!(
                 &ability.payload,
                 ironsmith_core::StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {

@@ -704,6 +704,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     Conditional {
         ability: Box<StaticAbility<T, E, C, Cond, ICond>>,
         condition: ICond,
+        /// The condition and body are generated rules, not authored word occurrences.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "static_implied_words_are_false"))]
+        implied_words: bool,
     },
     GrantObjectAbilityForFilter(Box<GrantObjectAbilityForFilter<T, E, C, Cond, ICond>>),
     CopyActivatedAbilities(CopyActivatedAbilities),
@@ -2153,8 +2156,9 @@ where
             StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
                 StaticAbilityPayload::AttachedChosenLandwalkGrant(grant)
             }
-            StaticAbilityPayload::Conditional { ability, condition } => {
+            StaticAbilityPayload::Conditional { ability, condition, implied_words } => {
                 StaticAbilityPayload::Conditional {
+                    implied_words,
                     ability: Box::new(map_static_ability(
                         *ability,
                         map_trigger,
@@ -4738,12 +4742,14 @@ impl<
             StaticAbilityPayload::Conditional {
                 ability,
                 condition: existing,
+                implied_words: false,
             } => {
                 let combined = existing.and(condition);
                 StaticAbility {
                     id: ability.id,
                     label: ability.label.clone(),
                     payload: StaticAbilityPayload::Conditional {
+                        implied_words: false,
                         ability,
                         condition: combined,
                     },
@@ -4759,6 +4765,7 @@ impl<
                     id: ability.id,
                     label: ability.label.clone(),
                     payload: StaticAbilityPayload::Conditional {
+                        implied_words: false,
                         ability: Box::new(ability),
                         condition,
                     },
@@ -4778,8 +4785,21 @@ impl<
             id,
             label: label.into(),
             payload: StaticAbilityPayload::Conditional {
+                implied_words: false,
                 ability: Box::new(self),
                 condition,
+            },
+        }
+    }
+
+    /// Preserve a generated condition/body as an independent word-provenance
+    /// scope. An authored outer condition can still be edited independently.
+    pub fn with_implied_condition(self, condition: ICond) -> Self {
+        Self {
+            id: self.id,
+            label: self.label.clone(),
+            payload: StaticAbilityPayload::Conditional {
+                ability: Box::new(self), condition, implied_words: true,
             },
         }
     }
@@ -8316,3 +8336,6 @@ mod cast_timing_payload_tests {
 pub fn one_chosen_color() -> u32 {
     1
 }
+
+#[cfg(feature = "serde")]
+fn static_implied_words_are_false(value: &bool) -> bool { !*value }

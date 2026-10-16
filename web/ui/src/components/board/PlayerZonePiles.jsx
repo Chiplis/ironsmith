@@ -1,3 +1,4 @@
+import ZonePileLabel from "./ZonePileLabel";
 import { createPortal } from "react-dom";
 import { visibleLibraryCards } from "@/lib/library-pile";
 import LibraryZonePile from "@/components/board/LibraryZonePile";
@@ -298,7 +299,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
         opacity: fading ? 0 : 1,
         transition: `${fading ? `opacity ${LOOK_FADE_MS}ms linear` : "opacity 120ms ease"}, transform ${ZONE_TARGET_GROW_MS}ms ease`,
       }}>
-      <span className="zone-pile-label">{ui(label)} <strong>{count}</strong></span>
+      <ZonePileLabel label={ui(label)} count={count} />
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className="zone-pile" data-zone-pile={zone}
           data-zone-owner={String(player.id ?? player.index)}

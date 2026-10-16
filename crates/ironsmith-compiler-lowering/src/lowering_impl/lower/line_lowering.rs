@@ -350,7 +350,7 @@ fn is_conditional_spell_counter_and_damage_prevention_group(
         &crate::static_abilities::StaticAbility,
         &crate::ConditionExpr,
     )> {
-        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } =
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
             &ability.payload
         else {
             return None;

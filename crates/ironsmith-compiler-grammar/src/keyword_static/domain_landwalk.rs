@@ -34,10 +34,11 @@ pub fn parse_domain_landwalk_line(
             Subtype::Forest,
         ]
         .into_iter()
-        .map(|land_type| StaticAbilityAst::ConditionalStaticAbility {
-            ability: Box::new(StaticAbilityAst::Static(StaticAbility::landwalk(land_type))),
-            condition: PredicateAst::YouControl(ObjectFilter::land().with_subtype(land_type)),
-        })
+        .map(|land_type| StaticAbilityAst::Static(
+            StaticAbility::landwalk(land_type).with_implied_condition(
+                PredicateAst::YouControl(ObjectFilter::land().with_subtype(land_type)),
+            ),
+        ))
         .collect(),
     ))
 }

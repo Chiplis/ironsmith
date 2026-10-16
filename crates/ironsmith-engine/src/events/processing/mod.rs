@@ -393,6 +393,7 @@ fn push_enter_as_copy_effects_for_spec(
                 ironsmith_core::StaticAbilityPayload::Conditional {
                     ability: inner,
                     condition,
+                    ..
                 },
             ..
         }) = model

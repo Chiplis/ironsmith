@@ -1,4 +1,6 @@
 import test from "node:test";
+import {readFile} from "node:fs/promises";
+import {localCardBuildSource} from "../src/lib/card-build-draft.js";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -27,7 +29,7 @@ const state = {
   },
 };
 
-async function harness() {
+async function harness(fixtureState = state) {
   const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
   await vite.listen();
   const browser = await chromium.launch();
@@ -37,8 +39,8 @@ async function harness() {
   await page.route("**/api.scryfall.com/**", (route) => route.abort());
   await page.route("**/cards.scryfall.io/**", (route) => route.abort());
   await page.addInitScript((fixture) => { window.__actionPopoverHoverFixture = fixture; }, {
-    state,
-    actions: state.decision.actions,
+    state: fixtureState,
+    actions: fixtureState.decision.actions,
     anchorRect: { left: 520, top: 180, right: 640, bottom: 320, width: 120, height: 140 },
   });
   await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/action-popover-hand-preview.html`);
@@ -97,3 +99,56 @@ test("a menu row previews its card once: in hand if the hand is showing it, othe
     await close();
   }
 });
+
+
+test("alternate-face menu hover turns the hand card and retains it after leaving", {timeout:120000}, async()=>{
+  const front={name:"Test Front",type_line:"Creature — Wizard",oracle_text:"Flying",power:"2",toughness:"2"};
+  const back={name:"Test Back",type_line:"Land",oracle_text:"{T}: Add {U}."};
+  const card={...front,id:9,layout:"modal_dfc",card_faces:[front,back]};
+  const actions=[
+    {index:0,kind:"cast_spell",object_id:9,label:"Cast Test Front",action_ref:{kind:"cast_spell",spell_id:9}},
+    {index:1,kind:"play_land",object_id:9,label:"Play Test Back",action_ref:{kind:"play_land",land_id:9,back_face:true}},
+  ];
+  const fixture={...state,players:[{...state.players[0],hand_cards:[card]}],decision:{...state.decision,actions}};
+  const {page,hover,away,errors,close}=await harness(fixture);
+  try {
+    const hand=page.locator('[data-hand-case] .game-card.hand-card');
+    await hover(1);
+    await page.waitForFunction(()=>document.querySelector('.hand-card')?.getAttribute('data-card-name')==='Test Back');
+    await away();
+    assert.equal(await hand.getAttribute('data-card-name'),'Test Back');
+    await hover(0);
+    await page.waitForFunction(()=>document.querySelector('.hand-card')?.getAttribute('data-card-name')==='Test Front');
+    await away();
+    assert.equal(await hand.getAttribute('data-card-name'),'Test Front');
+    assert.deepEqual(errors,[]);
+  } finally {await close();}
+});
+
+
+for (const embeddedFaces of [false,true]) {
+  test(`Arkenstone Adventure hover persists with ${embeddedFaces ? 'embedded' : 'catalog'} faces`, {timeout:120000}, async()=>{
+    const payload=JSON.parse(await readFile(new URL('../public/cards/the-arkenstone.json',import.meta.url),'utf8'));
+    const source=localCardBuildSource(payload);
+    const card={...source.card_faces[0],id:9,...(embeddedFaces ? {layout:'adventure',card_faces:source.card_faces} : {})};
+    const actions=[
+      {index:0,kind:'cast_spell',object_id:9,label:'Cast The Arkenstone',action_ref:{kind:'cast_spell',spell_id:9,casting_method:{kind:'normal'}}},
+      {index:1,kind:'cast_spell',object_id:9,label:'Cast Seek the Heart (other half)',action_ref:{kind:'cast_spell',spell_id:9,casting_method:{kind:'split_other_half'}}},
+    ];
+    const fixture={...state,players:[{...state.players[0],hand_cards:[card]}],decision:{...state.decision,actions}};
+    const {page,hover,away,errors,close}=await harness(fixture);
+    try {
+      await hover(1);
+      await page.waitForFunction(()=>document.querySelector('.hand-card')?.dataset.cardName==='Seek the Heart');
+      const hand=page.locator('[data-hand-case] .game-card.hand-card');
+      await hand.getByRole('img',{name:/Seek the Heart/,includeHidden:true}).waitFor({state:'attached'});
+      await away();
+      assert.equal(await hand.getAttribute('data-card-name'),'Seek the Heart');
+      await hover(0);
+      await page.waitForFunction(()=>document.querySelector('.hand-card')?.dataset.cardName==='The Arkenstone');
+      await away();
+      assert.equal(await hand.getAttribute('data-card-name'),'The Arkenstone');
+      assert.deepEqual(errors,[]);
+    } finally {await close();}
+  });
+}

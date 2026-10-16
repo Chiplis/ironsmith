@@ -1989,6 +1989,7 @@ pub(in crate::compiled_text) fn describe_conditional_spell_uncounterability(
     let ironsmith_core::StaticAbilityPayload::Conditional {
         ability: inner,
         condition,
+        ..
     } = &model.payload
     else {
         return None;

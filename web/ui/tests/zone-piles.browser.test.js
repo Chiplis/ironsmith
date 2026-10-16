@@ -283,3 +283,27 @@ test('opponent deck and all zone labels fit inside the clipped panel', async () 
     }
   } finally { await browser.close(); await vite.close(); }
 });
+
+
+test('zone labels fill their card frame width at different sizes', async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
+  const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage();
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look`);
+    await page.locator('[data-zone-pile="look"]').waitFor();
+    for(const width of [1280,1800]) {
+      await page.setViewportSize({width,height:1000});
+      await page.waitForTimeout(500);
+      for(const zone of ['library','graveyard','exile','look']) {
+        const slot=page.locator(`[data-local-zone-piles="true"] [data-zone-pile="${zone}"]`).locator('..');
+        const frame=await slot.locator(':scope > .zone-pile').boundingBox();
+        const text=await slot.locator('.zone-pile-label > span').boundingBox();
+        assert.ok(Math.abs(text.x-frame.x)<1, `${zone} starts at frame edge`);
+        assert.ok(Math.abs(text.x+text.width-frame.x-frame.width)<2, `${zone} ends at frame edge`);
+        assert.ok(text.y+text.height<=frame.y, `${zone} label stays above frame`);
+      }
+    }
+    await page.screenshot({path:'/tmp/zone-labels-full-table.png'});
+  }finally{await browser.close();await vite.close();}
+});

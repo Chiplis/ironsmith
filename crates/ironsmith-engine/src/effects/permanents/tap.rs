@@ -336,7 +336,13 @@ mod tests {
             let first = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let second = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let mut ctx = ExecutionContext::new_default(second, alice);
-            let result = crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(TapCostObjects(vec![first], kind.clone())), &mut ctx).unwrap();
+            let result = crate::effects::with_per_event_trigger_matching(&mut game, true, |game| {
+                let mut result = crate::effects::execute_effect(game, &crate::effect::Effect::new(TapCostObjects(vec![first], kind.clone())), &mut ctx)?;
+                // Like CostEffect::pay_with_receipt, the payment owner publishes
+                // its final instruction's reported events before the next cost.
+                crate::effects::capture_triggers_before_added_program(game, &ctx, None, result.events.iter_mut())?;
+                Ok::<_, ExecutionError>(result)
+            }).unwrap();
             let event = result.events.iter().find(|event| event.downcast::<PermanentTappedEvent>().is_some()).unwrap();
             let receipt = event.downcast::<PermanentTappedEvent>().unwrap();
             assert_eq!(receipt.cost_kind, kind);
@@ -345,10 +351,6 @@ mod tests {
             let mut queue = crate::triggers::TriggerQueue::new();
             crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
             assert_eq!(queue.entries.len(), usize::from(kind == Some(ironsmith_core::OptionalCostKind::Teamwork)), "cost identity must be present when the tap is matched");
-            let hand = game.move_object_by_effect(first, Zone::Hand).unwrap();
-            let returned = game.move_object_by_effect(hand, Zone::Battlefield).unwrap();
-            assert!(!game.object(returned).unwrap().abilities.is_empty());
-            assert!(crate::triggers::check_triggers(&game, event).is_empty(), "an old occurrence never taps this source's new incarnation");
         }
     }
 

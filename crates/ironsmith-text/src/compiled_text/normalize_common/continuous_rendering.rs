@@ -1435,6 +1435,7 @@ fn is_sunburst_counter_grant(
     let ironsmith_core::StaticAbilityPayload::Conditional {
         ability: inner,
         condition,
+        ..
     } = &model.payload
     else {
         return false;

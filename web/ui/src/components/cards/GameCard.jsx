@@ -21,6 +21,7 @@ import { getPlayerAccent } from "@/lib/player-colors";
 import {
   customCardCounterOverrides,
   fetchScryfallCardMeta,
+  fetchCardFaceSource,
   isCompiledCardName,
 } from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
@@ -699,7 +700,34 @@ export default function GameCard({
     ? requestedGlowKind
     : targetingMode ? (isLegalTarget ? "target-legal" : null) : requestedGlowKind;
   const showActionBorder = (hasAvailableAction || glowKind === "action-link") && !targetingMode;
-  const name = card.name || "";
+  const [handFace, setHandFace] = useState(null);
+  useEffect(() => {
+    if (variant !== "hand") return undefined;
+    let request = 0;
+    const onActionHover = async ({detail}) => {
+      if (String(detail?.objectId) !== String(card.id)) return;
+      const action = detail?.action;
+      if (!["cast_spell", "play_land"].includes(action?.kind)) return;
+      const current = ++request;
+      const label = String(action.label || "").replace(/^(Cast|Play)\s+/i, "");
+      const matchesName = name => label === name || label.startsWith(`${name} (`) || label.startsWith(`${name} with `);
+      if (!action.action_ref?.back_face && matchesName(card.name)) {
+        setHandFace(null);
+        return;
+      }
+      const source = card.card_faces?.length ? card : await fetchCardFaceSource(card.name).catch(() => null);
+      if (current !== request || !source?.card_faces?.length || source.layout === "split") return;
+      const face = action.action_ref?.back_face
+        ? source.card_faces[1]
+        : source.card_faces.find(face => matchesName(face.name));
+      if (face) setHandFace({id:card.id, sourceName:card.name, face});
+    };
+    window.addEventListener("ironsmith:hand-action-hover", onActionHover);
+    return () => { request++; window.removeEventListener("ironsmith:hand-action-hover", onActionHover); };
+  }, [card, variant]);
+  const shownHandFace = variant === "hand" && handFace?.id === card.id && handFace.sourceName === card.name ? handFace.face : null;
+  const presentationCard = shownHandFace ? {...shownHandFace, id:card.id} : card;
+  const name = presentationCard.name || "";
   // English name stays the lookup key everywhere (art, mana parsing, DOM
   // attributes); only user-facing labels use the localized name.
   const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
@@ -1483,7 +1511,7 @@ export default function GameCard({
       {pseudoHandOwnerAccent && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
       <div className="game-card-surface">
         {(usePortraitBattlefield || useHandFrame) && (
-          <MiniatureCardFrame card={card} imageUrl={artUrl} />
+          <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} />
         )}
         {(showActionBorder || isLegalTarget) && !useTokenBattlefield && (
           <span className="card-action-border" aria-hidden="true" />

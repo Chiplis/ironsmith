@@ -233,3 +233,47 @@ test('live land Saga preview retains the glint frame and granted mana actions', 
     assert.equal(await page.evaluate(()=>window.glintActivated),'mana');
   }finally{await browser.close();await vite.close();}
 });
+
+test('colored lands paint their outer stock from the land palette', {timeout:120000}, async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});
+  await vite.listen();const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage({viewport:{width:1100,height:1100}});
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    const results=await page.evaluate(async()=>{
+      const {cardGlintFace}=await import('/src/lib/card-glint/card.mjs');
+      const {renderCardGlint,loadCardGlint}=await import('/src/lib/card-glint/session.mjs');
+      const api=await loadCardGlint();
+      document.body.replaceChildren();document.body.style.cssText='display:flex;flex-wrap:wrap;gap:10px;background:#222';
+      const cards=[
+        ['Yavimaya, Cradle of Growth','Legendary Land — Forest',['G']],
+        ['Island','Basic Land — Island',['U']],
+        ['Plains','Basic Land — Plains',['W']],
+        ['Swamp','Basic Land — Swamp',['B']],
+        ['Mountain','Basic Land — Mountain',['R']],
+        ['Forest','Basic Land — Forest',['G']],
+        ['Dual land','Land',['U','G']],
+        ['Wastes','Basic Land',[]],
+      ];
+      const results=[];
+      for(const [name,type_line,palette] of cards){
+        const face=cardGlintFace({name,type_line,colors:[],color_identity:palette});
+        const {canvas}=await renderCardGlint(face);
+        const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
+        copy.getContext('2d').drawImage(canvas,0,0);copy.style.width='244px';copy.style.height='340px';document.body.append(copy);
+        const pixels=canvas.getContext('2d').getImageData(Math.round(canvas.width*.045),Math.round(canvas.height*.3),1,1).data;
+        results.push({name,colors:face.colors,assets:api.canvasAssetUrls(face),pixel:[...pixels]});
+      }
+      return results;
+    });
+    for(const [index,color] of ['G','U','W','B','R','G','Gold','Land'].entries()){
+      assert.deepEqual(results[index].colors,[]);
+      assert.ok(results[index].assets.some(url=>url?.endsWith(`/bg/${color}.webp`)),results[index].name);
+    }
+    const [r,g,b]=results[0].pixel;
+    assert.ok(g>r && g>b,`Yavimaya outer stock is green: ${results[0].pixel}`);
+    const [ir,ig,ib]=results[1].pixel;
+    assert.ok(ib>ir && ib>ig,`Island outer stock is blue: ${results[1].pixel}`);
+    await page.screenshot({path:'test-results/card-glint-land-stock.png'});
+  } finally {await browser.close();await vite.close();}
+});

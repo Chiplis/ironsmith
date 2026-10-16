@@ -47,8 +47,12 @@ function textManaColors(text){
 }
 function frameColor(colors,type){
   const choices=colors.map(code=>colorNames[code]);
-  if(/\bArtifact\b/.test(type))choices.push('artifact');
-  if(/\bLand\b/.test(type))choices.push('land');
+  // The native 'land' choice paints the outer frame tan even when its
+  // panels are colored. Colored lands use the ordinary color frame all the
+  // way through (including artifact lands); this changes presentation only.
+  const coloredLand=/\bLand\b/.test(type)&&colors.length>0;
+  if(!coloredLand&&/\bArtifact\b/.test(type))choices.push('artifact');
+  if(!coloredLand&&/\bLand\b/.test(type))choices.push('land');
   if(colors.length>1)choices.push('multicolor');
   return choices.join(', ')||'colorless';
 }

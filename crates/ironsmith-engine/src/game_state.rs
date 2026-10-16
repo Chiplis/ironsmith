@@ -5974,7 +5974,7 @@ impl GameState {
                 Self::object_filter_is_tap_sensitive(filter)
             }
             // A currently inactive wrapper may become active after production.
-            P::Conditional { ability, condition } => {
+            P::Conditional { ability, condition, .. } => {
                 Self::condition_is_mana_sensitive(condition)
                     || Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(
                         (**ability).clone(),
