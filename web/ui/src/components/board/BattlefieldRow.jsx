@@ -1544,7 +1544,7 @@ export default function BattlefieldRow({
       ? Math.max(0, Math.min(height, bottomOcclusionViewportTop - rowRect.top))
       : null;
     const phaseBounds = multiplayerBoard && !useMobileBattlefieldToken
-      ? [...document.querySelectorAll('.phase-track')].map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0)
+      ? [...document.querySelectorAll('.phase-track')].map(element => element.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0 && rect.top >= rowRect.top)
       : [];
     const phaseTop = phaseBounds.length ? Math.min(...phaseBounds.map(rect => rect.top)) - 12 : Infinity;
     const effectiveHeight = Math.max(

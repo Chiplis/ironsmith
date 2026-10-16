@@ -500,9 +500,12 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       data-opponent-zone-piles={!isLocal ? "true" : undefined}>
       {/* Spans the piles' own height, so anything here lines up with them. */}
       {leadingRail}
-      <LibraryZonePile player={player} />
-      {pileZonesFor(state).map((zone) => <ZonePile key={zone} player={player} zone={zone}
-        onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
+      <ZonePile player={player} zone="exile"
+        onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />
+      {pileZonesFor(state).map((zone) => zone === "exile"
+        ? <LibraryZonePile key="library" player={player} />
+        : <ZonePile key={zone} player={player} zone={zone}
+          onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
       {isLocal &&
         <div className="player-look-pile"><LookPile key={state?.perspective} player={player} onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} /></div>}
     </div>

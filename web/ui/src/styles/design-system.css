@@ -4668,7 +4668,7 @@ html[data-hand-pointer-suspended="true"] * {
 @media (min-width: 1024px) {
   .table-shell[data-focused-hud="true"] {
     /* Multiplayer opponents share the width, so reclaim more vertical space. */
-    grid-template-rows: minmax(0, var(--opponent-board-share, 0.86fr)) minmax(0, var(--local-board-share, 1.14fr)) !important;
+    grid-template-rows: minmax(0, var(--opponent-board-share, 0.86fr)) auto minmax(0, var(--local-board-share, 1.14fr)) !important;
     /* Reserve a visible lane between the opponent and local battlefields.
        Raised/scaled cards then stay inside their own side instead of grazing
        the opposing field at the shared seam. */
@@ -4680,7 +4680,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 
   .table-shell[data-focused-hud="true"] > [data-my-zone] {
-    grid-row: 2;
+    grid-row: 3;
     /* The local graveyard/exile column rises above this panel's top edge. */
     overflow: visible;
   }
@@ -7855,7 +7855,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-/* Compact cards: navigation follows the main decision dock. Its height is
+/* Desktop navigation follows the main decision dock. Its height is
    included in the dock's normal collision and viewport measurements. */
 @media (min-width: 1024px) {
   .decision-header-utility-controls {
@@ -7872,5 +7872,38 @@ html[data-hand-pointer-suspended="true"] * {
     display: block !important;
     font-size: 14px;
     letter-spacing: .1em;
+  }
+}
+
+/* Reserve space for the phase track and its optional combat row between fields. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] > .table-phase-divider {
+    grid-row: 2;
+    min-width: 0;
+    position: relative;
+    z-index: 160;
+  }
+
+  .table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell {
+    position: relative !important;
+    top: auto;
+    bottom: auto;
+    margin-block: 0;
+    backdrop-filter: none;
+  }
+}
+
+/* Keep the single opponent's Deck label inside the board. Multiplayer retains
+   its existing pile alignment. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
+    .player-zone-piles[data-opponent-zone-piles="true"] {
+    top: 8px;
+    bottom: auto;
+  }
+
+  .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
+    .player-zone-piles[data-opponent-zone-piles="true"] > .zone-pile-slot:first-child {
+    margin-top: 0;
   }
 }

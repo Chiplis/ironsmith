@@ -1,4 +1,3 @@
-import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 import useUiText from "@/i18n/useUiText";
 import CardCreationControls from "@/components/layout/CardCreationControls";
 import PriorityHoldControl from "@/components/decisions/PriorityHoldControl";
@@ -10,6 +9,7 @@ import useDecisionRollout from "@/hooks/useDecisionRollout";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import OpponentZone from "./OpponentZone";
 import MyZone from "./MyZone";
+import PhaseTrack from "./PhaseTrack";
 import DeckLoadingView from "./DeckLoadingView";
 import OpenDecklistModal from "./OpenDecklistModal";
 import PuzzleSetupView from "./PuzzleSetupView";
@@ -145,9 +145,8 @@ export default function TableCore({
     smallDesktopViewport,
     largeDesktopViewport,
   } = useViewportLayout();
-  const [battlefieldAppearance] = useBattlefieldAppearance();
   const focusedHudDesktop = !nonDesktopViewport && !tabletCompactViewport;
-  const dockCompactUtilities = focusedHudDesktop && battlefieldAppearance.compactCards;
+  const dockDecisionUtilities = focusedHudDesktop;
   const players = state?.players || [];
   const perspective = state?.perspective;
 
@@ -241,7 +240,7 @@ export default function TableCore({
     const controls = utilityControlsRef.current;
     const table = tableRef.current;
     if (!table) return undefined;
-    if (dockCompactUtilities) {
+    if (dockDecisionUtilities) {
       table.style.setProperty("--header-utility-width", "0px");
       return () => table.style.removeProperty("--header-utility-width");
     }
@@ -363,7 +362,7 @@ export default function TableCore({
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     };
-  }, [focusedHudDesktop, dockCompactUtilities, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
+  }, [focusedHudDesktop, dockDecisionUtilities, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
 
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
@@ -422,7 +421,9 @@ export default function TableCore({
       </button>}
     </div>
   ) : null;
-  const middleTopbarElement = middleTopbar;
+  const middleTopbarElement = focusedHudDesktop && middleTopbar
+    ? cloneElement(middleTopbar, { hidePhaseTrack: true })
+    : middleTopbar;
   const middleToolbarElement = middleTopbarElement || middleAddCardBar ? (
     <div className="table-middle-toolbars relative z-20 grid gap-2 min-h-0 overflow-visible">
       <div className="table-middle-toolbar-stack grid gap-2 min-h-0">
@@ -505,7 +506,7 @@ export default function TableCore({
             <LobbyChat showOffline onOpenLobby={zoneActionControls?.props?.onOpenLobby} />
           </div>
         ) : null}
-        {middleUtilityControls && !dockCompactUtilities ? (
+        {middleUtilityControls && !dockDecisionUtilities ? (
           <div ref={utilityControlsRef} className="player-header-utility-controls">
             {cloneElement(middleUtilityControls, { showBrand: focusedHudDesktop })}
           </div>
@@ -635,7 +636,7 @@ export default function TableCore({
           />}
         </div>
       </div>
-      {dockCompactUtilities && middleUtilityControls ? (
+      {dockDecisionUtilities && middleUtilityControls ? (
         <div className="decision-header-utility-controls">
           {cloneElement(middleUtilityControls, { showBrand: true })}
         </div>
@@ -680,7 +681,7 @@ export default function TableCore({
         "--local-board-share": opponents.length > 1 ? "1fr" : "1.14fr",
         // Keep in sync with the focused HUD split in design-system.css.
         gridTemplateRows: focusedHudDesktop
-          ? "minmax(0,var(--opponent-board-share)) minmax(0,var(--local-board-share))"
+          ? "minmax(0,var(--opponent-board-share)) auto minmax(0,var(--local-board-share))"
           : mergeActionBarIntoMyZone
           ? (tabletCompactViewport
             ? "minmax(0,0.9fr) minmax(0,1.1fr)"
@@ -703,6 +704,11 @@ export default function TableCore({
         activeOpponentIndex={mobileOpponentIndex}
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
+      {focusedHudDesktop && (
+        <div className="table-phase-divider">
+          <div className="topbar-phase-shell"><PhaseTrack compact /></div>
+        </div>
+      )}
       {planarZoneElement}
       {!mergeActionBarIntoMyZone && sharedMiddleElement}
       {!mergeActionBarIntoMyZone && !sharedMiddleElement && middleToolbarElement}

@@ -14,6 +14,18 @@ test('2/3/4-player fields grow, shrink, and fit independently in both desktop ap
       const measure = async () => {
         await page.waitForFunction(() => [...document.querySelectorAll('.battlefield-row')].every(n => parseFloat(n.style.getPropertyValue('--bf-card-width')) > 0));
         await page.waitForTimeout(200);
+        const divider = await page.evaluate(() => {
+          const track = document.querySelector('.table-phase-divider .topbar-phase-shell').getBoundingClientRect();
+          const opponents = document.querySelector('.battlefield-panel--opponents').getBoundingClientRect();
+          const local = document.querySelector('[data-my-zone]').getBoundingClientRect();
+          return { top: track.top, bottom: track.bottom, center: (track.left + track.right) / 2,
+            opponentBottom: opponents.bottom, localTop: local.top, viewportWidth: innerWidth,
+            count: document.querySelectorAll('.topbar-phase-shell').length };
+        });
+        assert.equal(divider.count, 1, 'desktop renders one phase tracker');
+        assert.ok(divider.top >= divider.opponentBottom, JSON.stringify(divider));
+        assert.ok(divider.bottom <= divider.localTop, JSON.stringify(divider));
+        assert.ok(Math.abs(divider.center - divider.viewportWidth / 2) <= 2, 'phase tracker stays horizontally centered');
         return page.locator('.battlefield-row').evaluateAll(nodes => nodes.map(n => ({
           width: parseFloat(n.style.getPropertyValue('--bf-card-width')),
           height: parseFloat(n.style.getPropertyValue('--bf-card-height')),

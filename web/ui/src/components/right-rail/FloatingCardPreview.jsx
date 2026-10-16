@@ -210,7 +210,7 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
     const handTop = [...document.querySelectorAll('.hand-card')]
       .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0)
       .reduce((highest, rect) => Math.min(highest, rect.top), Infinity);
-    const bottom = Math.min(stackFrameFloor()?.top ?? window.innerHeight, phaseTop || Infinity, handTop) - margin;
+    const bottom = Math.min(stackFrameFloor()?.top ?? window.innerHeight, phaseTop > top ? phaseTop : Infinity, handTop) - margin;
     return { left: Math.round(railBounds.right + 12), top: Math.round(top), right: 'auto',
       maxHeight: `${Math.max(0, Math.floor(bottom - top))}px` };
   }

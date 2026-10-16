@@ -59,6 +59,7 @@ export default function Topbar({
   onChangePerspective,
   utilityControls,
   statusOnly = false,
+  hidePhaseTrack = false,
 }) {
   const ui = useUiText();
   const {
@@ -362,7 +363,7 @@ export default function Topbar({
             mulligan prompt cannot cover them; the compact layouts have no
             status lane, so they keep them here. */}
         {showCenterLane ? null : matchClockPill}
-        {showCenterLane ? (
+        {showCenterLane && !hidePhaseTrack ? (
           <div className="topbar-phase-shell">
             <PhaseTrack compact={middleDocked} />
             {turnStatus}
