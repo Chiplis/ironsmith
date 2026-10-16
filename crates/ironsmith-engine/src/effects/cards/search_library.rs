@@ -111,7 +111,8 @@ impl EffectExecutor for SearchLibraryEffect {
                             SearchSpec::new(ctx.source, decision_candidates, self.reveal)
                         } else {
                             SearchSpec::mandatory(ctx.source, decision_candidates, self.reveal)
-                        };
+                        }
+                        .with_viewed_cards(library_cards.clone());
                         let mut chosen_card = make_decision_with_fallback(
                             game,
                             &mut ctx.decision_maker,

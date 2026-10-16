@@ -4304,7 +4304,7 @@ impl WasmReplayDecisionMaker {
         if self.pending_context.is_some() {
             return;
         }
-        let cards: Vec<ObjectId> = match &ctx {
+        let mut cards: Vec<ObjectId> = match &ctx {
             DecisionContext::SelectObjects(ctx) => {
                 ctx.candidates.iter().map(|item| item.id).collect()
             }
@@ -4330,6 +4330,13 @@ impl WasmReplayDecisionMaker {
                 .collect(),
             _ => return,
         };
+        // Filtered searches show nonmatching cards too. A submitted prompt
+        // acknowledges all identities it displayed, not only legal choices.
+        cards.extend(
+            ctx.hidden_card_views()
+                .iter()
+                .flat_map(|view| view.object_ids.iter().copied()),
+        );
         // Candidate-only hidden views are synthesized while awaiting an
         // answer. Reconstruct them on replay before acknowledging that answer.
         if self.viewed_cards.is_none() {

@@ -491,6 +491,8 @@ pub struct SearchSpec {
     pub source: ObjectId,
     /// Cards matching the search criteria.
     pub matching_cards: Vec<ObjectId>,
+    /// Cards actually inspected during this search, including nonmatches.
+    pub viewed_cards: Option<Vec<ObjectId>>,
     /// Whether the search is revealed to all players.
     pub reveal: bool,
     /// Whether the player can "fail to find" (choose nothing).
@@ -500,11 +502,17 @@ pub struct SearchSpec {
 }
 
 impl SearchSpec {
+    pub fn with_viewed_cards(mut self, cards: Vec<ObjectId>) -> Self {
+        self.viewed_cards = Some(cards);
+        self
+    }
+
     /// Create a new SearchSpec.
     pub fn new(source: ObjectId, matching_cards: Vec<ObjectId>, reveal: bool) -> Self {
         Self {
             source,
             matching_cards,
+            viewed_cards: None,
             reveal,
             may_fail_to_find: true, // Most searches can fail to find
             hidden_card_visibility: DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
@@ -516,6 +524,7 @@ impl SearchSpec {
         Self {
             source,
             matching_cards,
+            viewed_cards: None,
             reveal,
             may_fail_to_find: false,
             hidden_card_visibility: DecisionHiddenCardVisibility::PrivateToDecisionPlayer,
@@ -596,7 +605,7 @@ impl DecisionSpec for SearchSpec {
             SelectionRevealPolicy::from(self.hidden_card_visibility)
         });
         let ctx = ctx.with_hidden_card_view(
-            self.matching_cards.clone(),
+            self.viewed_cards.as_ref().unwrap_or(&self.matching_cards).clone(),
             self.hidden_card_visibility,
             "Search library",
         );

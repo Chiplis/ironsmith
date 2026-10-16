@@ -340,3 +340,41 @@ fn miracle_stack_views_last_through_every_accepted_or_copied_receipt_but_not_a_n
         assert!(crate::stack_revealed_view(&game).is_none(), "semantic visibility ends when the last receipt leaves");
     }
 }
+
+#[test]
+fn viewed_card_ack_fail_to_find_finishes_filtered_library_search() {
+    use ironsmith::effects::{EffectContext, EffectExecutor, SearchLibraryEffect};
+    use ironsmith::filter::ObjectFilter;
+    use ironsmith::target::PlayerFilter;
+    use ironsmith::types::CardType;
+    // Secret Entrance uses a synthetic dungeon source and a basic-land search.
+    // No lands here: the whole library is viewed, but no cards are selectable.
+    let (mut game, alice, _, _, _) = fixture();
+    let source = ObjectId::from_raw(u64::MAX - 0x1_0000);
+    let cards: Vec<_> = (0..3).map(|_| game.create_object_from_definition(
+        &ornithopter(), alice, Zone::Library,
+    )).collect();
+    let effect = SearchLibraryEffect::to_hand(
+        ObjectFilter::default().with_type(CardType::Land), PlayerFilter::You, true,
+    );
+    let checkpoint = game.clone();
+    let mut pending = WasmReplayDecisionMaker::new(&[]);
+    effect.execute(&mut game, &mut EffectContext::new(source, alice, &mut pending)).unwrap();
+    let Some(ironsmith::decisions::context::DecisionContext::SelectObjects(prompt)) = pending.pending_context else {
+        panic!("expected search prompt");
+    };
+    assert!(prompt.candidates.is_empty());
+    assert!(pending.viewed_cards.unwrap().acknowledged_by.is_empty());
+
+    game = checkpoint;
+    let mut dm = WasmReplayDecisionMaker::new(&[ReplayDecisionAnswer::Objects(vec![])]);
+    effect.execute(&mut game, &mut EffectContext::new(source, alice, &mut dm)).unwrap();
+    assert!(dm.pending_context.is_none());
+    let (_, viewed, audit, _) = dm.finish();
+    let viewed = viewed.unwrap();
+    assert_eq!(viewed.cards.len(), cards.len());
+    assert!(!viewed.public, "revealing a found card must not reveal the library");
+    assert_eq!(viewed.acknowledged_by, vec![alice], "completed search must not reopen Look at priority");
+    assert!(!audit.is_empty());
+    assert_eq!(game.player(alice).unwrap().library.len(), cards.len());
+}
