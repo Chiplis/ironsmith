@@ -836,3 +836,11 @@ fn graveyard_permission_survives_sacrificing_its_provider_during_payment() {
         );
     }
 }
+
+#[test]
+fn conditional_flashback_price_keeps_zero_cost_and_instead() {
+    let text = render("Whenever this creature deals combat damage to a player, target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled.\nSaddle 3", vec![CardType::Creature]);
+    for required in ["flashback", "{0}", "instead", "saddled", "its mana cost", "until end of turn"] {
+        assert!(text.contains(required), "missing {required}: {text}");
+    }
+}

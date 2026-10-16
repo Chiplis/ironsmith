@@ -228,6 +228,7 @@ pub fn parse_escape(
                         exile_count: 0,
                         additional_cost: ironsmith_core::TotalCost::from_cost(
                             CompilerCost::ExileChosen {
+                                count_value: None,
                                 count: crate::effect::ChoiceCount::any_number(),
                                 filter,
                                 top_only: false,
@@ -281,6 +282,7 @@ pub fn parse_escape(
         cost: Some(mana_cost),
         exile_count: count,
         additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::ExileChosen {
+            count_value: None,
             count: crate::effect::ChoiceCount::exactly(count as usize),
             filter: ObjectFilter::default()
                 .owned_by(crate::target::PlayerFilter::You)
@@ -295,6 +297,7 @@ pub fn parse_escape(
 pub fn parse_jump_start(tokens: &[OwnedLexToken]) -> Option<AlternativeCastingMethod> {
     let words = TokenWordView::new(tokens).word_refs();
     (permission_shapes::prefix_words(&words, &["jumpstart"])
+        || permission_shapes::prefix_words(&words, &["jump-start"])
         || permission_shapes::prefix_words(&words, &["jump", "start"]))
     .then(|| AlternativeCastingMethod::JumpStart {
         additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::Discard {

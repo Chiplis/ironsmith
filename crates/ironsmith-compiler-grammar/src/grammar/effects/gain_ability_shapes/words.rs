@@ -158,6 +158,10 @@ pub fn find_primary_gain_ability_verb(words: &[&str]) -> Option<(usize, GainAbil
             find_shared_ability_tail(after_has, SharedAbilityTail::Lose)
                 .map(|tail| (tail, GainAbilityVerb::Lose))
         })
+        .or_else(|| {
+            find_shared_ability_tail(after_has, SharedAbilityTail::Has)
+                .map(|tail| (tail, GainAbilityVerb::Has))
+        })
     else {
         return Some((offset, GainAbilityVerb::Has));
     };

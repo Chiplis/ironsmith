@@ -276,6 +276,11 @@ fn legacy_enter_step(game: &mut GameState, step: Step) -> Result<(), TurnError> 
             legacy_finish_step(game, step, TurnScheduleDestination::Step(next))
         }
     } else {
+        if step == Step::Upkeep {
+            for player in game.turn_players() {
+                game.mark_upkeep_began(player);
+            }
+        }
         if step == Step::DeclareAttackers {
             if let Some(combat) = game.combat.as_mut() {
                 combat.last_attack_declaration_step_players = None;
@@ -366,6 +371,9 @@ fn legacy_finish_step(
     step: Step,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if step == Step::Upkeep {
+        game.finish_upkeep_duration_tracking();
+    }
     if step == Step::Draw {
         game.finish_draw_step_tracking();
     }
@@ -391,6 +399,9 @@ fn legacy_finish_step_and_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if step == Step::Upkeep {
+        game.finish_upkeep_duration_tracking();
+    }
     if step == Step::Draw {
         game.finish_draw_step_tracking();
     }
@@ -421,6 +432,9 @@ fn legacy_finish_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> Result<(), TurnError> {
+    if game.turn.step == Some(Step::Upkeep) {
+        game.finish_upkeep_duration_tracking();
+    }
     if phase == Phase::Beginning && game.turn.step == Some(Step::Draw) {
         game.finish_draw_step_tracking();
     }

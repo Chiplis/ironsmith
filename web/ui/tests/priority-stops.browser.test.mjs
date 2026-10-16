@@ -19,7 +19,7 @@ function Probe() {
   const c=useGame(); window.context=c;
   return h('div',{className:'table-shell','data-focused-hud':'true',style:{width:600,padding:30}},
     h('div',{className:'topbar-phase-shell'},h(PhaseTrack)),
-    h(PriorityHoldControl),
+    h('div',{className:'battlefield-human-action-dock'},h('div',{className:'battlefield-human-quick-controls decision-quick-controls'},h(PriorityHoldControl,{battlefield:true}))),
     c.postActionPriorityWindow ? h(PriorityHoldButton,{className:'h-12 w-32 text-[14px]'}) :
       h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'pass_priority'}})},'Resolve'),
     h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'cast_spell',spell_id:7,casting_method:{kind:'normal'}}})},'Cast'),
@@ -54,7 +54,7 @@ const priority = (snapshot_id, overrides = {}) => ({
   decision: { kind: 'priority', player: 0, analysis_complete: true, actions }, ...overrides,
 });
 
-test('real provider drains the Hold button, retains priority on click, and honors tracker stops', { timeout: 60000 }, async () => {
+test('real provider times only opponent phase stops and preserves stack priority', { timeout: 90000 }, async () => {
   const server = await createServer({ root, logLevel: 'error', server: { host: '127.0.0.1', port: 0, hmr: false }, plugins: [{
     name: 'priority-stop-fixture',
     transform(code, id) {
@@ -85,63 +85,18 @@ test('real provider drains the Hold button, retains priority on click, and honor
       await page.evaluate(state => window.publish(state), state);
       await page.waitForFunction(id => window.context.state?.snapshot_id === id, state.snapshot_id);
     };
-    await load(priority(0));
-    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false);
-    await page.getByRole('button', { name: 'Cast', exact: true }).click();
-    await page.waitForTimeout(2200);
-    assert.equal(await page.getByRole('button', { name: 'Hold Priority', exact: true }).count(), 0);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'default off requires manual Resolve');
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 2);
-    await load(priority(1));
-    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
-    await page.getByRole('button', { name: 'Cast', exact: true }).click();
     const hold = page.getByRole('button', { name: 'Hold Priority', exact: true });
-    await hold.waitFor();
-    assert.equal(await hold.innerText(), 'Hold Priority\nHold Priority');
-    const visual = await hold.evaluate(button => {
-      const fill = getComputedStyle(button.querySelector('.priority-hold-window-fill'));
-      return { animation: fill.animationName, background: fill.backgroundColor, base: getComputedStyle(button).backgroundColor };
-    });
-    assert.equal(visual.animation, 'priority-hold-drain');
-    assert.equal(visual.background, 'rgb(246, 214, 74)');
-    assert.equal(visual.base, 'rgb(8, 8, 8)');
-    await page.waitForTimeout(600);
-    const clip = await hold.locator('.priority-hold-window-fill').evaluate(el => getComputedStyle(el).clipPath);
-    assert.match(clip, /inset\(/);
-    assert.notEqual(clip, 'inset(0px)');
-    if (process.env.PRIORITY_STOP_SCREENSHOTS) await page.locator('.table-shell').screenshot({ path: '/tmp/priority-stop-hold.png' });
-    await hold.click();
-    await page.waitForTimeout(2100);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'Hold blocks even enabled Auto-pass');
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 2);
-
-    await load(priority(10));
-    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), true, 'enabled preference survives reload');
-    await page.getByRole('button', { name: 'Activate', exact: true }).click();
-    await hold.waitFor();
-    await page.waitForFunction(() => window.submissions.length === 2, null, { timeout: 4000 });
-    const elapsed = await page.evaluate(() => window.submissions[1].time - window.submissions[0].time);
-    assert.ok(elapsed >= 1900 && elapsed < 3500, `automatic pass follows the two-second window: ${elapsed}`);
-
-    await load(priority(15));
-    await page.getByRole('button', { name: 'Cast', exact: true }).click();
-    await hold.waitFor();
-    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
-    await page.getByRole('button', { name: 'Resolve', exact: true }).waitFor();
-    await page.waitForTimeout(2200);
-    assert.equal(await hold.count(), 0);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1, 'disabling cancels the active deadline');
-    await load(priority(16));
-    assert.equal(await page.evaluate(() => window.context.autoResolveEnabled), false, 'disabled preference survives reload');
-    await page.getByRole('button', { name: 'Activate', exact: true }).click();
-    await page.waitForTimeout(2200);
-    assert.equal(await hold.count(), 0);
-    assert.equal(await page.evaluate(() => window.submissions.length), 1);
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 2);
-    await page.getByRole('button', { name: 'Auto-pass', exact: true }).click();
+    await load(priority(0));
+    await page.getByRole('button', { name: /^Auto-pass:/ }).click();
+    for (const action of ['Cast', 'Activate']) {
+      await load(priority(action === 'Cast' ? 1 : 10));
+      await page.getByRole('button', { name: action, exact: true }).click();
+      await page.waitForTimeout(2200);
+      assert.equal(await hold.count(), 0, `${action} has no countdown`);
+      assert.equal(await page.evaluate(() => window.submissions.length), 1, `${action} retains priority`);
+      await page.getByRole('button', { name: 'Resolve', exact: true }).click();
+      await page.waitForFunction(() => window.submissions.length === 2);
+    }
 
     await load(priority(20));
     const upkeep = page.getByRole('button', { name: /^Upkeep:/ });
@@ -151,11 +106,34 @@ test('real provider drains the Hold button, retains priority on click, and honor
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'rgb(189, 138, 255)');
     await page.evaluate(state => window.publish(state), priority(21, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
     await page.waitForTimeout(150);
-    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'phase stop gates off-turn auto-passing');
-    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
-    await page.waitForFunction(() => window.submissions.length === 1);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'phase stop waits for the countdown');
+    await hold.waitFor();
+    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
     assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off', 'one-time stop is consumed');
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
+
+    // Clicking Hold keeps an opponent-turn phase pause beyond the deadline.
+    await load(priority(25));
+    await upkeep.click();
+    await page.evaluate(state => window.publish(state), priority(26, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await hold.click();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await page.getByRole('button', { name: 'Resolve', exact: true }).click();
+    await page.waitForFunction(() => window.submissions.length === 1);
+
+    // Disabling the chevron cancels an active phase countdown.
+    await load(priority(27));
+    await upkeep.click();
+    await page.evaluate(state => window.publish(state), priority(28, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await hold.waitFor();
+    await page.evaluate(() => window.context.setAutoResolveEnabled(false));
+    await page.waitForTimeout(2200);
+    assert.equal(await hold.count(), 0);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await page.getByRole('button', { name: /^Auto-pass:/ }).click();
+    await hold.waitFor();
+    await page.waitForFunction(() => window.submissions.length === 1);
 
     await load(priority(30));
     await upkeep.click();
@@ -201,8 +179,38 @@ test('real provider drains the Hold button, retains priority on click, and honor
       await page.waitForTimeout(150);
       assert.equal(await page.evaluate(() => window.submissions.length), 0);
       await page.evaluate(() => window.context.setAutoResolveEnabled(true));
-      await page.waitForFunction(() => window.submissions.length === 1);
+      await page.waitForTimeout(2200);
+      assert.equal(await page.evaluate(() => window.submissions.length), 0, 'chevron only automates phase pauses');
     }
+    // Cycle all modes through the actual control and check planner-aware stack passing.
+    await page.evaluate(() => window.context.setAutoResolveEnabled(false));
+    await load(priority(45, { stack_size: 1, stack_objects: [{ id: 80, controller: 1 }],
+      decision: { kind: 'priority', player: 0, analysis_complete: false,
+        actions: actions.map(a => ({ ...a, payment_proven: false })) } }));
+    const chevron = page.getByRole('button', { name: /^Auto-pass:/ });
+    await chevron.click();
+    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'regular');
+    await chevron.click();
+    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'safe');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 255, 255)');
+    await hold.waitFor();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'unfinished planner cannot auto-resolve');
+    await page.evaluate(() => window.publish({ ...window.currentState,
+      decision: { ...window.currentState.decision, analysis_complete: true } }));
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await load(priority(46, { stack_size: 1, stack_objects: [{ id: 81, controller: 1 }] }));
+    await hold.waitFor();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'safe mode holds playable responses');
+    await chevron.click();
+    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'all');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.battlefield-auto-pass-toggle')).borderTopColor === 'rgb(255, 212, 92)');
+    // Explicitly selecting all mode resumes this previously held response.
+    await hold.waitFor();
+    await page.waitForFunction(() => window.submissions.length === 1);
+    await chevron.click();
+    assert.equal(await chevron.getAttribute('data-resolve-mode'), 'off');
     await load(priority(50));
     await upkeep.click();
     await upkeep.click();

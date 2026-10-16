@@ -804,6 +804,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         .map(ObjectFilter::source_with_surface)
                         .unwrap_or_else(ObjectFilter::source);
                 return Ok(TriggerSpec::CounterRemovedFrom {
+                    source_controller: None,
                     filter,
                     counter_type,
                     last: false,
@@ -812,6 +813,26 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 });
             }
         }
+    }
+
+    // Active removal names the acting player as well as the changed object.
+    if crate::word_primitives::parse_sequence_prefix(&words, &["you", "remove", "the", "last"])
+        && let Some(counter_idx) = words.iter().position(|word| *word == "counter")
+        && counter_idx > 4
+        && words.get(counter_idx + 1) == Some(&"from")
+        && is_source_reference_words(&words[counter_idx + 2..])
+    {
+        let start = trigger_word_token_start(tokens, 4).ok_or_else(|| CardTextError::ParseError("missing counter descriptor".into()))?;
+        let end = trigger_word_token_start(tokens, counter_idx).ok_or_else(|| CardTextError::ParseError("missing counter noun".into()))?;
+        let source = trigger_word_token_start(tokens, counter_idx + 2).ok_or_else(|| CardTextError::ParseError("missing counter source".into()))?;
+        let counter_type = trigger_counter_type_from_descriptor(&tokens[start..end])
+            .ok_or_else(|| CardTextError::ParseError("unknown removed counter type".into()))?;
+        let filter = source_reference_surface_for_trigger_subject(&tokens[source..])
+            .map(ObjectFilter::source_with_surface).unwrap_or_else(ObjectFilter::source);
+        return Ok(TriggerSpec::CounterRemovedFrom {
+            filter, source_controller: Some(PlayerFilter::You),
+            counter_type: Some(counter_type), last: true, one_or_more: true, caused_by_source: false,
+        });
     }
 
     // "the last <type> counter is removed from this <source>" is a
@@ -845,6 +866,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             .map(ObjectFilter::source_with_surface)
             .unwrap_or_else(ObjectFilter::source);
         return Ok(TriggerSpec::CounterRemovedFrom {
+                    source_controller: None,
             filter,
             counter_type: Some(counter_type),
             last: true,
@@ -885,6 +907,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         .map(ObjectFilter::source_with_surface)
         .unwrap_or_else(ObjectFilter::source);
         Some(TriggerSpec::CounterRemovedFrom {
+                    source_controller: None,
             filter,
             counter_type: None,
             last: false,

@@ -412,8 +412,17 @@ fn read_opponent_special_shape(
                         clause_text
                     )));
                 }
+                let actor_tokens;
+                let effect_tokens = if outer.participant_is_actor {
+                    actor_tokens = prepend_that_player_subject(effect_tokens);
+                    actor_tokens.as_slice()
+                } else {
+                    effect_tokens
+                };
                 let mut branch_effects = parse_effect_chain(effect_tokens)?;
-                force_implicit_token_controller_you(&mut branch_effects);
+                if !outer.participant_is_actor {
+                    force_implicit_token_controller_you(&mut branch_effects);
+                }
                 return Ok(Some(wrap_opponents(
                     &iteration_filter,
                     vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {

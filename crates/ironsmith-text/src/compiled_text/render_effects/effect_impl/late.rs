@@ -1962,6 +1962,9 @@
             1 => "one or more life".to_string(),
             amount => format!("{amount} or more life"),
         };
+        let payment = if let Some(maximum) = &pay_any_life.maximum {
+            format!("{payment}, up to {}", describe_value(maximum))
+        } else { payment };
         if payer == "you" {
             return format!("Pay {payment}");
         }
@@ -5677,6 +5680,8 @@
             );
         }
         let granted_text = match &grant.grantable {
+            crate::grant::Grantable::AlternativeCast(method @ AlternativeCastingMethod::Flashback { .. }) =>
+                lowercase_first(&describe_alternative_cast_line(method, 0)),
             crate::grant::Grantable::Ability(ability) => ability
                 .granted_inline_ability()
                 .map(describe_inline_ability)
@@ -5901,7 +5906,17 @@
             grant_play_tagged.tag.as_str(),
             "consult_match",
         );
-        let helper_tag = helper_tag || helper_consult_match;
+        // Authored object references are independent of the compiler's tag
+        // spelling (for example a searched face-down card or a triggering Aura).
+        let authored_card_reference = grant_play_tagged.surface.as_ref()
+            .and_then(|surface| surface.object.as_ref())
+            .is_some_and(|object| matches!(object,
+                ironsmith_core::GrantPlayTaggedObjectSurface::It
+                | ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard
+                | ironsmith_core::GrantPlayTaggedObjectSurface::ThatCardFromExile
+                | ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell
+            ));
+        let helper_tag = helper_tag || helper_consult_match || authored_card_reference;
         let object_text = if grant_play_tagged.cast_pool_is_plural && helper_tag {
             if grant_play_tagged.allow_land {
                 "those cards".to_string()
@@ -5937,12 +5952,15 @@
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen_exiled")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched")
             || helper_consult_match
+            || authored_card_reference
         {
             "that card".to_string()
         } else {
             format!("tagged '{}' cards", grant_play_tagged.tag.as_str())
         };
-        if grant_play_tagged.allow_any_color_for_cast {
+        if grant_play_tagged.mana_spend_mode
+            != ironsmith_core::value_model::ManaSpendMode::Normal
+        {
             if helper_tag
                 && !grant_play_tagged.allow_land
                 && grant_play_tagged.duration

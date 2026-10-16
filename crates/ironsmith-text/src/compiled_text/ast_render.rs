@@ -34150,9 +34150,14 @@ fn describe_condition_collection_choice_trigger(ability: &Ability) -> Option<Str
     else {
         return None;
     };
-    let [tag_effect, sequence_effect] = triggered.effects.flattened_default_effects() else {
+    let effects = triggered.effects.flattened_default_effects();
+    let (sequence_effect, captures) = effects.split_last()?;
+    if captures.is_empty() || !captures.iter().all(|effect| {
+        effect.downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+            .is_some_and(|tag| matches!(tag.tag.as_str(), "triggering" | "triggering_source"))
+    }) {
         return None;
-    };
+    }
     let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
         || sequence.result_label.is_some()
@@ -34174,7 +34179,6 @@ fn describe_condition_collection_choice_trigger(ability: &Ability) -> Option<Str
         return None;
     }
     let payload = [
-        tag_effect.clone(),
         choose_effect.clone(),
         gain_effect.clone(),
         untap_effect.clone(),

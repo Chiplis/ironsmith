@@ -1,3 +1,4 @@
+import { stackSpellFrameColors } from '@/lib/stack-frame-preview.js';
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -219,7 +220,7 @@ function isLandscapeCard(card) {
 
 function frameCardForEntry(entry, source) {
   const base = {
-    ...(source || {}),
+    ...(stackSpellFrameColors(entry, source) || {}),
     source_kind: entry.source_kind,
     name: entry.name || source?.name || "",
   };

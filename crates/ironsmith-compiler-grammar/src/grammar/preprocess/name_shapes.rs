@@ -123,6 +123,17 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
         return alias.to_string();
     }
 
+    // A regnal numeral is omitted from self-references while the preceding
+    // multiword name remains intact. Falling back to the first word would
+    // rewrite only the title and leave the rest as a spurious target noun.
+    if let Some((name_without_numeral, numeral)) = trimmed.rsplit_once(' ')
+        && numeral.len() >= 2
+        && numeral.chars().all(|character| matches!(character, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
+        && name_without_numeral.split_whitespace().count() >= 2
+    {
+        return name_without_numeral.to_string();
+    }
+
     let words = TokenWordView::new(tokens);
     if words.len() <= 1 {
         return trimmed.to_string();

@@ -685,11 +685,12 @@ pub(super) fn open_flashback_price_replacement(
             effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
             tag: tag.clone(),
         },
-        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        EffectAst::SelfReplacement {
             predicate,
             if_true: vec![grant(crate::model::CompilerGrantableCore::AlternativeCast(method))],
             if_false: vec![grant(crate::model::CompilerGrantableCore::flashback_from_cards_mana_cost())],
-        }),
+            attach_to_previous_ability: false,
+        },
     ]))
 }
 
@@ -735,9 +736,9 @@ mod next_play_continuation_tests {
         let effects = parse("Target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost. That card gains flashback {0} until end of turn instead if this creature is saddled.").unwrap();
         assert_eq!(effects.len(), 2);
         assert!(matches!(&effects[0], EffectAst::TagReferenced { .. }));
-        assert!(matches!(&effects[1], EffectAst::Conditionals(ConditionalEffectAst::Conditional {
-            if_true, if_false, ..
-        }) if if_true.len() == 1 && if_false.len() == 1));
+        assert!(matches!(&effects[1], EffectAst::SelfReplacement {
+            if_true, if_false, attach_to_previous_ability: false, ..
+        } if if_true.len() == 1 && if_false.len() == 1));
     }
 
     #[test]

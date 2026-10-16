@@ -175,7 +175,7 @@ pub(super) fn ability_word_marker_detection_uses_token_kinds() {
 fn exiled_counter_trigger_keeps_each_counter_and_its_zone_without_resolution_condition() {
     let tokens = lex_line("Whenever a time counter is removed from this card while it's exiled, draw a card.", 0).unwrap();
     let parsed = parse_exiled_counter_removed_triggered_line(&tokens).unwrap().unwrap();
-    let LineAst::Triggered { trigger: TriggerSpec::CounterRemovedFrom { filter, counter_type, last, one_or_more, caused_by_source }, effects, .. } = parsed else { panic!("expected typed removal event") };
+    let LineAst::Triggered { trigger: TriggerSpec::CounterRemovedFrom { filter, counter_type, last, one_or_more, caused_by_source, .. }, effects, .. } = parsed else { panic!("expected typed removal event") };
     assert!(filter.source);
     assert_eq!(filter.zone, Some(Zone::Exile));
     assert_eq!(counter_type, Some(crate::CounterType::Time));

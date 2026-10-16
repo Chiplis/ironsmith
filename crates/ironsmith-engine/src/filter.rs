@@ -1512,6 +1512,15 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::WasAttachedToTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.attachments.contains(&subject.subject_object_id())),
+        TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
+            game.turn_store.turn_history.projected_records().any(|record| {
+                let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() else { return false; };
+                damage.amount > 0 && (!combat_only || damage.is_combat)
+                    && damage.source == subject.subject_object_id()
+                    && matches!(damage.target, crate::events::DamageTarget::Object(recipient)
+                        if tagged_snapshots.iter().any(|snapshot| snapshot.object_id == recipient))
+            })
+        }
         TaggedOpbjectRelation::SoulbondPartnerOfTagged => tagged_snapshots.iter().any(|snapshot| {
             game.soulbond_partner(snapshot.object_id) == Some(subject.subject_object_id())
         }),
@@ -5059,6 +5068,11 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 TaggedOpbjectRelation::WasAttachedToTaggedObject => {
                     post_noun_qualifiers.push("that was attached to it".to_string());
+                }
+                TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
+                    post_noun_qualifiers.push(if combat_only {
+                        "that dealt combat damage to it this turn"
+                    } else { "that dealt damage to it this turn" }.to_string());
                 }
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());

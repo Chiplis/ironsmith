@@ -169,6 +169,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         &non_target_words,
         &[
             &["the", "player", "or", "planeswalker", "its", "attacking"],
+            &["the", "player", "or", "planeswalker", "that", "creature", "is", "attacking"],
             &[
                 "the",
                 "player",

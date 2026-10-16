@@ -627,6 +627,7 @@ pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
         if first
             .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
             .is_some()
+            || first.downcast_ref::<crate::effects::TagTriggeringSourceEffect>().is_some()
         {
             rest
         } else {
@@ -3785,5 +3786,21 @@ mod random_hand_reveal_surface_tests {
             describe_random_hand_reveal_bundle(&[&choose, &reveal]).as_deref(),
             Some("Target opponent reveals a card at random from their hand")
         );
+    }
+}
+
+#[cfg(test)]
+mod revealed_pile_trigger_tests {
+    #[test]
+    fn triggered_domain_piles_hide_source_bookkeeping() {
+        let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Sphinx of Clear Skies")
+            .card_types(vec![crate::types::CardType::Creature])
+            .parse_text("Flying, ward {2}\nDomain — Whenever this creature deals combat damage to a player, reveal the top X cards of your library, where X is the number of basic land types among lands you control. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.")
+            .expect("domain pile trigger compiles");
+        let text = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(text.contains("An opponent separates those cards into two piles"), "{text}");
+        assert!(text.contains("Put one pile into your hand and the other into your graveyard"), "{text}");
+        assert!(text.contains("basic land types"), "{text}");
+        assert!(!text.contains("divvy_") && !text.contains("tagged object"), "{text}");
     }
 }

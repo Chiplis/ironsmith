@@ -59,6 +59,7 @@ export default function PlayerCard({ player, isActive, isPerspective }) {
         </h2>
         <ManaPool
           pool={player.mana_pool}
+          player={player}
           alwaysVisible
           compact
           className="player-name-mana"

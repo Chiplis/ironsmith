@@ -111,3 +111,31 @@ fn typed_choice_filter_excludes_the_accumulated_chosen_set() {
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
     }));
 }
+
+#[test]
+fn chosen_color_hand_choice_keeps_color_and_revealed_pool() {
+    let tokens = lex_line("You choose a card of that color from it.", 0).unwrap();
+    let TypedChoiceObjectClauseKind::Object(parsed) =
+        parse_typed_choice_object_clause_tokens(&tokens).unwrap().unwrap() else {
+            panic!("expected object choice");
+        };
+    assert!(parsed.filter.chosen_color);
+    assert_eq!(parsed.filter.zone, Some(Zone::Hand));
+    assert!(parsed.references.references_it);
+    assert!(parsed.filter.owner.is_none());
+    assert!(parsed.filter.controller.is_none());
+    assert!(parsed.filter.tagged_constraints.iter().any(|constraint|
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject));
+}
+
+#[test]
+fn suspended_card_choice_keeps_exile_suspend_and_time_counter_requirements() {
+    let tokens = crate::lexer::lex_line("Choose a suspended card you own", 0).unwrap();
+    let Some(TypedChoiceObjectClauseKind::Object(choice)) = parse_typed_choice_object_clause_tokens(&tokens).unwrap() else { panic!("expected object choice"); };
+    assert_eq!(choice.filter.zone, Some(Zone::Exile));
+    assert_eq!(choice.filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(choice.filter.alternative_cast, Some(crate::filter::AlternativeCastKind::Suspend));
+    let debug = format!("{:?}", choice.filter);
+    assert!(debug.contains("Time"), "{debug}");
+}

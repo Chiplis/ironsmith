@@ -49,6 +49,23 @@ pub fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    // A cardinality suffix qualifies the chosen set, not its object filter.
+    if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
+        let words = primitives::TokenWordView::new(&tokens[equal..]).word_refs();
+        let players = match words.as_slice() {
+            ["equal", "to", "the", "number", "of", "opponents", "you", "have"] => Some(PlayerFilter::Opponent),
+            ["equal", "to", "the", "number", "of", "players"] => Some(PlayerFilter::Any),
+            _ => None,
+        };
+        if let Some(players) = players {
+            let mut cost = parse_exile_segment_tokens(&tokens[..equal], contextual_source_reference)?;
+            if let ActivationCostSegmentCst::ExileChosen { count_value, .. } = &mut cost {
+                *count_value = Some(crate::effect::Value::CountPlayers(players));
+                return Ok(cost);
+            }
+            return Err(unsupported(tokens, "dynamic-exile-selector"));
+        }
+    }
     if let Some(compound) = parse_source_and_chosen_exile(tokens)? {
         return Ok(compound);
     }
@@ -102,6 +119,7 @@ pub fn parse_exile_segment_tokens(
                 _ => return Err(unsupported(tokens, "exile-source-zone")),
             }
             Ok(ActivationCostSegmentCst::ExileChosen {
+                count_value: None,
                 choice_count: choice.count,
                 filter,
                 top_only,
@@ -273,6 +291,7 @@ fn parse_generic_exile(
         return Err(unsupported(subject_tokens, "ordered-exile-source-zone"));
     }
     Ok(ActivationCostSegmentCst::ExileChosen {
+        count_value: None,
         choice_count: choice.count,
         filter,
         top_only,

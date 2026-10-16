@@ -3262,6 +3262,7 @@ pub(super) fn collect_value_player_target_choices(value: &Value, choices: &mut V
         Value::Devotion { player, .. }
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInLibraryAtMost(player, _)
         | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)

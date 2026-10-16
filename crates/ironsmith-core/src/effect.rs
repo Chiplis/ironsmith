@@ -282,6 +282,9 @@ pub enum Until {
     PlayersNextUntapStep {
         player: PlayerFilter,
     },
+    /// Ends with the controller's next actual upkeep, including an additional
+    /// upkeep. An upkeep already underway when this starts is not the next one.
+    YourNextUpkeepEnd,
 }
 
 impl Until {

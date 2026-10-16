@@ -2645,15 +2645,16 @@ fn stack_entry_ability_text(
     entry: &ironsmith::game_state::StackEntry,
     obj: Option<&ironsmith::object::Object>,
 ) -> Option<String> {
-    fallback_stack_entry_ability_text(entry, obj).or_else(|| {
-        entry
-            .ability_effects
-            .as_ref()
-            .map(|effects| {
-                ironsmith::runtime_display::compile_effect_list(effects.flattened_default_effects())
-            })
-            .and_then(|text| normalize_stack_display_text(&text))
-    })
+    // An unmatched delayed/generated ability owns its effects; another
+    // ability of the same source is not a description of this stack entry.
+    entry
+        .ability_effects
+        .as_ref()
+        .map(|effects| {
+            ironsmith::runtime_display::compile_effect_list(effects.flattened_default_effects())
+        })
+        .and_then(|text| normalize_stack_display_text(&text))
+        .or_else(|| fallback_stack_entry_ability_text(entry, obj))
 }
 
 #[derive(Debug, Clone, Serialize)]

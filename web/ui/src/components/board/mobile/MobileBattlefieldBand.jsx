@@ -1,6 +1,7 @@
 import MobileBattlefieldLane from "@/components/board/MobileBattlefieldLane";
 import MobileZonePiles from "./MobileZonePiles";
 import MobileManaPool from "./MobileManaPool";
+import { playerCounters } from "@/lib/player-counters";
 import { cn } from "@/lib/utils";
 
 // Wraps two `MobileBattlefieldLane` rows for one player. Side="opponent" applies the
@@ -77,9 +78,9 @@ export default function MobileBattlefieldBand({
         className,
       )}
       data-mana-indented={manaIndented || undefined}
-      data-has-mana={Object.values(player?.mana_pool || {}).some((amount) => Number(amount) >= 1) || undefined}
+      data-has-mana={Object.values(player?.mana_pool || {}).some((amount) => Number(amount) >= 1) || playerCounters(player).length > 0 || undefined}
     >
-      <MobileManaPool pool={player?.mana_pool} side={side} interactive={!isOpponent} className="mobile-mana-column" />
+      <MobileManaPool player={player} pool={player?.mana_pool} side={side} interactive={!isOpponent} className="mobile-mana-column" />
       <div className="mobile-battlefield-lanes" {...wrapperProps}>
         {isOpponent ? [resourceRow, combatRow] : [combatRow, resourceRow]}
       </div>

@@ -90,7 +90,7 @@ fn encode_modification(modification: Modification) -> Result<wire::WireContinuou
             ironsmith_core::AbilityLossMode::Lose => W::RemoveAbility(encode_runtime_ability(ability)?),
             ironsmith_core::AbilityLossMode::LoseAndCantGain
             | ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain => {
-                return Err(unsupported("continuous ability prohibition mode is absent from the compiled schema"));
+                W::RemoveAbilityWithMode { ability: encode_runtime_ability(ability)?, mode }
             }
         },
         Modification::RemoveStaticAbilityFamily(id) => W::RemoveStaticAbilityFamily(id),

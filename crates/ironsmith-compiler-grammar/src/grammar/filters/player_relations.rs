@@ -1521,6 +1521,24 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
         (&["that", "dealt", "combat", "damage", "to"][..], true),
         (&["that", "dealt", "damage", "to"][..], false),
     ] {
+        if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix) {
+            let rest = &all_words[start + prefix.len()..];
+            let reference_len = if rest.starts_with(&["it", "this", "turn"]) { Some(1) }
+                else if rest.starts_with(&["that", "creature", "this", "turn"])
+                    || rest.starts_with(&["that", "permanent", "this", "turn"]) { Some(2) }
+                else { None };
+            if let Some(reference_len) = reference_len {
+                let end = start + prefix.len() + reference_len + 2;
+                let phrase = all_words[start..end].to_vec();
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                    relation: crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only },
+                });
+                drain_segment_matching_phrase(segment_tokens, &[phrase.as_slice()]);
+                all_words.drain(start..end);
+                return true;
+            }
+        }
         if let Some(start) = crate::word_primitives::parse_sequence_start(all_words, prefix)
             && let Some((player, used)) = parse_player_relation_subject(
                 &all_words[start + prefix.len()..],

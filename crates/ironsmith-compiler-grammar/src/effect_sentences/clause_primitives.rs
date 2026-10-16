@@ -257,7 +257,16 @@ pub fn parse_change_target_clause_inner(
     }
 
     let tail_tokens = split.target_tokens;
-    let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
+    let any_targets = tokens.get(1).is_some_and(|token| token.is_word("any"));
+    let mut filter = if any_targets {
+        // Preserve the complete announced spell filter, including subtypes.
+        match parse_target_phrase(&tail_tokens)? {
+            TargetAst::Object(filter, ..) if filter.zone == Some(crate::zone::Zone::Stack) => filter,
+            _ => return Err(CardTextError::ParseError("change-any-targets requires a stack object".into())),
+        }
+    } else {
+        parse_stack_retarget_filter(&tail_tokens)?
+    };
 
     for constraint in clause_shapes::parse_retarget_constraint_shapes(&tail_tokens) {
         filter = apply_retarget_constraint(filter, constraint);
@@ -277,7 +286,7 @@ pub fn parse_change_target_clause_inner(
         PlayerAst::Implicit,
         target,
         mode,
-        true,
+        !any_targets,
     )))
 }
 
@@ -317,9 +326,13 @@ pub fn parse_unless_pays_clause(
             crate::lexer::token_word_refs(tokens).join(" ")
         ))
     })?;
-    let player = match parse_subject(shape.player_tokens) {
-        SubjectAst::Player(player) => player,
-        _ => PlayerAst::Implicit,
+    let player = if crate::lexer::parser_token_word_refs(shape.player_tokens) == ["any", "player"] {
+        PlayerAst::Any
+    } else {
+        match parse_subject(shape.player_tokens) {
+            SubjectAst::Player(player) => player,
+            _ => PlayerAst::Implicit,
+        }
     };
     let cost = crate::activation_and_restrictions::parse_payment_clause_as_total_cost(
         shape.payment_tokens,
@@ -2591,6 +2604,19 @@ mod result_subject_tests {
                 panic!("pronoun must resolve through its antecedent, never a source default")
             };
             assert_eq!(tag.as_str(), crate::tag::CompilerReferenceTag::It.as_str());
+        }
+    }
+}
+
+#[cfg(test)]
+mod change_any_targets_tests {
+    #[test]
+    fn optional_any_targets_preserves_arcane_filter_and_unchanged_slots() {
+        let tokens = crate::lexer::lex_line("You may change any targets of target Arcane spell.", 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        for required in ["May", "RetargetStackObject", "Arcane", "Stack", "All", "require_change: false"] {
+            assert!(debug.contains(required), "missing {required}: {debug}");
         }
     }
 }

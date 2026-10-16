@@ -3820,6 +3820,9 @@ fn finish_step(
     step: Step,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Upkeep {
+        game.finish_upkeep_duration_tracking();
+    }
     if step == Step::Draw {
         game.finish_draw_step_tracking();
     }
@@ -3845,6 +3848,9 @@ fn finish_step_and_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if step == Step::Upkeep {
+        game.finish_upkeep_duration_tracking();
+    }
     if step == Step::Draw {
         game.finish_draw_step_tracking();
     }
@@ -3876,6 +3882,9 @@ fn finish_phase(
     phase: Phase,
     normal_next: TurnScheduleDestination,
 ) -> TurnState {
+    if game.turn.step == Some(Step::Upkeep) {
+        game.finish_upkeep_duration_tracking();
+    }
     if phase == Phase::Beginning && game.turn.step == Some(Step::Draw) {
         game.finish_draw_step_tracking();
     }

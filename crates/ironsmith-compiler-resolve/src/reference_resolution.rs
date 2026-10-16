@@ -4658,6 +4658,22 @@ pub fn preserves_existing_it_for_power_self_damage_followup(
         && target_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
 }
 
+// A branch's first result gate can consume the outcome from before the
+// conditional. Instructions later in a branch have their own antecedents.
+fn nested_entry_result_gate(effect: &EffectAst) -> Option<&EffectAst> {
+    match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. }) => {
+            [if_true.first(), if_false.first()].into_iter().flatten().find_map(|entry| {
+                if result_gate_surface(entry).is_some() { Some(entry) }
+                else { nested_entry_result_gate(entry) }
+            })
+        }
+        EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+            if effects.len() == 1 => nested_entry_result_gate(&effects[0]),
+        _ => None,
+    }
+}
+
 fn maybe_assign_effect_result_id(
     effect: &EffectAst,
     remaining: &[EffectAst],
@@ -4686,6 +4702,8 @@ fn maybe_assign_effect_result_id(
     let next_is_result_gate = remaining.first().is_some_and(|next| {
         result_gate_surface(next).is_some() && result_gate_accepts_producer(next, effect)
     });
+    let next_nested_result_gate = remaining.first().and_then(nested_entry_result_gate)
+        .filter(|gate| result_gate_accepts_producer(gate, effect));
     let next_is_if_result_with_opponent_doesnt = next_is_result_gate
         && matches!(
             remaining.get(1),
@@ -4758,6 +4776,7 @@ fn maybe_assign_effect_result_id(
         || next_is_if_result_with_opponent_did
         || next_is_if_result_with_player_did
         || next_is_result_gate
+        || next_nested_result_gate.is_some()
         || next_needs_event_derived_amount
         || later_needs_event_derived_amount
         || next_needs_prior_effect_value
@@ -4773,8 +4792,9 @@ fn maybe_assign_effect_result_id(
     // producer for lowering; allocating a fresh ID leaves the resolved gate
     // reading an outcome that no runtime instruction writes.
     if result_gate_surface(effect).is_none()
-        && next_is_result_gate
+        && (next_is_result_gate || next_nested_result_gate.is_some())
         && let Some(condition) = remaining.first().and_then(resolved_result_gate_id)
+            .or_else(|| next_nested_result_gate.and_then(resolved_result_gate_id))
     {
         id_gen.next_effect_id = id_gen.next_effect_id.max(condition.0 + 1);
         return Some(condition);
@@ -5006,6 +5026,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageToRecipients { .. })
 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive { .. })
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
                 | SubjectVerbActionAst::Stack(StackActionAst::Counter { .. })
@@ -5144,6 +5165,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         PriorEffectAction::Discarded,
         PriorEffectAction::Drawn,
         PriorEffectAction::Copied,
+        PriorEffectAction::Investigated,
         PriorEffectAction::Exiled,
         PriorEffectAction::Goaded,
         PriorEffectAction::Milled,
@@ -5422,6 +5444,8 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         ),
         PriorEffectAction::Copied => matches!(producer_action,
             SubjectVerbActionAst::Stack(crate::model::StackActionAst::CopySpell { .. })),
+        PriorEffectAction::Investigated => matches!(producer_action,
+            SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { .. })),
         PriorEffectAction::Drawn => {
             matches!(
                 producer_action,
@@ -7235,6 +7259,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(
@@ -8466,6 +8491,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(
@@ -9992,6 +10018,7 @@ fn bind_unresolved_it_in_restriction(
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::MustBeBlockedBy { blockers, attacker }
         | Restriction::BeAttachedBy(blockers, attacker) => {
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
@@ -12933,4 +12960,51 @@ mod cast_quantity_binding_tests {
         assert_eq!(ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(&trigger), None);
         assert!(!trigger_supports_event_amount(&trigger));
     }
+}
+
+#[cfg(test)]
+mod optional_and_investigate_result_tests {
+    use super::*;
+    use crate::cards::builders::SubjectVerbRoleAst;
+    use crate::model::reference_state::ReferenceImports as ModelReferenceImports;
+    #[test]
+    fn conditional_branch_entry_imports_the_preceding_optional_result() {
+        let gain = EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount: Value::Fixed(3) }));
+        let effects = vec![
+            EffectAst::Permissions(PermissionEffectAst::May { effects: vec![EffectAst::subject_verb_investigate(PlayerAst::You, Value::Fixed(1))] }),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::YourTurn, if_true: vec![gain.clone()],
+                if_false: vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate: IfResultPredicate::Did, effects: vec![gain] })],
+            }),
+        ];
+        let annotated = annotate_effect_sequence(&effects, &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(), IdGenContext::default()).unwrap();
+        let prior = annotated.effects[0].assigned_effect_id.expect("optional action must export its result");
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_false, .. }) = &annotated.effects[1].effect else { panic!("expected state gate"); };
+        assert!(matches!(&if_false[0], EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult { condition, .. }) if *condition == prior), "{if_false:?}");
+    }
+
+    #[test]
+    fn investigate_participant_count_keeps_the_original_opponent_action() {
+        let producer = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![EffectAst::subject_verb_investigate(PlayerAst::That, Value::Fixed(1))],
+            })],
+        });
+        let loss = EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDoesNot {
+            effects: vec![EffectAst::subject_verb(SubjectVerbRoleAst::AffectedPlayer, PlayerAst::That,
+                SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount: Value::Fixed(1) }))],
+            predicate: None,
+        });
+        let query = ironsmith_core::PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::PlayersWithPositiveCount)
+            .with_action(PriorEffectAction::Investigated).with_player(PlayerFilter::Opponent);
+        let consumer = EffectAst::subject_verb_investigate(PlayerAst::You, Value::PendingPriorEffectMetric(query.clone()));
+        let annotated = annotate_effect_sequence(&[producer, loss, consumer],
+            &ModelReferenceImports::default(), EffectReferenceResolutionConfig::default(), IdGenContext::default()).unwrap();
+        let producer_id = annotated.effects[0].assigned_effect_id.expect("opponent action needs a receipt");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::KeywordActions(KeywordActionAst::Investigate { count }), .. }) = &annotated.effects[2].effect else { panic!("expected investigate consumer"); };
+        assert!(matches!(count, Value::PriorEffectMetric { effect_id, query: found } if *effect_id == producer_id && found == &query), "{count:?}");
+    }
+
 }

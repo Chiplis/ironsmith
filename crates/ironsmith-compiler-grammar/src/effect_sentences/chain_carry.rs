@@ -386,6 +386,19 @@ pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAs
     if let Some(effects) = super::parse_complete_create_statement(tokens)? {
         return Ok(effects);
     }
+    // A copular characteristic assignment owns its explicit recipient before
+    // the generic chain plan can infer a collection from the head noun.
+    if let Some(effect) = super::gain_ability::parse_copular_base_characteristic_assignment(tokens)? {
+        return Ok(vec![effect]);
+    }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let shapes = crate::grammar::effects::gain_ability_shapes::find_primary_gain_ability_verb(&words);
+    if !tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "unless", "at", "as"]))
+        && shapes != crate::grammar::effects::gain_ability_shapes::find_gain_ability_verb(&words)
+        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
     let effects = parse_effect_chain_lexed_inner(tokens)?;
     Ok(group_distributed_exile_instruction(tokens, effects))
 }

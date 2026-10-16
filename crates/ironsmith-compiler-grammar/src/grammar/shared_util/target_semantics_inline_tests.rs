@@ -459,3 +459,15 @@ fn explicit_blocking_creature_target_keeps_current_role_and_type_legality() {
     assert_eq!(filter.card_types, [CardType::Creature]);
     assert!(filter.tagged_constraints.is_empty());
 }
+
+#[test]
+fn attacking_creature_recipient_is_one_non_targeting_damage_action() {
+    assert!(matches!(parse("the player or planeswalker that creature is attacking"),
+        TargetAst::AttackedPlayerOrPlaneswalker(None)));
+    let tokens = crate::lexer::lex_line("This enchantment deals 1 damage to the player or planeswalker that creature is attacking.", 0).unwrap();
+    let effects = crate::effect_sentences::parse_effect_chain(&tokens).unwrap();
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("AttackedPlayerOrPlaneswalker(None)"), "{debug}");
+    assert!(!debug.contains("TargetOnly"), "{debug}");
+    assert_eq!(debug.matches("DealDamage").count(), 1, "{debug}");
+}

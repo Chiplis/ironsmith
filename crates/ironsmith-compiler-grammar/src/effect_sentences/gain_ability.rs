@@ -58,7 +58,7 @@ type SharedSubjectPump = (
     Option<PredicateAst>,
     Option<(i32, i32, Value)>,
 );
-type SharedSubjectBasePt = (Value, Value, usize, Until);
+type SharedSubjectBasePt = (Option<Value>, Option<Value>, usize, Until);
 type SharedSubjectGrant = (Vec<GrantedAbilityAst>, bool);
 
 fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -256,6 +256,15 @@ fn bind_shared_subject_pump_characteristics(pump: &mut Option<SharedSubjectPump>
     *toughness = bind_shared_subject_characteristic_fallback(toughness);
 }
 
+fn shared_subject_base_axes_effect(power: Option<Value>, toughness: Option<Value>, target: TargetAst, duration: Until) -> EffectAst {
+    match (power, toughness) {
+        (Some(power), Some(toughness)) => EffectAst::subject_verb_set_base_power_toughness(power, toughness, target, duration),
+        (Some(power), None) => EffectAst::subject_verb_set_base_power(power, target, duration),
+        (None, Some(toughness)) => EffectAst::subject_verb_set_base_toughness(toughness, target, duration),
+        (None, None) => unreachable!("a base characteristic clause must set an axis"),
+    }
+}
+
 fn append_shared_subject_base_pt_to_target(
     effects: &mut Vec<EffectAst>,
     target: &TargetAst,
@@ -264,12 +273,7 @@ fn append_shared_subject_base_pt_to_target(
     let Some((power, toughness, _, duration)) = base_pt_effect else {
         return;
     };
-    effects.push(EffectAst::subject_verb_set_base_power_toughness(
-        power.clone(),
-        toughness.clone(),
-        target.clone(),
-        duration.clone(),
-    ));
+    effects.push(shared_subject_base_axes_effect(power.clone(), toughness.clone(), target.clone(), duration.clone()));
 }
 
 fn append_shared_subject_grant_to_target(
@@ -324,12 +328,10 @@ fn coordinated_gain_surface(
                 gain_shapes::SharedAbilityTail::Gain,
             )
             .is_some())
-        || (gain_verb == gain_shapes::GainAbilityVerb::Lose
-            && gain_shapes::find_shared_ability_tail(
+        || gain_shapes::find_shared_ability_tail(
                 words.get(gain_idx + 1..).unwrap_or_default(),
                 gain_shapes::SharedAbilityTail::Has,
-            )
-            .is_some());
+            ).is_some();
     if !preceding_action && !following_action {
         return effects;
     }
@@ -386,10 +388,22 @@ fn parse_shared_subject_base_pt_from_has_tail(
     let Some(rest_words) = clause_words.get(has_word_idx + 1..) else {
         return Ok(None);
     };
+    if rest_words.starts_with(&["base", "toughness"]) || rest_words.starts_with(&["base", "power"])
+        && !rest_words.get(2).is_some_and(|word| *word == "and")
+    {
+        let Some((value, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_words(&rest_words[2..]) else { return Ok(None); };
+        let tail = &rest_words[2 + used..];
+        // Any remaining words must be the shared duration, never a dropped action.
+        if !tail.is_empty() && !gain_shapes::parse_leading_gain_duration_shape(tail)
+            .is_some_and(|parsed| parsed.consumed_words == tail.len() && &parsed.duration == duration)
+        { return Ok(None); }
+        let (power, toughness) = if rest_words[1] == "power" { (Some(value), None) } else { (None, Some(value)) };
+        return Ok(Some((power, toughness, has_word_idx, duration.clone())));
+    }
     match gain_shapes::parse_gain_base_pt_after_has_shape(rest_words) {
         Ok(Some(shape)) => Ok(Some((
-            shape.power,
-            shape.toughness,
+            Some(shape.power),
+            Some(shape.toughness),
             has_word_idx,
             duration.clone(),
         ))),
@@ -436,8 +450,8 @@ fn parse_leading_subject_base_pt_before_gain(
         return Ok(None);
     }
     Ok(Some((
-        shape.power,
-        shape.toughness,
+        Some(shape.power),
+        Some(shape.toughness),
         has_word_idx,
         duration.clone(),
     )))
@@ -691,6 +705,15 @@ fn parse_granted_ability_component_for_gain(
             .last()
             .is_some_and(|token| token.kind == TokenKind::Quote);
     let ability_tokens = trim_edge_punctuation_and_quotes(ability_tokens);
+    // Ability-word labels inside a quoted grant belong to its presentation,
+    // exactly as they do on a token's own rules text. Keep quotation ownership
+    // while passing the executable body to the nested ability readers.
+    let ability_tokens = if authored_as_quoted_ability {
+        crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&ability_tokens)
+            .filter(|shape| shape.kind != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
+                && shape.body_tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"])))
+            .map_or_else(|| ability_tokens.clone(), |shape| shape.body_tokens.to_vec())
+    } else { ability_tokens };
     if ability_tokens.is_empty() {
         return Ok(None);
     }
@@ -1470,6 +1493,15 @@ fn parse_ability_duration_with_condition(
     tokens_after_verb: &[OwnedLexToken],
     words_after_verb: &[&str],
 ) -> (Option<(usize, usize, Until)>, Option<PredicateAst>) {
+    if let Some((counter_type, body)) =
+        crate::grammar::effects::parse_affected_object_counter_duration_suffix(tokens_after_verb)
+        && body.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 0
+        && !tokens_after_verb[body.len()..].iter().any(|token| token.kind == TokenKind::Quote)
+    {
+        let start = GainAbilityWordView::new(body).to_word_refs().len();
+        return (Some((start, words_after_verb.len() - start,
+            Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::affected_object_has_counter(counter_type)))), None);
+    }
     let Some(shape) = gain_shapes::parse_source_tapped_gain_duration_shape(tokens_after_verb)
         .or_else(|| gain_shapes::parse_gain_ability_duration_shape(words_after_verb))
     else {
@@ -1747,6 +1779,9 @@ fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(us
 pub fn parse_simple_gain_ability_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_mana_cost_keyword_grant(tokens)? {
+        return Ok(single_or_sequence_effect(effects));
+    }
     if let Some(effect) = parse_activated_ability_snapshot_grant(tokens)? { return Ok(Some(effect)); }
     parse_simple_ability_modifier_clause_lexed(tokens, false)
 }
@@ -1927,6 +1962,70 @@ fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Option<
     ))
 }
 
+/// Copular scalar/dynamic base characteristics use the same value and
+/// duration lowering as "base power becomes ..." assignments.
+pub(super) fn parse_copular_base_characteristic_assignment(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "unless", "until", "at", "as"])) {
+        return Ok(None);
+    }
+    let Some(has) = tokens.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+        return Ok(None);
+    };
+    if has == 0 || tokens[..has].iter().any(|token| token.is_period() || token.is_comma()
+        || token.is_any_word(&["may", "put", "puts", "gain", "gains", "become", "becomes"])) {
+        return Ok(None);
+    }
+    let rest = &tokens[has + 1..];
+    let mut marker_len = None;
+    for marker in [
+        &["base", "power", "and", "base", "toughness"][..],
+        &["base", "power", "and", "toughness"][..],
+        &["base", "power"][..], &["base", "toughness"][..],
+    ] {
+        if rest.len() > marker.len() && rest.iter().zip(marker).all(|(token, word)| token.is_word(word)) {
+            marker_len = Some(marker.len()); break;
+        }
+    }
+    let Some(marker_len) = marker_len else { return Ok(None); };
+    let mut value = &rest[marker_len..];
+    // A following grant belongs to the compound sentence owner.
+    if value.iter().any(|token| token.is_any_word(&["gain", "gains", "has", "have", "lose", "loses"])) {
+        return Ok(None);
+    }
+    if value.first().is_some_and(|token| token.is_word("each")) {
+        if !value.get(1).is_some_and(|token| token.is_word("equal")) { return Ok(None); }
+        value = &value[1..];
+    }
+    let mut subject = tokens[..has].to_vec();
+    subject.extend_from_slice(&rest[..marker_len]);
+    let recipient = source_target_from_subject_tokens(&tokens[..has])
+        .map(Ok).unwrap_or_else(|| parse_target_phrase(&tokens[..has]))?;
+    let mut effect = super::clause_dispatch::parse_become_clause(&subject, value)?;
+    fn preserve_recipient(effect: &mut EffectAst, recipient: &TargetAst) {
+        use crate::cards::builders::CharacteristicActionAst;
+        match effect {
+            EffectAst::SubjectVerb(subject) => match &mut subject.action {
+                SubjectVerbActionAst::Characteristics(
+                    CharacteristicActionAst::SetBasePowerToughness { target, .. }
+                    | CharacteristicActionAst::SetBasePower { target, .. }
+                    | CharacteristicActionAst::SetBaseToughness { target, .. }
+                ) => *target = recipient.clone(),
+                _ => {}
+            },
+            EffectAst::Sequence { effects } => {
+                for effect in effects { preserve_recipient(effect, recipient); }
+            }
+            _ => {}
+        }
+    }
+    // The copular subject is an explicit recipient, not a newly inferred
+    // possessive or collection derived from the synthetic characteristic head.
+    preserve_recipient(&mut effect, &recipient);
+    Ok(Some(effect))
+}
+
 /// "it loses all land types and abilities" (Ultima, Origin of Oblivion):
 /// one subject loses every subtype of the named family (CR 205.3, layer 4)
 /// and every ability (layer 6, CR 613.1f). The ability half is read by the
@@ -2070,6 +2169,9 @@ fn parse_simple_ability_modifier_clause_lexed(
     if !losing && let Some(effect) = parse_complete_source_base_pt_assignment(tokens) {
         return Ok(Some(effect));
     }
+    if !losing && let Some(effect) = parse_copular_base_characteristic_assignment(tokens)? {
+        return Ok(Some(effect));
+    }
     if tokens
         .first()
         .is_some_and(|token| token.is_any_word(&["if", "unless", "instead"]))
@@ -2088,6 +2190,13 @@ fn parse_simple_ability_modifier_clause_lexed(
 
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+    if !losing && gain_shapes::find_primary_gain_ability_verb(&clause_words)
+        .is_some_and(|(_, verb)| verb == gain_shapes::GainAbilityVerb::Has)
+    {
+        // Copular grants also occur inside conditional effect chains. Keep
+        // their compound base-stat assignment and trailing lifetime together.
+        return Ok(parse_gain_ability_sentence(tokens)?.and_then(single_or_sequence_effect));
+    }
     let Some((verb_idx, verb)) = gain_shapes::find_gain_or_lose_verb(&clause_words, losing) else {
         return Ok(None);
     };
@@ -2509,10 +2618,79 @@ fn with_inline_creature_type_choice(
     effects
 }
 
+/// "It gains <abilities> and loses all other abilities" keeps precisely
+/// the granted bundle. Resolve the loss first, then grant the retained bundle
+/// with later timestamps in the same resolution.
+fn parse_gain_then_lose_other_abilities(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(tail) = tokens.windows(5).rposition(|words| words[0].is_word("and")
+        && words[1].is_any_word(&["lose", "loses"]) && words[2].is_word("all")
+        && words[3].is_word("other") && words[4].is_word("abilities")) else { return Ok(None); };
+    if tail + 5 != tokens.len() { return Ok(None); }
+    let prefix = &tokens[..tail];
+    // Duration-bearing variants need to carry that duration to the removal.
+    if prefix.iter().any(|token| token.is_any_word(&["until", "during", "for"])) { return Ok(None); }
+    let Some(gain) = prefix.iter().position(|token| token.is_any_word(&["gain", "gains"])) else { return Ok(None); };
+    let subject = &prefix[..gain];
+    let target = if let Some(source) = source_target_from_subject_tokens(subject) { source }
+        else {
+            let words = GainAbilityWordView::new(subject).to_word_refs();
+            let shape = gain_shapes::classify_gain_subject(&words);
+            if !shape.pronoun && !shape.demonstrative_object { return Ok(None); }
+            tagged_subject_target(subject)
+        };
+    let Some(mut grants) = parse_gain_ability_sentence_inner(prefix)? else { return Ok(None); };
+    let mut effects = vec![EffectAst::subject_verb_remove_abilities_from_target(target, Vec::new(), Until::Forever)];
+    effects.append(&mut grants);
+    Ok(Some(vec![EffectAst::Sequence { effects }]))
+}
+
 pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_gain_then_lose_other_abilities(tokens)? {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = parse_keyword_loss_with_prohibition(tokens)? {
+        return Ok(Some(effects));
+    }
     parse_gain_ability_sentence_inner(tokens)
+}
+
+pub(crate) fn parse_keyword_loss_with_prohibition(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(lose) = tokens.iter().position(|token| token.is_any_word(&["lose", "loses"])) else { return Ok(None); };
+    let Some(and) = tokens.windows(2).position(|pair| pair[0].is_word("and")
+        && pair[1].is_any_word(&["cant", "can't", "cannot"])) else { return Ok(None); };
+    if and <= lose + 1 { return Ok(None); }
+    let tail = &tokens[and + 2..];
+    let (used, mode) = if tail.first().is_some_and(|token| token.is_word("have")) {
+        let used = if tail.get(1).is_some_and(|token| token.is_word("or"))
+            && tail.get(2).is_some_and(|token| token.is_word("gain")) { 3 } else { 1 };
+        (used, ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain)
+    } else if tail.first().is_some_and(|token| token.is_word("gain")) {
+        (1, ironsmith_core::AbilityLossMode::LoseAndCantGain)
+    } else { return Ok(None); };
+    let Some(lost) = crate::keyword_static::parse_ability_line(&tokens[lose + 1..and]) else { return Ok(None); };
+    let forbidden_tokens = crate::util::trim_edge_punctuation_tokens(&tail[used..]);
+    let forbidden = crate::keyword_static::parse_ability_line(forbidden_tokens).or_else(|| {
+        let parts = crate::grammar::primitives::split_lexed_slices_on_or(forbidden_tokens);
+        if parts.len() < 2 { return None; }
+        parts.into_iter().map(crate::keyword_static::parse_ability_line)
+            .collect::<Option<Vec<_>>>().map(|parts| parts.into_iter().flatten().collect())
+    });
+    let Some(forbidden) = forbidden else { return Ok(None); };
+    if lost.is_empty() || lost.len() != forbidden.len() || lost.iter().any(|ability| !forbidden.contains(ability)) { return Ok(None); }
+    let Some(mut effects) = parse_gain_ability_sentence_inner(&tokens[..and])? else { return Ok(None); };
+    for effect in &mut effects {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::StatChanges(
+                StatChangeActionAst::RemoveAbilitiesAll { mode: loss_mode, .. }
+                | StatChangeActionAst::RemoveAbilitiesFromTarget { mode: loss_mode, .. }
+            ), .. }) => *loss_mode = mode,
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some(effects))
 }
 
 fn parse_complete_simple_source_gain_ability_sentence(
@@ -2536,6 +2714,15 @@ fn parse_complete_simple_source_gain_ability_sentence(
         return Ok(None);
     };
     if !shape.complete {
+        return Ok(None);
+    }
+    let word_view = GainAbilityWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    if gain_shapes::find_primary_gain_ability_verb(&words)
+        != gain_shapes::find_gain_ability_verb(&words)
+    {
+        // A base-stat assignment followed by a keyword clause needs the
+        // shared-subject reader; the first `has` does not introduce an ability.
         return Ok(None);
     }
     let mut ability_start = 0usize;
@@ -2608,9 +2795,59 @@ fn parse_complete_simple_source_gain_ability_sentence(
     Ok(Some(vec![effect]))
 }
 
+/// A temporary keyword grant and its following price definition are one
+/// instruction: the receiving card supplies the colored mana cost.
+pub(crate) fn parse_mana_cost_keyword_grant(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let [grant, price] = sentences.as_slice() else { return Ok(None); };
+    let price_words = crate::lexer::parser_token_word_refs(price);
+    let ["the" | "its", keyword, "cost", "is", "equal", "to", "its", "mana", "cost"]
+        = price_words.as_slice() else { return Ok(None); };
+    if !matches!(*keyword, "encore" | "harmonize") { return Ok(None); }
+    let grant = trim_edge_punctuation(grant);
+    let Some(gain) = grant.iter().position(|token| token.is_any_word(&["gain", "gains"])) else {
+        return Ok(None);
+    };
+    if gain == 0 || crate::lexer::parser_token_word_refs(&grant[gain + 1..])
+        != [*keyword, "until", "end", "of", "turn"]
+    {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(&grant[..gain])?;
+    let effect = if *keyword == "encore" {
+        EffectAst::subject_verb_grant_abilities_to_target(
+            target,
+            vec![GrantedAbilityAst::KeywordAction(Box::new(KeywordAction::EncoreFromSourceCost {
+                mana_value_generic: false,
+            }))],
+            Until::EndOfTurn,
+        )
+    } else {
+        EffectAst::subject_verb_grant_to_target(
+            target,
+            crate::model::CompilerGrantableCore::AlternativeCast(
+                crate::model::CompilerAlternativeCastingMethod::Harmonize {
+                    total_cost: ironsmith_core::TotalCost::from_cost(
+                        crate::model::CompilerCost::DynamicMana(
+                            ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+                        ),
+                    ),
+                },
+            ),
+            crate::grant::GrantDuration::UntilEndOfTurn,
+        )
+    };
+    Ok(Some(vec![effect]))
+}
+
 fn parse_gain_ability_sentence_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_mana_cost_keyword_grant(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effect) = parse_activated_ability_snapshot_grant(tokens)? { return Ok(Some(vec![effect])); }
     if let Some(effects) = super::flashback_grants::parse_fixed_flashback_grant(tokens)? {
         return Ok(Some(effects));
@@ -2862,5 +3099,23 @@ mod quoted_item_split_tests {
         );
         assert_eq!(split.len(), 3, "{split:?}");
         assert!(split[1].contains("draw a card"), "{split:?}");
+    }
+}
+
+#[cfg(test)]
+mod keyword_prohibition_list_tests {
+    use super::*;
+
+    #[test]
+    fn loss_and_disjunctive_prohibition_preserve_opponent_filter_and_duration() {
+        let tokens = crate::lexer::lex_line("Until end of turn, creatures your opponents control lose hexproof and shroud and can't have hexproof or shroud.", 0).unwrap();
+        let effects = parse_keyword_loss_with_prohibition(&tokens).unwrap().expect("complete loss and prohibition clause");
+        assert!(!effects.is_empty());
+        for effect in effects {
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll { filter, duration, mode, .. }), .. }) = effect else { panic!("expected all-opponents removal: {effect:?}"); };
+            assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+            assert_eq!(duration, Until::EndOfTurn);
+            assert_eq!(mode, ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain);
+        }
     }
 }

@@ -3,6 +3,7 @@ use super::*;
 impl GameState {
     /// Record an actual upkeep boundary, including additional upkeeps.
     pub fn mark_upkeep_began(&mut self, player: PlayerId) {
+        self.effect_store.continuous_effects.mark_upkeep_began(player, self.turn.turn_number);
         let controlled = self
             .battlefield
             .iter()
@@ -27,6 +28,11 @@ impl GameState {
         self.turn_store
             .previous_upkeep_turn_by_player
             .insert(player, previous);
+    }
+
+    pub fn finish_upkeep_duration_tracking(&mut self) {
+        let players = self.turn_players();
+        self.effect_store.continuous_effects.expire_at_upkeep_end(&players);
     }
 
     pub fn enchanted_permanent_attacked_or_blocked_since_last_upkeep(

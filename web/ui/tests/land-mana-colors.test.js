@@ -35,3 +35,20 @@ test('land creatures snapshot in the creature lane still get their mana strip (D
   assert.deepEqual(landManaColors({lane:'creatures',card_types:['land','creature'],intrinsic_mana:['G'],produced_mana:['G']}),['G']);
   assert.deepEqual(landManaColors({lane:'creatures',card_types:['creature'],produced_mana:['G']}),[]);
 });
+
+test('an Island-converted Ramunap uses only current abilities, even with stale printed metadata', () => {
+  const ramunap = { lane: 'lands', card_types: ['land'], intrinsic_mana: ['U'],
+    produced_mana: ['R', 'C'], oracle_text: '{T}: Add {C}.\n{T}, Pay 1 life: Add {R}.' };
+  for (const abilities of [[], ['{T}: Add {U}.']]) {
+    for (const tapped of [false, true]) {
+      assert.deepEqual(landManaColors({ ...ramunap, abilities, tapped }), ['U']);
+    }
+  }
+});
+
+test('additive land types preserve mana from surviving live abilities', () => {
+  assert.deepEqual(landManaColors({ lane: 'lands', intrinsic_mana: ['G'], produced_mana: ['R', 'C'],
+    abilities: ['{T}: Add {C}.', '{T}, Pay 1 life: Add {R}.'] }), ['R', 'G', 'C']);
+  assert.deepEqual(landManaColors({ lane: 'lands', intrinsic_mana: [], produced_mana: ['R', 'C'],
+    oracle_text: '{T}: Add {C}.', abilities: [] }), []);
+});

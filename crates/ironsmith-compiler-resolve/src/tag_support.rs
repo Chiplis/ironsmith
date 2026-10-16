@@ -985,6 +985,13 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     {
         return true;
     }
+    if tag == "triggering_source"
+        && matches!(effect, EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            player: PlayerAst::TriggeringSourceController, ..
+        }))
+    {
+        return true;
+    }
     if direct_effect_targets_reference_tag(effect, tag) {
         return true;
     }
@@ -1651,6 +1658,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
         | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
         | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
         | SubjectVerbActionAst::TurnStructure(
@@ -2832,7 +2840,8 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
             .any(|constraint| constraint.tag.as_str() == tag);
         return blockers_reference || attacker_reference;
     }
-    if let Restriction::MustBlockSpecificAttacker { blockers, attacker } = restriction {
+    if let Restriction::MustBlockSpecificAttacker { blockers, attacker }
+        | Restriction::MustBeBlockedBy { blockers, attacker } = restriction {
         let blockers_reference = blockers
             .tagged_constraints
             .iter()

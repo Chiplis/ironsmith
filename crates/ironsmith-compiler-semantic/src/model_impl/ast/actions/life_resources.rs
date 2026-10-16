@@ -13,5 +13,5 @@ pub enum LifeResourceActionAst {
     NoteLifeTotal,
     PayEnergy { amount: Value },
     PayAnyEnergy { min_amount: u32 },
-    PayAnyLife { min_amount: u32 },
+    PayAnyLife { min_amount: u32, maximum: Option<Value>, source_owned: bool },
 }

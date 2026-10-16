@@ -180,6 +180,15 @@ pub fn parse_draw(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
+        && tokens.get(then_index + 1).is_some_and(|token| token.is_word("discard"))
+        && crate::lexer::parser_token_word_refs(&tokens[then_index + 2..]).starts_with(&["cards", "equal", "to"])
+    {
+        let draw_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..then_index]);
+        let draw = parse_draw(draw_tokens, subject.clone())?;
+        let discard = parse_discard(&tokens[then_index + 2..], subject)?;
+        return Ok(EffectAst::Sequence { effects: vec![draw, discard] });
+    }
+    if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
         && crate::lexer::parser_token_word_refs(&tokens[then_index + 1..]) == ["discard", "one", "of", "them"]
     {
         let player = extract_subject_player(subject.clone()).unwrap_or(PlayerAst::Implicit);

@@ -2518,6 +2518,24 @@ fn goad_for_anthem_subject(clause: &ParsedAnthemClause) -> StaticAbilityAst {
     ability.into()
 }
 
+fn filtered_block_requirement_for_subject(
+    clause: &ParsedAnthemClause,
+    blockers: ObjectFilter,
+) -> StaticAbilityAst {
+    let mut attacker = anthem_subject_filter(&clause.subject);
+    if attached_goaded_display_subject(&clause.subject).is_some() {
+        attacker.with_attached_object = Some(Box::new(ObjectFilter::source()));
+    }
+    let display = format!("{} must be blocked by a {} if able", attacker.description(), blockers.description());
+    let mut ability = StaticAbility::restriction(
+        crate::effect::Restriction::MustBeBlockedBy { attacker, blockers }, display,
+    );
+    if let Some(condition) = &clause.condition {
+        ability = ability.with_condition(condition.clone());
+    }
+    ability.into()
+}
+
 fn maximum_blockers_rule_for_subject(
     clause: &ParsedAnthemClause,
     maximum: usize,
@@ -2640,6 +2658,16 @@ fn lower_atomic_anthem_predicate(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
             "This creature must be blocked if able",
         ),
+        S::MustBeBlockedBy { blocker_tokens } => {
+            let blockers = parse_object_filter(blocker_tokens, false).ok()?;
+            if !quoted {
+                return Some(filtered_block_requirement_for_subject(clause, blockers));
+            }
+            StaticAbility::restriction(
+                crate::effect::Restriction::MustBeBlockedBy { attacker: ObjectFilter::source(), blockers },
+                format!("This creature must be blocked by a {} if able", crate::lexer::render_token_slice(blocker_tokens)),
+            )
+        },
         S::AllMustBlock => StaticAbility::restriction(
             crate::effect::Restriction::must_block_specific_attacker(
                 ObjectFilter::creature(),
@@ -4049,6 +4077,9 @@ fn parse_conditional_source_prevention_and_grant(
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if parse_filtered_land_reset_and_grant_line(tokens)?.is_some() {
+        return Ok(None);
+    }
     // The complete numeric absorb reader owns its prevention payload.
     if matches!(parse_absorb_keyword_line(tokens), Ok(Some(_))) {
         return Ok(None);
@@ -5961,4 +5992,23 @@ pub fn parse_conditional_no_defender_and_unblockable_line(
         grant_for_anthem_subject(&clause, StaticAbility::can_attack_as_though_no_defender()),
         grant_for_anthem_subject(&clause, StaticAbility::unblockable()),
     ]))
+}
+
+#[cfg(test)]
+mod filtered_block_anthem_tests {
+    use super::*;
+    #[test]
+    fn equipped_anthem_keeps_filtered_block_requirement() {
+        let tokens = crate::lexer::lex_line("Equipped creature gets +3/+1 and must be blocked by an Eldrazi if able.", 0).unwrap();
+        let abilities = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        assert_eq!(abilities.len(), 2, "{abilities:?}");
+        let StaticAbilityAst::Static(rule) = &abilities[1] else { panic!("equipment must own its rule: {abilities:?}") };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, .. } = &rule.payload else { panic!("{rule:?}") };
+        let crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } = restriction else { panic!("{restriction:?}") };
+        assert!(attacker.with_attached_object.as_ref().is_some_and(|filter| filter.source));
+        assert!(attacker.tagged_constraints.iter().any(|tag| tag.tag.as_str() == "equipped"));
+        assert!(blockers.subtypes.contains(&Subtype::Eldrazi));
+        let invalid = crate::lexer::lex_line("Equipped creature gets +3/+1 and must be blocked by an Eldrazi if able unless you pay {2}.", 0).unwrap();
+        assert!(!matches!(crate::keyword_static::parse_static_ability_ast_line_lexed(&invalid), Ok(Some(_))));
+    }
 }

@@ -1011,6 +1011,9 @@ fn finalize_public_object_filter(
         || words
             .windows(2)
             .any(|part| part == ["enchanted", "creatures"])
+        || words
+            .windows(3)
+            .any(|part| part == ["an", "enchanted", "creature"])
     {
         filter
             .tagged_constraints
@@ -3902,5 +3905,23 @@ mod morph_ability_filter_tests {
         let filter = parse_object_filter(&tokens, false).unwrap();
         assert!(filter.other);
         assert_eq!(filter.static_abilities, [crate::static_abilities::StaticAbilityId::Morph]);
+    }
+}
+
+#[cfg(test)]
+mod indefinite_enchanted_filter_tests {
+    use super::*;
+
+    #[test]
+    fn indefinite_enchanted_creature_uses_any_attached_aura() {
+        let tokens = crate::lexer::lex_line("an enchanted creature", 0).unwrap();
+        let filter = crate::activation_and_restrictions::trigger_subject_filters::parse_trigger_subject_filter_lexed(&tokens).unwrap().unwrap();
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert!(filter.tagged_constraints.is_empty(), "{filter:#?}");
+        assert_eq!(filter.with_attached_object.unwrap().subtypes, [crate::types::Subtype::Aura]);
+
+        let tokens = crate::lexer::lex_line("enchanted creature", 0).unwrap();
+        let filter = parse_object_filter_lexed(&tokens, false).unwrap();
+        assert!(filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == "enchanted"));
     }
 }

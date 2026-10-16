@@ -3568,3 +3568,8 @@ fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
     }
     view.token_start_indices().get(suffix_start).copied()
 }
+
+/// The same typed reference is used by an optional mana payment and its readers.
+pub(crate) fn additional_mana_payment_reference(mana: &ManaCost) -> ironsmith_core::OptionalCostRef {
+    ironsmith_core::OptionalCostRef::with_discriminator(ironsmith_core::OptionalCostKind::Additional, mana.to_oracle())
+}

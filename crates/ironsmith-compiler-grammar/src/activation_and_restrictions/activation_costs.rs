@@ -807,6 +807,9 @@ pub fn parse_cant_clauses(
     ) {
         return Ok(None);
     }
+    if crate::keyword_static::parse_attached_untap_and_activation_restrictions_line(tokens)?.is_some() {
+        return Ok(None);
+    }
     // A mixed serial predicate owns the entire subject and every member.
     // A later "can't" must not make this reader reinterpret its first verb
     // as part of a target filter. The compound reader guards its recursion.
@@ -847,7 +850,8 @@ fn bind_static_restriction_pronoun_to_source(mut ability: StaticAbility) -> Stat
     };
     for restriction in std::iter::once(restriction).chain(additional_restrictions.iter_mut()) {
         if let crate::effect::Restriction::BlockSpecificAttacker { attacker, .. }
-        | crate::effect::Restriction::MustBlockSpecificAttacker { attacker, .. } = restriction
+        | crate::effect::Restriction::MustBlockSpecificAttacker { attacker, .. }
+        | crate::effect::Restriction::MustBeBlockedBy { attacker, .. } = restriction
             && is_bare_pronoun(attacker)
         {
             *attacker = ObjectFilter::source();

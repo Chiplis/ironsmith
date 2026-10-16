@@ -705,3 +705,15 @@ fn attached_vehicle_transform_grants_crew_and_replaces_card_types() {
     assert!(!debug.contains("RemoveAllAbilities"), "{debug}");
     assert!(crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().is_some());
 }
+
+#[test]
+fn attached_bonus_keyword_and_type_assignment_preserve_all_layers() {
+    let tokens = crate::lexer::lex_line("Equipped creature gets +2/+2, has intimidate, and is a black Zombie.", 0).unwrap();
+    let abilities = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+    let debug = format!("{abilities:?}");
+    for required in ["Intimidate", "SetColors", "SetCreatureSubtypes", "Zombie"] {
+        assert!(debug.contains(required), "missing {required}: {debug}");
+    }
+    assert!(!debug.contains("AddSubtypes"), "Zombie replaces its other creature types: {debug}");
+    assert_eq!(abilities.len(), 4, "bonus, keyword, subtype, and color: {debug}");
+}

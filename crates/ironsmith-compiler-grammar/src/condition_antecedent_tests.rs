@@ -127,7 +127,7 @@ mod tests {
             panic!("expected choose-then-gain sequence: {collection_effects:#?}");
         };
         assert!(count.is_single());
-        assert_eq!(*player, PlayerAst::That);
+        assert_eq!(*player, PlayerAst::You);
         assert_eq!(
             tag.as_str(),
             crate::tag::CompilerReferenceTag::ConditionCollectionChoice.as_str()
@@ -151,6 +151,29 @@ mod tests {
                 target: TargetAst::Tagged(untap_tag, _),
             }) if untap_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
         ));
+    }
+
+    #[test]
+    fn collection_choice_uses_gain_actor_not_collection_controller() {
+        let predicate = PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+            player: PlayerAst::That,
+            filter: ObjectFilter::land().controlled_by(crate::target::PlayerFilter::DamagedPlayer),
+        });
+        let mut effects = vec![effect(SubjectVerbActionAst::Control(ControlActionAst::GainControl {
+            target: TargetAst::WithCount(Box::new(TargetAst::Object(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.key()), None, None,
+            )), crate::effect::ChoiceCount::exactly(1)),
+            duration: Until::Forever,
+            condition: None,
+            controller_reference: Some(crate::filter::ObjectRef::tagged("triggering")),
+            source_reference_surface: None,
+        }))];
+        bind_condition_collection_antecedent_in_effects(&mut effects, &predicate);
+        let [EffectAst::Sequence { effects }] = effects.as_slice() else { panic!("{effects:?}"); };
+        let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, filter, .. }) = &effects[0]
+            else { panic!("{effects:?}"); };
+        assert_eq!(*player, PlayerAst::TriggeringSourceController);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::DamagedPlayer));
     }
 
     #[test]

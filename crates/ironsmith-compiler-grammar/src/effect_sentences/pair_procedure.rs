@@ -1408,3 +1408,6 @@ mod chosen_basic_land_type_program_tests {
         assert!(text.contains("Land")&&text.contains("You")&&text.contains("EndOfTurn"),"{text}");
     }
 }
+
+#[path = "pair_procedure/life_payment_limit.rs"]
+pub(super) mod life_payment_limit;

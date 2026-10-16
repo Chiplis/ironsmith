@@ -1115,12 +1115,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         } => Trigger::nth_counter_put_on(filter, counter_type, counter_number),
         TriggerSpec::CounterRemovedFrom {
             filter,
+            source_controller,
             counter_type,
             last,
             one_or_more,
             caused_by_source,
         } => {
             let mut trigger = crate::triggers::CounterRemovedFromTrigger::new(filter);
+            if let Some(player) = source_controller { trigger = trigger.source_controller(player); }
             if let Some(counter_type) = counter_type {
                 trigger = trigger.counter_type(counter_type);
             }

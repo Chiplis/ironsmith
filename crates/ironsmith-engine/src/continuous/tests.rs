@@ -3105,3 +3105,45 @@ fn failing_dynamic_modifier_rolls_back_prior_effects_history_and_registered_laye
         assert_eq!(game.player(alice).unwrap().life, 21, "a failed query must not poison the next transaction");
     }
 }
+
+#[test]
+fn next_upkeep_end_duration_tracks_actual_upkeeps_and_expires_permanently() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let card = CardBuilder::new(CardId::new(), "Upkeep duration recipient")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1)).build();
+    let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+    let effect = ContinuousEffect::new(object, alice, EffectTarget::Specific(object),
+        Modification::AddSubtypes(vec![Subtype::Elf])).until(Until::YourNextUpkeepEnd);
+    // Halfdane resolves during an upkeep that has already begun.
+    game.mark_upkeep_began(alice);
+    game.effect_store.continuous_effects.add_effect(effect.clone());
+    game.effect_store.continuous_effects.expire_at_upkeep_end(&[alice]);
+    assert_eq!(game.effect_store.continuous_effects.effects().len(), 1);
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
+    game.mark_upkeep_began(bob);
+    game.effect_store.continuous_effects.expire_at_upkeep_end(&[bob]);
+    assert_eq!(game.effect_store.continuous_effects.effects()[0].expires_end_of_turn, u32::MAX);
+    // Skipped upkeeps never issue a begin event; the effect remains active.
+    assert!(continuous_effect_duration_and_condition_are_active(
+        &game.effect_store.continuous_effects.effects()[0], &game));
+    // An additional upkeep in the same turn is still the next upkeep.
+    game.turn.active_player = alice;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.mark_upkeep_began(alice);
+    assert!(continuous_effect_duration_and_condition_are_active(
+        &game.effect_store.continuous_effects.effects()[0], &game));
+    game.effect_store.continuous_effects.expire_at_upkeep_end(&[alice]);
+    game.mark_upkeep_began(alice);
+    assert!(game.effect_store.continuous_effects.effects().is_empty());
+    // Ending a turn during the next upkeep also ends the armed duration,
+    // but preserves a new effect created during that same upkeep.
+    game.effect_store.continuous_effects.add_effect(effect.clone());
+    game.mark_upkeep_began(alice);
+    game.effect_store.continuous_effects.add_effect(effect);
+    game.effect_store.continuous_effects.cleanup_end_of_turn();
+    assert_eq!(game.effect_store.continuous_effects.effects().len(), 1);
+    assert_eq!(game.effect_store.continuous_effects.effects()[0].expires_end_of_turn, u32::MAX);
+}

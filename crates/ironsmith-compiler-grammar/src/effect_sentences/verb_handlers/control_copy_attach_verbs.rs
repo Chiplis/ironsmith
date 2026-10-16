@@ -100,12 +100,35 @@ fn compose_put_filtered_looked_cards_to_zone(
     ]
 }
 
+/// A numeric quantity whose rounding clause follows the life noun.
+fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
+    if !tokens.first()?.is_word("half") { return None; }
+    let life = tokens.iter().position(|token| token.is_word("life"))?;
+    let base_tokens = &tokens[1..life];
+    let (base, used) = parse_value(base_tokens)?;
+    if used != base_tokens.len() { return None; }
+    let tail = crate::lexer::token_word_refs(&tokens[life + 1..]);
+    match tail.as_slice() {
+        ["rounded", "down"] => Some(Value::HalfRoundedDown(Box::new(base))),
+        ["rounded", "up"] => Some(Value::HalfRoundedDown(Box::new(Value::Add(
+            Box::new(base), Box::new(Value::Fixed(1)),
+        )))),
+        _ => None,
+    }
+}
+
 pub fn parse_lose_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    if let Some(amount) = parse_half_quantified_life(tokens) {
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer, player,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
+        ));
+    }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
@@ -210,6 +233,12 @@ pub fn parse_gain_life(
 ) -> Result<EffectAst, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    if let Some(amount) = parse_half_quantified_life(tokens) {
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer, player,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }),
+        ));
+    }
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
 
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
@@ -814,5 +843,17 @@ mod dynamic_control_bound_tests {
     fn unknown_power_operand_does_not_fall_back_to_unconditional_control() {
         let tokens=crate::lexer::lex_line("control of target creature with power less than or equal to the unsupported number of mysteries you control",0).unwrap();
         assert!(parse_gain_control(&tokens, None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod quantified_life_rounding_tests {
+    use super::*;
+    #[test]
+    fn half_x_life_keeps_rounding_after_life_noun() {
+        let tokens = crate::lexer::lex_line("half X life, rounded down", 0).unwrap();
+        assert_eq!(parse_half_quantified_life(&tokens), Some(Value::HalfRoundedDown(Box::new(Value::X))));
+        let tokens = crate::lexer::lex_line("half X life", 0).unwrap();
+        assert!(parse_half_quantified_life(&tokens).is_none());
     }
 }

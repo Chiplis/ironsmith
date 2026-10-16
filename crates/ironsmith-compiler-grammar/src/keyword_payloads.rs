@@ -224,6 +224,19 @@ pub(super) fn parse_additional_cost(
         optional.reference = "Evidence".into();
         return Ok(ast(LineAst::OptionalCost(optional)));
     }
+    let trimmed = crate::util::trim_edge_punctuation_tokens(effect_tokens);
+    if trimmed.len() >= 8
+        && trimmed[0].is_word("you") && trimmed[1].is_word("may") && trimmed[2].is_word("pay")
+        && crate::lexer::parser_token_word_refs(&trimmed[trimmed.len() - 4..]) == ["any", "number", "of", "times"]
+    {
+        let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&trimmed[2..trimmed.len() - 4])?;
+        if !cost.has_non_mana_costs() && let Some(mana) = cost.mana_cost() {
+            let reference = crate::util::additional_mana_payment_reference(mana);
+            let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost).repeatable();
+            optional.reference = reference;
+            return Ok(ast(LineAst::OptionalCost(optional)));
+        }
+    }
     // Optional additional costs are announced and recorded as optional costs.
     // A MayEffect in the mandatory cost program cannot publish the paid label
     // queried by a later "if this spell's additional cost was paid" clause.
@@ -384,6 +397,10 @@ pub(super) fn parse_flashback(
     tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> KeywordParseResult {
+    // A modifier of flashback costs is a static rule, not a flashback cost.
+    if token_slice_at_is(tokens, 1, "costs") {
+        return Ok(None);
+    }
     // Semantic preprocessing may present the keyword registry with only the
     // leading keyword sentence while retaining the complete source line in
     // `full_tokens`.  The Commander 2021 "Visions of" cycle uses the second

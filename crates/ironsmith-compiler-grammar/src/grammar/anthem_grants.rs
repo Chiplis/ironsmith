@@ -677,12 +677,17 @@ pub fn parse_has_keyword_unblockable_head(
 pub fn parse_granted_keyword_verb_facts(
     tokens: &[OwnedLexToken],
 ) -> Option<GrantedKeywordVerbFacts> {
-    let mut input = LexStream::new(tokens);
+    // The `has` in a leading condition describes its predicate, not the
+    // granted ability. Only scan the subject/action after that boundary.
+    let body = super::abilities::split_as_long_as_condition_prefix_lexed(tokens)
+        .map_or(tokens, |split| split.remainder_tokens);
+    let offset = tokens.len() - body.len();
+    let mut input = LexStream::new(body);
     let initial_len = input.len();
     let mut have_token = None;
     while let Ok(token) = take_token(&mut input) {
         if token.is_any_word(&["has", "have"]) {
-            have_token.get_or_insert(initial_len.saturating_sub(input.len() + 1));
+            have_token.get_or_insert(offset + initial_len.saturating_sub(input.len() + 1));
         }
     }
     let have_token = have_token?;

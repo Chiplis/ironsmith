@@ -1320,6 +1320,9 @@ pub enum TaggedOpbjectRelation {
     /// The candidate could produce at least one type of mana that the tagged
     /// object could produce (Mana Web).
     SharesProducibleManaTypeWithTagged,
+    /// Positive damage from this exact object incarnation to the remembered
+    /// recipient during the current turn, even if that recipient has left.
+    DealtDamageToTaggedThisTurn { combat_only: bool },
 }
 
 /// A characteristic that can be compared between a candidate object and a
@@ -5250,6 +5253,11 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::WasAttachedToTaggedObject => {
                     post_noun_qualifiers.push("that was attached to it".to_string());
+                }
+                TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
+                    post_noun_qualifiers.push(if combat_only {
+                        "that dealt combat damage to it this turn"
+                    } else { "that dealt damage to it this turn" }.to_string());
                 }
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());

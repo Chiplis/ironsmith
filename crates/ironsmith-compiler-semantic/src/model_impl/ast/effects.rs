@@ -3033,6 +3033,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                mode: ironsmith_core::AbilityLossMode::Lose,
                 filter,
                 abilities,
                 duration,
@@ -3052,6 +3053,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                mode: ironsmith_core::AbilityLossMode::Lose,
                 filter,
                 abilities,
                 duration,
@@ -3155,6 +3157,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                mode: ironsmith_core::AbilityLossMode::Lose,
                 target,
                 abilities,
                 duration,
@@ -6292,7 +6295,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount }),
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount, maximum: None, source_owned: false }),
         )
     }
 
@@ -6502,6 +6505,11 @@ impl EffectAst {
             player,
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateEmblem { emblem }),
         )
+    }
+
+    pub fn subject_verb_draw_game() -> Self {
+        Self::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            SubjectVerbActionAst::Game(GameActionAst::DrawGame))
     }
 
     pub fn subject_verb_lose_game(player: PlayerAst) -> Self {

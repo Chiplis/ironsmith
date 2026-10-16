@@ -3344,3 +3344,51 @@ fn nameless_current_characteristics_do_not_inherit_an_alternate_split_name() {
     assert!(!super::names_share("", Some("Second"), "Second", None));
     assert!(!super::names_share("Second", None, crate::object::FACE_DOWN_DISPLAY_NAME, Some("Second")));
 }
+
+#[test]
+fn damage_to_tagged_recipient_history_preserves_exact_incarnations() {
+    use crate::events::{DamageEvent, DamageTarget};
+    use crate::events::cause::EventCause;
+    use crate::provenance::ProvNodeId;
+    use crate::triggers::TriggerEvent;
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = game.players[0].id;
+    let bob = game.players[1].id;
+    let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "History creature")
+        .card_types(vec![CardType::Creature]).build();
+    let dealer = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let other = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+    let recipient = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let snapshot = ObjectSnapshot::from_object(game.object(recipient).unwrap(), &game);
+    let tag = TagKey::from("damage_recipient");
+    let ctx = FilterContext::new(alice).with_tagged_objects(&std::collections::HashMap::from([
+        (tag.clone(), vec![snapshot.clone()]),
+    ]));
+    let filter = ObjectFilter::creature().match_tagged(tag.clone(),
+        TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only: false });
+    let combat_filter = ObjectFilter::creature().match_tagged(tag.clone(),
+        TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only: true });
+    for (source, amount) in [(dealer, 2), (other, 0)] {
+        game.record_turn_history_event(&TriggerEvent::new_with_provenance(
+            DamageEvent::with_cause(source, DamageTarget::Object(recipient), amount, false, EventCause::effect())
+                .with_target_snapshot(snapshot.clone()), ProvNodeId::default(),
+        ));
+    }
+    assert!(filter.matches(game.object(dealer).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(other).unwrap(), &ctx, &game));
+    assert!(!combat_filter.matches(game.object(dealer).unwrap(), &ctx, &game));
+    let departed = game.move_object(recipient, Zone::Graveyard, EventCause::effect()).unwrap();
+    assert!(filter.matches(game.object(dealer).unwrap(), &ctx, &game), "departed recipient retains its history");
+    let returned = game.move_object(departed, Zone::Battlefield, EventCause::effect()).unwrap();
+    let new_ctx = FilterContext::new(alice).with_tagged_objects(&std::collections::HashMap::from([
+        (tag, vec![ObjectSnapshot::from_object(game.object(returned).unwrap(), &game)]),
+    ]));
+    assert!(!filter.matches(game.object(dealer).unwrap(), &new_ctx, &game), "a new recipient incarnation has no earlier damage");
+    let dealer_snapshot = ObjectSnapshot::from_object(game.object(dealer).unwrap(), &game);
+    let departed_dealer = game.move_object(dealer, Zone::Hand, EventCause::effect()).unwrap();
+    let returned_dealer = game.move_object(departed_dealer, Zone::Battlefield, EventCause::effect()).unwrap();
+    assert!(!filter.matches(game.object(returned_dealer).unwrap(), &ctx, &game), "a new dealer incarnation has no earlier damage");
+    assert!(filter.matches_snapshot(&dealer_snapshot, &ctx, &game));
+    game.next_turn();
+    assert!(!filter.matches_snapshot(&dealer_snapshot, &ctx, &game), "damage history expires at the next turn");
+}

@@ -1,0 +1,12 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {GameContext} from '../src/context/GameContext.shared';
+import {I18nProvider} from '../src/i18n/I18nContext';
+import {HoverProvider} from '../src/context/HoverContext';
+import {DragProvider} from '../src/context/DragContext';
+import CardStackPile from '../src/components/right-rail/CardStackPile';
+import '../src/index.css';
+const rows = await (await fetch('/tests/pregame-stack-evidence.json.fixture')).json();
+const row = rows[Number(new URLSearchParams(location.search).get('card') || 0)];
+const state = {perspective:0,players:[{id:0,name:'Alice',hand_cards:[row.card],battlefield:[]}],stack_objects:[row.entry],decision:{kind:'priority',player:0}};
+createRoot(document.getElementById('root')).render(<I18nProvider><GameContext.Provider value={{state,game:{objectDetails:async()=>row.card}}}><HoverProvider><DragProvider><div data-my-zone style={{height:'100vh'}}><div data-card-stack-anchor="true" className="my-zone-stack-rail" style={{position:'fixed',left:50,top:70,width:350,height:650}}/><CardStackPile/></div></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>);

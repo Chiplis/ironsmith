@@ -460,7 +460,7 @@ export default function TopbarMenuSheet({
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
                     checked={autoResolveEnabled}
-                    title={ui("Show a timed Hold Priority button after casting or activating. Turn off to resolve manually.")}
+                    title={ui("Automatically continue past phase and step pauses on an opponent's turn after two seconds unless you click Hold Priority. Turn off to pause until you act.")}
                     onCheckedChange={(value) => setAutoResolveEnabled(Boolean(value))}
                   />
                   {t("action.autoPass")}

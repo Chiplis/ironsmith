@@ -4990,6 +4990,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Destroyed => "destroyed",
         crate::effect::PriorEffectAction::Discarded => "discarded",
         crate::effect::PriorEffectAction::Copied => "copied",
+        crate::effect::PriorEffectAction::Investigated => "investigated",
         crate::effect::PriorEffectAction::Drawn => "drawn",
         crate::effect::PriorEffectAction::Exiled => "exiled",
         crate::effect::PriorEffectAction::Goaded => "goaded",
@@ -5227,6 +5228,12 @@ pub(crate) fn describe_prior_effect_count_basis_for_action(
 pub(crate) fn describe_prior_effect_metric_value(
     query: &crate::effect::PriorEffectMetricQuery,
 ) -> String {
+    if query.action == Some(crate::effect::PriorEffectAction::Investigated)
+        && query.metric == crate::effect::EffectMetric::PlayersWithPositiveCount
+    {
+        let players = if query.player == Some(PlayerFilter::Opponent) { "opponents" } else { "players" };
+        return format!("the number of {players} who investigated this way");
+    }
     if query.action == Some(crate::effect::PriorEffectAction::Rolled)
         && query.metric == crate::effect::EffectMetric::Count
     {
@@ -6684,6 +6691,20 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 .unwrap_or_else(|| minimum.to_string());
             format!(
                 "the number of {players} with {minimum} or more cards in hand"
+            )
+        }
+        Value::CountPlayersWithCardsInLibraryAtMost(filter, maximum) => {
+            let players = match filter {
+                PlayerFilter::Opponent => "your opponents".to_string(),
+                PlayerFilter::Any => "players".to_string(),
+                PlayerFilter::NotYou => "players other than you".to_string(),
+                PlayerFilter::You => "you".to_string(),
+                other => describe_player_set_filter(other),
+            };
+            let maximum = ironsmith_core::cardinal_word(*maximum)
+                .unwrap_or_else(|| maximum.to_string());
+            format!(
+                "the number of {players} with {maximum} or fewer cards in their library"
             )
         }
         Value::PlayersWhoControl { players, filter } => {

@@ -4928,6 +4928,7 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextTurn => "until your next turn".to_string(),
         Until::YourNextTurnEnd => "until the end of your next turn".to_string(),
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
+        Until::YourNextUpkeepEnd => "until the end of your next upkeep".to_string(),
         Until::NextEndStep => "until the next end step".to_string(),
         Until::ControllersNextUntapStep => "during its controller's next untap step".to_string(),
         Until::YourNextUntapStep => "during your next untap step".to_string(),
@@ -5958,6 +5959,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 .unwrap_or_else(|| attackers.description());
             format!("{subject} attacks {} if able", describe_player_filter(player))
         }
+        crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
+            format!("{} must be blocked by a {} if able", attacker.description(), blockers.description())
+        }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }
@@ -6441,6 +6445,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Destroyed => "destroy",
         crate::effect::PriorEffectAction::Discarded => "discard",
         crate::effect::PriorEffectAction::Copied => "copy",
+        crate::effect::PriorEffectAction::Investigated => "investigate",
         crate::effect::PriorEffectAction::Drawn => "draw",
         crate::effect::PriorEffectAction::Exiled => "exile",
         crate::effect::PriorEffectAction::Goaded => "goad",

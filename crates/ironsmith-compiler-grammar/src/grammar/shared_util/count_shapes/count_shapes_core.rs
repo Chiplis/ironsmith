@@ -1,6 +1,17 @@
 use super::*;
 
 pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
+    if let Some(tail) = words.strip_prefix(&["for", "each", "additional"])
+        && let Some(mana_words) = tail.strip_suffix(&["you", "paid"])
+        && !mana_words.is_empty()
+    {
+        let raw = mana_words.iter().map(|word| format!("{{{}}}", word.to_ascii_uppercase())).collect::<String>();
+        if let Ok(mana) = crate::util::parse_scryfall_mana_cost(&raw) {
+            return Some((Value::TimesPaidLabel(crate::util::additional_mana_payment_reference(&mana))
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
+        }
+    }
+
     if matches!(words,
         ["for", "each", "opponent" | "player", "you", "attacked"]
         | ["for", "each", "opponent" | "player", "you", "attacked", "this", "combat"])

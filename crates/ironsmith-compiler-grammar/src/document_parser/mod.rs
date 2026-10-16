@@ -4655,6 +4655,9 @@ fn try_push_complete_typed_static_line(
 /// gain; the quoted-gain fast path declines them all alike, whatever the
 /// order.
 const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextError>] = &[
+    // A land-type reset, ability removal, and quoted mana grant form one
+    // continuous rule, not a resolving ability-gain statement.
+    |line| Ok(crate::keyword_static::parse_filtered_land_reset_and_grant_line(&line.tokens)?.is_some()),
     // A trigger owns any quoted ability in its result. Do not probe that
     // quote as though the entire trigger were a static anthem.
     |line| Ok(line_starts_with_trigger_intro_tokens(&line.tokens)),
@@ -5817,6 +5820,7 @@ mod tests {
     #[test]
     fn quoted_gain_shortcut_does_not_claim_continuous_bundles() {
         for text in [
+            "Lands your opponents control with the chosen name lose all land types and abilities, and they gain \"{T}: Add one mana of any color.\"",
             "Enchanted creature gets +2/+2 and has \"Whenever this creature attacks, draw a card.\"",
             "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 3 or greater is a 5/5 Elemental creature in addition to its other types and has haste and \"Whenever this creature deals combat damage to a player, draw a card.\"",
         ] {

@@ -1836,6 +1836,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("lock_filter_at_resolution", lock_filter_at_resolution)
                 .finish(),
             Self::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
+                mode,
                 filter,
                 abilities,
                 duration,
@@ -1843,6 +1844,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 set_quantifier_surface,
             }) => f
                 .debug_struct("RemoveAbilitiesAll")
+                .field("mode", mode)
                 .field("filter", filter)
                 .field("abilities", abilities)
                 .field("duration", duration)
@@ -1897,11 +1899,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .finish(),
             Self::StatChanges(StatChangeActionAst::RemoveAbilitiesFromTarget {
+                mode,
                 target,
                 abilities,
                 duration,
             }) => f
                 .debug_struct("RemoveAbilitiesFromTarget")
+                .field("mode", mode)
                 .field("target", target)
                 .field("abilities", abilities)
                 .field("duration", duration)
@@ -2589,9 +2593,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PayAnyEnergy")
                 .field("min_amount", min_amount)
                 .finish(),
-            Self::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount }) => f
+            Self::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount, maximum, source_owned }) => f
                 .debug_struct("PayAnyLife")
                 .field("min_amount", min_amount)
+                .field("maximum", maximum)
+                .field("source_owned", source_owned)
                 .finish(),
             Self::Mana(ManaActionAst::PayMana {
                 cost,
@@ -2614,6 +2620,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Game(GameActionAst::ReverseTurnOrder) => f.write_str("ReverseTurnOrder"),
             Self::Game(GameActionAst::EndTurn) => f.write_str("EndTurn"),
             Self::Game(GameActionAst::EndCombatPhase) => f.write_str("EndCombatPhase"),
+            Self::Game(GameActionAst::DrawGame) => f.write_str("DrawGame"),
             Self::TurnStructure(TurnStructureActionAst::SkipTurn) => f.write_str("SkipTurn"),
             Self::TurnStructure(TurnStructureActionAst::SkipCombatPhases) => {
                 f.write_str("SkipCombatPhases")

@@ -128,6 +128,8 @@ pub enum PriorEffectAction {
     CountersMoved(crate::counter::CounterType),
     /// Stack objects actually created by a copy instruction.
     Copied,
+    /// A completed investigate action, independently of how many Clues it created.
+    Investigated,
 }
 
 /// A metric over the last-known-information memory emitted by one exact
@@ -694,6 +696,8 @@ pub enum Value {
     /// Number of matching players whose current hand contains at least the
     /// authored number of cards.
     CountPlayersWithCardsInHandAtLeast(PlayerFilter, u32),
+    /// Number of matching players whose individual library has at most this many cards.
+    CountPlayersWithCardsInLibraryAtMost(PlayerFilter, u32),
     /// Matching players with at least this many cards in their graveyards
     /// ("for each graveyard with seven or more cards in it").
     CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter, u32),
@@ -1165,6 +1169,8 @@ pub enum Restriction {
         attacker: ObjectFilter,
     },
     MustBeBlocked(ObjectFilter),
+    /// At least one matching blocker must block each matching attacker if able.
+    MustBeBlockedBy { attacker: ObjectFilter, blockers: ObjectFilter },
     BlockAlone(ObjectFilter),
     Untap(ObjectFilter),
     BeBlocked(ObjectFilter),

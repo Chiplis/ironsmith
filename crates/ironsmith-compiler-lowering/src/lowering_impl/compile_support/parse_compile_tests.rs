@@ -3723,3 +3723,4 @@ fn unsized_animation_never_invents_or_freezes_a_base_characteristic() {
     assert!(!debug.contains("SetPowerToughness"));
     assert!(!debug.contains("resolve_set_pt_values_at_resolution: true"));
 }
+

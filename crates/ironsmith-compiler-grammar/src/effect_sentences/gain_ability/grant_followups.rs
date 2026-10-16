@@ -44,6 +44,10 @@ pub(super) fn apply_gain_clause_duration_to_leading_effect(
                     duration: effect_duration,
                     ..
                 })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBaseToughness {
+                    duration: effect_duration,
+                    ..
+                })
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddCardTypes {
                     duration: effect_duration,
                     ..

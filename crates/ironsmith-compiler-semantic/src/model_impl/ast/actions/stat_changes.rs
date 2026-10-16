@@ -53,6 +53,7 @@ pub enum StatChangeActionAst {
         duration: Until,
     },
     RemoveAbilitiesAll {
+        mode: ironsmith_core::AbilityLossMode,
         filter: ObjectFilter,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
@@ -60,6 +61,7 @@ pub enum StatChangeActionAst {
         set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     },
     RemoveAbilitiesFromTarget {
+        mode: ironsmith_core::AbilityLossMode,
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,

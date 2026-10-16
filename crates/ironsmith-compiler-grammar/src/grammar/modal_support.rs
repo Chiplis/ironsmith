@@ -770,6 +770,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(

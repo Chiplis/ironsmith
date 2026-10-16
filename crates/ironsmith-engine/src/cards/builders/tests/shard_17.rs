@@ -3973,3 +3973,93 @@ pub(super) fn spirit_token_reciprocal_blocking_rule_enforces_both_directions() {
         "a Spirit creature should be allowed to block the Spirit token"
     );
 }
+
+#[test]
+pub(super) fn equipment_filtered_block_requirement_survives_recipient_ability_loss() {
+    for (name, subtype) in [("Ace's Baseball Bat", Subtype::Dalek), ("Slayer's Cleaver", Subtype::Eldrazi)] {
+        let definition = parse_oracle_card_definition(name);
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Equipped attacker")
+            .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
+        let matching = CardDefinitionBuilder::new(CardId::new(), "Eligible blocker")
+            .card_types(vec![CardType::Creature]).subtypes(vec![subtype])
+            .power_toughness(PowerToughness::fixed(2, 2)).build();
+        let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let blocker = game.create_object_from_definition(&matching, bob, Zone::Battlefield);
+        let equipment = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        assert!(game.attach_object_to_target(equipment, crate::object::AttachmentTarget::Object(attacker)));
+        game.remove_summoning_sickness(attacker);
+        game.refresh_continuous_state();
+        let mut combat = crate::combat_state::CombatState::default();
+        crate::combat_state::declare_attackers(&mut game, &mut combat,
+            vec![(attacker, crate::combat_state::AttackTarget::Player(bob))]).unwrap();
+        let removal = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::Object(crate::target::ObjectFilter::specific(attacker)),
+            crate::continuous::Modification::RemoveAllAbilities,
+            crate::effect::Until::EndOfTurn,
+        ));
+        let mut ctx = crate::effects::ExecutionContext::new_default(attacker, alice);
+        crate::effects::execute_effect(&mut game, &removal, &mut ctx).unwrap();
+        game.refresh_continuous_state();
+        assert!(crate::combat_state::declare_blockers(&game, &mut combat.clone(), vec![]).is_err(), "{name}");
+        crate::combat_state::declare_blockers(&game, &mut combat.clone(), vec![(blocker, attacker)]).unwrap();
+        assert!(game.detach_object_from_current_target(equipment));
+        game.refresh_continuous_state();
+        crate::combat_state::declare_blockers(&game, &mut combat.clone(), vec![]).unwrap();
+    }
+}
+
+#[test]
+fn entry_life_payment_and_token_stats_share_numeric_acquisition() {
+    use crate::effect::Value;
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Phyrexian Processor")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("As this artifact enters, pay any amount of life.\n{4}, {T}: Create an X/X black Phyrexian Minion creature token, where X is the life paid as this artifact entered.")
+        .expect("entry life payment and later token reader should compile");
+    let activated = definition.abilities.iter().find_map(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Activated(ability) => Some(ability),
+        _ => None,
+    }).expect("token activation");
+    let pair = activated.effects.source_number_pair.expect("linked numeric reader");
+    let create = activated.effects.all_effects().into_iter().find_map(|effect|
+        effect.downcast_ref::<crate::effects::CreateTokenEffect>()).expect("create token");
+    let (power, toughness) = create.dynamic_power_toughness.as_ref().expect("dynamic token stats");
+    for value in [power, toughness] {
+        assert!(matches!(value.unhinted(), Value::SourceChosenNumber { if_unset: Some(0), pair: Some(binding) } if *binding == pair));
+    }
+    let debug = format!("{definition:#?}");
+    assert!(debug.contains("source_owned: true"), "payment must retain its completed result: {debug}");
+}
+
+#[test]
+fn repeated_returns_announce_one_player_and_preserve_four_choices() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Linessa, Zephyr Mage")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Target player returns a creature they control to its owner's hand, then repeats this process for an artifact, an enchantment, and a land.")
+        .expect("repeated return should compile");
+    let ability = definition.abilities.iter().find_map(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Activated(ability) => Some(ability), _ => None,
+    }).unwrap();
+    fn inspect(effect: &Effect, targets: &mut usize, choices: &mut Vec<crate::effects::ChooseObjectsEffect>) {
+        if effect.downcast_ref::<crate::effects::TargetOnlyEffect>().is_some() { *targets += 1; }
+        if let Some(choice) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() { choices.push(choice.clone()); }
+        effect.visit_child_effects(&mut |child| inspect(child, targets, choices));
+    }
+    let mut targets = 0;
+    let mut choices = Vec::new();
+    for effect in ability.effects.all_effects() { inspect(effect, &mut targets, &mut choices); }
+    assert_eq!(targets, 1);
+    assert_eq!(ability.choices.len(), 1);
+    assert_eq!(choices.len(), 4);
+    for (choice, kind) in choices.iter().zip([CardType::Creature, CardType::Artifact, CardType::Enchantment, CardType::Land]) {
+        assert_eq!(choice.filter.card_types, vec![kind]);
+        assert_eq!(choice.count.min, 1);
+        assert_eq!(choice.count.max, Some(1));
+        assert!(matches!(choice.chooser, crate::target::PlayerFilter::Target(_) | crate::target::PlayerFilter::AliasedTarget(_)));
+        assert!(matches!(&choice.filter.controller,
+            Some(crate::target::PlayerFilter::Target(player) | crate::target::PlayerFilter::AliasedTarget(player))
+                if **player == crate::target::PlayerFilter::Any));
+    }
+}

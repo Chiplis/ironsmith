@@ -12310,9 +12310,9 @@ pub(in crate::compiled_text) fn describe_condition_collection_choice_gain_contro
     effects: &[Effect],
 ) -> Option<String> {
     let effects = if effects.first().is_some_and(|effect| {
-        structural_unwrap_render_wrappers(effect)
-            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
-            .is_some_and(|tag| tag.tag.as_str() == "triggering")
+        let effect = structural_unwrap_render_wrappers(effect);
+        effect.downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+            .is_some_and(|tag| matches!(tag.tag.as_str(), "triggering" | "triggering_source"))
     }) {
         &effects[1..]
     } else {
@@ -12330,8 +12330,9 @@ pub(in crate::compiled_text) fn describe_condition_collection_choice_gain_contro
         || choose.filter.card_types.as_slice() != [CardType::Land]
         || choose.filter.with_counter.is_none()
         || !matches!(
-            choose.chooser,
-            PlayerFilter::DamagedPlayer | PlayerFilter::IteratedPlayer
+            &choose.chooser,
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                if matches!(tag.as_str(), "triggering" | "triggering_source")
         )
     {
         return None;
@@ -12350,9 +12351,8 @@ pub(in crate::compiled_text) fn describe_condition_collection_choice_gain_contro
         )
         || !matches!(
             gain.runtime_modifications.as_slice(),
-            [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
-                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
-            )] if tag.as_str() == "triggering"
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)]
+                if player == &choose.chooser
         )
     {
         return None;
@@ -21891,4 +21891,40 @@ fn describe_player_look_keep_one_rest(effects: &[&Effect]) -> Option<(String, us
         consumed = 2;
     }
     Some((text, consumed))
+}
+
+#[cfg(test)]
+mod conditional_collection_actor_tests {
+    use super::*;
+
+    #[test]
+    fn contested_land_choice_belongs_to_damage_source_controller() {
+        let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Turf War")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text("When this enchantment enters, for each player, put a contested counter on target land that player controls.\nWhenever a creature deals combat damage to a player, if that player controls one or more lands with contested counters on them, that creature's controller gains control of one of those lands of their choice and untaps it.")
+            .expect("conditional collection control trigger compiles");
+        let trigger = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Triggered(trigger) if trigger.intervening_if.is_some() => Some(trigger),
+            _ => None,
+        }).next().expect("conditional damage trigger");
+        let effects = trigger.effects.flattened_default_effects();
+        let source = effects.iter().find_map(|effect|
+            effect.downcast_ref::<crate::effects::TagTriggeringSourceEffect>())
+            .expect("damage-source capture");
+        let sequence = effects.iter().find_map(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+            .expect("coordinated choice, control, untap");
+        let choose = sequence.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .expect("collection choice");
+        assert_eq!(choose.filter.controller, Some(PlayerFilter::DamagedPlayer));
+        assert_eq!(choose.chooser, PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(source.tag.as_str())));
+        let text = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+        assert!(text.contains("that creature's controller gains control"), "{text}");
+        assert!(!text.contains("__condition_collection_choice"), "{text}");
+        let mut wrong = sequence.effects.clone();
+        let mut choice = choose.clone();
+        choice.chooser = PlayerFilter::DamagedPlayer;
+        wrong[0] = Effect::new(choice);
+        assert!(describe_condition_collection_choice_gain_control_then_untap(&wrong).is_none(),
+            "do not claim the source controller chose when the damaged player did");
+    }
 }

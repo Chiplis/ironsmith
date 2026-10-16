@@ -117,6 +117,9 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         return Ok(EffectAst::Sequence { effects });
     }
+    if let Some(effect) = super::super::gain_ability::parse_copular_base_characteristic_assignment(tokens)? {
+        return Ok(effect);
+    }
     if let Some(effect) = parse_each_player_with_life_clause(tokens)? {
         return Ok(effect);
     }

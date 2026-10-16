@@ -39,3 +39,9 @@ test('land creatures in the creature lane keep their land frame color', () => {
   assert.equal(arenaFrameColor({ lane: 'creatures', card_types: ['land', 'creature'], colors: [], power_toughness: '1/1', intrinsic_mana: ['G'], produced_mana: ['G'] }), '#63907a');
   assert.equal(arenaFrameColor({ lane: 'creatures', card_types: ['land', 'creature'], colors: ['green'], power_toughness: '1/1' }), '#63907a');
 });
+
+test('Island-converted Ramunap has a blue frame instead of a multicolor frame', () => {
+  assert.equal(arenaFrameColor({ lane: 'lands', card_types: ['land'], colors: [],
+    produced_mana: ['R', 'C'], intrinsic_mana: ['U'], abilities: [],
+    oracle_text: '{T}: Add {C}. {T}, Pay 1 life: Add {R}.' }), '#618ead');
+});

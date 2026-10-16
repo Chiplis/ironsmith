@@ -1998,6 +1998,16 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::MustBeBlockedBy { attacker, blockers } => {
+                let matching = game.battlefield.iter().copied().filter(|&id| {
+                    !game.is_phased_out(id) && game.object(id).is_some_and(|obj| blockers.matches(obj, &ctx, game))
+                }).collect::<std::collections::HashSet<_>>();
+                for &id in &game.battlefield {
+                    if !game.is_phased_out(id) && game.object(id).is_some_and(|obj| attacker.matches(obj, &ctx, game)) {
+                        tracker.must_be_blocked_by.entry(id).or_default().push(matching.clone());
+                    }
+                }
+            }
             Restriction::MustBeBlocked(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

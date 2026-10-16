@@ -117,6 +117,7 @@ fn convert_counter_removed_from_trigger(
     trigger: ironsmith_core::trigger_model::CounterRemovedFromTrigger,
 ) -> crate::triggers::Trigger {
     let mut out = crate::triggers::CounterRemovedFromTrigger::new(trigger.filter);
+    if let Some(player) = trigger.source_controller { out = out.source_controller(player); }
     if let Some(counter_type) = trigger.counter_type {
         out = out.counter_type(counter_type);
     }

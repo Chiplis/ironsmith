@@ -243,6 +243,7 @@ pub fn parse_craft_line_lexed(
     let mut merged_costs = base_cost.costs().to_vec();
     for (material_filter, material_count) in material_slots {
         merged_costs.push(crate::model::CompilerCost::ExileChosen {
+            count_value: None,
             count: material_count,
             filter: material_filter,
             top_only: false,

@@ -180,6 +180,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::CreaturesDiedThisTurnControlledBy(player)
         | crate::effect::Value::CountPlayers(player)
         | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | crate::effect::Value::CountPlayersWithCardsInLibraryAtMost(player, _)
         | crate::effect::Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
         | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | crate::effect::Value::PartySize(player)

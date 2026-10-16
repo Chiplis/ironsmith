@@ -3301,10 +3301,14 @@ pub(crate) fn resolve_anthem_count_expression(
         {
             entered_battlefield_this_turn_count(filter, game, source, controller)
         }
+        // Counts observe current characteristics, including earlier layers
+        // (for example, a land that became an Island). Layer evaluation exposes
+        // in-progress characteristics through its calculation guards, so normal
+        // matching also works while evaluating a continuous effect's condition.
         AnthemCountExpression::MatchingFilter(filter) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))
-            .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            .filter(|obj| filter.matches(obj, &filter_ctx, game))
             .count() as i32,
         AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
             game.turn_store
@@ -6268,7 +6272,11 @@ impl StaticAbilityKind for SetLandSubtypesForFilter {
                 })
                 .collect::<Vec<_>>()
         };
-        let mut text = format!("{subject} {verb} {}", join_with_and(&subtypes));
+        let mut text = if self.subtypes.is_empty() {
+            format!("{subject} {} all land types", if verb == "is" { "loses" } else { "lose" })
+        } else {
+            format!("{subject} {verb} {}", join_with_and(&subtypes))
+        };
         if let Some(condition) = &self.condition {
             text.push(' ');
             text.push_str(&describe_static_condition(condition));

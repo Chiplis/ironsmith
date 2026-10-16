@@ -100,6 +100,8 @@ pub(super) struct StackObjectSnapshot {
     pub(super) controller: u8,
     pub(super) name: String,
     pub(super) mana_cost: Option<String>,
+    /// Current spell colors; Some(empty) means colorless, None means unavailable.
+    pub(super) colors: Option<Vec<&'static str>>,
     pub(super) effect_text: Option<String>,
     /// "Triggered", "Activated", or null for spells.
     pub(super) ability_kind: Option<String>,
@@ -133,7 +135,32 @@ fn stack_source_ability_text(
                 matches!(ability.kind, ironsmith::ability::AbilityKind::Activated(_))
             })
         })
-    }?;
+    }
+    .or_else(|| {
+        // Opening-hand actions are static abilities which schedule a delayed
+        // trigger. Its identity is not that of a printed triggered ability.
+        // Recover the authored line from the matching scheduled program, never
+        // from an unrelated trigger (such as the source's cast ability).
+        entry.triggering_event.as_ref()?;
+        let effects = entry.ability_effects.as_ref()?;
+        let mut matches = abilities.iter().enumerate().filter_map(|(index, ability)| {
+            let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind else {
+                return None;
+            };
+            ability
+                .pregame_action_effects()?
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<ironsmith::effects::ScheduleDelayedTriggerEffect>()
+                        .is_some_and(|schedule| &schedule.effects == effects)
+                })
+                .then_some(index)
+        });
+        let index = matches.next()?;
+        // Ambiguous programs cannot identify a specific printed line.
+        matches.next().is_none().then_some(index)
+    })?;
     let (compiled, labels): (&str, &[String]) = match (entry.source_snapshot.as_ref(), source) {
         (Some(snapshot), _) => (
             snapshot.compiled_card_text.as_str(),
@@ -169,8 +196,14 @@ pub(super) fn build_stack_object_snapshot(
             0 => Some("monarch"),
             value if value == u64::MAX - 1 => Some("initiative"),
             u64::MAX => Some("ring"),
-            value if game.players.iter().any(|player|
-                value == u64::MAX - 0x1_0000 - u64::from(player.id.0)) => Some("dungeon_room"),
+            value
+                if game
+                    .players
+                    .iter()
+                    .any(|player| value == u64::MAX - 0x1_0000 - u64::from(player.id.0)) =>
+            {
+                Some("dungeon_room")
+            }
             _ => None,
         }
     } else {
@@ -247,6 +280,7 @@ pub(super) fn build_stack_object_snapshot(
             controller: entry.controller.0,
             name,
             mana_cost: None,
+            colors: None,
             effect_text: None,
             ability_kind: Some(ability_kind.to_string()),
             source_ability_text,
@@ -281,6 +315,13 @@ pub(super) fn build_stack_object_snapshot(
             mana_cost: obj
                 .or(source_obj)
                 .and_then(|o| o.mana_cost.as_ref().map(|mc| mc.to_oracle())),
+            colors: obj.or(source_obj).map(|object| {
+                ui_snapshot::color_names(
+                    game.current_characteristics(object.id)
+                        .map(|chars| chars.colors)
+                        .unwrap_or_else(|| object.colors()),
+                )
+            }),
             effect_text,
             ability_kind: None,
             ability_text: None,

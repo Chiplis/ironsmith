@@ -1060,7 +1060,11 @@ pub fn parse_life_amount_from_trailing(
     // correlations. Unlike a bare pending effect count, this preserves noun
     // restrictions such as "land card discarded this way" and resolves the
     // crate::tag::CompilerReferenceTag::It.as_str() placeholder to the prior action's affected-object snapshots.
-    let trailing_words = crate::lexer::token_word_refs(trailing);
+    let trailing_words = if trailing.iter().any(|token| token.mana_group_inner().is_some()) {
+        crate::lexer::parser_token_word_refs(trailing)
+    } else {
+        crate::lexer::token_word_refs(trailing)
+    };
     if let Some((value, used)) =
         crate::grammar::shared_util::count_shapes::parse_for_each_count_value_words(&trailing_words)
         && used == trailing_words.len()

@@ -12,6 +12,11 @@ fn contains_compound_pump_and_grant(effects: &[EffectAst]) -> bool {
                 *pump |= matches!(
                     subject_verb.action,
                     SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { .. })
+                        | SubjectVerbActionAst::Characteristics(
+                            crate::cards::builders::CharacteristicActionAst::SetBasePowerToughness { .. }
+                            | crate::cards::builders::CharacteristicActionAst::SetBasePower { .. }
+                            | crate::cards::builders::CharacteristicActionAst::SetBaseToughness { .. }
+                        )
                 );
                 *grant |= matches!(
                     subject_verb.action,

@@ -857,6 +857,12 @@ pub fn parse_pay_life_or_enter_tapped_tokens(
     {
         return Ok(None);
     }
+    if crate::lexer::parser_token_word_refs(&tokens[shape.pay.token + 1..])
+        .starts_with(&["any", "amount", "of", "life"])
+    {
+        // A variable payment is an entry program, not a tapped-unless-paid rule.
+        return Ok(None);
+    }
     if !shape.saw_may {
         return Err(PayLifeOrEnterTappedError::UnsupportedPrefix);
     }
@@ -1196,4 +1202,18 @@ fn empty_library_effect_replacement_requires_one_leading_instead() {
         "If you would draw a card while your library has no cards in it, instead put five +1/+1 counters on this creature instead.",
         "If you would draw a card while your library has no cards in it, instead.",
     ] { assert!(parse_empty_library_draw_effect_replacement_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}"); }
+}
+
+#[cfg(test)]
+mod variable_entry_life_payment_tests {
+    #[test]
+    fn variable_entry_life_payment_is_not_a_tapped_unless_paid_rule() {
+        for text in ["As this creature enters, pay any amount of life.", "As this artifact enters, pay any amount of life."] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(super::parse_pay_life_or_enter_tapped_tokens(&tokens).unwrap().is_none());
+            let body = crate::lexer::lex_line("Pay any amount of life.", 0).unwrap();
+            let effects = crate::effect_sentences::parse_effect_sentences_lexed(&body).unwrap();
+            assert!(format!("{effects:?}").contains("PayAnyLife"));
+        }
+    }
 }

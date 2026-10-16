@@ -3408,6 +3408,14 @@ mod optional_blight_additional_cost_surface_tests {
     use super::*;
 
     #[test]
+    fn repeatable_mana_payment_keeps_payment_and_repetition() {
+        assert_eq!(
+            repeatable_optional_cost_action("{1}{G}"),
+            "pay {1}{G} any number of times"
+        );
+    }
+
+    #[test]
     fn public_route_keeps_typed_optional_blight_keyword_surface() {
         for oracle in [
             "As an additional cost to cast this spell, you may blight 1.\nDestroy target creature with mana value 2 or less. If this spell's additional cost was paid, you gain 2 life.",
@@ -3428,6 +3436,9 @@ mod optional_blight_additional_cost_surface_tests {
 
 pub(super) fn repeatable_optional_cost_action(action: &str) -> String {
     let action = action.trim();
+    if action.starts_with('{') {
+        return format!("pay {action} any number of times");
+    }
     if let Some(rest) = action.strip_prefix("sacrifice a ") {
         return format!("sacrifice one or more {}", pluralize_noun_phrase(rest));
     }

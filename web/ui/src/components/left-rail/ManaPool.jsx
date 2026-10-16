@@ -1,3 +1,5 @@
+import PlayerCounters from "./PlayerCounters";
+import { playerCounters } from "@/lib/player-counters";
 import useUiText from "@/i18n/useUiText";
 import { MANA_SYMBOLS } from "@/lib/constants";
 import { ManaSymbol } from "@/lib/mana-symbols";
@@ -5,13 +7,14 @@ import { cn } from "@/lib/utils";
 
 export default function ManaPool({
   pool,
+  player,
   alwaysVisible = false,
   compact = false,
   className = "",
 }) {
   const ui = useUiText();
   const safePool = pool && typeof pool === "object" ? pool : {};
-  if (!alwaysVisible && safePool !== pool) return null;
+  if (!alwaysVisible && safePool !== pool && !playerCounters(player).length) return null;
 
   const chips = MANA_SYMBOLS.map(({ key, symbol, label }) => {
     const amount = Number(safePool[key]);
@@ -36,7 +39,7 @@ export default function ManaPool({
     );
   }).filter(Boolean);
 
-  if (!chips.length) return null;
+  if (!chips.length && !playerCounters(player).length) return null;
 
   return (
     <div
@@ -50,6 +53,7 @@ export default function ManaPool({
       title={ui("Mana pool by type")}
     >
       {chips}
+      <PlayerCounters player={player} />
     </div>
   );
 }

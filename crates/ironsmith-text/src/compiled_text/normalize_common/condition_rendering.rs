@@ -2792,6 +2792,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if filter.zone == Some(Zone::Battlefield)
+                && filter.prior_effect_action_surface()
+                    == Some(crate::effect::PriorEffectAction::PutOntoBattlefield)
+            {
+                return "that card was put onto the battlefield this way".into();
+            }
             // "if it has the least power or is tied for least power among
             // creatures on the battlefield" (Wretched Banquet).
             if let Some(crate::filter::Comparison::EqualExpr(bound)) = &filter.power
@@ -3963,6 +3969,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            if let (Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, maximum),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(1))
+                = (left.unhinted(), operator, right.unhinted()) {
+                let maximum = ironsmith_core::cardinal_word(*maximum).unwrap_or_else(|| maximum.to_string());
+                return format!("a library has {maximum} or fewer cards in it");
+            }
             if let Some(rendered) = describe_coin_result_comparison(left, *operator, right) {
                 return rendered;
             }

@@ -3213,6 +3213,7 @@ fn is_return_as_aura_remove_all_marker(action: &SubjectVerbActionAst) -> bool {
             target,
             abilities,
             duration,
+            ..
         }) => {
             abilities.is_empty()
                 && matches!(duration, crate::effect::Until::Forever)

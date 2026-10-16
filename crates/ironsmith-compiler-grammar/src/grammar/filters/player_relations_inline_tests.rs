@@ -397,3 +397,14 @@ fn plural_demonstrative_reference_preserves_plural_noun_surface() {
             && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
     }));
 }
+
+#[test]
+fn damage_to_object_history_keeps_the_recipient_reference() {
+    let tokens = crate::lexer::lex_line("creatures that dealt damage to it this turn", 0).unwrap();
+    let filter = crate::object_filters::parse_object_filter_lexed(&tokens, false).unwrap();
+    assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+    assert!(!filter.dealt_damage_this_turn, "must not broaden to any recipient");
+    assert!(filter.tagged_constraints.iter().any(|constraint|
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only: false }));
+}

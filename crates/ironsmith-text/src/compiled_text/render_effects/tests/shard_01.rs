@@ -4994,3 +4994,10 @@ fn describe_copy_spell_starting_loyalty_override() {
         .with_set_base_loyalty(Value::Fixed(7)));
     assert!(describe_effect(&effect).contains("starting loyalty 7"));
 }
+
+#[test]
+fn bounded_variable_life_payment_renders_its_limit() {
+    let effect = Effect::new(crate::effects::PayAnyLifeEffect::new(ChooseSpec::you(), 0)
+        .with_maximum(Value::Fixed(7)).with_source_retention());
+    assert_eq!(describe_effect(&effect), "Pay any amount of life, up to 7");
+}

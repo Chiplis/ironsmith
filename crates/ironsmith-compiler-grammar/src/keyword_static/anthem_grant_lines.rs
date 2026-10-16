@@ -1192,6 +1192,78 @@ fn parse_complete_miracle_cost_grant_line(
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A combat requirement's `if able` belongs to that requirement, not
+    // to the preceding keyword. Parse the complete keyword prefix first
+    // and give the sibling requirement the same recipient and condition.
+    let trimmed = trim_edge_punctuation(tokens);
+    if let Some(split) = trimmed.windows(4).position(|part|
+        crate::lexer::parser_token_word_refs(part) == ["and", "must", "be", "blocked"])
+    {
+        let tail = &trimmed[split + 4..];
+        let words = crate::lexer::parser_token_word_refs(tail);
+        if words.ends_with(&["if", "able"]) {
+            let requirement = if words == ["if", "able"] {
+                crate::effect::Restriction::must_be_blocked(ObjectFilter::source())
+            } else if tail.len() > 4
+                && (words.starts_with(&["by", "a"]) || words.starts_with(&["by", "an"])) {
+                let blockers = parse_object_filter(&tail[2..tail.len() - 2], false)?;
+                crate::effect::Restriction::MustBeBlockedBy { attacker: ObjectFilter::source(), blockers }
+            } else {
+                return Ok(None);
+            };
+            let display = format!("This creature must be blocked {}", crate::lexer::render_token_slice(tail));
+            let prefix = &trimmed[..split];
+            let Some(head) = anthem_grant_grammar::parse_granted_keyword_verb_facts(prefix) else {
+                return Ok(None);
+            };
+            let Some(actions) = parse_ability_line(&prefix[head.have_token + 1..]) else {
+                return Ok(None);
+            };
+            if actions.is_empty() || actions.iter().any(|action| !action.lowers_to_static_ability()) {
+                return Ok(None);
+            }
+            reject_unimplemented_keyword_actions(&actions, &crate::lexer::render_token_slice(tokens))?;
+            let (condition, subject_start) = parse_anthem_prefix_condition(prefix, head.have_token)?;
+            let attached = split_as_long_as_condition_prefix_lexed(prefix)
+                .and_then(|shape| infer_attached_subject_filter_from_condition_tokens(shape.condition_tokens));
+            let subject = parse_anthem_subject_with_attached_fallback(
+                &trim_commas(&prefix[subject_start..head.have_token]), attached.as_ref(),
+            )?;
+            let condition = condition.map(|condition| bind_attachment_condition_to_subject(condition, &subject));
+            let mut grants = actions.into_iter().map(|action| match &subject {
+                AnthemSubjectAst::Source => match &condition {
+                    Some(condition) => StaticAbilityAst::ConditionalKeywordAction { action, condition: condition.clone() },
+                    None => StaticAbilityAst::KeywordAction(action),
+                },
+                AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
+                    filter: filter.clone(), action, condition: condition.clone(),
+                },
+            }).collect::<Vec<_>>();
+            let clause = fixed_anthem_clause(subject, 0, 0, condition);
+            grants.push(match requirement {
+                crate::effect::Restriction::MustBeBlockedBy { blockers, .. } =>
+                    filtered_block_requirement_for_subject(&clause, blockers),
+                requirement => grant_for_anthem_subject(&clause, StaticAbility::restriction(requirement, display)),
+            });
+            return Ok(Some(grants));
+        }
+    }
+    parse_granted_keyword_static_line_inner(tokens)
+}
+
+fn parse_granted_keyword_static_line_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(participant) = crate::grammar::effects::for_each_shapes::parse_participant_clause_shape(tokens)
+        && matches!(
+            crate::grammar::effects::for_each_shapes::parse_opponent_special_shape(participant.inner_tokens)?,
+            Some(crate::grammar::effects::for_each_shapes::OpponentSpecialShape::PoisonCounters { .. })
+        )
+    {
+        // `has ... poison counters` qualifies the acting player. The
+        // participant program owns the subsequent action, not an anthem.
+        return Ok(None);
+    }
     crate::clause_support::validate_protection_static_line(tokens)?;
     // Player protection has its own owner; it is not an object anthem.
     if matches!(parse_you_have_protection_from_opponents_line(tokens), Ok(Some(_))) {
@@ -1294,6 +1366,9 @@ pub fn parse_granted_keyword_static_line(
     }
     if let Some(abilities) = parse_you_and_subject_protection_grant_line(tokens)? {
         return Ok(Some(abilities));
+    }
+    if parse_filtered_land_reset_and_grant_line(tokens)?.is_some() {
+        return Ok(None);
     }
     // A full characteristic-setting bundle owns its type, color and P/T
     // together; interpreting only a descriptor as a grant loses that bundle.
@@ -1431,13 +1506,6 @@ pub fn parse_granted_keyword_static_line(
         return Ok(None);
     }
     if verb_facts.prefix_has_get {
-        return Ok(None);
-    }
-
-    if verb_facts.starts_with_as_long_as
-        && !verb_facts.tail_has_have
-        && verb_facts.tail_has_get_or_be
-    {
         return Ok(None);
     }
 
@@ -5917,4 +5985,116 @@ pub(super) fn parse_fixed_flashback_static_grant(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod combat_sibling_tests {
+    use super::*;
+
+    #[test]
+    fn attacking_equipped_grant_keeps_filtered_block_requirement() {
+        let tokens = crate::lexer::lex_line(
+            "As long as equipped creature is attacking, it has first strike and must be blocked by a Dalek if able.", 0,
+        ).unwrap();
+        let grants = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        assert_eq!(grants.len(), 2, "{grants:?}");
+        let StaticAbilityAst::GrantKeywordAction { filter, condition, .. } = &grants[0] else { panic!("{grants:?}") };
+        let StaticAbilityAst::Static(ability) = &grants[1] else { panic!("the equipment owns the rule: {grants:?}") };
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition: other_condition } = &ability.payload else { panic!("{ability:?}") };
+        assert_eq!(condition.as_ref(), Some(other_condition));
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, .. } = &ability.payload else { panic!("{ability:?}") };
+        let crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } = restriction else { panic!("{restriction:?}") };
+        let mut expected = filter.clone();
+        expected.with_attached_object = Some(Box::new(ObjectFilter::source()));
+        assert_eq!(attacker, &expected);
+        assert!(blockers.subtypes.contains(&Subtype::Dalek));
+    }
+
+    #[test]
+    fn attacking_equipped_grants_keep_keyword_and_block_requirement_together() {
+        let tokens = crate::lexer::lex_line(
+            "As long as equipped creature is attacking, it has first strike and must be blocked if able.", 0,
+        ).unwrap();
+        let grants = parse_granted_keyword_static_line(&tokens).unwrap().unwrap();
+        assert_eq!(grants.len(), 2, "{grants:?}");
+        let StaticAbilityAst::GrantKeywordAction { filter, condition, .. } = &grants[0] else {
+            panic!("expected attached keyword: {grants:?}");
+        };
+        let StaticAbilityAst::GrantStaticAbility { filter: other_filter, condition: other_condition, ability } = &grants[1] else {
+            panic!("expected attached combat requirement: {grants:?}");
+        };
+        assert_eq!(filter, other_filter);
+        assert_eq!(condition, other_condition);
+        assert!(condition.is_some());
+        assert!(format!("{ability:?}").contains("MustBeBlocked"));
+    }
+}
+
+#[cfg(test)]
+mod counter_condition_grant_tests {
+    use super::*;
+    #[test]
+    fn counter_condition_has_does_not_steal_keyword_and_subtype_grant() {
+        for (count, counter, keyword, subtype) in [
+            ("two", "", "first strike", "Assassin"),
+            ("five", "", "flying", "Angel"),
+            ("ten", "", "indestructible", "God"),
+            ("three", "+1/+1 ", "flying", "Knight"),
+        ] {
+            let line = format!("As long as this creature has {count} or more {counter}counters on it, it has {keyword} and is an {subtype} in addition to its other types.");
+            let tokens = crate::lexer::lex_line(&line, 0).unwrap();
+            let abilities = parse_source_counter_threshold_keyword_and_subtype_line(&tokens)
+                .unwrap().expect("counter-conditioned keyword/type pair");
+            assert_eq!(abilities.len(), 2, "{abilities:?}");
+            let debug = format!("{abilities:?}");
+            assert!(debug.contains("ConditionalKeywordAction") && debug.contains("ConditionalStaticAbility"), "{debug}");
+            assert!(debug.to_lowercase().contains(&subtype.to_lowercase()), "{debug}");
+            assert!(parse_granted_keyword_static_line(&tokens).unwrap().is_some());
+        }
+    }
+}
+
+/// One filtered land set loses its subtypes and abilities, then receives the
+/// authored grants. Each component applies to the same set in its own layer.
+pub fn parse_filtered_land_reset_and_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let marker = ["lose", "all", "land", "types", "and", "abilities", "and", "they", "gain"];
+    let Some(index) = words.windows(marker.len()).position(|part| part == marker)
+        else { return Ok(None); };
+    let Some(subject_end) = view.token_index_after_words(index) else { return Ok(None); };
+    let Some(grant_start) = view.token_index_after_words(index + marker.len()) else { return Ok(None); };
+    let subject = &tokens[..subject_end];
+    let mut filter = parse_object_filter(subject, false)?;
+    if !filter.card_types.contains(&CardType::Land) { return Ok(None); }
+    filter.zone = Some(Zone::Battlefield);
+    let mut grant_tokens = subject.to_vec();
+    grant_tokens.extend(crate::lexer::synthetic_word_tokens(["have"]));
+    grant_tokens.extend_from_slice(&tokens[grant_start..]);
+    let Some(grants) = parse_filter_has_granted_ability_line(&grant_tokens)? else { return Ok(None); };
+    let mut abilities = vec![
+        StaticAbility::set_land_subtypes(filter.clone(), Vec::new()).into(),
+        StaticAbility::remove_all_abilities(filter).into(),
+    ];
+    abilities.extend(grants);
+    Ok(Some(abilities))
+}
+
+#[cfg(test)]
+mod filtered_land_reset_tests {
+    use super::*;
+    #[test]
+    fn filtered_land_reset_keeps_type_loss_ability_loss_and_mana_grant() {
+        let tokens = crate::lexer::lex_line("Lands your opponents control with the chosen name lose all land types and abilities, and they gain \"{T}: Add one mana of any color.\"", 0).unwrap();
+        let abilities = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+            .unwrap().expect("complete filtered land reset");
+        assert_eq!(abilities.len(), 3, "{abilities:?}");
+        let debug = format!("{abilities:?}");
+        assert!(debug.contains("SetLandSubtypes"), "{debug}");
+        assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
+        assert!(debug.contains("AddMana"), "{debug}");
+    }
 }

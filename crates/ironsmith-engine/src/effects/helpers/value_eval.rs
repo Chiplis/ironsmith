@@ -477,6 +477,16 @@ pub(crate) fn resolve_wide(
                 })
                 .count() as i64,
         )),
+        Value::CountPlayersWithCardsInLibraryAtMost(player_filter, maximum) => Ok(i64::from(
+            context
+                .matching_player_ids(player_filter)
+                .into_iter()
+                .filter(|id| {
+                    game.player(*id)
+                        .is_some_and(|player| player.library.len() <= *maximum as usize)
+                })
+                .count() as i64,
+        )),
         Value::CountPlayersWithCardsInGraveyardAtLeast(player_filter, minimum) => Ok(i64::from(
             context
                 .matching_player_ids(player_filter)

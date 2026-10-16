@@ -74,6 +74,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
@@ -2564,23 +2565,15 @@ pub(super) fn compile_subject_verb_late(
                 },
             )
         }
-        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount }) => {
+        SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyLife { min_amount, maximum, source_owned }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            let payment = |filter| Effect::new(crate::effects::PayAnyLifeEffect {
+                player: ChooseSpec::Player(filter), min_amount: *min_amount,
+                maximum: maximum.clone(), source_owned: *source_owned,
+            });
             compile_player_effect_from_resolved_filter(
-                subject.into_player_filter(),
-                subject.into_choices(),
-                || {
-                    Effect::new(crate::effects::PayAnyLifeEffect::new(
-                        ChooseSpec::Player(PlayerFilter::You),
-                        *min_amount,
-                    ))
-                },
-                |filter| {
-                    Effect::new(crate::effects::PayAnyLifeEffect::new(
-                        ChooseSpec::Player(filter),
-                        *min_amount,
-                    ))
-                },
+                subject.into_player_filter(), subject.into_choices(),
+                || payment(PlayerFilter::You), payment,
             )
         }
         SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
@@ -2671,6 +2664,9 @@ pub(super) fn compile_subject_verb_late(
         }
         SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase) => {
             Ok((vec![Effect::end_combat_phase()], Vec::new()))
+        }
+        SubjectVerbActionAst::Game(GameActionAst::DrawGame) => {
+            Ok((vec![Effect::new(ironsmith_core::DrawTheGameEffect)], Vec::new()))
         }
         SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {

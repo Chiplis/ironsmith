@@ -85,3 +85,11 @@ fn parses_keyword_and_short_name_surfaces() {
         );
     }
 }
+
+#[test]
+fn regnal_number_suffix_keeps_the_complete_multiword_alias() {
+    assert_eq!(parse_short_self_reference_name("King Darien XLVIII"), "King Darien");
+    assert_eq!(parse_short_self_reference_name("Queen Example XVII"), "Queen Example");
+    assert_eq!(parse_short_self_reference_name("Brago, King Eternal"), "Brago");
+    assert_eq!(parse_short_self_reference_name("Ajani Vengeant"), "Ajani");
+}

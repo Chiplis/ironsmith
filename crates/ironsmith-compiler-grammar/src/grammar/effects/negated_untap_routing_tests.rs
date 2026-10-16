@@ -150,3 +150,29 @@ fn counted_untap_steps_keep_their_complete_restriction_at_clause_entry() {
         assert_one_object_bound_untap(&[clause]);
     }
 }
+
+#[test]
+fn named_untap_step_declares_one_player_and_retains_controller_scope() {
+    for (text, opponent) in [
+        ("Creatures don't untap during target player's next untap step.", false),
+        ("Artifacts and creatures target opponent controls don't untap during that player's next untap step.", true),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        assert_eq!(debug.matches("TargetOnly").count(), 1, "{debug}");
+        assert!(debug.contains("PlayersNextUntapStep"), "{debug}");
+        let direct = parse_named_player_untap_restriction(&tokens).unwrap().unwrap();
+        let EffectAst::SubjectVerb(subject) = &direct[1] else { panic!("{direct:?}"); };
+        let SubjectVerbActionAst::Cant { restriction: Restriction::Untap(filter), duration: Until::PlayersNextUntapStep { player }, .. } = &subject.action else { panic!("{subject:?}"); };
+        assert!(filter.card_types.contains(&CardType::Creature), "{filter:?}");
+        if opponent {
+            assert!(filter.card_types.contains(&CardType::Artifact), "{filter:?}");
+            assert_eq!(filter.controller.as_ref(), Some(player));
+            assert_eq!(player, &PlayerFilter::Target(Box::new(PlayerFilter::Opponent)));
+        } else {
+            assert!(filter.controller.is_none());
+            assert_eq!(player, &PlayerFilter::Target(Box::new(PlayerFilter::Any)));
+        }
+    }
+}

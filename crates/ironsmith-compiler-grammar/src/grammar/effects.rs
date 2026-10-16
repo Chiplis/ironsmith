@@ -828,6 +828,7 @@ const CHOOSE_NEW_TARGET_REFERENCE_PREFIXES: &[&[&str]] = &[
     &["that", "spell"],
 ];
 const CHANGE_TARGET_PREFIXES: &[&[&str]] = &[
+    &["change", "any", "targets", "of"],
     &["change", "the", "target", "of"],
     &["change", "the", "targets", "of"],
     &["change", "a", "target", "of"],
@@ -1581,6 +1582,27 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && let Some(shape) = parse_unless_pays_shape_tokens(&tokens[1..comma])
+        && parser_token_word_refs(shape.player_tokens) == ["any", "player"]
+    {
+        let (player, cost) = crate::effect_sentences::parse_unless_pays_clause(&tokens[1..comma])?;
+        let mut consequence = parse_effect_chain_lexed(&tokens[comma + 1..])?;
+        for effect in &mut consequence {
+            // An imperative consequence is performed by the ability's
+            // controller, independently of which player accepted the offer.
+            crate::effect_sentences::bind_implicit_player_context(effect, PlayerAst::You);
+        }
+        return Ok(vec![EffectAst::Conditionals(ConditionalEffectAst::IfEffectResult {
+            effect: Box::new(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                effects: Vec::new(), player, cost, before_delayed_step: false,
+            })),
+            // UnlessPays reports Declined exactly when a cost was paid.
+            predicate: crate::effect::EffectPredicate::WasDeclined,
+            if_true: consequence,
+        })]);
+    }
     if let Some(effects) = single_target_retarget::parse(tokens)? {
         return Ok(effects);
     }
@@ -1615,6 +1637,26 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
         parse_effect_chain_lexed,
     ) {
         return Ok(effects);
+    }
+    // A result-memory gate and a live state gate can be alternatives. Test
+    // the live gate first and consult the prior result only in its false arm,
+    // so the consequence executes once even when both alternatives are true.
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(comma) = tokens.iter().position(|token| token.is_comma())
+        && let Some(or) = tokens[..comma].windows(2).position(|pair|
+            pair[0].is_word("or") && pair[1].is_word("if"))
+        && let Some(result) = super::structure::parse_if_result_predicate(&tokens[1..or])
+    {
+        let predicate = super::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[or + 2..comma])?;
+        let effects = parse_effect_chain_lexed(&tokens[comma + 1..])?;
+        return Ok(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: effects.clone(),
+            if_false: vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: result,
+                effects,
+            })],
+        })]);
     }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
@@ -1785,9 +1827,54 @@ pub(crate) fn parse_counted_next_untap_steps(
     Ok((widened == 1).then_some(effects))
 }
 
+/// Bind a named untap-step owner to the player targeted by this instruction.
+fn parse_named_player_untap_restriction(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(negation) = super::activation_restrictions::parse_activation_negation_span_tokens(tokens) else {
+        return Ok(None);
+    };
+    let tail = parser_token_word_refs(&tokens[negation.end..]);
+    let explicit_player = tail == ["untap", "during", "target", "players", "next", "untap", "step"];
+    let referenced_player = tail == ["untap", "during", "that", "players", "next", "untap", "step"];
+    if !explicit_player && !referenced_player { return Ok(None); }
+    let subject = &tokens[..negation.first];
+    let (object_tokens, player, controller_bound) = if let Some(target) = subject.iter().position(|token| token.is_word("target")) {
+        let player_words = parser_token_word_refs(&subject[target..]);
+        let player = match player_words.as_slice() {
+            ["target", "opponent", "controls"] => PlayerFilter::Opponent,
+            ["target", "player", "controls"] => PlayerFilter::Any,
+            _ => return Ok(None),
+        };
+        if !referenced_player { return Ok(None); }
+        (&subject[..target], player, true)
+    } else if explicit_player {
+        (subject, PlayerFilter::Any, false)
+    } else {
+        // A prior target's demonstrative is handled by the existing reader.
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter(object_tokens, false)?;
+    filter.zone = Some(Zone::Battlefield);
+    let target = TargetAst::Player(player.clone(), span_from_tokens(tokens));
+    let player = PlayerFilter::Target(Box::new(player));
+    if controller_bound { filter.controller = Some(player.clone()); }
+    Ok(Some(vec![
+        EffectAst::subject_verb_target_only(target),
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::Untap(filter),
+            crate::effect::Until::PlayersNextUntapStep { player },
+            None,
+        ),
+    ]))
+}
+
 pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_named_player_untap_restriction(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = parse_counted_next_untap_steps(tokens)? {
         return Ok(Some(effects));
     }
@@ -2172,3 +2259,23 @@ pub use effects_library_programs::parse_search_library_sentence_with_grammar_ent
 #[cfg(test)]
 #[path = "effects/temporary_prevention_tests.rs"]
 mod temporary_prevention_tests;
+
+#[cfg(test)]
+mod mixed_result_state_condition_tests {
+    use super::*;
+    #[test]
+    fn prior_result_or_state_has_exclusive_consequence_branches() {
+        let tokens = crate::lexer::lex_line("If you do or if you control another Dinosaur, you gain 3 life.", 0).unwrap();
+        let effects = parse_conditional_sentence_with_grammar_entrypoint_lexed(
+            &tokens, crate::effect_sentences::parse_effect_chain_lexed,
+        ).unwrap();
+        let [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate, if_true, if_false,
+        })] = effects.as_slice() else { panic!("expected state branch: {effects:?}"); };
+        assert!(format!("{predicate:?}").contains("Dinosaur"));
+        assert_eq!(if_true.len(), 1);
+        let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { predicate, effects })] = if_false.as_slice() else { panic!("expected result fallback: {if_false:?}"); };
+        assert!(matches!(predicate, crate::cards::builders::IfResultPredicate::Did));
+        assert_eq!(effects, if_true);
+    }
+}

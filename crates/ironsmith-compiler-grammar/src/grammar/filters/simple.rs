@@ -53,6 +53,7 @@ enum SimpleObjectFilterAtom {
     Token,
     Nontoken,
     Foretold,
+    Suspended,
     Historic,
     Nonhistoric,
     Modified,
@@ -539,6 +540,11 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Token => filter.token = true,
             SimpleObjectFilterAtom::Nontoken => filter.nontoken = true,
             SimpleObjectFilterAtom::Foretold => filter.foretold = true,
+            SimpleObjectFilterAtom::Suspended => {
+                filter.zone = Some(Zone::Exile);
+                filter.alternative_cast = Some(AlternativeCastKind::Suspend);
+                filter = filter.with_counter_type(crate::object::CounterType::Time);
+            }
             SimpleObjectFilterAtom::Historic => filter.historic = true,
             SimpleObjectFilterAtom::Nonhistoric => filter.nonhistoric = true,
             SimpleObjectFilterAtom::Modified => filter.modified = true,
@@ -863,6 +869,7 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "token" | "tokens" => SimpleObjectFilterAtom::Token,
         "nontoken" | "non-token" => SimpleObjectFilterAtom::Nontoken,
         "foretold" => SimpleObjectFilterAtom::Foretold,
+        "suspended" => SimpleObjectFilterAtom::Suspended,
         "historic" => SimpleObjectFilterAtom::Historic,
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,

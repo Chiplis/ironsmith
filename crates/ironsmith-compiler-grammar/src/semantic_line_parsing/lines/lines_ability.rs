@@ -372,6 +372,9 @@ pub(super) fn parse_static_line_impl(
     // The static grammar owns complete untap restrictions, including a
     // shared enters-tapped subject and conditional restrictions. A suffix
     // probe cannot replace that complete line with one unconditional rule.
+    if let Some(abilities) = crate::keyword_static::parse_attached_untap_and_activation_restrictions_line(lexed)? {
+        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
+    }
     if let Some(ability) = crate::keyword_static::parse_doesnt_untap_during_untap_step_line(lexed)? {
         return wrap_chosen_option_static_chunk(LineAst::StaticAbility(ability), chosen_option);
     }

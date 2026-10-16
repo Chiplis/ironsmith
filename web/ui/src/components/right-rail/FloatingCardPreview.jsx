@@ -1,4 +1,5 @@
 import { zonePreviewLayout as placeZonePreview } from "@/lib/zone-preview-layout";
+import { placeCardPreview } from "@/lib/card-preview-placement";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap, manaPaymentFrameActions, manaActivationCommand } from "@/lib/mana-payment-actions";
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
@@ -79,7 +80,7 @@ function objectFamilyIds(state, objectId) {
 }
 
 function zoneDecisionBounds() {
-  return [...document.querySelectorAll(".battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions")]
+  return [...document.querySelectorAll(".battlefield-human-action-dock, .decision-header-utility-controls, .topbar-main-decision-host, .mobile-decision-actions, .decision-main-button, .decision-submit-button, .decision-cancel-button, .combat-decision-actions, .mana-payment-editor, .mana-payment-warning-details")]
     .filter(element => getComputedStyle(element).visibility !== "hidden")
     .map(element => element.getBoundingClientRect())
     .filter(rect => rect.width > 0 && rect.height > 0);
@@ -119,18 +120,12 @@ function previewPosition(objectId, size) {
   if (!source) return null;
   if (source.hasAttribute("data-zone-card")) return zonePreviewPosition(source, size);
 
-  return battlefieldPreviewLayout(source.getBoundingClientRect(), size, source);
+  return battlefieldPreviewLayout(source.getBoundingClientRect(), size);
 }
 
-function battlefieldPreviewLayout(rect, size, source) {
+function battlefieldPreviewLayout(rect, size) {
   const margin = 8;
-  const localSource = source?.closest?.('[data-local-zone-strip="true"], .battlefield-row[data-bf-side="bottom"]');
-  // Local battlefield and zone inspectors share the same space and size cap.
-  // Raised graveyard/exile strips must not pull the inspector onto the opposing board.
-  const localBoard = localSource
-    ? document.querySelector('[data-my-zone] .my-zone-board-shell')?.getBoundingClientRect()
-    : null;
-  const minimumTop = Math.max(phaseToolbarTop(margin), localBoard?.top ?? margin);
+  const minimumTop = phaseToolbarTop(margin);
   const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
   const height = Math.min(size.height, availableHeight);
   const width = Math.min(size.width, height * (63 / 88), window.innerWidth - (margin * 2));
@@ -150,12 +145,11 @@ function battlefieldPreviewLayout(rect, size, source) {
     left = rect.left - width - gap;
   }
   left = Math.max(minimumLeft, Math.min(maximumLeft, left));
-  return {
-    left: Math.round(left),
-    top: Math.round(top),
-    right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(availableHeight))}px`,
-  };
+  return placeCardPreview({
+    preferred: { left, top }, height,
+    bounds: { left: margin, right: window.innerWidth - margin, top: minimumTop, bottom: window.innerHeight - margin },
+    obstacles: [...zoneDecisionBounds(), rect],
+  });
 }
 
 function fullCardsHud() {
@@ -183,19 +177,19 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
   const railBounds = rail?.getBoundingClientRect();
   if (railBounds?.width > 0) {
     const top = Math.max(margin, railBounds.top);
-    // Stop above whatever is highest underneath: the phase track (hidden
-    // during some decisions), the hand's cards, or the player bar.
-    const phaseTop = document.querySelector('.table-shell[data-focused-hud="true"] .phase-track-group')
-      ?.getBoundingClientRect().top;
+    // Frames may cover the phase track and extend into either player's board.
+    // Keep the hand and player bar clear.
     const handTop = [...document.querySelectorAll('.hand-card')]
       .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0)
       .reduce((highest, rect) => Math.min(highest, rect.top), Infinity);
-    const bottom = Math.min(stackFrameFloor()?.top ?? window.innerHeight, phaseTop > top ? phaseTop : Infinity, handTop) - margin;
-    return { left: Math.round(railBounds.right + 12), top: Math.round(top), right: 'auto',
-      maxHeight: `${Math.max(0, Math.floor(bottom - top))}px` };
+    const bottom = Math.min(stackFrameFloor()?.top ?? window.innerHeight, handTop) - margin;
+    return placeCardPreview({
+      preferred: { left: railBounds.right + 12, top }, height: size.height,
+      bounds: { left: margin, right: window.innerWidth - margin, top: phaseToolbarTop(margin), bottom },
+      obstacles: [...zoneDecisionBounds(), railBounds],
+    });
   }
-  const localBoard = document.querySelector('[data-my-zone] .my-zone-board-shell')?.getBoundingClientRect();
-  const minimumTop = Math.max(phaseToolbarTop(margin), localBoard?.top ?? margin);
+  const minimumTop = phaseToolbarTop(margin);
   const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
   const rightSpace = Math.max(0, window.innerWidth - margin - anchorRect.right - gap);
   const leftSpace = Math.max(0, anchorRect.left - gap - margin);
@@ -205,12 +199,15 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
   const maximumHeight = Math.min(availableHeight, availableWidth * 88 / 63);
   const height = Math.min(size.height, maximumHeight);
   const width = Math.min(size.width, height * 63 / 88);
-  return {
-    left: Math.round(placeRight ? anchorRect.right + gap : anchorRect.left - gap - width),
-    top: Math.round(Math.max(minimumTop, Math.min(anchorRect.top, window.innerHeight - margin - height))),
-    right: "auto",
-    maxHeight: `${Math.max(0, Math.floor(maximumHeight))}px`,
-  };
+  return placeCardPreview({
+    preferred: {
+      left: placeRight ? anchorRect.right + gap : anchorRect.left - gap - width,
+      top: Math.max(minimumTop, Math.min(anchorRect.top, window.innerHeight - margin - height)),
+    },
+    height: Math.min(size.height, availableHeight),
+    bounds: { left: margin, right: window.innerWidth - margin, top: minimumTop, bottom: window.innerHeight - margin },
+    obstacles: [...zoneDecisionBounds(), { ...anchorRect, top: minimumTop, bottom: window.innerHeight }],
+  });
 }
 
 function anchoredPreviewPosition(anchorRect, size) {
@@ -230,7 +227,8 @@ function anchoredPreviewPosition(anchorRect, size) {
     bounds.top + margin,
     anchorBottom + gap,
   );
-  const availableHeight = Math.max(0, bounds.bottom - margin - top);
+  const minimumTop = Math.max(bounds.top + margin, phaseToolbarTop(margin));
+  const availableHeight = Math.max(0, bounds.bottom - margin - minimumTop);
   const height = Math.min(size.height, availableHeight);
   const width = Math.min(size.width, height * (63 / 88), availableWidth);
   const maxLeft = Math.max(bounds.left + margin, bounds.right - width - margin);
@@ -242,12 +240,11 @@ function anchoredPreviewPosition(anchorRect, size) {
       minimumLeft: bounds.left + margin,
     })
   );
-  return {
-    left: Math.round(left),
-    top: Math.round(top),
-    right: "auto",
-    height: `${Math.max(0, Math.floor(height))}px`,
-  };
+  return placeCardPreview({
+    preferred: { left, top }, height,
+    bounds: { left: bounds.left + margin, right: bounds.right - margin, top: minimumTop, bottom: bounds.bottom - margin },
+    obstacles: [...zoneDecisionBounds(), anchorRect],
+  });
 }
 
 export default function FloatingCardPreview(props) {
@@ -505,18 +502,20 @@ function CardPreviewSurface({
     const shell = shellRef.current;
     if (!shell) return undefined;
     const measure = () => {
-      // Measure layout dimensions, not the smaller animated opening transform.
-      // ResizeObserver does not fire when only that transform finishes.
+      const saved = shell.style.cssText;
+      shell.style.removeProperty("height");
+      shell.style.removeProperty("width");
+      shell.style.removeProperty("max-height");
       const style = getComputedStyle(shell);
       const width = Number.parseFloat(style.width), height = Number.parseFloat(style.height);
+      shell.style.cssText = saved;
       if (width > 0 && height > 0) {
         setSize(previous => previous.width === width && previous.height === height ? previous : { width, height });
       }
     };
     measure();
-    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
-    observer?.observe(shell);
-    return () => observer?.disconnect();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, []);
 
   const triggerInteractiveAction = (requestedAction) => {
@@ -581,23 +580,22 @@ function CardPreviewSurface({
     return () => cancelAnimationFrame(frame);
   }, [stackPreview]);
   // Collision adjustment and scrolling can move a popover without resizing it.
-  const [zoneBounds, setZoneBounds] = useState(null);
+  const [, setZoneBounds] = useState(null);
   useLayoutEffect(() => {
-    if (renderedObjectId == null || stackPreview) return undefined;
+    if (renderedObjectId == null) return undefined;
     let frame;
     const measure = () => {
       const source = [...document.querySelectorAll("[data-zone-card][data-object-id]")]
         .find(element => element.dataset.objectId === String(renderedObjectId));
       const rect = (source?.closest(".zone-pile-menu") ?? source)?.getBoundingClientRect();
-      const next = rect ? [rect.left, rect.top, rect.right, rect.bottom, window.innerWidth, window.innerHeight, ...zoneDecisionBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",") : null;
+      const next = [rect?.left, rect?.top, rect?.right, rect?.bottom, window.innerWidth, window.innerHeight, ...zoneDecisionBounds().flatMap(r => [r.left, r.top, r.right, r.bottom])].join(",");
       setZoneBounds(previous => previous === next ? previous : next);
       frame = requestAnimationFrame(measure);
     };
     measure();
     return () => cancelAnimationFrame(frame);
   }, [renderedObjectId, stackPreview]);
-  const positionStyle = useMemo(
-    () => {
+  const positionStyle = (() => {
       if (anchoredObjectId != null && renderedObjectId === anchoredObjectId) {
         if (anchoredCardPreview?.placement === "zone") {
           return zoneAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, size);
@@ -613,9 +611,7 @@ function CardPreviewSurface({
         return stackAnchoredPreviewPosition(stackAnchorRect, size);
       }
       return previewPosition(renderedObjectId, size);
-    },
-    [anchoredCardPreview?.anchorRect, anchoredCardPreview?.objectId, anchoredCardPreview?.placement, anchoredObjectId, renderedObjectId, size, stackPreview, stackAnchorRect, zoneBounds]
-  );
+    })();
   const accentStyle = accent
     ? {
       ...playerAccentVars(accent),
@@ -650,7 +646,7 @@ function CardPreviewSurface({
       // null and the stylesheet's default corner takes over -- the frame jumps
       // across the screen for the few frames it is still on its way out. With
       // no place to be, it is not shown at all.
-      style={{ ...accentStyle, ...(positionStyle || { visibility: "hidden" }) }}
+      style={{ ...accentStyle, ...(positionStyle || { visibility: "hidden" }), transform: "none" }}
       onMouseEnter={() => {
         // Always call off a pending close, targeting or not: reaching the frame
         // is exactly what the grace period was held open for.

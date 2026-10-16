@@ -931,6 +931,7 @@ fn parses_grouped_loyalty_counters_removed_from_named_source() {
         last,
         one_or_more,
         caused_by_source,
+        ..
     } = parsed
     else {
         panic!("expected a typed counter-removal trigger: {parsed:#?}");
@@ -2547,4 +2548,19 @@ fn counter_removal_while_exiled_owns_its_event_zone() {
             vec![ironsmith_core::Zone::Exile],
         );
     }
+}
+
+#[test]
+fn active_last_counter_removal_preserves_player_and_counter_type() {
+    let tokens = tokenize_line("you remove the last intervention counter from this enchantment", 0);
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens).unwrap();
+    let crate::model::ast::TriggerSpec::CounterRemovedFrom { filter, source_controller, counter_type, last, .. } = &parsed else { panic!("{parsed:?}") };
+    assert!(filter.source);
+    assert_eq!(source_controller, &Some(PlayerFilter::You));
+    assert_eq!(counter_type, &Some(CounterType::Intervention));
+    assert!(*last);
+    let lowered = crate::compile_support::compile_trigger_spec(parsed);
+    let ironsmith_core::trigger_model::TriggerKind::CounterRemovedFrom(trigger) = lowered.kind else { panic!("expected counter trigger") };
+    assert_eq!(trigger.source_controller, Some(PlayerFilter::You));
+    assert!(trigger.last);
 }

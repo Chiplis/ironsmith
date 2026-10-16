@@ -309,3 +309,15 @@ fn relative_participant_count_compares_the_same_set_for_them_and_you() {
     assert!(compact.contains("controller:Some(You,)"), "{effect}");
     assert!(!effect.contains("PlayerControls {"), "{effect}");
 }
+
+#[test]
+fn poison_qualified_opponent_owns_the_life_loss() {
+    let tokens = lex_line("Each opponent who has three or more poison counters loses 3 life.", 0).unwrap();
+    assert!(crate::keyword_static::parse_granted_keyword_static_line(&tokens).unwrap().is_none());
+    let effect = parse_for_each_opponent_clause(&tokens).unwrap().expect("qualified opponent action");
+    let debug = format!("{effect:?}");
+    assert!(debug.contains("ForEachOpponent") && debug.contains("PlayerHasPoisonCountersOrMore"), "{debug}");
+    assert!(debug.contains("count: 3") && debug.contains("LoseLife") && debug.contains("Fixed(3)"), "{debug}");
+    assert_eq!(debug.matches("player: That").count(), 2, "the predicate and life loss refer to the same opponent: {debug}");
+    assert!(!debug.contains("player: You"), "{debug}");
+}

@@ -58,3 +58,24 @@ pub(super) fn try_bind_unless_payment_result(
     }));
     Ok(true)
 }
+
+#[cfg(test)]
+mod distributed_payment_tests {
+    #[test]
+    fn any_player_payment_keeps_opposite_paid_and_unpaid_consequences() {
+        for (line, expected) in [
+            ("This creature gets +1/+1 until end of turn unless any player pays {2}.", "EndOfTurn"),
+            ("Draw three cards. Then if any player pays {2}, discard three cards.", "WasDeclined"),
+        ] {
+            let tokens = crate::lexer::lex_line(line, 0).unwrap();
+            let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+            let debug = format!("{effects:?}");
+            assert!(debug.contains("UnlessPays") && debug.contains("player: Any"), "{debug}");
+            assert!(debug.contains(expected), "{debug}");
+            if expected == "WasDeclined" {
+                assert!(debug.contains("IfEffectResult") && debug.contains("Discard"), "{debug}");
+                assert!(debug.contains("You"), "the payer must not become the discarder: {debug}");
+            }
+        }
+    }
+}

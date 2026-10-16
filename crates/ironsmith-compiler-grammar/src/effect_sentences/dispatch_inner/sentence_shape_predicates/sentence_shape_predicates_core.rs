@@ -70,6 +70,23 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // The second possessive axis belongs to the first subject; ordinary
+    // coordination must not bind it to the revealed card used as the value.
+    if tokens.first().is_some_and(|token| token.is_word("change")) {
+        if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(tokens)? {
+            return Ok(vec![effect]);
+        }
+        if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_has_base_power_clause(tokens)? {
+            return Ok(vec![effect]);
+        }
+    }
+    if (tokens.windows(3).any(|words| words[0].is_word("base")
+        && words[1].is_word("power") && words[2].is_word("becomes"))
+        || crate::lexer::token_word_refs(tokens).starts_with(&["the", "base", "power", "and", "toughness", "of"]))
+        && let Some(effect) = crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
     if let Some(effects) = crate::effect_sentences::bundle_rules::parse_put_from_outside_game(tokens)? {
         return Ok(effects);
     }

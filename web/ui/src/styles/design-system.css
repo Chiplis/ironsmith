@@ -3233,7 +3233,10 @@ button:disabled,
 }
 
 /* Both hover tooltips and clickable rules helpers sit above inspectors/modals.
-   Their body portals keep this layer outside local stacking contexts. */
+   Their body portals keep this layer outside local stacking contexts. Apply
+   the layer to Radix's positioned wrapper too: it owns the stacking context,
+   so raising only the content can leave helpers behind the phase tracker. */
+[data-radix-popper-content-wrapper]:has(> [data-ui-layer="tooltip"]),
 [data-ui-layer="tooltip"] {
   z-index: 31000 !important;
 }
@@ -7912,4 +7915,33 @@ html[data-hand-pointer-suspended="true"] * {
 .zone-pile[data-option-hovered="true"] {
   border-color: #fff;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .85), 0 0 14px rgba(255, 255, 255, .65);
+}
+
+/* Extra auto-resolve modes retain their cue in every HUD layout. */
+:is(.table-shell, .table-shell[data-focused-hud="true"]) :is(.player-priority-hold, .battlefield-auto-pass-toggle)[aria-pressed="true"][data-enabled="true"][data-resolve-mode="safe"],
+:is(.table-shell, .table-shell[data-focused-hud="true"]) :is(.player-priority-hold, .battlefield-auto-pass-toggle)[aria-pressed="true"][data-enabled="true"][data-resolve-mode="all"] {
+  --resolve-glow: #ffffff;
+  color: var(--resolve-glow) !important;
+  border-color: var(--resolve-glow) !important;
+  box-shadow: 0 0 7px var(--resolve-glow), inset 0 0 3px var(--resolve-glow) !important;
+}
+:is(.table-shell, .table-shell[data-focused-hud="true"]) :is(.player-priority-hold, .battlefield-auto-pass-toggle)[aria-pressed="true"][data-enabled="true"][data-resolve-mode="all"] {
+  --resolve-glow: #ffd45c;
+}
+:is(.player-priority-hold, .battlefield-auto-pass-toggle)[data-resolve-mode="safe"] svg,
+:is(.player-priority-hold, .battlefield-auto-pass-toggle)[data-resolve-mode="all"] svg {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* Command sits beside the local identity, leaving Look directly below Deck. */
+.local-command-zone-dock {
+  --zone-pile-width: 56px;
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+.local-command-zone-dock > .zone-pile-slot:first-child {
+  margin-top: 0;
 }

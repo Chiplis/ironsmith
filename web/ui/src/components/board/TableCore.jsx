@@ -121,10 +121,8 @@ export default function TableCore({
     playerAccentOverrides,
     multiplayer,
     surrenderRequested,
-    autoResolveEnabled,
     phasePassing,
     togglePhasePassing,
-    setAutoResolveEnabled,
   } = useGame();
   const { t } = useI18n();
   const { registerPointerDown, shouldHandleClick } = usePointerClickGuard();
@@ -408,22 +406,7 @@ export default function TableCore({
         disabled={Boolean(state?.game_over)}
         onClick={togglePhasePassing}
       >{ui("End turn")}</button>}
-      {!state?.mana_payment && state?.decision?.kind !== "mana_payment" && <button
-        type="button"
-        className="battlefield-auto-pass-toggle"
-        data-enabled={autoResolveEnabled ? "true" : "false"}
-        aria-pressed={Boolean(autoResolveEnabled)}
-        aria-label={ui("Auto-pass")}
-        data-tooltip={ui("Auto-pass")}
-        title={ui("Show a timed Hold Priority button after casting or activating. Turn off to resolve manually.")}
-        onClick={() => setAutoResolveEnabled((enabled) => !enabled)}
-      >
-        <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
-          <path d="m3.25 4.5 5.5 5.5-5.5 5.5" />
-          <path d="m10.25 4.5 5.5 5.5-5.5 5.5" />
-        </svg>
-        <span className="sr-only">{t("action.autoPass")}</span>
-      </button>}
+      <PriorityHoldControl battlefield />
     </div>
   ) : null;
   const middleTopbarElement = focusedHudDesktop && middleTopbar
@@ -493,12 +476,14 @@ export default function TableCore({
                 </span>
               </span>
             )}
+            {focusedHudDesktop ? <div className="local-command-zone-dock" /> : null}
           </div>
         </div>
         {!focusedHudDesktop ? <PriorityHoldControl /> : null}
         <div className="local-player-mana-dock">
         <ManaPool
           pool={me.mana_pool}
+          player={me}
           alwaysVisible
           compact
           className="player-name-mana battlefield-header-mana"

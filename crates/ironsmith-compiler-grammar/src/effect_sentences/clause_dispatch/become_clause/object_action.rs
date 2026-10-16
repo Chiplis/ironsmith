@@ -135,7 +135,11 @@ pub fn parse_become_clause(
     let copy_exception = rest_shape.copy_exception;
     let become_clause_tokens = rest_shape.body_tokens;
     let (duration, subject_tokens_vec, become_tokens, animation_duration_surface) =
-        if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
+        if dynamic_base_values::subject(&subject_tokens).is_some()
+            && let Some(body) = dynamic_base_values::next_upkeep_end_duration_body(&become_clause_tokens)
+        {
+            (Until::YourNextUpkeepEnd, subject_tokens.clone(), body.to_vec(), None)
+        } else if let Some((duration, remainder)) = parse_restriction_duration(&subject_tokens)? {
             (
                 duration,
                 remainder,

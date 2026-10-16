@@ -1183,6 +1183,28 @@ fn resolve_prior_effect_metric(
         }
         return Ok(i64::from(number));
     }
+    if query.action == Some(ironsmith_core::PriorEffectAction::Investigated) {
+        if query.source != EffectMetricSource::Outcome || query.filter.is_some()
+            || !matches!(query.metric, EffectMetric::Count | EffectMetric::PlayersWithPositiveCount)
+        {
+            return Err(ExecutionError::UnresolvableValue("investigate metrics require completed keyword actions".into()));
+        }
+        let Some(outcome) = ctx.get_outcome(effect_id) else { return Ok(0); };
+        let filter_ctx = ctx.filter_context(game);
+        let players = query.player.as_ref()
+            .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
+            .transpose()?;
+        let mut events = outcome.instruction_result().events_of_type::<crate::events::KeywordActionEvent>()
+            .filter(|event| event.action == crate::events::KeywordActionKind::Investigate
+                && event.amount > 0
+                && players.as_ref().is_none_or(|players| players.contains(&event.player)));
+        return if query.metric == EffectMetric::PlayersWithPositiveCount {
+            Ok(events.map(|event| event.player).collect::<HashSet<_>>().len() as i64)
+        } else {
+            events.try_fold(0i64, |sum, event| sum.checked_add(i64::from(event.amount))
+                .ok_or_else(|| ExecutionError::UnresolvableValue("investigate count exceeds supported range".into())))
+        };
+    }
     if query.filter.is_none() && query.player.is_none() && destination_memory.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
     }
@@ -6539,6 +6561,33 @@ mod tests {
     }
 
     #[test]
+    fn library_threshold_counts_individual_players_and_updates_at_boundary() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into(), "Cara".into()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let cara = game.players[2].id;
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        let value = Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, 2);
+        let opponents = Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Opponent, 2);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Library card").build();
+        let mut bob_cards = Vec::new();
+        for (player, count) in [(alice, 1), (bob, 2), (cara, 3)] {
+            for _ in 0..count {
+                let id = game.create_object_from_card(&card, player, Zone::Library);
+                if player == bob { bob_cards.push(id); }
+            }
+        }
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 2);
+        assert_eq!(resolve_value(&game, &opponents, &ctx).unwrap(), 1);
+        game.create_object_from_card(&card, bob, Zone::Library);
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 1);
+        assert_eq!(resolve_value(&game, &opponents, &ctx).unwrap(), 0);
+        game.move_object_by_effect(bob_cards[0], Zone::Graveyard).unwrap();
+        assert_eq!(resolve_value(&game, &opponents, &ctx).unwrap(), 1);
+    }
+
+    #[test]
     fn count_players_with_minimum_hand_size_resolves_the_qualified_player_set() {
         let mut game = new_test_game();
         let alice = game.players[0].id;
@@ -7218,5 +7267,45 @@ mod reconciled_reveal_receipt_tests {
         ));
         assert!(matches!(resolve_prior_effect_metric(&game, &ctx, reveal, &query),
             Err(ExecutionError::IncompleteEvidence(_))));
+    }
+}
+
+#[cfg(test)]
+mod investigate_participant_metric_tests {
+    use super::*;
+
+    #[test]
+    fn investigate_participants_use_actions_not_tokens_or_life_loss() {
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = ObjectId::from_raw(9001);
+        let id = crate::effect::EffectId(23);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let event = |action, player, amount| crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::KeywordActionEvent::new(action, player, source, amount),
+            crate::provenance::ProvNodeId::default(),
+        );
+        // No created objects are needed to prove that the keyword completed.
+        // Repeated actions by one player count once; unrelated actions and
+        // the controller's investigation do not add opponents.
+        ctx.store_outcome(id, EffectOutcome::count(99).with_events([
+            event(crate::events::KeywordActionKind::Investigate, bob, 1),
+            event(crate::events::KeywordActionKind::Investigate, bob, 1),
+            event(crate::events::KeywordActionKind::Investigate, alice, 1),
+            event(crate::events::KeywordActionKind::Scry, bob, 3),
+            crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::life::LifeLossEvent::from_effect(bob, 1),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        ]));
+        let mut query = PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::PlayersWithPositiveCount)
+            .with_action(ironsmith_core::PriorEffectAction::Investigated)
+            .with_player(PlayerFilter::Opponent);
+        assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 1);
+        query.metric = EffectMetric::Count;
+        assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 2);
+        ctx.store_outcome(id, EffectOutcome::count(99));
+        assert_eq!(resolve_prior_effect_metric(&game, &ctx, id, &query).unwrap(), 0);
     }
 }

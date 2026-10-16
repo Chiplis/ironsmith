@@ -77,6 +77,7 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
         }
         Until::Forever | Until::EndOfTurn | Until::EndOfTurnOrAnyPlayerRolls { .. }
         | Until::YourNextTurn | Until::YourNextTurnEnd | Until::YourNextUpkeep
+        | Until::YourNextUpkeepEnd
         | Until::ControllersNextUntapStep | Until::NextEndStep | Until::EndOfCombat
         | Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis
         | Until::ObjectIsCast { .. } | Until::YourNextUntapStep

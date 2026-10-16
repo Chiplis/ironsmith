@@ -737,6 +737,32 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    if candidate.operator == CoordinationOperatorAst::And
+        && before.last().and_then(OwnedLexToken::as_word).and_then(crate::util::parse_color).is_some()
+        && after.first().is_some_and(|token| token.is_word("all"))
+        && after.get(1).and_then(OwnedLexToken::as_word).and_then(crate::util::parse_color).is_some()
+    {
+        // Repeated quantifiers coordinate color-qualified subsets of one
+        // object operand, not separate actions.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before.last().is_some_and(|token| token.is_any_word(&["spell", "spells"]))
+        && (after.first().is_some_and(|token| token.is_any_word(&["permanent", "permanents"]))
+            || (after.first().is_some_and(|token| token.is_word("nonland"))
+                && after.get(1).is_some_and(|token| token.is_any_word(&["permanent", "permanents"]))))
+    {
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
+        && before.last().zip(after.first()).is_some_and(|(left, right)|
+            (left.is_word("player") && right.is_word("planeswalker"))
+                || (left.is_word("planeswalker") && right.is_word("player")))
+    {
+        // This is one recipient domain, including non-targeting references
+        // whose relative clause describes what a creature is attacking.
+        return None;
+    }
     if candidate.operator == CoordinationOperatorAst::Or
         && (before.last().is_some_and(|token| token.is_word("blocking"))
             && after.first().is_some_and(|token| token.is_word("blocked"))

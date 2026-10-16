@@ -1102,3 +1102,84 @@ pub(super) fn any_number_revealed_land_split(
     group.selected = Some(chosen_tag.key.clone());
     true
 }
+
+/// An optional reveal selects a card from the viewed pool before subsequent
+/// conditions inspect it. Keep both dispositions inside that selection's
+/// scope, so declining to reveal cannot move another card from the pool.
+pub(super) fn reveal_then_conditional_move_shape(
+    sentence: &SentenceInput,
+    rest: &[SentenceInput],
+    revealed: bool,
+) -> bool {
+    let [conditional, fallback, ..] = rest else { return false; };
+    if revealed || quad_grammar::parse_may_reveal_looked_card_shape(sentence.lowered()).is_none() {
+        return false;
+    }
+    let condition_words = crate::lexer::token_word_refs(conditional.lowered());
+    let fallback_words = crate::lexer::token_word_refs(fallback.lowered());
+    condition_words.starts_with(&["if", "that", "card"])
+        && condition_words.windows(5).any(|words| words == ["you", "may", "put", "it", "onto"])
+        && matches!(fallback_words.as_slice(),
+            ["if", "you", "didnt" | "didn't", "put", "the", "revealed", "card", "onto", "the", "battlefield", "this", "way", "put", "it", "into", "your", "hand"])
+}
+
+pub(super) fn reveal_then_conditional_move(
+    group: &mut ViewedGroup,
+    sentence: &SentenceInput,
+    rest: &[SentenceInput],
+) -> Result<bool, CardTextError> {
+    if !reveal_then_conditional_move_shape(sentence, rest, group.revealed) {
+        return Ok(false);
+    }
+    let Some((mut filter, count)) = may_reveal_up_to(sentence)? else { return Ok(false); };
+    if count.max != Some(1) || count.random { return Ok(false); }
+    let selected = helper_tag_for_tokens(sentence.lowered(), "revealed_choice");
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: group.tag.clone(), relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut dispositions = super::super::parse_effect_sentence_lexed(rest[0].lowered())?;
+    dispositions.extend(super::super::parse_effect_sentence_lexed(rest[1].lowered())?);
+    group.effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        filter, count: ChoiceCount::up_to(1), player: group.owner,
+        tag: crate::tag::TagRef::of(selected.clone()), zone: Zone::Library,
+    }));
+    group.effects.push(EffectAst::subject_verb_reveal_tagged(crate::tag::TagRef::of(selected.clone())));
+    group.effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::TagRef::of(selected.clone()), effects: dispositions,
+    }));
+    group.pending_statements = none_pending(2);
+    group.selected = Some(selected.key.clone());
+    group.remainder_player = group.owner;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod conditional_reveal_tests {
+    use super::*;
+
+    #[test]
+    fn conditional_reveal_selects_one_creature_and_scopes_both_dispositions() {
+        let tokens = crate::lexer::lex_line("Look at the top six cards of your library. You may reveal a creature card from among them. If that card has mana value 2 or less, you may put it onto the battlefield and it gains haste until end of turn. If you didn't put the revealed card onto the battlefield this way, put it into your hand. Put the rest on the bottom of your library in a random order.", 0).unwrap();
+        let effects = crate::effect_sentences::dispatch_entry::parse_effect_sentences_lexed(&tokens).unwrap();
+        let (chosen, pool) = effects.iter().find_map(|effect| {
+            let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { filter, count, tag, zone, .. }) = effect else { return None; };
+            assert_eq!(*zone, Zone::Library);
+            assert_eq!(*count, ChoiceCount::up_to(1));
+            assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+            assert_eq!(filter.tagged_constraints.len(), 1);
+            Some((tag.key.clone(), filter.tagged_constraints[0].tag.clone()))
+        }).expect("must choose a creature from the viewed pool");
+        assert_ne!(chosen, pool, "the selected card and viewed pool must remain distinct");
+        let dispositions = effects.iter().find_map(|effect| {
+            let EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) = effect else { return None; };
+            (tag.key == chosen).then_some(effects)
+        }).expect("both moves must be scoped to the selection");
+        assert_eq!(dispositions.len(), 2);
+        assert!(dispositions.iter().all(|effect| matches!(effect, EffectAst::Conditionals(_))));
+        let EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. }) = &dispositions[1] else { unreachable!(); };
+        let crate::cards::builders::PredicateAst::Not(inner) = predicate else { panic!("expected negative entry condition: {predicate:?}"); };
+        let crate::cards::builders::PredicateAst::TaggedMatches(_, filter) = inner.as_ref() else { panic!("entry must not depend on controller: {inner:?}"); };
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.controller.is_none());
+    }
+}

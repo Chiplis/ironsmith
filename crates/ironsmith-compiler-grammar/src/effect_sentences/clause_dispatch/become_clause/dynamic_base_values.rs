@@ -10,6 +10,19 @@ pub(super) enum Axes {
     Both,
 }
 
+pub(super) fn next_upkeep_end_duration_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    const SUFFIX: &[&str] = &["until", "the", "end", "of", "your", "next", "upkeep"];
+    if !words.ends_with(SUFFIX) || words.len() <= SUFFIX.len() {
+        return None;
+    }
+    let body = &tokens[view.token_span_for_words(0, words.len() - SUFFIX.len())?];
+    (body.iter().filter(|token| token.kind == TokenKind::Quote).count() % 2 == 0)
+        .then_some(body)
+}
+
 pub(super) fn subject(tokens: &[OwnedLexToken]) -> Option<(Axes, Vec<OwnedLexToken>)> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -204,13 +217,13 @@ pub(super) fn assignment(
     surface: Option<ironsmith_core::SetQuantifierSurface>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    if !tokens.first().is_some_and(|token| token.is_word("equal"))
-        || !tokens.get(1).is_some_and(|token| token.is_word("to"))
-    {
-        return Ok(None);
-    }
-    let rhs = &tokens[2..];
+    let explicit_equality = tokens.first().is_some_and(|token| token.is_word("equal"))
+        && tokens.get(1).is_some_and(|token| token.is_word("to"));
+    let rhs = if explicit_equality { &tokens[2..] } else { tokens };
     let Some(quantity) = quantity(rhs) else {
+        if !explicit_equality {
+            return Ok(None);
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported base-characteristic quantity '{}'",
             render_lower_words(rhs)
@@ -486,5 +499,33 @@ mod pre_pt_grant_tests {
             let tokens = crate::lexer::lex_line(body, 0).unwrap();
             assert!(super::super::parse_become_clause(&subject, &tokens).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod bare_quantity_assignment_tests {
+    #[test]
+    fn optional_base_power_becomes_scalar_without_equal_to() {
+        let tokens = crate::lexer::lex_line("You may have this creature's base power become 1 plus the greatest power among other creatures you control until end of turn.", 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_chain(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        for required in ["May", "SetBasePower", "GreatestPower", "other: true", "Some(You)", "EndOfTurn", "Fixed(1)"] {
+            assert!(debug.contains(required), "missing {required}: {debug}");
+        }
+        assert!(!debug.contains("SetBasePowerToughness") && !debug.contains("SetBaseToughness"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod upkeep_end_assignment_tests {
+    #[test]
+    fn copied_base_pair_keeps_end_of_next_upkeep_duration() {
+        let tokens = crate::lexer::lex_line("This creature's base power and toughness become equal to the power and toughness of target creature other than this creature until the end of your next upkeep.", 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_chain(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        for required in ["YourNextUpkeepEnd", "SetBasePowerToughness", "PowerOf", "ToughnessOf", "TargetOnly", "other: true"] {
+            assert!(debug.contains(required), "missing {required}: {debug}");
+        }
+        assert!(!debug.contains("Forever"), "duration must not be swallowed by the target filter: {debug}");
     }
 }

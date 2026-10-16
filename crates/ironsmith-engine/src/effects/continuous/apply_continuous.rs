@@ -1880,6 +1880,46 @@ mod tests {
     }
 
     #[test]
+    fn compiled_ability_prohibition_locks_recipients_and_expires() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_land(&mut game, "Restriction source", alice);
+        let own = create_creature(&mut game, "Own creature", alice);
+        let existing = create_creature(&mut game, "Existing opponent creature", bob);
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::Opponent);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        for ability in [StaticAbility::hexproof(), StaticAbility::shroud()] {
+            let restriction = Effect::new(ApplyContinuousEffect::new(
+                EffectTarget::Filter(filter.clone()),
+                Modification::RemoveAbilityGeneric {
+                    ability: Ability::static_ability(ability),
+                    mode: ironsmith_core::AbilityLossMode::LoseAndCantHaveOrGain,
+                },
+                Until::EndOfTurn,
+            ).lock_filter_at_resolution());
+            execute_effect(&mut game, &restriction, &mut ctx).unwrap();
+        }
+        let later = create_creature(&mut game, "Later opponent creature", bob);
+        for ability in [StaticAbility::hexproof(), StaticAbility::shroud()] {
+            let grant = Effect::new(ApplyContinuousEffect::new(
+                EffectTarget::Filter(ObjectFilter::creature()),
+                Modification::AddAbility(ability), Until::Forever,
+            ));
+            execute_effect(&mut game, &grant, &mut ctx).unwrap();
+        }
+        let protected = |game: &GameState, id| game.current_abilities(id).unwrap().iter().filter(|ability|
+            matches!(&ability.kind, AbilityKind::Static(a) if matches!(a.id(), crate::static_abilities::StaticAbilityId::Hexproof | crate::static_abilities::StaticAbilityId::Shroud))
+        ).count();
+        assert_eq!(protected(&game, own), 2);
+        assert_eq!(protected(&game, existing), 0, "later grants must remain prohibited");
+        assert_eq!(protected(&game, later), 2, "new creatures were not affected at resolution");
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
+        assert_eq!(protected(&game, existing), 2, "prohibition expires at end of turn");
+    }
+
+    #[test]
     fn dynamic_block_tax_captures_x_and_applies_to_later_creatures() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

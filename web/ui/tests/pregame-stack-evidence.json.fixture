@@ -1,0 +1,54 @@
+[
+  {
+    "card": {
+      "id": 1,
+      "name": "Devourer of Destiny",
+      "oracle_text": "You may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards back on top of your library. Exile the rest.\nWhen you cast this spell, exile target permanent that's one or more colors.",
+      "stable_id": 1,
+      "type_line": "Creature — Eldrazi"
+    },
+    "entry": {
+      "ability_kind": "Triggered",
+      "ability_text": "You may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards on top of your library. Exile the rest.",
+      "controller": 0,
+      "effect_text": null,
+      "id": 3,
+      "inspect_object_id": 1,
+      "mana_cost": null,
+      "name": "Devourer of Destiny",
+      "source_ability_text": "You may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards on top of your library. Exile the rest.",
+      "source_kind": null,
+      "source_stable_id": 1,
+      "stable_id": 1,
+      "target_object_id": 1,
+      "targets": []
+    },
+    "expected": "You may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards on top of your library. Exile the rest."
+  },
+  {
+    "card": {
+      "id": 1,
+      "name": "Chancellor of the Dross",
+      "oracle_text": "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, each opponent loses 3 life, then you gain life equal to the life lost this way.\nFlying, lifelink",
+      "stable_id": 1,
+      "type_line": "Creature — Phyrexian Vampire"
+    },
+    "entry": {
+      "ability_kind": "Triggered",
+      "ability_text": "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, each opponent loses 3 life, then you gain life equal to the life lost this way.",
+      "controller": 0,
+      "effect_text": null,
+      "id": 3,
+      "inspect_object_id": 1,
+      "mana_cost": null,
+      "name": "Chancellor of the Dross",
+      "source_ability_text": "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, each opponent loses 3 life, then you gain life equal to the life lost this way.",
+      "source_kind": null,
+      "source_stable_id": 1,
+      "stable_id": 1,
+      "target_object_id": 1,
+      "targets": []
+    },
+    "expected": "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, each opponent loses 3 life, then you gain life equal to the life lost this way."
+  }
+]

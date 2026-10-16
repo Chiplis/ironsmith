@@ -338,8 +338,11 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             rewrite_optional_player(source_controller, change)?;
         }
         K::CounterRemovedFrom(model::CounterRemovedFromTrigger {
-            filter, counter_type: _, last: _, one_or_more: _, caused_by_source: _,
-        }) => *filter = rewrite_filter_words(filter, change)?,
+            filter, counter_type: _, last: _, one_or_more: _, caused_by_source: _, source_controller,
+        }) => {
+            *filter = rewrite_filter_words(filter, change)?;
+            rewrite_optional_player(source_controller, change)?;
+        }
         K::PlayerChangesTapState { player, filter, tapped: _, one_or_more: _, during_untap_step } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
@@ -565,6 +568,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         return exact_native_kind(native, K::CounterRemovedFrom(model::CounterRemovedFromTrigger {
             filter: native.filter.clone(), counter_type: native.counter_type,
             last: native.last, one_or_more: native.one_or_more, caused_by_source: native.caused_by_source,
+            source_controller: native.source_controller.clone(),
         }));
     }
     if let Some(native) = trigger.downcast_ref::<native::ControlChangedTrigger>() {

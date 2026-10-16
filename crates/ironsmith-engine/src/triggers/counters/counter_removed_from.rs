@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::other::MarkersChangedEvent;
 use crate::filter::ObjectFilterExt as _;
+use crate::filter::PlayerFilterExt as _;
 use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -14,6 +15,8 @@ pub struct CounterRemovedFromTrigger {
     pub last: bool,
     pub one_or_more: bool,
     pub caused_by_source: bool,
+    /// The controller of the effect or cost that removed the counters.
+    pub source_controller: Option<crate::target::PlayerFilter>,
 }
 
 impl CounterRemovedFromTrigger {
@@ -24,7 +27,13 @@ impl CounterRemovedFromTrigger {
             last: false,
             one_or_more: false,
             caused_by_source: false,
+            source_controller: None,
         }
+    }
+
+    pub fn source_controller(mut self, player: crate::target::PlayerFilter) -> Self {
+        self.source_controller = Some(player);
+        self
     }
 
     pub fn one_or_more(mut self) -> Self {
@@ -66,6 +75,9 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
         {
             return false;
         }
+        if let Some(player) = &self.source_controller
+            && !e.source_controller.is_some_and(|controller| player.matches_player(controller, &ctx.filter_ctx))
+        { return false; }
         if self.caused_by_source && e.source != Some(ctx.source_id) {
             return false;
         }
@@ -119,6 +131,10 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
                 || "counter".to_string(),
                 |counter_type| format!("{} counter", counter_type.description()),
             );
+            if let Some(player) = &self.source_controller {
+                let verb = if matches!(player, crate::target::PlayerFilter::You) { "remove" } else { "removes" };
+                return format!("When {} {verb} the last {counter} from {subject}{zone}", player.description());
+            }
             return format!(
                 "When the last {counter} is removed from {}{zone}",
                 subject
@@ -138,6 +154,11 @@ impl TriggerMatcher for CounterRemovedFromTrigger {
         } else {
             ""
         };
+        if let Some(player) = &self.source_controller {
+            let verb = if matches!(player, crate::target::PlayerFilter::You) { "remove" } else { "removes" };
+            let counters = if self.one_or_more { format!("one or more {counter_noun}s") } else { format!("a {counter_noun}") };
+            return format!("Whenever {} {verb} {counters} from {subject}{this_way}{zone}", player.description());
+        }
         format!(
             "Whenever {counter_phrase} removed from {}{this_way}{zone}",
             subject
@@ -170,6 +191,26 @@ mod tests {
             trigger.display(),
             "Whenever one or more loyalty counters are removed from Chandra"
         );
+    }
+
+    #[test]
+    fn last_counter_removal_preserves_the_acting_player() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let trigger = CounterRemovedFromTrigger::new(ObjectFilter::source())
+            .counter_type(CounterType::Intervention).last()
+            .source_controller(crate::target::PlayerFilter::You);
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        for (actor, remaining, expected) in [(Some(alice), 0, true), (Some(bob), 0, false), (None, 0, false), (Some(alice), 1, false)] {
+            let event = TriggerEvent::new(
+                MarkersChangedEvent::removed(CounterType::Intervention, source, 1, None, actor).with_count_after(remaining),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert_eq!(trigger.matches(&event, &ctx), expected, "{actor:?}, {remaining}");
+        }
+        assert!(trigger.display().starts_with("When you remove the last intervention counter"));
     }
 
     #[test]

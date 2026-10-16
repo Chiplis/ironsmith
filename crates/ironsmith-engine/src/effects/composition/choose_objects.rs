@@ -706,17 +706,28 @@ fn check_selection_cost_with_context(
     {
         return Err(CostValidationError::NotEnoughCards);
     }
-    if effect.count.min == 0 {
+    let required = if effect.count.up_to_x
+        || (effect.is_search && effect.search_mode == crate::effect::SearchSelectionMode::Optional)
+    {
+        0
+    } else if let Some(value) = &effect.count_value {
+        crate::effects::helpers::resolve_value(game, value, ctx)
+            .map_err(|error| CostValidationError::Other(format!("unresolved selection cost: {error:?}")))?
+            .max(0) as usize
+    } else {
+        effect.count.min
+    };
+    if required == 0 {
         return Ok(());
     }
 
     check_relation_cost_with_context(effect, game, ctx)?;
     let candidate_count = cost_candidate_count_with_context(effect, game, ctx)?;
 
-    if candidate_count < effect.count.min {
+    if candidate_count < required {
         return Err(CostValidationError::Other(format!(
             "Not enough objects to choose ({} needed, {} available)",
-            effect.count.min, candidate_count
+            required, candidate_count
         )));
     }
 
@@ -883,6 +894,32 @@ mod tests {
         let object = Object::from_card(id, &card, owner, Zone::Graveyard);
         game.add_object(object);
         id
+    }
+
+    #[test]
+    fn opponent_count_exile_selection_checks_affordability_and_full_payment() {
+        for opponents in 0..=3 {
+            let mut game = GameState::new((0..=opponents).map(|i| format!("Player {i}")).collect(), 20);
+            let alice = PlayerId::from_index(0);
+            let source = game.new_object_id();
+            let effect = ChooseObjectsEffect::new(
+                ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(PlayerFilter::You),
+                1, PlayerFilter::You, "exile_cost",
+            ).with_count_value(crate::effect::Value::CountPlayers(PlayerFilter::Opponent));
+            let mut ctx = ExecutionContext::new_default(source, alice);
+            if opponents > 0 {
+                for i in 0..opponents - 1 {
+                    create_graveyard_creature(&mut game, &format!("Cost card {i}"), alice);
+                }
+                assert!(CostExecutableEffect::can_execute_as_cost(&effect, &game, source, alice).is_err());
+                assert!(effect.finalize_payment_bindings(&game, &EffectOutcome::count(0), &mut ctx, None).is_err());
+                create_graveyard_creature(&mut game, "Last required cost card", alice);
+            }
+            CostExecutableEffect::can_execute_as_cost(&effect, &game, source, alice).expect("exact dynamic cost should be payable");
+            let outcome = effect.execute(&mut game, &mut ctx).unwrap();
+            effect.finalize_payment_bindings(&game, &outcome, &mut ctx, None).unwrap();
+            assert_eq!(ctx.tagged_objects.get(&effect.tag).map_or(0, Vec::len), opponents);
+        }
     }
 
     #[test]

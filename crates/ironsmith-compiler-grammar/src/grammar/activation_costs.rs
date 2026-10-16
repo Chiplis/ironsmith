@@ -121,6 +121,7 @@ pub enum ActivationCostSegmentCst {
         color_filter: Option<ColorSet>,
     },
     ExileChosen {
+        count_value: Option<crate::effect::Value>,
         choice_count: ChoiceCount,
         filter: ObjectFilter,
         top_only: bool,

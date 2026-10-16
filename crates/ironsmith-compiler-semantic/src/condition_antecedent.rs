@@ -506,10 +506,21 @@ pub fn bind_condition_collection_antecedent_in_effects(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             return false;
         };
-        let SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) =
+        let SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, controller_reference, .. }) =
             &mut subject_verb.action
         else {
             return false;
+        };
+        // The actor choosing a member need not control the collection. In
+        // particular, a damage source's controller chooses from the damaged
+        // player's permanents. Preserve the explicit source-controller actor.
+        let chooser = match controller_reference.as_ref() {
+            Some(crate::filter::ObjectRef::Tagged(tag)) if tag.as_str() == "triggering" =>
+                crate::cards::builders::PlayerAst::TriggeringSourceController,
+            None => subject_verb.subject.player,
+            // An arbitrary relational actor needs its own explicit player
+            // binding; do not silently substitute the condition's subject.
+            Some(_) => return false,
         };
         let TargetAst::WithCount(inner, count) = target else {
             return false;
@@ -528,6 +539,9 @@ pub fn bind_condition_collection_antecedent_in_effects(
             return false;
         }
 
+        if chooser == crate::cards::builders::PlayerAst::TriggeringSourceController {
+            *controller_reference = Some(crate::filter::ObjectRef::tagged("triggering_source"));
+        }
         let mut choice_filter = antecedent.clone();
         // The condition's subject is plural ("one or more lands"), while the
         // nested choice selects exactly one member. Keep the authored plural
@@ -538,8 +552,8 @@ pub fn bind_condition_collection_antecedent_in_effects(
             .union_surface
             .with_counter_requirement_surface(one_or_more, plural_noun, false);
         // `PlayerControls` keeps its actor separate from the object filter.
-        // Make the copied filter chooser-relative so the player denoted by
-        // "their choice" can only choose among permanents they control.
+        // Keep its collection relative to that condition subject, independently
+        // of the player who chooses and gains control of a member.
         choice_filter
             .controller
             .get_or_insert(crate::filter::PlayerFilter::IteratedPlayer);
@@ -548,7 +562,7 @@ pub fn bind_condition_collection_antecedent_in_effects(
             filter: choice_filter,
             count: *count,
             count_value: None,
-            player: crate::cards::builders::PlayerAst::That,
+            player: chooser,
             tag: tag.clone(),
         });
         *target = TargetAst::Tagged(tag, None);

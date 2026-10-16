@@ -69,3 +69,54 @@ fn flashback_uses_the_full_source_line_for_its_qualified_reduction() {
         Some(crate::filter::AlternativeCastKind::Flashback)
     );
 }
+
+#[test]
+fn artifact_offering_keeps_a_controlled_artifact_sacrifice() {
+    let line = line("Artifact offering");
+    let payload = parse_alternative_cast(&line, &line.tokens, &line.info.source_tokens)
+        .unwrap().expect("artifact offering should parse");
+    let debug = format!("{payload:?}");
+    assert!(debug.contains("Sacrifice"), "{debug}");
+    assert!(debug.contains("card_types: [Artifact]"), "{debug}");
+    assert!(debug.contains("controller: Some(You)"), "{debug}");
+    assert!(debug.contains("subtypes: []"), "{debug}");
+}
+
+#[test]
+fn flashback_cost_modifiers_defer_to_static_cost_rules() {
+    for text in ["Flashback costs you pay cost {2} less.", "Flashback costs your opponents pay cost {2} more."] {
+        let line = line(text);
+        assert!(parse_flashback(&line, &line.tokens, &line.info.source_tokens).unwrap().is_none());
+        let ability = crate::keyword_static::parse_static_ability_ast_line_lexed(&line.tokens)
+            .expect("static modifier should parse").expect("static modifier should match");
+        let debug = format!("{ability:?}");
+        assert!(debug.contains("Flashback"), "{debug}");
+        assert!(debug.contains("Fixed(2)"), "{debug}");
+        assert!(debug.contains(if text.contains("opponents") { "Opponent" } else { "You" }), "{debug}");
+    }
+}
+
+#[test]
+fn repeated_additional_mana_payment_and_count_share_a_reference() {
+    let line = line("As an additional cost to cast this spell, you may pay {1}{G} any number of times.");
+    let payload = parse_additional_cost(&line, &line.tokens, &line.info.source_tokens).unwrap().unwrap();
+    let KeywordLinePayload::Ast(ast) = payload else { panic!("optional cost AST required"); };
+    let LineAst::OptionalCost(cost) = *ast else { panic!("optional cost required"); };
+    assert!(cost.repeatable);
+    assert_eq!(cost.cost.mana_cost().unwrap().to_oracle(), "{1}{G}");
+    let (value, used) = crate::util::parse_for_each_count_value_words(&["for", "each", "additional", "1", "g", "you", "paid"]).unwrap();
+    assert_eq!(used, 7);
+    assert!(matches!(value.unhinted(), Value::TimesPaidLabel(reference) if *reference == cost.reference));
+    let (other, _) = crate::util::parse_for_each_count_value_words(&["for", "each", "additional", "1", "r", "you", "paid"]).unwrap();
+    assert!(matches!(other.unhinted(), Value::TimesPaidLabel(reference) if *reference != cost.reference));
+    let tokens = crate::lexer::lex_line("You gain 3 life plus an additional 3 life for each additional {1}{G} you paid.", 0).unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+    let [EffectAst::SubjectVerb(effect)] = effects.as_slice() else { panic!("one life-gain effect required: {effects:?}"); };
+    let crate::cards::builders::SubjectVerbActionAst::LifeResources(crate::cards::builders::LifeResourceActionAst::GainLife { amount }) = &effect.action
+        else { panic!("life gain required: {effects:?}"); };
+    let Value::Add(base, extra) = amount.unhinted() else { panic!("base plus repeated increment required: {amount:?}"); };
+    assert_eq!(base.unhinted(), &Value::Fixed(3));
+    let Value::Scaled(count, 3) = extra.unhinted() else { panic!("three life per payment required: {extra:?}"); };
+    assert!(matches!(count.unhinted(), Value::TimesPaidLabel(reference) if *reference == cost.reference));
+
+}

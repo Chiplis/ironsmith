@@ -1144,6 +1144,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInLibraryAtMost(player, _)
         | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)

@@ -173,6 +173,13 @@ fn retain_source_number_choices(
 ) {
     for effect in effects {
         if let EffectAst::SubjectVerb(subject) = effect {
+            if required_domain.is_none()
+                && let crate::cards::builders::SubjectVerbActionAst::LifeResources(
+                    crate::cards::builders::LifeResourceActionAst::PayAnyLife { source_owned, .. }
+                ) = &mut subject.action
+            {
+                *source_owned = true;
+            }
             if let crate::cards::builders::SubjectVerbActionAst::Choices(
                 crate::cards::builders::ChoiceActionAst::ChooseNumber { min, max, source_owned },
             ) = &mut subject.action {

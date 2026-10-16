@@ -942,10 +942,12 @@ fn color_pair_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -
     let Some(left) = last_word(current) else {
         return false;
     };
-    let Some(right) = first_word(remaining) else {
-        return false;
+    let right = if first_word(remaining) == Some("all") {
+        nth_word(remaining, 1)
+    } else {
+        first_word(remaining)
     };
-    is_color_word(left) && is_color_word(right)
+    right.is_some_and(|right| is_color_word(left) && is_color_word(right))
 }
 
 fn is_card_type_list_boundary(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {

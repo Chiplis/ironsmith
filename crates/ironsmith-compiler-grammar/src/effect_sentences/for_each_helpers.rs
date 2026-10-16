@@ -252,8 +252,16 @@ pub fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
 pub fn parse_has_base_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let parse_axis_target = |tokens: &[OwnedLexToken]| {
+        let words = crate::lexer::token_word_refs(tokens);
+        if crate::util::source_reference_surface_for_possessive_words(&words).is_some() {
+            Ok(TargetAst::Source(None))
+        } else {
+            parse_target_phrase(tokens)
+        }
+    };
     if let Some(shape) = for_each_shapes::parse_base_power_or_toughness_clause_shape(tokens)? {
-        let target = parse_target_phrase(shape.target_tokens)?;
+        let target = parse_axis_target(shape.target_tokens)?;
         return Ok(Some(EffectAst::ObjectChoices(
             ObjectChoiceEffectAst::ChooseOneOf {
                 chooser: crate::target::PlayerFilter::You,
@@ -282,14 +290,14 @@ pub fn parse_has_base_power_clause(
         let Some(shape) = for_each_shapes::parse_base_toughness_clause_shape(tokens)? else {
             return Ok(None);
         };
-        let target = parse_target_phrase(shape.target_tokens)?;
+        let target = parse_axis_target(shape.target_tokens)?;
         return Ok(Some(EffectAst::subject_verb_set_base_toughness(
             shape.power,
             target,
             shape.duration,
         )));
     };
-    let target = parse_target_phrase(shape.target_tokens)?;
+    let target = parse_axis_target(shape.target_tokens)?;
     Ok(Some(EffectAst::subject_verb_set_base_power(
         shape.power,
         target,
@@ -369,7 +377,10 @@ pub fn parse_has_base_power_toughness_clause(
             target_tokens = &target_tokens[..end - 3];
         }
     }
-    let target = parse_target_phrase(target_tokens)?;
+    let target_words = crate::lexer::token_word_refs(target_tokens);
+    let target = if crate::util::source_reference_surface_for_possessive_words(&target_words).is_some() {
+        TargetAst::Source(None)
+    } else { parse_target_phrase(target_tokens)? };
     if lose_all_abilities && shape.where_x_tokens.is_none() {
         let set_pt = EffectAst::subject_verb_set_base_power_toughness(
             shape.power.clone(),

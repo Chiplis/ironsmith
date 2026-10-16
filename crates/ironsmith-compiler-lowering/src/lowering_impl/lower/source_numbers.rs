@@ -16,6 +16,7 @@ impl GeneratedSourceNumberDefinition {
 
 fn source_choices(effect: &Effect, count: &mut usize) {
     if effect.downcast_ref::<crate::effects::ChooseNumberEffect>().is_some_and(|choice| choice.source_owned) { *count += 1; }
+    if effect.downcast_ref::<crate::effects::PayAnyLifeEffect>().is_some_and(|payment| payment.source_owned) { *count += 1; }
     effect.visit_child_effects(&mut |child| source_choices(child,count));
 }
 fn program_choices(program: &ResolutionProgram) -> usize {
@@ -28,6 +29,32 @@ fn bind_value(value: &mut Value, pair: LinkedExilePair) -> usize {
         Value::Add(a,b)|Value::Min(a,b)=>bind_value(a,pair)+bind_value(b,pair),
         _=>0,
     }
+}
+fn bind_effect(mut effect: Effect, pair: LinkedExilePair, reads: &mut usize) -> Effect {
+    if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+        let mut create = create.clone();
+        if let Some((power, toughness)) = &mut create.dynamic_power_toughness {
+            *reads += bind_value(power, pair) + bind_value(toughness, pair);
+        }
+        effect = Effect::new(create);
+    } else if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence.effects.into_iter().map(|child| bind_effect(child, pair, reads)).collect();
+        effect = Effect::new(sequence);
+    } else if let Some(optional) = effect.downcast_ref::<crate::effects::MayEffect<Effect>>() {
+        let mut optional = optional.clone();
+        optional.effects = optional.effects.into_iter().map(|child| bind_effect(child, pair, reads)).collect();
+        effect = Effect::new(optional);
+    }
+    effect
+}
+fn bind_program(program: &mut ResolutionProgram, pair: LinkedExilePair) -> usize {
+    let mut reads = 0;
+    *program = program.clone().try_map_effects(|effect| {
+        Ok::<_, std::convert::Infallible>(bind_effect(effect, pair, &mut reads))
+    }).unwrap();
+    if reads > 0 { program.source_number_pair = Some(pair); }
+    reads
 }
 fn bind_comparison(comparison: &mut Option<Comparison>, pair: LinkedExilePair) -> usize {
     match comparison {
@@ -93,7 +120,9 @@ fn apply_pair(definition: &mut CardDefinition, pair: LinkedExilePair) {
                 StaticAbilityPayload::RuleRestriction{restriction:crate::effect::Restriction::CastSpellsMatching(_,filter),..}=>{bind_filter(filter,pair);}
                 _=>{}
             },
+            AbilityKind::Activated(ability)=>{ bind_program(&mut ability.effects, pair); }
             AbilityKind::Triggered(ability)=>{
+                bind_program(&mut ability.effects, pair);
                 let reads=match &mut ability.trigger.kind {
                     TriggerKind::SpellCast{filter:Some(filter),..}|TriggerKind::SpellCastQualified{filter:Some(filter),..}=>bind_filter(filter,pair),
                     _=>0,

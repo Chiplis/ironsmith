@@ -10,4 +10,5 @@ pub enum GameActionAst {
     EndCombatPhase,
     LoseGame,
     WinGame,
+    DrawGame,
 }

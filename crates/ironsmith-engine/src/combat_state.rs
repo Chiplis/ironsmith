@@ -1135,8 +1135,9 @@ fn max_attackers_this_blocker_can_block(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BlockingRequirement {
+enum BlockingRequirement<'a> {
     AttackerMustBeBlocked(ObjectId),
+    AttackerMustBeBlockedBy(ObjectId, &'a HashSet<ObjectId>),
     BlockerMustBlock(ObjectId),
     BlockerMustBlockAttacker {
         blocker: ObjectId,
@@ -1174,11 +1175,11 @@ fn game_may_have_must_block_requirements(
             .any(|effect| effect.modification.layer() == crate::continuous::Layer::Ability)
 }
 
-fn blocking_requirements(
-    game: &GameState,
+fn blocking_requirements<'a>(
+    game: &'a GameState,
     combat: &CombatState,
     effects: &[crate::continuous::ContinuousEffect],
-) -> Vec<BlockingRequirement> {
+) -> Vec<BlockingRequirement<'a>> {
     let mut requirements = Vec::new();
     let defending_players = combat
         .attackers
@@ -1187,6 +1188,9 @@ fn blocking_requirements(
         .collect::<HashSet<_>>();
 
     for attacker in &combat.attackers {
+        if let Some(groups) = game.effect_store.cant_effects.must_be_blocked_by.get(&attacker.creature) {
+            requirements.extend(groups.iter().map(|group| BlockingRequirement::AttackerMustBeBlockedBy(attacker.creature, group)));
+        }
         if game.must_be_blocked(attacker.creature) {
             requirements.push(BlockingRequirement::AttackerMustBeBlocked(
                 attacker.creature,
@@ -1254,6 +1258,9 @@ fn block_requirement_is_obeyed(
     attackers_by_blocker: &HashMap<ObjectId, Vec<ObjectId>>,
 ) -> bool {
     match requirement {
+        BlockingRequirement::AttackerMustBeBlockedBy(attacker, matching) => blockers_by_attacker
+            .get(&attacker)
+            .is_some_and(|blockers| blockers.iter().any(|id| matching.contains(id))),
         BlockingRequirement::AttackerMustBeBlocked(attacker) => blockers_by_attacker
             .get(&attacker)
             .is_some_and(|blockers| !blockers.is_empty()),
@@ -1288,7 +1295,8 @@ fn blocking_requirement_defending_player(
     requirement: BlockingRequirement,
 ) -> Option<PlayerId> {
     match requirement {
-        BlockingRequirement::AttackerMustBeBlocked(attacker) => {
+        BlockingRequirement::AttackerMustBeBlocked(attacker)
+        | BlockingRequirement::AttackerMustBeBlockedBy(attacker, _) => {
             defending_player_for_attacker(game, combat, attacker)
         }
         BlockingRequirement::BlockerMustBlock(blocker)
@@ -1354,6 +1362,9 @@ fn block_edge_can_obey_requirement(
 ) -> bool {
     let (blocker, attacker) = edge;
     match requirement {
+        BlockingRequirement::AttackerMustBeBlockedBy(required_attacker, matching) => {
+            matching.contains(&blocker) && attackers_share_band(combat, attacker, required_attacker)
+        }
         BlockingRequirement::AttackerMustBeBlocked(required_attacker) => {
             attackers_share_band(combat, attacker, required_attacker)
         }
@@ -1628,8 +1639,11 @@ fn first_unsatisfied_block_requirement_error(
             continue;
         }
         match requirement {
-            BlockingRequirement::AttackerMustBeBlocked(attacker) => {
+            BlockingRequirement::AttackerMustBeBlocked(attacker)
+            | BlockingRequirement::AttackerMustBeBlockedBy(attacker, _) => {
                 let can_obey = game.battlefield.iter().copied().any(|blocker| {
+                    if let BlockingRequirement::AttackerMustBeBlockedBy(_, matching) = requirement
+                        && !matching.contains(&blocker) { return false; }
                     combat.attackers.iter().any(|candidate| {
                         attackers_share_band(combat, candidate.creature, attacker)
                             && legal_block_edge(game, combat, effects, blocker, candidate.creature)
@@ -2157,6 +2171,65 @@ mod tests {
         end_combat(&mut combat); game.untap(attacker);
         declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
         assert!(!is_unblocked(&combat, attacker), "an extra combat does not inherit the preceding declaration boundary");
+    }
+
+    #[test]
+    fn filtered_block_requirement_conflicts_use_maximum_satisfiable_count() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = game.create_object_from_card(&creature_card("First", 2, 2), alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&creature_card("Second", 2, 2), alice, Zone::Battlefield);
+        let blocker = game.create_object_from_card(&creature_card("Matching", 2, 2), bob, Zone::Battlefield);
+        game.remove_summoning_sickness(first);
+        game.remove_summoning_sickness(second);
+        let mut combat = CombatState::default();
+        declare_attackers(&mut game, &mut combat, vec![(first, AttackTarget::Player(bob)), (second, AttackTarget::Player(bob))]).unwrap();
+        for attacker in [first, second] {
+            game.effect_store.cant_effects.must_be_blocked_by.insert(attacker, vec![HashSet::from([blocker])]);
+        }
+        assert!(declare_blockers(&game, &mut combat.clone(), vec![]).is_err());
+        // One blocker cannot satisfy both requirements. Either maximum is legal.
+        declare_blockers(&game, &mut combat.clone(), vec![(blocker, first)]).unwrap();
+        declare_blockers(&game, &mut combat.clone(), vec![(blocker, second)]).unwrap();
+    }
+
+    #[test]
+    fn filtered_block_requirement_needs_one_matching_legal_blocker() {
+        use crate::effect::{Restriction, RestrictionExt};
+        use crate::target::ObjectFilter;
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let attacker = game.create_object_from_card(&creature_card("Attacker", 2, 2), alice, Zone::Battlefield);
+        let other = game.create_object_from_card(&creature_card("Other", 2, 2), bob, Zone::Battlefield);
+        let elf = CardBuilder::new(CardId::new(), "Matching blocker")
+            .card_types(vec![CardType::Creature]).subtypes(vec![Subtype::Elf])
+            .power_toughness(PowerToughness::new(PtValue::Fixed(2), PtValue::Fixed(2))).build();
+        let first = game.create_object_from_card(&elf, bob, Zone::Battlefield);
+        let second = game.create_object_from_card(&elf, bob, Zone::Battlefield);
+        game.remove_summoning_sickness(attacker);
+        let mut combat = CombatState::default();
+        declare_attackers(&mut game, &mut combat, vec![(attacker, AttackTarget::Player(bob))]).unwrap();
+        let mut tracker = crate::game_state::CantEffectTracker::default();
+        Restriction::MustBeBlockedBy {
+            attacker: ObjectFilter::source(),
+            blockers: ObjectFilter::default().with_subtype(Subtype::Elf),
+        }.apply(&mut game, &mut tracker, alice, Some(attacker), None);
+        assert_eq!(tracker.must_be_blocked_by[&attacker][0], HashSet::from([first, second]));
+        game.effect_store.cant_effects = tracker;
+        assert!(declare_blockers(&game, &mut combat.clone(), vec![]).is_err());
+        assert!(declare_blockers(&game, &mut combat.clone(), vec![(other, attacker)]).is_err());
+        // Either matching creature suffices; the requirement is not a lure.
+        for matching in [first, second] {
+            declare_blockers(&game, &mut combat.clone(), vec![(matching, attacker)]).unwrap();
+        }
+        declare_blockers(&game, &mut combat.clone(), vec![(first, attacker), (other, attacker)]).unwrap();
+        game.tap(first);
+        game.tap(second);
+        // An impossible requirement does not prohibit another legal block.
+        declare_blockers(&game, &mut combat.clone(), vec![]).unwrap();
+        declare_blockers(&game, &mut combat.clone(), vec![(other, attacker)]).unwrap();
     }
 
     #[test]

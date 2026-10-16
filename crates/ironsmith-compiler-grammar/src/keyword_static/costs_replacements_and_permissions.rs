@@ -1949,6 +1949,15 @@ pub fn parse_dynamic_cost_modifier_value(
             .with_counter_type(counter_type),
         )
         .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
+        DynamicCostValueShape::EnergyPaidThisWay => Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                EffectMetricSource::Outcome,
+                EffectMetric::Count,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::Removed)
+            .with_counter_type(Some(crate::object::CounterType::Energy)),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::EnergyPaidThisWay),
         DynamicCostValueShape::PlayerCounters(counter_type) => {
             Value::PlayerCounters(PlayerFilter::You, counter_type)
         }
@@ -4380,6 +4389,37 @@ fn parse_attacked_during_controllers_last_turn(
     })
 }
 
+/// A shared attached subject can impose both untap and activation restrictions.
+pub fn parse_attached_untap_and_activation_restrictions_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(DoesntUntapDuringUntapStepSpec::Attached { subject_tokens, tail_tokens, .. }) =
+        parse_doesnt_untap_during_untap_step_spec_lexed(tokens)
+    else { return Ok(None); };
+    if crate::lexer::parser_token_word_refs(tail_tokens)
+        != ["and", "its", "activated", "abilities", "cant", "be", "activated"]
+    { return Ok(None); }
+    let Some(and_index) = tokens.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let Some(untap) = parse_doesnt_untap_during_untap_step_line(&tokens[..and_index])? else {
+        return Ok(None);
+    };
+    let tag = if subject_tokens.first().is_some_and(|token| token.is_word("equipped")) {
+        crate::tag::CompilerReferenceTag::Equipped
+    } else {
+        crate::tag::CompilerReferenceTag::Enchanted
+    };
+    let filter = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+        tag.bind(), crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    let activation = StaticAbilityAst::Static(StaticAbility::restriction(
+        crate::effect::Restriction::activate_abilities_of(filter),
+        format!("{} activated abilities can't be activated", render_token_slice(subject_tokens)),
+    ));
+    Ok(Some(vec![untap, activation]))
+}
+
 pub fn parse_doesnt_untap_during_untap_step_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -4423,6 +4463,12 @@ pub fn parse_doesnt_untap_during_untap_step_line(
             tail_tokens,
             during_your_untap_step,
         }) => {
+            if crate::lexer::parser_token_word_refs(tail_tokens)
+                == ["and", "its", "activated", "abilities", "cant", "be", "activated"]
+            {
+                // The complete compound reader owns both restrictions.
+                return Ok(None);
+            }
             let subject = render_token_slice(subject_tokens);
             let step_owner = if during_your_untap_step {
                 "your"
@@ -8955,3 +9001,26 @@ mod copular_characteristic_tests;
 #[cfg(test)]
 #[path = "copular_probe_loss_tests.rs"]
 mod copular_probe_loss_tests;
+
+#[cfg(test)]
+mod attached_compound_lock_tests {
+    use super::*;
+
+    #[test]
+    fn attached_untap_and_activation_lock_keeps_both_restrictions() {
+        let tokens = crate::lexer::lex_line("Enchanted permanent doesn't untap during its controller's untap step and its activated abilities can't be activated.", 0).unwrap();
+        let abilities = parse_attached_untap_and_activation_restrictions_line(&tokens).unwrap().unwrap();
+        assert_eq!(abilities.len(), 2);
+        assert!(matches!(&abilities[0], StaticAbilityAst::AttachedStaticAbilityGrant { condition: None, .. }));
+        let debug = format!("{abilities:?}");
+        assert!(debug.contains("DoesntUntap"), "{debug}");
+        assert!(debug.contains("ActivateAbilities"), "{debug}");
+        assert!(debug.to_lowercase().contains("enchanted"), "{debug}");
+        assert!(parse_doesnt_untap_during_untap_step_line(&tokens).unwrap().is_none());
+        assert!(crate::activation_and_restrictions::parse_cant_clauses(&tokens).unwrap().is_none());
+        let complete = crate::keyword_static::parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap();
+        assert_eq!(complete.len(), 2);
+        let invalid = crate::lexer::lex_line("Enchanted permanent doesn't untap during its controller's untap step and its activated abilities can't be activated unless you pay {1}.", 0).unwrap();
+        assert!(parse_attached_untap_and_activation_restrictions_line(&invalid).unwrap().is_none());
+    }
+}

@@ -36,6 +36,7 @@ fn exile_segments_preserve_zone_top_and_named_shapes() {
             filter,
             top_only: true,
             turn_face_up: false,
+            count_value: None,
         } if choice_count == crate::effect::ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.card_types == [crate::types::CardType::Creature]
@@ -49,6 +50,7 @@ fn exile_segments_preserve_zone_top_and_named_shapes() {
             filter,
             top_only: false,
             turn_face_up: true,
+            count_value: None,
         } if choice_count == crate::effect::ChoiceCount::exactly(1)
             && filter.face_down == Some(true)
             && filter.controller == Some(PlayerFilter::You)
@@ -134,4 +136,14 @@ fn coordinated_exile_cost_shares_origin_and_preserves_literal_names() {
         assert!(filter.other);
         assert_eq!(choice_count, crate::effect::ChoiceCount::exactly(2));
     }
+}
+
+#[test]
+fn exile_cost_count_tracks_opponents_instead_of_defaulting_to_one() {
+    let tokens = lex_line("Exile cards from your graveyard equal to the number of opponents you have", 0).unwrap();
+    let cost = parse_exile_segment_tokens(&tokens, |_| false).unwrap();
+    assert!(matches!(cost, ActivationCostSegmentCst::ExileChosen {
+        count_value: Some(crate::effect::Value::CountPlayers(PlayerFilter::Opponent)),
+        filter, ..
+    } if filter.zone == Some(Zone::Graveyard) && filter.owner == Some(PlayerFilter::You)));
 }

@@ -1714,7 +1714,11 @@ fn parse_put_into_your_graveyard_from_exact_zone(
         })?
     };
     filter.zone = None;
-    filter.controller = None;
+    // Battlefield departures match the permanent's last controller as well
+    // as the destination graveyard's owner. These are independent predicates.
+    if from != Zone::Battlefield {
+        filter.controller = None;
+    }
     if filter.owner.is_none() {
         filter.owner = Some(PlayerFilter::You);
     }
@@ -3293,5 +3297,23 @@ mod shared_type_land_cast_union_tests {
         for text in ["you play a land or cast two spells", "you play a land or cast a spell from exile", "a player plays a land or another player casts a spell"] {
             assert!(try_parse_land_play_or_spell_cast_lexed(&crate::lexer::lex_line(text, 0).unwrap()).unwrap().is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod graveyard_destination_and_controller_tests {
+    use super::*;
+
+    #[test]
+    fn battlefield_departure_preserves_controller_and_graveyard_owner() {
+        let tokens = crate::lexer::lex_line("an Aura you control is put into your graveyard from the battlefield", 0).unwrap();
+        let trigger = parse_trigger_clause_lexed(&tokens).unwrap();
+        let TriggerSpec::PutIntoGraveyardFromZone { filter, from, .. } = trigger else {
+            panic!("expected battlefield-to-graveyard trigger: {trigger:?}");
+        };
+        assert_eq!(from, Zone::Battlefield);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(filter.subtypes.contains(&crate::Subtype::Aura));
     }
 }

@@ -930,6 +930,19 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
     full_tokens: &[OwnedLexToken],
     bound_values: Option<(Value, Value)>,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if action_tokens.first().is_some_and(|token| token.is_word("twice")) {
+        let tail = &action_tokens[1..];
+        let collapsed = collapse_leading_signed_pt_modifier_tokens(tail);
+        let tail = collapsed.as_deref().unwrap_or(tail);
+        let values = bound_values.or_else(|| {
+            tail.first().and_then(|token| parse_pt_modifier_values(token.parser_text()).ok())
+        });
+        let Some((power, toughness)) = values else { return Ok(None); };
+        return parse_get_pump_clause_with_bound_values(
+            subject_tokens, tail, full_tokens,
+            Some((Value::Scaled(Box::new(power), 2), Value::Scaled(Box::new(toughness), 2))),
+        );
+    }
     // "It gets +2/+2 until end of turn and can block an additional creature
     // this turn" (Act of Heroism) — the block permission is its own granted
     // effect on the pump subject, not part of the P/T modifier tail.

@@ -78,4 +78,6 @@ pub enum CompiledContinuousModification<StaticAbility, Ability> {
     RemoveAllAbilities,
     /// Checked authored-word substitution; appended for transport stability.
     RewriteText(crate::TextChange),
+    /// Ability loss with a persistent gain prohibition; appended for wire stability.
+    RemoveAbilityWithMode { ability: Ability, mode: crate::AbilityLossMode },
 }

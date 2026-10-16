@@ -165,6 +165,7 @@ fn continues(
         )
         || singles::kicked_hand_count_shape(next, rest).is_some()
         || singles::reveal_then_your_turn_shape(next, rest, revealed)
+        || singles::reveal_then_conditional_move_shape(next, rest, revealed)
         || singles::reveal_then_bargain_shape(next, rest, revealed)
         || singles::nonhand_replacement_shape(next, rest, revealed)
         || conditionals::conditional_hand_counts_shape(next, rest, revealed).is_some()
@@ -266,6 +267,7 @@ pub(super) fn continue_with(
         if singles::exile_one_cast_else_hand(group, sentence, rest)?
             || singles::kicked_hand_count(group, sentence, rest)
             || singles::reveal_then_your_turn(group, sentence, rest)?
+            || singles::reveal_then_conditional_move(group, sentence, rest)?
             || singles::reveal_then_bargain(group, sentence, rest)?
             || singles::nonhand_replacement(group, sentence, rest)
             || conditionals::conditional_hand_counts(group, sentence, rest)

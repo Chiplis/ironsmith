@@ -547,6 +547,7 @@ pub enum TriggerSpec {
     },
     CounterRemovedFrom {
         filter: ObjectFilter,
+        source_controller: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
         last: bool,
         one_or_more: bool,

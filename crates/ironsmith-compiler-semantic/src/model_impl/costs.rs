@@ -332,6 +332,7 @@ pub enum CompilerCost {
         color_filter: Option<ColorSet>,
     },
     ExileChosen {
+        count_value: Option<crate::effect::Value>,
         count: ChoiceCount,
         filter: ObjectFilter,
         top_only: bool,

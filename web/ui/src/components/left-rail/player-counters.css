@@ -1,0 +1,45 @@
+.player-counters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.player-counter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 1px solid #9d8b65;
+  background: #181c24;
+  color: #f4e4bd;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.player-counter-chip > span { text-transform: capitalize; }
+.opponent-battlefield-mana .player-counters,
+.mobile-mtga-mana-pool--opponent .player-counters {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.my-zone-mana-rail .mana-pool-inline,
+.mobile-mtga-mana-pool--self { position: relative; }
+.my-zone-mana-rail .player-counters,
+.mobile-mtga-mana-pool--self .player-counters {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Opponent counters occupy their own row when mana is horizontal. */
+.opponent-battlefield-mana-row .mana-pool-inline { flex-wrap: wrap; }
+.opponent-battlefield-mana-row .player-counters { flex-basis: 100%; }
+@media (min-width: 1024px) {
+  .table-shell .battlefield-panel--opponents .opponent-battlefield-mana.mana-pool-inline {
+    overflow: visible;
+  }
+  .opponent-battlefield-mana-row .player-counters { flex-basis: auto; }
+}

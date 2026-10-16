@@ -838,6 +838,7 @@ function OpponentSlot({
         <div className="opponent-battlefield-mana-row opponent-battlefield-mana-rail">
           <ManaPool
             pool={player.mana_pool}
+            player={player}
             alwaysVisible
             compact
             className="opponent-battlefield-mana"

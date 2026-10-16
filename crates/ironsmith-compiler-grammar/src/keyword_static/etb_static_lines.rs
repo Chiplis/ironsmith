@@ -869,6 +869,15 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !etb_grammar::parse_where_x_prefix_tokens(tokens) {
         return None;
     }
+    if let Some(value) = parse_investigate_participant_binding(tokens) {
+        return Some(value);
+    }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if matches!(words.get(3..),
+        Some(["the", "life", "paid", "as", "this", "artifact" | "creature" | "permanent", "entered"])
+        | Some(["the", "life", "paid", "as", "it", "entered"])) {
+        return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
+    }
     // "... as you activate this ability": an activation-time sampling clause
     // on the whole binding, not part of the counted noun phrase.
     {
@@ -920,7 +929,28 @@ pub fn parse_where_x_is_colored_mana_symbols_value(tokens: &[OwnedLexToken]) -> 
 }
 
 pub fn parse_value_binding_clause_lexed(tokens: &[crate::lexer::OwnedLexToken]) -> Option<Value> {
-    parse_value_binding_clause(tokens)
+    parse_investigate_participant_binding(tokens).or_else(|| parse_value_binding_clause(tokens))
+}
+
+fn parse_investigate_participant_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let value_words = words.strip_prefix(&["where", "x", "is"])
+        .or_else(|| words.strip_prefix(&["x", "is"]))
+        .unwrap_or(&words);
+    let (offset, value_words) = value_words.strip_prefix(&["one", "plus"])
+        .or_else(|| value_words.strip_prefix(&["1", "plus"]))
+        .map_or((0, value_words), |rest| (1, rest));
+    if value_words == ["the", "number", "of", "opponents", "who", "investigated", "this", "way"] {
+        let metric = Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::PlayersWithPositiveCount,
+            ).with_action(ironsmith_core::PriorEffectAction::Investigated)
+             .with_player(PlayerFilter::Opponent),
+        );
+        return Some(if offset == 0 { metric } else { Value::Add(Box::new(Value::Fixed(offset)), Box::new(metric)) });
+    }
+    None
 }
 
 pub fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -4217,5 +4247,22 @@ mod chosen_entry_controller_grammar_tests {
             let tokens=crate::lexer::lex_line(text,0).unwrap();
             assert!(parse_enters_under_chosen_control_line(&tokens).unwrap().is_none(),"accepted wrong subject, residue, or chooser: {text}");
         }
+    }
+}
+
+#[cfg(test)]
+mod investigate_count_binding_tests {
+    use super::*;
+
+    #[test]
+    fn investigate_count_binds_a_specific_action_and_opponent_set() {
+        let tokens = crate::lexer::lex_line("where X is one plus the number of opponents who investigated this way", 0).unwrap();
+        let Value::Add(one, metric) = parse_value_binding_clause_lexed(&tokens).unwrap() else { panic!("expected one plus a participant count"); };
+        assert_eq!(*one, Value::Fixed(1));
+        let Value::PendingPriorEffectMetric(query) = *metric else { panic!("expected exact-action metric"); };
+        assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::Investigated));
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::PlayersWithPositiveCount);
+        assert_eq!(query.player, Some(PlayerFilter::Opponent));
+        assert_eq!(parse_value_binding_clause(&tokens), parse_value_binding_clause_lexed(&tokens));
     }
 }

@@ -1664,6 +1664,10 @@ pub fn resolve_restriction_it_tag(
                 resolve_it_tag(attacker, refs)?,
             )
         }
+        Restriction::MustBeBlockedBy { blockers, attacker } => Restriction::MustBeBlockedBy {
+            blockers: resolve_it_tag(blockers, refs)?,
+            attacker: resolve_it_tag(attacker, refs)?,
+        },
         Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
             Restriction::must_block_specific_attacker(
                 resolve_it_tag(blockers, refs)?,

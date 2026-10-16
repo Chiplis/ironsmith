@@ -53,6 +53,22 @@ pub fn parse_attached_gets_and_has_ability_line(
     let Some(shape) = attached_grammar::parse_attached_gets_and_has_tokens(tokens) else {
         return Ok(None);
     };
+    // An attached subject may coordinate its bonus and keyword with a
+    // color/type assignment. Keep all three predicates on the same host.
+    if !tokens.iter().any(OwnedLexToken::is_quote)
+        && let Some(and_index) = tokens.windows(2).position(|pair| pair[0].is_word("and") && pair[1].is_word("is"))
+        && and_index > shape.and_token
+    {
+        let mut transform = tokens[..shape.get_token].to_vec();
+        transform.extend_from_slice(&tokens[and_index + 1..]);
+        if let Some(mut changes) = parse_attached_type_transform_line(&transform)? {
+            let prefix = trim_edge_punctuation(&tokens[..and_index]);
+            if let Some(mut abilities) = parse_attached_gets_and_has_ability_line(&prefix)? {
+                abilities.append(&mut changes);
+                return Ok(Some(abilities));
+            }
+        }
+    }
     let line_text = crate::lexer::render_token_slice(tokens);
     let clause = parse_anthem_clause(tokens, shape.get_token, shape.and_token)?;
     let anthem = build_anthem_static_ability(&clause);

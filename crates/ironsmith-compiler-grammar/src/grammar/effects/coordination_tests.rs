@@ -207,3 +207,22 @@ fn shared_subject_subtype_removal_uses_the_existing_typed_duration_scoped_action
         assert_eq!(found[0].2, Until::EndOfTurn);
     }
 }
+
+#[test]
+fn return_object_unions_remain_complete_instructions() {
+    for text in [
+        "Each player returns all black and all red creature cards from their graveyard to the battlefield.",
+        "Return target spell or nonland permanent an opponent controls to its owner's hand.",
+    ] {
+        let tokens = crate::lexer::lex_line(text, 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        assert!(!effects.is_empty());
+        let debug = format!("{effects:?}");
+        assert!(debug.contains("Return"), "{debug}");
+        if text.starts_with("Each") {
+            assert!(debug.contains("Graveyard") && debug.contains("Battlefield"), "{debug}");
+        } else {
+            assert!(debug.contains("Opponent"), "{debug}");
+        }
+    }
+}

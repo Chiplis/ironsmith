@@ -307,3 +307,49 @@ pub(super) fn read_greatest_mana_value_tie_break(
         }),
     ]))
 }
+
+/// An explicit player repeats a return with each listed permanent type. The
+/// target is announced once; subsequent instructions refer to that player.
+pub(super) fn read_inline_return_for_types(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = strip_sentence_edges(tokens);
+    let Some(split) = tokens.windows(5).position(|part|
+        part[0].is_word("then") && part[1].is_word("repeats")
+        && part[2].is_word("this") && part[3].is_word("process") && part[4].is_word("for"))
+    else { return Ok(None); };
+    let base = trim_lexed_commas(&tokens[..split]);
+    let words = crate::lexer::parser_token_word_refs(base);
+    let ["target", "player", "returns", "a" | "an", kind, "they", "control", "to", "its", "owners" | "owner's", "hand"] = words.as_slice()
+        else { return Ok(None); };
+    if crate::util::parse_card_type(kind).is_none() { return Ok(None); }
+    let items = list_items(&tokens[split + 5..]);
+    if items.is_empty() || !items.iter().all(|item| {
+        let words = crate::lexer::parser_token_word_refs(item);
+        matches!(words.as_slice(), ["a" | "an", kind] if crate::util::parse_card_type(kind).is_some())
+    }) { return Ok(None); }
+    let positions = crate::lexer::parser_token_word_positions(base);
+    let suffix = &base[positions[5].0..];
+    let mut effects = super::parse_effect_sentences_lexed(base)?;
+    for item in items {
+        let mut repetition = crate::lexer::synthetic_word_tokens(["that", "player", "returns"]);
+        repetition.extend_from_slice(item);
+        repetition.extend_from_slice(suffix);
+        effects.extend(super::parse_effect_sentences_lexed(&repetition)?);
+    }
+    Ok(Some(effects))
+}
+
+#[cfg(test)]
+mod inline_return_tests {
+    #[test]
+    fn repeated_return_types_keep_each_ordered_choice() {
+        let tokens = crate::lexer::lex_line("Target player returns a creature they control to its owner's hand, then repeats this process for an artifact, an enchantment, and a land.", 0).unwrap();
+        let effects = super::super::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        for kind in ["Creature", "Artifact", "Enchantment", "Land"] {
+            assert!(debug.contains(&format!("card_types: [{kind}]")), "missing {kind}: {debug}");
+        }
+        assert_eq!(debug.matches("ReturnToHand").count(), 4, "{debug}");
+    }
+}

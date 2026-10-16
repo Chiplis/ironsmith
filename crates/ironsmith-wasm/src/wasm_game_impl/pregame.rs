@@ -5171,3 +5171,95 @@ mod static_color_identity_tests {
         assert!(game.validate_commander_deck_card(&definition, ColorSet::COLORLESS, &mut HashSet::new()).is_err());
     }
 }
+
+#[cfg(test)]
+mod opening_stack_text_tests {
+    use super::*;
+    use ironsmith_registry_test::compile_to_runtime_definition;
+
+    #[test]
+    fn opening_hand_delayed_stack_text_describes_its_own_effects() {
+        let cards: serde_json::Value = serde_json::from_str(r#"[{"name": "Chancellor of the Dross", "type_line": "Creature \u2014 Phyrexian Vampire", "oracle_text": "You may reveal this card from your opening hand. If you do, at the beginning of the first upkeep, each opponent loses 3 life, then you gain life equal to the life lost this way.\nFlying, lifelink"}, {"name": "Devourer of Destiny", "type_line": "Creature \u2014 Eldrazi", "oracle_text": "You may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards back on top of your library. Exile the rest.\nWhen you cast this spell, exile target permanent that's one or more colors."}]"#).unwrap();
+        let _guard = crate::test_id_counter_guard();
+        let mut views = Vec::new();
+        for name in ["Devourer of Destiny", "Chancellor of the Dross"] {
+            let card = cards
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|card| card["name"] == name)
+                .unwrap();
+            let mut wasm = WasmGame::new();
+            wasm.initialize_empty_match(vec!["Alice".into(), "Bob".into()], 20, 1);
+            let alice = PlayerId::from_index(0);
+            let definition = compile_to_runtime_definition(
+                name,
+                &format!(
+                    "Type: {}\n{}",
+                    card["type_line"].as_str().unwrap(),
+                    card["oracle_text"].as_str().unwrap()
+                ),
+                false,
+            )
+            .unwrap();
+            let source = wasm
+                .game
+                .create_object_from_definition(&definition, alice, Zone::Hand);
+            wasm.pregame = Some(PregameState::new(
+                &wasm.game.turn_store.turn_order,
+                7,
+                MatchFormatInput::Normal,
+            ));
+            for _ in 0..2 {
+                wasm.apply_pregame_priority_action(LegalAction::KeepOpeningHand)
+                    .unwrap();
+                wasm.normalize_pregame_state().unwrap();
+            }
+            let action = wasm.available_pregame_actions(alice).into_iter().find(|action| matches!(action, LegalAction::UsePregameAction { card_id, .. } if *card_id == source)).unwrap();
+            wasm.apply_pregame_priority_action(action).unwrap();
+            wasm.game.turn.phase = Phase::Beginning;
+            wasm.game.turn.step = Some(Step::Upkeep);
+            let event = ironsmith::triggers::generate_step_trigger_events(&wasm.game).unwrap();
+            let triggers = ironsmith::triggers::check_delayed_triggers(&mut wasm.game, &event);
+            assert_eq!(triggers.len(), 1);
+            let trigger = &triggers[0];
+            let expected = wasm.game.object(source).unwrap().ability_labels[0].clone();
+            assert!(expected.contains("opening hand"));
+            assert!(expected.contains(if name == "Devourer of Destiny" {
+                "top four"
+            } else {
+                "3 life"
+            }));
+            let entry = StackEntry::ability(source, alice, trigger.ability.effects.clone())
+                .with_source_info(trigger.source_stable_id, name.into())
+                .with_trigger_identity(trigger.trigger_identity)
+                .with_triggering_event(event);
+            let view = build_stack_object_snapshot(&wasm.game, alice, None, &entry);
+            let captured = entry.clone().with_source_snapshot(
+                ironsmith::snapshot::ObjectSnapshot::from_object(
+                    wasm.game.object(source).unwrap(),
+                    &wasm.game,
+                ),
+            );
+            // The delayed entry must retain its line after the source loses its abilities.
+            wasm.game.object_mut(source).unwrap().abilities = Default::default();
+            assert_eq!(
+                build_stack_object_snapshot(&wasm.game, alice, None, &captured)
+                    .source_ability_text
+                    .as_deref(),
+                Some(expected.as_str())
+            );
+            views.push(serde_json::json!({"entry":view,"expected":expected,"card":{"id":source.0,"stable_id":trigger.source_stable_id.0.0,"name":name,"type_line":card["type_line"],"oracle_text":card["oracle_text"]}}));
+        }
+        if let Ok(path) = std::env::var("PREGAME_STACK_EVIDENCE") {
+            std::fs::write(path, serde_json::to_string_pretty(&views).unwrap()).unwrap();
+        }
+        for view in views {
+            assert_eq!(
+                view["entry"]["ability_text"], view["expected"],
+                "{}",
+                view["entry"]["name"]
+            );
+        }
+    }
+}

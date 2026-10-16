@@ -748,6 +748,9 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Single("equipped"),
             StaticAbilityLineHeadHint::Pair("equipped", "creature"),
         ],
+        "parse_filtered_land_reset_and_grant_line" => vec![
+            StaticAbilityLineHeadHint::Single("lands"),
+        ],
         "parse_attached_land_ability_reset_line" => vec![
             StaticAbilityLineHeadHint::Single("enchanted"),
             StaticAbilityLineHeadHint::Pair("enchanted", "land"),
@@ -1057,7 +1060,8 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
         // abilities of" marker, which guards the whole-line candidacy.
         "parse_copy_activated_abilities_line"
         | "parse_copy_activated_and_triggered_abilities_line" => Vec::new(),
-        "parse_attached_has_and_loses_keywords_line"
+        "parse_attached_untap_and_activation_restrictions_line"
+        | "parse_attached_has_and_loses_keywords_line"
         | "parse_attached_has_keywords_and_is_goaded_line"
         | "parse_attached_has_keywords_and_negated_restriction_line"
         | "parse_attached_is_goaded_line" => vec![
@@ -1758,6 +1762,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_lose_all_abilities_and_base_pt_line),
         // The attached grant/loss and generic subject-loss productions are
         // structurally disjoint; both remain registered for their own heads.
+        multi_static_ability_ast_rule!(parse_attached_untap_and_activation_restrictions_line),
         multi_static_ability_ast_rule!(parse_attached_has_and_loses_keywords_line),
         multi_static_ability_ast_passthrough_rule!(parse_subject_loses_keywords_line),
         single_static_ability_ast_passthrough_rule!(parse_all_creatures_lose_flying_line),
@@ -1812,6 +1817,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_attached_tap_abilities_cant_be_activated_line
         ),
         multi_static_ability_ast_passthrough_rule!(parse_attached_land_ability_reset_line),
+        multi_static_ability_ast_passthrough_rule!(parse_filtered_land_reset_and_grant_line),
         multi_static_ability_ast_rule!(parse_attached_type_transform_line),
         single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
@@ -7564,6 +7570,12 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
+    if matches!(words.word_refs().as_slice(),
+        ["the", "life", "paid", "as", "it", "entered"]
+        | ["the", "life", "paid", "as", "this", "creature", "entered"])
+    {
+        return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
+    }
     if words.word_refs().as_slice() == ["the", "last", "chosen", "number"] {
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
     }

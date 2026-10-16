@@ -79,14 +79,14 @@ function storePriorityStops(storage, stops) {
 // submit another player's commands. All automation paths share this controller.
 export function createPriorityStops({
   now = () => performance.now(),
-  postActionEnabled = false,
+  phaseStopsEnabled = false,
+  resolveMode = "regular",
   storage = null,
   initialStops = storage ? readStoredPriorityStops(storage) : {},
 } = {}) {
   const listeners = new Set();
   let stops = { ...initialStops };
   let window = null;
-  let pending = null;
   let heldKey = null;
   let phaseVisit = '', stepVisit = '', phaseSerial = 0, stepSerial = 0;
   let consumed = new Set();
@@ -112,15 +112,25 @@ export function createPriorityStops({
       window = null; changed = true;
     }
     if (heldKey && (!isLocalPriority(state) || heldKey !== priorityKey(state) || state.game_over)) heldKey = null;
-    if (pending && state.game_over) pending = null;
-    if (pending && state.decision?.kind === 'priority' && priorityKey(state) !== pending.key) {
-      const ownNewStackEntry = (state.stack_objects || []).some(entry =>
-        Number(entry.controller) === Number(pending.player) && !pending.ids.has(String(entry.id)));
-      if (ownNewStackEntry && isLocalPriority(state)) {
-        window = { id: ++sequence, key: priorityKey(state), startedAt: null, duration: PRIORITY_HOLD_WINDOW_MS };
-        changed = true;
-      }
-      pending = null;
+    const timedStop = phaseStopsEnabled && !state.game_over && isLocalPriority(state)
+      && Number(state.active_player) !== Number(state.perspective)
+      && Number(state.stack_size || 0) === 0 && selectedStop(state);
+    const timedResolve = phaseStopsEnabled && ['safe', 'all'].includes(resolveMode)
+      && !state.game_over && isLocalPriority(state) && !state.mana_payment
+      && Number(state.stack_size || 0) > 0;
+    if (window?.kind === 'stack-resolve' && !timedResolve) {
+      window = null; changed = true;
+    }
+    if (timedResolve && !window && !heldKey) {
+      window = { id: ++sequence, kind: 'stack-resolve', key: priorityKey(state), startedAt: null, duration: PRIORITY_HOLD_WINDOW_MS };
+      changed = true;
+    }
+    if (window?.kind === 'phase-stop' && !timedStop) {
+      window = null; changed = true;
+    }
+    if (timedStop && !window && !heldKey) {
+      window = { id: ++sequence, kind: 'phase-stop', key: priorityKey(state), startedAt: null, duration: PRIORITY_HOLD_WINDOW_MS };
+      changed = true;
     }
     if (changed) publish();
   };
@@ -128,13 +138,14 @@ export function createPriorityStops({
     [`phase:${normalizePhaseStep(state?.phase, state?.step)}`, `phase:${phaseSerial}`],
     [`step:${priorityStepKey(state)}`, `step:${stepSerial}`],
   ];
+  const selectedStop = state => candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`)
+    && !(key === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
   const stopReason = state => {
     observe(state);
     if (!isLocalTurnDecision(state)) return null;
-    if (window || pending) return 'post-action priority window';
-    if (heldKey) return 'priority held after action';
-    const stop = candidates(state).find(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`)
-      && !(key === 'step:DeclareAttackers' && attackersDeclaredIn === phaseSerial));
+    if (heldKey) return 'priority held';
+    if (window?.kind === 'stack-resolve') return 'timed stack resolve';
+    const stop = selectedStop(state);
     return stop ? `stop at ${stop[0].split(':')[1]}` : null;
   };
   const releaseStops = state => {
@@ -149,10 +160,13 @@ export function createPriorityStops({
     if (changed) publish();
   };
   return {
-    setPostActionEnabled(enabled) {
-      postActionEnabled = Boolean(enabled);
-      if (!postActionEnabled) {
-        pending = null;
+    setResolveMode(mode) {
+      resolveMode = mode;
+      if (window?.kind === "stack-resolve") { window = null; publish(); }
+    },
+    setPhaseStopsEnabled(enabled) {
+      phaseStopsEnabled = Boolean(enabled);
+      if (!phaseStopsEnabled) {
         if (window) { window = null; publish(); }
       }
     },
@@ -172,26 +186,17 @@ export function createPriorityStops({
       for (const [candidate, visit] of candidates(state)) {
         if (candidate === key) consumed.delete(`${candidate}|${visit}`);
       }
+      observe(state);
       publish();
     },
     beforeCommand(command, state) {
       observe(state);
       const checkpoint = { stops: { ...stops }, consumed: new Set(consumed), attackersDeclaredIn };
-      const action = command?.type === 'priority_action'
-        ? (state?.decision?.actions || []).find(action => command.action_ref
-          ? JSON.stringify(action.action_ref) === JSON.stringify(command.action_ref)
-          : action.index === command.action_index)
-        : null;
-      const kind = action?.kind || command?.action_ref?.kind;
       if (isLocalTurnDecision(state)) {
         releaseStops(state);
         heldKey = null;
         if (window) { window = null; publish(); }
       }
-      if (postActionEnabled && (kind === 'cast_spell' || kind === 'activate_ability')) {
-        pending = { key: priorityKey(state), player: state.perspective, ids: new Set((state.stack_objects || []).map(entry => String(entry.id))) };
-      }
-      if (command?.type === 'cancel_decision') pending = null;
       return checkpoint;
     },
     hold(state) {
@@ -204,7 +209,6 @@ export function createPriorityStops({
     },
     holdCurrentPriority(state) {
       observe(state);
-      pending = null;
       window = null;
       heldKey = isLocalPriority(state) ? priorityKey(state) : null;
       publish();
@@ -223,21 +227,35 @@ export function createPriorityStops({
       observe(state);
       if (!window || window.id !== id || !isLocalPriority(state)
         || window.startedAt === null || now() < window.startedAt + window.duration) return false;
-      const newStop = candidates(state).some(([key, visit]) => stops[key] && !consumed.has(`${key}|${visit}`));
-      heldKey = newStop ? null : window.key;
+      if (window.kind === 'stack-resolve') {
+        if (state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return false;
+        if (resolveMode === 'safe') {
+          if (state.decision.analysis_complete === false) return false;
+          const playable = (state.decision.actions || []).some(action =>
+            !['pass_priority', 'activate_mana_ability', 'untap_land'].includes(action.kind)
+            && action.payment_proven !== false);
+          if (playable) {
+            heldKey = window.key;
+            window = null;
+            publish();
+            return false;
+          }
+        }
+      }
+      heldKey = window.key;
       window = null;
       publish();
-      return !newStop;
+      return true;
     },
     rollbackAction(checkpoint, state) {
       if (checkpoint) { stops = checkpoint.stops; consumed = checkpoint.consumed; attackersDeclaredIn = checkpoint.attackersDeclaredIn; }
-      pending = null; window = null;
+      window = null;
       heldKey = isLocalPriority(state) ? priorityKey(state) : null;
       publish();
     },
-    cancelAction() { pending = null; if (window) { window = null; publish(); } },
+    cancelAction() { if (window) { window = null; publish(); } },
     reset() {
-      pending = null; window = null; heldKey = null; phaseVisit = ''; stepVisit = ''; consumed = new Set();
+      window = null; heldKey = null; phaseVisit = ''; stepVisit = ''; consumed = new Set();
       attackersDeclaredIn = null; publish();
     },
   };

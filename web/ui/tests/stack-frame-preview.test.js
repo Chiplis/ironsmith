@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stackFramePreview } from '../src/lib/stack-frame-preview.js';
+import { stackFramePreview, stackSpellFrameColors } from '../src/lib/stack-frame-preview.js';
 import { resolveStackInspectObjectId } from '../src/lib/inspector-selection.js';
 const entry = { id: 20, inspect_object_id: 10, source_stable_id: 7, name: 'Source', ability_kind: 'Triggered' };
 const original = { id: 10, stable_id: 7, name: 'Source', type_line: 'Creature', oracle_text: 'Draw a card.' };
@@ -29,4 +29,22 @@ test('active resolution beats remaining stack; priority discards stale resolving
 test('same-name objects never substitute for a missing source', () => {
   const other = { ...original, id: 80, stable_id: 81 };
   assert.equal(stackFramePreview({ stack_objects: [entry], players: [{ battlefield: [other] }] }, [other]).card, entry);
+});
+
+
+test('colorless stack spells override stale green frames and mana-cost inference', async () => {
+  const { engineCardToMse } = await import('../src/lib/mse/engine-card.mjs');
+  const spell = { id: 20, stable_id: 7, name: 'Sowing Mycospawn', mana_cost: '{3}{G}', colors: [] };
+  const stale = { ...original, colors: ['green'], characteristic_signature: 'colors:G',
+    mana_cost: '{3}{G}', color_identity: ['G'] };
+  const state = { stack_objects: [spell], players: [] };
+  const frame = stackFramePreview(state, [stale]).card;
+  assert.deepEqual(frame.colors, []);
+  assert.equal(engineCardToMse(frame).card.card_color, 'colorless');
+  assert.equal(engineCardToMse(stackFramePreview(state).card).card.card_color, 'colorless');
+  assert.deepEqual(stale.colors, ['green']);
+  assert.equal(stackSpellFrameColors({ ...spell, colors: null }, stale), stale);
+  assert.equal(stackSpellFrameColors({ ...spell, ability_kind: 'Triggered' }, stale), stale);
+  const recolored = stackSpellFrameColors({ ...spell, colors: ['blue'] }, frame);
+  assert.equal(engineCardToMse(recolored).card.card_color, 'blue');
 });

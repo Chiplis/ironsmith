@@ -2987,6 +2987,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if let Some(mut payment) = super::pair_procedure::life_payment_limit::read(&sentences, sentence_idx) {
+            effects.append(&mut payment);
+            carried_context = None;
+            sentence_idx += 2;
+            continue;
+        }
         // A repeated keep-and-rest procedure must retain its first sentence
         // as the antecedent of "the same way" before the single-statement
         // choice reader consumes it.
@@ -5095,6 +5101,15 @@ pub(crate) fn parse_complete_get_pump_statement(
         )
         .map(|effects| effects.map(|effects| EffectAst::Sequence { effects }));
     }
+    if let Some(unless) = sentence.iter().position(|token| token.is_word("unless"))
+        && effect_grammar::parse_unless_pays_shape_tokens(&sentence[unless + 1..]).is_some()
+        && let Some(pump) = parse_complete_get_pump_statement(&sentence[..unless])?
+    {
+        let (player, cost) = super::clause_primitives::parse_unless_pays_clause(&sentence[unless + 1..])?;
+        return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+            effects: vec![pump], player, cost, before_delayed_step: false,
+        })));
+    }
     super::clause_dispatch::parse_get_pump_clause(
         &sentence[..verb_idx],
         &sentence[verb_idx + 1..],
@@ -5106,6 +5121,14 @@ pub(crate) fn parse_complete_get_pump_statement(
 pub(super) fn parse_complete_become_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if crate::lexer::parser_token_word_refs(sentence)
+        .starts_with(&["the", "base", "power", "and", "toughness", "of"])
+        && let Some(effect) = super::for_each_helpers::parse_has_base_power_toughness_clause(sentence)?
+    {
+        // The complete characteristic assignment owns the recipient filter.
+        // A historical `this turn` inside that filter is not a duration.
+        return Ok(Some(effect));
+    }
     if super::chain_carry::parse_leading_player_may_lexed(sentence).is_some() {
         return Ok(None);
     }
@@ -5165,6 +5188,14 @@ pub(super) fn parse_complete_compound_gain_statement(
         || effect_grammar::split_conditional_sentence_family_head_lexed(sentence).is_some()
     {
         return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(sentence);
+    if effect_grammar::gain_ability_shapes::find_primary_gain_ability_verb(&words)
+        != effect_grammar::gain_ability_shapes::find_gain_ability_verb(&words)
+    {
+        // "has base power and toughness ... and has flying" is one
+        // shared-subject assignment; keep its trailing lifetime on both parts.
+        return super::gain_ability::parse_gain_ability_sentence(sentence);
     }
     // Independently conditioned modifiers retain one predicate per member.
     // Taking the final trailing-if as the whole sentence's envelope would
@@ -6353,6 +6384,12 @@ pub(crate) fn bind_single_outer_where_x(
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if crate::lexer::parser_token_word_refs(&trim_edge_punctuation(tokens)) == ["the", "game", "is", "a", "draw"] {
+        return Ok(vec![EffectAst::subject_verb_draw_game()]);
+    }
+    if let Some(effects) = super::repeat_process_variants::read_inline_return_for_types(tokens)? {
+        return Ok(effects);
+    }
     // The outside-game origin and chosen card belong to one instruction.
     // Claim it before generic imperative "put" parsing defaults to battlefield.
     if split_lexed_sentences(tokens).len() == 1
@@ -6640,6 +6677,14 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
 fn parse_effect_sentences_lexed_unfinalized(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A following keyword price defines the granted keyword in the preceding
+    // sentence; neither sentence is an independent resolving instruction.
+    if let Some(effects) = super::gain_ability::parse_mana_cost_keyword_grant(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::gain_ability::parse_keyword_loss_with_prohibition(tokens)? {
+        return Ok(effects);
+    }
     // The modal envelope owns its `or` and any coordination within a mode.
     // Generic coordination would otherwise execute both alternatives.
     if let Some(effects) = super::dispatch_inner::parse_player_villainous_choice_statement(tokens)? {
@@ -13005,6 +13050,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
+            | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(

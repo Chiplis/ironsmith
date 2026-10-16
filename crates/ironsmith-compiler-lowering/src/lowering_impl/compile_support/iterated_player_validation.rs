@@ -238,6 +238,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInLibraryAtMost(player, _)
         | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player)
@@ -626,6 +627,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         }
         BlockSpecificAttacker { blockers, attacker }
         | MustBlockSpecificAttacker { blockers, attacker }
+        | MustBeBlockedBy { blockers, attacker }
         | BeTargetedFrom(blockers, attacker)
         | BeAttachedBy(blockers, attacker)
         | AttackPermanents {

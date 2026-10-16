@@ -759,6 +759,7 @@ export default function MyZone({
                 {!mergedMobileHeader && (
                   <ManaPool
                     pool={player.mana_pool}
+                    player={player}
                     alwaysVisible
                     compact
                     className="player-name-mana battlefield-header-mana"
@@ -941,6 +942,7 @@ export default function MyZone({
               <div className="my-zone-mana-rail opponent-battlefield-mana-rail">
                 <ManaPool
                   pool={player.mana_pool}
+                  player={player}
                   alwaysVisible
                   compact
                   className="opponent-battlefield-mana"

@@ -1901,6 +1901,12 @@ fn capped_creature_type_count_is_evaluated_per_affected_creature() {
 }
 
 #[test]
+fn empty_land_subtype_reset_describes_type_loss() {
+    let ability = SetLandSubtypesForFilter::new(ObjectFilter::land(), Vec::new());
+    assert_eq!(ability.display(), "lands lose all land types");
+}
+
+#[test]
 fn test_set_land_subtypes() {
     let nonbasic_land_filter = ObjectFilter {
         zone: Some(Zone::Battlefield),
@@ -3769,4 +3775,49 @@ fn player_counter_anthem_counts_shared_poison_once_but_experience_per_player() {
         let count = AnthemCountExpression::PlayerCounters(player, counter_type);
         assert_eq!(resolve_anthem_count_expression_checked(&count, &game, source, seats[0]).unwrap(), expected);
     }
+}
+
+#[test]
+fn tide_shaper_bonus_counts_an_opponents_effect_created_island() {
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut islands = ObjectFilter::default();
+    islands.zone = Some(Zone::Battlefield);
+    islands.controller = Some(PlayerFilter::Opponent);
+    islands.subtypes = vec![Subtype::Island];
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Tide Shaper")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(Ability::static_ability(StaticAbility::new(
+            Anthem::for_source(1, 1).with_condition(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::MatchingFilter(islands),
+                comparison: Comparison::GreaterThanOrEqual(1),
+                display: None,
+            }),
+        )))
+        .build();
+    let shaper = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let land = CardBuilder::new(CardId::new(), "Ramunap Ruins")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Desert])
+        .build();
+    let ruins = game.create_object_from_card(&land, bob, Zone::Battlefield);
+    assert_eq!(game.calculated_power(shaper), Some(1));
+    let effect = game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        shaper, alice, EffectTarget::Specific(ruins),
+        Modification::SetSubtypes(vec![Subtype::Island]),
+    ));
+    assert!(game.calculated_characteristics(ruins).unwrap().subtypes.contains(&Subtype::Island));
+    assert_eq!(game.calculated_power(shaper), Some(2));
+    assert_eq!(game.calculated_toughness(shaper), Some(2));
+    game.refresh_continuous_state().unwrap();
+    assert_eq!(game.calculated_power(shaper), Some(2));
+    game.object_mut(ruins).unwrap().initial_controller = alice;
+    assert_eq!(game.calculated_power(shaper), Some(1), "your own Island does not qualify");
+    game.object_mut(ruins).unwrap().initial_controller = bob;
+    assert_eq!(game.calculated_power(shaper), Some(2));
+    game.effect_store.continuous_effects.remove_effect(effect);
+    assert_eq!(game.calculated_power(shaper), Some(1));
+    assert_eq!(game.calculated_toughness(shaper), Some(1));
 }

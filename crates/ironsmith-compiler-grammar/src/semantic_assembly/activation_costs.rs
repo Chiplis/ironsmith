@@ -158,11 +158,13 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             color_filter: *color_filter,
         },
         ActivationCostSegmentCst::ExileChosen {
+            count_value,
             choice_count,
             filter,
             top_only,
             turn_face_up,
         } => CompilerCost::ExileChosen {
+            count_value: count_value.clone(),
             count: *choice_count,
             filter: filter.clone(),
             top_only: *top_only,

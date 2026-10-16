@@ -68,6 +68,7 @@ pub enum DynamicCostValueShape<'a> {
     },
     UnsupportedCardTypesAmong,
     CountersRemovedThisWay(Option<CounterType>),
+    EnergyPaidThisWay,
     PlayerCounters(CounterType),
     ThisWayMetric(DynamicThisWayMetric),
     RevealedPublic,
@@ -94,6 +95,15 @@ pub fn parse_dynamic_cost_value_shape_tokens(
 }
 
 fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_> {
+    if tokens.len() == 4
+        && (tokens[0].mana_group_inner().is_some_and(|symbol| symbol.eq_ignore_ascii_case("e"))
+            || tokens[0].is_word("e"))
+        && tokens[1].is_word("paid")
+        && tokens[2].is_word("this")
+        && tokens[3].is_word("way")
+    {
+        return DynamicCostValueShape::EnergyPaidThisWay;
+    }
     if starts_with_any(
         tokens,
         &[
@@ -535,6 +545,20 @@ fn parse_sentence_body_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a [Owne
 mod tests {
     use super::super::super::super::lexer::lex_line;
     use super::*;
+
+    #[test]
+    fn energy_payment_value_tracks_energy_removed_by_the_prior_payment() {
+        let tokens = lex_line("for each {E} paid this way", 0).unwrap();
+        assert!(matches!(parse_dynamic_cost_value_shape_tokens(&tokens),
+            Some(DynamicCostValueShape::EnergyPaidThisWay)));
+        let value = crate::keyword_static::parse_dynamic_cost_modifier_value(&tokens)
+            .unwrap().unwrap();
+        let crate::effect::Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected a prior payment query: {value:?}");
+        };
+        assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::Removed));
+        assert_eq!(query.counter_type, Some(CounterType::Energy));
+    }
 
     #[test]
     fn classifies_dynamic_values() {

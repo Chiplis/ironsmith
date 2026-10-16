@@ -116,7 +116,7 @@ struct PermanentObjectView {
 }
 
 /// Current colors by name ("green"), in WUBRG order; empty when colorless.
-fn color_names(colors: ironsmith::color::ColorSet) -> Vec<&'static str> {
+pub(super) fn color_names(colors: ironsmith::color::ColorSet) -> Vec<&'static str> {
     ironsmith::color::Color::ALL
         .into_iter()
         .filter(|color| colors.contains(*color))
@@ -2456,6 +2456,8 @@ pub(super) struct ObjectDetailsSnapshot {
     pub(super) type_line_display: String,
     pub(super) type_line_badges: Vec<String>,
     pub(super) mana_cost: Option<String>,
+    pub(super) colors: Vec<&'static str>,
+    pub(super) characteristic_signature: String,
     pub(super) color_identity: Vec<&'static str>,
     pub(super) oracle_text: String,
     pub(super) power: Option<i32>,
@@ -2709,6 +2711,7 @@ pub(super) struct PlayerSnapshot {
     pub(super) name: String,
     pub(super) life: i32,
     pub(super) poison_counters: u32,
+    pub(super) counters: Vec<CounterSnapshot>,
     pub(super) mana_pool: ManaPoolSnapshot,
     pub(super) can_view_hand: bool,
     pub(super) can_view_library_top: bool,
@@ -3096,6 +3099,14 @@ impl GameSnapshot {
                     name: p.name.clone(),
                     life: p.life,
                     poison_counters: p.poison_counters,
+                    counters: p
+                        .counter_types_with_counters()
+                        .into_iter()
+                        .map(|kind| CounterSnapshot {
+                            kind: kind.description().into_owned(),
+                            amount: p.counter_count(kind),
+                        })
+                        .collect(),
                     mana_pool: ManaPoolSnapshot {
                         white: p.mana_pool.white,
                         blue: p.mana_pool.blue,
@@ -3362,6 +3373,11 @@ impl GameSnapshot {
                     controller: game.current_controller(stack_id).unwrap_or(obj.owner).0,
                     name: obj.name.to_string(),
                     mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
+                    colors: Some(color_names(
+                        game.current_characteristics(stack_id)
+                            .map(|chars| chars.colors)
+                            .unwrap_or_else(|| obj.colors()),
+                    )),
                     effect_text: pending_effect_text,
                     ability_kind: None,
                     ability_text: None,
@@ -3572,6 +3588,10 @@ pub(super) fn build_object_details_snapshot(
         type_line_badges,
         mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
         color_identity: color_identity_codes(obj),
+        colors: color_names(
+            current.as_ref().map(|chars| chars.colors).unwrap_or_else(|| obj.colors()),
+        ),
+        characteristic_signature: object_characteristic_signature(game, obj, false),
         oracle_text,
         power,
         toughness,

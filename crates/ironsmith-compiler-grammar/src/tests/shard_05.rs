@@ -1590,6 +1590,7 @@ pub(super) fn rewrite_activation_cost_preserves_top_only_graveyard_selection_thr
             filter,
             top_only: true,
             turn_face_up: false,
+            count_value: None,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.card_types == [CardType::Creature]
@@ -1681,6 +1682,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
             filter,
             top_only: false,
             turn_face_up: false,
+            count_value: None,
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.owner == Some(crate::target::PlayerFilter::You)
@@ -1697,6 +1699,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exi
             filter,
             top_only: false,
             turn_face_up: false,
+            count_value: None,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter.zone == Some(Zone::Graveyard)
             && filter.single_graveyard

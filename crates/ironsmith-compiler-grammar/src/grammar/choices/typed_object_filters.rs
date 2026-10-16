@@ -62,6 +62,17 @@ pub struct TypedChoiceBecomeShape<'a> {
 fn parse_typed_choice_filter_words(
     words: &[&str],
 ) -> Result<ObjectFilter, ChoiceObjectClauseSyntaxError> {
+    if let Some(base) = words.strip_suffix(&["of", "that", "color"])
+        .or_else(|| words.strip_suffix(&["of", "the", "chosen", "color"]))
+    {
+        let mut filter = if matches!(base, ["card"] | ["cards"]) {
+            ObjectFilter::default()
+        } else {
+            parse_typed_choice_filter_words(base)?
+        };
+        filter.chosen_color = true;
+        return Ok(filter);
+    }
     crate::object_filters::parse_object_filter_words(words, false)
         .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)
 }

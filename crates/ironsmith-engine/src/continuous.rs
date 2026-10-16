@@ -970,6 +970,9 @@ impl Modification {
                     mode: ironsmith_core::AbilityLossMode::Lose,
                 }
             }
+            ironsmith_core::CompiledContinuousModification::RemoveAbilityWithMode { ability, mode } => {
+                Self::RemoveAbilityGeneric { ability: convert_removed_ability(ability)?, mode }
+            }
             ironsmith_core::CompiledContinuousModification::RemoveStaticAbilityFamily(id) => {
                 Self::RemoveStaticAbilityFamily(id)
             }
@@ -1363,6 +1366,11 @@ impl ContinuousEffectManager {
     {
         effect.id = id;
         effect.registration_id = Some(id);
+        if effect.duration == Until::YourNextUpkeepEnd {
+            // Unarmed until the next actual upkeep begins. Do not predict a
+            // turn number: skipped and additional upkeeps change the boundary.
+            effect.expires_end_of_turn = u32::MAX;
+        }
         if effect.timestamp == 0 {
             effect.timestamp = self.next_timestamp();
         }
@@ -1612,6 +1620,7 @@ impl ContinuousEffectManager {
                     Until::YourNextTurn
                         | Until::YourNextTurnEnd
                         | Until::YourNextUpkeep
+                        | Until::YourNextUpkeepEnd
                         | Until::ControllersNextUntapStep
                 )
         }) {
@@ -1667,6 +1676,7 @@ impl ContinuousEffectManager {
                     && completed_turn_players.contains(&effect.controller)
             }
             Until::NextEndStep => turn_number > effect.expires_end_of_turn,
+            Until::YourNextUpkeepEnd => turn_number > effect.expires_end_of_turn,
             _ => false,
         };
         if !self.effects.iter().any(expired) {
@@ -1725,12 +1735,42 @@ impl ContinuousEffectManager {
         self.revision += 1;
     }
 
+    /// Arm already-existing effects at the controller's next actual upkeep.
+    /// Effects created after this boundary wait for a later occurrence.
+    pub fn mark_upkeep_began(&mut self, player: PlayerId, turn_number: u32) {
+        if !self.effects.iter().any(|effect| effect.duration == Until::YourNextUpkeepEnd
+            && effect.controller == player && effect.expires_end_of_turn == u32::MAX)
+        {
+            return;
+        }
+        for effect in Arc::make_mut(&mut self.effects).iter_mut() {
+            if effect.duration == Until::YourNextUpkeepEnd
+                && effect.controller == player && effect.expires_end_of_turn == u32::MAX
+            {
+                effect.expires_end_of_turn = turn_number;
+            }
+        }
+        self.revision += 1;
+    }
+
+    /// End the armed duration once, so a later upkeep cannot reactivate it.
+    pub fn expire_at_upkeep_end(&mut self, players: &[PlayerId]) {
+        let effects = Arc::make_mut(&mut self.effects);
+        let before = effects.len();
+        effects.retain(|effect| !(effect.duration == Until::YourNextUpkeepEnd
+            && effect.expires_end_of_turn != u32::MAX && players.contains(&effect.controller)));
+        if effects.len() != before {
+            self.revision += 1;
+        }
+    }
+
     /// Remove all effects whose outer duration ends with the current turn.
     pub fn cleanup_end_of_turn(&mut self) {
         let effects = Arc::make_mut(&mut self.effects);
         let before = effects.len();
         effects.retain(|effect| {
-            !matches!(
+            !(effect.duration == Until::YourNextUpkeepEnd && effect.expires_end_of_turn != u32::MAX)
+            && !matches!(
                 effect.duration,
                 Until::EndOfTurn | Until::EndOfTurnOrAnyPlayerRolls { .. }
             )
@@ -5302,6 +5342,12 @@ fn continuous_effect_duration_is_active(
             } else {
                 false
             }
+        }
+        Until::YourNextUpkeepEnd => {
+            effect.expires_end_of_turn == u32::MAX
+                || (game.turn.turn_number == effect.expires_end_of_turn
+                    && game.is_active_player(effect.controller)
+                    && game.turn.step == Some(crate::game_state::Step::Upkeep))
         }
         Until::ThisLeavesTheBattlefield => game
             .object(effect.source)

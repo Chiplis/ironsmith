@@ -1454,6 +1454,7 @@ impl WasmGame {
                     trigger.ability.effects.clone(),
                 )
                 .with_source_info(trigger.source_stable_id, trigger.source_name.clone())
+                .with_trigger_identity(trigger.trigger_identity)
                 .with_triggering_event(trigger.triggering_event.clone())
                 .with_tagged_objects(trigger.tagged_objects.clone())
                 .with_provenance(trigger.triggering_event.provenance());

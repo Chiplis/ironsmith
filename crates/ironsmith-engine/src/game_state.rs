@@ -1921,6 +1921,9 @@ pub struct CantEffectTracker {
     /// Example: "Target creature must be blocked this turn if able."
     pub must_be_blocked: HashSet<ObjectId>,
 
+    /// Each set is one independent existential blocking requirement.
+    pub must_be_blocked_by: HashMap<ObjectId, Vec<HashSet<ObjectId>>>,
+
     /// Positive attack requirements from resolving rule effects, not abilities.
     pub must_attack: HashMap<ObjectId, usize>,
 
@@ -2744,6 +2747,9 @@ impl CantEffectTracker {
                 .extend(attackers);
         }
         self.must_be_blocked.extend(other.must_be_blocked);
+        for (attacker, groups) in other.must_be_blocked_by {
+            self.must_be_blocked_by.entry(attacker).or_default().extend(groups);
+        }
         for (object, count) in other.must_block {
             *self.must_block.entry(object).or_default() += count;
         }
@@ -2889,6 +2895,7 @@ impl CantEffectTracker {
         self.cant_block_specific_attackers.clear();
         self.must_block_specific_attackers.clear();
         self.must_be_blocked.clear();
+        self.must_be_blocked_by.clear();
         self.must_attack.clear();
         self.must_attack_players.clear();
         self.must_block.clear();
@@ -6251,6 +6258,7 @@ impl GameState {
             | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,
             crate::effect::Value::CountPlayers(player)
             | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
+            | crate::effect::Value::CountPlayersWithCardsInLibraryAtMost(player, _)
             | crate::effect::Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
             | crate::effect::Value::CountPlayersWithPoisonCountersAtLeast(player, _)
             | crate::effect::Value::PartySize(player)

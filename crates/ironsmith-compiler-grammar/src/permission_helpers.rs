@@ -951,6 +951,7 @@ fn parse_graveyard_cast_additional_cost_tokens(
             card_types,
             other,
         } => CompilerCost::ExileChosen {
+            count_value: None,
             count: crate::cards::builders::ChoiceCount::exactly(count as usize),
             filter: ObjectFilter {
                 zone: Some(Zone::Graveyard),

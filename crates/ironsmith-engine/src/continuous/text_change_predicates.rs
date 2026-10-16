@@ -265,6 +265,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         }
         Value::CreaturesDiedThisTurnControlledBy(player) | Value::CountPlayers(player)
         | Value::CountPlayersWithCardsInHandAtLeast(player, _)
+        | Value::CountPlayersWithCardsInLibraryAtMost(player, _)
         | Value::CountPlayersWithCardsInGraveyardAtLeast(player, _)
         | Value::CountPlayersWithPoisonCountersAtLeast(player, _)
         | Value::PartySize(player) | Value::LifeTotal(player) | Value::LifeTotalAsTurnBegan(player)

@@ -289,6 +289,11 @@ impl EffectExecutor for PayAnyLifeEffect {
         game.refresh_continuous_state()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        let owner = if self.source_owned {
+            Some(ctx.source_number_owner.as_ref().filter(|owner| owner.host == ctx.source)
+                .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "source life payment has no admitted linked acquisition".into()))?.clone())
+        } else { None };
         if !game.can_lose_life(player_id) && self.min_amount > 0 {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::impossible(),
@@ -304,6 +309,9 @@ impl EffectExecutor for PayAnyLifeEffect {
             0
         };
 
+        let available = if let Some(maximum) = &self.maximum {
+            available.min(resolve_nonnegative_u32(game, maximum, ctx)?)
+        } else { available };
         if available < self.min_amount {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
@@ -321,6 +329,11 @@ impl EffectExecutor for PayAnyLifeEffect {
                 EffectOutcome::count(0),
             ));
         };
+        if let Some(owner) = owner {
+            if game.object(ctx.source).is_some() {
+                game.set_number_for_acquisition(owner, chosen)?;
+            }
+        }
         let aggregate = outcome
             .outcome
             .clone()
@@ -337,7 +350,9 @@ impl EffectExecutor for PayAnyLifeEffect {
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        true
+        // A retained payment belongs to one source acquisition, not a
+        // distributed per-player payment round.
+        !self.source_owned
     }
 
     fn prepare_simultaneous_player_action(
@@ -368,6 +383,9 @@ impl EffectExecutor for PayAnyLifeEffect {
         } else {
             0
         };
+        let available = if let Some(maximum) = &self.maximum {
+            available.min(resolve_nonnegative_u32(game, maximum, ctx)?)
+        } else { available };
         if available < self.min_amount {
             return Ok(Box::new(PayAnyLifeProposal {
                 player: player_id,

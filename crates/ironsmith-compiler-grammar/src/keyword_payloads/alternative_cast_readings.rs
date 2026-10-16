@@ -448,10 +448,16 @@ fn read_offering(
     if words.len() != 2 || words[1] != "offering" {
         return Ok(None);
     }
-    let subtype = crate::util::parse_subtype_word(words[0])
-        .ok_or_else(|| CardTextError::ParseError("unknown offering permanent quality".into()))?;
     let mut filter = crate::target::ObjectFilter::default().you_control();
-    filter.subtypes.push(subtype);
+    if let Some(card_type) = crate::util::parse_card_type(words[0]) {
+        filter.card_types.push(card_type);
+    } else if let Some(subtype) = crate::util::parse_subtype_word(words[0]) {
+        filter.subtypes.push(subtype);
+    } else {
+        return Err(CardTextError::ParseError(
+            "unknown offering permanent quality".into(),
+        ));
+    }
     let cost = crate::model::CompilerCost::Sacrifice {
         count: ironsmith_core::ChoiceCount::exactly(1),
         filter,

@@ -183,11 +183,23 @@ impl PayAnyEnergyEffect {
 pub struct PayAnyLifeEffect {
     pub player: ChooseSpec,
     pub min_amount: u32,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub maximum: Option<Value>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_owned: bool,
 }
 
 impl PayAnyLifeEffect {
     pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
-        Self { player, min_amount }
+        Self { player, min_amount, maximum: None, source_owned: false }
+    }
+    pub fn with_maximum(mut self, maximum: Value) -> Self {
+        self.maximum = Some(maximum);
+        self
+    }
+    pub fn with_source_retention(mut self) -> Self {
+        self.source_owned = true;
+        self
     }
 }
 

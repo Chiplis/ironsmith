@@ -222,7 +222,7 @@ const SHAPES: &[Shape] = &[
     exact_hand_sizes,
     counters_among_objects,
     permanent_types_among_graveyard,
-    graveyard_size_threshold,
+    zone_size_threshold,
     mana_values_among_your_graveyard,
     distinct_mana_values_exiled_with_source,
     cards_exiled_with_source,
@@ -835,17 +835,17 @@ fn permanent_types_among_graveyard(words: &[&str]) -> Option<PredicateAst> {
     Some(at_least(total, count))
 }
 
-/// "a graveyard has twenty or more cards in it" (Visions of Beyond, Jace, the
-/// Perfected Mind): some player's graveyard meets the size threshold.
-fn graveyard_size_threshold(words: &[&str]) -> Option<PredicateAst> {
-    let ["a", "graveyard", "has", minimum, "or", "more", "cards", "in", "it"] = words else {
-        return None;
+/// A zone-size threshold is existential over individual players, rather than
+/// a comparison against the total number of cards in all matching zones.
+fn zone_size_threshold(words: &[&str]) -> Option<PredicateAst> {
+    let value = match words {
+        ["a", "graveyard", "has", minimum, "or", "more", "cards", "in", "it"] =>
+            Value::CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter::Any, number(minimum)?),
+        ["a", "library", "has", maximum, "or", "fewer", "cards", "in", "it"] =>
+            Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, number(maximum)?),
+        _ => return None,
     };
-    let minimum = number(minimum)?;
-    Some(at_least(
-        Value::CountPlayersWithCardsInGraveyardAtLeast(PlayerFilter::Any, minimum),
-        1,
-    ))
+    Some(at_least(value, 1))
 }
 
 /// "there are five or more mana values among cards in your graveyard"
@@ -1215,13 +1215,11 @@ fn you_didnt_put_onto_battlefield_this_way(words: &[&str]) -> Option<PredicateAs
     ) {
         return None;
     }
-    Some(PredicateAst::Not(Box::new(PredicateAst::Player(
-        PlayerPredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: crate::tag::CompilerReferenceTag::It.bind(),
-            filter: ObjectFilter::default().in_zone(Zone::Battlefield),
-            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
-        },
+    let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::PutOntoBattlefield));
+    Some(PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        filter,
     ))))
 }
 
@@ -1323,4 +1321,17 @@ fn same_name_object_exists(words: &[&str]) -> Option<PredicateAst> {
         comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
         display: Some(words.join(" ")),
     })
+}
+
+#[cfg(test)]
+mod library_threshold_tests {
+    use super::*;
+    #[test]
+    fn library_threshold_condition_uses_an_existential_player_count() {
+        let tokens = crate::lexer::lex_line("a library has twenty or fewer cards in it", 0).unwrap();
+        let predicate = crate::grammar::filters::parse_condition_predicate_lexed(&tokens).unwrap();
+        assert_eq!(predicate, at_least(Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, 20), 1));
+        let tokens = crate::lexer::lex_line("a library has twenty or fewer cards in it unless you control a creature", 0).unwrap();
+        assert!(crate::grammar::filters::parse_condition_predicate_lexed(&tokens).is_err());
+    }
 }

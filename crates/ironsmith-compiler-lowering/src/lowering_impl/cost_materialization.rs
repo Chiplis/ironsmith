@@ -59,6 +59,7 @@ enum MaterializationCost {
         color_filter: Option<crate::color::ColorSet>,
     },
     ExileChosen {
+        count_value: Option<crate::effect::Value>,
         choice_count: ChoiceCount,
         filter: ObjectFilter,
         top_only: bool,
@@ -346,12 +347,14 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             color_filter: *color_filter,
         },
         CompilerCost::ExileChosen {
+            count_value,
             count,
             filter,
             top_only,
             turn_face_up,
             ..
         } => MaterializationCost::ExileChosen {
+            count_value: count_value.clone(),
             choice_count: *count,
             filter: filter.clone(),
             top_only: *top_only,
@@ -834,6 +837,7 @@ fn lower_materialization_costs(
                 costs.push(Cost::exile_from_hand(*count, *color_filter));
             }
             MaterializationCost::ExileChosen {
+                count_value,
                 choice_count,
                 filter,
                 top_only,
@@ -878,6 +882,7 @@ fn lower_materialization_costs(
                     PlayerFilter::You,
                     tag.clone(),
                 );
+                choose = choose.with_count_value_opt(count_value.clone());
                 if !branch_zones.is_empty() {
                     choose = choose.in_zones(branch_zones);
                 }

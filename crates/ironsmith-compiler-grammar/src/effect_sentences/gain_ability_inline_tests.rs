@@ -1591,3 +1591,87 @@ fn broad_loss_reader_removes_bare_protection_and_ward_families() {
         assert!(abilities.contains(&GrantedAbilityAst::StaticAbilityFamily(family)));
     }
 }
+
+#[test]
+fn shared_keyword_and_base_toughness_preserve_the_other_axis() {
+    let tokens = tokenize_line("Until end of turn, target creature you control gains flying and has base toughness 1.", 0);
+    let effects = parse_gain_ability_sentence(&tokens).unwrap().expect("shared grant and toughness");
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("GrantAbilities") && debug.contains("SetBaseToughness"), "{debug}");
+    assert!(!debug.contains("SetBasePower"), "power must remain unchanged: {debug}");
+    assert_eq!(debug.matches("TargetOnly").count(), 1, "one declared target feeds both actions: {debug}");
+    assert_eq!(debug.matches("EndOfTurn").count(), 1, "one enclosing duration scopes both effects: {debug}");
+    assert!(debug.contains("Coordination"), "{debug}");
+}
+
+#[test]
+fn base_pair_and_has_keyword_share_counter_lifetime() {
+    let tokens = tokenize_line("that creature has base power and toughness 3/1 and has flying for as long as it has a feather counter on it.", 0);
+    let effects = parse_gain_ability_sentence(&tokens).unwrap().expect("shared base pair and keyword");
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("SetBasePowerToughness") && debug.contains("GrantAbilities"), "{debug}");
+    assert_eq!(debug.matches("ForAsLongAs").count(), 2, "both effects must end when the counter condition ceases: {debug}");
+    assert!(debug.to_lowercase().contains("feather"), "{debug}");
+    let full = tokenize_line("You may put a feather counter on target creature. If you do, that creature has base power and toughness 3/1 and has flying for as long as it has a feather counter on it.", 0);
+    let full = crate::effect_sentences::parse_effect_sentences_lexed(&full).unwrap();
+    let debug = format!("{full:?}");
+    assert!(debug.contains("SetBasePowerToughness") && debug.contains("GrantAbilities"), "{debug}");
+    assert_eq!(debug.matches("ForAsLongAs").count(), 2, "{debug}");
+}
+
+#[test]
+fn quoted_labeled_trigger_grant_preserves_landfall_filter_and_token() {
+    let tokens = tokenize_line("This Saga gains \"Landfall — Whenever a land you control enters, create a 1/1 green Elf creature token.\"", 0);
+    let effects = parse_gain_ability_sentence(&tokens).unwrap().expect("quoted ability-word trigger");
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("GrantAbilities") && debug.contains("Triggered"), "{debug}");
+    assert!(debug.contains("Land") && debug.contains("You") && debug.to_lowercase().contains("elf"), "{debug}");
+    assert!(debug.contains("CreateToken"), "{debug}");
+}
+
+#[test]
+fn retained_granted_bundle_is_applied_after_removing_other_abilities() {
+    let tokens = tokenize_line("it gains equip {3} and \"Equipped creature gets +3/+3\" and loses all other abilities", 0);
+    let effects = parse_gain_ability_sentence(&tokens).unwrap().expect("retained ability bundle");
+    let [EffectAst::Sequence { effects }] = effects.as_slice() else { panic!("{effects:?}"); };
+    let first = format!("{:?}", effects[0]);
+    let rest = format!("{:?}", &effects[1..]);
+    assert!(first.contains("RemoveAbilitiesFromTarget"), "{first}");
+    assert!(rest.contains("Equip") && rest.contains("GrantAbilities"), "{rest}");
+    assert!(!rest.contains("RemoveAbilities"), "retained grants must survive: {rest}");
+}
+
+#[test]
+fn copular_base_characteristics_keep_scalar_axes_and_exiled_count() {
+    for (line, required, forbidden) in [
+        ("Until end of turn, this creature has base power 4 and gains trample.",
+         vec!["SetBasePower", "Fixed(4)", "Trample", "EndOfTurn"], vec!["SetBaseToughness", "SetBasePowerToughness"]),
+        ("This creature has base power and base toughness each equal to the number of cards exiled this way.",
+         vec!["SetBasePowerToughness", "Forever"], vec!["Fixed(0)"]),
+    ] {
+        let tokens = tokenize_line(line, 0);
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        assert!(debug.contains("source: true") || debug.contains("target: Source"), "base assignment must affect the source: {debug}");
+        assert!(!debug.contains("target: Tagged"), "the source must not become a previously searched card: {debug}");
+        for word in required { assert!(debug.contains(word), "missing {word}: {debug}"); }
+        for word in forbidden { assert!(!debug.contains(word), "unexpected {word}: {debug}"); }
+    }
+}
+
+#[test]
+fn copular_base_assignment_recipient_is_the_source_not_a_creature_set() {
+    use crate::cards::builders::CharacteristicActionAst;
+    for line in ["this creature has base power 4", "this creature has base power and base toughness each equal to the number of cards exiled this way"] {
+        let tokens = tokenize_line(line, 0);
+        let effect = parse_copular_base_characteristic_assignment(&tokens).unwrap().unwrap();
+        let EffectAst::SubjectVerb(subject) = effect else { panic!("expected one assignment"); };
+        let target = match subject.action {
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetBasePower { target, .. }
+                | CharacteristicActionAst::SetBasePowerToughness { target, .. }) => target,
+            other => panic!("unexpected assignment {other:?}"),
+        };
+        assert!(matches!(&target, TargetAst::Source(_))
+            || matches!(&target, TargetAst::Object(filter, _, _) if filter.source), "{target:?}");
+    }
+}

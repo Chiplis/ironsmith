@@ -21,5 +21,13 @@ export function stackFramePreview(state, remembered = []) {
   const retained = remembered.find(matchesStable) || remembered.find(card => entry.inspect_object_id != null
     && String(card.id) === String(entry.inspect_object_id)
     && (stableId == null || card.stable_id == null || matchesStable(card)));
-  return { entry, card: live || retained || entry };
+  return { entry, card: stackSpellFrameColors(entry, live || retained || entry) };
+}
+
+// A stack snapshot is newer than the remembered card from its previous zone.
+// Replace the old signature too, since frame renderers prioritize it over colors.
+export function stackSpellFrameColors(entry, source) {
+  if (entry?.ability_kind || entry?.colors == null) return source;
+  return { ...source, colors: entry.colors,
+    characteristic_signature: `colors:${entry.colors.join(',')}` };
 }

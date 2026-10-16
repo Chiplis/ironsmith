@@ -390,6 +390,10 @@ fn normalize_restriction_for_resolution(
                     .unwrap_or_else(|_| player.clone())
             },
         ),
+        Restriction::MustBeBlockedBy { attacker, blockers } => Restriction::MustBeBlockedBy {
+            attacker: collapse_filter_to_current_matching_objects(attacker, ctx, game),
+            blockers: bind_restriction_target_players(blockers, ctx, game),
+        },
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),

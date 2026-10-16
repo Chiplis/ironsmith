@@ -710,6 +710,20 @@ fn or_belongs_to_card_type_list(tokens: &[OwnedLexToken], idx: usize) -> bool {
         return false;
     }
     let after = tokens.get(idx + 1..).unwrap_or_default();
+    if let (Some(left), Some(right)) = (tokens.get(idx.wrapping_sub(1)), after.first()) {
+        if (left.is_word("player") && right.is_word("planeswalker"))
+            || (left.is_word("planeswalker") && right.is_word("player"))
+        {
+            return true;
+        }
+    }
+    if tokens.get(idx.wrapping_sub(1)).is_some_and(|token| token.is_any_word(&["spell", "spells"]))
+        && (after.first().is_some_and(|token| token.is_any_word(&["permanent", "permanents"]))
+            || (after.first().is_some_and(|token| token.is_word("nonland"))
+                && after.get(1).is_some_and(|token| token.is_any_word(&["permanent", "permanents"]))))
+    {
+        return true;
+    }
     if primitives::parse_prefix(after, parse_card_type_word).is_none() {
         return false;
     }

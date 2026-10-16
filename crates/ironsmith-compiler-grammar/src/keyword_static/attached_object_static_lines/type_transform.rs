@@ -183,7 +183,8 @@ pub fn parse_attached_type_transform_line(
             && add_subtypes
                 .iter()
                 .all(crate::types::Subtype::is_creature_type)
-            && parsed.subject == attached_grammar::AttachedSubject::EnchantedCreature
+            && matches!(parsed.subject, attached_grammar::AttachedSubject::EnchantedCreature
+                | attached_grammar::AttachedSubject::EquippedCreature)
         {
             out.push(StaticAbility::set_creature_subtypes(filter.clone(), add_subtypes).into());
         } else {

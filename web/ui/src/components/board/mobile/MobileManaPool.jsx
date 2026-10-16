@@ -1,3 +1,5 @@
+import PlayerCounters from "@/components/left-rail/PlayerCounters";
+import { playerCounters } from "@/lib/player-counters";
 import useUiText from "@/i18n/useUiText";
 import { useMemo } from "react";
 import { useGame } from "@/context/GameContext";
@@ -22,7 +24,7 @@ function buildManaActivationMap(decision) {
   return map;
 }
 
-export default function MobileManaPool({ pool, interactive = false, side = "self", className }) {
+export default function MobileManaPool({ pool, player, interactive = false, side = "self", className }) {
   const ui = useUiText();
   const { state, dispatch } = useGame();
   const activationsByColor = useMemo(
@@ -60,7 +62,7 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
     );
   }).filter(Boolean);
 
-  if (!chips.length) return null;
+  if (!chips.length && !playerCounters(player).length) return null;
 
   return (
     <div
@@ -69,6 +71,7 @@ export default function MobileManaPool({ pool, interactive = false, side = "self
       aria-label={ui("{0} mana pool", { 0: side === "self" ? "Your" : "Opponent" })}
     >
       {chips}
+      <PlayerCounters player={player} />
     </div>
   );
 }

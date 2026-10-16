@@ -506,3 +506,37 @@ fn representative_cards_keep_linked_permission_sentence_boundaries() {
         "Exile any number of target creatures and/or planeswalkers you control. At the beginning of the next end step, return each of them to the battlefield under its owner's control. Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker."
     );
 }
+
+#[test]
+fn colorless_cast_permission_keeps_its_restricted_mana_conversion() {
+    let permission = crate::effects::GrantPlayTaggedEffect::new(
+        TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+        PlayerFilter::You,
+        crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+        false,
+        ironsmith_core::value_model::ManaSpendMode::ColorlessAsAnyColor,
+    );
+    let rendered = describe_effect(&Effect::new(permission));
+    assert!(rendered.contains("for as long as it remains exiled"), "{rendered}");
+    assert!(rendered.contains("spend colorless mana as though it were mana of any color"), "{rendered}");
+}
+
+#[test]
+fn authored_play_reference_does_not_expose_storage_tag() {
+    for (tag, object) in [
+        ("searched_face_down", ironsmith_core::GrantPlayTaggedObjectSurface::It),
+        ("triggering", ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard),
+    ] {
+        let mut permission = crate::effects::GrantPlayTaggedEffect::new(
+            TagKey::from(tag), PlayerFilter::You,
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+            true, ironsmith_core::value_model::ManaSpendMode::Normal,
+        );
+        permission.surface = Some(ironsmith_core::GrantPlayTaggedSurface {
+            object: Some(object), ..Default::default()
+        });
+        let rendered = describe_effect(&Effect::new(permission));
+        assert!(rendered.contains("play that card"), "{rendered}");
+        assert!(!rendered.contains("tagged"), "{rendered}");
+    }
+}

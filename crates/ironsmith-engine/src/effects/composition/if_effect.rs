@@ -65,6 +65,10 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
 
 fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction) -> bool {
     match restriction {
+        crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
+            object_filter_mentions_iterated_player(attacker)
+                || object_filter_mentions_iterated_player(blockers)
+        }
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
         | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
         | crate::effect::Restriction::MustAttack(sources)

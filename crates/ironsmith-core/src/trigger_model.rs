@@ -2957,6 +2957,9 @@ pub struct CounterRemovedFromTrigger {
     /// Require the counter removal event to have been caused by this trigger's
     /// source. This is the event-provenance meaning of Oracle's "this way".
     pub caused_by_source: bool,
+    /// The controller of the effect or cost that removed the counters.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_controller: Option<PlayerFilter>,
 }
 
 impl CounterRemovedFromTrigger {
@@ -2967,7 +2970,13 @@ impl CounterRemovedFromTrigger {
             last: false,
             one_or_more: false,
             caused_by_source: false,
+            source_controller: None,
         }
+    }
+
+    pub fn source_controller(mut self, player: PlayerFilter) -> Self {
+        self.source_controller = Some(player);
+        self
     }
 
     pub fn one_or_more(mut self) -> Self {

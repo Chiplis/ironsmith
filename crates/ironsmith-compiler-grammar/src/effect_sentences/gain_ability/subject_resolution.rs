@@ -215,11 +215,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     } else {
         None
     };
-    let shared_has_tail_word_idx = if losing {
-        gain_shapes::find_shared_ability_tail(after_gain, gain_shapes::SharedAbilityTail::Has)
-    } else {
-        None
-    };
+    let shared_has_tail_word_idx =
+        gain_shapes::find_shared_ability_tail(after_gain, gain_shapes::SharedAbilityTail::Has);
     let mut following_pump_effect = if let Some(shared_idx) = shared_get_tail_word_idx {
         let get_word_idx = gain_idx + 1 + shared_idx + 1;
         parse_shared_subject_pump_from_get_tail(
@@ -647,7 +644,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
             || leading_base_pt_effect.is_some()
             || leading_become_effect.is_some();
         let declares_shared_target =
-            !has_preceding_target_effect && following_pump_effect.is_some();
+            !has_preceding_target_effect
+                && (following_pump_effect.is_some() || following_base_pt_effect.is_some());
         let target = parse_target_phrase(real_subject_tokens)?;
         if has_preceding_target_effect || declares_shared_target {
             bind_shared_subject_pump_characteristics(&mut pump_effect);
@@ -1063,12 +1061,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         effects.push(become_effect.clone());
     }
     if let Some((power, toughness, _has_idx, base_pt_duration)) = &leading_base_pt_effect {
-        effects.push(EffectAst::subject_verb_set_base_power_toughness(
-            power.clone(),
-            toughness.clone(),
-            TargetAst::Object(filter.clone(), None, None),
-            base_pt_duration.clone(),
-        ));
+        effects.push(shared_subject_base_axes_effect(power.clone(), toughness.clone(),
+            TargetAst::Object(filter.clone(), None, None), base_pt_duration.clone()));
     }
     if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = pump_effect {
         effects.push(EffectAst::subject_verb_pump_all(
@@ -1153,12 +1147,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         ));
     }
     if let Some((power, toughness, _, base_pt_duration)) = following_base_pt_effect {
-        effects.push(EffectAst::subject_verb_set_base_power_toughness(
-            power,
-            toughness,
-            TargetAst::Object(filter.clone(), None, None),
-            base_pt_duration,
-        ));
+        effects.push(shared_subject_base_axes_effect(power, toughness,
+            TargetAst::Object(filter.clone(), None, None), base_pt_duration));
     }
     effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
 

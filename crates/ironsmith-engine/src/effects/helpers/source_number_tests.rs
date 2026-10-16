@@ -187,3 +187,50 @@ fn public_proof_requires_pairs_for_source_owned_entry_upkeep_and_activation_prod
         }
     }
 }
+
+#[test]
+fn retained_life_payment_obeys_cap_and_publishes_only_completed_payments() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let a = PlayerId::from_index(0);
+    let source = source(&mut game);
+    let effect = crate::effects::PayAnyLifeEffect::new(ChooseSpec::Player(PlayerFilter::You), 0)
+        .with_maximum(Value::Fixed(7)).with_source_retention();
+    let life = game.player(a).unwrap().life;
+    let mut pending = Numeric { value: 5, pending: true };
+    effect.execute(&mut game, &mut ExecutionContext::new(source, a, &mut pending)
+        .with_source_number_owner(Some(owner(source)))).unwrap();
+    assert_eq!(game.player(a).unwrap().life, life);
+    assert_eq!(chosen(&game, source), None);
+    let mut decision = Numeric { value: 99, pending: false };
+    effect.execute(&mut game, &mut ExecutionContext::new(source, a, &mut decision)
+        .with_source_number_owner(Some(owner(source)))).unwrap();
+    assert_eq!(game.player(a).unwrap().life, life - 7);
+    assert_eq!(chosen(&game, source), Some(7));
+    decision.value = 0;
+    effect.execute(&mut game, &mut ExecutionContext::new(source, a, &mut decision)
+        .with_source_number_owner(Some(owner(source)))).unwrap();
+    assert_eq!(game.player(a).unwrap().life, life - 7);
+    assert_eq!(chosen(&game, source), Some(0));
+    // Dynamic limits are evaluated when paying, including an empty limit.
+    let dynamic = crate::effects::PayAnyLifeEffect::new(ChooseSpec::Player(PlayerFilter::You), 0)
+        .with_maximum(Value::CardsInLibrary(PlayerFilter::You)).with_source_retention();
+    let card = CardBuilder::new(CardId::new(), "Payment limit card")
+        .card_types(vec![CardType::Artifact]).build();
+    let library_card = game.create_object_from_card(&card, a, Zone::Library);
+    let dynamic_cap = game.player(a).unwrap().library.len() as u32;
+    decision.value = 99;
+    let before_dynamic = game.player(a).unwrap().life;
+    dynamic.execute(&mut game, &mut ExecutionContext::new(source, a, &mut decision)
+        .with_source_number_owner(Some(owner(source)))).unwrap();
+    assert_eq!(chosen(&game, source), Some(dynamic_cap));
+    assert_eq!(game.player(a).unwrap().life, before_dynamic - dynamic_cap as i32);
+    game.move_object_by_effect(library_card, Zone::Graveyard).unwrap();
+    let next_cap = game.player(a).unwrap().library.len() as u32;
+    dynamic.execute(&mut game, &mut ExecutionContext::new(source, a, &mut decision)
+        .with_source_number_owner(Some(owner(source)))).unwrap();
+    assert_eq!(chosen(&game, source), Some(next_cap));
+    let before_missing_owner = game.player(a).unwrap().life;
+    let missing = effect.execute(&mut game, &mut ExecutionContext::new(source, a, &mut decision));
+    assert!(matches!(missing, Err(ExecutionError::IncompleteEvidence(_))));
+    assert_eq!(game.player(a).unwrap().life, before_missing_owner);
+}

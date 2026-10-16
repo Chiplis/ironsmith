@@ -23,6 +23,7 @@ pub enum ContinuingSegmentShape<'a> {
     CantBecomeSuspected,
     CantAttackYou { covers_planeswalkers: bool },
     MustBeBlocked,
+    MustBeBlockedBy { blocker_tokens: &'a [OwnedLexToken] },
     AllMustBlock,
     AssignUsingToughness,
     Goaded,
@@ -97,6 +98,16 @@ pub fn parse_continuing_segment_shape(tokens: &[OwnedLexToken]) -> ContinuingSeg
     // One declared alternation: the alternatives are exclusive shapes, and the
     // first that reads the input names it.
     let alternation = None::<ContinuingSegmentShape<'_>>
+        .or_else(|| {
+            let (_, tail) = primitives::parse_prefix(tokens, primitives::any_phrase(&[
+                &["must", "be", "blocked", "by", "a"],
+                &["must", "be", "blocked", "by", "an"],
+            ]))?;
+            if tail.len() <= 2 || !parse_complete_any_phrase(&tail[tail.len() - 2..], &[&["if", "able"]]) {
+                return None;
+            }
+            Some(ContinuingSegmentShape::MustBeBlockedBy { blocker_tokens: &tail[..tail.len() - 2] })
+        })
         .or_else(|| {
             let (_, tail) = primitives::parse_prefix(
                 tokens,

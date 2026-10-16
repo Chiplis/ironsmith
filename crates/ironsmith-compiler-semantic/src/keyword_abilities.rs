@@ -108,6 +108,7 @@ pub fn vanishing_granted_abilities(amount: u32) -> Vec<Ability> {
         ),
         (
             TriggerSpec::CounterRemovedFrom {
+                    source_controller: None,
                 filter: source.clone(),
                 counter_type: Some(CounterType::Time),
                 last: true,
