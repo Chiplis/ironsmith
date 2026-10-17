@@ -42,6 +42,7 @@ import {
   prefetchRandomStartingBoard,
   startingBoardKey,
 } from "@/lib/starting-board";
+import { markStartupFoils } from "@/lib/foil-cards";
 
 export default function Shell() {
   const ui = useUiText();
@@ -351,6 +352,7 @@ export default function Shell() {
               initialPayload: prefetchedPayload,
               apply: (built) => applyStartingBoard(game, built),
             });
+            await markStartupFoils(game);
           } else {
             await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           }
@@ -937,6 +939,7 @@ async function resetStartingBoard(game, names, startingLife, fixed, semanticThre
   await loadRandomStartingBoard(names, startingLife, semanticThreshold, {
     apply: (built) => applyStartingBoard(game, built),
   });
+  await markStartupFoils(game);
 }
 
 // Commander tables start as real matches; other formats load a seeded board.

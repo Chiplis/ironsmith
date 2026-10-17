@@ -27,9 +27,15 @@ function readFoilCards() {
 }
 
 // Replaces the set: each submitted deck decides which of its cards are foil.
-export function setFoilCards(names) {
+// `persist: false` applies the set to this tab only (the startup demo board),
+// leaving the deck's saved choice for the next lobby.
+export function setFoilCards(names, { persist = true } = {}) {
   const next = new Set((names || []).map(foilKey).filter(Boolean));
   cached = next;
+  if (!persist) {
+    for (const listener of listeners) listener();
+    return;
+  }
   try {
     if (next.size) window.localStorage.setItem(FOIL_CARDS_STORAGE_KEY, JSON.stringify([...next]));
     else window.localStorage.removeItem(FOIL_CARDS_STORAGE_KEY);
@@ -52,6 +58,28 @@ function subscribe(listener) {
     listeners.delete(listener);
     window.removeEventListener("storage", sync);
   };
+}
+
+function randomNames(cards, count) {
+  const names = [...new Set((cards || []).map((card) => card?.name).filter(Boolean))];
+  for (let index = names.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [names[index], names[swap]] = [names[swap], names[index]];
+  }
+  return names.slice(0, count);
+}
+
+// The startup demo board shows the foil finish on a few of the viewer's
+// permanents and hand cards, picked at random, without touching the saved
+// lobby choice.
+export async function markStartupFoils(game, { battlefield = 3, hand = 2 } = {}) {
+  if (typeof game?.uiState !== "function") return;
+  const state = await game.uiState();
+  const viewer = (state?.players || []).find((player) => Number(player?.id) === Number(state?.perspective));
+  setFoilCards([
+    ...randomNames(viewer?.battlefield, battlefield),
+    ...randomNames(viewer?.hand_cards, hand),
+  ], { persist: false });
 }
 
 export function useIsFoilCard(name) {
