@@ -27,6 +27,9 @@ import {
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import MiniatureCardFrame from "./MiniatureCardFrame";
+import HoloFoil from "./HoloFoil";
+import { useIsFoilCard } from "@/lib/foil-cards";
+import { samePlayerId } from "@/lib/player-display";
 import {
   aggregateCounterEntries,
   BattlefieldCounterBadge,
@@ -112,6 +115,15 @@ function normalizeSemanticScore(rawScore) {
 
 function formatSemanticScore(score) {
   return `${(score * 100).toFixed(1)}%`;
+}
+
+// Whether the card sits in the viewing player's own hand or battlefield.
+function isViewerCard(state, card, variant) {
+  if (card?.owner != null) return samePlayerId(card.owner, state?.perspective);
+  const viewer = (state?.players || []).find((player) => samePlayerId(player?.id, state?.perspective));
+  const zone = variant === "hand" ? viewer?.hand_cards : viewer?.battlefield;
+  const ids = new Set([card?.id, ...(card?.member_ids || [])].map(Number));
+  return Array.isArray(zone) && zone.some((entry) => ids.has(Number(entry?.id)));
 }
 
 function glowPhaseFromSeed(seed) {
@@ -751,6 +763,13 @@ export default function GameCard({
     : artUrl;
   const useArenaBattlefield = compactArtwork;
   const useTokenBattlefield = useArenaBattlefield;
+  // Foil is the local deck's choice, so only the viewer's own copies shine.
+  // Hand and battlefield snapshots carry no owner: they sit under their player.
+  const foilMarked = useIsFoilCard(name);
+  const isFoil = foilMarked
+    && (variant === "hand" || variant === "battlefield")
+    && !useTokenBattlefield
+    && isViewerCard(state, card, variant);
   const count = Number(card.count);
   const groupSize = Number.isFinite(count) && count > 1 ? count : 1;
   const summoningSick = variant === "battlefield" && card?.summoning_sick === true;
@@ -1375,6 +1394,7 @@ export default function GameCard({
       data-member-object-ids={(Array.isArray(card.member_ids) ? card.member_ids : []).join(",")}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
+      data-foil={isFoil ? "true" : undefined}
       data-hand-irregular-corners={variant === "hand" && repairedHandArt?.source === artUrl && repairedHandArt.hasIrregularCorners ? "true" : undefined}
       title={ui(suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName))}
       role={keyboardInteractive ? "button" : undefined}
@@ -1542,6 +1562,7 @@ export default function GameCard({
         {variant === "battlefield" && !useTokenBattlefield && (
           <span className="battlefield-frame" aria-hidden="true" />
         )}
+        {isFoil && <HoloFoil />}
         {showCircuitAnimation && (
           <div
             className={cn(

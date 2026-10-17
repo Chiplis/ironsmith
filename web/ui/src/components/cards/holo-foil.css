@@ -1,0 +1,119 @@
+/* Holographic foil for cards marked "$foil" (or "*F*" / "★") in the lobby
+   deck. The desktop "Full cards" appearance shows it; compact artwork and
+   phones keep plain faces.
+
+   At rest the foil is a still metallic sheen with a faint iridescent tint.
+   Under the pointer HoloFoil.jsx writes --holo-x / --holo-y (percent): the
+   sheen and tint slide with it and a soft highlight follows. Nothing animates
+   on its own.
+
+   The wrapper must not form a stacking context (no z-index, opacity,
+   transform or isolation): the layers' blend modes have to reach the card
+   art and frame painted beneath them. */
+
+.holo-foil {
+  display: none;
+}
+
+body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"] .holo-foil {
+  display: block;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 4.6% / 3.3%;
+  pointer-events: none;
+}
+
+.holo-foil > span {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+/* Iridescence: pale, desaturated hues repeating in narrow bands, as an oil
+   film tints a metal. It only tints the card (overlay), never paints over it,
+   and drifts at a different rate than the sheen so the two shift against
+   each other under the pointer, as real foil does. */
+.holo-foil__rainbow {
+  background: repeating-linear-gradient(
+    128deg,
+    hsl(340 60% 78%) 0%,
+    hsl(35 65% 78%) 5%,
+    hsl(85 50% 76%) 10%,
+    hsl(170 50% 76%) 15%,
+    hsl(215 60% 80%) 20%,
+    hsl(275 50% 80%) 25%,
+    hsl(340 60% 78%) 30%
+  );
+  background-size: 220% 220%;
+  background-position: calc(var(--holo-x, 35%) * 0.6) calc(var(--holo-y, 35%) * 0.6);
+  mix-blend-mode: overlay;
+  opacity: 0.2;
+}
+
+/* Metallic sheen: a soft, neutral band of light across the card, which is
+   what reads as "foil" at a glance, plus a highlight under the pointer. */
+.holo-foil__glare {
+  background:
+    radial-gradient(
+      circle at var(--holo-x, 50%) var(--holo-y, 50%),
+      rgb(255 255 255 / calc(0.4 * var(--holo-glow, 0))) 0%,
+      transparent 45%
+    ),
+    linear-gradient(
+      112deg,
+      transparent 32%,
+      rgb(255 255 255 / 0.22) 44%,
+      rgb(255 255 255 / 0.4) 50%,
+      rgb(255 255 255 / 0.22) 56%,
+      transparent 68%
+    );
+  background-size: 100% 100%, 240% 240%;
+  background-position: 0 0, var(--holo-x, 28%) var(--holo-y, 28%);
+  mix-blend-mode: soft-light;
+  opacity: 0.85;
+}
+
+/* Permanents are drawn small: give the sheen and tint more weight there so
+   the foil still reads at a glance. */
+.game-card.field-card[data-foil="true"] .holo-foil__rainbow {
+  opacity: 0.34;
+}
+
+.game-card.field-card[data-foil="true"] .holo-foil__glare {
+  mix-blend-mode: overlay;
+  opacity: 0.75;
+}
+
+.game-card[data-foil="true"][data-holo-active="true"] {
+  --holo-glow: 1;
+}
+
+.game-card[data-foil="true"][data-holo-active="true"] .holo-foil__rainbow {
+  opacity: 0.32;
+}
+
+.game-card[data-foil="true"][data-holo-active="true"] .holo-foil__glare {
+  opacity: 1;
+}
+
+.game-card.field-card[data-foil="true"][data-holo-active="true"] .holo-foil__rainbow {
+  opacity: 0.46;
+}
+
+/* A slight tilt toward the pointer. Only the face tilts; the card element
+   keeps its own transforms (tap, hover lift, drag). */
+body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"] > .game-card-surface {
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"][data-holo-active="true"] > .game-card-surface {
+  transform: perspective(720px) rotateX(var(--holo-tilt-x, 0deg)) rotateY(var(--holo-tilt-y, 0deg));
+  transition: transform 90ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card[data-foil="true"][data-holo-active="true"] > .game-card-surface { transform: none !important; }
+}
