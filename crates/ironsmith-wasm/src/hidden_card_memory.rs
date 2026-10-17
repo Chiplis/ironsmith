@@ -9,6 +9,7 @@
 //! CR 400.7), turned face up, or sat in a library that was shuffled since is
 //! forgotten rather than tracked.
 use super::*;
+use std::sync::Arc;
 use ui_snapshot::{library_position, GameSnapshot, ViewedCardSnapshot};
 
 #[derive(Clone, Debug)]
@@ -195,5 +196,88 @@ impl WasmGame {
             .chain(self.active_audit_viewed_cards.iter())
             .collect();
         self.hidden_card_memory.apply(game, &views, snapshot);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot_with_memory(wasm: &mut WasmGame, viewer: PlayerId) -> GameSnapshot {
+        let mut snapshot = GameSnapshot::from_game(
+            &wasm.game, viewer, None, None, None, None, None, Vec::new(),
+            wasm.active_viewed_cards.as_ref(), false, None, 0,
+        );
+        let views: Vec<&ActiveViewedCards> = wasm.active_viewed_cards.iter().collect();
+        wasm.hidden_card_memory.apply(&wasm.game, &views, &mut snapshot);
+        snapshot
+    }
+
+    fn private_view(wasm: &WasmGame, viewer: PlayerId, subject: PlayerId, zone: Zone, cards: Vec<ObjectId>) -> ActiveViewedCards {
+        ActiveViewedCards {
+            acknowledged_by: Vec::new(),
+            viewer,
+            subject,
+            zone,
+            card_stable_ids: stable_ids_for_viewed_cards(&wasm.game, &cards),
+            cards,
+            public: false,
+            source: None,
+            description: "Look".to_string(),
+        }
+    }
+
+    fn known(snapshot: &GameSnapshot, owner: PlayerId) -> Vec<(String, Option<String>, Option<usize>)> {
+        snapshot.players[owner.index()].persistent_look_cards.iter()
+            .map(|card| (card.name.clone(), card.zone.clone(), card.position)).collect()
+    }
+
+    fn card(name: &str, id: u32) -> ironsmith::card::Card {
+        ironsmith::card::CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Instant])
+            .build()
+    }
+
+    #[test]
+    fn a_hand_card_seen_once_stays_known_until_it_leaves_the_hand() {
+        let mut wasm = WasmGame::new();
+        let (alice, bob) = (PlayerId::from_index(0), PlayerId::from_index(1));
+        let secret = wasm.game.create_object_from_card(&card("Bob's Secret", 91_001), bob, Zone::Hand);
+        wasm.game.create_object_from_card(&card("Bob's Other Card", 91_002), bob, Zone::Hand);
+        wasm.active_viewed_cards = Some(private_view(&wasm, alice, bob, Zone::Hand, vec![secret]));
+        snapshot_with_memory(&mut wasm, alice);
+
+        wasm.active_viewed_cards = None;
+        let after = snapshot_with_memory(&mut wasm, alice);
+        assert_eq!(known(&after, bob), vec![("Bob's Secret".to_string(), Some("hand".to_string()), None)]);
+        // Bob never looked at his own hand through Alice's eyes.
+        assert!(known(&snapshot_with_memory(&mut wasm, bob), bob).is_empty());
+
+        wasm.game.remove_object(secret);
+        assert!(known(&snapshot_with_memory(&mut wasm, alice), bob).is_empty());
+    }
+
+    #[test]
+    fn library_cards_keep_their_order_until_the_library_is_shuffled() {
+        let mut wasm = WasmGame::new();
+        let (alice, bob) = (PlayerId::from_index(0), PlayerId::from_index(1));
+        for (index, name) in ["Bottom", "Third", "Second", "Top"].into_iter().enumerate() {
+            wasm.game.create_object_from_card(&card(name, 92_000 + index as u32), bob, Zone::Library);
+        }
+        let library = wasm.game.player(bob).unwrap().library.to_vec();
+        let top_two = vec![library[library.len() - 1], library[library.len() - 2]];
+        wasm.active_viewed_cards = Some(private_view(&wasm, alice, bob, Zone::Library, top_two));
+        snapshot_with_memory(&mut wasm, alice);
+
+        wasm.active_viewed_cards = None;
+        let mut remembered = known(&snapshot_with_memory(&mut wasm, alice), bob);
+        remembered.sort_by_key(|(_, _, position)| *position);
+        assert_eq!(remembered, vec![
+            ("Top".to_string(), Some("library".to_string()), Some(0)),
+            ("Second".to_string(), Some("library".to_string()), Some(1)),
+        ]);
+
+        wasm.game.shuffle_player_library(bob);
+        assert!(known(&snapshot_with_memory(&mut wasm, alice), bob).is_empty());
     }
 }

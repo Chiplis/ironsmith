@@ -56,7 +56,7 @@ impl EffectExecutor for CoinFlipLifeStakesEffect {
                 ChooseSpec::Player(PlayerFilter::Specific(gainer)),
             ));
             outcomes.push(crate::effects::execute_effect(game, &gain, ctx)?);
-            let lose = Effect::new(crate::effects::LoseLifeEffect::new(
+            let lose = Effect::new(crate::effects::LoseLifeEffect::with_filter(
                 crate::effect::Value::Fixed(stakes),
                 PlayerFilter::Specific(loser),
             ));

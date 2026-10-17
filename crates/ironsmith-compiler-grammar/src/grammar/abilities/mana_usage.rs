@@ -526,7 +526,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         // "an instant or sorcery spell with mana value 3 or less" (Forger's
         // Foundry).
         let mut filter =
-            ObjectFilter::default().with_mana_value(crate::effect::Comparison::LessThanOrEqual(
+            ObjectFilter::default().with_mana_value(crate::filter::Comparison::LessThanOrEqual(
                 limit as i32,
             ));
         filter.card_types = vec![CardType::Instant, CardType::Sorcery];

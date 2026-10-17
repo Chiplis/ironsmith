@@ -665,7 +665,8 @@ pub fn parse_token_copy_of_chosen_card_with_x_mana_value(
     {
         return Ok(None);
     }
-    let starts = crate::lexer::TokenWordView::new(&first_tokens).token_start_indices();
+    let first_view = crate::lexer::TokenWordView::new(&first_tokens);
+    let starts = first_view.token_start_indices();
     let Some(&filter_start) = starts.get(HEAD) else {
         return Ok(None);
     };

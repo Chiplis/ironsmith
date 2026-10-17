@@ -536,8 +536,8 @@ function OpponentSlot({
                 {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
             </span>
-            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 self-stretch">
-              <OpponentHandFan player={player} />
+            <OpponentHandFan player={player} />
+            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               {headerControls}
             </div>
           </div>

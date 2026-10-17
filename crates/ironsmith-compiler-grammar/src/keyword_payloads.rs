@@ -229,14 +229,14 @@ pub(super) fn parse_additional_cost(
         );
         return Ok(ast(LineAst::Multiple(vec![
             LineAst::StaticAbility(
-                crate::static_abilities::StaticAbility::this_spell_x_maximum(
+                crate::model::CompilerStaticAbilityCore::this_spell_x_maximum(
                     Value::Fixed(high),
                     display.clone(),
                 )
                 .into(),
             ),
             LineAst::StaticAbility(
-                crate::static_abilities::StaticAbility::this_spell_x_minimum(
+                crate::model::CompilerStaticAbilityCore::this_spell_x_minimum(
                     Value::Fixed(low),
                     display,
                 )

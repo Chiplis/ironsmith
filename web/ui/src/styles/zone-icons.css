@@ -161,10 +161,9 @@
    lower half, so the fan reads as held cards peeking over the table edge. */
 .opponent-hand-fan {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 1 360px;
   align-self: stretch;
   min-width: 72px;
-  max-width: 420px;
   margin-top: -3px;
   overflow: hidden;
   pointer-events: none;

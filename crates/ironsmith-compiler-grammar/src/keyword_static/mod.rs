@@ -3883,7 +3883,7 @@ fn parse_isnt_card_type_and_is_static_line(
         return Ok(None);
     }
     let mut abilities = vec![StaticAbilityAst::Static(StaticAbility::new(
-        crate::static_abilities::RemoveCardTypesForFilter::new(filter, vec![card_type]),
+        crate::model::CompilerRemoveCardTypesForFilter::new(filter, vec![card_type]),
     ))];
     abilities.extend(rest);
     Ok(Some(abilities))

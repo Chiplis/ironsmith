@@ -167,7 +167,7 @@ impl EffectExecutor for ChooseCardNameEffect {
         // may include other choices made by its abilities, but must not leak
         // into a later resolution's singular chosen-name comparison.
         let mut snapshot = synthetic_chosen_name_snapshot(ctx.source, chooser, canonical_name);
-        if ctx.iterated_player.is_some() {
+        if ctx.iteration.iterated_player.is_some() {
             // "Each player chooses a card name": every chooser's name must
             // survive the per-player tag merge, which keys snapshots by stable
             // identity. A fresh synthetic identity keeps each choice distinct

@@ -7004,7 +7004,8 @@ fn parse_highest_life_win_with_tie_draw(
 fn parse_free_play_this_way_body(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let words = crate::lexer::token_word_refs(&trim_edge_punctuation(tokens));
+    let trimmed = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
     if !matches!(
         words.as_slice(),
         [

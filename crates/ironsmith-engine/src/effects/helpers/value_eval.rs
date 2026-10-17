@@ -1782,7 +1782,7 @@ pub(crate) fn resolve_wide(
                 value,
                 "a participant's chosen number requires a resolving per-player number choice",
             );
-            let player = ctx.iterated_player;
+            let player = ctx.iteration.iterated_player;
             Ok(ctx
                 .secret_choice_results
                 .get(&ctx.source)

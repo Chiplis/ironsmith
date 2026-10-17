@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const out = process.argv[2];
+const url = process.argv[3] || 'http://localhost:5174/';
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 2 });
+page.on('pageerror', (e) => console.log('PAGEERROR', e.message));
+page.on('console', (m) => { if (m.type() === 'error') console.log('CONSOLE', m.text().slice(0, 300)); });
+await page.goto(url);
+await page.waitForSelector('[data-opponent-zone-piles]', { timeout: 90000 });
+await page.waitForTimeout(2500);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/full.png` });
+await page.screenshot({ path: `${out}/top.png`, clip: { x: 0, y: 0, width: 800, height: 200 } });
+await page.screenshot({ path: `${out}/right.png`, clip: { x: 1300, y: 380, width: 300, height: 320 } });
+await browser.close();

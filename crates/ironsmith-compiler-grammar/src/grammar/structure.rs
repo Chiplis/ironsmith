@@ -731,11 +731,17 @@ pub(crate) fn is_source_controlled_by_non_owner_condition(tokens: &[OwnedLexToke
         ["when" | "whenever", rest @ ..] => rest,
         all => all,
     };
-    let ["a", "player", "other", "than", possessive @ .., "owner", "controls", object @ ..] =
-        words
+    let ["a", "player", "other", "than", after_than @ ..] = words else {
+        return false;
+    };
+    let Some(owner_idx) = after_than
+        .windows(2)
+        .position(|pair| pair == ["owner", "controls"])
     else {
         return false;
     };
+    let possessive = &after_than[..owner_idx];
+    let object = &after_than[owner_idx + 2..];
     let Some((last, head)) = possessive.split_last() else {
         return false;
     };
