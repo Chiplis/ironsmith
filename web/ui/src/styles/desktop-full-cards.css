@@ -254,8 +254,15 @@
      edge of the battlefield. It slides in when the first object arrives,
      and each entry opens to its full rules text on hover or focus.
      --------------------------------------------------------------------- */
+  /* Both stack forms start after the mana rails. The card pile
+     (CardStackPile) sizes its own anchor through --card-stack-extent; only
+     the rail, still used while ordering triggers or replacements, is capped
+     here. */
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
     left: calc(var(--stack-frame-rail-left, 0px) + var(--fc-rail-gutter)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail:not([data-card-stack-anchor]) {
     width: max(0px, min(calc(var(--stack-frame-rail-width, 0px) - var(--fc-rail-gutter)), var(--fc-stack-max-w))) !important;
   }
 
