@@ -660,6 +660,42 @@
     display: none !important;
   }
 
+  /* While another player decides there is no Submit, so » sits in the
+     header's left slot and squeezes the title ("Choose" / "objects") onto two
+     lines. Read it as one header instead: the title first, on one line, then
+     » beside the fold chevron. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack:has(.action-strip-waiting) .action-strip-decision-toolbar > div:first-child {
+    align-items: center !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack:has(.action-strip-waiting) .action-strip-decision-meta {
+    order: 1 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack:has(.action-strip-waiting) .decision-primary-controls {
+    order: 2 !important;
+    align-items: center !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack:has(.action-strip-waiting) .action-strip-decision-meta > div:first-child {
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack:has(.action-strip-waiting) .action-strip-decision-inline-summary {
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-waiting {
+    color: var(--fc-ink-muted, rgba(221, 211, 241, 0.72)) !important;
+    font-size: 12px !important;
+    letter-spacing: 0.02em !important;
+  }
+
   /* Combat prompt: the phase track already names the step (Attackers,
      Blockers), so the panel keeps only its instruction and its actions. */
   /* One frame: the dock panel draws it, the combat panel inside is bare. */
