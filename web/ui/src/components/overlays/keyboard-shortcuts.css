@@ -1,7 +1,11 @@
 .keyboard-shortcuts-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  /* Above the whole table HUD (its control band is 150-220) and the card
+     preview (30010), below tooltips (31000) and an open lobby chat. On a
+     short window the centred panel reaches the phase track, which used to
+     paint over it. */
+  z-index: 30500;
   display: grid;
   place-items: center;
   padding: 16px;

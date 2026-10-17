@@ -42,11 +42,21 @@ import {
   prefetchRandomStartingBoard,
   startingBoardKey,
 } from "@/lib/starting-board";
+import { markStartupFoils } from "@/lib/foil-cards";
+import { installDockLabelFit } from "@/lib/dock-label-fit";
+import { installDockPlacement } from "@/lib/dock-placement";
+import FullCardsManaRail from "@/components/board/FullCardsManaRail";
+import { syncFullCardsFlag } from "@/lib/full-cards-flag";
+import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
 
 export default function Shell() {
   const ui = useUiText();
   useEffect(() => installMainDecisionShortcut(document), []);
   useEffect(() => installHandToggleShortcut(document), []);
+  useEffect(() => installDockLabelFit(), []);
+  useEffect(() => installDockPlacement(), []);
+  const [battlefieldAppearance] = useBattlefieldAppearance();
+  useEffect(() => syncFullCardsFlag(battlefieldAppearance), [battlefieldAppearance]);
   const {
     game,
     state,
@@ -351,6 +361,7 @@ export default function Shell() {
               initialPayload: prefetchedPayload,
               apply: (built) => applyStartingBoard(game, built),
             });
+            await markStartupFoils(game);
           } else {
             await resetStartingBoard(game, names, startingLife, fixedStartingBoard, semanticThreshold);
           }
@@ -875,6 +886,7 @@ export default function Shell() {
       <LogDrawer open={logOpen} onOpenChange={setLogOpen} />
       {!multiplayer.matchStarted ? <PerspectiveHandoffBanner /> : null}
       <KeyboardShortcutsOverlay />
+      <FullCardsManaRail />
       {lobbyOpen ? (
         <LobbyOverlay
           key={lobbyOverlayInitial.mode}
@@ -937,6 +949,7 @@ async function resetStartingBoard(game, names, startingLife, fixed, semanticThre
   await loadRandomStartingBoard(names, startingLife, semanticThreshold, {
     apply: (built) => applyStartingBoard(game, built),
   });
+  await markStartupFoils(game);
 }
 
 // Commander tables start as real matches; other formats load a seeded board.
