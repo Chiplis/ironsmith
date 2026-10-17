@@ -73,3 +73,9 @@ web/relay/.wrangler/
 !web/ui/src/lib/custom-card-assets.generated.json
 !web/ui/public/custommagic/images/
 !web/ui/public/custommagic/images/*.webp
+
+# card-glint is fetched and built before each frontend build.
+/web/ui/public/card-glint/
+
+# Empty same-origin Learn click tracking resource.
+!/web/ui/public/events/learn-click.txt
