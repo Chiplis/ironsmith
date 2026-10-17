@@ -216,7 +216,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       .find(Boolean)
     : null;
   const collapsedCard = optionHoveredCard || latestChosenCard || topCard;
-  const chosenInPile = !open && choosingObject
+  const chosenInPile = !open && choosingObject && !choiceInPanel
     ? latestChosenCard || cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
     : null;
 
