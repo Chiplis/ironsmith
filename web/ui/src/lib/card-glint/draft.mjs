@@ -25,8 +25,10 @@ function draftCardFace(face) {
 }
 
 // Paint the draft being edited. Split cards show both halves; other layouts show
-// the selected face. A real card's printing supplies its set and default art.
-export function cardGlintDraftFace(draft, faceIndex = 0, {printing, imageUrl} = {}) {
+// the selected face. A real card's printing supplies its set and default art;
+// a new card has none (null).
+export function cardGlintDraftFace(draft, faceIndex = 0, printingSource = null) {
+  const {printing, imageUrl} = printingSource ?? {};
   const faces = (draft?.faces ?? []).map(draftCardFace);
   if (!faces.length) return null;
   const presentation = normalizeCardPresentation(draft.presentation);

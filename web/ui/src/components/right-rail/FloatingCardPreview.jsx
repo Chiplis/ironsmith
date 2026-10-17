@@ -1,4 +1,5 @@
 import { zonePreviewLayout as placeZonePreview } from "@/lib/zone-preview-layout";
+import { classifyViewport } from "@/lib/viewport-layout";
 import { placeCardPreview } from "@/lib/card-preview-placement";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { manaPaymentActionMap, manaPaymentFrameActions, manaActivationCommand } from "@/lib/mana-payment-actions";
@@ -114,12 +115,20 @@ function zoneAnchoredPreviewPosition(anchorRect, objectId, size) {
 
 function previewPosition(objectId, size) {
   if (objectId == null || typeof document === "undefined" || typeof window === "undefined") return null;
-  const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id], [data-zone-card][data-object-id]"))
+  const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id], [data-zone-card][data-object-id], .opponent-hand-card[data-object-id]"))
     .filter((element) => element.getAttribute("data-object-id") === String(objectId));
   const source = candidates.find((element) => element.classList.contains("battlefield-row-card"))
     || candidates[0];
   if (!source) return null;
   if (source.hasAttribute("data-zone-card")) return zonePreviewPosition(source, size);
+  if (source.classList.contains("opponent-hand-card")) {
+    // An opponent's held card mostly hangs above the table edge; place the
+    // preview against the sliver that is on screen.
+    const rect = source.getBoundingClientRect();
+    const top = Math.max(0, rect.top);
+    return battlefieldPreviewLayout({ left: rect.left, right: rect.right, width: rect.width,
+      top, bottom: rect.bottom, height: Math.max(0, rect.bottom - top) }, size);
+  }
 
   return battlefieldPreviewLayout(source.getBoundingClientRect(), size);
 }
@@ -173,7 +182,7 @@ function stackFrameFloor() {
 function stackAnchoredPreviewPosition(anchorRect, size) {
   if (!anchorRect || typeof window === "undefined") return null;
   const margin = 8, gap = 8;
-  const rail = window.innerWidth >= 1024
+  const rail = !classifyViewport(window.innerWidth, window.innerHeight).nonDesktopViewport
     ? document.querySelector('[data-my-zone] .my-zone-stack-rail') : null;
   const railBounds = rail?.getBoundingClientRect();
   if (railBounds?.width > 0) {
@@ -357,7 +366,7 @@ function CardPreviewSurface({
     ));
   }, [directlyRequestedObjectId]);
   const directLookHover = directlyRequestedObjectId != null && typeof document !== "undefined"
-    && window.innerWidth >= 1024
+    && !classifyViewport(window.innerWidth, window.innerHeight).nonDesktopViewport
     && [...document.querySelectorAll('[data-zone-card="look"][data-object-id]')]
       .some(element => element.dataset.objectId === directlyRequestedObjectId);
   // Anchored previews are explicit card-name clicks, so they may inspect a

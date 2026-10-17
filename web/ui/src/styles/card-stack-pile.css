@@ -386,7 +386,7 @@
    mode). It reaches down the board; the pile clamps it above the player
    header, sizes its front card like the hover frame, and widens the box to
    what it covers (--card-stack-extent). */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail[data-card-stack-anchor] {
     bottom: 0;
     height: auto;

@@ -703,7 +703,7 @@
    Keep every control available, but make the desktop view dense enough to
    avoid turning the whole dialog into a second scrollable page. The catalog
    keeps its own compact list scroll when there are many decks. */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .lobby-sheet:not(.lobby-sheet-active) {
     height: calc(100dvh - 24px) !important;
     max-height: calc(100dvh - 24px) !important;

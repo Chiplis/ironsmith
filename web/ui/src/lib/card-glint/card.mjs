@@ -21,9 +21,23 @@ export const CARD_GLINT_DEFAULT_FRAME = Object.freeze({
   wordingMode: 'oracle', symbolStyle: 'modern',
 });
 
-function cardTypeLine(face, card) {
+// Hand and zone snapshots carry only their card types; the printing knows the
+// full printed line (supertypes such as Legendary, subtypes such as a
+// planeswalker's name). It stands in only while it agrees with the engine's
+// current types, so a card whose types an effect changed keeps the live line.
+function printedTypeLine(face, card, print) {
+  if (face.characteristic_signature ?? card.characteristic_signature) return null;
+  if ((face.supertypes ?? card.supertypes)?.length || (face.subtypes ?? card.subtypes)?.length) return null;
+  const printed = String(print?.type_line ?? '').trim();
+  if (!printed || printed.includes('//')) return null;
+  const types = (face.card_types ?? card.card_types ?? []).map(type => String(type).toLowerCase());
+  const printedMain = printed.split(/\s+[—-]\s+/)[0].toLowerCase().split(/\s+/);
+  return types.length && types.every(type => printedMain.includes(type)) ? printed : null;
+}
+
+function cardTypeLine(face, card, print) {
   if (face.type_line ?? card.type_line) return face.type_line ?? card.type_line;
-  return cardDisplayTypeLine({...card,...face,type_line_display:undefined});
+  return printedTypeLine(face, card, print) ?? cardDisplayTypeLine({...card,...face,type_line_display:undefined});
 }
 
 // Live engine fields take precedence over printing metadata. Printing only supplies decoration.
@@ -31,7 +45,7 @@ function cardTypeLine(face, card) {
 export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presentation} = {}) {
   const print = printing ?? card.printing ?? card;
   const face = card.card_faces?.[faceIndex] ?? card;
-  const type = cardTypeLine(face, card);
+  const type = cardTypeLine(face, card, print === card ? null : print);
   const signature = String(face.characteristic_signature ?? '').match(/^colors:([^\n]*)/m);
   const cost = face.mana_cost ?? card.mana_cost ?? '';
   const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));

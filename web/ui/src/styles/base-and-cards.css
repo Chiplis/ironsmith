@@ -445,11 +445,13 @@
 }
 
 .card-forge-grid {
+  position: relative;
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr);
   gap: 12px;
-  padding: 12px 16px;
+  /* Room on the right for the compiled-abilities drawer's tab. */
+  padding: 12px 34px 12px 16px;
   min-height: 0;
   overflow: hidden;
 }
@@ -469,22 +471,29 @@
 /* The painted card and its printing choices sit beside the details form. */
 .card-forge-workbench {
   display: grid;
-  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
   gap: 12px;
 }
 
 .card-forge-details {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* Short windows scroll the form rather than cutting off its last row. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  container-type: inline-size;
 }
 
 .card-forge-printing {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  /* An auto track sizes to the controls' full content; capping the track
+     itself leaves the card preview the rest of the column. */
+  grid-template-rows: minmax(240px, 1fr) auto;
   gap: 10px;
   min-height: 0;
-  overflow: hidden;
+  /* Every printing choice stays reachable; the card gives up height first. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .card-forge-printing-card {
@@ -494,8 +503,75 @@
 .card-forge-printing-controls {
   display: grid;
   gap: 8px;
-  max-height: 46%;
-  overflow: auto;
+}
+
+.card-forge-printing-credit {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: rgba(189, 162, 120, 0.75);
+}
+.card-forge-printing-credit a {
+  color: #d9bf8f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.card-forge-printing-credit a:hover,
+.card-forge-printing-credit a:focus-visible {
+  color: #f0dcb4;
+}
+
+.card-forge-abilities-drawer {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 0;
+  bottom: 12px;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+}
+.card-forge-abilities-drawer[data-open="true"] {
+  /* Covers the layout column (the grid's last track) and a little more. */
+  width: min(560px, calc(100% / 3.6 + 60px));
+}
+.card-forge-abilities-toggle {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 72px;
+  margin-right: 4px;
+  padding: 0;
+  border: 1px solid rgba(151, 122, 83, 0.45);
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(180deg, rgba(59, 50, 42, 0.95), rgba(30, 26, 23, 0.98));
+  color: #d1b279;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.card-forge-abilities-toggle:hover,
+.card-forge-abilities-toggle:focus-visible {
+  color: #f3dca6;
+  border-color: rgba(209, 178, 121, 0.8);
+  outline: none;
+}
+.card-forge-abilities-toggle > svg { width: 18px; height: 18px; }
+.card-forge-abilities-drawer-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  margin-right: 8px;
+  pointer-events: auto;
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.55);
+  animation: card-forge-drawer-in 180ms ease-out;
+}
+.card-forge-abilities-drawer-body > .card-forge-abilities-panel { height: 100%; }
+@keyframes card-forge-drawer-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-forge-abilities-drawer-body { animation: none; }
 }
 
 .card-forge-side {
@@ -921,7 +997,7 @@
 
 @media (max-width: 1120px) {
   .card-forge-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr);
   }
 
   .card-forge-inline-type {
@@ -1034,7 +1110,7 @@
   }
 
   .card-forge-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
     gap: 8px;
     padding: 8px;

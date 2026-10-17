@@ -6,12 +6,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export default function PlayNavigation({ onOpenLobby, onAddCardNotice }) {
   const ui = useUiText();
   return <nav className="home-navigation" aria-label={ui("Game menu")}>
-    <button type="button" className="home-action home-action-play" onClick={onOpenLobby}><Users size={16} aria-hidden="true" />{ui("Lobby")}</button>
+    <button type="button" className="home-action home-action-play" onClick={onOpenLobby} aria-label={ui("Lobby")} title={ui("Lobby")}>
+      <Users size={16} aria-hidden="true" /><span className="home-action-label">{ui("Lobby")}</span>
+    </button>
     <CardCreationControls navigation onAddCardNotice={onAddCardNotice} />
   </nav>;
 }
 
-export function LearnButton() {
+export function LearnButton({ iconOnly = false }) {
   const ui = useUiText();
   const recordClick = () => {
     // The empty static resource is a no-op; count requests in hosting logs.
@@ -22,8 +24,9 @@ export function LearnButton() {
   };
   return <Popover>
     <PopoverTrigger asChild>
-      <button type="button" className="home-action home-action-learn" onClick={recordClick}>
-        <BookOpen size={14} aria-hidden="true" />{ui("Learn")}
+      <button type="button" className="home-action home-action-learn" onClick={recordClick}
+        aria-label={ui("Learn")} title={iconOnly ? ui("Learn") : undefined}>
+        <BookOpen size={14} aria-hidden="true" />{iconOnly ? null : ui("Learn")}
       </button>
     </PopoverTrigger>
     <PopoverContent side="top" className="z-[200] w-auto px-4 py-3 text-sm">

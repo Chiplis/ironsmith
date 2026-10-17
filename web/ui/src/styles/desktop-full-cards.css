@@ -3,7 +3,7 @@
    renders full cards, so the compact appearance and mobile keep their own
    layout; only the palette and the action buttons are shared with compact. Loaded last so it can settle the full-card HUD in one place. */
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* The palette and the action buttons are shared with the compact-cards
      appearance, so both desktop appearances present the same decisions. */
   .table-shell[data-focused-hud="true"] {
@@ -934,15 +934,17 @@
     max-width: var(--fc-dock-max-width) !important;
   }
 
-  /* Menu, brand and links sit in the top-right corner, on the opponent's
-     header strip above their piles, instead of under the local player. */
+  /* Brand (the menu) and links sit at the left end of the phase row,
+     between the two fields, where no player's header can run into them.
+     The divider also reserves the combat row below the tracker, so the
+     block hangs from its bottom to centre on the tracker's icons. */
   .table-shell[data-focused-hud="true"] .navigation-utility-controls,
   html[data-full-cards] .navigation-utility-controls {
-    position: fixed !important;
-    top: 6px !important;
-    right: 10px !important;
-    left: auto !important;
-    bottom: auto !important;
+    position: absolute !important;
+    top: auto !important;
+    right: auto !important;
+    left: 14px !important;
+    bottom: -4px !important;
     z-index: 230 !important;
     width: auto !important;
     margin: 0 !important;
@@ -958,7 +960,7 @@
    the dock's capped width, and a button sharing a row (Pay, Submit) takes
    that row's room instead of overflowing it. */
 @layer fc-dock-sizing {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     /* Phase changes resize the dock. Its own animation scales it unevenly
        (squashing the labels) while dock-placement.js moves it, so the two
        fought and the dock zigzagged; here it keeps its shape and glides to
@@ -1062,7 +1064,7 @@
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Cancel keeps its own width; Pay (and » when present) share the rest. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row {
     grid-template-columns: auto minmax(0, 1fr) !important;

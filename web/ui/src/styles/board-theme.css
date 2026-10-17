@@ -4389,7 +4389,7 @@ select::-ms-expand {
 }
 
 /* --- Small desktop: 1024px–1439px --- */
-@media (min-width: 1024px) and (max-width: 1439px) {
+@media (min-width: 1024px) and (max-width: 1439px), (min-width: 721px) and (min-height: 541px) and (max-width: 1439px) {
   .topbar-shell {
     gap: 10px;
     grid-template-columns: minmax(0, 1fr) auto;

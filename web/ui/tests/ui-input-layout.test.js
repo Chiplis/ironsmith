@@ -13,9 +13,13 @@ test("rotating a modern phone keeps the dedicated phone table", () => {
   }
 });
 
-test("tablet and desktop layouts retain their space-appropriate controls", () => {
-  assert.equal(classifyViewport(844, 768).tabletCompactViewport, true);
-  assert.equal(classifyViewport(1023, 541).tabletCompactViewport, true);
+test("tablets get the desktop table and desktop tiers keep their controls", () => {
+  for (const [width, height] of [[844, 768], [1023, 541], [768, 1024], [994, 927]]) {
+    const layout = classifyViewport(width, height);
+    assert.equal(layout.tabletCompactViewport, false, `${width}×${height}`);
+    assert.equal(layout.nonDesktopViewport, false, `${width}×${height}`);
+    assert.equal(layout.smallDesktopViewport, true, `${width}×${height}`);
+  }
   assert.equal(classifyViewport(1280, 720).smallDesktopViewport, true);
   assert.equal(classifyViewport(1440, 900).nonDesktopViewport, false);
   assert.equal(classifyViewport(1920, 1080).largeDesktopViewport, true);

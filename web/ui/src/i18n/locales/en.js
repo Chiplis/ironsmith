@@ -668,6 +668,7 @@ export const ui = {
   "Card preview unavailable. You can still edit the details.": "Card preview unavailable. You can still edit the details.",
   "Change border color": "Change border color",
   "Change rarity": "Change rarity",
+  "Card frames rendered by": "Card frames rendered by",
   "Print effects": "Print effects",
   "Fine cardstock texture and irregular ink dots": "Fine cardstock texture and irregular ink dots",
   "Printing style": "Printing style",

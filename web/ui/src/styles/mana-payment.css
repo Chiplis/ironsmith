@@ -27,7 +27,7 @@
 .mana-payment-warning-details { z-index:1000; max-width:calc(100vw - 24px); font-size:13px; }
 .mana-payment-warning-details ul { margin:0; padding-left:16px; }
 .mana-payment-warning-details li + li { margin-top:6px; }
-@media(min-width:1024px) {
+@media (min-width:1024px), (min-width: 721px) and (min-height: 541px) {
  /* The expanded Submit footer shares the button-only dock's baseline. */
  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel:has(.decision-stack-footer) { padding-bottom:5px !important; }
  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock[data-mana-payment="true"] { min-width:0; }

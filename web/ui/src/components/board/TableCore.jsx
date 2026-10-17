@@ -467,7 +467,6 @@ export default function TableCore({
                 </span>
               </span>
             )}
-            {focusedHudDesktop ? <div className="local-command-zone-dock" /> : null}
           </div>
         </div>
         {!focusedHudDesktop ? <PriorityHoldControl /> : null}
@@ -496,9 +495,6 @@ export default function TableCore({
       {focusedHudDesktop ? (
         <div className="player-header-card-controls">
           <PlayNavigation onOpenLobby={zoneActionControls?.props?.onOpenLobby} onAddCardNotice={zoneActionControls?.props?.onAddCardNotice} />
-          {middleUtilityControls && <div className="navigation-utility-controls">
-            {cloneElement(middleUtilityControls, { showBrand: true, menuFirst: true, showLearn: true })}
-          </div>}
         </div>
       ) : null}
       {!dockStackRailInBoard ? (
@@ -686,9 +682,17 @@ export default function TableCore({
         setActiveOpponentIndex={setMobileOpponentIndex}
       />
       {focusedHudDesktop && (
-        <div className="table-phase-divider">
+        <div className="table-phase-divider" style={{
+          // The tracker starts at the centre of the first opponent's field
+          // (a third of the way across with one opponent) and ends at the edge.
+          "--phase-track-start": opponents.length > 1 ? `${50 / opponents.length}%` : "33%",
+        }}>
           {/* Reserve both tracker rows so combat never resizes either field. */}
           <div className="topbar-phase-shell"><PhaseTrack compact reserveCombatSpace /></div>
+          {/* Brand (the menu), then the site links, at the row's right end. */}
+          {middleUtilityControls && <div className="navigation-utility-controls">
+            {cloneElement(middleUtilityControls, { brandMenu: true, showLearn: true })}
+          </div>}
         </div>
       )}
       {planarZoneElement}

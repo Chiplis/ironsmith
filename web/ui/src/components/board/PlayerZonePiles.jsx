@@ -1,6 +1,5 @@
 import ZonePileLabel from "./ZonePileLabel";
 import ZoneIcon, { LookEyeGlyph } from "./ZoneIcon";
-import { createPortal } from "react-dom";
 import useUiText from "@/i18n/useUiText";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -426,7 +425,6 @@ function ZoneIconRow({ player, zone, onCardClick, legalTargetObjectIds, onOpenDe
 export default function PlayerZonePiles({ player, onCardClick, legalTargetObjectIds, leadingRail = null, onOpenDecklist = null }) {
   const { state } = useGame();
   const ref = useRef(null);
-  const [commandDock, setCommandDock] = useState(null);
   useLayoutEffect(() => {
     const piles = ref.current;
     const container = piles?.parentElement;
@@ -434,9 +432,6 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     const row = container.querySelector(".battlefield-row");
     let frame;
     const measure = () => {
-      setCommandDock(piles.dataset.localZonePiles === "true"
-        ? container.closest(".table-shell")?.querySelector(".local-command-zone-dock") ?? null
-        : null);
       const bounds = container.getBoundingClientRect();
       const cards = Array.from(container.querySelectorAll(".battlefield-row-card"))
         .map((card) => card.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
@@ -451,7 +446,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       const containerClientTop = container.clientTop;
       let pileWidth = Math.min(56, cardWidth * 0.7);
       if (piles.dataset.opponentZonePiles === "true"
-        && window.innerWidth >= 1024
+        && window.innerWidth >= 721
         && piles.closest('.table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])')) {
         // This rail starts at the top of the lane. Fit every pile and label
         // inside the opponent panel, whose overflow clips the last card.
@@ -480,7 +475,22 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
               .filter((rect) => rect.width > 0 && rect.left < column.right && rect.right > column.left
                 && rect.bottom <= nextPilesTop)
               .reduce((bottom, rect) => Math.max(bottom, rect.bottom + LOCAL_PILES_CLEARANCE), -Infinity);
-            lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, nextPilesTop - ceiling));
+            const room = nextPilesTop - ceiling;
+            lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, room));
+            // A tall decision (a scry, a search) grows the action dock up the
+            // right edge; the zones, and any eye a look put there, rise above it.
+            const rows = [...piles.querySelectorAll(":scope > .zone-icon-row, :scope > .zone-pile-slot")]
+              .map((row) => row.getBoundingClientRect()).filter((rect) => rect.height > 0);
+            const dock = document.querySelector(".battlefield-human-action-dock")?.getBoundingClientRect();
+            const currentLift = parseFloat(piles.style.getPropertyValue("--local-piles-lift")) || 0;
+            if (rows.length && dock?.height > 0) {
+              const left = Math.min(...rows.map((rect) => rect.left));
+              const right = Math.max(...rows.map((rect) => rect.right));
+              if (dock.left < right && dock.right > left) {
+                const bottom = Math.max(...rows.map((rect) => rect.bottom)) + currentLift;
+                lift = Math.max(lift, Math.min(room, bottom - (dock.top - LOCAL_PILES_CLEARANCE / 2)));
+              }
+            }
           }
           const nextLift = `${Math.round(lift)}px`;
           if (piles.style.getPropertyValue("--local-piles-lift") !== nextLift) {
@@ -508,6 +518,8 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     observer.observe(container);
     observer.observe(piles);
     if (row) observer.observe(row);
+    const dock = document.querySelector(".battlefield-human-action-dock");
+    if (dock && piles.dataset.localZonePiles === "true") observer.observe(dock);
     const mutations = new MutationObserver((records) => {
       // Card internals change for hover, targeting and animation. Only the
       // grid and its positioned wrappers determine the piles' placement.
@@ -524,10 +536,12 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     if (row) mutations.observe(row, { attributes: true, attributeOldValue: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });
     window.addEventListener("resize", schedule);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
-  }, [player]);
+  // A new decision can grow the action dock the local zones must clear.
+  }, [player, state?.decision]);
   const isLocal = samePlayerId(player.id ?? player.index, state?.perspective);
   const zones = ["exile", ...pileZonesFor(state).map(zone => zone === "exile" ? "library" : zone)];
-  const dockCommand = isLocal && commandDock && zones.includes("command");
+  // Our own commander lives in the pseudo-hand, so only opponents show a
+  // command zone.
   if (!isLocal) zones.reverse();
   return <>
     <div ref={ref} className="player-zone-piles" data-player-zone-piles
@@ -535,16 +549,12 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
       data-opponent-zone-piles={!isLocal ? "true" : undefined}>
       {/* Spans the piles' own height, so anything here lines up with them. */}
       {leadingRail}
-      {zones.filter((zone) => !(dockCommand && zone === "command")).map((zone) => zone === "command"
+      {zones.filter((zone) => !(isLocal && zone === "command")).map((zone) => zone === "command"
         ? <ZonePile key={zone} player={player} zone={zone}
           onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />
         : <ZoneIconRow key={zone} player={player} zone={zone} onOpenDecklist={onOpenDecklist}
           onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />)}
     </div>
-    {dockCommand && createPortal(
-      <ZonePile player={player} zone="command" onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />,
-      commandDock
-    )}
     {isLocal && <div className="player-zone-chat-dock"><LobbyChat /></div>}
   </>;
 }

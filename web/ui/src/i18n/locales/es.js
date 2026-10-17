@@ -752,6 +752,7 @@ export const ui = {
   "Card preview unavailable. You can still edit the details.": "Vista previa no disponible. Aún puedes editar los detalles.",
   "Change border color": "Cambiar color del borde",
   "Change rarity": "Cambiar rareza",
+  "Card frames rendered by": "Marcos de carta generados por",
   "Print effects": "Efectos de impresión",
   "Fine cardstock texture and irregular ink dots": "Textura fina de cartulina y puntos de tinta irregulares",
   "Printing style": "Estilo de impresión",

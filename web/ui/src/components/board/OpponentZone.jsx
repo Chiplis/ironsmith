@@ -246,6 +246,7 @@ export default function OpponentZone({
           <OpponentSlot
             key={player.id}
             player={player}
+            soleOpponent={opponents.length === 1}
             selectedObjectId={selectedObjectId}
             onInspect={onInspect}
             onOpenDecklist={onOpenDecklist}
@@ -274,6 +275,7 @@ function OpponentSlot({
   legalTargetPlayerIds,
   legalTargetObjectIds,
   headerControls = null,
+  soleOpponent = false,
   mobileViewport = false,
   mobileBattleScene = false,
   onMobileCardActionMenu = null,
@@ -487,6 +489,7 @@ function OpponentSlot({
       data-player-drop-target={playerIdx}
       onClickCapture={handleClickCapture}
     >
+      {soleOpponent && !mobileViewport && <OpponentHandFan player={player} mirrorHand />}
       <div className="opponent-battlefield-heading min-w-0">
         {!mobileViewport ? (
           <div
@@ -536,7 +539,7 @@ function OpponentSlot({
                 {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
             </span>
-            <OpponentHandFan player={player} />
+            {!soleOpponent && <OpponentHandFan player={player} />}
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
               {headerControls}
             </div>

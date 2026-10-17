@@ -142,7 +142,7 @@
 
 /* Desktop: opponents' piles hang from the top of their lane now that each
    zone is a single chip. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .battlefield-panel--opponents .player-zone-piles[data-opponent-zone-piles="true"] {
     top: 8px;
     bottom: auto;
@@ -170,13 +170,15 @@
 }
 .opponent-hand-card {
   position: absolute;
-  top: 3px;
+  /* Flipped about its top edge the card occupies the space above `top`, so
+     this leaves the inverted card's name and upper art in the header band. */
+  top: calc(var(--opponent-hand-card-width, 40px) * 88 / 63 * 0.64);
   width: var(--opponent-hand-card-width, 40px);
   aspect-ratio: 63 / 88;
   overflow: hidden;
   border-radius: 3px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
-  transform-origin: 50% 100%;
+  transform-origin: 50% 0;
   transition: transform 180ms ease, left 180ms ease;
   pointer-events: auto;
 }
@@ -246,4 +248,33 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   box-shadow: 0 0 6px rgba(121, 220, 255, 0.45);
+}
+
+/* A card chosen inside a closed zone checks the chip's leading corner. */
+.zone-pile-slot--icon > .zone-pile-check,
+.zone-pile-slot--eye > .zone-pile-check {
+  top: -7px;
+  left: -7px;
+  right: auto;
+}
+
+/* The fan yields width to the opponent's name, never the other way round. */
+.battlefield-panel--opponents .battlefield-panel-header > .player-identity-box {
+  flex: 0 0 auto;
+  max-width: 55%;
+}
+
+/* One opponent: the fan mirrors our hand from the top edge of the table. */
+.battlefield-panel--opponents .battlefield-subpanel { position: relative; }
+.opponent-hand-fan.opponent-hand-fan--mirror {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  width: 0;
+  height: calc(var(--opponent-hand-card-width) * 88 / 63 * 0.42);
+  margin: 0;
+  overflow: visible;
+}
+.opponent-hand-fan--mirror > .opponent-hand-card {
+  top: calc(var(--opponent-hand-card-width) * 88 / 63 * 0.42);
 }

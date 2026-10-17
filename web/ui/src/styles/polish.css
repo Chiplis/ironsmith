@@ -1180,7 +1180,7 @@
 }
 
 /* ---- Final desktop table frame pass ---- */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .app-shell:not(.mobile-app-shell) {
     padding: 3px !important;
     gap: 3px !important;
@@ -1473,7 +1473,7 @@
   height: 8px !important;
 }
 
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .battlefield-panel--opponents .battlefield-row[data-bf-side="top"] {
     padding-top: 20px !important;
     padding-bottom: 10px !important;
@@ -1535,7 +1535,7 @@
 }
 
 /* ---- Reference middle controls pass ---- */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .table-shared-action-slot {
     padding: 5px 6px 6px 12px !important;
     border-top: 1px solid rgba(199, 153, 75, 0.28);
@@ -1964,7 +1964,7 @@
 }
 
 /* Keep the main decision button tied to the deciding player's accent. */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .action-strip-layout--segmented {
     --decision-edge-text: #eef6ff;
     --decision-edge-text-shadow:
@@ -2054,7 +2054,7 @@
 }
 
 /* Expanded decision UIs need to contain variable-height target/payment rows. */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .table-action-bar[data-expanded="true"] .priority-inline-panel {
     overflow: visible !important;
   }
@@ -2220,7 +2220,7 @@
 }
 
 /* Shared middle strip polish after moving it below the player nameplate. */
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .table-shared-action-slot {
     border-bottom: 0 !important;
     box-shadow:

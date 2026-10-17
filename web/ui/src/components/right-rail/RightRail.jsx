@@ -22,7 +22,7 @@ const INLINE_EXPANDED_RIGHT_BLEED = 14;
 
 /* Viewport-tier overrides for inspector sizing */
 const TABLET_COMPACT_QUERY = "(min-width: 721px) and (max-width: 1023px)";
-const SMALL_DESKTOP_QUERY = "(min-width: 1024px) and (max-width: 1439px)";
+const SMALL_DESKTOP_QUERY = "(min-width: 1024px) and (max-width: 1439px), (min-width: 721px) and (max-width: 1439px) and (min-height: 541px)";
 const LARGE_DESKTOP_QUERY = "(min-width: 1800px)";
 
 function getViewportTierInspectorOverrides() {

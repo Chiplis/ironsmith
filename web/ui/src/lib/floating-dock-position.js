@@ -4,7 +4,7 @@ const DOCK_RIGHT_INSET = 18;
 const DOCK_MIN_TOP = 48;
 const ZONE_CLEARANCE = 12;
 const HAND_DOCK_GAP = 16;
-const FOCUSED_HUD_MIN_VIEWPORT = 1024;
+const FOCUSED_HUD_MIN_VIEWPORT = 721;
 
 /**
  * Horizontal room the desktop hand leaves free on each side so the decision

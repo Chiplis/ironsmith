@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Hammer } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import useUiText from "@/i18n/useUiText";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
@@ -38,8 +39,13 @@ export default function CardCreationControls({ onAddCardNotice, navigation = fal
             type="button"
             className={navigation ? "home-action home-action-build" : triggerPill}
             disabled={addLocked}
+            aria-label={navigation ? ui("Build") : undefined}
+            title={navigation ? ui("Build") : undefined}
           >
-            {ui("Build")}
+            {navigation ? <>
+              <Hammer size={15} aria-hidden="true" className="home-action-icon" />
+              <span className="home-action-label">{ui("Build")}</span>
+            </> : ui("Build")}
           </button>
         )}
       />

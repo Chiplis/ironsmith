@@ -231,6 +231,36 @@ function useLocalPreviewHeight(enabled, viewportWidth, viewportHeight) {
   return enabled ? height : null;
 }
 
+// Where the bottom-left navigation (Lobby, Build) ends. The desktop hand
+// keeps its right edge for the decision dock and grows left up to here.
+function useNavigationRightEdge(enabled) {
+  const [right, setRight] = useState(null);
+  useLayoutEffect(() => {
+    if (!enabled) return undefined;
+    let observed = null;
+    const observer = new ResizeObserver(() => measure());
+    const measure = () => {
+      const nav = document.querySelector('.table-shell[data-focused-hud="true"] .home-navigation');
+      if (nav !== observed) {
+        if (observed) observer.unobserve(observed);
+        if (nav) observer.observe(nav);
+        observed = nav;
+      }
+      const rect = nav?.getBoundingClientRect();
+      setRight(rect && rect.width > 0 ? Math.round(rect.right) : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // The navigation mounts with the table, possibly after the hand.
+    const retry = setTimeout(measure, 500);
+    return () => { clearTimeout(retry); observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, [enabled]);
+  return enabled ? right : null;
+}
+
+// Clears the fan's outermost card, whose rotation reaches past its slot.
+const HAND_NAVIGATION_GAP = 30;
+
 function computeManabrewSpread(total, dims) {
   if (total <= 1) return 0;
   if (dims.packWidth) {
@@ -859,6 +889,9 @@ export default function HandZone({
   const localPreviewHeight = useLocalPreviewHeight(
     (layout === 'fan' || layout === 'mobile-fan') && !(availableWidth > 0), viewportWidth, viewportHeight
   );
+  const navigationRight = useNavigationRightEdge(
+    (layout === "fan" || layout === "mobile-fan") && !(availableWidth > 0)
+  );
   const handDimensions = useMemo(() => {
     const dimensions = computeManabrewHandDimensions(handScale, viewportHeight);
     // The fullscreen hand is already sized for reading. Desktop's upward lift
@@ -875,18 +908,32 @@ export default function HandZone({
       // Fixed desktop hand width: centred, leaving room on the right for the
       // decision dock. Cards squeeze together inside it (see
       // computeManabrewSpread) instead of growing the row.
+      const reserve = handSideReserve(viewportWidth);
+      // The right edge stays where the dock expects it; the left edge moves
+      // out to the navigation when that leaves more room than the reserve.
+      const left = navigationRight == null ? reserve : Math.min(reserve, navigationRight + HAND_NAVIGATION_GAP);
+      const right = viewportWidth - reserve;
       const packWidth = Math.min(
         dimensions.spreadWidth,
-        Math.max(dimensions.cardW * 2, viewportWidth - handSideReserve(viewportWidth) * 2 - 32)
+        Math.max(dimensions.cardW * 2, right - left - 32)
       );
+      // Centre the packed fan in its lane, never past the reserved right edge.
+      const centerShift = Math.round(Math.min(right - packWidth / 2 - 16, (left + right) / 2) - viewportWidth / 2);
       const hoverScale = localPreviewHeight == null ? dimensions.hoverScale : Math.min(
         localPreviewHeight / dimensions.cardH,
         (localPreviewHeight * 63 / 88) / dimensions.cardW
       );
-      return { ...dimensions, packWidth, hoverScale };
+      return { ...dimensions, packWidth, hoverScale, centerShift };
     }
     return dimensions;
-  }, [handScale, viewportHeight, viewportWidth, layout, availableWidth, localPreviewHeight]);
+  }, [handScale, viewportHeight, viewportWidth, layout, availableWidth, localPreviewHeight, navigationRight]);
+  // The shell is centred on the screen; the lane's own centre may sit left of that.
+  useLayoutEffect(() => {
+    const shell = handListRef.current?.closest(".hand-reveal-shell");
+    if (!shell) return undefined;
+    shell.style.setProperty("--hand-center-shift", `${handDimensions.centerShift ?? 0}px`);
+    return () => shell.style.removeProperty("--hand-center-shift");
+  }, [handDimensions.centerShift]);
   const isRoulette = !isVerticalRail && !isMobileFan && !handDimensions.packWidth
     && renderedHandCardCount >= HAND_ROULETTE_THRESHOLD;
   // Only one interaction source may drive the fan at a time. In particular,
@@ -1034,6 +1081,11 @@ export default function HandZone({
       // Another hand card owns its own click path and replaces the selection;
       // only clicks outside the hand-card surface dismiss the current one.
       if (!isMobileFan && target instanceof Element && target.closest(".game-card.hand-card")) return;
+      // The desktop dock also uses the mobile fan, so this runs for every
+      // click. With nothing pinned there is no hand inspection to release;
+      // clearing hover and broadcasting here would drop the field card's
+      // frame on pointer-down only for its own click to reopen it.
+      if (pinnedHandObjectId == null) return;
       setPinnedHandObjectId(null);
       setKeyboardSelectedObjectId(null);
       keyboardNavigationRef.current = false;

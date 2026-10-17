@@ -221,7 +221,12 @@ export default function TopbarMenuSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button
+        {triggerIcon === "brand" ? (
+          <button type="button" className="toolbar-brand topbar-brand topbar-brand-menu-trigger"
+            aria-label={ui(t("app.openNavigationMenu"))} title={ui(t("app.menu"))}>
+            IronSmith
+          </button>
+        ) : <Button
           variant="secondary"
           size="icon-xs"
           className="stone-pill topbar-menu-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
@@ -229,7 +234,7 @@ export default function TopbarMenuSheet({
           title={ui(triggerIcon === "menu" ? t("app.menu") : t("app.settings"))}
         >
           {triggerGlyph}
-        </Button>
+        </Button>}
       </SheetTrigger>
       <SheetContent
         side={nonDesktopViewport ? "center" : "right"}

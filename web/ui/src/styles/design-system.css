@@ -243,7 +243,7 @@
   transform-origin: right center;
   animation-duration: 220ms;
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .zone-pile-menu[data-slot="popover-content"] {
     max-width: min(var(--zone-strip-width), 35vw);
   }
@@ -1962,7 +1962,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   color: var(--ui-text-muted);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-middle-toolbars,
   .table-middle-toolbar-stack {
     gap: 0 !important;
@@ -1986,7 +1986,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 720px), (max-width: 1023px) and (max-height: 540px) {
   .topbar-shell {
     min-height: 44px;
   }
@@ -2174,7 +2174,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   background: transparent;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .topbar-minor-controls .stone-pill {
     border-color: transparent !important;
     background: transparent !important;
@@ -2200,7 +2200,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   background: rgba(255, 107, 95, 0.24) !important;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shared-control-band .topbar-shell {
     border-top-color: rgba(255, 244, 218, 0.07) !important;
     border-bottom-color: rgba(212, 164, 74, 0.24) !important;
@@ -2251,7 +2251,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 
 /* Expanded decisions temporarily occupy the protected empty space at the top
    of the battlefield; there is no longer a permanent decision strip. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shared-action-slot {
     border-color: transparent !important;
     background:
@@ -3301,8 +3301,9 @@ button:disabled,
 .card-forge-face-content { overflow: visible; }
 .card-forge-inline-editor,
 .card-forge-inline-frame { height: auto; min-height: 100%; }
-.card-forge-inline-rules { min-height: 140px; }
-.card-forge-inline-frame { grid-template-rows: min-content min-content minmax(140px, 1fr) min-content; }
+/* The rules box gives up height first, so the stats row stays in view. */
+.card-forge-inline-rules { min-height: 80px; }
+.card-forge-inline-frame { grid-template-rows: min-content min-content minmax(80px, 1fr) min-content; gap: 8px; padding: 12px; }
 .card-forge-choice,
 .card-forge-chip,
 .card-forge-color { border-radius: var(--ui-radius-control); }
@@ -3320,7 +3321,7 @@ button:disabled,
   .puzzle-zone-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .topbar-phase-status { font-size: 10px; }
   .topbar-phase-perspective { font-size: 10px; }
   select.stone-select.topbar-phase-perspective-select { font-size: 10px !important; }
@@ -3465,7 +3466,7 @@ button:disabled,
   stroke-width: 1;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Keep expanded decisions within their two-strip container. */
   .table-shared-control-band[data-expanded-decision="true"] .table-shared-action-slot,
   .table-shared-control-band[data-expanded-decision="true"] .table-shared-action-slot > .table-action-bar {
@@ -3946,7 +3947,7 @@ button:disabled,
   border-left: 2px solid rgba(var(--player-accent-rgb, 216, 191, 106), 0.82) !important;
 }
 
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   .table-shell .table-middle-toolbars,
   .table-shell .table-middle-toolbar-stack {
     gap: 0 !important;
@@ -3997,7 +3998,7 @@ button:disabled,
 [data-my-zone] .my-zone-board-shell .battlefield-zone-shelf {
   padding-top: 6px;
 }
-@media (min-width: 1024px) and (min-height: 700px) {
+@media (min-width: 1024px) and (min-height: 700px), (min-width: 721px) and (min-height: 541px) and (min-height: 700px) {
   [data-my-zone] .my-zone-board-shell .battlefield-zone-shelf {
     padding-top: 0;
   }
@@ -4671,7 +4672,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Desktop battlefield HUD: leave the center lane for cards and game effects. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] {
     /* Multiplayer opponents share the width, so reclaim more vertical space. */
     grid-template-rows: minmax(0, var(--opponent-board-share, 0.86fr)) auto minmax(0, var(--local-board-share, 1.14fr)) !important;
@@ -5067,7 +5068,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) and (max-width: 1250px) {
+@media (min-width: 1024px) and (max-width: 1250px), (min-width: 721px) and (min-height: 541px) and (max-width: 1250px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
     right: clamp(96px, 10vw, 126px);
     width: min(332px, calc(100vw - 288px));
@@ -5075,7 +5076,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Keep the turn sequence, current step, and its action controls in one clear HUD. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .topbar-phase-shell {
     position: fixed !important;
     left: 50%;
@@ -5357,7 +5358,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Opponent mana stays legible in a slim, left-side icon/value rail. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell .battlefield-panel--opponents .battlefield-subpanel {
     grid-template-columns: 38px minmax(0, 1fr) !important;
     grid-template-rows: auto minmax(0, 1fr) !important;
@@ -5471,7 +5472,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) and (max-width: 1250px) {
+@media (min-width: 1024px) and (max-width: 1250px), (min-width: 721px) and (min-height: 541px) and (max-width: 1250px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
     right: 14px;
     width: min(340px, calc(100vw - 260px));
@@ -5508,7 +5509,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Active decisions get a readable floating sheet above the hand. Keep the
    title/instruction visible at all times and let players fold the choices. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.action-strip-decision-stack[data-details-expanded="true"]) {
     width: min(var(--decision-panel-content-width, 420px), calc(100vw - 28px)) !important;
   }
@@ -5788,7 +5789,7 @@ html[data-hand-pointer-suspended="true"] * {
 /* Pregame choices are one compact action group, not two unrelated blocks.
    Sphinx of Foresight is the longest common label, so the optional action gets
    the flexible column while the generic advance action stays concise. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.action-strip-layout--pregame-choice) {
     width: min(350px, calc(100vw - 28px)) !important;
   }
@@ -6088,7 +6089,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Keep the local identity and its quick priority controls together at the
    lower-left HUD, including while a decision replaces the shared toolbar. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .table-shared-player-header {
     bottom: 28px !important;
     width: max-content !important;
@@ -6380,7 +6381,7 @@ html[data-hand-pointer-suspended="true"] * {
    inset glow, no outer shadow or lift), so clipping ancestors can never cut
    it off. Each button also fills its region exactly instead of overflowing
    a shorter, overflow-hidden wrapper. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
     --hud-action-h: 36px;
     --hud-action-radius: 7px;
@@ -6552,7 +6553,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Cancel actions retain their soft red treatment in the focused HUD dock. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
     --hud-danger-border: rgba(222, 128, 128, 0.42);
     --hud-danger-bg: linear-gradient(180deg, rgba(64, 30, 34, 0.9), rgba(26, 15, 17, 0.96));
@@ -6587,7 +6588,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* The docked stack hugs its entries instead of reserving a fixed 240px box,
    and scrolls inside once it reaches that cap. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
     --stack-rail-max: min(36vh, 240px);
     height: auto;
@@ -6623,7 +6624,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* A cancel that can't be used is noise in the dock; hide it. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .decision-cancel-button:is(:disabled, [aria-disabled="true"]) {
     display: none !important;
@@ -6632,7 +6633,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Decision popups had four nested wrappers each adding padding (~35px per
    side). Keep a single, even inset on the panel itself. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack) {
     padding: 10px 12px !important;
@@ -6664,7 +6665,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Ordering list: full-width, compact rows with clear up/down controls. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-content {
     padding-inline: 0 !important;
   }
@@ -6723,7 +6724,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Combat prompts read as the same card as other decision popups, with their
    actions on the right like every other dock state. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.combat-decision-panel) {
     padding: 10px 12px !important;
@@ -6761,7 +6762,7 @@ html[data-hand-pointer-suspended="true"] * {
 /* Expanded decision popups: give the list more room, and when it still does
    not fit, the option list shrinks and scrolls while the Submit row always
    stays visible inside the panel. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
     max-height: min(60vh, 420px) !important;
@@ -6798,7 +6799,7 @@ html[data-hand-pointer-suspended="true"] * {
   display: none;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-header-mana {
     display: none !important;
   }
@@ -6860,7 +6861,7 @@ html[data-hand-pointer-suspended="true"] * {
    row, right after the name and before the hand. The expanded panel is
    anchored to the tab's bottom-left and grows up and to the right, so the
    header row never changes height. The zone-pile copy is hidden here. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Only when the header copy is actually rendered; otherwise the original
      dock stays as the fallback. */
   .table-shell[data-focused-hud="true"]:has(.player-header-chat-dock) .player-zone-chat-dock {
@@ -6965,14 +6966,14 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* The open chat must cover the phase/priority controls (z-index 180). */
   .table-shell[data-focused-hud="true"] > .table-shared-control-band:has(.player-header-chat-dock .lobby-chat[data-collapsed="false"]) {
     z-index: 200 !important;
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* The dock's height budget comes from TableCore (the lane beside the zones);
      the option list shrinks and scrolls to fit it. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
@@ -6990,7 +6991,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Dock header: a chevron in the top-right corner folds the options; Submit
    lives in a footer under the options, outside their scroll area. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-toolbar-side {
     display: flex;
     flex: 0 0 auto;
@@ -7131,7 +7132,7 @@ html[data-hand-pointer-suspended="true"] * {
 /* Decision options: a vertical list that takes whatever height the dock has
    left under the header and scrolls, so it holds any number of options. Every
    wrapper between the panel and the list must be a shrinkable flex column. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack)
     :is(.pointer-events-none.absolute.inset-0, .priority-inline-panel, .action-strip-decision-stack,
@@ -7165,7 +7166,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Lift computed in PlayerZonePiles; the mana rail rises with the piles. */
   .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .zone-pile-slot,
   .table-shell[data-focused-hud="true"] [data-local-zone-piles="true"] > .player-look-pile {
@@ -7178,7 +7179,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-toolbar
     .decision-toolbar-side {
     align-self: start;
@@ -7187,7 +7188,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Every option-strip variant (choose option, targets, objects, …) reads as
    one vertical, full-width list in the desktop dock, scrolling as needed. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-content div:has(.decision-strip-options-row):not(.decision-strip-scroll--vertical-target-options) {
     display: flex !important;
@@ -7244,7 +7245,7 @@ html[data-hand-pointer-suspended="true"] * {
   align-items: center;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .player-header-perspective {
     position: relative;
     display: flex;
@@ -7384,7 +7385,7 @@ html[data-hand-pointer-suspended="true"] * {
   font-size: 11px;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .priority-inline-panel:has(> .decision-quick-controls) {
     flex-direction: row !important;
     align-items: center !important;
@@ -7510,7 +7511,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Card tools stay directly below the local name and lobby row. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .table-shared-player-header {
     flex-direction: column;
     align-items: flex-start;
@@ -7535,7 +7536,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* A folded decision keeps its heading and action on one compact row. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) {
     width: min(560px, var(--decision-panel-content-width, 560px)) !important;
@@ -7618,7 +7619,7 @@ html[data-hand-pointer-suspended="true"] * {
   .table-shell[data-focused-hud="true"] .decision-quick-controls { order: 2; }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="false"]) {
     container-type: inline-size;
@@ -7650,7 +7651,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-stack[data-details-expanded="false"] .decision-stack-footer .action-strip-submit-button {
     width: 132px !important;
@@ -7661,7 +7662,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-stack[data-details-expanded="false"] .decision-cancel-button--compact {
     width: 28px !important;
@@ -7684,7 +7685,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-stack[data-details-expanded="false"] .battlefield-decision-disclosure-toggle {
     width: 28px !important;
@@ -7735,7 +7736,7 @@ html[data-hand-pointer-suspended="true"] * {
   touch-action: pan-y;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Front ranks face each other across the seam instead of leaving unused
      opponent track space between the two battlefields. */
   .table-shell[data-multiplayer-board="true"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] {
@@ -7744,20 +7745,20 @@ html[data-hand-pointer-suspended="true"] * {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-zone-entry[data-zone-id="battlefield"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] {
     row-gap: calc(10px + var(--bf-row-scale-gap, 0px)) !important;
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-multiplayer-board="true"] .battlefield-row[data-bf-side="top"][data-battlefield-style="compact"] > .battlefield-row-card {
     align-self: end;
   }
 }
 
 /* The wide stack inspector overlays the field without reserving card columns. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell {
     --stack-frame-rail-width: clamp(240px, 24vw, 360px);
   }
@@ -7768,7 +7769,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Local mana stays visible below the stack frame; identity sits behind it. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .table-shared-player-header {
     left: 0; bottom: 44px !important;
     width: 220px !important; max-width: 220px !important;
@@ -7780,7 +7781,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 .local-player-mana-dock { display: contents; }
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] [data-my-zone] .player-zone-piles > .my-zone-mana-rail { display: none; }
   .table-shell[data-focused-hud="true"] .local-player-mana-dock {
     display: block; position: fixed; left: 0; bottom: 8px;
@@ -7801,7 +7802,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Action groups stay inside the hand reserve and gain rows upward. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not([data-mana-payment="true"]) {
     min-width: 0 !important;
   }
@@ -7853,7 +7854,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Target requirements contain nested option rows. Only the outer list is a
    scroll viewport; inner rows must retain their full content height. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock
     .action-strip-decision-content .decision-strip-scroll--vertical-target-options div:has(.decision-strip-options-row) {
     flex: 0 0 auto !important;
@@ -7863,7 +7864,7 @@ html[data-hand-pointer-suspended="true"] * {
 
 /* Desktop navigation follows the main decision dock. Its height is
    included in the dock's normal collision and viewport measurements. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .decision-header-utility-controls {
     display: flex;
     justify-content: flex-end;
@@ -7882,7 +7883,7 @@ html[data-hand-pointer-suspended="true"] * {
 }
 
 /* Reserve space for the phase track and its optional combat row between fields. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] > .table-phase-divider {
     grid-row: 2;
     min-width: 0;
@@ -7897,18 +7898,30 @@ html[data-hand-pointer-suspended="true"] * {
     min-height: 40px;
   }
 
+  /* The tracker ends at the right edge, like the zone counters beside it. */
   .table-shell[data-focused-hud="true"] > .table-phase-divider > .topbar-phase-shell {
     position: relative !important;
     top: auto;
     bottom: auto;
+    left: auto;
+    transform: none;
+    /* Eight equal cells, icons centred in each: the track overhangs the
+       start point by half a cell so Untap's icon sits exactly on it, and
+       Cleanup's icon lands 38px from the edge. */
+    --phase-track-span: calc((100% - var(--phase-track-start, 33%) - 38px) * 8 / 7);
+    width: var(--phase-track-span) !important;
+    max-width: none !important;
+    flex: none !important;
     margin-block: 0;
+    margin-left: calc(var(--phase-track-start, 33%) - var(--phase-track-span) / 16);
+    margin-right: 0;
     backdrop-filter: none;
   }
 }
 
 /* Keep the single opponent's Deck label inside the board. Multiplayer retains
    its existing pile alignment. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
     .player-zone-piles[data-opponent-zone-piles="true"] {
     top: 8px;
@@ -7943,15 +7956,3 @@ html[data-hand-pointer-suspended="true"] * {
   filter: drop-shadow(0 0 3px currentColor);
 }
 
-/* Command sits beside the local identity, leaving Look directly below Deck. */
-.local-command-zone-dock {
-  --zone-pile-width: 56px;
-  position: absolute;
-  left: calc(100% + 6px);
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: auto;
-}
-.local-command-zone-dock > .zone-pile-slot:first-child {
-  margin-top: 0;
-}

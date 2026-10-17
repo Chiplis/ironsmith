@@ -7,10 +7,11 @@ import {
   snapshotStableIds,
 } from "@/lib/card-glint/printing-choices.mjs";
 import CustomCardsButton from "./CustomCardsButton";
+import { customCardImageUrl } from "@/lib/custom-card-assets";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
@@ -585,6 +586,7 @@ export default function CreateCardForgeSheet({
   const [draft, setDraft] = useState(blankDraft());
   const [preview, setPreview] = useState(null);
   const [activeFace, setActiveFace] = useState("face-0");
+  const [abilitiesOpen, setAbilitiesOpen] = useState(false);
   // The real card a draft started from, whose printing "Current printing" shows.
   const [printingName, setPrintingName] = useState(null);
   const [currentPrinting, setCurrentPrinting] = useState(null);
@@ -606,7 +608,11 @@ export default function CreateCardForgeSheet({
     let active = true;
     (async () => {
       const imageUrl = await resolveScryfallImageUrl(printingName, "normal");
-      const printing = imageUrl ? await resolveScryfallPrintingMetadata(imageUrl) : null;
+      // Custom cards have local art but no Scryfall printing; a failed
+      // printing lookup must not throw their art away with it.
+      const printing = imageUrl
+        ? await resolveScryfallPrintingMetadata(imageUrl).catch(() => null)
+        : null;
       if (active) setCurrentPrinting({ name: printingName, imageUrl, printing });
     })().catch(() => { if (active) setCurrentPrinting(null); });
     return () => { active = false; };
@@ -1001,6 +1007,12 @@ export default function CreateCardForgeSheet({
             setSaveMessage("");
             try {
               const next = cloneDraft(option.card?.draft || await fetchCardBuildDraft(option.name));
+              // Custom cards have no Scryfall printing; paint their bundled art.
+              if (option.card) {
+                next.faces = next.faces.map((face) => ({
+                  ...face, artUrl: face.artUrl || customCardImageUrl(face.name, "art_crop"),
+                }));
+              }
               setDraft(next);
               setSeedDraft(next);
               setCatalogCard(option.card ? null : { name: option.name, snapshot: rulesSnapshot(next) });
@@ -1129,7 +1141,22 @@ export default function CreateCardForgeSheet({
 
               <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
             </div>
-            <CompiledAbilitiesPanel face={previewFace} previewError={previewError} busy={previewLoading} />
+            {/* Compiled abilities are a debugging view: a drawer from the right
+                edge that opens over the layout column. */}
+            <div className="card-forge-abilities-drawer" data-open={abilitiesOpen ? "true" : "false"}>
+              <button type="button" className="card-forge-abilities-toggle"
+                aria-expanded={abilitiesOpen} aria-controls="card-forge-abilities"
+                aria-label={ui(abilitiesOpen ? "Hide compiled abilities" : "Show compiled abilities")}
+                title={ui(abilitiesOpen ? "Hide compiled abilities" : "Show compiled abilities")}
+                onClick={() => setAbilitiesOpen((open) => !open)}>
+                {abilitiesOpen ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}
+              </button>
+              {abilitiesOpen ? (
+                <div id="card-forge-abilities" className="card-forge-abilities-drawer-body">
+                  <CompiledAbilitiesPanel face={previewFace} previewError={previewError} busy={previewLoading} />
+                </div>
+              ) : null}
+            </div>
           </div>
 
 

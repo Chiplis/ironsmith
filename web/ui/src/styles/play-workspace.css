@@ -93,7 +93,7 @@
 
 /* Navigation and utilities form one left-hand group; available mana belongs
    to the measured decision dock, so it stays clear of cards as it grows. */
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .table-shell[data-focused-hud="true"] .table-shared-player-header .player-header-card-controls {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -110,12 +110,12 @@
   .decision-mana-dock .mana-pool-chip[data-mana-active="true"] > span:last-child { font-size: 16px; color: #f2eaff; }
   .decision-mana-dock .mana-pool-chip[data-mana-active="false"] { opacity: .4; }
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .decision-mana-dock .mana-pool-inline {
     min-width: 0; max-width: 100%; width: max-content; flex-wrap: wrap !important;
   }
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   .decision-mana-dock .mana-pool-chip[data-mana-active="true"] { position: relative; gap: 0; }
   .decision-mana-dock .mana-pool-chip[data-mana-active="true"] > span:last-child {
     position: absolute; right: -2px; bottom: -1px; z-index: 1;
@@ -124,7 +124,7 @@
     font-size: 12px; line-height: 1;
   }
 }
-@media (min-width: 1024px) {
+@media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
   /* Offline chat renders no content; its old slot must not lift the identity
      away from the navigation beneath it. */
   .table-shell[data-focused-hud="true"] .player-header-chat-dock:empty { display: none !important; }
@@ -132,7 +132,7 @@
 
 /* One primary action footprint, independent of phase names and translations. */
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
       box-sizing: border-box !important;
       width: 190px !important; min-width: 190px !important; max-width: 190px !important;
@@ -158,7 +158,7 @@
 @keyframes decision-label-in { from { opacity: .35; translate: 0 2px; } to { opacity: 1; translate: 0 0; } }
 
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
       --hud-action-h: 40px;
     }
@@ -187,7 +187,7 @@
   .battlefield-human-action-dock .action-strip-main-title-text { animation: decision-label-in 160ms ease-out; }
 }
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:has(> .decision-quick-controls) {
       flex-wrap: wrap !important;
       justify-content: flex-end;
@@ -211,7 +211,7 @@
 
 /* Anchor the desktop identity and navigation close to the viewport edge. */
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .table-shared-player-header {
       bottom: max(6px, env(safe-area-inset-bottom)) !important;
     }
@@ -225,7 +225,7 @@
   cursor: pointer; white-space: nowrap;
 }
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.action-strip-pregame-button),
     .table-shell[data-focused-hud="true"] .priority-inline-panel:has(.action-strip-pregame-button),
     .table-shell[data-focused-hud="true"] .action-strip-layout--pregame-choice {
@@ -257,7 +257,7 @@
 
 /* Keep simple decisions in one fixed row, including looking and combat. */
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:has(.priority-inline-panel--main-only):not(:has(.action-strip-pregame-button)) {
       width: 340px !important;
     }
@@ -329,7 +329,7 @@
 
 /* Casting changes the options above the controls, never the action footprint. */
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
       width: 340px !important;
       min-width: 0 !important;
@@ -367,7 +367,7 @@
   }
 }
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel { border: 0 !important; }
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-editor {
       border: 0 !important; max-height: calc(var(--dock-max-height, 70dvh) - 12px) !important; height: calc(var(--dock-max-height, 70dvh) - 12px) !important;
@@ -381,12 +381,92 @@
   }
 }
 @layer decision-stability {
-  @media (min-width: 1024px) {
+  @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack[data-details-expanded="false"] {
       display: flex !important; flex-direction: column !important; gap: 6px !important;
     }
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack[data-details-expanded="false"] .decision-stack-footer {
       width: 100% !important; min-width: 0 !important; max-width: 100% !important;
     }
+  }
+}
+
+/* Build reads as a word on wide screens. */
+.table-shell .home-navigation .home-action-build > .home-action-icon { display: none; }
+
+/* Tablets share the desktop table; Lobby and Build drop to their icons so
+   the centred hand clears them. */
+@media (max-width: 1023px) {
+  .table-shell .home-navigation .home-action-play { min-width: 0; padding-inline: 12px; }
+  .table-shell .home-navigation .home-action-build { height: 42px; padding-inline: 12px; }
+  .table-shell .home-navigation .home-action-build > .home-action-icon { display: block; }
+  .table-shell .home-navigation :is(.home-action-play, .home-action-build) > .home-action-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+}
+
+/* The brand opens the menu; the site links sit in a row beneath it. */
+/* The column is as wide as the name; the links spread across that width so
+   the first and last icons line up with its edges. */
+.navigation-utility-controls .topbar-minor-controls--brand-menu {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.navigation-utility-controls .topbar-brand-menu-trigger {
+  display: block;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font-size: 15px;
+  letter-spacing: .12em;
+  cursor: pointer;
+  transition: filter 140ms, text-shadow 140ms;
+}
+.navigation-utility-controls .topbar-brand-menu-trigger:hover,
+.navigation-utility-controls .topbar-brand-menu-trigger:focus-visible {
+  outline: none;
+  filter: brightness(1.2);
+  text-shadow: 0 0 10px rgba(255, 214, 140, .55);
+}
+.navigation-utility-controls .topbar-brand-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* Same box for every link, so the outer icons meet the name's edges and the
+   middle one sits at its centre. */
+.navigation-utility-controls .topbar-brand-links > :is(a, button, .stone-pill, .home-action-learn) {
+  display: grid !important;
+  place-items: center;
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.navigation-utility-controls .topbar-brand-links svg { width: 16px; height: 16px; }
+
+/* The desktop hand's lane runs from Build to the decision dock, so its
+   centre can sit left of the screen's (HandZone publishes the shift). */
+[data-hand-dock-lane] > .hand-reveal-shell {
+  left: calc(50% + var(--hand-center-shift, 0px));
+}
+
+/* A narrow Build form stacks each stat's label over its field, so names like
+   Toughness stay readable in a quarter of the row. */
+@container (max-width: 560px) {
+  .card-forge-inline-stats .card-forge-stat-field {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 3px;
+  }
+  .card-forge-inline-stats .card-forge-stat-field span {
+    font-size: 10px;
+    letter-spacing: 0.06em;
   }
 }

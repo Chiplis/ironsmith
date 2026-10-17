@@ -1,7 +1,7 @@
 /* Compact layouts share the desktop's floating HUD and uninterrupted arena.
  * Phone card lanes, hand gestures and safe-area measurements remain independent.
  */
-@media (max-width: 1023px) {
+@media (max-width: 720px), (max-width: 1023px) and (max-height: 540px) {
   .app-shell {
     --compact-hud-surface: rgba(15, 14, 22, .82);
   }

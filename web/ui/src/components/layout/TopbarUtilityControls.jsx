@@ -20,6 +20,8 @@ export default function TopbarUtilityControls({
   showBrand = false,
   menuFirst = false,
   showLearn = false,
+  // The brand itself opens the menu, with the site links in a row beneath it.
+  brandMenu = false,
 }) {
   const ui = useUiText();
   const menu = (
@@ -36,15 +38,10 @@ export default function TopbarUtilityControls({
       onGenerateRandomGame={onGenerateRandomGame}
       puzzleSetupMode={puzzleSetupMode}
       onAddCardNotice={onAddCardNotice}
-      triggerIcon="menu"
+      triggerIcon={brandMenu ? "brand" : "menu"}
     />
   );
-  return (
-    <div className="topbar-minor-controls topbar-minor-controls--utility">
-      {menuFirst ? menu : null}
-      {showBrand ? (
-        <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
-      ) : null}
+  const links = <>
       <Button
         variant="secondary"
         size="icon-xs"
@@ -79,7 +76,23 @@ export default function TopbarUtilityControls({
           </svg>
         </a>
       </Button>
-      {showLearn ? <LearnButton onOpenLobby={onOpenLobby} /> : null}
+      {showLearn ? <LearnButton onOpenLobby={onOpenLobby} iconOnly={brandMenu} /> : null}
+  </>;
+  if (brandMenu) {
+    return (
+      <div className="topbar-minor-controls topbar-minor-controls--utility topbar-minor-controls--brand-menu">
+        {menu}
+        <div className="topbar-brand-links">{links}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="topbar-minor-controls topbar-minor-controls--utility">
+      {menuFirst ? menu : null}
+      {showBrand ? (
+        <h1 className="toolbar-brand topbar-brand m-0 whitespace-nowrap font-bold">Ironsmith</h1>
+      ) : null}
+      {links}
       {!menuFirst ? menu : null}
     </div>
   );

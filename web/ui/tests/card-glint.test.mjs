@@ -124,3 +124,24 @@ test('painted faces opt into automatic calibration when the renderer supports it
   assert.deepEqual(presentCardGlintFace({...api,resolvePrintingStyle:() => {throw Error('unsupported layout');}},{name:'Saga'}),{name:'Saga'},
     'unsupported layouts keep their legacy painting');
 });
+
+test('a new Build card with no real printing behind it still paints', async () => {
+  const {cardGlintDraftFace} = await import('../src/lib/card-glint/draft.mjs');
+  // CardPrintingStage passes null until a real card's printing resolves.
+  const face = cardGlintDraftFace({layout:'single',faces:[{name:'Custom Card',cardTypes:['Creature'],power:'2',toughness:'2'}]},0,null);
+  assert.equal(face.name,'Custom Card');
+});
+
+test('hand snapshots take supertypes and subtypes from their printing', () => {
+  const ring = cardGlintFace({name:'The One Ring',card_types:['Artifact'],mana_cost:'{4}'},
+    {printing:{type_line:'Legendary Artifact',set:'ltr'}});
+  assert.equal(ring.typeLine,'Legendary Artifact');
+  assert.equal(ring.legendary,true);
+  const karn = cardGlintFace({name:'Karn, the Great Creator',card_types:['Planeswalker'],mana_cost:'{4}'},
+    {printing:{type_line:'Legendary Planeswalker — Karn',set:'war'}});
+  assert.equal(karn.typeLine,'Legendary Planeswalker — Karn');
+  // An effect changed the card's types: the live line wins over the printing.
+  const animated = cardGlintFace({name:'Mishra\'s Factory',card_types:['Artifact','Creature'],mana_cost:''},
+    {printing:{type_line:'Land',set:'atq'}});
+  assert.equal(animated.typeLine,'Artifact Creature');
+});
