@@ -5,7 +5,8 @@ import "./holo-foil.css";
 // CSS variables on the card (--holo-x/--holo-y in percent, --holo-tilt-*),
 // which the rainbow and glare layers in holo-foil.css read. Only variables
 // change, once per frame at most; with no pointer the foil stays still.
-export default function HoloFoil() {
+// Without `glow` it only tracks the pointer, so a plain hand card tilts too.
+export default function HoloFoil({ glow = true }) {
   const layer = useRef(null);
 
   useEffect(() => {
@@ -54,6 +55,7 @@ export default function HoloFoil() {
     };
   }, []);
 
+  if (!glow) return <span ref={layer} hidden aria-hidden="true" />;
   return (
     <span ref={layer} className="holo-foil" aria-hidden="true">
       <span className="holo-foil__rainbow" />
