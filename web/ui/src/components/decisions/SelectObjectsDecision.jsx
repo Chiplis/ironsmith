@@ -91,7 +91,7 @@ export default function SelectObjectsDecision({
     if (handHoverObjectId == null) return;
     rowsRef.current
       ?.querySelector(`[data-candidate-id="${CSS.escape(handHoverObjectId)}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [handHoverObjectId]);
 
   const chooseObject = useCallback((id, mode = "toggle") => {
@@ -206,7 +206,14 @@ export default function SelectObjectsDecision({
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
-          <div ref={rowsRef} data-card-choices={lookCards ? "true" : undefined} className={cn(
+          <div
+            ref={rowsRef}
+            data-card-choices={lookCards ? "true" : undefined}
+            // The card row scrolls sideways; a vertical wheel moves it too.
+            onWheel={lookCards ? (event) => {
+              if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY;
+            } : undefined}
+            className={cn(
             stripLayout
               ? "decision-strip-options-row decision-strip-options-row--vertical-objects flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"

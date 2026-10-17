@@ -7956,16 +7956,22 @@ html[data-hand-pointer-suspended="true"] * {
   margin-top: 0;
 }
 
-/* Looked-at cards offered by a decision are shown as cards, in a grid that
-   fits the panel, instead of name rows. */
+/* Cards off the table offered by a decision are shown as cards, in one row
+   that scrolls sideways, instead of name rows. */
 .table-shell .battlefield-human-action-dock .battlefield-human-decision-panel .decision-strip-options-row[data-card-choices="true"],
 [data-card-choices="true"] {
   display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)) !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: 76px !important;
+  grid-template-columns: none !important;
   align-items: start !important;
-  overflow: visible !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
   gap: 6px !important;
-  padding: 2px 4px 4px !important;
+  padding: 4px 4px 8px !important;
 }
 
 .table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card {
@@ -7984,6 +7990,7 @@ html[data-hand-pointer-suspended="true"] * {
   box-shadow: none !important;
   outline: 2px solid transparent;
   outline-offset: 1px;
+  scroll-snap-align: start;
   transition: outline-color 120ms ease, transform 120ms ease;
 }
 

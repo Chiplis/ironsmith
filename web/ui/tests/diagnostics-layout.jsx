@@ -54,7 +54,7 @@ function Fixture(){
  if (scenario === 'counters') decisions.select_options = {kind:'select_options',player:0,description:'Choose counters',reason:'counters',min:0,max:3,options:[{index:0,description:'+1/+1 counters',legal:true,max_count:3},{index:1,description:'Charge counters',legal:true,max_count:3}]};
  if (scenario === 'ordering') decisions.select_options = {kind:'select_options',player:0,description:'Order cards',reason:'ordering',min:3,max:3,options:['Island','Mountain','Forest'].map((description,index)=>({index,description,legal:true}))};
  if (scenario === 'single-color') decisions.select_options = {kind:'select_options',player:0,description:'Choose a color',reason:'Choose color',min:1,max:1,options:auditOptions.map(opt=>({...opt,repeatable:false}))};
- const lookCards = ['Springleaf Drum','Blade of the Bloodchief',"Ugin's Labyrinth",'Malevolent Rumble'].map((name,index)=>({id:6000+index,name}));
+ const lookCards = ['Springleaf Drum','Blade of the Bloodchief',"Ugin's Labyrinth",'Malevolent Rumble','Forest','Island','Plains','Swamp'].map((name,index)=>({id:6000+index,name}));
  decisions.look_choice = {kind:'select_objects',player:0,description:'Choose cards',min:0,max:1,candidates:lookCards.map(card=>({...card,legal:true,object_controller:0}))};
  decisions.number = {kind:'number',player:0,description:'Choose a value for X',min:0,max:20};
  decisions.text_input = {kind:'text_input',player:0,description:'Name a card'};
