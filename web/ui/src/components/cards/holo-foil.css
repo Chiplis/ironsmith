@@ -113,19 +113,19 @@ body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield
 
 .game-card.hand-card[data-foil="true"] .holo-foil__rainbow {
   filter: none;
-  opacity: 0.14;
+  opacity: 0.08;
 }
 
 .game-card.hand-card[data-foil="true"] .holo-foil__glare {
-  opacity: 0.4;
+  opacity: 0.18;
 }
 
 .game-card.hand-card[data-foil="true"][data-holo-active="true"] .holo-foil__rainbow {
-  opacity: 0.2;
+  opacity: 0.12;
 }
 
 .game-card.hand-card[data-foil="true"][data-holo-active="true"] .holo-foil__glare {
-  opacity: 0.55;
+  opacity: 0.28;
 }
 
 /* A slight lean toward the pointer: foil permanents in Full cards, and every
@@ -139,7 +139,7 @@ body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield
 }
 
 body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield-style="full"]) .game-card[data-foil="true"][data-holo-active="true"] > .game-card-surface {
-  transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.35), calc(var(--holo-tilt-x, 0deg) * 0.35));
+  transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.15), calc(var(--holo-tilt-x, 0deg) * 0.15));
   transition: transform 90ms linear;
 }
 
@@ -149,7 +149,7 @@ body:has(.table-shell[data-focused-hud="true"] .battlefield-row[data-battlefield
   }
 
   .game-card.hand-card[data-holo-active="true"] > .game-card-surface {
-    transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.35), calc(var(--holo-tilt-x, 0deg) * 0.35));
+    transform: skew(calc(var(--holo-tilt-y, 0deg) * -0.15), calc(var(--holo-tilt-x, 0deg) * 0.15));
     transition: transform 90ms linear, box-shadow 180ms ease;
   }
 }
