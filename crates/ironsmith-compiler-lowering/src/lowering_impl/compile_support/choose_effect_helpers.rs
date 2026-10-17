@@ -53,10 +53,14 @@ pub fn compile_choose_player_with_subject(
     tag: TagKey,
     random: bool,
     excluded_tags: Vec<TagKey>,
+    accumulate_into: Option<TagKey>,
 ) -> (Vec<Effect>, Vec<ChooseSpec>) {
     let chooser = subject.as_chooser();
     let mut choose_effect =
         crate::effects::ChoosePlayerEffect::new(chooser, filter, tag).excluding_tags(excluded_tags);
+    if let Some(accumulated) = accumulate_into {
+        choose_effect = choose_effect.accumulating_into(accumulated);
+    }
     if random {
         choose_effect = choose_effect.at_random();
     }

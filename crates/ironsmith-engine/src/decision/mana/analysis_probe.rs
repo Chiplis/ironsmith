@@ -420,6 +420,7 @@ fn mono_color_board(
             mode: ironsmith_core::value_model::ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         };
         let cauldron = CardDefinitionBuilder::new(CardId::new(), "Agatha's Soul Cauldron")
@@ -610,6 +611,7 @@ fn heterogeneous_board(
             mode: ironsmith_core::value_model::ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         };
         let cauldron = CardDefinitionBuilder::new(CardId::new(), "Agatha's Soul Cauldron")

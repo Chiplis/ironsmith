@@ -309,7 +309,11 @@ pub fn resolved_target_aggregate_constraint(
     source_id: Option<ObjectId>,
     legal_targets: &[Target],
 ) -> Option<crate::targeting::ResolvedTargetAggregateConstraint> {
-    let constraint = spec.target_set_aggregate_constraint()?;
+    let one_per_card_type = one_per_card_type_slot_masks(game, spec, legal_targets);
+    let Some(constraint) = spec.target_set_aggregate_constraint() else {
+        return one_per_card_type
+            .map(crate::targeting::ResolvedTargetAggregateConstraint::one_per_card_type_only);
+    };
     let maximum = match constraint.maximum.unhinted() {
         crate::effect::Value::Fixed(maximum) => *maximum,
         _ => {
@@ -338,7 +342,48 @@ pub fn resolved_target_aggregate_constraint(
         metric: constraint.metric,
         maximum,
         target_values,
+        one_per_card_type,
     })
+}
+
+/// "up to one target ... of each card type": the slot bitmask each legal
+/// target could fill. Slots are the filter's listed card types, or every
+/// card type when none is listed.
+fn one_per_card_type_slot_masks(
+    game: &GameState,
+    spec: &ChooseSpec,
+    legal_targets: &[Target],
+) -> Option<Vec<(Target, u32)>> {
+    fn object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, _, _) => object_filter(spec),
+            ChooseSpec::Object(filter) | ChooseSpec::ObjectOrPlayer(filter, _) => Some(filter),
+            _ => None,
+        }
+    }
+    let filter = object_filter(spec).filter(|filter| filter.one_per_card_type)?;
+    let slot_types = &filter.card_types;
+    Some(
+        legal_targets
+            .iter()
+            .map(|target| {
+                let mask = match target {
+                    Target::Object(id) => game
+                        .current_card_types(*id)
+                        .or_else(|| game.object(*id).map(|object| object.card_types.to_vec()))
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|card_type| slot_types.is_empty() || slot_types.contains(card_type))
+                        .fold(0u32, |mask, card_type| mask | (1u32 << card_type as u32)),
+                    Target::Player(_) => 0,
+                };
+                (*target, mask)
+            })
+            .collect(),
+    )
 }
 
 pub fn has_enough_legal_targets_for_spec(
@@ -570,7 +615,13 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
             .cant_effects
             .ignores_hexproof_from_for_object(game, target_id, permission_player)
     {
-        let hexproof_ctx = game.filter_context_for(caster, Some(source.object_id()));
+        let mut hexproof_ctx = game.filter_context_for(caster, Some(source.object_id()));
+        // "hexproof from each of its colors": the protected object is the
+        // relation anchor, not the targeting source.
+        hexproof_ctx.tagged_objects.insert(
+            crate::tag::TagKey::from(crate::tag::HEXPROOF_PROTECTED_OBJECT_TAG),
+            vec![ObjectSnapshot::from_object(target, game)],
+        );
         // A live object on the stack is a spell; any other targeting source
         // (a permanent, a card in another zone, or last-known information)
         // is targeting with one of its abilities. That ability isn't on the
@@ -1221,13 +1272,16 @@ pub fn resolved_target_aggregate_constraint_with_context(
     Option<crate::targeting::ResolvedTargetAggregateConstraint>,
     crate::effects::ExecutionError,
 > {
+    let one_per_card_type = one_per_card_type_slot_masks(game, spec, legal_targets);
     let Some(constraint) = spec.target_set_aggregate_constraint() else {
-        return Ok(None);
+        return Ok(one_per_card_type
+            .map(crate::targeting::ResolvedTargetAggregateConstraint::one_per_card_type_only));
     };
     let maximum = crate::effects::helpers::resolve_value(game, &constraint.maximum, ctx)?;
     Ok(Some(crate::targeting::ResolvedTargetAggregateConstraint {
         metric: constraint.metric,
         maximum,
+        one_per_card_type,
         target_values: legal_targets
             .iter()
             .map(|target| {
@@ -1829,6 +1883,15 @@ fn compute_object_targets_with_filter_context(
             continue;
         }
         if !filter.matches_with_view(object, candidate_filter_ctx, game, view) {
+            continue;
+        }
+        // "can't be the target of spells or abilities that can target only
+        // Walls" reads this requirement's own filter, not the source.
+        if !game
+            .effect_store
+            .cant_effects
+            .can_target_object_for_requirement(object_id, filter)
+        {
             continue;
         }
 

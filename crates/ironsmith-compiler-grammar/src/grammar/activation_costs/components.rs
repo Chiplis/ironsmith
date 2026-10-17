@@ -23,6 +23,7 @@ use super::{
     ActivationCostCst, ActivationCostSegmentCst, ActivationCostSegmentKind,
     parse_activation_cost_segment_kind_tokens, parse_bare_symbol_segment_tokens,
     parse_behold_segment_tokens, parse_blight_segment_tokens, parse_forage_segment_tokens, parse_discard_segment_tokens,
+    parse_roll_die_segment_tokens,
     parse_exert_segment_tokens, parse_exile_segment_tokens as parse_typed_exile_segment_tokens,
     parse_mill_segment_tokens, parse_move_source_to_library_bottom_cost_tokens,
     parse_move_to_library_top_cost_tokens, parse_pay_segment_tokens,
@@ -145,6 +146,7 @@ fn parse_activation_cost_segment_tokens(
         ActivationCostSegmentKind::Behold => Some(parse_behold_segment_tokens(tokens)),
         ActivationCostSegmentKind::Blight => Some(parse_blight_segment_tokens(tokens)),
         ActivationCostSegmentKind::Forage => Some(parse_forage_segment_tokens(tokens)),
+        ActivationCostSegmentKind::RollDie => Some(parse_roll_die_segment_tokens(tokens)),
         ActivationCostSegmentKind::CollectEvidence => Some(parse_collect_evidence_segment_tokens(tokens)),
         ActivationCostSegmentKind::Exile => {
             Some(parse_typed_exile_segment_tokens(tokens, |words| {
@@ -247,13 +249,24 @@ fn parse_sacrifice_member_list_segment_tokens(
     if start < tokens.len() {
         members.push(&tokens[start..]);
     }
+    // "Sacrifice a creature named Feral Shadow, a creature named
+    // Breathstealer, and this creature" (Urborg Panther): the source may be
+    // one member beside the indefinite ones.
+    let is_indefinite = |member: &&[OwnedLexToken]| {
+        member
+            .first()
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+            && member.len() > 1
+    };
+    let is_source_member = |member: &&[OwnedLexToken]| {
+        crate::util::is_source_reference_words(&crate::lexer::token_word_refs(member))
+    };
     if members.len() < 2
-        || !members.iter().all(|member| {
-            member
-                .first()
-                .is_some_and(|token| token.is_word("a") || token.is_word("an"))
-                && member.len() > 1
-        })
+        || !members
+            .iter()
+            .all(|member| is_indefinite(member) || is_source_member(member))
+        || members.iter().filter(|member| is_source_member(member)).count() > 1
+        || !members.iter().any(is_indefinite)
     {
         return None;
     }
@@ -267,6 +280,7 @@ fn parse_sacrifice_member_list_segment_tokens(
             ActivationCostSegmentCst::SacrificeCreature => {}
             ActivationCostSegmentCst::SacrificeChosen { count, .. }
                 if *count == crate::effect::ChoiceCount::exactly(1) => {}
+            ActivationCostSegmentCst::SacrificeSelf { .. } => {}
             _ => return None,
         }
         segments.push(segment);
@@ -488,9 +502,11 @@ fn parse_activation_cost_cst_tokens(
             continue;
         }
 
+        // The member list reads every comma member first, so a later "and
+        // this creature" never folds earlier members into one name.
         if let Some(compound) =
-            parse_source_and_chosen_sacrifice_segment_tokens(segment_tokens, named_source)
-                .or_else(|| parse_sacrifice_member_list_segment_tokens(segment_tokens, named_source))
+            parse_sacrifice_member_list_segment_tokens(segment_tokens, named_source)
+                .or_else(|| parse_source_and_chosen_sacrifice_segment_tokens(segment_tokens, named_source))
         {
             segments.extend(compound);
             continue;

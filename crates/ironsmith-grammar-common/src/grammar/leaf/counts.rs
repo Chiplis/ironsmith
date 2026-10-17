@@ -94,7 +94,13 @@ pub fn parse_leaf_count_range_prefix_lexed<'a>(
         "up" => (
             primitives::kw("up"),
             primitives::kw("to"),
-            parse_leaf_modal_value_token,
+            alt((
+                parse_leaf_modal_value_token,
+                // "choose up to that many" (Tranquil Frillback, Hawkeye):
+                // the preceding instruction's result, bound by the owner.
+                primitives::phrase(&["that", "many"])
+                    .value(Value::EventValue(crate::effect::EventValueSpec::Amount)),
+            )),
         )
             .map(|(_, _, value)| LeafCountRange::up_to(value)),
         _ => parse_leaf_modal_value_token.map(LeafCountRange::exact),

@@ -8,6 +8,7 @@ mod for_each_counter_kind_put_or_remove;
 mod move_all_counters;
 mod move_counters;
 mod move_one_counter;
+mod note_counters;
 mod object_counter_placement;
 mod player_counter_placement;
 mod prepared_payment;
@@ -26,6 +27,8 @@ pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;
 pub use move_one_counter::MoveOneCounterEffect;
+pub use note_counters::NoteCountersEffect;
+pub(crate) use note_counters::noted_entry_counters;
 pub(crate) use object_counter_placement::{
     execute_object_counter_placement, execute_object_counter_placement_with_outputs,
 };
@@ -34,7 +37,7 @@ pub(crate) use player_counter_placement::execute_player_counter_placement_with_o
 pub(crate) use player_counter_placement::prepare_player_counter_instruction;
 pub use proliferate::ProliferateEffect;
 pub use put_counter_of_chosen_kind::{
-    PutCounterOfChosenKindEffect, PutCounterOfKindChosenFromEffect,
+    PutCounterOfChosenKindEffect, PutCounterOfKindChosenFromEffect, PutCounterOfRandomKindEffect,
 };
 pub use put_counters::PutCountersEffect;
 pub use remove_any_counters_among::RemoveAnyCountersAmongEffect;
@@ -243,4 +246,4 @@ pub(crate) fn transfer_counters_with_outputs(
     )
 }
 
-mod kind_selection;
+pub(crate) mod kind_selection;

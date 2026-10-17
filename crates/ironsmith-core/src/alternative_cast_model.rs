@@ -85,6 +85,12 @@ where
     )
 }
 
+/// Name of a printed free alternative cost that also casts the spell as
+/// though it had flash: "you may cast this creature without paying its mana
+/// cost and as though it had flash" (Qasali Ambusher). The timing permission
+/// belongs to this casting method only (CR 601.3e).
+pub const FREE_CAST_AS_THOUGH_FLASH_METHOD: &str = "Free cast as though it had flash";
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum AlternativeCastingMethod<E, C, Cond> {
@@ -205,6 +211,12 @@ where
     Cond: Clone,
 {
     /// Alternative casting instructions which use the linked back face.
+    /// This casting method itself permits casting at instant timing.
+    pub fn grants_instant_timing(&self) -> bool {
+        matches!(self, Self::Composed { name, .. }
+            if name.eq_ignore_ascii_case(FREE_CAST_AS_THOUGH_FLASH_METHOD))
+    }
+
     pub fn casts_transformed(&self) -> bool {
         matches!(self, Self::Disturb { .. })
             || matches!(self, Self::Composed { name, .. } if name.eq_ignore_ascii_case("More than meets the eye"))

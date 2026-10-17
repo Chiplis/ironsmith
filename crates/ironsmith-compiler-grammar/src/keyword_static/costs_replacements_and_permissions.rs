@@ -224,6 +224,16 @@ pub fn parse_cost_modifier_target_spec(
         }
     }
 
+    // "spells that target it" in a static cost modifier: with no other
+    // antecedent on the line, the pronoun names the source itself
+    // ("As long as Kaervek's Torch is on the stack, spells that target it
+    // cost {2} more to cast.").
+    if let [only] = target_tokens
+        && only.is_word("it")
+    {
+        return Ok((None, Some(Box::new(ObjectFilter::source())), false));
+    }
+
     match static_mid_facts::parse_cost_modifier_target_fact(target_tokens) {
         Some(static_mid_facts::CostTargetFact::You) => Ok((Some(PlayerFilter::You), None, false)),
         Some(static_mid_facts::CostTargetFact::Opponent) => {
@@ -1161,7 +1171,12 @@ pub fn parse_spell_and_player_activated_ability_cost_modifier_line(
     let Some(and_idx) = static_keyword_cost_shapes::parse_spell_and_abilities_separator(tokens)
         .map(|boundary| boundary.token)
     else {
-        return Ok(None);
+        // A standalone "Abilities <players> activate [that target ...] cost
+        // {N} more to activate" line (Kopala, Warden of Waves).
+        return Ok(parse_player_activated_ability_cost_modifier_clause(
+            &trim_commas(crate::util::trim_edge_punctuation_tokens(tokens)),
+        )?
+        .map(|ability| vec![ability]));
     };
     let right_start = and_idx + 1;
 
@@ -1268,6 +1283,25 @@ pub fn parse_player_activated_ability_cost_modifier_clause(
             ))
         })?;
 
+    // "Abilities your opponents activate that target a Merfolk you control
+    // cost {2} more to activate." (Kopala): a relative target clause between
+    // the activation and the cost gates which activations are taxed.
+    let mut target_filter = None;
+    let activate_token_idx = static_keyword_shapes::parse_word_token_offset(tokens, activate_idx);
+    if let Some(activate_token_idx) = activate_token_idx
+        && activate_token_idx + 1 < cost_token_idx
+    {
+        let relative = &tokens[activate_token_idx + 1..cost_token_idx];
+        if relative.len() > 2
+            && relative[0].is_word("that")
+            && (relative[1].is_word("target") || relative[1].is_word("targets"))
+        {
+            target_filter = Some(parse_object_filter(&relative[2..], false)?);
+        } else {
+            return Ok(None);
+        }
+    }
+
     let amount_tokens = &tokens[cost_token_idx + 1..];
     let (parsed_amount, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
     let (increase, used) = if let Some((mana_cost, used)) = parsed_mana_cost {
@@ -1301,13 +1335,25 @@ pub fn parse_player_activated_ability_cost_modifier_clause(
         return Ok(None);
     }
 
-    Ok(Some(
-        StaticAbility::increase_activated_ability_costs_for_activator(
-            activator,
-            increase,
-            tail_fact.excludes_mana_abilities,
-        ),
-    ))
+    let mut ability = StaticAbility::increase_activated_ability_costs_for_activator(
+        activator,
+        increase,
+        tail_fact.excludes_mana_abilities,
+    );
+    if let Some(filter) = target_filter
+        && let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease {
+            ability_condition,
+            ..
+        } = &mut ability.payload
+    {
+        *ability_condition = Some(
+            crate::static_abilities::ActivatedAbilityCostCondition::TargetsExactly {
+                count: 1,
+                filter,
+            },
+        );
+    }
+    Ok(Some(ability))
 }
 
 pub fn strip_relative_target_clause(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -1577,6 +1623,133 @@ pub fn parse_equip_cost_modifier_line(
     )))
 }
 
+/// "Plotting cards from your hand costs {2} less." (Doc Aurlock, Grizzled
+/// Genius): a generic reduction of the plot special action (CR 702.170a).
+pub fn parse_plotting_cards_cost_modifier_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["plotting", "cards", "from", "your", "hand", "costs"]) {
+        return Ok(None);
+    }
+    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
+        return Ok(None);
+    };
+    let Some((Value::Fixed(amount), consumed)) =
+        parse_cost_modifier_amount(&tokens[costs_index + 1..])
+    else {
+        return Err(CardTextError::ParseError(
+            "plot special-action reduction needs a fixed generic cost".into(),
+        ));
+    };
+    let mut tail = &tokens[costs_index + 1 + consumed..];
+    if tail.last().is_some_and(|token| token.is_period()) {
+        tail = &tail[..tail.len() - 1];
+    }
+    if amount < 0 || crate::lexer::token_word_refs(tail).as_slice() != ["less"] {
+        return Err(CardTextError::ParseError(
+            "unsupported plot special-action modifier syntax".into(),
+        ));
+    }
+    Ok(Some(StaticAbility::plot_special_action_modifier(amount as u32)))
+}
+
+/// "All morph costs cost {2} more." (Exiled Doomsayer): a generic increase
+/// of every player's turn-face-up special action paid with a morph or
+/// megamorph cost (CR 116.2b, 702.37). The reminder "(This doesn't affect
+/// the cost to cast creature spells face down.)" is stripped upstream.
+pub fn parse_morph_costs_cost_modifier_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["all", "morph", "costs", "cost"]) {
+        return Ok(None);
+    }
+    let Some(cost_index) = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("cost"))
+        .map(|(index, _)| index)
+        .next()
+    else {
+        return Ok(None);
+    };
+    let Some((Value::Fixed(amount), consumed)) =
+        parse_cost_modifier_amount(&tokens[cost_index + 1..])
+    else {
+        return Err(CardTextError::ParseError(
+            "morph cost increase needs a fixed generic cost".into(),
+        ));
+    };
+    let mut tail = &tokens[cost_index + 1 + consumed..];
+    if tail.last().is_some_and(|token| token.is_period()) {
+        tail = &tail[..tail.len() - 1];
+    }
+    if amount <= 0 || crate::lexer::token_word_refs(tail).as_slice() != ["more"] {
+        return Err(CardTextError::ParseError(
+            "unsupported morph cost modifier syntax".into(),
+        ));
+    }
+    Ok(Some(StaticAbility::morph_cost_increase(amount as u32)))
+}
+
+/// "Once each turn, you may play a card from exile with a collection counter
+/// on it if it was exiled by an ability you controlled, and you may spend
+/// mana as though it were mana of any color to cast it." (Evelyn, the
+/// Covetous): one source-wide play permission over exiled cards carrying the
+/// counter whose exile link names a source you controlled
+/// ([`ironsmith_core::tag::EXILED_BY_YOU_TAG`]), with a once-each-turn budget
+/// and a permission-local any-color mana rider (CR 609.4b).
+pub fn parse_once_each_turn_play_countered_exiled_card_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    const HEAD: &[&str] = &[
+        "once", "each", "turn", "you", "may", "play", "a", "card", "from", "exile", "with", "a",
+    ];
+    const TAIL: &[&str] = &[
+        "counter", "on", "it", "if", "it", "was", "exiled", "by", "an", "ability", "you",
+        "controlled", "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana",
+        "of", "any", "color", "to", "cast", "it",
+    ];
+    let words = parser_token_word_refs(tokens);
+    let Some(rest) = words.strip_prefix(HEAD) else {
+        return Ok(None);
+    };
+    let Some(counter_at) = rest.iter().position(|word| *word == "counter") else {
+        return Ok(None);
+    };
+    let (kind, tail) = rest.split_at(counter_at);
+    if kind.is_empty() || tail != TAIL {
+        return Ok(None);
+    }
+    let mut kind_words = kind.to_vec();
+    kind_words.push("counter");
+    let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(&kind_words) else {
+        return Ok(None);
+    };
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    filter.with_counter = Some(crate::filter::CounterConstraint::Typed(counter_type));
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: ironsmith_core::tag::TagKey::from(ironsmith_core::tag::EXILED_BY_YOU_TAG).into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::play_from(),
+        filter,
+        Zone::Exile,
+    )
+    .with_beneficiary(PlayerFilter::You)
+    .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn);
+    spec.cast_mana_spend_mode = ironsmith_core::value_model::ManaSpendMode::AnyColor;
+    let rendered = crate::lexer::render_token_slice(tokens);
+    let surface = rendered.trim().trim_end_matches('.');
+    let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars
+        .next()
+        .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    Ok(Some(StaticAbility::grants(spec)))
+}
+
 pub fn parse_foretelling_cards_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -1613,6 +1786,35 @@ pub fn parse_foretelling_cards_cost_modifier_line(
         return Err(CardTextError::ParseError("unsupported trailing or non-generic foretell special-action modifier syntax".into()));
     }
     Ok(Some(StaticAbility::foretell_special_action_modifier(amount as u32, true)))
+}
+
+/// "The first card you foretell each turn costs {0} to foretell." (Ranar the
+/// Ever-Watchful): the foretell special action (CR 702.143a, normally {2})
+/// is free for its controller's first foretell each turn.
+pub fn parse_first_foretell_each_turn_free_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
+        return Ok(None);
+    };
+    let prefix_words = crate::lexer::parser_token_word_refs(&tokens[..costs_index]);
+    if prefix_words.as_slice() != ["the", "first", "card", "you", "foretell", "each", "turn"] {
+        return Ok(None);
+    }
+    let Some((Value::Fixed(0), consumed)) = parse_cost_modifier_amount(&tokens[costs_index + 1..])
+    else {
+        return Ok(None);
+    };
+    let mut tail = &tokens[costs_index + 1 + consumed..];
+    if tail.last().is_some_and(|token| token.is_period()) {
+        tail = &tail[..tail.len() - 1];
+    }
+    if crate::lexer::parser_token_word_refs(tail).as_slice() != ["to", "foretell"]
+        || !tail.iter().all(|token| token.kind == TokenKind::Word)
+    {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::foretell_first_each_turn_free()))
 }
 
 pub fn parse_cost_modifier_amount(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
@@ -2065,6 +2267,36 @@ pub fn parse_dynamic_cost_modifier_value(
                 );
                 Value::Count(filter)
             }
+            DynamicThisWayMetric::Tapped => {
+                // "This spell costs {1} less to cast for each creature tapped
+                // this way" counts the permanents the spell's own tap cost
+                // tapped (CR 601.2b, 601.2f); the engine binds it once that
+                // cost is paid, exactly like "sacrificed this way".
+                let action_idx =
+                    crate::slice_primitives::select_position(history_tokens, |token| {
+                        token.is_word("tapped")
+                    });
+                let Some(subject) = action_idx
+                    .map(|idx| &history_tokens[..idx])
+                    .filter(|subject| !subject.is_empty())
+                else {
+                    return Ok(None);
+                };
+                let Some(mut filter) =
+                    crate::grammar::primitives::probe_shape(parse_object_filter(subject, false))
+                else {
+                    return Ok(None);
+                };
+                filter.zone = Some(Zone::Battlefield);
+                with_for_each_surface(Value::PendingPriorEffectMetric(
+                    ironsmith_core::PriorEffectMetricQuery::new(
+                        EffectMetricSource::AffectedObjects,
+                        EffectMetric::Count,
+                    )
+                    .with_filter(filter)
+                    .with_action(ironsmith_core::PriorEffectAction::Tapped),
+                ))
+            }
         },
         DynamicCostValueShape::RevealedPublic => Value::Count(ObjectFilter::tagged(
             crate::tag::CompilerReferenceTag::PublicRevealed.bind(),
@@ -2250,6 +2482,72 @@ pub fn parse_players_skip_extra_turns_line(
     Ok(Some(StaticAbility::players_skip_extra_turns(player)))
 }
 
+/// "If you would begin your turn while this artifact is tapped, you may skip
+/// that turn instead. If you do, untap this artifact." (Time Vault).
+///
+/// CR 614.10: a replacement of the turn's beginning, offered before the turn
+/// starts. It is a static ability of the permanent, never a resolution-time
+/// instruction.
+pub fn parse_may_skip_turn_while_source_tapped_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(period) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Period)
+    else {
+        return Ok(None);
+    };
+    let (replacement, followup) = tokens.split_at(period + 1);
+    if !crate::grammar::effects::followup_shapes::is_skip_tapped_source_turn_replacement(
+        replacement,
+    ) || !crate::grammar::effects::followup_shapes::is_if_did_untap_source_followup(followup)
+    {
+        return Ok(None);
+    }
+    Ok(Some(
+        StaticAbility::may_skip_turn_while_source_tapped_then_untap(),
+    ))
+}
+
+/// "If you would begin your draw step, you may skip that step instead. If you
+/// do, you gain 2 life." (Fasting).
+///
+/// CR 614.10: an optional replacement of the step's beginning, offered by the
+/// turn runner before the draw step begins. The "if you do" sentence is the
+/// program run when the player skips.
+pub fn parse_may_skip_draw_step_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(period) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Period)
+    else {
+        return Ok(None);
+    };
+    let (replacement, followup) = tokens.split_at(period + 1);
+    if !crate::grammar::effects::followup_shapes::is_may_skip_draw_step_replacement(replacement) {
+        return Ok(None);
+    }
+    let Some(body) = crate::grammar::effects::followup_shapes::if_you_do_followup_body(followup)
+    else {
+        return Ok(None);
+    };
+    let body = crate::util::trim_edge_punctuation_tokens(body);
+    if body.is_empty() || body.iter().any(|token| token.kind == TokenKind::Period) {
+        return Ok(None);
+    }
+    let Ok(effects) = crate::clause_support::parse_effect_sentences_lexed(&body) else {
+        return Ok(None);
+    };
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::may_skip_draw_step_with_followup(
+        effects,
+        crate::lexer::render_token_slice(tokens),
+    )))
+}
+
 pub fn parse_skip_your_draw_step_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2270,7 +2568,15 @@ pub fn parse_legend_rule_doesnt_apply_line(
                 StaticAbility::legend_rule_doesnt_apply()
             }
             keyword_static_lines::LegendRuleScopeShape::Controller => {
-                StaticAbility::legend_rule_doesnt_apply_to_controller()
+                // "The legend rule doesn't apply to Spiders you control"
+                // (Spider-Verse): a typed object scope between "apply to"
+                // and "you control" restricts the exemption to it.
+                match legend_rule_controlled_object_scope(tokens)? {
+                    Some(filter) => {
+                        StaticAbility::legend_rule_doesnt_apply_to_controller_matching(filter)
+                    }
+                    None => StaticAbility::legend_rule_doesnt_apply_to_controller(),
+                }
             }
             keyword_static_lines::LegendRuleScopeShape::ControllerCreatures => {
                 StaticAbility::legend_rule_doesnt_apply_to_controller_matching(
@@ -2283,6 +2589,45 @@ pub fn parse_legend_rule_doesnt_apply_line(
         }));
     }
     Ok(None)
+}
+
+/// The object noun phrase of "... doesn't apply to <objects> you control",
+/// when it names something narrower than permanents.
+fn legend_rule_controlled_object_scope(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let words: Vec<(usize, &str)> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.as_word().map(|word| (idx, word)))
+        .collect();
+    let Some(apply_idx) = words.iter().position(|(_, word)| *word == "apply") else {
+        return Ok(None);
+    };
+    if words.get(apply_idx + 1).map(|(_, word)| *word) != Some("to") || words.len() < apply_idx + 5 {
+        return Ok(None);
+    }
+    let len = words.len();
+    if words[len - 2].1 != "you" || words[len - 1].1 != "control" {
+        return Ok(None);
+    }
+    let start = words[apply_idx + 2].0;
+    let end = words[len - 2].0;
+    if start >= end {
+        return Ok(None);
+    }
+    let noun_words: Vec<&str> = words[apply_idx + 2..len - 2].iter().map(|(_, word)| *word).collect();
+    if matches!(noun_words.as_slice(), ["permanents"] | ["permanent"]) {
+        return Ok(None);
+    }
+    let Ok(mut filter) = parse_object_filter(&tokens[start..end], false) else {
+        return Ok(None);
+    };
+    if filter == ObjectFilter::default() {
+        return Ok(None);
+    }
+    filter.controller = None;
+    Ok(Some(filter))
 }
 
 pub fn parse_all_permanents_colorless_line(
@@ -2364,6 +2709,115 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         abilities.push(StaticAbility::add_subtypes(filter, subtypes));
     }
     Ok(Some(abilities))
+}
+
+/// "Clandestine Chameleon has all abilities of ability stickers on other
+/// permanents you own and cards in your graveyard.": the source gains the
+/// abilities of the ability stickers on every object the trailing complete
+/// nominal names.
+pub fn parse_source_has_ability_sticker_abilities_of_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let view = crate::lexer::TokenWordView::new(&clean);
+    let words = view.word_refs();
+    const PHRASE: &[&str] = &["has", "all", "abilities", "of", "ability", "stickers", "on"];
+    let Some(has) = words.windows(PHRASE.len()).position(|window| window == PHRASE) else {
+        return Ok(None);
+    };
+    if has == 0 || !is_source_reference_words(&words[..has]) {
+        return Ok(None);
+    }
+    let Some(objects_start) = view.map_word_to_token_start(has + PHRASE.len()) else {
+        return Ok(None);
+    };
+    let object_tokens = &clean[objects_start..];
+    if object_tokens.is_empty() {
+        return Ok(None);
+    }
+    let words_after = parser_token_word_refs(object_tokens);
+    if crate::util::is_source_reference_words(&words_after) {
+        // "... on this Equipment" belongs to the attached-object production.
+        return Ok(None);
+    }
+    let filter = match complete_characteristic_subject(object_tokens)? {
+        Some(filter) => filter,
+        None => parse_object_filter_lexed(object_tokens, false)?,
+    };
+    Ok(Some(StaticAbility::source_has_ability_sticker_abilities_of(
+        filter,
+        render_token_slice(&clean).trim().to_string(),
+    )))
+}
+
+/// "Creatures you control are the chosen type. The same is true for creature
+/// spells you control and creature cards you own that aren't on the
+/// battlefield." (Conspiracy): without "in addition to their other types" the
+/// chosen creature type replaces each object's creature types (CR 205.1a),
+/// for the first subject and every subject the second sentence extends it to.
+pub fn parse_subject_are_chosen_type_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clean = trim_edge_punctuation(tokens);
+    let sentences: Vec<&[OwnedLexToken]> = clean
+        .split(|token| token.is_period())
+        .filter(|sentence| !sentence.is_empty())
+        .collect();
+    let Some((first, rest)) = sentences.split_first() else {
+        return Ok(None);
+    };
+    if rest.len() > 1 {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(first);
+    let words = view.word_refs();
+    let tail_len = match words.as_slice() {
+        [.., "are" | "is", "the", "chosen", "type"] => 4,
+        [.., "are" | "is", "the", "chosen", "creature", "type"] => 5,
+        _ => return Ok(None),
+    };
+    if words.len() <= tail_len {
+        return Ok(None);
+    }
+    let Some(subject_end) = view.map_word_to_token_start(words.len() - tail_len) else {
+        return Ok(None);
+    };
+    let Some(first_subject) = complete_characteristic_subject(&first[..subject_end])? else {
+        return Ok(None);
+    };
+    if first_subject.source {
+        return Ok(None);
+    }
+    let mut subjects = vec![first_subject];
+    if let Some(second) = rest.first() {
+        let second = trim_edge_punctuation(second);
+        let words = parser_token_word_refs(&second);
+        if !words.starts_with(&["the", "same", "is", "true", "for"]) || second.len() <= 5 {
+            return Ok(None);
+        }
+        let Some(extended) = complete_characteristic_subject(&second[5..])? else {
+            return Ok(None);
+        };
+        if extended.source {
+            return Ok(None);
+        }
+        if extended.any_of.is_empty() || extended.controller.is_some() || extended.owner.is_some() {
+            subjects.push(extended);
+        } else {
+            subjects.extend(extended.any_of);
+        }
+    }
+    let filter = if subjects.len() == 1 {
+        subjects.remove(0)
+    } else {
+        let mut union = ObjectFilter::default();
+        union.any_of = subjects;
+        union
+    };
+    Ok(Some(vec![StaticAbility::set_chosen_creature_type(
+        filter,
+        render_token_slice(&clean).trim().to_string(),
+    )]))
 }
 
 /// Whole nominal subjects for the bounded copular characteristic productions.
@@ -2559,6 +3013,17 @@ pub fn parse_all_cards_spells_permanents_colorless_line(
             ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
         ));
         return Ok(Some(StaticAbility::make_colorless(filter)));
+    }
+    Ok(None)
+}
+
+/// Swirl the Mists: a layer-3 substitution of every other color word by the
+/// source's chosen color in each spell and permanent (CR 612.2).
+pub fn parse_all_color_words_changed_to_chosen_color_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if keyword_static_lines::parse_all_color_words_changed_to_chosen_color_tokens(tokens) {
+        return Ok(Some(StaticAbility::all_color_words_become_chosen_color()));
     }
     Ok(None)
 }
@@ -3650,12 +4115,21 @@ pub fn parse_double_counters_replacement_line(
         keyword_static_lines::CounterReplacementShape::PlusOneAdd {
             filter_tokens,
             additional,
-        } => StaticAbility::add_counters_placement_replacement(
-            parse_object_filter_lexed(filter_tokens, false)?,
-            Some(CounterType::PlusOnePlusOne),
-            additional,
-            display_text_for_tokens(tokens, true),
-        ),
+            ability_kind,
+        } => {
+            let ability = StaticAbility::add_counters_placement_replacement(
+                parse_object_filter_lexed(filter_tokens, false)?,
+                Some(CounterType::PlusOnePlusOne),
+                additional,
+                display_text_for_tokens(tokens, true),
+            );
+            match ability_kind {
+                Some(ability_kind) => ability.with_counter_placement_cause(
+                    ironsmith_core::CauseFilter::any().with_ability_kind(ability_kind),
+                ),
+                None => ability,
+            }
+        }
         keyword_static_lines::CounterReplacementShape::AnyKindAdd {
             filter_tokens,
             additional,
@@ -3914,6 +4388,18 @@ pub fn parse_prevent_all_combat_damage_to_source_line(
 pub fn parse_prevent_all_damage_to_matching_permanents_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // "If damage would be dealt to this creature, prevent that damage."
+    // (Phyrexian Vindicator) is the replacement spelling of the same rule.
+    if let Some(head) = crate::grammar::keyword_static_lines::parse_passive_damage_prevention_head(tokens)
+        && !head.combat_only
+        && !head.noncombat_only
+        && matches!(
+            parser_token_word_refs(head.damaged_tokens).as_slice(),
+            ["this", "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"]
+        )
+    {
+        return Ok(Some(StaticAbility::prevent_all_damage_to_self()));
+    }
     let Some((_, rest)) = crate::grammar::primitives::parse_prefix(
         tokens,
         crate::grammar::primitives::phrase(&[
@@ -4335,7 +4821,7 @@ pub fn parse_untap_step_limit_line(
     )))
 }
 
-fn parse_attacked_during_controllers_last_turn(
+pub fn parse_attacked_during_controllers_last_turn(
     tokens: &[OwnedLexToken],
     filter: ObjectFilter,
 ) -> Option<PredicateAst> {
@@ -4597,8 +5083,104 @@ pub fn parse_assign_damage_as_unblocked_line(
     if is_may_assign_damage_as_unblocked_line_lexed(tokens) {
         return Ok(Some(StaticAbility::may_assign_damage_as_unblocked()));
     }
+    if crate::grammar::abilities::is_unblocked_may_assign_damage_to_defending_creature_line_lexed(
+        tokens,
+    ) {
+        return Ok(Some(
+            StaticAbility::may_assign_unblocked_damage_to_defending_creature(),
+        ));
+    }
 
     Ok(None)
+}
+
+/// "<play permission> by <cost> in addition to paying their other costs."
+/// (Dawnhand Dissident: "During your turn, you may cast creature spells from
+/// among cards you own exiled with this creature by removing three counters
+/// from among creatures you control ..."; Into the Pit, Falco Spara: "... from
+/// the top of your library by ..."): the ordinary play permission, each cast
+/// through it paying the card's mana cost plus the stated cost. Graveyard
+/// permissions keep their own reader.
+pub fn parse_play_permission_with_additional_cast_cost_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    const SUFFIX: &[&str] = &["in", "addition", "to", "paying", "their", "other", "costs"];
+    let tokens = trim_edge_punctuation(tokens);
+    let positions = crate::lexer::parser_token_word_positions(&tokens);
+    let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    if !words.ends_with(SUFFIX)
+        || !words.iter().any(|word| *word == "cast")
+        || words.iter().any(|word| *word == "graveyard")
+    {
+        return Ok(None);
+    }
+    let word_positions = positions.iter().map(|(index, _)| *index).collect::<Vec<_>>();
+    let suffix_start = words.len() - SUFFIX.len();
+    let Some(by) = words[..suffix_start].iter().rposition(|word| *word == "by") else {
+        return Ok(None);
+    };
+    if by + 1 >= suffix_start {
+        return Ok(None);
+    }
+    let cast = words.iter().position(|word| *word == "cast").unwrap_or(0);
+    if cast >= by || words.get(cast + 1) == Some(&"this") {
+        return Ok(None);
+    }
+    let permission_tokens = &tokens[..word_positions[by]];
+    let cost_tokens = &tokens[word_positions[by + 1]..word_positions[suffix_start]];
+    let Some(costs) = crate::permission_helpers::parse_graveyard_cast_additional_cost_tokens(
+        trim_lexed_commas(cost_tokens),
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed(permission_tokens)? else {
+        return Ok(None);
+    };
+
+    fn add_costs(
+        ability: &mut StaticAbility,
+        costs: &[crate::model::CompilerCost],
+    ) -> bool {
+        match &mut ability.payload {
+            ironsmith_core::StaticAbilityPayload::Grants(spec)
+                if matches!(spec.grantable, ironsmith_core::Grantable::PlayFrom)
+                    && spec.zone != Zone::Graveyard =>
+            {
+                spec.grantable = ironsmith_core::Grantable::DerivedAlternativeCast(
+                    ironsmith_core::DerivedAlternativeCast::ZoneCastFromCardManaCost {
+                        zone: spec.zone,
+                        additional_costs: costs.to_vec(),
+                    },
+                );
+                true
+            }
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
+                add_costs(ability, costs)
+            }
+            _ => false,
+        }
+    }
+    fn add_ast_costs(ability: &mut StaticAbilityAst, costs: &[crate::model::CompilerCost]) -> bool {
+        match ability {
+            StaticAbilityAst::Static(ability) => add_costs(ability, costs),
+            StaticAbilityAst::ConditionalStaticAbility { ability, .. }
+            | StaticAbilityAst::LabeledConditionalStaticAbility { ability, .. } => {
+                add_ast_costs(ability, costs)
+            }
+            _ => false,
+        }
+    }
+    let mut converted = 0;
+    for ability in &mut abilities {
+        if add_ast_costs(ability, &costs) {
+            converted += 1;
+        }
+    }
+    if converted != 1 {
+        return Ok(None);
+    }
+    Ok(Some(abilities))
 }
 
 pub fn parse_mana_value_instead_of_mana_cost_grant_line(
@@ -4854,6 +5436,67 @@ pub fn parse_surveilled_graveyard_play_life_cost_line(
     ]))
 }
 
+/// "During each of your turns, you may play a land and cast a permanent spell
+/// of each permanent type from your graveyard." Each permanent type is an
+/// independent once-per-your-turn budget: one static permission per type
+/// (land play; artifact, creature, enchantment, planeswalker, battle spells).
+/// The source-line marker gives every member its own ability slot, so each
+/// budget has a distinct permission identity. A card with several permanent
+/// types matches several budgets; the exact permission selected as it is
+/// played is the type chosen for it (CR 110.4 permanent types).
+pub fn parse_land_and_each_permanent_type_graveyard_permission_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    const SHAPE: &[&str] = &[
+        "during", "each", "of", "your", "turns", "you", "may", "play", "a", "land", "and",
+        "cast", "a", "permanent", "spell", "of", "each", "permanent", "type", "from", "your",
+        "graveyard",
+    ];
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    if parser_token_word_refs(tokens).as_slice() != SHAPE {
+        return Ok(None);
+    }
+    let rendered = render_token_slice(tokens);
+    let surface = rendered.trim().trim_end_matches('.');
+    let mut chars = surface.chars();
+    let surface = chars
+        .next()
+        .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    let budget = |card_type: CardType| {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            owner: Some(PlayerFilter::You),
+            card_types: vec![card_type],
+            ..ObjectFilter::default()
+        };
+        if card_type != CardType::Land {
+            filter.excluded_card_types.push(CardType::Land);
+        }
+        let mut spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(),
+            filter,
+            Zone::Graveyard,
+        )
+        .with_beneficiary(PlayerFilter::You)
+        .with_usage_limit(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns);
+        spec.filtered_zone_surface = surface.clone();
+        StaticAbility::grants(spec)
+    };
+    Ok(Some(
+        [
+            CardType::Land,
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ]
+        .into_iter()
+        .map(budget)
+        .collect(),
+    ))
+}
+
 /// "[During your turn,] you may play cards exiled with <source>. If you cast
 /// a spell this way, pay life equal to its mana value rather than pay its
 /// mana cost."
@@ -4943,9 +5586,191 @@ pub fn parse_source_exiled_play_life_cost_line(
     ]))
 }
 
+/// "During each player's turn, that player may play a land or cast a spell
+/// from among cards exiled with this enchantment, and they may spend mana as
+/// though it were mana of any color to cast that spell. When they do, exile
+/// the top card of their library." (Share the Spoils)
+///
+/// One standing play permission over the source's exiled cards whose
+/// beneficiary is the active player (CR 102.1), with a permission-local mana
+/// rider and a reflexive instruction run when it is used. The reflexive
+/// instruction is controlled by the player who used the permission, so
+/// "their library" is that player's own.
+fn parse_turn_player_source_exiled_play_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::model::CompilerGrantSpecCore>, CardTextError> {
+    let joined = parser_token_word_refs(tokens)
+        .into_iter()
+        .map(|word| word.replace('\'', ""))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace(" player s turn ", " players turn ");
+    let words = joined.split(' ').collect::<Vec<_>>();
+    const HEAD: &[&str] = &[
+        "during", "each", "players", "turn", "that", "player", "may", "play", "a", "land", "or",
+        "cast", "a", "spell", "from", "among", "cards", "exiled", "with", "this",
+    ];
+    const RIDER: &[&str] = &[
+        "and", "they", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "cast", "that", "spell", "when", "they", "do", "exile", "the", "top",
+        "card", "of", "their", "library",
+    ];
+    let Some([noun, rider @ ..]) = words.strip_prefix(HEAD) else {
+        return Ok(None);
+    };
+    if rider != RIDER {
+        return Ok(None);
+    }
+    // The reflexive instruction's controller is the player who used the
+    // permission; "their library" is that player's ("your" in its program).
+    let follow_up =
+        crate::lexer::synthetic_word_tokens(["exile", "the", "top", "card", "of", "your", "library"]);
+    let on_use_effects = crate::clause_support::parse_effect_sentences_lexed(&follow_up)?;
+    if on_use_effects.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::play_from(),
+        filter,
+        Zone::Exile,
+    )
+    .with_beneficiary(PlayerFilter::Active);
+    spec.cast_mana_spend_mode = ironsmith_core::value_model::ManaSpendMode::AnyColor;
+    spec.on_use_effects = on_use_effects;
+    let rendered = crate::lexer::render_token_slice(tokens);
+    let surface = rendered.trim().trim_end_matches('.');
+    let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars
+        .next()
+        .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
+    let _ = noun;
+    Ok(Some(spec))
+}
+
+/// "You may play lands from among cards exiled with this enchantment." and
+/// "You may cast spells from among cards exiled with this enchantment. You
+/// can't cast more than one spell this way each turn.": the source-linked
+/// exile pool split into a land-only play permission and a once-each-turn
+/// spell permission (the budget belongs to that permission, not to the
+/// player's other spells).
+fn parse_source_exiled_lands_or_budgeted_spells_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    use crate::grammar::primitives;
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["you", "may", "play", "lands", "from", "among"]),
+    ) && let Some((reference, tail)) =
+        crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(rest)
+        && primitives::probe_all(tail, primitives::sentence_end(), "source-linked land permission")
+            .is_some()
+    {
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Exile)
+            .with_type(CardType::Land);
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let spec = crate::model::CompilerGrantSpecCore::new(
+            crate::model::CompilerGrantableCore::play_from(),
+            filter,
+            Zone::Exile,
+        )
+        .with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+            mana_rider: None,
+            source: reference.surface,
+            plural_spell_subject: false,
+            generic_card_pool: true,
+            generic_cast_this_way_subject: true,
+        });
+        return Ok(Some(vec![StaticAbility::grants(spec)]));
+    }
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [permission, budget] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let budget_words = parser_token_word_refs(budget);
+    let budget_words = budget_words.as_slice();
+    if !matches!(
+        budget_words,
+        ["you", "can't" | "cant", "cast", "more", "than", "one", "spell", "this", "way", "each", "turn"]
+    ) || !parser_token_word_refs(permission).starts_with(&["you", "may", "cast", "spells"])
+    {
+        return Ok(None);
+    }
+    let Some(mut abilities) = parse_you_may_static_grant_line(permission)? else {
+        return Ok(None);
+    };
+    let [ability] = abilities.as_mut_slice() else {
+        return Ok(None);
+    };
+    let ironsmith_core::StaticAbilityPayload::Grants(spec) = &mut ability.payload else {
+        return Ok(None);
+    };
+    if spec.usage_limit.is_some()
+        || !matches!(spec.grantable, crate::model::CompilerGrantableCore::PlayFrom)
+    {
+        return Ok(None);
+    }
+    spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceEachTurn);
+    Ok(Some(abilities))
+}
+
+/// "Each player may [look at cards they exiled with this <source>, and they
+/// may] play lands and cast spells from among [those] cards [they exiled with
+/// this <source> this turn]": one permission per player over the source's
+/// linked cards that player exiled (Shared Fate, Uba Mask).
+pub fn parse_each_player_source_exiled_by_them_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some((reference, may_look, this_turn)) =
+        crate::grammar::permission_facts::source_exiled::parse_each_player_source_exiled_by_them_tokens(tokens)
+    else {
+        return Ok(None);
+    };
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let by_them = if this_turn {
+        ironsmith_core::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG
+    } else {
+        ironsmith_core::tag::SOURCE_EXILED_BY_YOU_TAG
+    };
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: ironsmith_core::tag::TagKey::from(by_them).into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::play_from(), filter, Zone::Exile,
+    ).with_source_exiled_surface(crate::grant::SourceExiledGrantSurface {
+        mana_rider: None,
+        source: reference.surface,
+        plural_spell_subject: true,
+        generic_card_pool: true,
+        generic_cast_this_way_subject: true,
+    });
+    spec.beneficiary = PlayerFilter::Any;
+    spec.may_look_at_linked_exile = may_look;
+    Ok(Some(StaticAbility::grants(spec)))
+}
+
 pub fn parse_you_may_static_grant_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(abilities) = parse_source_exiled_lands_or_budgeted_spells_line(tokens)? {
+        return Ok(Some(abilities));
+    }
+    if let Some(spec) = parse_turn_player_source_exiled_play_line(tokens)? {
+        return Ok(Some(vec![StaticAbility::grants(spec)]));
+    }
     if let Some(reference) = crate::grammar::permission_facts::source_exiled::parse_look_source_exiled_tokens(tokens) {
         return Ok(Some(vec![StaticAbility::look_at_source_exiled_cards(reference.surface)]));
     }
@@ -5101,6 +5926,7 @@ pub fn parse_play_from_permission_with_enter_counter_this_way_line(
         }) if matches!(
             spec.grantable,
             crate::model::CompilerGrantableCore::PlayFrom
+                | crate::model::CompilerGrantableCore::DerivedAlternativeCast(_)
         ) =>
         {
             Ok(static_grant_beneficiary(player).map(|beneficiary| {
@@ -5360,6 +6186,27 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
         if tail.len() > 2 && tail[0].is_word("it") && tail[1].is_word("targets") {
             let filter = parse_object_filter_lexed(&tail[2..], false)?;
             return Ok(Some(StaticAbility::flash_if_targets_matching(filter)));
+        }
+        // Decision-dependent timing (CR 601.2b-c): "if X is 3 or less"
+        // (Silver Scrutiny), "if it's cast using teamwork" (Quantum
+        // Reduction).
+        let words: Vec<String> = crate::lexer::token_word_refs(&tail)
+            .into_iter()
+            .map(|word| word.replace(['\'', '’'], ""))
+            .collect();
+        let words: Vec<&str> = words.iter().map(String::as_str).collect();
+        let choice = match words.as_slice() {
+            ["x", "is", count, "or", "less"] => crate::util::parse_number_word_u32(count)
+                .map(ironsmith_core::FlashCastChoice::XAtMost),
+            ["its" | "it", "cast", "using", label] | ["it", "is", "cast", "using", label]
+                if *label == "teamwork" =>
+            {
+                Some(ironsmith_core::FlashCastChoice::OptionalCostPaid("Teamwork".into()))
+            }
+            _ => None,
+        };
+        if let Some(choice) = choice {
+            return Ok(Some(StaticAbility::flash_if_cast_choice(choice)));
         }
     }
     Ok(None)
@@ -5714,6 +6561,26 @@ pub fn pt_component_is_x(text: &str) -> bool {
     chars.next().is_some_and(|ch| matches!(ch, 'x' | 'X')) && chars.next().is_none()
 }
 
+pub fn parse_devotion_increase_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let prefix = ["your", "devotion", "to", "each", "color", "and", "each", "combination", "of", "colors", "is", "increased", "by"];
+    if tokens.len() <= prefix.len()
+        || !tokens.iter().zip(prefix).all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let Some((amount, used)) = parse_number(&tokens[prefix.len()..]) else {
+        return Ok(None);
+    };
+    if used != tokens.len() - prefix.len() {
+        return Ok(None);
+    }
+    let amount = u32::try_from(amount).map_err(|_| CardTextError::ParseError("devotion increase exceeds the supported range".into()))?;
+    Ok(Some(StaticAbility::devotion_increase(amount)))
+}
+
 pub fn parse_no_maximum_hand_size_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -5783,6 +6650,26 @@ pub fn parse_reduced_maximum_hand_size_line(
     }))
 }
 
+/// "If a spell or ability an opponent controls causes you to discard a card,
+/// you may reveal that card and put it on top of your library instead of
+/// putting it anywhere else." (Nephalia Academy)
+pub fn parse_opponent_effect_discard_to_library_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
+    let matched = matches!(
+        words.as_slice(),
+        [
+            "if", "a", "spell", "or", "ability", "an", "opponent", "controls", "causes", "you",
+            "to", "discard", "a", "card", "you", "may", "reveal", "that", "card", "and", "put",
+            "it", "on", "top", "of", "your", "library", "instead", "of", "putting", "it",
+            "anywhere", "else",
+        ]
+    );
+    Ok(matched.then(StaticAbility::opponent_effect_discard_to_library_replacement))
+}
+
 pub fn parse_effect_discard_to_library_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -5796,7 +6683,47 @@ pub fn parse_effect_discard_to_library_replacement_line(
         ));
     }
 
+    if let Some((counter_type, count)) =
+        parse_opponent_discard_this_to_battlefield_with_counters(tokens)
+    {
+        return Ok(Some(
+            StaticAbility::opponent_effect_discard_this_to_battlefield_with_counters_replacement(
+                counter_type,
+                count,
+            ),
+        ));
+    }
+
     Ok(None)
+}
+
+/// "If a spell or ability an opponent controls causes you to discard this
+/// card, put it onto the battlefield with two +1/+1 counters on it instead of
+/// putting it into your graveyard." (Dodecapod)
+fn parse_opponent_discard_this_to_battlefield_with_counters(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::object::CounterType, u32)> {
+    const HEAD: &[&str] = &[
+        "if", "a", "spell", "or", "ability", "an", "opponent", "controls", "causes", "you", "to",
+        "discard", "this", "card", "put", "it", "onto", "the", "battlefield", "with",
+    ];
+    const TAIL: &[&str] = &[
+        "on", "it", "instead", "of", "putting", "it", "into", "your", "graveyard",
+    ];
+    let words = tokens
+        .iter()
+        .filter_map(|token| token.as_word().map(|_| token.parser_text()))
+        .collect::<Vec<_>>();
+    let middle = words.strip_prefix(HEAD)?.strip_suffix(TAIL)?;
+    let [count, counter, "counter" | "counters"] = middle else {
+        return None;
+    };
+    let count = match *count {
+        "a" | "an" => 1,
+        other => crate::util::parse_number_word_u32(other).or_else(|| other.parse().ok())?,
+    };
+    let counter_type = crate::util::parse_counter_type_word(counter)?;
+    Some((counter_type, count))
 }
 
 pub fn parse_draw_replace_exile_top_face_down_line(
@@ -5936,12 +6863,30 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     {
         return Ok(None);
     }
+    let body = draw_replacement_drawn_card_body(&shape.body).unwrap_or_else(|| shape.body.clone());
     let effects = if shape.skip {
         Vec::new()
     } else {
-        super::super::clause_support::parse_effect_sentences_lexed(&shape.body)?
+        super::super::clause_support::parse_effect_sentences_lexed(&body)?
     };
     let display = render_token_slice(tokens);
+    if let Some(source_tokens) = shape.cycling_source.as_ref() {
+        // "If a cycling ability of another nonland card would cause you to
+        // draw a card, instead ...": scoped to draws a resolving cycling
+        // ability of a matching source proposes.
+        if shape.optional || shape.skip {
+            return Ok(None);
+        }
+        let cycling_source = parse_object_filter(source_tokens, false)?;
+        return Ok(Some(
+            StaticAbility::draw_replacement_with_effects_for_cycling_source(
+                PlayerFilter::You,
+                cycling_source,
+                effects,
+                display,
+            ),
+        ));
+    }
     if shape.optional || shape.empty_library {
         let condition = if shape.empty_library {
             PredicateAst::ValueComparison {
@@ -5978,6 +6923,30 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     )))
 }
 
+/// The card a replaced draw would have drawn is the top card of the drawer's
+/// library (CR 121.1, 614.6): "that player exiles that card face up instead"
+/// (Uba Mask) reads as "that player exiles the top card of their library".
+/// Exile is face up by default (CR 406.3), so "face up" adds nothing.
+fn draw_replacement_drawn_card_body(body: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let words = parser_token_word_refs(body);
+    let verb = words.iter().position(|word| matches!(*word, "exiles" | "exile"))?;
+    let rest = match &words[verb + 1..] {
+        ["that", "card", rest @ ..] | ["it", rest @ ..] => rest,
+        _ => return None,
+    };
+    let rest = match rest {
+        ["face", "up", rest @ ..] => rest,
+        rest => rest,
+    };
+    if !rest.is_empty() {
+        return None;
+    }
+    let subject = &words[..verb];
+    let possessive = if subject.is_empty() || subject == ["you"] { "your" } else { "their" };
+    let text = format!("{} {} the top card of {possessive} library.", subject.join(" "), words[verb]);
+    crate::lexer::lex_line(text.trim(), 0).ok()
+}
+
 pub fn parse_draw_extra_cards_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -6003,6 +6972,88 @@ pub fn parse_draw_extra_cards_replacement_line(
     ))
 }
 
+/// "The first time you would draw a card each turn[ except the first card you
+/// draw during each of your draw steps], <effects> instead." (Reed Richards;
+/// Scion of Halaster's granted "..., instead look at ...").
+///
+/// The replacement applies to your first draw of the turn: no card has been
+/// drawn this turn yet. With the draw-step exception, the first card of your
+/// draw step is never replaced and does not use up the replacement, so on
+/// your turn one earlier draw is still allowed. A draw the replacement
+/// itself makes is not replaced again (CR 614.5).
+fn parse_first_draw_each_turn_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    const HEADER: &[&str] = &[
+        "the", "first", "time", "you", "would", "draw", "a", "card", "each", "turn",
+    ];
+    const DRAW_STEP_EXCEPTION: &[&str] = &[
+        "except", "the", "first", "card", "you", "draw", "during", "each", "of", "your", "draw",
+        "steps",
+    ];
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let word_at = |index: usize, word: &str| tokens.get(index).is_some_and(|token| token.is_word(word));
+    if !HEADER.iter().enumerate().all(|(index, word)| word_at(index, word)) {
+        return Ok(None);
+    }
+    let mut index = HEADER.len();
+    let except_first_of_draw_step = DRAW_STEP_EXCEPTION
+        .iter()
+        .enumerate()
+        .all(|(offset, word)| word_at(index + offset, word));
+    if except_first_of_draw_step {
+        index += DRAW_STEP_EXCEPTION.len();
+    }
+    if !tokens.get(index).is_some_and(|token| token.kind == TokenKind::Comma) {
+        return Ok(None);
+    }
+    let mut body = trim_lexed_commas(&tokens[index + 1..]).to_vec();
+    if body.first().is_some_and(|token| token.is_word("instead")) {
+        body.remove(0);
+    } else {
+        let end = body
+            .iter()
+            .rposition(|token| !token.is_period())
+            .map(|last| last + 1)
+            .unwrap_or(0);
+        if end == 0 || !body[end - 1].is_word("instead") {
+            return Ok(None);
+        }
+        body.remove(end - 1);
+    }
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&body)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    let drawn = |operator, amount| PredicateAst::ValueComparison {
+        left: Value::MaxCardsDrawnThisTurn(PlayerFilter::You),
+        operator,
+        right: Value::Fixed(amount),
+    };
+    let none_drawn = drawn(crate::effect::ValueComparisonOperator::Equal, 0);
+    let condition = if except_first_of_draw_step {
+        PredicateAst::Or(
+            Box::new(none_drawn),
+            Box::new(PredicateAst::And(
+                Box::new(PredicateAst::YourTurn),
+                Box::new(drawn(crate::effect::ValueComparisonOperator::LessThanOrEqual, 1)),
+            )),
+        )
+    } else {
+        none_drawn
+    };
+    let ability =
+        StaticAbility::conditional_draw_replacement(condition, effects, render_token_slice(tokens));
+    Ok(Some(if except_first_of_draw_step {
+        ability.with_draw_step_first_draw_exception()
+    } else {
+        ability
+    }))
+}
+
 pub fn parse_conditional_draw_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -6012,6 +7063,10 @@ pub fn parse_conditional_draw_replacement_line(
         operator: crate::effect::ValueComparisonOperator::Equal,
         right: Value::Fixed(1),
     };
+
+    if let Some(ability) = parse_first_draw_each_turn_replacement_line(tokens)? {
+        return Ok(Some(ability));
+    }
 
     if crate::word_primitives::parse_sequence_complete(
         &words,
@@ -6841,6 +7896,13 @@ pub fn parse_redirect_would_enter_line(
     };
     let filter = parse_object_filter(spec.filter_tokens, false)?;
     parser_trace("parse_static:redirect-would-enter:matched", tokens);
+    if spec.or_no_mana_spent {
+        return Ok(Some(StaticAbility::redirect_would_enter_unless_paid_cast(
+            filter,
+            spec.destination,
+            render_token_slice(tokens),
+        )));
+    }
     Ok(Some(StaticAbility::redirect_would_enter(
         filter,
         spec.not_cast,
@@ -7236,6 +8298,10 @@ pub fn parse_spend_mana_as_any_color_line(
         keyword_static_lines::ManaSpendPermissionShape::SymbolAsAnyColorForSourceActivation {
             symbol,
         } => mana_spend_symbol_for_source_activation_permission(symbol, &clause_words),
+        keyword_static_lines::ManaSpendPermissionShape::SymbolAsSymbol { symbol, as_symbol } => (
+            crate::effect::ManaSpendPermission::mana_symbol_as(PlayerFilter::You, symbol, as_symbol),
+            clause_words.join(" "),
+        ),
         keyword_static_lines::ManaSpendPermissionShape::AnyColor {
             player,
             activation_filter_tokens,
@@ -8952,7 +10018,7 @@ mod foretell_special_action_modifier_tests {
             let tokens = crate::lexer::lex_line(&format!("Foretelling cards from your hand costs {{{amount}}} less and can be done on any player's turn."), 0).unwrap();
             let parsed = parse_foretelling_cards_cost_modifier_line(&tokens).unwrap().unwrap();
             assert!(matches!(parsed.payload, ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
-                generic_reduction, any_players_turn: true,
+                generic_reduction, any_players_turn: true, ..
             } if generic_reduction == amount));
         }
         for line in [

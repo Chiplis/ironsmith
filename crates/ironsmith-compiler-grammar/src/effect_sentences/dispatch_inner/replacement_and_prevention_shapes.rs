@@ -54,6 +54,7 @@ pub fn parse_take_extra_turn_sentence(
 pub fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     replacement_grammar::parse_additional_phases_shape(tokens)
         .map(|shape| EffectAst::subject_verb_additional_phases_with_main_surface(shape.phases, shape.after_main_phase))
+        .or_else(|| crate::effect_sentences::zone_handlers::parse_there_is_additional_step_sentence(tokens))
 }
 pub fn parse_destroy_or_exile_all_split_sentence(
     tokens: &[OwnedLexToken],

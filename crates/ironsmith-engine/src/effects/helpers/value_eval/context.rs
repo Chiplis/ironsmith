@@ -325,18 +325,26 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             Mode::Continuous(layer) if shared_creature_types => layer.shared_creature_count(filter),
             Mode::Continuous(layer) => layer.aggregate_count(filter),
         };
-        let Some(controller) = &filter.controller else {
+        // Cards outside the battlefield have no controller: "the greatest
+        // number of cards in an opponent's graveyard" partitions by owner,
+        // as `least_per_player` does.
+        let by_controller = filter.controller.is_some();
+        let Some(partition) = filter.controller.as_ref().or(filter.owner.as_ref()) else {
             return count(filter);
         };
         self.game
             .players
             .iter()
             .filter(|player| {
-                player.is_in_game() && controller.matches_player(player.id, &filter_ctx)
+                player.is_in_game() && partition.matches_player(player.id, &filter_ctx)
             })
             .map(|player| {
                 let mut filter = filter.clone();
-                filter.controller = Some(PlayerFilter::Specific(player.id));
+                if by_controller {
+                    filter.controller = Some(PlayerFilter::Specific(player.id));
+                } else {
+                    filter.owner = Some(PlayerFilter::Specific(player.id));
+                }
                 count(&filter)
             })
             .fold(0, i32::max)

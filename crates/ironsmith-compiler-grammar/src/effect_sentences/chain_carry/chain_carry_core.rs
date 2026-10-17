@@ -191,6 +191,19 @@ pub(super) fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &U
         }) if matches!(effect_duration, Until::Forever) => {
             *effect_duration = duration.clone();
         }
+        // "For as long as this enchantment remains on the battlefield, that
+        // creature is goaded" (Hot Pursuit): the carried duration replaces
+        // goad's default "until your next turn" (CR 701.15a).
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::KeywordActions(crate::cards::builders::KeywordActionAst::Goad {
+                    duration: effect_duration,
+                    ..
+                }),
+            ..
+        }) if matches!(effect_duration, Until::YourNextTurn) => {
+            *effect_duration = duration.clone();
+        }
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             if_true, if_false, ..
         }) => {

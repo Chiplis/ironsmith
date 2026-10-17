@@ -133,8 +133,13 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
             player_filter_references_target_player(base)
                 || player_filter_references_target_player(excluded)
         }
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
+            player_filter_references_target_player(base)
+                || player_filter_references_target_player(other)
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MostLifeTiedAmong { base }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)
@@ -1166,6 +1171,51 @@ mod resolution_program_failure_tests;
 /// triggers its own resolution scheduled ("the controller of the permanent it
 /// becomes sacrifices it at the beginning of the next cleanup step") refer to
 /// that permanent, not to the stack object that no longer exists.
+/// The objects a stack entry targets, in announcement order, deduplicated.
+fn stack_entry_targeted_objects(entry: &crate::game_state::StackEntry) -> Vec<crate::ids::ObjectId> {
+    let mut objects = Vec::new();
+    for target in &entry.targets {
+        if let crate::game_state::Target::Object(object) = target
+            && !objects.contains(object)
+        {
+            objects.push(*object);
+        }
+    }
+    objects
+}
+
+/// The kind of ability a stack entry represents, for the events its
+/// resolution causes. The modular keyword's trigger (CR 702.43a) is the one
+/// whose program opens by tagging its dying object under the modular tag.
+pub(crate) fn stack_entry_ability_kind(
+    entry: &crate::game_state::StackEntry,
+) -> Option<crate::events::cause::CauseAbilityKind> {
+    use crate::events::cause::CauseAbilityKind;
+    if !entry.is_ability {
+        return None;
+    }
+    if entry.trigger_identity.is_some() || entry.triggering_event.is_some() {
+        let modular = entry.ability_effects.as_ref().is_some_and(|program| {
+            program.segments.first().is_some_and(|segment| {
+                segment.default_effects.first().is_some_and(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                        .is_some_and(|tag| tag.tag.as_str() == MODULAR_TRIGGERING_OBJECT_TAG)
+                })
+            })
+        });
+        return Some(if modular {
+            CauseAbilityKind::ModularTrigger
+        } else {
+            CauseAbilityKind::Triggered
+        });
+    }
+    entry.ability_index.map(|_| CauseAbilityKind::Activated)
+}
+
+/// The tag the modular keyword's trigger binds its dying object under.
+pub(crate) const MODULAR_TRIGGERING_OBJECT_TAG: &str = "modular_triggering_object";
+
 fn inherit_resolving_spell_delayed_triggers(
     game: &mut GameState,
     spell: crate::ids::ObjectId,
@@ -1249,6 +1299,13 @@ pub(super) fn stack_entry_execution_context<'a>(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    // CR 115.1: events this resolution causes remember what it targets
+    // ("a spell or ability that targets that creature would cause ...").
+    ctx.cause.targeted_objects = stack_entry_targeted_objects(entry);
+    // CR 113.3b-c: events this resolution causes remember whether a triggered
+    // or activated ability caused them ("triggered abilities you control
+    // can't cause ...", "if a modular triggered ability would put ...").
+    ctx.cause.resolving_ability = stack_entry_ability_kind(entry);
     ctx.linked_exile_owner = entry.linked_exile_owner.clone();
     ctx.source_number_owner = entry.source_number_owner.clone();
     ctx.iteration = entry.iteration;
@@ -1418,10 +1475,32 @@ pub(super) fn resolve_stack_entry_full_with_outputs(
         game,
         decision_maker,
         |game, decision_maker| {
+            // CR 722: control records bounded by this entry's resolution
+            // ("while that spell is resolving", "until this finishes
+            // resolving") start and end around it.
+            let resolving_source = game
+                .stack
+                .last()
+                .and_then(|entry| game.object(entry.object_id))
+                .map(|object| object.stable_id);
+            if let Some(source) = resolving_source {
+                game.begin_resolution_player_control(source);
+            }
             let mut result =
                 resolve_stack_entry_full_inner(game, decision_maker, trigger_queue.as_deref_mut());
             if let Some(error) = game.token_resource_failure() {
                 result = Err(GameLoopError::ExecutionFailed(error));
+            }
+            if result.is_ok() {
+                if decision_maker.awaiting_choice() {
+                    // The suspended prompt keeps this routing after the
+                    // resolution's provisional state rolls back.
+                    if game.has_active_resolution_player_control() {
+                        game.capture_pending_decision_controllers();
+                    }
+                } else {
+                    game.finish_resolution_player_control(resolving_source);
+                }
             }
             result
         },
@@ -1574,6 +1653,7 @@ fn resolve_stack_entry_full_inner(
     // and countering effects must not look like the affected spell resolving.
     if !entry.is_ability {
         ctx.cause = EventCause::from_spell_resolution(entry.object_id, entry.controller);
+        ctx.cause.targeted_objects = stack_entry_targeted_objects(&entry);
     }
 
     if let Some(trigger_identity) = entry.trigger_identity {
@@ -1931,6 +2011,10 @@ fn resolve_stack_entry_full_inner(
             completion_receipts.push(movement);
             if let Some(new_id) = new_id {
                 inherit_resolving_spell_delayed_triggers(game, entry.object_id, new_id);
+                // Cards the spell exiled while it was cast (an escape or other
+                // exile cost) stay "exiled with" the permanent it becomes
+                // (Skyway Robber: "cards exiled with this creature").
+                game.transfer_exiled_with_source_links(entry.object_id, new_id);
                 if let Some(attack_target) = sneak_attack_target.take()
                     && attack_target_still_valid(game, &attack_target)
                     && let Some(combat) = game.combat.as_mut()
@@ -2119,7 +2203,8 @@ fn resolve_stack_entry_full_inner(
                                 crate::target::PlayerFilter::Specific(obj.owner),
                                 crate::grant::GrantDuration::Forever,
                             )
-                            .starting_next_turn(),
+                            .starting_next_turn()
+                            .warped(),
                         )],
                         true,
                         vec![new_id],

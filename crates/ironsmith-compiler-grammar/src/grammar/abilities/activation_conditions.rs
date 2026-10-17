@@ -12,7 +12,8 @@ use super::super::conditions::{
 };
 use super::super::{leaf, primitives};
 use super::surface::{
-    matches_any_prefix_tokens, matches_exact_tokens, matches_prefix_tokens, parse_phrase_words,
+    matches_any_exact_tokens, matches_any_prefix_tokens, matches_exact_tokens,
+    matches_prefix_tokens, parse_phrase_words,
     phrase_offset_words,
 };
 use crate::grammar::shared_util::value_semantics::parse_filter_comparison_tokens;
@@ -203,6 +204,17 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
         &["only", "your", "opponents", "may", "activate", "this", "ability"],
     ) {
         return Some(ActivationTiming::AnyTimeByOpponents);
+    }
+    // "Only this creature's owner may activate this ability" (Personal
+    // Incarnation).
+    if matches_any_exact_tokens(
+        tokens,
+        &[
+            &["only", "this", "creature's", "owner", "may", "activate", "this", "ability"],
+            &["only", "this", "creatures", "owner", "may", "activate", "this", "ability"],
+        ],
+    ) {
+        return Some(ActivationTiming::AnyTimeBySourceOwner);
     }
     if matches_exact_tokens(
         tokens,

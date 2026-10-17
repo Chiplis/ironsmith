@@ -145,6 +145,65 @@ pub fn parse_flash_with_additional_cost(
     ))
 }
 
+/// "You may cast this spell as though it had flash by tapping three untapped
+/// creatures you control with flying in addition to paying its other costs."
+/// "You may cast this spell as though it had flash if you behold a Dragon as
+/// an additional cost to cast it."
+/// The non-mana payment is an optional additional cost that grants flash
+/// timing when announced (CR 601.2b, 601.2f), exactly like the mana-only
+/// "if you pay {N} more" form.
+pub fn parse_flash_timing_optional_payment(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::model::CompilerOptionalCost>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let view = TokenWordView::new(&tokens);
+    let words = view.word_refs();
+    let head = [
+        "you", "may", "cast", "this", "spell", "as", "though", "it", "had", "flash",
+    ];
+    if !permission_shapes::prefix_words(&words, &head) {
+        return Ok(None);
+    }
+    let rest = &words[head.len()..];
+    let (cost_word_start, suffix_len, gerund) = if rest.first() == Some(&"by")
+        && rest.ends_with(&["in", "addition", "to", "paying", "its", "other", "costs"])
+    {
+        (head.len() + 1, 7, true)
+    } else if rest.starts_with(&["if", "you"])
+        && rest.ends_with(&["as", "an", "additional", "cost", "to", "cast", "it"])
+        // The mana-only "if you pay {N} more" form keeps its own reader.
+        && !rest.starts_with(&["if", "you", "pay"])
+    {
+        (head.len() + 2, 7, false)
+    } else {
+        return Ok(None);
+    };
+    let cost_word_end = words.len() - suffix_len;
+    if cost_word_end <= cost_word_start {
+        return Ok(None);
+    }
+    let starts = view.token_start_indices();
+    let cost_start = starts[cost_word_start];
+    let cost_end = starts[cost_word_end];
+    let mut cost_tokens = tokens[cost_start..cost_end].to_vec();
+    if gerund {
+        for index in 0..cost_tokens.len() {
+            if index == 0 || cost_tokens[index - 1].is_word("and") {
+                for (gerund, verb) in [("tapping", "tap"), ("paying", "pay"), ("sacrificing", "sacrifice"),
+                    ("exiling", "exile"), ("discarding", "discard"), ("returning", "return"),
+                    ("beholding", "behold"), ("revealing", "reveal")] {
+                    if cost_tokens[index].is_word(gerund) { cost_tokens[index].replace_word(verb); }
+                }
+            }
+        }
+    }
+    let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&cost_tokens)?;
+    if cost.is_free() {
+        return Ok(None);
+    }
+    Ok(Some(crate::model::CompilerOptionalCost::flash_timing(cost)))
+}
+
 pub fn parse_you_may_rather_than_spell_cost(
     tokens: &[OwnedLexToken],
     line: &str,
@@ -272,7 +331,21 @@ pub fn parse_if_conditional_alternative_cost(
                 == [
                     "you", "may", "cast", "it", "without", "paying", "its", "mana", "cost",
                 ]);
-    if !self_free_cast && parse_you_may_rather_than_spell_cost(tail_tokens, line)?.is_none() {
+    // "If ..., you may cast this creature without paying its mana cost and as
+    // though it had flash" (Qasali Ambusher): the free method carries its own
+    // instant-timing permission.
+    let free_cast_with_flash = matches!(
+        TokenWordView::new(tail_tokens).word_refs().as_slice(),
+        [
+            "you", "may", "cast", "this", "spell" | "creature" | "card" | "permanent",
+            "without", "paying", "its", "mana", "cost", "and", "as", "though", "it", "had",
+            "flash",
+        ]
+    );
+    if !self_free_cast
+        && !free_cast_with_flash
+        && parse_you_may_rather_than_spell_cost(tail_tokens, line)?.is_none()
+    {
         return Ok(None);
     }
 
@@ -287,6 +360,14 @@ pub fn parse_if_conditional_alternative_cost(
         })?
     };
 
+    if free_cast_with_flash {
+        return Ok(Some(AlternativeCastingMethod::alternative_cost_with_condition(
+            ironsmith_core::FREE_CAST_AS_THOUGH_FLASH_METHOD,
+            None,
+            Vec::new(),
+            condition,
+        )));
+    }
     if self_free_cast {
         let method = AlternativeCastingMethod::alternative_cost_with_condition(
             "Parsed alternative cost",

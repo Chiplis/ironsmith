@@ -2040,6 +2040,14 @@ pub enum ActivatedAbilityCostCondition {
         keyword: ironsmith_core::ActivatedAbilityKeyword,
         during_your_turn: bool,
     },
+    /// The selected activation is a mana ability.
+    ManaAbility,
+    /// The activator has activated no ability of a source matching `filter`
+    /// earlier this turn.
+    FirstActivationOfMatchingSourceThisTurn { filter: ObjectFilter },
+    /// The first activation during the activator's turn that targets an
+    /// object matching `filter`.
+    FirstTargetingActivationDuringYourTurn { filter: ObjectFilter },
 }
 
 fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCondition) -> String {
@@ -2087,6 +2095,19 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
             format!("if it's a {keyword} ability")
         }
         ActivatedAbilityCostCondition::NonManaAbility => "unless it's a mana ability".into(),
+        ActivatedAbilityCostCondition::ManaAbility => "if it's a mana ability".into(),
+        ActivatedAbilityCostCondition::FirstActivationOfMatchingSourceThisTurn { filter } => {
+            format!(
+                "if it's the first activated ability of {} activated this turn",
+                filter.description()
+            )
+        }
+        ActivatedAbilityCostCondition::FirstTargetingActivationDuringYourTurn { filter } => {
+            format!(
+                "if it's the first activated ability activated during your turn that targets {}",
+                filter.description()
+            )
+        }
         ActivatedAbilityCostCondition::LoyaltyAbility => "if it's a loyalty ability".into(),
         ActivatedAbilityCostCondition::FirstKeywordAbilityThisTurn {
             keyword,
@@ -2179,6 +2200,69 @@ pub fn activated_ability_cost_condition_is_active_for_activation(
         }
         ActivatedAbilityCostCondition::NonManaAbility => {
             ability.is_some_and(|ability| !ability.mana_ability)
+        }
+        ActivatedAbilityCostCondition::ManaAbility => {
+            ability.is_some_and(|ability| ability.mana_ability)
+        }
+        ActivatedAbilityCostCondition::FirstActivationOfMatchingSourceThisTurn { filter } => {
+            // Earlier activations this turn are recorded as
+            // AbilityActivatedEvents once their costs are paid (CR 602.2), so
+            // the activation being priced is never among them.
+            let Some(activator) = ability.and_then(|ability| ability.activator) else {
+                return false;
+            };
+            let Some(modifier) = game.object(modifier_source) else {
+                return false;
+            };
+            let context =
+                game.filter_context_for(game.controller_of(modifier), Some(modifier_source));
+            !game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<crate::events::AbilityActivatedEvent>())
+                .filter(|event| event.activator == activator)
+                .any(|event| {
+                    event
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| filter.matches_snapshot(snapshot, &context, game))
+                })
+        }
+        ActivatedAbilityCostCondition::FirstTargetingActivationDuringYourTurn { filter } => {
+            let Some(activator) = ability.and_then(|ability| ability.activator) else {
+                return false;
+            };
+            if game.turn.active_player != activator {
+                return false;
+            }
+            let Some(modifier) = game.object(modifier_source) else {
+                return false;
+            };
+            let context =
+                game.filter_context_for(game.controller_of(modifier), Some(modifier_source));
+            let targets_match = |targets: &[crate::game_state::Target]| {
+                targets.iter().any(|target| match target {
+                    crate::game_state::Target::Object(object_id) => game
+                        .object(*object_id)
+                        .is_some_and(|object| filter.matches(object, &context, game)),
+                    crate::game_state::Target::Player(_) => false,
+                })
+            };
+            // Before targets are chosen the price is only an estimate; it is
+            // recomputed once they are (CR 601.2f, 602.2b).
+            if !chosen_targets.is_empty() && !targets_match(chosen_targets) {
+                return false;
+            }
+            // Earlier activations this turn are recorded once their costs
+            // are paid (CR 602.2), so the priced activation is not among them.
+            !game
+                .turn_store
+                .turn_history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<crate::events::AbilityActivatedEvent>())
+                .filter(|event| event.activator == activator && !event.is_mana_ability)
+                .any(|event| targets_match(&event.targets))
         }
         ActivatedAbilityCostCondition::LoyaltyAbility => {
             ability.is_some_and(|ability| ability.loyalty_ability)
@@ -2595,6 +2679,13 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::CreatureIsAttackingYou => {
             Some("a creature is attacking you".to_string())
         }
+        ThisSpellCostCondition::All(conditions) => {
+            let parts = conditions
+                .iter()
+                .filter_map(describe_this_spell_cost_condition)
+                .collect::<Vec<_>>();
+            (!parts.is_empty()).then(|| parts.join(" and "))
+        }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) => {
             Some(format!(
                 "you dealt combat damage to a player this turn with a {}",
@@ -2769,6 +2860,16 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
     };
 
     match condition {
+        ThisSpellCostCondition::All(conditions) => conditions.iter().all(|condition| {
+            this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
+                game,
+                source,
+                controller,
+                condition,
+                chosen_targets,
+                optional_costs_paid,
+            )
+        }),
         ThisSpellCostCondition::Always => true,
         ThisSpellCostCondition::YourTurn => game.is_active_player(controller),
         ThisSpellCostCondition::NotYourTurn => !game.is_active_player(controller),

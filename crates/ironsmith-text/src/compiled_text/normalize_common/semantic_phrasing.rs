@@ -6565,6 +6565,29 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             " assigns combat damage equal to its toughness rather than its power",
         );
     }
+    // "Each creature you control with toughness greater than its power
+    // stations permanents using its toughness rather than its power"
+    // (Tapestry Warden): the granted station rule is the subject's predicate.
+    for (quoted, plain) in [
+        (
+            " has \"This creature stations permanents using its toughness rather than its power.\"",
+            " stations permanents using its toughness rather than its power",
+        ),
+        (
+            " has \"This creature stations permanents using its toughness rather than its power\"",
+            " stations permanents using its toughness rather than its power",
+        ),
+        (
+            " have \"This creature stations permanents using its toughness rather than its power.\"",
+            " station permanents using their toughness rather than their power",
+        ),
+        (
+            " have \"This creature stations permanents using its toughness rather than its power\"",
+            " station permanents using their toughness rather than their power",
+        ),
+    ] {
+        normalized = normalized.replace(quoted, plain);
+    }
     // A granted changeling characteristic reads as the creature-type grant
     // Oracle prints ("gain all creature types"); only copy exceptions keep
     // the keyword ("except it has changeling").

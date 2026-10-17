@@ -132,6 +132,9 @@ pub(super) fn commit_combat_damage_batch(
             if !prepared.applied {
                 continue;
             }
+            if assignment.amount > 0 {
+                game.mark_dealt_combat_damage_since_entered(plan.source);
+            }
             let index = if assignment.target == plan.target {
                 base
             } else {

@@ -39,6 +39,21 @@ fn parses_counter_choices_and_dynamic_tails() {
         vec![CounterType::Flying, CounterType::Vigilance]
     );
 
+    let tokens = lex_line(
+        "your choice of a +1/+1, first strike, or vigilance counter on it",
+        0,
+    )
+    .unwrap();
+    let choice = parse_enters_with_counter_choice_tokens(&tokens).unwrap();
+    assert_eq!(
+        choice.counter_types,
+        vec![
+            CounterType::PlusOnePlusOne,
+            CounterType::FirstStrike,
+            CounterType::Vigilance
+        ]
+    );
+
     let tokens = lex_line("for each creature that died this turn", 0).unwrap();
     assert_eq!(
         parse_enters_with_counter_known_for_each_tail_tokens(&tokens),

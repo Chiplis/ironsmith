@@ -1026,7 +1026,9 @@ fn process_event_direct_inner(
 
         // When multiple replacement effects are tied at the highest priority,
         // the affected player/controller chooses which one to apply next.
-        if at_highest.len() > 1 || at_highest[0].replacement.needs_mana_color_choice() {
+        if at_highest.len() > 1 || at_highest[0].replacement.needs_mana_color_choice()
+            || at_highest[0].optional_by_controller
+        {
             let affected_player = event.inner().affected_player(game);
             let effect_ids: Vec<_> = at_highest.iter().map(|e| e.id).collect();
 
@@ -2737,6 +2739,18 @@ fn trait_effect_matches_event(
         .effect_store
         .replacement_effects
         .available_in_damage_occurrence(effect.id)
+    {
+        return Ok(None);
+    }
+
+    // "Damage that would be dealt to that creature can't be ... dealt instead
+    // to another permanent or player": redirection replacements don't apply.
+    if matches!(
+        effect.replacement,
+        ReplacementAction::Redirect { .. } | ReplacementAction::RedirectDamageAmount { .. }
+    ) && let Some(damage) =
+        crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+        && !game.can_redirect_damage_to(damage.target)
     {
         return Ok(None);
     }
@@ -5003,6 +5017,14 @@ fn prepare_zone_change_with_context_inner(
     // Exile and command renew identity even without changing zones (400.8/400.10).
     if from == to && !matches!(to, Zone::Exile | Zone::Command) {
         return Ok(PreparedEventOutcome::pure(EventOutcome::NotApplicable));
+    }
+    // "Triggered abilities you control can't cause you to exile ...": a
+    // protected permanent is not exiled by a matching cause at all.
+    if from == Zone::Battlefield
+        && to == Zone::Exile
+        && !game.can_be_exiled_with_cause(object, &cause)
+    {
+        return Ok(PreparedEventOutcome::pure(EventOutcome::Prevented));
     }
     // Freeze lookback before an entry/replacement program can change sources.
     let pre_event_lookback = match inherited_lookback {
@@ -7475,7 +7497,8 @@ fn process_with_dm_and_additional_effects_and_applied_state_inner(
                 // Determine which effect to apply
                 let chosen_index = if applicable_effects.len() == 1
                     && find_effect_for_choice(game, additional_effects, applicable_effects[0])
-                        .is_some_and(|effect| effect.replacement.needs_mana_color_choice())
+                        .is_some_and(|effect| effect.replacement.needs_mana_color_choice()
+                            || effect.optional_by_controller)
                 {
                     vec![0]
                 } else {
@@ -7537,6 +7560,31 @@ fn process_with_dm_and_additional_effects_and_applied_state_inner(
                 };
 
                 let original_effect = chosen_effect.clone();
+                if chosen_effect.optional_by_controller {
+                    let question = crate::decisions::context::BooleanContext::new(
+                        chosen_effect.controller,
+                        Some(chosen_effect.source),
+                        format!("Apply {}?", replacement_effect_choice_description(game, &chosen_effect)),
+                    );
+                    let apply = dm.decide_boolean(game, &question);
+                    if dm.awaiting_choice() {
+                        return Ok(TraitEventResult::NeedsChoice {
+                            player,
+                            applicable_effects,
+                            event: boxed_event,
+                            applied_effects: state.applied_effects.clone(),
+                            applied_effect_keys: state.applied_effect_keys.clone(),
+                            zone_change_context: state.zone_change_context.clone(),
+                        });
+                    }
+                    if !apply {
+                        // Declining excludes this occurrence for this event,
+                        // without using up a registered one-shot replacement.
+                        mark_applied_replacement_choice(state, &original_effect);
+                        current_event = *boxed_event;
+                        continue;
+                    }
+                }
                 if chosen_effect.replacement.needs_mana_color_choice() {
                     let Some(color) =
                         choose_mana_rewrite_color(game, dm, &chosen_effect, &boxed_event)?
@@ -8340,6 +8388,16 @@ impl crate::events::ReplacementMatcher for PreventionShieldReplacementMatcher {
             }
             (crate::color::ColorSet::COLORLESS, Vec::new())
         };
+        // Silhouette: only damage whose causing spell or ability targets the
+        // damaged object (CR 115.1, 615.1).
+        if shield.damage_filter.cause_targets_protected {
+            let DamageTarget::Object(object) = damage.target else {
+                return false;
+            };
+            if !damage.cause.targeted_objects.contains(&object) {
+                return false;
+            }
+        }
         shield.damage_filter.matches(
             damage.is_combat,
             damage.source,
@@ -8441,6 +8499,7 @@ fn collect_simultaneous_prevention_allocations(
         for (index, item) in events.iter().enumerate() {
             if item.amount == 0
                 || item.unpreventable
+                || !game.can_prevent_damage_to(item.target)
                 || !game.can_prevent_damage_from(
                     item.source,
                     item.is_combat,
@@ -9001,8 +9060,9 @@ fn prepare_damage_proposal(
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Event {
     // Check if damage can be prevented
-    let can_prevent =
-        !unpreventable && game.can_prevent_damage_from(source, is_combat, source_snapshot);
+    let can_prevent = !unpreventable
+        && game.can_prevent_damage_to(target)
+        && game.can_prevent_damage_from(source, is_combat, source_snapshot);
 
     // Create the event using the new Event type
     let event = if can_prevent {

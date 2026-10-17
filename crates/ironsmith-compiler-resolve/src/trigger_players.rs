@@ -24,7 +24,9 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 | crate::target::ChooseSpec::SourceController => Some(PlayerFilter::IteratedPlayer),
             _ => None,
         },
-        TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
+        TriggerSpec::StateBased { .. }
+        | TriggerSpec::DayNightChanged
+        | TriggerSpec::DamageToPlayerPrevented(_) => None,
         // Private-zone possessors name the owner, even when a stolen permanent
         // was controlled by somebody else immediately before the move.
         TriggerSpec::ZoneChange(event) => {

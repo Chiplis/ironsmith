@@ -73,4 +73,7 @@ pub enum ThisSpellCostCondition {
     /// source you controlled that had any of this spell's creature types.
     YouDealtCombatDamageToPlayerSharingCreatureTypeThisTurn,
     YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype),
+    /// Every listed condition holds ("If a creature is attacking you and you
+    /// control a Forest and a Plains", Qasali Ambusher).
+    All(Vec<ThisSpellCostCondition>),
 }

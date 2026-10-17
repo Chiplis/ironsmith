@@ -101,13 +101,10 @@ struct UnsupportedRule {
 }
 
 const RULES: &[UnsupportedRule] = &[
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Prefix,
-        phrase: &[
-            "once", "each", "turn", "you", "may", "play", "a", "card", "from", "exile",
-        ],
-        kind: UnsupportedRewriteLineKind::StaticClause,
-    },
+    // "Once each turn, you may play a card from exile with a <kind> counter
+    // on it if it was exiled by an ability you controlled, ..." is owned by
+    // `parse_once_each_turn_play_countered_exiled_card_line`; other
+    // once-each-turn exile permissions fail in the ordinary static readers.
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Prefix,
         phrase: &[
@@ -121,23 +118,14 @@ const RULES: &[UnsupportedRule] = &[
         phrase: &["unleash", "while"],
         kind: UnsupportedRewriteLineKind::GenericLine,
     },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &["of", "defending", "players", "choice"],
-        kind: UnsupportedRewriteLineKind::DefendingPlayerChoice,
-    },
+    // "of defending player's choice" is no longer rejected for the whole
+    // line: the counter-placement reader declares that target with the
+    // defending player as its chooser, and other shapes still fail in their
+    // own sentence-level guard.
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
         phrase: &["if", "you", "sacrifice", "an", "island", "this", "way"],
         kind: UnsupportedRewriteLineKind::SacrificeIslandThisWay,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "create", "a", "token", "thats", "a", "copy", "of", "that", "aura", "attached", "to",
-            "that", "creature",
-        ],
-        kind: UnsupportedRewriteLineKind::AuraCopyAttachment,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
@@ -223,7 +211,10 @@ pub fn parse_unsupported_rewrite_line_kind(
                     parse_loses_abilities_becomes(input)
                 }
             },
-            parse_for_as_long_as_permission,
+            // "For as long as that card remains exiled, its owner may play
+            // it" is read by the tagged play-permission grammar (grantee: the
+            // card's owner); its own unsupported guard only trips when that
+            // reading fails, so no whole-line guard is needed here.
             parse_artifact_creature_player_target,
             parse_creature_token_player_planeswalker_target,
             parse_villainous_choice,
@@ -338,6 +329,14 @@ fn parse_loses_abilities_becomes(
 ) -> WResult<UnsupportedRewriteLineKind> {
     let original = *input;
     locate_word_sequence(&["loses", "all", "abilities", "and", "becomes"]).parse_next(input)?;
+    // "... and becomes your choice of A or B" (Mercurial Transformation) has
+    // a dedicated resolution-choice reader.
+    if word_sequence(&["your", "choice", "of"]).parse_next(&mut input.clone()).is_ok() {
+        return Err(primitives::backtrack_err(
+            "loses-abilities-becomes",
+            "becomes without a resolution choice",
+        ));
+    }
     let mut prefix = original;
     let temporary = word_sequence(&["until", "end", "of", "turn"])
         .parse_next(&mut prefix)
@@ -349,6 +348,7 @@ fn parse_loses_abilities_becomes(
     })
 }
 
+#[allow(dead_code)]
 fn parse_for_as_long_as_permission(
     input: &mut WordSliceInput<'_>,
 ) -> WResult<UnsupportedRewriteLineKind> {

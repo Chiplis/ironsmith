@@ -196,6 +196,38 @@ pub(super) fn read_library_placement_destination(
     let player = input.player;
     let exiled_with_source_surface = input.exiled_with_source_surface.clone();
     if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens)
+        && shape.placement == cca_shapes::LibraryPlacementShape::Bottom
+        && let ["all", "but", kept, "of", "them"] = crate::lexer::token_word_refs(shape.target_tokens).as_slice()
+        && let Some(kept) = crate::util::parse_number_word_u32(kept)
+    {
+        // Keep the chosen subset in place and move its complement. Capturing
+        // the pool first prevents the keep choice from replacing its antecedent.
+        let pool = crate::util::helper_tag_for_tokens(tokens, "remainder_pool");
+        let keep = crate::util::helper_tag_for_tokens(tokens, "remainder_keep");
+        let capture = EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Library),
+            vec![Zone::Library],
+            crate::tag::TagRef::of(pool.clone()),
+        );
+        let choose = EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: ObjectFilter::tagged(pool.clone()).in_zone(Zone::Library),
+            count: crate::effect::ChoiceCount::exactly(kept as usize),
+            player,
+            tag: crate::tag::TagRef::of(keep.clone()),
+            zone: Zone::Library,
+        });
+        let order = match shape.order {
+            Some(cca_shapes::LibraryPlacementOrderShape::Random) => crate::cards::builders::LibraryBottomOrderAst::Random,
+            _ => crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+        };
+        let remainder = EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
+            crate::tag::TagRef::of(pool), Some(crate::tag::TagRef::of(keep)), order,
+            cca_shapes::parse_destination_player(tokens).unwrap_or(player),
+            ironsmith_core::LibraryRemainderSurface::Rest,
+        );
+        return Ok(Some(EffectAst::Sequence { effects: vec![capture, choose, remainder] }));
+    }
+    if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens)
         && let Some(split) = split_independent_reference_pair(shape.target_tokens)
     {
         // "Put this creature and target creature on top of their owners'
@@ -374,6 +406,38 @@ pub(super) fn read_into_destination(
             } else {
                 None
             };
+            // "the top card of the pile you exiled" (Parallel Thoughts): the
+            // pile is a face-down exiled set linked to this source whose order
+            // was randomized and is known to no one, so its top card is a
+            // uniformly random member of the cards exiled with this source.
+            if zone == Zone::Hand
+                && matches!(
+                    crate::lexer::token_word_refs(shape.target_tokens).as_slice(),
+                    ["the", "top", "card", "of", "the", "pile", "you", "exiled"]
+                        | ["the", "top", "card", "of", "the", "exiled", "pile"]
+                )
+            {
+                let target = TargetAst::WithCount(
+                    Box::new(TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::SourceExiled.bind(),
+                        span_from_tokens(shape.target_tokens),
+                    )),
+                    crate::effect::ChoiceCount::exactly(1).at_random(),
+                );
+                return Ok(Some(
+                    EffectAst::subject_verb_move_to_zone(
+                        target,
+                        zone,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )
+                    .with_destination_player_surface(destination_player_surface)
+                    .with_destination_player_reference_surface(destination_player_reference_surface)
+                    .with_move_to_zone_actor_surface(player),
+                ));
+            }
             if zone == Zone::Graveyard && cca_shapes::is_rest_reference(shape.target_tokens) {
                 return Ok(Some(
                     EffectAst::subject_verb_move_to_zone(
@@ -652,6 +716,17 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
             )))
             .map(Some);
         }
+        // Only the single-object entry below carries the transformed entry.
+        if destination_shape.transformed
+            && (destination_shape.relative_controller
+                || cca_shapes::starts_with_all_or_each(target_tokens))
+        {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported transformed battlefield entry (clause: '{}')",
+                clause_words.join(" ")
+            )))
+            .map(Some);
+        }
         if destination_shape.relative_controller {
             // A player-relative controller belongs to the existing typed
             // PutOntoBattlefield owner. It must not become each card's owner.
@@ -731,7 +806,8 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 PossessiveObjectChoiceActor::You => Some(PlayerAst::You),
                 PossessiveObjectChoiceActor::SubjectPlayer => extract_subject_player(subject),
                 PossessiveObjectChoiceActor::Opponent => Some(PlayerAst::Opponent),
-                PossessiveObjectChoiceActor::ObjectController => None,
+                PossessiveObjectChoiceActor::ObjectController
+                | PossessiveObjectChoiceActor::DefendingPlayer => None,
             };
             if let Some(chooser) = chooser {
                 let parsed_target = parse_target_phrase(&choice_shape.object_tokens)?;
@@ -793,7 +869,8 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                 .map(parse_target_phrase)
                 .transpose()?,
         )
-                .with_exiled_with_source_surface(exiled_with_source_surface.clone());
+                .with_exiled_with_source_surface(exiled_with_source_surface.clone())
+                .with_battlefield_transformed(destination_shape.transformed);
                 let effect = EffectAst::Sequence {
                     effects: vec![choose, move_chosen],
                 };
@@ -817,7 +894,24 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
                     "all/each battlefield entry with attacking or attachment modifiers requires a complete entry owner".into(),
                 ));
             }
-            let mut filter = parse_object_filter(&target_tokens[1..], false)?;
+            // "Put all commanders from the command zone onto the battlefield"
+            // (Tevesh Szat): the source zone qualifies the whole set.
+            let target_words = crate::lexer::token_word_refs(&target_tokens[1..]);
+            let command_zone_suffix = [
+                &["from", "the", "command", "zone"][..],
+                &["from", "command", "zone"][..],
+            ]
+            .into_iter()
+            .find(|suffix| target_words.len() > suffix.len() && target_words.ends_with(suffix))
+            .map(|suffix| suffix.len());
+            let filter_tokens = match command_zone_suffix {
+                Some(suffix_len) => &target_tokens[1..target_tokens.len() - suffix_len],
+                None => &target_tokens[1..],
+            };
+            let mut filter = parse_object_filter(filter_tokens, false)?;
+            if command_zone_suffix.is_some() {
+                filter.zone = Some(Zone::Command);
+            }
             if cca_shapes::contains_from_it(&target_tokens[1..]) {
                 filter.zone = Some(Zone::Hand);
                 if filter.owner.is_none() {
@@ -914,7 +1008,8 @@ pub(super) fn read_onto_clause(input: &PutClause<'_>) -> Result<Option<EffectAst
         .with_move_to_zone_actor_surface(player)
         .with_move_to_zone_plural_surface_if(
             cca_shapes::is_plural_tagged_object_reference(target_tokens),
-        );
+        )
+        .with_battlefield_transformed(destination_shape.transformed);
         return Ok(Some(if let Some(predicate) = trailing_predicate {
             EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                 predicate,

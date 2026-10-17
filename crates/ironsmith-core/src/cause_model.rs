@@ -29,6 +29,53 @@ pub struct EventCause {
     /// The spell currently resolving, distinct from an effect or ability source.
     #[cfg_attr(feature = "serde", serde(default))]
     pub resolving_spell: Option<ObjectId>,
+    /// Objects targeted by the resolving spell or ability that causes this
+    /// event (CR 115.1). Empty when the cause targets nothing or is not a
+    /// resolving spell or ability.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub targeted_objects: Vec<ObjectId>,
+    /// The kind of resolving ability that causes this event, when the cause
+    /// is a resolving activated or triggered ability (CR 113.3b-c). `None`
+    /// for spells, costs, rules and anything not resolving from the stack.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub resolving_ability: Option<CauseAbilityKind>,
+}
+
+/// What kind of ability is resolving when an event is caused (CR 113.3).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CauseAbilityKind {
+    Activated,
+    Triggered,
+    /// The triggered ability granted by the modular keyword (CR 702.43a).
+    ModularTrigger,
+}
+
+impl CauseAbilityKind {
+    pub fn is_triggered(self) -> bool {
+        matches!(self, Self::Triggered | Self::ModularTrigger)
+    }
+}
+
+/// Restricts a cause to a resolving ability of a given kind ("triggered
+/// abilities you control can't cause ...", "if a modular triggered ability
+/// would put ...").
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum CauseAbilityKindFilter {
+    Activated,
+    Triggered,
+    ModularTrigger,
+}
+
+impl CauseAbilityKindFilter {
+    pub fn matches(self, kind: Option<CauseAbilityKind>) -> bool {
+        match self {
+            Self::Activated => kind == Some(CauseAbilityKind::Activated),
+            Self::Triggered => kind.is_some_and(CauseAbilityKind::is_triggered),
+            Self::ModularTrigger => kind == Some(CauseAbilityKind::ModularTrigger),
+        }
+    }
 }
 
 impl EventCause {
@@ -38,6 +85,8 @@ impl EventCause {
             source: None,
             source_controller: None,
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -47,6 +96,8 @@ impl EventCause {
             source: Some(source),
             source_controller: Some(controller),
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -56,6 +107,8 @@ impl EventCause {
             source: Some(source),
             source_controller: Some(controller),
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -73,6 +126,8 @@ impl EventCause {
             source: None,
             source_controller: None,
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -82,6 +137,8 @@ impl EventCause {
             source: None,
             source_controller: None,
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -91,6 +148,8 @@ impl EventCause {
             source: Some(source),
             source_controller: Some(controller),
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -100,6 +159,8 @@ impl EventCause {
             source: Some(source),
             source_controller: None,
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -109,6 +170,8 @@ impl EventCause {
             source,
             source_controller: Some(controller),
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 
@@ -118,6 +181,8 @@ impl EventCause {
             source: None,
             source_controller: Some(controller),
             resolving_spell: None,
+            targeted_objects: Vec::new(),
+            resolving_ability: None,
         }
     }
 }
@@ -128,6 +193,9 @@ pub struct CauseFilter {
     pub cause_type: Option<CauseTypeFilter>,
     pub source_filter: Option<ObjectFilter>,
     pub controller_filter: Option<ControllerFilter>,
+    /// The kind of resolving ability the cause must be, when restricted.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub ability_kind: Option<CauseAbilityKindFilter>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -171,6 +239,7 @@ impl CauseFilter {
             cause_type: None,
             source_filter: None,
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -179,6 +248,7 @@ impl CauseFilter {
             cause_type: Some(CauseTypeFilter::EffectLike),
             source_filter: None,
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -187,6 +257,7 @@ impl CauseFilter {
             cause_type: Some(CauseTypeFilter::Exact(cause_type)),
             source_filter: None,
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -195,6 +266,7 @@ impl CauseFilter {
             cause_type: Some(CauseTypeFilter::Not(cause_type)),
             source_filter: None,
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -211,6 +283,7 @@ impl CauseFilter {
             cause_type: Some(CauseTypeFilter::EffectLike),
             source_filter: Some(source_filter),
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -219,6 +292,7 @@ impl CauseFilter {
             cause_type: None,
             source_filter: Some(source_filter),
             controller_filter: None,
+            ability_kind: None,
         }
     }
 
@@ -229,6 +303,11 @@ impl CauseFilter {
 
     pub fn with_controller(mut self, controller_filter: ControllerFilter) -> Self {
         self.controller_filter = Some(controller_filter);
+        self
+    }
+
+    pub fn with_ability_kind(mut self, ability_kind: CauseAbilityKindFilter) -> Self {
+        self.ability_kind = Some(ability_kind);
         self
     }
 }

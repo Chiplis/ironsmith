@@ -1,6 +1,32 @@
 use super::*;
 
+/// "<filter> whose controller was dealt combat damage by <source> this turn".
+fn parse_controller_dealt_combat_damage_by_source_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    const RELATION: &[&str] = &["whose", "controller", "was", "dealt", "combat", "damage", "by"];
+    let tokens = trim_lexed_commas(tokens);
+    let whose = tokens.iter().position(|token| token.is_word("whose"))?;
+    let after = tokens.get(whose + RELATION.len()..)?;
+    if crate::lexer::token_word_refs(&tokens[whose..whose + RELATION.len()]) != RELATION
+        || after.len() < 3
+        || crate::lexer::token_word_refs(&after[after.len() - 2..]) != ["this", "turn"]
+        || whose == 0
+    {
+        return None;
+    }
+    Some((&tokens[..whose], &after[..after.len() - 2]))
+}
+
 pub(super) fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllShape<'_> {
+    if let Some((filter_tokens, source_tokens)) =
+        parse_controller_dealt_combat_damage_by_source_filter(tokens)
+    {
+        return DestroyAllShape::ControllerDealtCombatDamageBySourceThisTurn {
+            filter_tokens,
+            source_tokens,
+        };
+    }
     if let Some((filter_tokens, player_tokens)) = parse_dealt_damage_to_player_filter(tokens) {
         return DestroyAllShape::DealtDamageToPlayerThisTurn {
             filter_tokens,
@@ -110,8 +136,10 @@ pub fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyClauseShap
             all_shape,
             DestroyAllShape::DealtDamageThisTurn { .. }
                 | DestroyAllShape::DealtDamageToPlayerThisTurn { .. }
+                | DestroyAllShape::ControllerDealtCombatDamageBySourceThisTurn { .. }
         ) || !has_combat_history_surface(core_tokens)
             || has_complete_block_history_filter(all_tokens)
+            || has_it_blocked_window_filter(all_tokens)
         {
             DestroyClauseKind::All(all_shape)
         } else {

@@ -4,7 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, Phase};
 use crate::turn::next_phase;
-pub use ironsmith_core::{AdditionalPhase, AdditionalPhasesEffect};
+pub use ironsmith_core::{AdditionalPhase, AdditionalPhasesEffect, AdditionalStepAnchor, AdditionalStepKind, AdditionalStepsEffect};
 
 impl EffectExecutor for AdditionalPhasesEffect {
     fn execute(
@@ -33,6 +33,7 @@ impl EffectExecutor for AdditionalPhasesEffect {
         let phases = self.phases.iter().map(|phase| match phase {
             AdditionalPhase::Combat => Phase::Combat,
             AdditionalPhase::Main => Phase::NextMain,
+            AdditionalPhase::Beginning => Phase::Beginning,
         });
         let order = game.add_additional_phase_group(phases);
         ctx.combat.last_added_combat_order = if self.phases.contains(&AdditionalPhase::Combat) {
@@ -40,6 +41,46 @@ impl EffectExecutor for AdditionalPhasesEffect {
         } else {
             None
         };
+        Ok(EffectOutcome::resolved())
+    }
+}
+
+impl EffectExecutor for AdditionalStepsEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        use crate::game_state::Step;
+        // CR 500.10a: "you get" additions happen only during that player's
+        // own turn.
+        if let Some(player) = &self.player {
+            let player = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            if !game.is_active_player(player) {
+                return Ok(EffectOutcome::resolved());
+            }
+        }
+        let count = crate::effects::helpers::resolve_value(game, &self.count, ctx)?.max(0);
+        let step = match self.step {
+            AdditionalStepKind::Untap => Step::Untap,
+            AdditionalStepKind::Upkeep => Step::Upkeep,
+            AdditionalStepKind::Draw => Step::Draw,
+            AdditionalStepKind::End => Step::End,
+        };
+        for _ in 0..count {
+            match self.anchor {
+                AdditionalStepAnchor::AfterThisStep => {
+                    // Outside a step (a main phase) there is no "this step".
+                    let Some(current) = game.turn.step else {
+                        return Ok(EffectOutcome::resolved());
+                    };
+                    game.add_step_after(step, current);
+                }
+                AdditionalStepAnchor::AfterThisPhase => {
+                    game.add_step_after_phase(step, game.turn.phase);
+                }
+            }
+        }
         Ok(EffectOutcome::resolved())
     }
 }

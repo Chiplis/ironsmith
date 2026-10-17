@@ -13,6 +13,7 @@ fn absorb_prevention(amount: u32) -> StaticAbility {
         combat_only: false,
         noncombat_only: false,
         maximum_damage: None,
+        optional_by_controller: false,
         amount: ironsmith_core::StaticDamagePreventionAmount::Amount(Value::Fixed(
             i32::try_from(amount).unwrap_or(i32::MAX),
         )),

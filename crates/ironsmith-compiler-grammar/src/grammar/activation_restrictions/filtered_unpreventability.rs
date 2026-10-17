@@ -39,9 +39,70 @@ fn filtered_unpreventability<'a>(
     })
 }
 
+/// "Damage that would be dealt to <recipients> can't be prevented [or dealt
+/// instead to another permanent or player]" (recipient-keyed, CR 615 / 614.9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecipientUnpreventability<'a> {
+    pub recipients: &'a [OwnedLexToken],
+    pub or_redirected: bool,
+}
+
+pub fn parse_recipient_unpreventability(
+    tokens: &[OwnedLexToken],
+) -> Option<RecipientUnpreventability<'_>> {
+    primitives::probe_all(
+        tokens,
+        recipient_unpreventability,
+        "recipient-filtered unpreventable damage",
+    )
+}
+fn recipient_unpreventability<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RecipientUnpreventability<'a>> {
+    primitives::phrase(&["damage", "that", "would", "be", "dealt", "to"]).parse_next(input)?;
+    let recipients =
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("can't")))
+            .map(|((), _)| ())
+            .take()
+            .parse_next(input)?;
+    primitives::phrase(&["can't", "be", "prevented"]).parse_next(input)?;
+    let or_redirected = opt(primitives::phrase(&[
+        "or", "dealt", "instead", "to", "another", "permanent", "or", "player",
+    ]))
+    .parse_next(input)?
+    .is_some();
+    primitives::sentence_end().parse_next(input)?;
+    Ok(RecipientUnpreventability {
+        recipients,
+        or_redirected,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn owns_recipient_keyed_prevention_and_redirection_prohibitions() {
+        for (text, redirect) in [
+            ("Damage that would be dealt to that creature can't be prevented.", false),
+            (
+                "Damage that would be dealt to that creature can't be prevented or dealt instead to another permanent or player.",
+                true,
+            ),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let parsed = parse_recipient_unpreventability(&tokens).unwrap();
+            assert_eq!(parsed.or_redirected, redirect, "{text}");
+            assert!(!parsed.recipients.is_empty());
+        }
+        assert!(
+            parse_recipient_unpreventability(
+                &lex_line("Damage that would be dealt by this creature can't be prevented.", 0)
+                    .unwrap()
+            )
+            .is_none()
+        );
+    }
     use crate::lexer::lex_line;
     #[test]
     fn owns_only_complete_source_filtered_prevention_prohibitions() {

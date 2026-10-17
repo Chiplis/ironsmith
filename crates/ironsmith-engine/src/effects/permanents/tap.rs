@@ -21,6 +21,7 @@ pub(crate) struct TapAction {
     memory: Vec<ObjectSnapshot>,
     actor: crate::ids::PlayerId,
     provenance: crate::provenance::ProvNodeId,
+    attack_declaration: bool,
 }
 
 impl TapAction {
@@ -37,7 +38,14 @@ impl TapAction {
             memory: Vec::new(),
             actor,
             provenance,
+            attack_declaration: false,
         }
+    }
+
+    /// Mark every tap in this batch as an attack-declaration tap (CR 508.1f).
+    pub(crate) fn as_attack_declaration(mut self) -> Self {
+        self.attack_declaration = true;
+        self
     }
 
     fn with_cost_kind(mut self, cost_kind: Option<ironsmith_core::OptionalCostKind>) -> Self {
@@ -73,6 +81,7 @@ impl TapAction {
         self.memory.extend(memory);
         let mut event = PermanentTappedEvent::capture(game, id, Some(self.actor));
         event.cost_kind = self.cost_kind.clone();
+        event.attack_declaration = self.attack_declaration;
         self.events.push(TriggerEvent::new_with_provenance(
             event,
             event_provenance,

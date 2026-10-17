@@ -70,6 +70,12 @@ pub(super) const CLAUSE_REGISTRY: RuleId = RuleId::new("clause-reading-registry"
 /// The readings, in the order they were ranked.
 const CLAUSE_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("play-with-hand-revealed"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.tokens.iter().any(|token| token.is_word("revealed")),
+        read: |input| input.outcome(crate::effect_sentences::hand_reveal_clause::parse(input.tokens)),
+    },
+    Reading {
         id: RuleId::new("clear-suspected-designation"),
         head: HeadDiscriminator::Any,
         admits: |input| input.tokens.iter().any(|token| token.is_word("suspected")),
@@ -592,6 +598,18 @@ const CLAUSE_READINGS: &[Reading] = &[
             input.outcome(crate::effect_sentences::toughness_assignment::parse(
                 input.tokens,
             ))
+        },
+    },
+    Reading {
+        id: RuleId::new("targets-assign-combat-damage-as-unblocked"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(
+                crate::effect_sentences::assign_unblocked_procedure::parse_targeted_mandatory_unblocked_assignment(
+                    input.tokens,
+                ),
+            )
         },
     },
     Reading {

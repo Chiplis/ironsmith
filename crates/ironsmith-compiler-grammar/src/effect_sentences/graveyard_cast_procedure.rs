@@ -8,7 +8,7 @@
 
 use super::dispatch_entry::SentenceInput;
 use super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::{
-    graveyard_cast_with_exile_replacement, graveyard_cast_with_exile_replacement_surface,
+    graveyard_cast_with_exile_replacement, graveyard_cast_with_exile_replacement_and_surcharge,
 };
 use crate::cards::builders::{CardTextError, ConditionalEffectAst, EffectAst, IfResultPredicate};
 use crate::grammar::effects::{self as effect_grammar, GraveyardCastReplacementShape};
@@ -24,6 +24,11 @@ pub(super) struct GraveyardCastGroup {
     cast_this_way: bool,
     /// No exile rider follows the permission.
     permission_only: bool,
+    /// "If that spell doesn't target <filter>, it costs {N} more to cast this
+    /// way." between the permission and the exile rider.
+    surcharge: Option<(crate::mana::ManaCost, crate::cards::builders::ObjectFilter)>,
+    /// The surcharge sentence is still to be consumed.
+    surcharge_pending: bool,
     /// "Target opponent mills nine cards, then you may cast ..." (Sorcerous
     /// Squall): the instruction before ", then", read as its own clause.
     leading_effects: Vec<EffectAst>,
@@ -85,7 +90,22 @@ pub(super) fn open(
     let Some(shape) = effect_grammar::parse_graveyard_cast_permission_shape(&permission) else {
         return Ok(None);
     };
-    let replacement_tokens = next
+    // "If that spell doesn't target a creature you control, it costs {8}
+    // more to cast this way." (Mavinda, Students' Advocate) sits between a
+    // turn-long permission and its exile rider.
+    let surcharge = if shape.until_end_of_turn && !when_result {
+        next.and_then(|next| {
+            parse_unless_targets_surcharge(&crate::util::trim_commas(next.lowered()))
+        })
+    } else {
+        None
+    };
+    let replacement_sentence = if surcharge.is_some() {
+        sentences.get(sentence_idx + 2)
+    } else {
+        next
+    };
+    let replacement_tokens = replacement_sentence
         .map(|next| crate::util::trim_commas(next.lowered()))
         .unwrap_or_default();
     let has_replacement = effect_grammar::is_graveyard_cast_replacement_sentence(&replacement_tokens);
@@ -99,6 +119,7 @@ pub(super) fn open(
     if !has_replacement && !permission_only {
         return Ok(None);
     }
+    let surcharge = if has_replacement { surcharge } else { None };
     let cast_this_way = crate::word_primitives::sequence_occurs(
         &crate::lexer::token_word_refs(&replacement_tokens),
         &["cast", "this", "way"],
@@ -115,6 +136,8 @@ pub(super) fn open(
         cast_this_way,
         replaced: permission_only,
         permission_only,
+        surcharge_pending: surcharge.is_some(),
+        surcharge,
         leading_effects,
         first_sentence: sentence_idx,
         consumed: 1,
@@ -126,6 +149,14 @@ pub(super) fn continue_with(
     group: &mut GraveyardCastGroup,
     sentence: &SentenceInput,
 ) -> Result<bool, CardTextError> {
+    if group.surcharge_pending {
+        if parse_unless_targets_surcharge(&crate::util::trim_commas(sentence.lowered())).is_none() {
+            return Ok(false);
+        }
+        group.surcharge_pending = false;
+        group.consumed += 1;
+        return Ok(true);
+    }
     if group.replaced {
         return Ok(false);
     }
@@ -140,10 +171,11 @@ pub(super) fn continue_with(
 }
 
 pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
-    let effects = graveyard_cast_with_exile_replacement_surface(
+    let effects = graveyard_cast_with_exile_replacement_and_surcharge(
         &group.permission,
         &group.shape,
         group.cast_this_way,
+        group.surcharge.clone(),
     )
     .ok()
     .flatten()
@@ -180,4 +212,44 @@ fn is_replacement_follow_up(next: Option<&SentenceInput>) -> bool {
             next.lowered(),
         ))
     })
+}
+
+/// "If that spell doesn't target <filter>, it costs {N} more to cast this
+/// way": the permission's surcharge and the target filter that waives it.
+fn parse_unless_targets_surcharge(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::mana::ManaCost, crate::cards::builders::ObjectFilter)> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let negated_target = [
+        &["if", "that", "spell", "doesnt", "target"][..],
+        &["if", "that", "spell", "doesn't", "target"][..],
+        &["if", "that", "spell", "does", "not", "target"][..],
+    ]
+    .into_iter()
+    .any(|head| crate::word_primitives::parse_sequence_prefix(&words, head));
+    if !negated_target {
+        return None;
+    }
+    let target = tokens.iter().position(|token| token.is_word("target"))?;
+    let costs = target
+        + 1
+        + tokens[target + 1..]
+            .iter()
+            .position(|token| token.is_word("costs"))?;
+    let it = costs.checked_sub(1).filter(|&it| tokens[it].is_word("it"))?;
+    let more = costs
+        + 1
+        + tokens[costs + 1..]
+            .iter()
+            .position(|token| token.is_word("more"))?;
+    if crate::lexer::token_word_refs(&tokens[more + 1..]) != ["to", "cast", "this", "way"] {
+        return None;
+    }
+    let cost = crate::grammar::leaf::parse_leaf_mana_cost_tokens(&tokens[costs + 1..more]).ok()?;
+    let filter_tokens = crate::util::trim_commas(&tokens[target + 1..it]);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    let filter = crate::object_filters::parse_object_filter_lexed(&filter_tokens, false).ok()?;
+    Some((cost, filter))
 }

@@ -21,6 +21,90 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     };
     let subject = &first[..cost];
     let subject_words = words(subject);
+    // "The first activated ability of an artifact you activate each turn
+    // costs {2} less to activate." (Tezzeret, Betrayer of Flesh): the
+    // activator's first activation this turn of an ability whose source
+    // matches the filter.
+    if let ["the", "first", "activated", "ability", "of", .., "you", "activate", "each", "turn"] =
+        subject_words.as_slice()
+        && sentences.len() == 1
+        && subject.len() > 9
+    {
+        let filter_tokens = &subject[5..subject.len() - 4];
+        let mut filter =
+            crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                filter_tokens,
+                false,
+            )
+            .map_err(|_| error(tokens, "first-activation source filter"))?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        let amount_tokens = &first[cost + 1..];
+        let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
+            return Err(error(tokens, "generic amount"));
+        };
+        let Value::Fixed(amount) = amount.unhinted() else {
+            return Err(error(tokens, "fixed amount"));
+        };
+        let amount = u32::try_from(*amount).map_err(|_| error(tokens, "negative amount"))?;
+        if words(&amount_tokens[used..]) != ["less", "to", "activate"] {
+            return Err(error(tokens, "first-activation direction"));
+        }
+        let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
+        return Ok(Some(
+            StaticAbility::reduce_activated_ability_costs_with_display(
+                filter.clone(),
+                amount,
+                None,
+                display,
+            )
+            .with_activated_ability_cost_condition(Gate::Activator(PlayerFilter::You))
+            .with_activated_ability_cost_condition(
+                Gate::FirstActivationOfMatchingSourceThisTurn { filter },
+            ),
+        ));
+    }
+    // "The first activated ability you activate during your turn that targets
+    // a creature you control costs {2} less to activate." (Professor Hojo)
+    if let [
+        "the", "first", "activated", "ability", "you", "activate", "during", "your", "turn",
+        "that", "targets", ..,
+    ] = subject_words.as_slice()
+        && sentences.len() == 1
+        && let Some(targets_at) = subject.iter().position(|token| token.is_word("targets"))
+        && targets_at + 1 < subject.len()
+    {
+        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            &subject[targets_at + 1..],
+            false,
+        )
+        .map_err(|_| error(tokens, "first-targeting-activation target filter"))?;
+        let amount_tokens = &first[cost + 1..];
+        let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
+            return Err(error(tokens, "generic amount"));
+        };
+        let Value::Fixed(amount) = amount.unhinted() else {
+            return Err(error(tokens, "fixed amount"));
+        };
+        let amount = u32::try_from(*amount).map_err(|_| error(tokens, "negative amount"))?;
+        if words(&amount_tokens[used..]) != ["less", "to", "activate"] {
+            return Err(error(tokens, "first-targeting-activation direction"));
+        }
+        let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
+        return Ok(Some(
+            StaticAbility::reduce_activated_ability_costs_with_display(
+                ObjectFilter::default(),
+                amount,
+                None,
+                display,
+            )
+            .with_activated_ability_cost_condition(Gate::Activator(PlayerFilter::You))
+            .with_activated_ability_cost_condition(
+                Gate::FirstTargetingActivationDuringYourTurn { filter },
+            ),
+        ));
+    }
     let Some(abilities) = subject.iter().position(|token| token.is_word("abilities")) else {
         return Ok(None);
     };
@@ -31,6 +115,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         ["exhaust"] => Some(Gate::Keyword(Keyword::Exhaust)),
         ["power-up"] | ["powerup"] | ["power", "up"] => Some(Gate::Keyword(Keyword::PowerUp)),
         ["loyalty"] => Some(Gate::LoyaltyAbility),
+        // "Planeswalkers' loyalty abilities you activate ..." (Carth the
+        // Lion): loyalty abilities, scoped to planeswalker sources below.
+        ["planeswalkers'" | "planeswalkers" | "planeswalker's", "loyalty"] => {
+            Some(Gate::LoyaltyAbility)
+        }
+        ["mana"] => Some(Gate::ManaAbility),
         ["activated"] | [] => None,
         _ => return Ok(None),
     };
@@ -42,7 +132,16 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     {
         return Ok(None);
     }
-    let mut filter = ObjectFilter::default();
+    let planeswalker_scope = matches!(
+        words(&subject[..abilities]).as_slice(),
+        ["planeswalkers'" | "planeswalkers" | "planeswalker's", "loyalty"]
+    );
+    let loyalty_scope = matches!(kind, Some(Gate::LoyaltyAbility));
+    let mut filter = if planeswalker_scope {
+        ObjectFilter::planeswalker()
+    } else {
+        ObjectFilter::default()
+    };
     let mut gates = Vec::new();
     if let Some(kind) = kind { gates.push(kind); }
     let scope = &subject[abilities + 1..];
@@ -54,6 +153,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
             gates.push(Gate::Activator(PlayerFilter::You));
             gates.push(Gate::NonManaAbility);
         }
+        // "Mana abilities of this land ..." (Thran Portal): the source's own
+        // abilities.
+        ["of", rest @ ..] if crate::util::is_source_reference_words(rest) => {
+            filter = ObjectFilter::source();
+        }
         ["of", ..] if scope.len() > 1 => {
             filter = crate::keyword_static::parse_complete_cost_count_filter(&scope[1..])?
                 .ok_or_else(|| error(tokens, "complete source scope"))?;
@@ -63,6 +167,45 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         _ => return Err(error(tokens, "source or activator scope")),
     }
     let amount_tokens = &first[cost + 1..];
+    // "cost an additional [+1] to activate" (Carth the Lion): a loyalty
+    // surcharge; the engine folds it into the printed loyalty cost so a
+    // [-2] ability costs [-1].
+    if loyalty_scope
+        && sentences.len() == 1
+        && let ["an", "additional", .., "to", "activate"] = words(amount_tokens).as_slice()
+        && let Some(additional) = amount_tokens.iter().position(|token| token.is_word("additional"))
+        && let Some(to) = amount_tokens.iter().rposition(|token| token.is_word("to"))
+        && to > additional + 1
+    {
+        let increase = parse_compiler_activation_cost(&amount_tokens[additional + 1..to])?;
+        if increase.is_free() {
+            return Err(error(tokens, "loyalty surcharge"));
+        }
+        let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
+        let mut ability = StaticAbility::increase_activated_ability_costs(filter, increase);
+        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { display: slot, .. } = &mut ability.payload {
+            *slot = Some(display);
+        }
+        for gate in gates { ability = ability.with_activated_ability_cost_condition(gate); }
+        return Ok(Some(ability));
+    }
+    // "cost an additional 1 life to activate" (Thran Portal): a life
+    // surcharge on the selected activation.
+    if let ["an", "additional", amount, "life", "to", "activate"] = words(amount_tokens).as_slice()
+        && let Ok(life) = amount.parse::<u32>()
+        && sentences.len() == 1
+    {
+        let pay = crate::lexer::lex_line(&format!("pay {life} life"), 0)
+            .map_err(|_| error(tokens, "life surcharge"))?;
+        let increase = parse_compiler_activation_cost(&pay)?;
+        let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
+        let mut ability = StaticAbility::increase_activated_ability_costs(filter, increase);
+        if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { display: slot, .. } = &mut ability.payload {
+            *slot = Some(display);
+        }
+        for gate in gates { ability = ability.with_activated_ability_cost_condition(gate); }
+        return Ok(Some(ability));
+    }
     let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
         return Err(error(tokens, "generic amount"));
     };

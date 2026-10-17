@@ -14,11 +14,23 @@ use crate::target::PlayerFilter;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorderGraveyardEffect {
     pub player: PlayerFilter,
+    /// "Reorder your graveyard at random": a random permutation.
+    pub at_random: bool,
 }
 
 impl ReorderGraveyardEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            at_random: false,
+        }
+    }
+
+    pub fn at_random(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            at_random: true,
+        }
     }
 
     pub fn you() -> Self {
@@ -44,6 +56,14 @@ impl EffectExecutor for ReorderGraveyardEffect {
             .unwrap_or_default();
 
         if graveyard.len() <= 1 {
+            return Ok(EffectOutcome::resolved());
+        }
+        if self.at_random {
+            let mut shuffled = graveyard;
+            game.shuffle_slice(&mut shuffled);
+            if let Some(player) = game.player_mut(player_id) {
+                player.graveyard = shuffled.into();
+            }
             return Ok(EffectOutcome::resolved());
         }
 

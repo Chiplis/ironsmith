@@ -10,6 +10,16 @@ macro_rules! primitive {
 
 pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
     primitive!(
+        "for-each-card-kept-on-top-of-library",
+        5,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("for"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        parse_sentence_for_each_card_kept_on_top_of_library
+    ),
+    primitive!(
         "implicit-become-clause",
         10,
         PreDiagnostic,
@@ -127,6 +137,25 @@ pub const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
             LexRuleHeadHint::Single("that"),
         ],
         parse_tagged_enters_with_additional_counter_sentence
+    ),
+    primitive!(
+        "redistribute-life-totals",
+        54,
+        PreDiagnostic,
+        &[LexRuleHeadHint::Single("redistribute")],
+        parse_redistribute_life_totals_sentence
+    ),
+    primitive!(
+        "created-token-enters-with-counters",
+        53,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Pair("the", "token"),
+            LexRuleHeadHint::Pair("that", "token"),
+            LexRuleHeadHint::Pair("the", "tokens"),
+            LexRuleHeadHint::Pair("those", "tokens"),
+        ],
+        parse_created_token_enters_with_counters_sentence
     ),
     primitive!(
         "if-any-tagged-cards-share-card-type-with-triggering-spell",
@@ -415,6 +444,10 @@ pub const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
             LexRuleHeadHint::Single("creatures"),
             LexRuleHeadHint::Single("each"),
             LexRuleHeadHint::Single("all"),
+            // "Non-Wall creatures the active player controls attack this
+            // turn if able" (Maddening Imp).
+            LexRuleHeadHint::Single("non"),
+            LexRuleHeadHint::Single("non-wall"),
         ],
         parse_sentence_must_attack_filter_this_turn
     ),
@@ -1276,4 +1309,33 @@ mod tests {
                 )
         );
     }
+}
+
+/// "Redistribute any number of players' life totals." (Reverse the Sands)
+fn parse_redistribute_life_totals_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(clause.tokens());
+    let words = crate::lexer::token_word_refs(tokens);
+    if !matches!(
+        words.as_slice(),
+        [
+            "redistribute",
+            "any",
+            "number",
+            "of",
+            "players" | "players'" | "players’",
+            "life",
+            "totals"
+        ]
+    ) {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::LifeResources(
+            crate::cards::builders::LifeResourceActionAst::RedistributeLifeTotals,
+        ),
+    )]))
 }

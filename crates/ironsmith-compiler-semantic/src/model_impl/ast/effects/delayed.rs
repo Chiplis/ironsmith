@@ -40,6 +40,17 @@ pub enum DelayedEffectAst {
     DelayedUntilEndOfCombat {
         effects: Vec<EffectAst>,
     },
+    /// "at the beginning of the declare attackers step on your next turn":
+    /// a one-shot delayed trigger at the first declare attackers step of the
+    /// named player's next turn.
+    DelayedUntilNextDeclareAttackersStep {
+        player: PlayerFilter,
+        effects: Vec<EffectAst>,
+        /// "that player's next declare attackers step" (Noctis): the next
+        /// one, this turn's when still ahead, instead of the first declare
+        /// attackers step of the player's next turn.
+        upcoming: bool,
+    },
     DelayedTriggerThisTurn {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,

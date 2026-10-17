@@ -112,6 +112,31 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off', 'one-time stop is consumed');
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
 
+    // Hover freezes both the pass deadline and its visual countdown.
+    await load(priority(23));
+    await upkeep.click();
+    await page.evaluate(state => window.publish(state), priority(24, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await hold.waitFor();
+    await page.waitForTimeout(600);
+    await hold.hover();
+    const elapsed = await page.evaluate(() => {
+      const w = window.context.postActionPriorityWindow;
+      return w.pausedAt - w.startedAt;
+    });
+    assert.ok(elapsed >= 600);
+    const drainTime = () => hold.locator('.priority-hold-window-fill').evaluate(el => el.getAnimations()[0].currentTime);
+    const frozenTime = await drainTime();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'hover prevents automatic passing');
+    assert.equal(await drainTime(), frozenTime, 'visual timer stays frozen');
+    await page.mouse.move(0, 0);
+    const resumedElapsed = await page.evaluate(() => {
+      const w = window.context.postActionPriorityWindow;
+      return performance.now() - w.startedAt;
+    });
+    assert.ok(Math.abs(resumedElapsed - elapsed) < 150, 'leaving resumes the remaining time');
+    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 2200 });
+
     // Clicking Hold keeps an opponent-turn phase pause beyond the deadline.
     await load(priority(25));
     await upkeep.click();

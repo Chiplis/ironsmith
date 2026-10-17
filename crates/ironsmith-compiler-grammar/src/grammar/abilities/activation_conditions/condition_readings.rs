@@ -350,6 +350,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::TaggedWasCast(_)
         | PredicateAst::TaggedObjectIsTopOfLibrary { .. }
         | PredicateAst::TargetWasKicked
+        | PredicateAst::TargetPaidLabel(_)
         | PredicateAst::TargetSpellCastOrderThisTurn(_)
         | PredicateAst::TargetSpellControllerIsPoisoned
         | PredicateAst::TargetSpellNoManaSpentToCast
@@ -371,6 +372,7 @@ fn activation_gate_predicate(predicate: PredicateAst) -> Option<PredicateAst> {
         | PredicateAst::SnowManaOfAnySpellColorSpentToCastThisSpell
         | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
         | PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(_)
+        | PredicateAst::ColorsOfManaSpentToActivateThisAbility { .. }
         | PredicateAst::VoteOptionGetsMoreVotes { .. }
         | PredicateAst::VoteOptionGetsMoreVotesOrTied { .. }
         | PredicateAst::SecretChoicesMatch

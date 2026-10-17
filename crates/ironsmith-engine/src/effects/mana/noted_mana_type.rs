@@ -9,6 +9,7 @@ use crate::mana::ManaSymbol;
 
 pub type NoteActivationManaTypeEffect = ironsmith_core::NoteActivationManaTypeEffect;
 pub type AddManaOfNotedTypeEffect = ironsmith_core::AddManaOfNotedTypeEffect;
+pub type NoteTriggeringCreatureTypeEffect = ironsmith_core::NoteTriggeringCreatureTypeEffect;
 
 const MANA_TYPES: [ManaSymbol; 6] = [
     ManaSymbol::White,
@@ -83,5 +84,55 @@ impl EffectExecutor for AddManaOfNotedTypeEffect {
                 .into_iter()
                 .collect(),
         )
+    }
+}
+
+impl EffectExecutor for NoteTriggeringCreatureTypeEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
+        // "its creature types": the triggering object's types as it triggered.
+        let subtypes = match ctx.get_tagged("triggering") {
+            Some(snapshot) => snapshot.subtypes.clone(),
+            None => ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.object_id())
+                .and_then(|id| game.object(id))
+                .map(|object| object.subtypes.iter().copied().collect::<Vec<_>>())
+                .unwrap_or_default(),
+        };
+        let noted = game.noted_creature_types_for_source(ctx.source);
+        let mut options = Vec::new();
+        for subtype in subtypes {
+            if subtype.is_creature_type() && !noted.contains(&subtype) && !options.contains(&subtype)
+            {
+                options.push(subtype);
+            }
+        }
+        if options.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let menu = options
+            .iter()
+            .map(|subtype| (*subtype, subtype.to_string()))
+            .collect::<Vec<_>>();
+        let chooser = ctx.controller;
+        let Some(subtype) = select_typed_option(
+            game,
+            ctx,
+            chooser,
+            "Note a creature type",
+            &menu,
+            SingleChoicePolicy::First,
+        )?
+        else {
+            return Ok(EffectOutcome::count(0));
+        };
+        let noted = game.note_creature_type_for_source(ctx.source, subtype);
+        Ok(EffectOutcome::count(i64::from(noted)))
     }
 }

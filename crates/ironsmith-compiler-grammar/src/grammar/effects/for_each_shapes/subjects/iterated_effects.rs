@@ -5,6 +5,27 @@ pub fn parse_for_each_mana_symbol_spent_effect_shape(
 ) -> Option<ForEachManaSymbolSpentEffectShape<'_>> {
     let (subject_tokens, effect_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::comma().void())?;
+    let (symbol, group_size, reference) =
+        parse_for_each_mana_symbol_spent_subject(subject_tokens)?;
+    let effect_tokens = trim_lexed_commas(effect_tokens);
+    (!effect_tokens.is_empty()).then_some(ForEachManaSymbolSpentEffectShape {
+        symbol,
+        group_size,
+        reference,
+        effect_tokens,
+    })
+}
+
+/// "for each {G}{G} spent to cast it": one repeated colored (or colorless)
+/// symbol group and the cast reference; shared by the leading effect
+/// quantifier and the enters-with-counters tail (Clay Champion).
+pub fn parse_for_each_mana_symbol_spent_subject(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<(
+    crate::mana::ManaSymbol,
+    u32,
+    ironsmith_core::ManaSpentCastReferenceSurface,
+)> {
     let (_, after_prefix) = primitives::parse_prefix(
         trim_lexed_commas(subject_tokens),
         primitives::phrase(&["for", "each"]),
@@ -55,13 +76,7 @@ pub fn parse_for_each_mana_symbol_spent_effect_shape(
             ),
         ],
     )?;
-    let effect_tokens = trim_lexed_commas(effect_tokens);
-    (!effect_tokens.is_empty()).then_some(ForEachManaSymbolSpentEffectShape {
-        symbol,
-        group_size: crate::util::narrowed_u32(symbols.len())?,
-        reference,
-        effect_tokens,
-    })
+    Some((symbol, crate::util::narrowed_u32(symbols.len())?, reference))
 }
 
 pub fn parse_for_each_spent_mana_effect_shape(

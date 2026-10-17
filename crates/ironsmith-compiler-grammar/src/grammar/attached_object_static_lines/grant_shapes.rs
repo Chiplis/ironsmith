@@ -149,6 +149,24 @@ pub struct AttachedGetsNegatedRestrictionSpec<'a> {
     pub negated_tail: &'a [OwnedLexToken],
 }
 
+/// "Enchanted creature gets -1/-1, and its activated abilities can't be
+/// activated" (Viper's Kiss): a fixed modifier coordinated with an
+/// activation ban on the attached object. Returns the subject plus the
+/// verb and conjunction token indices for the anthem reader.
+pub fn parse_attached_gets_and_activation_restriction_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(AttachedSubject, usize, usize)> {
+    let (subject, _) = primitives::parse_prefix(tokens, parse_attached_subject_lexed)?;
+    let get_token = find_get(tokens)?;
+    let and_token = get_token + 1 + find_and(tokens.get(get_token + 1..)?)?;
+    if trim_lexed_commas(tokens.get(get_token + 1..and_token)?).len() != 1 {
+        return None;
+    }
+    let tail = super::super::super::lexer::parser_token_word_refs(tokens.get(and_token + 1..)?);
+    (tail == ["its", "activated", "abilities", "cant", "be", "activated"])
+        .then_some((subject, get_token, and_token))
+}
+
 pub fn parse_attached_gets_and_negated_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<AttachedGetsNegatedRestrictionSpec<'_>> {

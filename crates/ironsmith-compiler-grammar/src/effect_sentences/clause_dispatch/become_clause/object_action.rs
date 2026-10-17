@@ -21,6 +21,35 @@ pub fn parse_become_clause(
             }
         }
     }
+    // "until this creature is turned face down, it becomes a copy of that
+    // creature" (Vesuvan Shapeshifter): the copy lasts while the named
+    // permanent stays face up, and "it" is that permanent, not the copied one.
+    {
+        let words = crate::lexer::parser_token_word_refs(subject_tokens);
+        if let ["until", "this", noun, "is", "turned", "face", "down", subject @ ..] =
+            words.as_slice()
+            && matches!(subject, ["it"] | [",", "it"])
+        {
+            let this_subject = crate::lexer::synthetic_word_tokens(vec!["this", *noun]);
+            let mut effect = parse_become_clause(&this_subject, rest_tokens)?;
+            if let EffectAst::SubjectVerb(subject_verb) = &mut effect
+                && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                    crate::cards::builders::CharacteristicActionAst::BecomeCopy { duration, .. },
+                ) = &mut subject_verb.action
+                && matches!(duration, Until::Forever)
+            {
+                *duration = Until::ForAsLongAs(
+                    ironsmith_core::ContinuousDurationPredicate::ObjectFaceUp(
+                        ironsmith_core::ContinuousDurationObject::Source,
+                    ),
+                );
+                return Ok(effect);
+            }
+            return Err(CardTextError::ParseError(
+                "until-turned-face-down duration requires one become-copy effect".into(),
+            ));
+        }
+    }
     let mut designation_clause = subject_tokens.to_vec();
     designation_clause.push(OwnedLexToken::synthetic_word("become"));
     designation_clause.extend_from_slice(rest_tokens);
@@ -55,6 +84,45 @@ pub fn parse_become_clause(
             object: ironsmith_core::ContinuousDurationObject::AffectedObject,
         };
         return Ok(effect);
+    }
+    // "becomes the creature type of your choice in addition to its other
+    // types until end of turn" (Mistform Sliver): the ordinary choice owner,
+    // keeping the object's other creature types.
+    const IN_ADDITION_TO_OTHER_TYPES: &[&str] = &["in", "addition", "to", "its", "other", "types"];
+    let addition_view = crate::lexer::TokenWordView::new(rest_tokens);
+    let addition_words = addition_view.word_refs();
+    if let Some(start) = addition_words
+        .windows(IN_ADDITION_TO_OTHER_TYPES.len())
+        .position(|window| window == IN_ADDITION_TO_OTHER_TYPES)
+        && matches!(
+            &addition_words[..start],
+            ["the", "creature", "type", "of", "your", "choice"]
+                | ["creature", "type", "of", "your", "choice"]
+        )
+    {
+        let starts = addition_view.token_start_indices();
+        let head_end = starts[start];
+        let tail_start = starts
+            .get(start + IN_ADDITION_TO_OTHER_TYPES.len())
+            .copied()
+            .unwrap_or(rest_tokens.len());
+        let mut reduced = rest_tokens[..head_end].to_vec();
+        reduced.extend_from_slice(&rest_tokens[tail_start..]);
+        let mut effect = parse_become_clause(&subject_tokens, &reduced)?;
+        if let EffectAst::SubjectVerb(subject) = &mut effect
+            && let crate::cards::builders::SubjectVerbActionAst::Characteristics(
+                crate::cards::builders::CharacteristicActionAst::BecomeCreatureTypeChoice {
+                    in_addition_to_other_types,
+                    ..
+                },
+            ) = &mut subject.action
+        {
+            *in_addition_to_other_types = true;
+            return Ok(effect);
+        }
+        return Err(CardTextError::ParseError(
+            "'in addition to its other types' requires a creature-type choice".into(),
+        ));
     }
     if rest_words == ["blocked"] {
         let subject = parse_target_phrase(&subject_tokens).or_else(|_| {
@@ -224,6 +292,47 @@ pub fn parse_become_clause(
     ]) || become_words.ends_with(&[
         "in", "addition", "to", "their", "other", "colors", "and", "types",
     ]);
+
+    // "up to one target player's life total becomes ..." (Torgaar): declare the
+    // optional player target, then set that player's life total.
+    let raw_subject_words = crate::lexer::parser_token_word_refs(subject_tokens);
+    if become_grammar::become_subject_has_life_total(subject_tokens)
+        && raw_subject_words.starts_with(&["up", "to", "one", "target"])
+        && matches!(
+            raw_subject_words.get(4),
+            Some(&("player" | "players" | "player's"))
+        )
+    {
+        let amount = parse_value(&become_tokens)
+            .map(|(value, _)| value)
+            .or_else(|| {
+                crate::effect_sentences::zone_counter_helpers::parse_starting_life_total_value(
+                    &become_tokens,
+                    crate::cards::builders::PlayerAst::That,
+                )
+            })
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing life total amount (clause: '{}')",
+                    render_lower_words(&rest_tokens)
+                ))
+            })?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(TargetAst::WithCount(
+                    Box::new(TargetAst::Player(
+                        crate::target::PlayerFilter::Any,
+                        span_from_tokens(subject_tokens),
+                    )),
+                    crate::effect::ChoiceCount::up_to(1),
+                )),
+                EffectAst::subject_verb_set_life_total(
+                    crate::cards::builders::PlayerAst::That,
+                    amount,
+                ),
+            ],
+        });
+    }
 
     if let Some(player) = extract_subject_player(Some(subject)) {
         if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Monarch) {
@@ -469,6 +578,9 @@ pub fn parse_become_clause(
     }
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Plotted) {
         return Ok(EffectAst::subject_verb_become_plotted(target));
+    }
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Foretold) {
+        return Ok(EffectAst::subject_verb_become_foretold(target));
     }
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Prepared) {
         return Ok(EffectAst::subject_verb_prepare(target));
@@ -891,6 +1003,16 @@ pub fn parse_become_clause(
                     .is_some_and(|token| token.is_word("and"))
                 {
                     crate::util::trim_edge_punctuation_tokens(&ability_tokens[1..])
+                } else {
+                    ability_tokens
+                };
+                // "..., and it gains crew 2 and \"...\"" (Captain Rex
+                // Nebula): the animated object is the grant's subject.
+                let ability_tokens = if ability_tokens.len() > 2
+                    && ability_tokens[0].is_word("it")
+                    && ability_tokens[1].is_any_word(&["gains", "has"])
+                {
+                    &ability_tokens[2..]
                 } else {
                     ability_tokens
                 };

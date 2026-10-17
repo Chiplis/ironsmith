@@ -100,6 +100,23 @@ pub enum KeywordActionKind {
     /// Proposed only so replacements can change the number of copies
     /// ("copy it that many times plus an additional time").
     CopySpell,
+    /// A scrying player chose to put one or more of the looked-at cards on
+    /// the bottom of their library (CR 701.22a); the amount is how many
+    /// ("Whenever you choose to put one or more cards on the bottom of your
+    /// library while scrying", The Temporal Anchor).
+    ScryToBottom,
+    /// A spell or ability made one or more players separate or group cards
+    /// or permanents into piles (CR 700.3). Recorded once per resolving spell
+    /// or ability for "each spell or ability that caused one or more players
+    /// to ... group cards or permanents into a pile this turn" (The Celestial
+    /// Toymaker); it is not a trigger-visible event.
+    GroupIntoPiles,
+    /// A player solved a Case (CR 719.4): "Whenever you solve a Case"
+    /// (Case File Auditor).
+    SolveCase,
+    /// A player foretold a card (CR 702.143a special action): "Whenever you
+    /// foretell a card" (Dream Devourer). Appended for wire stability.
+    Foretell,
 }
 
 impl KeywordActionKind {
@@ -262,6 +279,10 @@ impl KeywordActionKind {
             Self::Mill => "mill cards",
             Self::DrawCards => "draw cards",
             Self::CopySpell => "copy a spell",
+            Self::ScryToBottom => "put cards on the bottom of their library while scrying",
+            Self::GroupIntoPiles => "group cards or permanents into piles",
+            Self::SolveCase => "solve a Case",
+            Self::Foretell => "foretell a card",
         }
     }
 
@@ -341,6 +362,10 @@ impl KeywordActionKind {
             Self::Mill => "mills cards",
             Self::DrawCards => "draws cards",
             Self::CopySpell => "copies a spell",
+            Self::ScryToBottom => "puts cards on the bottom of their library while scrying",
+            Self::GroupIntoPiles => "groups cards or permanents into piles",
+            Self::SolveCase => "solves a Case",
+            Self::Foretell => "foretells a card",
         }
     }
 }

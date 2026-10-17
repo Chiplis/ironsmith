@@ -94,7 +94,7 @@ pub use traits::{
 };
 
 // Re-export event types
-pub use cards::{DiscardEvent, DrawEvent};
+pub use cards::{DiscardEvent, DrawCauseAbility, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent, RemovePlayerCountersEvent};
 pub(crate) use counters::CounterRemovalEvent;
 pub use damage::{DamageEvent, DamagePreventedEvent, PreventedDamage};
@@ -119,7 +119,8 @@ pub use other::{
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
 pub use phase::{
-    BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDrawStepEvent,
+    BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDeclareAttackersStepEvent,
+    BeginningOfDrawStepEvent,
     BeginningOfEndStepEvent, BeginningOfPostcombatMainPhaseEvent,
     BeginningOfPrecombatMainPhaseEvent, BeginningOfUpkeepEvent, EndOfCombatEvent,
     PermanentsUntapStepEvent,
@@ -464,10 +465,31 @@ impl Event {
         first_of_instruction: bool,
         first_of_draw_step: bool,
     ) -> Self {
+        Self::draw_in_instruction_with_cause(
+            player,
+            count,
+            is_first_this_turn,
+            first_of_instruction,
+            first_of_draw_step,
+            None,
+        )
+    }
+
+    /// As [`Self::draw_in_instruction`], recording the activated ability whose
+    /// resolving instruction proposed the draw.
+    pub fn draw_in_instruction_with_cause(
+        player: PlayerId,
+        count: u32,
+        is_first_this_turn: bool,
+        first_of_instruction: bool,
+        first_of_draw_step: bool,
+        cause_ability: Option<DrawCauseAbility>,
+    ) -> Self {
         Self::new_with_provenance(
             DrawEvent::new(player, count, is_first_this_turn)
                 .with_first_of_instruction(first_of_instruction)
-                .with_first_of_draw_step(first_of_draw_step),
+                .with_first_of_draw_step(first_of_draw_step)
+                .with_cause_ability(cause_ability),
             ProvNodeId::default(),
         )
     }

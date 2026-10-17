@@ -444,6 +444,7 @@ mod opponent_choice_tests {
             metric: ironsmith::effect::ChoiceAggregateMetric::ManaValue,
             maximum: 3,
             target_values: vec![(a, 5), (b, 1), (c, 2)],
+            one_per_card_type: None,
         });
         assert_eq!(first_legal_target_selection(&[req]), Some(vec![b, c]));
     }

@@ -56,6 +56,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RegisterDamageMultiplierEffect" => {
             decode_as::<ironsmith_core::RegisterDamageMultiplierEffect>(payload).map(Some)
         }
+        "RegisterDamageCounterReplacementEffect" => {
+            decode_as::<ironsmith_core::RegisterDamageCounterReplacementEffect>(payload).map(Some)
+        }
         "RegisterDamageAdditionEffect" => {
             decode_as::<ironsmith_core::RegisterDamageAdditionEffect>(payload).map(Some)
         }
@@ -66,6 +69,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RegisterEnterWithCountersReplacementEffect" => {
             decode_as::<ironsmith_core::RegisterEnterWithCountersReplacementEffect>(payload)
                 .map(Some)
+        }
+        "RegisterNextBatchEnterAsCopyEffect" => {
+            decode_as::<ironsmith_core::RegisterNextBatchEnterAsCopyEffect>(payload).map(Some)
         }
         "RegisterNextBatchEnterWithCountersEffect" => {
             decode_as::<ironsmith_core::RegisterNextBatchEnterWithCountersEffect>(payload).map(Some)
@@ -153,6 +159,10 @@ pub(super) fn map_card_ids(
             ironsmith_core::RegisterDamageMultiplierEffect,
         >(payload, context)
         .map(Some),
+        "RegisterDamageCounterReplacementEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterDamageCounterReplacementEffect,
+        >(payload, context)
+        .map(Some),
         "RegisterDamageAdditionEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RegisterDamageAdditionEffect,
         >(payload, context)
@@ -163,6 +173,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "RegisterEnterWithCountersReplacementEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::RegisterEnterWithCountersReplacementEffect,
+        >(payload, context)
+        .map(Some),
+        "RegisterNextBatchEnterAsCopyEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RegisterNextBatchEnterAsCopyEffect,
         >(payload, context)
         .map(Some),
         "RegisterNextBatchEnterWithCountersEffect" => super::card_graph::map_payload_as::<

@@ -489,7 +489,7 @@ pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameVi
 
     // CR 702.110b: menace (printed, granted, or from being suspected) needs
     // two or more blockers.
-    abilities
+    let minimum = abilities
         .iter()
         .filter_map(|ability| {
             ability
@@ -501,7 +501,32 @@ pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameVi
             view.object_has_static_ability_id(attacker.id, StaticAbilityId::Menace)
                 .then_some(2)
         })
-        .unwrap_or(1)
+        .unwrap_or(1);
+    // Tromokratis: "can't be blocked unless all creatures defending player
+    // controls block it" needs every such creature among its blockers.
+    if abilities.iter().any(|ability| {
+        ability.id() == StaticAbilityId::CantBeBlockedUnlessAllDefendingCreaturesBlock
+    }) {
+        let game = view.game_state();
+        if let Some(combat) = game.combat.as_ref()
+            && let Some(defender) =
+                crate::combat_state::defending_player_for_attacker(game, combat, attacker.id)
+        {
+            let defending_creatures = game
+                .battlefield
+                .iter()
+                .filter(|&&id| {
+                    !game.is_phased_out(id)
+                        && view.object_has_card_type(id, crate::types::CardType::Creature)
+                        && game
+                            .object(id)
+                            .is_some_and(|object| game.controller_of(object) == defender)
+                })
+                .count();
+            return minimum.max(defending_creatures);
+        }
+    }
+    minimum
 }
 
 /// Returns the maximum number of blockers allowed for an attacker, if restricted.

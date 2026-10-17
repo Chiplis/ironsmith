@@ -723,10 +723,20 @@ fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(predicate) =
+        crate::grammar::anthem_grants::parse_chosen_color_most_common_predicate(tokens)
+    {
+        return Some(predicate);
+    }
     fn life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         use crate::grammar::conditions::PlayerLifeRelationAst;
 
         let relation = crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
+        if let Some(predicate) =
+            crate::grammar::conditions::target_or_controller_life_relation_predicate(&relation)
+        {
+            return Some(predicate);
+        }
         let player = match relation.player {
             PlayerFilter::You => PlayerAst::You,
             PlayerFilter::Opponent => PlayerAst::Opponent,

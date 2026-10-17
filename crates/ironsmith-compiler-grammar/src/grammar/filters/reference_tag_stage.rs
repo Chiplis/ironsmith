@@ -148,8 +148,12 @@ const BLOCKED_BY_TAGGED_OBJECT_PHRASES: &[&[&str]] = &[
     &["it", "blocked", "this", "combat"],
     &["it", "blocked", "this", "turn"],
 ];
-const POWER_OR_TOUGHNESS_PHRASES: &[&[&str]] =
-    &[&["power", "or", "toughness"], &["toughness", "or", "power"]];
+const POWER_OR_TOUGHNESS_PHRASES: &[&[&str]] = &[
+    &["power", "or", "toughness"],
+    &["toughness", "or", "power"],
+    // "a spell with power, toughness, or mana value 4" (The Fantastic Four).
+    &["power", "toughness", "or", "mana", "value"],
+];
 const TARGET_PLAYER_REFERENCE_PHRASES: &[&[&str]] =
     &[&["target", "player"], &["target", "players"]];
 const TARGET_OPPONENT_REFERENCE_PHRASES: &[&[&str]] =
@@ -615,6 +619,13 @@ const PERMANENT_OR_PERMANENTS_WORDS: &[&str] = &["permanent", "permanents"];
 const SPELL_OR_SPELLS_WORDS: &[&str] = &["spell", "spells"];
 const POWER_GREATER_THAN_BASE_POWER_PHRASE: &[&str] =
     &["power", "greater", "than", "its", "base", "power"];
+/// "for each creature you control with power greater than that creature's
+/// base power" (Sovereign Okinec Ahau): the demonstrative names the candidate.
+const POWER_GREATER_THAN_THAT_BASE_POWER_PHRASES: &[&[&str]] = &[
+    &["power", "greater", "than", "its", "base", "power"],
+    &["power", "greater", "than", "that", "creatures", "base", "power"],
+    &["power", "greater", "than", "that", "creature's", "base", "power"],
+];
 const NON_WORD: &str = "non";
 const ATTACKED_THIS_TURN_PHRASE: &[&str] = &["attacked", "this", "turn"];
 const TYPE_LIST_CONJUNCTION_WORDS: &[&str] = &["and", "or", "and/or"];
@@ -1172,12 +1183,91 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
     all_words.drain(0..3);
 }
 
+/// "Auras, Equipment, and modified creatures you control" (Silkguard): a
+/// serial list whose members are different kinds of permanents. Each member
+/// keeps its own noun; the trailing "creatures" belongs only to the last
+/// member, and the controller tail is shared by all of them.
+fn parse_serial_mixed_permanent_union(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if !tokens.iter().any(OwnedLexToken::is_comma) {
+        return Ok(None);
+    }
+    let word_positions = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.as_word().is_some())
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [.., you, control] = word_positions.as_slice() else {
+        return Ok(None);
+    };
+    if !tokens[*you].is_word("you") || !tokens[*control].is_word("control") {
+        return Ok(None);
+    }
+    let tail = &tokens[*you..];
+    let mut members: Vec<Vec<OwnedLexToken>> = Vec::new();
+    let mut current = Vec::new();
+    for token in &tokens[..*you] {
+        if token.is_comma() || token.is_word("and") || token.is_word("or") {
+            if !current.is_empty() {
+                members.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        if token.as_word().is_none() {
+            return Ok(None);
+        }
+        current.push(token.clone());
+    }
+    if !current.is_empty() {
+        members.push(current);
+    }
+    if members.len() < 3 {
+        return Ok(None);
+    }
+    let mut branches = Vec::new();
+    let mut noncreature_subtype_member = false;
+    let mut creature_member = false;
+    for member in &members {
+        let mut member_tokens = member.clone();
+        member_tokens.extend_from_slice(tail);
+        let Ok(branch) = parse_object_filter_lexed(&member_tokens, other) else {
+            return Ok(None);
+        };
+        if member.len() == 1
+            && !branch.card_types.contains(&CardType::Creature)
+            && !branch.subtypes.is_empty()
+            && branch.subtypes.iter().all(|subtype| !subtype.is_creature_type())
+        {
+            noncreature_subtype_member = true;
+        }
+        if member
+            .last()
+            .is_some_and(|token| token.is_word("creatures") || token.is_word("creature"))
+        {
+            creature_member = true;
+        }
+        branches.push(branch);
+    }
+    if !noncreature_subtype_member || !creature_member {
+        return Ok(None);
+    }
+    let mut union = ObjectFilter::default();
+    union.any_of = branches;
+    Ok(Some(union))
+}
+
 pub fn parse_object_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     if let Some(result) = super::live_name_relations::parse_live_name_relation(tokens, other) {
         return result;
+    }
+    if let Some(union) = parse_serial_mixed_permanent_union(tokens, other)? {
+        return Ok(union);
     }
     let attack_destination_relation = is_attack_destination_relation(tokens);
     let mut filter = if attack_destination_relation {
@@ -1380,10 +1470,9 @@ pub(super) fn parse_object_filter(
         });
         return Ok(filter);
     }
-    if let Some(index) = refs
-        .windows(4)
-        .position(|part| part == ["blocking", "or", "blocked", "by"])
-        && crate::util::is_source_reference_words(&refs[index + 4..])
+    if let Some((index, relation_len)) =
+        crate::word_primitives::find_current_block_partner_relation(&refs)
+        && crate::util::is_source_reference_words(&refs[index + relation_len..])
     {
         let mut filter = parse_object_filter(&tokens[..words.token_start_indices()[index]], other)?;
         filter.in_combat_with_source = true;

@@ -567,6 +567,7 @@ fn arena_style_land_definition() -> crate::cards::CardDefinition {
                     crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
                 )],
                 granted_keywords: Vec::new(),
+                enters_with_counter_values: Vec::new(),
             }],
             is_loyalty_ability: false,
         }),

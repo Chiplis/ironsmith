@@ -33,6 +33,8 @@ pub enum PlayerRestrictionTailKind {
     DrawCards,
     DrawExtraCards,
     PoisonCounters,
+    /// "get counters" (Solemnity): counters of any kind.
+    GetCounters,
     CastMoreThanOneSpellEachTurn,
     CastSpells,
 }
@@ -165,6 +167,16 @@ pub fn parse_global_cant_restriction_words(words: &[&str]) -> Option<GlobalCantR
     } else if exact_any(
         words,
         &[
+            &["that", "player's", "life", "total", "cant", "change"],
+            &["that", "players", "life", "total", "cant", "change"],
+        ],
+    ) {
+        // Teferi's Reproach, after its "until that player's next turn"
+        // pronoun binding: a back-reference to the announced player.
+        GlobalCantRestrictionFact::ChangeLifeTotal(PlayerFilter::Target(Box::new(PlayerFilter::Any)))
+    } else if exact_any(
+        words,
+        &[
             &[
                 "your",
                 "opponents",
@@ -228,6 +240,14 @@ pub fn parse_player_negated_subject_words(words: &[&str]) -> Option<PlayerFilter
         Some(PlayerFilter::Opponent)
     } else if exact_any(words, &[&["players"], &["each", "player"]]) {
         Some(PlayerFilter::Any)
+    } else if exact_any(words, &[&["other", "players"], &["each", "other", "player"]]) {
+        // "Other players can't ..." (Shaman's Trance): every player but the
+        // effect's controller.
+        Some(PlayerFilter::NotYou)
+    } else if exact(words, &["that", "player"]) {
+        // The discourse player (a chosen target or iterated player); the
+        // lowering binds it to its antecedent.
+        Some(PlayerFilter::IteratedPlayer)
     } else if exact(words, &["enchanted", "player"]) {
         Some(PlayerFilter::TaggedPlayer(
             (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
@@ -271,6 +291,8 @@ pub fn parse_player_restriction_subject_words(words: &[&str]) -> Option<PlayerFi
         Some(PlayerFilter::Opponent)
     } else if exact_any(words, &[&["players"], &["each", "player"]]) {
         Some(PlayerFilter::Any)
+    } else if exact_any(words, &[&["other", "players"], &["each", "other", "player"]]) {
+        Some(PlayerFilter::NotYou)
     } else if exact(words, &["defending", "player"]) {
         Some(PlayerFilter::Defending)
     } else if exact(words, &["attacking", "player"]) {
@@ -304,6 +326,10 @@ pub fn parse_cant_cast_subject_words(words: &[&str]) -> Option<CantCastSubject> 
         (PlayerFilter::Opponent, 4)
     } else if prefix(words, &["your", "opponents"]) {
         (PlayerFilter::Opponent, 2)
+    } else if prefix(words, &["each", "other", "player"]) {
+        (PlayerFilter::NotYou, 3)
+    } else if prefix(words, &["other", "players"]) {
+        (PlayerFilter::NotYou, 2)
     } else if prefix(words, &["each", "player"]) {
         (PlayerFilter::Any, 2)
     } else if prefix(words, &["each", "opponent"]) {
@@ -343,6 +369,8 @@ pub fn parse_player_restriction_tail_words(words: &[&str]) -> Option<PlayerRestr
         ],
     ) {
         PlayerRestrictionTailKind::PoisonCounters
+    } else if exact(words, &["get", "counters"]) {
+        PlayerRestrictionTailKind::GetCounters
     } else if prefix(
         words,
         &["cast", "more", "than", "one", "spell", "each", "turn"],
@@ -506,6 +534,8 @@ pub fn parse_restriction_subject_surface_words(
             &["opponents"],
             &["players"],
             &["each", "player"],
+            &["other", "players"],
+            &["each", "other", "player"],
             &["enchanted", "player"],
         ],
     ) {

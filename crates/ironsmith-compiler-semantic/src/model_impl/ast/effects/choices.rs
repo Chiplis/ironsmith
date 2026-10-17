@@ -68,6 +68,12 @@ pub enum ObjectChoiceEffectAst {
         chooser: PlayerFilter,
         modes: Vec<ChooseOneModeAst>,
     },
+    /// "chooses one of <piles> at random": exactly one mode is selected
+    /// uniformly at random during resolution (no player makes the choice).
+    /// Lowers to `ChooseModeEffect::choose_one(..).with_random_mode_choice()`.
+    ChooseOneOfAtRandom {
+        modes: Vec<ChooseOneModeAst>,
+    },
     /// A resolution-time villainous choice made by the specified player.
     VillainousChoice {
         player: PlayerFilter,

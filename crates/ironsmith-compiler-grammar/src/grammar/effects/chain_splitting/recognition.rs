@@ -319,6 +319,42 @@ pub fn preserve_and_reason(
     if color_pair_boundary(current, remaining) {
         return Some(AndPreservation::ColorPair);
     }
+    // "exiles all cards with that name from their hand and graveyard"
+    // (Legion's End): the conjunction joins two zones of one search.
+    if words.len() >= 3
+        && words[words.len() - 3] == "from"
+        && matches!(words[words.len() - 2], "their" | "your" | "his" | "her" | "its")
+        && matches!(words[words.len() - 1], "hand" | "graveyard" | "library")
+        && tail.len() == 1
+        && matches!(tail[0], "hand" | "graveyard" | "library")
+    {
+        return Some(AndPreservation::ExchangeZones);
+    }
+    // "creatures you control gain first strike and trample until end of
+    // turn and can't be blocked ..." (Legion Loyalist): the first
+    // conjunction joins two granted keywords of one grant.
+    if let Some(grant) = words.iter().rposition(|word| matches!(*word, "gain" | "gains"))
+        && grant + 1 < words.len()
+        && !words[grant + 1..]
+            .iter()
+            .any(|word| matches!(*word, "and" | "until" | "control"))
+        && parse_filter_keyword_constraint_words(&words[grant + 1..])
+            .is_some_and(|(_, used)| used == words.len() - grant - 1)
+        && parse_filter_keyword_constraint_words(&tail).is_some()
+    {
+        return Some(AndPreservation::SharedSubject);
+    }
+    // "put all Dwarf and Vehicle cards from among them into your hand"
+    // (Depala, Pilot Exemplar): two type words sharing one quantified card
+    // noun, never two actions.
+    if words.len() >= 2
+        && matches!(words[words.len() - 2], "all" | "each")
+        && tail.len() >= 2
+        && matches!(tail[1], "card" | "cards")
+        && find_chain_verb_tokens(&remaining[..1]).is_none()
+    {
+        return Some(AndPreservation::CardTypeList);
+    }
     // "hexproof from blue and from black" (Veil of Summer): the repeated
     // preposition continues the keyword's quality list.
     if contains_any(current, &["hexproof", "protection"]) && starts_any(remaining, &[&["from"]]) {
@@ -495,6 +531,23 @@ pub(super) fn then_followup_facts(
         && ((starts_any(after, &[&["put"], &["double"]])
             && contains_any(after, &["counter", "counters"]))
             || starts_any(after, &[&["copy"], &["copies"]])
+            // "Mill two cards, then destroy the chosen permanent if its mana
+            // value ..." (Quag Feast), "draw a card, then untap it": a
+            // whole-object action on an earlier referent is a separate
+            // instruction; its pronoun cannot extend the preceding action.
+            || starts_any(
+                after,
+                &[
+                    &["destroy"],
+                    &["destroys"],
+                    &["tap"],
+                    &["taps"],
+                    &["untap"],
+                    &["untaps"],
+                    &["regenerate"],
+                    &["regenerates"],
+                ],
+            )
             // A zone action on the preceding object is a separate instruction;
             // the chain's carry pass binds its pronoun after splitting.
             || starts_any(
@@ -504,6 +557,11 @@ pub(super) fn then_followup_facts(
                     &["exile", "them"],
                     &["exiles", "it"],
                     &["exiles", "them"],
+                    // "Put all permanent cards exiled with this enchantment
+                    // onto the battlefield, then sacrifice it." (Journey to
+                    // the Lost City)
+                    &["sacrifice", "it"],
+                    &["sacrifices", "it"],
                 ],
             )
             || (starts_any(after, &[&["return"], &["returns"]])
@@ -525,6 +583,11 @@ pub(super) fn then_followup_facts(
                 after,
                 &[&["transform"], &["transforms"], &["convert"], &["converts"]],
             )
+            // "exile a permanent card from your graveyard at random, then
+            // create a tapped token that's a copy of that card" (Sin): a
+            // token copy of the earlier referent is its own instruction.
+            || (starts_any(after, &[&["create"], &["creates"]])
+                && contains_any(after, &["copy", "copies"]))
             || sacrifice_unless_payment);
     let allow_clash = starts_any(before, &[&["clash"], &["clashes"]]);
     let allow_attach = starts_any(after, &[&["attach"], &["attaches"]]);
@@ -733,7 +796,12 @@ pub(super) fn comma_boundary_facts(
             || filter_keyword_list
             || inline_token_rules
             || token_copy_exception
-            || named_token_appositive,
+            || named_token_appositive
+            // "artifacts, enchantments, and/or tokens" (Lich-Knights'
+            // Conquest): "and/or" only ever closes a noun list.
+            || after
+                .first()
+                .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("and/or")),
     }
 }
 

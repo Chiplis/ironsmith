@@ -2,6 +2,7 @@
 
 mod beginning_of_cleanup_step;
 mod beginning_of_combat;
+mod beginning_of_declare_attackers_step;
 mod beginning_of_draw_step;
 mod beginning_of_end_step;
 mod beginning_of_main_phase;
@@ -11,6 +12,7 @@ mod permanents_untap_step;
 
 pub use beginning_of_cleanup_step::BeginningOfCleanupStepEvent;
 pub use beginning_of_combat::BeginningOfCombatEvent;
+pub use beginning_of_declare_attackers_step::BeginningOfDeclareAttackersStepEvent;
 pub use beginning_of_draw_step::BeginningOfDrawStepEvent;
 pub use beginning_of_end_step::BeginningOfEndStepEvent;
 pub use beginning_of_main_phase::{

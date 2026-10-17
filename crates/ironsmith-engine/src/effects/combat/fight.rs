@@ -296,6 +296,48 @@ impl FightEffect {
 }
 
 impl FightEffect {
+    /// A fight's "excess damage dealt this way" result names the fought
+    /// (second) creature ("When excess damage is dealt to the creature an
+    /// opponent controls this way", "If the creature the opponent controls is
+    /// dealt excess damage this way"). Keep only the excess facts for damage
+    /// dealt to that creature so excess damage taken by the first fighter
+    /// neither satisfies the result gate nor contributes "that much".
+    fn fought_creature_excess_only(
+        mut outcome: EffectOutcome,
+        fought: crate::ids::ObjectId,
+    ) -> EffectOutcome {
+        let excess = outcome
+            .events_of_type::<crate::events::DamageEvent>()
+            .filter(|event| {
+                event.excess_damage > 0
+                    && matches!(event.target, DamageTarget::Object(id) if id == fought)
+            })
+            .map(|event| event.excess_damage)
+            .collect::<Vec<_>>();
+        fn rewrite(outcome: &mut EffectOutcome, excess: &[u32]) {
+            outcome.execution_facts.retain(|fact| {
+                !matches!(
+                    fact,
+                    crate::effect::ExecutionFact::ExcessDamageDealt
+                        | crate::effect::ExecutionFact::ExcessDamage(_)
+                )
+            });
+            for amount in excess {
+                outcome
+                    .execution_facts
+                    .push(crate::effect::ExecutionFact::ExcessDamageDealt);
+                outcome
+                    .execution_facts
+                    .push(crate::effect::ExecutionFact::ExcessDamage(*amount));
+            }
+            if let Some(original) = outcome.instruction_result.as_deref_mut() {
+                rewrite(original, excess);
+            }
+        }
+        rewrite(&mut outcome, &excess);
+        outcome
+    }
+
     fn execute_bound_with_outputs(
         &self,
         game: &mut GameState,
@@ -395,7 +437,10 @@ impl FightEffect {
         // Keep the existing aggregate projection and captured notification order.
         // The damage owner supplies participant routing; Fight's notifications
         // belong to the enclosing action rather than an individual assignment.
-        let outcome = outputs.outcome.clone().with_events(fight_events.clone());
+        let outcome = Self::fought_creature_excess_only(
+            outputs.outcome.clone().with_events(fight_events.clone()),
+            creature2_id,
+        );
         outputs.retain_batch_children([CompletedEffectOutputs::aggregate_only(
             EffectOutcome::resolved().with_events(fight_events),
         )]);

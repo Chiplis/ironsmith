@@ -23,8 +23,18 @@ fn has_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool
 pub fn parse_becomes_tapped_during_your_turn_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<BecomesTappedDuringYourTurn> {
-    has_phrase(tokens, &["becomes", "tapped", "during", "your", "turn"])
-        .then_some(BecomesTappedDuringYourTurn)
+    // "becomes tapped for the first time during each of your turns" (Tale of
+    // Katara and Toph): the first such event of a turn that is yours; the
+    // per-turn frequency limit alone would also count opponents' turns.
+    (has_phrase(tokens, &["becomes", "tapped", "during", "your", "turn"])
+        || has_phrase(
+            tokens,
+            &[
+                "becomes", "tapped", "for", "the", "first", "time", "during", "each", "of",
+                "your", "turns",
+            ],
+        ))
+    .then_some(BecomesTappedDuringYourTurn)
 }
 
 pub fn parse_do_this_only_each_turn_limit_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {

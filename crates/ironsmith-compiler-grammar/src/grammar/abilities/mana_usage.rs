@@ -238,6 +238,9 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
     {
         return Some(transaction);
     }
+    if let Some(bonus) = parse_commander_cast_count_counter_bonus(tokens) {
+        return Some(bonus);
+    }
     let parsed = parse_mana_spend_bonus_shape(tokens)?;
     let spec_tokens = trim_lexed_commas(parsed.spec_tokens);
     if TokenWordView::new(spec_tokens).is_empty() {
@@ -328,6 +331,7 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
             enters_with_counters,
             granted_abilities: duration_grants,
             granted_keywords,
+            enters_with_counter_values: Vec::new(),
         });
     }
 
@@ -361,6 +365,49 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
         grant_uncounterable: false,
         enters_with_counters: vec![(counter_type, count)],
         granted_abilities: vec![],
+    })
+}
+
+/// "If you spend this mana to cast your commander, it enters with a number of
+/// additional +1/+1 counters on it equal to the number of times it's been
+/// cast from the command zone this game." (Opal Palace): a bonus carried by
+/// the mana unit; the count is read as the commander enters, when that cast
+/// is already counted.
+fn parse_commander_cast_count_counter_bonus(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    let words = TokenWordView::new(tokens).word_refs();
+    let words: Vec<&str> = words.into_iter().filter(|word| *word != ".").collect();
+    let rest = words.strip_prefix(
+        &["if", "you", "spend", "this", "mana", "to", "cast", "your", "commander", "it", "enters", "with", "a", "number", "of", "additional"][..],
+    )?;
+    let counters_at = rest.iter().position(|word| *word == "counters")?;
+    let counter_words = rest.get(..counters_at)?;
+    let tail = rest.get(counters_at + 1..)?;
+    let count_words = tail.strip_prefix(&["on", "it", "equal", "to", "the", "number", "of", "times"][..])?;
+    if !matches!(
+        count_words,
+        ["it's" | "its", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+            | ["it", "has" | "s", "been", "cast", "from", "the", "command", "zone", "this", "game"]
+    ) {
+        return None;
+    }
+    let mut kind_words = counter_words.to_vec();
+    kind_words.push("counter");
+    let counter_type = crate::grammar::filters::parse_counter_type_words(&kind_words)?;
+    Some(ManaUsageRestriction::CastSpellWithManaBonus {
+        filter: ObjectFilter::default()
+            .commander()
+            .owned_by(crate::target::PlayerFilter::You),
+        condition: ManaSpendBonusCondition::IfThisManaIsSpentToCast,
+        grant_uncounterable: false,
+        enters_with_counters: Vec::new(),
+        granted_abilities: Vec::new(),
+        granted_keywords: Vec::new(),
+        enters_with_counter_values: vec![(
+            counter_type,
+            crate::effect::Value::CommanderCastCount(crate::target::PlayerFilter::You),
+        )],
     })
 }
 

@@ -25,6 +25,8 @@ pub fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> 
     } else if let Some(rest) = grammar::strip_lexed_prefix_phrase(tokens, &["a", "counter", "from"])
     {
         (rest, false)
+    } else if let Some(effect) = parse_move_one_of_each_absent_kind(tokens)? {
+        return Ok(effect);
     } else if let Some(effect) = parse_move_counted_counters(tokens)? {
         return Ok(effect);
     } else {
@@ -66,6 +68,13 @@ fn parse_move_counted_counters(
 
     let (count, used) = if grammar::strip_lexed_prefix_phrase(tokens, &["any", "number", "of"]).is_some() {
         (ironsmith_core::effect::CounterMoveAmount::AnyNumber, 3)
+    } else if grammar::strip_lexed_prefix_phrase(tokens, &["one", "or", "more", "counters", "from"])
+        .is_some()
+    {
+        // "Move one or more counters from Goldberry onto another target
+        // permanent you control": a kind-agnostic choice of how many of each
+        // kind to move; moving none is not doing it ("If you do, ...").
+        (ironsmith_core::effect::CounterMoveAmount::AnyNumber, 3)
     } else if tokens.first().is_some_and(|token| token.is_word("all")) {
         (ironsmith_core::effect::CounterMoveAmount::All, 1)
     } else if let Some((count, used)) = crate::util::parse_value(tokens) {
@@ -83,13 +92,27 @@ fn parse_move_counted_counters(
     else {
         return Ok(None);
     };
-    if noun_idx == 0 || !rest.get(noun_idx + 1).is_some_and(|token| token.is_word("from")) {
+    if !rest.get(noun_idx + 1).is_some_and(|token| token.is_word("from")) {
         return Ok(None);
     }
-    let Some(counter_type) = crate::util::parse_counter_type_from_tokens(&rest[..noun_idx]) else {
-        return Ok(None);
+    // "Move any number of counters from among creatures you control onto
+    // that creature" names no kind: every kind on every donor is offered.
+    let (count, counter_type) = if noun_idx == 0 {
+        if !matches!(count, ironsmith_core::effect::CounterMoveAmount::AnyNumber) {
+            return Ok(None);
+        }
+        (
+            ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind,
+            crate::object::CounterType::PlusOnePlusOne,
+        )
+    } else {
+        let Some(counter_type) = crate::util::parse_counter_type_from_tokens(&rest[..noun_idx]) else {
+            return Ok(None);
+        };
+        (count, counter_type)
     };
     let after_from = &rest[noun_idx + 2..];
+    let after_from = grammar::strip_lexed_prefix_phrase(after_from, &["among"]).unwrap_or(after_from);
     let Some((from_tokens, to_tokens)) =
         grammar::split_lexed_once_on_separator(after_from, || grammar::kw("onto").void())
     else {
@@ -179,6 +202,25 @@ pub fn parse_draw(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    // "you draw a card and chaos ensues" (Missy): the draw, then the
+    // chaos keyword event (CR 309.6, 901.9).
+    if let Some(and_index) = tokens.iter().rposition(|token| token.is_word("and"))
+        && crate::lexer::parser_token_word_refs(&tokens[and_index + 1..])
+            .starts_with(&["chaos", "ensues"])
+        && crate::lexer::parser_token_word_refs(&tokens[and_index + 1..]).len() == 2
+    {
+        let draw_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..and_index]);
+        let draw = parse_draw(draw_tokens, subject)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                draw,
+                EffectAst::subject_verb_emit_keyword_action(
+                    crate::events::KeywordActionKind::ChaosEnsues,
+                    1,
+                ),
+            ],
+        });
+    }
     if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
         && tokens.get(then_index + 1).is_some_and(|token| token.is_word("discard"))
         && crate::lexer::parser_token_word_refs(&tokens[then_index + 2..]).starts_with(&["cards", "equal", "to"])
@@ -299,8 +341,26 @@ pub fn parse_draw(
                         ))
                     })?
                 };
+                let tail_words = crate::lexer::token_word_refs(tail);
+                let plus_additional = tail_words.starts_with(&["plus", "an", "additional", "card"])
+                    || tail_words.starts_with(&["plus", "one", "additional", "card"]);
                 match count {
                     Value::Fixed(1) => count = dynamic,
+                    // "draws X cards plus an additional card for each time
+                    // they've cast a commander ..." (Commander's Insight):
+                    // the base count plus one card per counted occurrence;
+                    // "they" is the drawing player.
+                    _ if plus_additional => {
+                        let hints = dynamic.surface_hints().to_vec();
+                        let dynamic = match (dynamic.into_unhinted(), &player) {
+                            (Value::CommanderCastCount(PlayerFilter::IteratedPlayer), PlayerAst::Target) => {
+                                Value::CommanderCastCount(PlayerFilter::target_player())
+                            }
+                            (other, _) => other,
+                        }
+                        .with_surface_hints(hints);
+                        count = Value::Add(Box::new(count), Box::new(dynamic));
+                    }
                     _ => {
                         return Err(CardTextError::ParseError(format!(
                             "unsupported multiplied draw count (clause: '{}')",
@@ -559,6 +619,12 @@ pub fn parse_draw_trailing_clause(
                 super::super::grammar::effects::ReturnTimingShape::EndOfCombat => {
                     DelayedReturnTimingAst::EndOfCombat
                 }
+                super::super::grammar::effects::ReturnTimingShape::NextDeclareAttackersStep(
+                    player,
+                ) => DelayedReturnTimingAst::NextDeclareAttackersStep(player),
+                super::super::grammar::effects::ReturnTimingShape::UpcomingDeclareAttackersStep(
+                    player,
+                ) => DelayedReturnTimingAst::UpcomingDeclareAttackersStep(player),
             };
             Ok(Some(wrap_return_with_delayed_timing(
                 draw_effect,
@@ -622,6 +688,34 @@ fn parse_draw_for_each_object_filter_value(
     };
     if let Some(value) = parse_card_types_among_spells_cast_value(filter_tokens) {
         return Ok(Some(value));
+    }
+    // "for each creature type noted for target permanent you control named
+    // Volo's Journal": the referenced object's noted-creature-type set.
+    if let [first, second, third, fourth, ..] = filter_tokens
+        && first.is_word("creature")
+        && second.is_word("type")
+        && third.is_word("noted")
+        && fourth.is_word("for")
+    {
+        let object_tokens = &filter_tokens[4..];
+        let (is_target, filter_tokens) = match object_tokens.first() {
+            Some(token) if token.is_word("target") => (true, &object_tokens[1..]),
+            _ => (false, object_tokens),
+        };
+        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            crate::util::trim_edge_punctuation_tokens(filter_tokens),
+            false,
+        )?;
+        let object = ChooseSpec::Object(filter);
+        let spec = if is_target {
+            ChooseSpec::target(object)
+        } else {
+            object
+        };
+        return Ok(Some(
+            Value::NotedCreatureTypeCount(Box::new(spec))
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
     // "draw a card for each graveyard with seven or more cards in it" (The
     // Master of Lake-town) counts graveyards, not the cards in them.
@@ -709,6 +803,16 @@ pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
         ["equal", "to", "the" | "that", "damage"]
     ) {
         return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
+    }
+    // "draw cards equal to the damage dealt to target opponent this turn"
+    // (Knollspine Dragon): a typed per-player damage total for this turn.
+    if words.starts_with(&["equal", "to"])
+        && let Some(equal) = tokens.iter().position(|token| token.is_word("equal"))
+        && let Some((value, used)) = parse_value(&tokens[equal + 2..])
+        && used == tokens.len() - equal - 2
+        && matches!(value, Value::DamageDealtToPlayersThisTurn(_))
+    {
+        return Ok(Some(value));
     }
     if crate::word_primitives::sequence_occurs(&words, &["differently", "named"])
         && let Some(value) = parse_equal_to_number_of_filter_value(tokens)
@@ -1380,4 +1484,41 @@ fn parse_card_types_among_spells_cast_value(filter_tokens: &[OwnedLexToken]) -> 
         Value::CardTypesAmongSpellsCastThisTurn { player, filter }
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
     )
+}
+
+/// "a counter of each kind not on <recipient> from <donor> onto <recipient>"
+/// (Goldberry, River-Daughter): one counter of every kind the donor has and
+/// the recipient lacks moves in one simultaneous transfer (CR 122.5).
+fn parse_move_one_of_each_absent_kind(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+    use winnow::Parser as _;
+
+    let Some(after_prefix) = grammar::strip_lexed_prefix_phrase(
+        tokens,
+        &["a", "counter", "of", "each", "kind", "not", "on"],
+    ) else {
+        return Ok(None);
+    };
+    let Some(from_index) = after_prefix.iter().position(|token| token.is_word("from")) else {
+        return Ok(None);
+    };
+    let after_from = &after_prefix[from_index + 1..];
+    let Some((from_tokens, to_tokens)) =
+        grammar::split_lexed_once_on_separator(after_from, || grammar::kw("onto").void())
+    else {
+        return Ok(None);
+    };
+    if from_index == 0 || from_tokens.is_empty() || to_tokens.is_empty() {
+        return Ok(None);
+    }
+    let from = parse_target_phrase(from_tokens)?;
+    let to = parse_counter_move_destination(to_tokens, &from)?;
+    Ok(Some(EffectAst::subject_verb_move_counters_amount(
+        crate::object::CounterType::PlusOnePlusOne,
+        ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient,
+        from,
+        to,
+    )))
 }

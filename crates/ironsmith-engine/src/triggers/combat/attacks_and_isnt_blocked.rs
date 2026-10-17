@@ -70,6 +70,19 @@ impl TriggerMatcher for AttacksAndIsntBlockedTrigger {
         if self.one_or_more {
             return self.grouped_matches(e.attacker, ctx);
         }
+        // "attacks a player and isn't blocked" (Master of Cruelties): the
+        // attacked-player constraint is read against the attack declaration,
+        // exactly like the plain attack trigger.
+        if self.filter.attacking_player_or_planeswalker_controlled_by.is_some() {
+            let attacks = crate::triggers::combat::AttacksTrigger::new(self.filter.clone());
+            return ctx.game.combat.as_ref().is_some_and(|combat| {
+                combat
+                    .attackers
+                    .iter()
+                    .find(|info| info.creature == e.attacker)
+                    .is_some_and(|info| attacks.matches_attacker_info(info, ctx))
+            });
+        }
         self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
     }
 
@@ -79,6 +92,10 @@ impl TriggerMatcher for AttacksAndIsntBlockedTrigger {
             // trigger ("Whenever one or more creatures ... attack you").
             let attacks = crate::triggers::combat::AttacksTrigger::one_or_more(self.filter.clone());
             return format!("{} and aren't blocked", attacks.display());
+        }
+        if self.filter.attacking_player_or_planeswalker_controlled_by.is_some() {
+            let attacks = crate::triggers::combat::AttacksTrigger::new(self.filter.clone());
+            return format!("{} and isn't blocked", attacks.display());
         }
         format!(
             "Whenever {} attacks and isn't blocked",

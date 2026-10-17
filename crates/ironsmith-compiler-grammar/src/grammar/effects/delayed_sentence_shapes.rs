@@ -67,6 +67,9 @@ pub struct DelayedThisTurnShape<'a> {
     pub trigger_tokens: &'a [OwnedLexToken],
     pub effect_tokens: &'a [OwnedLexToken],
     pub references_previous_creature: bool,
+    /// "Whenever that creature deals combat damage to a player this combat,
+    /// ..." (Stensian Sanguinist): the delayed trigger ends with the combat.
+    pub until_end_of_combat: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -373,10 +376,12 @@ pub fn parse_delayed_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<Delayed
                 trigger_tokens: trigger.tokens,
                 effect_tokens,
                 references_previous_creature: trigger.references_previous_creature,
+                until_end_of_combat: false,
             });
         }
     }
 
+    let mut until_end_of_combat = false;
     let (intro_and_trigger, effect_tokens) =
         primitives::split_lexed_once_before_suffix(tokens, 1, || {
             (
@@ -386,14 +391,37 @@ pub fn parse_delayed_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<Delayed
                 eof,
             )
                 .map(|(_, _, effect_tokens, _)| effect_tokens)
+        })
+        .or_else(|| {
+            until_end_of_combat = true;
+            primitives::split_lexed_once_before_suffix(tokens, 1, || {
+                (
+                    primitives::phrase(&["this", "combat"]),
+                    primitives::comma(),
+                    repeat::<_, _, (), _, _>(1.., any.void()).take(),
+                    eof,
+                )
+                    .map(|(_, _, effect_tokens, _)| effect_tokens)
+            })
         })?;
     let trigger = parse_intro_and_trigger(intro_and_trigger)?;
+    // Only a demonstrative watched object ("whenever that creature ... this
+    // combat") is a combat-scoped delayed trigger.
+    if until_end_of_combat
+        && !trigger
+            .tokens
+            .first()
+            .is_some_and(|token| token.is_word("that"))
+    {
+        return None;
+    }
     let effect_tokens = trimmed(effect_tokens);
     (!effect_tokens.is_empty()).then_some(DelayedThisTurnShape {
         placement: DelayedThisTurnPlacement::TrailingDuration,
         trigger_tokens: trigger.tokens,
         effect_tokens,
         references_previous_creature: trigger.references_previous_creature,
+        until_end_of_combat,
     })
 }
 

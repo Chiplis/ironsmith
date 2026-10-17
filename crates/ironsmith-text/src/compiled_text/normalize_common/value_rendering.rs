@@ -2732,7 +2732,29 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if count.is_single() {
                 format!("{inner_text}{random_suffix}")
             } else if let ChooseSpec::Target(target_inner) = inner.as_ref() {
-                let target_desc = describe_choose_spec(target_inner);
+                // "two target creatures controlled by the same opponent"
+                // (Retribution): the shared controller is also an opponent, so
+                // the opponent qualifier moves into the shared-controller suffix.
+                let same_opponent_filter = match target_inner.as_ref() {
+                    ChooseSpec::Object(filter)
+                        if filter.target_set_same_controller
+                            && filter.controller == Some(PlayerFilter::Opponent) =>
+                    {
+                        let mut filter = filter.clone();
+                        filter.controller = None;
+                        Some(filter)
+                    }
+                    _ => None,
+                };
+                let controller_suffix = if same_opponent_filter.is_some() {
+                    " controlled by the same opponent"
+                } else {
+                    controller_suffix
+                };
+                let target_desc = match same_opponent_filter {
+                    Some(filter) => describe_choose_spec(&ChooseSpec::Object(filter)),
+                    None => describe_choose_spec(target_inner),
+                };
                 let base = strip_leading_article(&target_desc);
                 let mut plural = pluralize_relative_object_phrase(base);
                 if let ChooseSpec::Object(filter) = target_inner.base()
@@ -4964,6 +4986,10 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::CoinHeads => "the number of coins that came up heads".into(),
         crate::effect::EffectMetric::CoinTails => "the number of coins that came up tails".into(),
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
+        crate::effect::EffectMetric::CountersPut => "the number of counters put this way".to_string(),
+        crate::effect::EffectMetric::DistinctDieResults => {
+            "the number of different results".to_string()
+        }
     };
     match offset {
         Some(0) | None => base,
@@ -5007,6 +5033,7 @@ pub(crate) fn describe_prior_effect_action(
         crate::effect::PriorEffectAction::Searched => "searched for",
         crate::effect::PriorEffectAction::Shuffled => "shuffled",
         crate::effect::PriorEffectAction::Tapped => "tapped",
+        crate::effect::PriorEffectAction::ManaLost => "lost",
     }
 }
 
@@ -5918,6 +5945,10 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
                 describe_player_filter(player)
             ),
         },
+        TurnHistoryCount::DealtExcessDamage(filter) => format!(
+            "the number of times {} was dealt excess damage this turn",
+            filter.description()
+        ),
         TurnHistoryCount::LandsPlayed(player) => match player {
             PlayerFilter::You => "the number of lands you've played this turn".to_string(),
             _ => format!(
@@ -6242,7 +6273,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 _ => None,
             }) {
                 let characteristic = match value.unhinted() {
-                    Value::PowerOf(_) => Some("power"),
+                    Value::PowerOf(_) | Value::StationContributionOf(_) => Some("power"),
                     Value::ToughnessOf(_) => Some("toughness"),
                     Value::ManaValueOf(_) => Some("mana value"),
                     _ => None,
@@ -6402,6 +6433,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::VoteCount(option) => format!("the number of {} votes", option.to_ascii_lowercase()),
+        Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => "the number of spells and abilities that caused one or more players to guess or to group cards or permanents into a pile this turn".to_string(),
+        Value::PlayersChosenNumberExtreme { highest, guess } => match (*guess, *highest) {
+            (true, _) => "the number they guessed".to_string(),
+            (false, true) => "the highest number".to_string(),
+            (false, false) => "the lowest number".to_string(),
+        },
         Value::PlayerVoteCount(filter) => {
             format!("the number of votes {} received", filter.description())
         }
@@ -6824,8 +6861,33 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::ChosenColorsOf(_) => "the number of the chosen colors it is".to_string(),
+        Value::NotedCreatureTypeCount(spec) => {
+            format!("the number of creature types noted for {}", describe_choose_spec(spec))
+        }
+        Value::TotalToxicValueOf(spec) => {
+            if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+                "its total toxic value".to_string()
+            } else {
+                format!("{} total toxic value", describe_possessive_choose_spec(spec))
+            }
+        }
+        Value::TypeCountOf(spec) => {
+            if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+                "the number of supertypes, card types, and subtypes it has".to_string()
+            } else {
+                format!(
+                    "the number of supertypes, card types, and subtypes {} has",
+                    describe_choose_spec(spec)
+                )
+            }
+        }
         Value::BasePowerOf(spec) => format!("{} base power", describe_possessive_choose_spec(spec)),
+        Value::StationContributionOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
         Value::KicksPaidOf(spec) => format!("the number of times {} was kicked", describe_choose_spec(spec)),
+        Value::ModeSelectionsOf(spec) => format!(
+            "the number of times you chose a mode for {}",
+            describe_choose_spec(spec)
+        ),
         Value::ManaSpentToCast(spec) => format!("the amount of mana spent to cast {}", describe_choose_spec(spec)),
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers
@@ -6879,6 +6941,29 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_possessive_choose_spec(spec)
             ),
         },
+        Value::StickersOnSource { action, surface } => {
+            let source = surface
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "it".to_string());
+            let kind = match action {
+                ironsmith_core::KeywordActionKind::NameSticker => "name stickers",
+                ironsmith_core::KeywordActionKind::ArtSticker => "art stickers",
+                ironsmith_core::KeywordActionKind::AbilitySticker => "ability stickers",
+                ironsmith_core::KeywordActionKind::PowerToughnessSticker => {
+                    "power and toughness stickers"
+                }
+                _ => "stickers",
+            };
+            format!("the number of {kind} on {source}")
+        }
+        Value::NameStickersOnSourceStartingWithChosenLetter { surface } => {
+            let source = surface
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "it".to_string());
+            format!("the number of name stickers on {source} that begin with the chosen letter")
+        }
         Value::NameStickerCharacterCountOnSource { character, surface } => {
             let source = surface
                 .as_ref()
@@ -6937,6 +7022,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
         },
         Value::Speed(filter) => {
             format!("{} speed", describe_possessive_player_filter(filter))
+        }
+        Value::MaxSpeed(filter) => {
+            format!(
+                "the highest speed among {}",
+                describe_player_filter(filter)
+            )
         }
         Value::StartingLifeTotal(filter) => {
             format!(
@@ -7215,6 +7306,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of card types among cards in {}",
             describe_card_type_graveyard_scope(filter)
         ),
+        Value::DevotionToColors { player, colors } => format!(
+            "{} devotion to {}", describe_possessive_player_filter(player),
+            ironsmith_core::Color::ALL.into_iter().filter(|color| colors.contains(*color)).map(|color| color.name()).collect::<Vec<_>>().join(" and ")
+        ),
         Value::Devotion { player, color } => format!(
             "{} devotion to {}",
             describe_possessive_player_filter(player),
@@ -7253,6 +7348,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ManaSpentToCastTriggeringObject => {
             "the amount of mana spent to cast that spell".to_string()
         }
+        Value::ColorsOfManaSpentToCastTriggeringObject => {
+            "the number of colors of mana spent to cast that spell".to_string()
+        }
         Value::UnspentMana(player) => {
             let subject = describe_player_filter(player);
             let verb = player_verb(&subject, "have", "has");
@@ -7263,6 +7361,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::DraftRemovedCardCount { card_name } => format!(
             "the number of cards you removed from the draft with cards named {}",
+            title_case_card_name_fragment(card_name)
+        ),
+        Value::DraftCorrectGuessCount { card_name } => format!(
+            "the number of times you guessed correctly for cards named {}",
             title_case_card_name_fragment(card_name)
         ),
         Value::DraftNotedHighestNumber { card_name } => format!(
@@ -7319,6 +7421,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the amount of life {} {} {:+}", if *for_controller { "you" } else { "that player" },
             if *gained { "gained" } else { "lost" }, offset,
         ),
+        Value::EventValue(EventValueSpec::LoyaltyCountersRemovedToActivate) => {
+            "the number of loyalty counters removed to activate it".to_string()
+        }
+        Value::EventValue(EventValueSpec::LifePaidToActivate) => "that much".to_string(),
+        Value::EventValue(EventValueSpec::ExcessDamage) => "that excess damage".to_string(),
         Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
         Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),
         Value::EventValueOffset(EventValueSpec::DieBatchTotal, offset) => format!("the total result of those dice plus {offset}"),
@@ -7415,6 +7522,28 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "<unresolved comparison reference>".to_string(),
         Value::TaggedSnapshotCount { filter, .. } => format!("the number of {}", describe_for_each_count_filter(filter)),
         Value::TaggedCount => "the tagged object count".to_string(),
+        Value::EventValueOffset(spec, offset) => {
+            let base = describe_value(&Value::EventValue(spec.clone()));
+            match offset.cmp(&0) {
+                std::cmp::Ordering::Equal => base,
+                std::cmp::Ordering::Greater => format!("{base} plus {offset}"),
+                std::cmp::Ordering::Less => format!("{base} minus {}", offset.unsigned_abs()),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod event_offset_rendering_tests {
+    use super::*;
+
+    #[test]
+    fn event_offset_reuses_its_typed_base_value() {
+        let spec = EventValueSpec::LoyaltyCountersRemovedToActivate;
+        let base = "the number of loyalty counters removed to activate it";
+        for (offset, expected) in [(0, base.to_string()), (2, format!("{base} plus 2")), (-2, format!("{base} minus 2")), (i32::MIN, format!("{base} minus 2147483648"))] {
+            assert_eq!(describe_value(&Value::EventValueOffset(spec.clone(), offset)), expected);
+        }
     }
 }
 

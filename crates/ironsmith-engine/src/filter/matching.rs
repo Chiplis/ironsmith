@@ -94,6 +94,35 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    // Lasting per-source counter history ("a land that a mire counter was put
+    // onto with this artifact but that a mire counter has not been removed
+    // from with this artifact"): "this artifact" is the current source
+    // instance, live or last known.
+    if let Some(constraint) = &filter.counter_source_history {
+        let source_stable_id = ctx
+            .source
+            .and_then(|source_id| game.object(source_id).map(|source| source.stable_id))
+            .or_else(|| ctx.source_snapshot.as_ref().map(|source| source.stable_id));
+        let Some(source_stable_id) = source_stable_id else {
+            return false;
+        };
+        let object = subject.object_id();
+        if constraint.put_by_source
+            && !game.source_put_counter_on_object(source_stable_id, object, constraint.counter_type)
+        {
+            return false;
+        }
+        if constraint.not_removed_by_source
+            && game.source_removed_counter_from_object(
+                source_stable_id,
+                object,
+                constraint.counter_type,
+            )
+        {
+            return false;
+        }
+    }
+
     if let Some(targetability) = &filter.could_be_targeted_by
         && !object_could_be_targeted_by(subject.object_id(), targetability, ctx, game)
     {
@@ -440,9 +469,45 @@ pub(super) fn matches_subject(
     if filter.goaded && (subject.zone() != Zone::Battlefield || !subject.goaded(game)) {
         return false;
     }
+    if filter.prepared
+        && !match subject.zone() {
+            Zone::Battlefield => game.is_prepared(subject.object_id()),
+            Zone::Stack => game.was_cast_as_prepared_spell(subject.object_id()),
+            _ => false,
+        }
+    {
+        return false;
+    }
 
     if filter.ring_bearer && (subject.zone() != Zone::Battlefield || !subject.ring_bearer(game)) {
         return false;
+    }
+
+    // CR 702.158b: sector designations exist only on the battlefield.
+    if let Some(predicate) = filter.sector {
+        use ironsmith_core::filter_model::{SectorName, SectorPredicate};
+        let current = if subject.zone() == Zone::Battlefield {
+            game.sector_designation(subject.object_id())
+                .map(|sector| match sector {
+                    crate::marker::SectorDesignation::Alpha => SectorName::Alpha,
+                    crate::marker::SectorDesignation::Beta => SectorName::Beta,
+                    crate::marker::SectorDesignation::Gamma => SectorName::Gamma,
+                })
+        } else {
+            None
+        };
+        let matched = match predicate {
+            SectorPredicate::In(sector) => current == Some(sector),
+            SectorPredicate::NotIn(sector) => current != Some(sector),
+            SectorPredicate::ChosenBySource => ctx
+                .source
+                .and_then(|source| game.chosen_named_option(source))
+                .and_then(SectorName::from_word)
+                .is_some_and(|chosen| current == Some(chosen)),
+        };
+        if !matched {
+            return false;
+        }
     }
 
     // Controller check
@@ -790,6 +855,14 @@ pub(super) fn matches_subject(
             return false;
         }
     }
+    if let Some(card_name) = &filter.exiled_with_cards_named {
+        let Some(player) = ctx.you else {
+            return false;
+        };
+        if !game.card_exiled_with_cards_named(player, card_name, subject.object_id()) {
+            return false;
+        }
+    }
     if let Some(card_name) = &filter.name_noted_while_drafting_named {
         let Some(player) = ctx.you else {
             return false;
@@ -884,6 +957,9 @@ pub(super) fn matches_subject(
     if filter.nontoken && subject.is_token() {
         return false;
     }
+    if filter.physical_card && !subject.is_physical_card() {
+        return false;
+    }
     if let Some(require_face_down) = filter.face_down {
         // A prospective cast has a selected object view before its public
         // status is installed. Use that view only for this exact candidate;
@@ -897,6 +973,9 @@ pub(super) fn matches_subject(
         if face_down != require_face_down { return false; }
     }
     if filter.foretold && !game.is_foretold(subject.object_id()) {
+        return false;
+    }
+    if filter.warped && !game.is_warped(subject.object_id()) {
         return false;
     }
 
@@ -1393,6 +1472,28 @@ pub(super) fn matches_subject(
         let symbol = crate::mana::ManaSymbol::from_color(color);
         let actual = subject.mana_cost(game).map_or(0, |cost| {
             cost.pips().iter().filter(|pip| pip.contains(&symbol)).count()
+        });
+        if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
+            return false;
+        }
+    }
+    if let Some(count) = filter.colored_mana_symbol_count {
+        let actual = subject.mana_cost(game).map_or(0, |cost| {
+            cost.pips()
+                .iter()
+                .filter(|pip| {
+                    pip.iter().any(|symbol| {
+                        matches!(
+                            symbol,
+                            crate::mana::ManaSymbol::White
+                                | crate::mana::ManaSymbol::Blue
+                                | crate::mana::ManaSymbol::Black
+                                | crate::mana::ManaSymbol::Red
+                                | crate::mana::ManaSymbol::Green
+                        )
+                    })
+                })
+                .count()
         });
         if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
             return false;

@@ -110,6 +110,8 @@ pub(crate) struct BattlefieldEntryOptions {
     pub entry_attachment: Option<crate::object::AttachmentTarget>,
     /// An Aura spell becomes unattached if replacement makes it a non-Aura.
     pub entry_attachment_requires_aura: bool,
+    /// Restricts what an entering Aura may choose to enchant (CR 303.4f).
+    pub entry_attachment_filter: Option<crate::filter::ObjectFilter>,
     /// Captured inputs supplied by the enclosing instruction to entry programs.
     pub entry_tagged_objects: std::collections::HashMap<crate::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
@@ -128,6 +130,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
     }
@@ -145,6 +148,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
     }
@@ -162,6 +166,7 @@ impl BattlefieldEntryOptions {
             entry_modifications: Vec::new(),
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_filter: None,
             entry_tagged_objects: Default::default(),
         }
     }
@@ -196,6 +201,14 @@ impl BattlefieldEntryOptions {
     ) -> Self {
         self.entry_attachment = target;
         self.entry_attachment_requires_aura = true;
+        self
+    }
+
+    pub(crate) fn with_entry_attachment_filter(
+        mut self,
+        filter: Option<crate::filter::ObjectFilter>,
+    ) -> Self {
+        self.entry_attachment_filter = filter;
         self
     }
 
@@ -940,6 +953,7 @@ fn prepare_battlefield_entry_batch_inner(
         }
         prepared.entry_attachment = options.entry_attachment;
         prepared.entry_attachment_requires_aura = options.entry_attachment_requires_aura;
+        prepared.entry_attachment_filter = options.entry_attachment_filter.clone();
         controllers[index] = entering_controller.or_else(|| working.current_controller(*object));
         prepared_entries[index] = Some((old_zone, prepared));
         if let Some(projection) = projections.get_mut(object) {

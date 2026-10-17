@@ -58,6 +58,7 @@ pub(super) fn read_leading_if_conditional(
             .map(Some);
         };
         if matches!(effects.as_slice(), [EffectAst::Conditionals(ConditionalEffectAst::Conditional { .. })]) {
+            bind_that_many_to_had_counters_antecedent(&mut effects);
             apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
             normalize_search_followup_shuffles(&mut effects);
             return Ok(Some(effects));
@@ -77,6 +78,45 @@ pub(super) fn read_leading_if_conditional(
     }
     Ok(None)
 }
+/// "If that artifact had counters on it, put that many ... counters on ..."
+/// (Dismantle): "that many" is the number of counters the antecedent had,
+/// read from the same last-known reference the condition tests.
+fn bind_that_many_to_had_counters_antecedent(effects: &mut [EffectAst]) {
+    let [
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate:
+                crate::cards::builders::PredicateAst::ValueComparison {
+                    left: counted @ crate::effect::Value::CountersOn(_, None),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: crate::effect::Value::Fixed(1),
+                },
+            if_true,
+            ..
+        }),
+    ] = effects
+    else {
+        return;
+    };
+    let counted = counted.clone();
+    for effect in if_true.iter_mut() {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Counters(
+                    CounterActionAst::PutCounterChoice { count, .. }
+                    | CounterActionAst::PutCounters { count, .. },
+                ),
+            ..
+        }) = effect
+            && matches!(
+                count.unhinted(),
+                crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+            )
+        {
+            *count = counted.clone();
+        }
+    }
+}
+
 pub(super) fn read_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -292,4 +332,79 @@ pub(super) fn read_top_level_subject_verb_recognition(
         return Ok(Some(effects));
     }
     Ok(None)
+}
+
+/// "You and those players each draw a card, then discard a card at random."
+/// (Zurzoth, Chaos Rider): a joint subject of you and a player set shares one
+/// complete action chain. Each member performs the whole chain; the player
+/// set is iterated so "then discard" stays with the same actor. Without this
+/// owner the broad subject reader keeps only the leading `you` and silently
+/// drops the other players.
+pub(super) fn read_you_and_players_each_chain(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::ForEachEffectAst;
+    let tokens = input.tokens;
+    if !(tokens.first().is_some_and(|token| token.is_word("you"))
+        && tokens.get(1).is_some_and(|token| token.is_word("and")))
+    {
+        return Ok(None);
+    }
+    let Some(each_index) = tokens
+        .iter()
+        .enumerate()
+        .skip(2)
+        .find(|(index, token)| {
+            // "you and each opponent each ...": the quantifier of the
+            // second subject is not the distributive "each".
+            token.is_word("each") && *index > 2
+        })
+        .map(|(index, _)| index)
+    else {
+        return Ok(None);
+    };
+    let player_words = crate::lexer::token_word_refs(&tokens[2..each_index]);
+    let filter = match player_words.as_slice() {
+        ["those", "players"] => crate::target::PlayerFilter::TaggedPlayer(
+            ironsmith_core::tag::ATTACKING_GROUP_DEFENDERS_TAG.into(),
+        ),
+        ["each", "opponent"] | ["each", "of", "your", "opponents"] => {
+            crate::target::PlayerFilter::Opponent
+        }
+        ["defending", "player"] | ["the", "defending", "player"] => {
+            crate::target::PlayerFilter::Defending
+        }
+        _ => return Ok(None),
+    };
+    let body = &tokens[each_index + 1..];
+    if body.iter().all(|token| token.as_word().is_none()) {
+        return Ok(None);
+    }
+    let mut you_tokens = Vec::with_capacity(body.len() + 1);
+    you_tokens.push(OwnedLexToken::word(
+        "you".to_string(),
+        crate::diagnostics::TextSpan::synthetic(),
+    ));
+    you_tokens.extend_from_slice(body);
+    let mut player_tokens = Vec::with_capacity(body.len() + 2);
+    player_tokens.push(OwnedLexToken::word(
+        "that".to_string(),
+        crate::diagnostics::TextSpan::synthetic(),
+    ));
+    player_tokens.push(OwnedLexToken::word(
+        "player".to_string(),
+        crate::diagnostics::TextSpan::synthetic(),
+    ));
+    player_tokens.extend_from_slice(body);
+    let mut effects = super::super::super::super::parse_effect_chain_lexed(&you_tokens)?;
+    let player_effects = super::super::super::super::parse_effect_chain_lexed(&player_tokens)?;
+    if effects.is_empty() || player_effects.is_empty() {
+        return Ok(None);
+    }
+    effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+        sequential: false,
+        filter,
+        effects: player_effects,
+    }));
+    Ok(Some(effects))
 }

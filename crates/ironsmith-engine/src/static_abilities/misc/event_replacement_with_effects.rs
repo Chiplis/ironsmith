@@ -74,6 +74,7 @@ impl StaticAbilityKind for EventReplacementWithEffects {
             | ReplacedEventSpec::DamageToObject { .. }
             | ReplacedEventSpec::LifeGain { .. }
             | ReplacedEventSpec::DrawInstruction { .. }
+            | ReplacedEventSpec::LifeReducedToZeroOrLess { .. }
             | ReplacedEventSpec::Untap { .. } => ReplacementEffect::with_matcher(
                 source,
                 controller,
@@ -172,6 +173,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             ReplacedEventSpec::LifeGain { .. } => kind == EventKind::LifeGain,
             ReplacedEventSpec::DrawInstruction { .. } => kind == EventKind::KeywordAction,
             ReplacedEventSpec::Untap { .. } => kind == EventKind::BecomeUntapped,
+            ReplacedEventSpec::LifeReducedToZeroOrLess { .. } => kind == EventKind::LifeLoss,
             // Installed through their dedicated matchers instead.
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
@@ -224,10 +226,16 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                         .as_ref()
                         .is_none_or(|filter| damage_source_matches(damage.source, filter, ctx))
             }
-            ReplacedEventSpec::LifeGain { player } => {
+            ReplacedEventSpec::LifeGain {
+                player,
+                from_own_spell_or_ability,
+            } => {
                 let Some(gain) = downcast_event::<LifeGainEvent>(event) else {
                     return false;
                 };
+                if *from_own_spell_or_ability && gain.effect_controller != Some(gain.player) {
+                    return false;
+                }
                 player.matches_player(gain.player, &ctx.filter_ctx)
             }
             ReplacedEventSpec::Untap {
@@ -260,6 +268,19 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                 action.action == crate::events::KeywordActionKind::DrawCards
                     && action.amount >= *minimum
                     && player.matches_player(action.player, &ctx.filter_ctx)
+            }
+            // CR 119.3: the loss would leave the player's life total at 0 or
+            // less. The life total is read as the loss is proposed.
+            ReplacedEventSpec::LifeReducedToZeroOrLess { player } => {
+                let Some(loss) = downcast_event::<crate::events::LifeLossEvent>(event) else {
+                    return false;
+                };
+                if loss.amount == 0 || !player.matches_player(loss.player, &ctx.filter_ctx) {
+                    return false;
+                }
+                ctx.game.player(loss.player).is_some_and(|state| {
+                    i64::from(state.life) - i64::from(loss.amount) <= 0
+                })
             }
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
@@ -296,6 +317,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::DrawInstruction { minimum, .. } => {
                 format!("When a matching player would draw {minimum} or more cards")
+            }
+            ReplacedEventSpec::LifeReducedToZeroOrLess { .. } => {
+                "When a matching player's life total would be reduced to 0 or less".to_string()
             }
         }
     }

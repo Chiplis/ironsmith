@@ -72,11 +72,17 @@ pub enum KeywordAction {
     Outlast(ManaCost),
     Scavenge(ManaCost),
     Unearth(ManaCost),
+    /// "Unearth—<non-mana cost>" (Salvation Colossus).
+    UnearthTotalCost(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Embalm(ManaCost),
     Encore(ManaCost),
     /// Encore whose cost is derived from the card that has it (a granted
     /// encore, CR 702.141): its mana cost, or {X} where X is its mana value.
     EncoreFromSourceCost { mana_value_generic: bool },
+    /// Embalm whose cost is the mana cost of the card that has it ("gains
+    /// embalm until end of turn. The embalm cost is equal to its mana cost.",
+    /// Cursecloth Wrappings; CR 702.128).
+    EmbalmFromSourceCost,
     Eternalize(ironsmith_core::TotalCost<crate::model::CompilerCost>),
     Emerge(ManaCost),
     Ninjutsu(ManaCost),
@@ -112,6 +118,9 @@ pub enum KeywordAction {
     Echo {
         total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
         text: String,
+        /// "echo {X}, where X is your life total" (Volcano Hellion): the exact
+        /// X computed when the echo payment is made, not chosen by the payer.
+        x_value: Option<Value>,
     },
     CumulativeUpkeep {
         total_cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
@@ -194,6 +203,8 @@ pub enum KeywordAction {
     CantBeBlockedByMoreThan(u32),
     Devoid,
     Annihilator(u32),
+    /// "<source> has annihilator X, where X is ..." (Ulamog, the Defiler).
+    AnnihilatorValue(Value),
     ForMirrodin,
     LivingWeapon,
     Fuse,
@@ -323,6 +334,7 @@ impl KeywordAction {
                 | Self::SoulshiftValue(_)
                 | Self::Outlast(_)
                 | Self::Unearth(_)
+                | Self::UnearthTotalCost(_)
                 | Self::Eternalize(_)
                 | Self::Ninjutsu(_)
                 | Self::Extort
@@ -371,6 +383,7 @@ impl KeywordAction {
                 | Self::CantBeBlockedByMoreThan(_)
                 | Self::Devoid
                 | Self::Annihilator(_)
+                | Self::AnnihilatorValue(_)
                 | Self::StaticMarker(_)
                 | Self::StaticMarkerText(_)
                 | Self::Marker(_)
@@ -465,6 +478,7 @@ impl KeywordAction {
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),
             Self::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
+            Self::UnearthTotalCost(cost) => format!("Unearth—{}", cost.display()),
             Self::Encore(cost) => format!("Encore {}", cost.to_oracle()),
             Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
             Self::Eternalize(cost) => format!("Eternalize {}", cost.display()),
@@ -474,6 +488,9 @@ impl KeywordAction {
             }
             Self::EncoreFromSourceCost { mana_value_generic: true } => {
                 "Encore {X}, where X is its mana value".to_string()
+            }
+            Self::EmbalmFromSourceCost => {
+                "Embalm. Its embalm cost is equal to its mana cost".to_string()
             }
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
             Self::CommanderNinjutsu(cost) => format!("Commander ninjutsu {}", cost.to_oracle()),
@@ -638,6 +655,10 @@ impl KeywordAction {
             }
             Self::Devoid => "Devoid".to_string(),
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
+            Self::AnnihilatorValue(value) => format!(
+                "Annihilator X, where X is {}",
+                describe_defined_x_value(value)
+            ),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
             Self::JobSelect => "Job select".to_string(),

@@ -121,6 +121,21 @@ fn until_next_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         .parse_next(input)
 }
 
+/// "until [the] end of your next turn" (Stilt-Man, Towering Terror).
+fn until_end_of_your_next_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    primitives::word_slice_exact("until").parse_next(input)?;
+    opt(primitives::word_slice_exact("the")).parse_next(input)?;
+    (
+        primitives::word_slice_exact("end"),
+        primitives::word_slice_exact("of"),
+        primitives::word_slice_exact("your"),
+        primitives::word_slice_exact("next"),
+        primitives::word_slice_exact("turn"),
+    )
+        .value(Until::YourNextTurnEnd)
+        .parse_next(input)
+}
+
 fn until_next_upkeep(input: &mut WordSliceInput<'_>) -> WResult<Until> {
     (
         primitives::word_slice_exact("until"),
@@ -153,6 +168,7 @@ fn simple_turn_duration(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         until_end_of_combat,
         until_end_of_turn,
         until_the_end_of_that_turn,
+        until_end_of_your_next_turn,
         until_next_upkeep,
         until_next_turn,
         next_untap_step,

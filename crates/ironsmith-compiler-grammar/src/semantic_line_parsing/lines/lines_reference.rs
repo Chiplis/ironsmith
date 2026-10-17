@@ -117,8 +117,12 @@ pub fn exact_target_graveyard_any_type_may_cast_bundle(
             break;
         }
     }
+    // "that player's graveyard" may already be bound to the trigger's
+    // damaged player by the shared target grammar; any explicit owner is
+    // the authored graveyard owner.
     if filter.zone != Some(Zone::Graveyard)
-        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || filter.owner.is_none()
+        || matches!(filter.owner, Some(PlayerFilter::You))
         || !excludes_land
     {
         return None;

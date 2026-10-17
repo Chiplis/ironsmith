@@ -561,11 +561,11 @@ pub fn parse_sentence_delayed_next_step_unless_pays(
         return Ok(None);
     }
 
-    let delayed_effects = parse_effect_chain(delayed_effect_clause.tokens())?;
-    if delayed_effects.is_empty() {
-        return Ok(None);
-    }
-
+    // This family is the "<effect> at the beginning of the next <step>
+    // unless <player> pays" shape. Without the payment clause the words
+    // before the timing are not a delayed effect at all (for example the
+    // result gate in "If you do, at the beginning of the next end step,
+    // create ..." from Esoteric Duplicator), so decline before parsing them.
     let Some(timing_clause) = final_segment[0]
         .from_word(timing_start_word)
         .map(SubjectVerbPrimitiveClause::trimmed)
@@ -575,6 +575,12 @@ pub fn parse_sentence_delayed_next_step_unless_pays(
     let Some(unless_idx) = timing_clause.find_token_word("unless") else {
         return Ok(None);
     };
+
+    let delayed_effects = parse_effect_chain(delayed_effect_clause.tokens())?;
+    if delayed_effects.is_empty() {
+        return Ok(None);
+    }
+
     let Some(unless_effect) = try_build_unless(delayed_effects, timing_clause, unless_idx)? else {
         return Ok(None);
     };
@@ -728,6 +734,7 @@ fn parse_unless_put_counters_clause_as_cost(
                     target,
                     target_count,
                     distributed: false,
+                    required_recipient: None,
                 }),
             ..
         }),
@@ -932,9 +939,33 @@ pub fn try_build_unless(
     }
     // A proven state predicate is checked when the scheduled action resolves.
     // It is not a payment option and must remain inside the delayed wrapper.
-    if let Ok(predicate) =
+    if let Ok(mut predicate) =
         crate::grammar::filters::parse_condition_predicate_lexed(after_clause.tokens())
     {
+        // "sacrifice this creature unless it attacked this turn" (Instill
+        // Furor's granted ability): the condition is checked before the
+        // sacrifice, so "it" can only be the self-sacrificed source.
+        let self_sacrifice = matches!(effects.as_slice(), [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                filter, count: 1, target: None, ..
+            }), ..
+        })] if filter.source);
+        if self_sacrifice {
+            let it = crate::tag::CompilerReferenceTag::It.bind();
+            match &predicate {
+                PredicateAst::TaggedMatches(tag, filter) if tag.as_str() == it.as_str() => {
+                    predicate = PredicateAst::Source(
+                        crate::cards::builders::SourcePredicateAst::SourceMatches(filter.clone()),
+                    );
+                }
+                PredicateAst::ItMatches(filter) | PredicateAst::ItMatchedLastKnown(filter) => {
+                    predicate = PredicateAst::Source(
+                        crate::cards::builders::SourcePredicateAst::SourceMatches(filter.clone()),
+                    );
+                }
+                _ => {}
+            }
+        }
         return Ok(Some(EffectAst::Conditionals(
             ConditionalEffectAst::TrailingUnless { predicate, effects },
         )));
@@ -1017,6 +1048,45 @@ pub fn try_build_unless(
                     )),
                     before_delayed_step: false,
                 })));
+            }
+            // "sacrifice it unless you pay its mana cost reduced by {2}"
+            // (Flash): "its" is the object the sacrifice names (the source
+            // for a self-sacrifice), and only generic mana is reduced.
+            let reduced_words = action_clause.words();
+            let reduced_words = reduced_words.to_word_refs();
+            if reduced_words.starts_with(&["pay", "its", "mana", "cost", "reduced", "by"])
+                && !before_delayed_step
+                && let Some(by) = action_clause.tokens().iter().position(|token| token.is_word("by"))
+                && let Ok(reduction) = crate::grammar::values::parse_mana_cost_tokens(
+                    crate::util::trim_edge_punctuation_tokens(&action_clause.tokens()[by + 1..]),
+                )
+                && reduction.generic_mana_total() > 0
+                && reduction.generic_mana_total() == reduction.mana_value()
+                && let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+                        filter, count: 1, ..
+                    }), ..
+                })] = effects.as_slice()
+            {
+                let mut cost = if filter.source {
+                    ironsmith_core::DynamicManaCost::from_source_mana_cost()
+                } else {
+                    ironsmith_core::DynamicManaCost::from_object_mana_cost(
+                        crate::target::ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.key()),
+                    )
+                };
+                cost.generic_reduction = reduction.generic_mana_total();
+                return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+                    effects,
+                    player,
+                    cost: ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(cost)),
+                    before_delayed_step: false,
+                })));
+            }
+            if let Some(per_player) =
+                each_player_sacrifices_chosen_unless_pays_its_mana_cost(&effects, action_clause)
+            {
+                return Ok(Some(per_player));
             }
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
@@ -1239,6 +1309,74 @@ pub fn parse_sentence_fallback_mechanic_marker(
     )))
 }
 
+/// "They are Food artifacts with "{2}, {T}, Sacrifice this artifact: You
+/// gain 3 life."" (Supper for Spiders): the referenced objects' card types
+/// and subtypes become exactly those named (CR 205.1a) and they gain the
+/// quoted ability. Plural card-type nouns are read as their singular type.
+fn implicit_become_object_template_with_abilities(
+    remainder: &[OwnedLexToken],
+    target: &TargetAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let mut tokens = remainder;
+    while tokens
+        .first()
+        .is_some_and(|token| token.is_word("are") || token.is_word("is"))
+    {
+        tokens = &tokens[1..];
+    }
+    if !tokens.iter().any(|token| token.is_word("with")) {
+        return Ok(None);
+    }
+    let singular = |word: &str| match word {
+        "artifacts" => Some("artifact"),
+        "creatures" => Some("creature"),
+        "enchantments" => Some("enchantment"),
+        "lands" => Some("land"),
+        _ => None,
+    };
+    let normalized = tokens
+        .iter()
+        .map(|token| match token.as_word().and_then(singular) {
+            Some(word) => OwnedLexToken::word(word.to_string(), token.span()),
+            None => token.clone(),
+        })
+        .collect::<Vec<_>>();
+    let Some(shape) =
+        crate::grammar::effects::become_shapes::parse_object_template_tokens(&normalized)
+    else {
+        return Ok(None);
+    };
+    if shape.card_types.is_empty() || shape.ability_tokens.is_empty() {
+        return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(shape.ability_tokens);
+    let (grants, choice) = crate::effect_sentences::parse_granted_abilities_for_gain_clause(
+        shape.ability_tokens,
+        &words,
+        false,
+    )?;
+    if choice || grants.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(EffectAst::subject_verb_become_object_template(
+        shape.base_power_toughness.clone(),
+        target.clone(),
+        shape.card_types,
+        shape.subtypes,
+        Vec::new(),
+        shape.colors,
+        Vec::new(),
+        grants,
+        shape.preserve_other_types,
+        shape
+            .preserve_other_types
+            .then_some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes),
+        None,
+        None,
+        Until::Forever,
+    )))
+}
+
 pub fn parse_sentence_implicit_become_clause(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1252,6 +1390,13 @@ pub fn parse_sentence_implicit_become_clause(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
         }
     };
+    if let Some(effect) =
+        implicit_become_object_template_with_abilities(subject_shape.remainder_tokens, &target)?
+    {
+        return Ok(Some(vec![
+            effect.with_set_quantifier_surface(subject_shape.set_quantifier_surface),
+        ]));
+    }
     let rest_clause = SubjectVerbPrimitiveClause::new(subject_shape.remainder_tokens).trimmed();
     let (mut duration, duration_remainder_clause) =
         if let Some((duration, remainder)) = parse_restriction_duration(rest_clause.tokens())? {
@@ -1539,6 +1684,7 @@ pub fn parse_sentence_lose_draw_clash_repeat_process(
             effects,
             continue_effect_index: 2,
             continue_predicate: IfResultPredicate::WonClash,
+            max_iterations: None,
         },
     )]))
 }
@@ -2002,4 +2148,75 @@ mod self_mana_cost_unless_tests {
             assert!(crate::effect_sentences::parse_effect_chain(&tokens).is_err(), "{text}");
         }
     }
+}
+
+/// "Each player sacrifices the creature they control with the greatest mana
+/// value unless they pay that creature's mana cost." (Tariff): each player
+/// first picks the one creature (choosing among ties), then may pay that
+/// creature's mana cost; otherwise they sacrifice it.
+fn each_player_sacrifices_chosen_unless_pays_its_mana_cost(
+    effects: &[EffectAst],
+    action_clause: SubjectVerbPrimitiveClause<'_>,
+) -> Option<EffectAst> {
+    let action_words = action_clause.words();
+    if !matches!(
+        action_words.to_word_refs().as_slice(),
+        ["pay", "that", "creatures" | "creature's", "mana", "cost"]
+    ) {
+        return None;
+    }
+    let (filter_slot, inner) = match effects {
+        [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: inner })] => (None, inner),
+        [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential,
+            filter,
+            effects: inner,
+        })] => (Some((*sequential, filter.clone())), inner),
+        _ => return None,
+    };
+    let [EffectAst::SubjectVerb(subject_verb)] = inner.as_slice() else {
+        return None;
+    };
+    let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
+        filter,
+        count: 1,
+        target: None,
+        ..
+    }) = &subject_verb.action
+    else {
+        return None;
+    };
+    let tag = crate::util::helper_tag_for_tokens(action_clause.tokens(), "unless_paid_choice");
+    let choose = EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+        filter: filter.clone(),
+        count: crate::effect::ChoiceCount::exactly(1),
+        count_value: None,
+        player: PlayerAst::That,
+        tag: tag.clone(),
+    });
+    let mut sacrifice = subject_verb.clone();
+    if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { filter, .. }) =
+        &mut sacrifice.action
+    {
+        *filter = crate::target::ObjectFilter::tagged(tag.clone());
+    }
+    let unless = EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+        effects: vec![EffectAst::SubjectVerb(sacrifice)],
+        player: PlayerAst::That,
+        cost: ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(
+            ironsmith_core::DynamicManaCost::from_object_mana_cost(
+                crate::target::ChooseSpec::Tagged(tag.key.clone()),
+            ),
+        )),
+        before_delayed_step: false,
+    });
+    let body = vec![choose, unless];
+    Some(EffectAst::ForEach(match filter_slot {
+        None => ForEachEffectAst::ForEachPlayer { effects: body },
+        Some((sequential, filter)) => ForEachEffectAst::ForEachPlayersFiltered {
+            sequential,
+            filter,
+            effects: body,
+        },
+    }))
 }

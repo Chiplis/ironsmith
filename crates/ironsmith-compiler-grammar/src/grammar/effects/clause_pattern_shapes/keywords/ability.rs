@@ -33,6 +33,7 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
                 parse_numeric_keyword,
                 parse_fateseal,
                 parse_discover,
+                parse_discover_by_that_player,
                 parse_explore,
                 parse_endure,
             )),

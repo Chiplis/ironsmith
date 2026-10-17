@@ -216,7 +216,9 @@ pub fn has_loses_all_abilities_with_becomes_clause_sentence_lexed(
     let has_loses_all_abilities = (primitives::contains_word(tokens, "lose")
         || primitives::contains_word(tokens, "loses"))
         && word_stream_has_phrase(&words, &["all", "abilities"]);
-    has_loses_all_abilities && primitives::contains_word(tokens, "becomes")
+    has_loses_all_abilities
+        && primitives::contains_word(tokens, "becomes")
+        && !word_stream_has_phrase(&words, &["becomes", "your", "choice", "of"])
 }
 
 pub fn has_spent_to_cast_this_spell_without_condition_sentence_lexed(
@@ -277,6 +279,17 @@ pub fn has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
 }
 
 pub fn has_phase_out_until_leaves_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+    // A complete "<object> phases out until this <source> leaves the
+    // battlefield" sentence is owned by the typed phase reading.
+    if matches!(
+        super::clause_pattern_shapes::parse_keyword_mechanic_tokens(tokens),
+        Some(super::clause_pattern_shapes::KeywordMechanicShape::Phase {
+            until_source_leaves: Some(_),
+            ..
+        })
+    ) {
+        return false;
+    }
     let words = crate::lexer::token_word_refs(tokens);
     (primitives::contains_word(tokens, "phase")
         || primitives::contains_word(tokens, "phases")
@@ -335,6 +348,14 @@ pub fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool {
 }
 
 pub fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+    // A counter placement on "target <object> of defending player's choice"
+    // declares that target with the defending player as its chooser.
+    if primitives::contains_word(tokens, "target")
+        && (primitives::contains_word(tokens, "counter")
+            || primitives::contains_word(tokens, "counters"))
+    {
+        return false;
+    }
     word_stream_has_any_phrase(
         &crate::lexer::token_word_refs(tokens),
         DEFENDING_PLAYER_CHOICE_PHRASES,
@@ -349,11 +370,6 @@ pub fn has_target_creature_token_player_planeswalker_clause_sentence_lexed(
         && primitives::contains_word(tokens, "token")
         && primitives::contains_word(tokens, "player")
         && primitives::contains_word(tokens, "planeswalker")
-}
-
-pub fn has_if_you_sacrifice_an_island_this_way_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_stream_has_phrase(words, &["if", "you", "sacrifice", "an", "island"])
-        && word_stream_has_phrase(words, &["this", "way"])
 }
 
 pub fn has_spent_to_cast_clause_sentence_lexed(words: &[&str]) -> bool {

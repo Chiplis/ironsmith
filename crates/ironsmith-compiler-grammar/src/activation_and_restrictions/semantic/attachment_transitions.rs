@@ -32,7 +32,37 @@ pub(super) fn parse_attachment_transition_trigger(
             })
     };
     let attachment = participant(&tokens[..attachment_end])?;
-    let recipient = participant(&tokens[recipient_start..])?;
+    let recipient_tokens = &tokens[recipient_start..];
+    // "... becomes attached to a nonland permanent an opponent controls with
+    // mana value less than or equal to that Aura's mana value" (Eriette):
+    // the comparison's operand is the attachment participant of the same
+    // event, bound at match time as `TRIGGER_ATTACHMENT_TAG`.
+    let attachment_mana_value_tail = recipient_tokens.iter().position(|token| {
+        token.is_word("with")
+    }).filter(|&with_at| {
+        let tail = crate::lexer::parser_token_word_refs(&recipient_tokens[with_at..])
+            .join(" ")
+            .replace('\'', "");
+        matches!(
+            tail.trim_end_matches(['.', ' ']),
+            "with mana value less than or equal to that auras mana value"
+                | "with mana value less than or equal to that aura s mana value"
+                | "with mana value less than or equal to that equipments mana value"
+                | "with mana value less than or equal to that equipment s mana value"
+        )
+    });
+    let recipient = match attachment_mana_value_tail {
+        Some(with_at) => {
+            let mut recipient = participant(&recipient_tokens[..with_at])?;
+            recipient.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                tag: ironsmith_core::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG)
+                    .into(),
+                relation: crate::target::TaggedOpbjectRelation::ManaValueLteTagged,
+            });
+            recipient
+        }
+        None => participant(recipient_tokens)?,
+    };
     Ok(Some(TriggerSpec::AttachmentChanged {
         attachment,
         recipient,

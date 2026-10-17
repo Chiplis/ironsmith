@@ -292,6 +292,7 @@ fn pronoun_rules_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
         alt((
             primitives::phrase(&["it", "has"]),
             primitives::phrase(&["they", "have"]),
+            primitives::phrase(&["they", "each", "have"]),
         )),
     )?;
     let tail = strip_quote_tokens(tail);

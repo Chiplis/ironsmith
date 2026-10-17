@@ -627,6 +627,13 @@ impl StaticAbilityModelInterpreter {
             },
             Model::Keyword(keyword) => Runtime::Keyword(*keyword),
             Model::NonManaAbility => Runtime::NonManaAbility,
+            Model::ManaAbility => Runtime::ManaAbility,
+            Model::FirstActivationOfMatchingSourceThisTurn { filter } => {
+                Runtime::FirstActivationOfMatchingSourceThisTurn { filter: filter.clone() }
+            }
+            Model::FirstTargetingActivationDuringYourTurn { filter } => {
+                Runtime::FirstTargetingActivationDuringYourTurn { filter: filter.clone() }
+            }
             Model::LoyaltyAbility => Runtime::LoyaltyAbility,
             Model::Activator(player) => Runtime::Activator(player.clone()),
             Model::FirstKeywordAbilityThisTurn {
@@ -659,7 +666,14 @@ impl StaticAbilityModelInterpreter {
                 per_basic_land_types_among,
                 multiplier,
                 minimum_total_mana,
+                reduction_mana,
             } => {
+                // An unbound exact-symbol reduction ("This ability costs
+                // {1}{U} less" with no ability to fold into) can still reduce
+                // generic mana by its mana value; lowering normally folds it.
+                let reduction = &reduction.saturating_add(
+                    reduction_mana.as_ref().map_or(0, |cost| cost.mana_value()),
+                );
                 let mut converted = if let Some(replacement_mana_cost) = replacement_mana_cost {
                     super::ActivatedAbilityCostReduction::replacement_mana_cost(
                         filter.clone(),
@@ -1027,7 +1041,8 @@ impl StaticAbilityModelInterpreter {
 
         Some(match &model.payload {
             ironsmith_core::StaticAbilityPayload::Enchant(_)
-            | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_) => return None,
+            | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
+            | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_) => return None,
             ironsmith_core::StaticAbilityPayload::CommanderTaxLifeSubstitution { .. } => {
                 return None;
             }
@@ -1037,6 +1052,13 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
                 StaticAbility::source_line_keyword_group(*keyword_count)
             }
+            ironsmith_core::StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
+                counter_type,
+                count,
+            } => StaticAbility::opponent_effect_discard_this_to_battlefield_with_counters_replacement(
+                *counter_type,
+                *count,
+            ),
             ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup { member_count } => {
                 StaticAbility::source_line_static_group(*member_count)
             }
@@ -1410,6 +1432,15 @@ impl StaticAbilityModelInterpreter {
                 *max,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::UntapStepChosenCardTypeOnly {
+                player,
+                card_types,
+                display,
+            } => StaticAbility::untap_step_chosen_card_type_only(
+                player.clone(),
+                card_types.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::PreventAllDamageToYou => {
                 StaticAbility::prevent_all_damage_to_you()
             }
@@ -1495,12 +1526,30 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
                 StaticAbility::enchanted_land_is_chosen_type(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::AttachedIsCopyOfChosenObject(display) => {
+                StaticAbility::attached_is_copy_of_chosen_object(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::SourceLandIsChosenType(display) => {
                 StaticAbility::source_land_is_chosen_type(display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
-                StaticAbility::add_chosen_creature_type(filter.clone(), display.clone())
+            ironsmith_core::StaticAbilityPayload::AddChosenCreatureType {
+                filter,
+                display,
+                replace_existing,
+            } => {
+                if *replace_existing {
+                    StaticAbility::set_chosen_creature_type(filter.clone(), display.clone())
+                } else {
+                    StaticAbility::add_chosen_creature_type(filter.clone(), display.clone())
+                }
             }
+            ironsmith_core::StaticAbilityPayload::SourceHasAbilityStickerAbilitiesOf {
+                filter,
+                display,
+            } => StaticAbility::source_has_ability_sticker_abilities_of(
+                filter.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::AddChosenBasicLandType { filter, display } => {
                 StaticAbility::add_chosen_basic_land_type(filter.clone(), display.clone())
             }
@@ -1638,6 +1687,17 @@ impl StaticAbilityModelInterpreter {
                 filter.clone(),
                 retained_subtypes.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::SourceHasFullTextOfTopGraveyardCard {
+                filter,
+                abilities,
+                ability_labels,
+                display,
+            } => StaticAbility::source_has_full_text_of_top_graveyard_card(
+                filter.clone(),
+                abilities.iter().map(Self::ability_from_model).collect(),
+                ability_labels.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::AddCardTypes { filter, card_types } => {
                 StaticAbility::add_card_types(filter.clone(), card_types.clone())
             }
@@ -1691,6 +1751,20 @@ impl StaticAbilityModelInterpreter {
                     StaticAbility::die_roll_reroll(
                         spec.player.clone(),
                         spec.mana_cost.clone().unwrap_or_default(),
+                        spec.once_each_turn,
+                        spec.display.clone(),
+                    )
+                } else if spec.exchange_with_source_base_pt {
+                    StaticAbility::die_roll_result_exchange_with_source_base_pt(
+                        spec.player.clone(),
+                        spec.sides,
+                        spec.display.clone(),
+                    )
+                } else if let Some(counter_type) = spec.source_counter_cost {
+                    StaticAbility::die_roll_result_adjustment_removing_source_counter(
+                        spec.player.clone(),
+                        counter_type,
+                        spec.amount,
                         spec.once_each_turn,
                         spec.display.clone(),
                     )
@@ -1784,6 +1858,7 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
+                at_random: false,
             } => StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
                 options
                     .iter()
@@ -1971,11 +2046,13 @@ impl StaticAbilityModelInterpreter {
                 except_first_of_draw_step,
                 replacement_effects,
                 display,
-            } => StaticAbility::draw_replacement_with_effects(
+                cycling_source,
+            } => StaticAbility::draw_replacement_with_effects_and_cycling_source(
                 drawer.clone(),
                 *except_first_of_draw_step,
                 replacement_effects.clone(),
                 display.clone(),
+                cycling_source.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::PreventMatchingDamageWithFollowUp(spec) => {
                 StaticAbility::prevent_matching_damage_with_follow_up(spec.clone())
@@ -2065,15 +2142,23 @@ impl StaticAbilityModelInterpreter {
                 player_filter,
                 counter_type,
                 additional,
+                cause,
                 display,
-            } => match player_filter {
-                Some(player_filter) => StaticAbility::add_player_counters_placement_replacement(
+            } => match (player_filter, cause) {
+                (Some(player_filter), _) => StaticAbility::add_player_counters_placement_replacement(
                     player_filter.clone(),
                     *counter_type,
                     *additional,
                     display.clone(),
                 ),
-                None => StaticAbility::add_counters_placement_replacement(
+                (None, Some(cause)) => StaticAbility::add_caused_counters_placement_replacement(
+                    filter.clone(),
+                    *counter_type,
+                    *additional,
+                    cause.clone(),
+                    display.clone(),
+                ),
+                (None, None) => StaticAbility::add_counters_placement_replacement(
                     filter.clone(),
                     *counter_type,
                     *additional,
@@ -2154,10 +2239,12 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects,
                 optional,
                 display,
-            } => StaticAbility::conditional_draw_replacement(
+                except_first_of_draw_step,
+            } => StaticAbility::conditional_draw_replacement_with_draw_step_exception(
                 condition.clone(),
                 replacement_effects.clone(),
                 *optional,
+                *except_first_of_draw_step,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::LoseGameReplacement {
@@ -2214,11 +2301,15 @@ impl StaticAbilityModelInterpreter {
                 not_cast,
                 destination,
                 display,
-            } => StaticAbility::redirect_would_enter(
-                filter.clone(),
-                *not_cast,
-                *destination,
-                display.clone(),
+                or_no_mana_spent,
+            } => StaticAbility::new(
+                super::misc::RedirectWouldEnterReplacement::new(
+                    filter.clone(),
+                    *not_cast,
+                    *destination,
+                    display.clone(),
+                )
+                .with_or_no_mana_spent(*or_no_mana_spent),
             ),
             ironsmith_core::StaticAbilityPayload::ConvertUnspentMana { player, symbol } =>
                 StaticAbility::new(super::misc::ConvertUnspentMana { player: player.clone(), symbol: *symbol }),
@@ -2337,6 +2428,9 @@ impl StaticAbilityModelInterpreter {
                 *counter_type,
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::HealDamageBeforeDamageToSelf { display } => {
+                StaticAbility::heal_damage_before_damage_to_self(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
                 counter_type,
                 display,
@@ -2419,7 +2513,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
-            } => StaticAbility::enters_with_counter_choice(counter_types.clone(), count.clone()),
+                condition,
+                display,
+            } => match condition {
+                Some(condition) => StaticAbility::enters_with_counter_choice_if_condition(
+                    counter_types.clone(),
+                    count.clone(),
+                    condition.clone(),
+                    display.clone(),
+                ),
+                None => StaticAbility::enters_with_counter_choice(counter_types.clone(), count.clone()),
+            },
             ironsmith_core::StaticAbilityPayload::EntersUnderChosenControl(players) => {
                 StaticAbility::new(super::misc::EntersUnderChosenControl(players.clone()))
             }
@@ -2430,29 +2534,15 @@ impl StaticAbilityModelInterpreter {
                 StaticAbility::enters_untapped_for_filter(filter.clone())
             }
             ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
-                filter,
-                counter,
-                count,
-                count_condition,
-                otherwise_count,
-                subtypes,
-            } => match (count_condition, otherwise_count) {
-                (Some(condition), Some(otherwise_count)) => {
-                    StaticAbility::enters_with_counters_and_subtypes_for_filter_if_otherwise(
-                        filter.clone(),
-                        *counter,
-                        count.clone(),
-                        condition.clone(),
-                        otherwise_count.clone(),
-                        subtypes.clone(),
-                    )
+                filter, counter, counter_kinds_from, count, count_condition, otherwise_count, subtypes,
+            } => {
+                let mut native = super::EnterWithCountersForFilter::new(filter.clone(), *counter, count.clone())
+                    .with_added_subtypes(subtypes.clone());
+                if let (Some(condition), Some(otherwise)) = (count_condition, otherwise_count) {
+                    native = native.with_count_if_otherwise(condition.clone(), otherwise.clone());
                 }
-                _ => StaticAbility::enters_with_counters_and_subtypes_for_filter(
-                    filter.clone(),
-                    *counter,
-                    count.clone(),
-                    subtypes.clone(),
-                ),
+                if let Some(source) = counter_kinds_from { native = native.with_counter_kinds_from(source.clone()); }
+                StaticAbility::new(native)
             },
             ironsmith_core::StaticAbilityPayload::EntersWithCharacteristicsForFilter {
                 filter,
@@ -2957,6 +3047,11 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .map_or(0, StaticAbility::optional_additional_votes_while_voting)
     }
 
+    fn additional_villainous_choices_for_opponents(&self) -> u32 {
+        self.leaf_static_ability()
+            .map_or(0, StaticAbility::additional_villainous_choices_for_opponents)
+    }
+
     fn untap_during_each_other_players_untap_step_filter(
         &self,
     ) -> Option<&crate::target::ObjectFilter> {
@@ -2976,6 +3071,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn search_top_card_limit(&self) -> Option<(&crate::target::PlayerFilter, u32)> {
         self.leaf_static_ability()?.search_top_card_limit_spec()
+    }
+
+    fn untap_step_chosen_card_types(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &[crate::types::CardType])> {
+        self.leaf_static_ability()?.untap_step_chosen_card_types_spec()
     }
 
     fn generate_replacement_effect(
@@ -3217,6 +3318,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 self.payload(),
                 ironsmith_core::StaticAbilityPayload::Conditional { .. }
                     | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
+                    | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
             )
     }
 
@@ -3476,11 +3578,35 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn foretell_special_action_modifier(&self) -> Option<(u32, bool)> {
         match self.payload() {
-            ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn } => {
-                Some((*generic_reduction, *any_players_turn))
-            }
+            ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                any_players_turn,
+                plot: false,
+                ..
+            } => Some((*generic_reduction, *any_players_turn)),
             _ => None,
         }
+    }
+
+    fn plot_special_action_reduction(&self) -> Option<u32> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                plot: true,
+                ..
+            } => Some(*generic_reduction),
+            _ => None,
+        }
+    }
+
+    fn foretell_special_action_first_each_turn(&self) -> bool {
+        matches!(
+            self.payload(),
+            ironsmith_core::StaticAbilityPayload::ForetellSpecialActionModifier {
+                first_each_turn: true,
+                ..
+            }
+        )
     }
 
     fn buyback_cost_reduction_amount(&self) -> Option<u32> {
@@ -3598,8 +3724,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         match self.payload() {
             ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
+                at_random,
                 ..
             } => Some(super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
+                at_random: *at_random,
                 options: options
                     .iter()
                     .map(|option| {
@@ -3679,6 +3807,9 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                     amount: spec.amount,
                     reroll: spec.reroll,
                     once_each_turn: spec.once_each_turn,
+                    source_counter_cost: spec.source_counter_cost,
+                    exchange_with_source_base_pt: spec.exchange_with_source_base_pt,
+                    sides: spec.sides,
                 })
             }
             _ => None,
@@ -3739,6 +3870,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         .then_some(super::ChooseColorAsBecomesAttachedSpec)
     }
 
+    fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
+        self.model.id == Some(StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached)
+    }
+
     fn modifies_costs(&self) -> bool {
         self.cost_reduction.is_some()
             || self.activated_ability_cost_reduction.is_some()
@@ -3754,6 +3889,7 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             || self.minimum_total_spell_mana().is_some()
             || self.buyback_cost_reduction_amount().is_some()
             || self.foretell_special_action_modifier().is_some()
+            || self.plot_special_action_reduction().is_some()
     }
 
     fn this_spell_cost_reduction(&self) -> Option<&super::ThisSpellCostReduction> {

@@ -53,13 +53,17 @@ fn flip_instruction(tokens: &[OwnedLexToken], kind: CoinFlipKind) -> Option<Effe
             crate::util::helper_tag_for_tokens(tokens, "coin_opponents_won"),
             crate::util::helper_tag_for_tokens(tokens, "coin_opponents_lost"),
         )))
+    } else if rest == ["a", "coin"] || rest == ["one", "coin"] {
+        (1, false, None)
     } else if count_value.is_some() {
         (0, false, None)
     } else {
         let count_token = view.map_word_to_token_start(start + 1)?;
         let number = crate::grammar::leaf::parse_leaf_number_prefix_tokens(&tokens[count_token..])?;
         let (count, consumed) = number.into_fixed()?;
-        if crate::lexer::TokenWordView::new(&tokens[count_token + consumed..]).word_refs() != ["coins"] { return None; }
+        let noun_view = crate::lexer::TokenWordView::new(&tokens[count_token + consumed..]);
+        let noun = noun_view.word_refs();
+        if noun != ["coins"] && !(count == 1 && noun == ["coin"]) { return None; }
         (count, false, None)
     };
     let flip = EffectAst::subject_verb(
@@ -95,11 +99,66 @@ fn suffix_metric(words: &[&str]) -> Option<(usize, EffectMetric)> {
     None
 }
 
-fn quantified_effect(mut effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<EffectAst> {
+fn quantified_effect(effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<EffectAst> {
+    quantified_effect_by(effects, metric_value(metric))
+}
+
+/// "Roll three six-sided dice. For each different result, create ..."
+/// (Circuits Act): the leading per-result quantifier reads the preceding
+/// roll's number of different retained results.
+pub(super) fn parse_die_result_document(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let head = ["for", "each", "different", "result"];
+    // Recognize the complete document before recursively parsing its parts.
+    // Otherwise even a single unrelated sentence re-enters this reader with
+    // exactly the same input forever.
+    let mut earlier_roll = false;
+    let has_result_followup = sentences.iter().any(|sentence| {
+        let words = crate::lexer::token_word_refs(sentence);
+        if earlier_roll && words.starts_with(&head) {
+            return true;
+        }
+        earlier_roll |= words.starts_with(&["roll"]) || words.starts_with(&["you", "roll"]);
+        false
+    });
+    if !has_result_followup {
+        return Ok(None);
+    }
+    let mut rolled = false;
+    let mut recognized = false;
+    let mut parsed = Vec::new();
+    for sentence in &sentences {
+        let view = crate::lexer::TokenWordView::new(sentence);
+        let words = view.word_refs();
+        if rolled && words.starts_with(&head) {
+            let start = view
+                .map_word_to_token_start(head.len())
+                .ok_or_else(|| CardTextError::ParseError("die-result quantifier has no action".into()))?;
+            if !bare_words(&sentence[..start], TokenKind::Comma) {
+                return Ok(None);
+            }
+            let effects = parse_effect_sentences_lexed(&sentence[start..])?;
+            let value = Value::PendingPriorEffectMetric(
+                PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::DistinctDieResults)
+                    .with_action(PriorEffectAction::Rolled),
+            );
+            parsed.extend(quantified_effect_by(effects, value));
+            recognized = true;
+            continue;
+        }
+        rolled |= words.starts_with(&["roll"]) || words.starts_with(&["you", "roll"]);
+        parsed.extend(parse_effect_sentences_lexed(sentence)?);
+    }
+    Ok(recognized.then_some(parsed))
+}
+
+fn quantified_effect_by(mut effects: Vec<EffectAst>, value: Value) -> Vec<EffectAst> {
     // Putting N counters or creating N tokens is one event batch, so preserve
     // the atomic operation. RepeatEffects is appropriate for extra turns and
     // instructions which have no simultaneous count slot.
-    fn scale(effect: &mut EffectAst, metric: EffectMetric) -> bool {
+    fn scale(effect: &mut EffectAst, metric: &Value) -> bool {
         if let EffectAst::SubjectVerb(subject) = effect {
             let count = match &mut subject.action {
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. })
@@ -111,8 +170,8 @@ fn quantified_effect(mut effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<E
             };
             if let Some(count) = count {
                 if let Value::Fixed(n) = count.unhinted() {
-                    *count = if *n == 1 { metric_value(metric) }
-                        else { Value::Scaled(Box::new(metric_value(metric)), *n) };
+                    *count = if *n == 1 { metric.clone() }
+                        else { Value::Scaled(Box::new(metric.clone()), *n) };
                     return true;
                 }
             }
@@ -125,9 +184,9 @@ fn quantified_effect(mut effects: Vec<EffectAst>, metric: EffectMetric) -> Vec<E
         scaled
     }
     if let [only] = effects.as_mut_slice() {
-        if scale(only, metric) { return effects; }
+        if scale(only, &value) { return effects; }
     }
-    vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count: metric_value(metric), effects })]
+    vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count: value, effects })]
 }
 
 fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -204,6 +263,19 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
             if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
         })]));
     }
+    // "Flip a coin. If it comes up heads, ... If it comes up tails, ..."
+    // (Odds // Ends): an uncalled flip's face (CR 705.2), not a winner.
+    let single_face = if words.starts_with(&["if", "it", "comes", "up", "heads"]) { Some(EffectMetric::CoinHeads) }
+        else if words.starts_with(&["if", "it", "comes", "up", "tails"]) { Some(EffectMetric::CoinTails) }
+        else { None };
+    if let Some(metric) = single_face {
+        let start = view.map_word_to_token_start(5).ok_or_else(|| CardTextError::ParseError("coin predicate has no following action".into()))?;
+        if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: coin_comparison(metric, ironsmith_core::ValueComparisonOperator::GreaterThan, 0),
+            if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
+        })]));
+    }
     let metric = if words.starts_with(&["if", "both", "coins", "come", "up", "heads"]) { Some(EffectMetric::CoinHeads) }
         else if words.starts_with(&["if", "both", "coins", "come", "up", "tails"]) { Some(EffectMetric::CoinTails) }
         else { None };
@@ -277,14 +349,56 @@ fn paired_face_repeat(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<Effec
     let mut effects = vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: vec![round, consequences], continue_effect_index: 0,
         continue_predicate: IfResultPredicate::Value(ironsmith_core::Comparison::LessThan(2)),
+        max_iterations: None,
     })];
     for sentence in &sentences[3..] { effects.extend(parse_effect_sentences_lexed(sentence)?); }
+    Ok(Some(effects))
+}
+
+/// "Flip a coin for each creature that isn't a Demon, Devil, or Imp. Destroy
+/// each creature whose coin comes up tails." (Rakdos, the Showstopper): one
+/// uncalled flip per matching object (CR 705.2), and the object is destroyed
+/// when its own flip comes up tails.
+fn per_object_face_destroy(
+    sentences: &[&[OwnedLexToken]],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [first, second, rest @ ..] = sentences else { return Ok(None); };
+    let first_view = crate::lexer::TokenWordView::new(first);
+    let first_words = first_view.word_refs();
+    const LEAD: [&str; 5] = ["flip", "a", "coin", "for", "each"];
+    if !first_words.starts_with(&LEAD) || first_words.len() <= LEAD.len() { return Ok(None); }
+    let second_words = crate::lexer::TokenWordView::new(second).word_refs();
+    const TAILS: [&str; 5] = ["whose", "coin", "comes", "up", "tails"];
+    if second_words.first() != Some(&"destroy") || !second_words.ends_with(&TAILS) {
+        return Ok(None);
+    }
+    let start = first_view.map_word_to_token_start(LEAD.len()).ok_or_else(malformed_coin_clause)?;
+    let filter_tokens = crate::util::trim_edge_punctuation_tokens(&first[start..]);
+    let filter = crate::object_filters::parse_object_filter(filter_tokens, false)?;
+    let flip = EffectAst::subject_verb_flip_coin_face_only(PlayerAst::You);
+    let destroy = EffectAst::subject_verb_destroy(TargetAst::Tagged(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        None,
+    ));
+    let mut effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+        filter,
+        effects: vec![
+            flip,
+            // A face-only flip's outcome counts heads (1) or tails (0).
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::Value(ironsmith_core::Comparison::Equal(0)),
+                effects: vec![destroy],
+            }),
+        ],
+    })];
+    for sentence in rest { effects.extend(parse_effect_sentences_lexed(sentence)?); }
     Ok(Some(effects))
 }
 
 pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
     if let Some(effects) = paired_face_repeat(&sentences)? { return Ok(Some(effects)); }
+    if let Some(effects) = per_object_face_destroy(&sentences)? { return Ok(Some(effects)); }
     // The explicit loss cancels the remaining consequence program, including
     // its conditional target instruction. Lowering still declares that target
     // before casting; this is control flow, never a resolution-time choice.
@@ -325,6 +439,7 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
                 || words.starts_with(&["if", "you", "won"]);
             if suffix_metric(&words).is_some_and(|(_, metric)| matches!(metric, EffectMetric::CoinHeads | EffectMetric::CoinTails))
                 || words.starts_with(&["if", "both", "coins", "come", "up"])
+                || words.starts_with(&["if", "it", "comes", "up"])
             { kind = CoinFlipKind::FaceOnly; }
         }
         if observes_winner { kind = CoinFlipKind::Called; }
@@ -389,7 +504,7 @@ mod tests {
     #[test]
     fn paired_face_process_uses_the_round_receipt_before_its_correlated_damage() {
         let effects = parse("You and target opponent each flip a coin. This spell deals 1 damage to each player whose coin comes up tails. Repeat this process until both players' coins come up heads on the same flip.");
-        let [EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, continue_effect_index, continue_predicate })] = effects.as_slice() else { panic!("missing paired repeat") };
+        let [EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, continue_effect_index, continue_predicate, ..  })] = effects.as_slice() else { panic!("missing paired repeat") };
         assert_eq!(*continue_effect_index, 0);
         assert_eq!(*continue_predicate, IfResultPredicate::Value(ironsmith_core::Comparison::LessThan(2)));
         assert!(matches!(&effects[0], EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered { sequential: false, .. })));
@@ -442,6 +557,15 @@ mod tests {
         assert_eq!(flip(&parse("Flip two coins. If both coins come up heads, draw a card.")), (2, CoinFlipKind::FaceOnly, false));
         assert_eq!(flip(&parse("Flip three coins. For each flip you win, draw a card.")), (3, CoinFlipKind::Called, false));
         assert_eq!(flip(&parse("Flip a coin until you lose a flip.")), (1, CoinFlipKind::Called, true));
+    }
+
+    #[test]
+    fn singular_coin_consumers_choose_faces_without_inventing_a_call() {
+        for head in ["Flip a coin.", "Flip one coin.", "Flip 1 coin."] {
+            let text = format!("{head} If it comes up heads, draw a card. If it comes up tails, discard a card.");
+            assert_eq!(flip(&parse(&text)), (1, CoinFlipKind::FaceOnly, false));
+        }
+        assert_eq!(flip(&parse("Flip a coin. If you win the flip, draw a card.")), (1, CoinFlipKind::Called, false));
     }
 
     #[test]

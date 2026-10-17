@@ -156,6 +156,10 @@ fn granted_optional_cost(
             ),
             OptionalCostKind::GrantedConspire,
         ),
+        GrantedSpellKeywordKind::StickerKicker => (
+            OptionalCost::custom("Sticker kicker", price?),
+            OptionalCostKind::Additional,
+        ),
         GrantedSpellKeywordKind::Demonstrate => return None,
     };
     cost.kind = kind.clone();
@@ -197,6 +201,36 @@ fn offspring_entry_trigger_grant(
     )
 }
 
+/// Sticker kicker: "If you do, you get {TK}, then you may put a sticker on
+/// it." Granted to the spell for this one instance; it resolves as the
+/// resulting permanent enters, if that instance's cost was paid.
+fn sticker_kicker_entry_trigger_grant(
+    reference: OptionalCostRef,
+) -> crate::static_abilities::StaticAbility {
+    use crate::ability::{Ability, AbilityKind, TriggeredAbility};
+    let trigger = Ability {
+        kind: AbilityKind::Triggered(TriggeredAbility {
+            trigger: crate::triggers::Trigger::this_enters_battlefield(),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                crate::effect::Effect::ticket_counters(1),
+                crate::effect::Effect::may(vec![crate::effect::Effect::put_sticker(
+                    crate::target::ChooseSpec::Source,
+                    crate::events::KeywordActionKind::Sticker,
+                )]),
+            ]),
+            choices: vec![],
+            intervening_if: Some(crate::ConditionExpr::ThisSpellPaidLabel(reference)),
+            presentation_label: None,
+        }),
+        functional_zones: vec![Zone::Battlefield],
+    };
+    crate::static_abilities::StaticAbility::grant_object_ability_for_filter(
+        crate::target::ObjectFilter::source(),
+        trigger,
+        "Sticker kicker".to_string(),
+    )
+}
+
 /// Announce every applicable granted optional-cost keyword on the spell being
 /// cast (CR 601.2b). Instances already announced by an earlier pass over the
 /// same proposal are not added again. Returns whether the spell changed.
@@ -233,6 +267,9 @@ pub(crate) fn ensure_granted_spell_keyword_optional_costs(
         for cost in new_costs {
             if cost.kind == OptionalCostKind::Offspring {
                 entry_grants.push(offspring_entry_trigger_grant(cost.reference.clone()));
+            }
+            if cost.source_label == "Sticker kicker" {
+                entry_grants.push(sticker_kicker_entry_trigger_grant(cost.reference.clone()));
             }
             spell.optional_costs.push(cost);
         }

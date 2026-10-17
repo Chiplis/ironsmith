@@ -77,6 +77,15 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "ReselectAttackTargetEffect" => {
             decode_as::<ironsmith_core::ReselectAttackTargetEffect>(payload).map(Some)
         }
+        "ExchangeBlocksEffect" => {
+            decode_as::<ironsmith_core::ExchangeBlocksEffect>(payload).map(Some)
+        }
+        "UnblockSoleBlockedAttackersEffect" => {
+            decode_as::<ironsmith_core::UnblockSoleBlockedAttackersEffect>(payload).map(Some)
+        }
+        "BlockAttackerOfChoiceEffect" => {
+            decode_as::<ironsmith_core::BlockAttackerOfChoiceEffect>(payload).map(Some)
+        }
         "ReplaceNextDamageToTargetEffect" => {
             decode_as::<ironsmith_core::ReplaceNextDamageToTargetEffect<wire::WireEffect>>(payload)
                 .map(Some)
@@ -192,6 +201,18 @@ pub(super) fn map_card_ids(
         .map(Some),
         "ReselectAttackTargetEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::ReselectAttackTargetEffect,
+        >(payload, context)
+        .map(Some),
+        "ExchangeBlocksEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::ExchangeBlocksEffect,
+        >(payload, context)
+        .map(Some),
+        "UnblockSoleBlockedAttackersEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::UnblockSoleBlockedAttackersEffect,
+        >(payload, context)
+        .map(Some),
+        "BlockAttackerOfChoiceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::BlockAttackerOfChoiceEffect,
         >(payload, context)
         .map(Some),
         "ReplaceNextDamageToTargetEffect" => super::card_graph::map_payload_as::<

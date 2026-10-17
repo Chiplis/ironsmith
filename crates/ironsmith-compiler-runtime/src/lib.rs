@@ -422,6 +422,19 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::MadnessFromCardManaCost => {
             ironsmith::grant::DerivedAlternativeCast::MadnessFromCardManaCost
         }
+        compiler::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
+            ironsmith::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
+        }
+        compiler::grant::DerivedAlternativeCast::ZoneCastFromCardManaCost {
+            zone,
+            additional_costs,
+        } => ironsmith::grant::DerivedAlternativeCast::ZoneCastFromCardManaCost {
+            zone,
+            additional_costs: additional_costs
+                .into_iter()
+                .map(runtime_cost_from_core_model)
+                .collect::<Result<Vec<_>, _>>()?,
+        },
         compiler::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
             ironsmith::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
         }
@@ -3777,3 +3790,171 @@ mod keyword_grant_materialization_tests;
 
 #[cfg(test)]
 mod compilation_completion_runtime_tests;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p1;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p2;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p3;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p4;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p5;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p6;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p7;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p8;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p9;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p10;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p11;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p12;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p13;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p14;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p15;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p16;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p17;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p18;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p19;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p20;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p21;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p22;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p23;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p24;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p25;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p26;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p27;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p28;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p29;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p30;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p31;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p32;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p33;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p34;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p35;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p36;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p37;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p38;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p39;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p40;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p41;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p42;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p43x;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p43;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p44;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p45;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p46;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p47;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p48;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p49;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p50;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p51;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p52;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p53;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p54;

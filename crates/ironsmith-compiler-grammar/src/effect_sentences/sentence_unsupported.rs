@@ -5,7 +5,7 @@ use crate::cards::builders::CardTextError;
 use crate::recognition::{ParseOutcome, RuleId};
 use crate::registry::{HeadDiscriminator, RegistryRuleMetadata};
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 27] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: &[LexUnsupportedRuleDef] = &[
     LexUnsupportedRuleDef {
         metadata: RegistryRuleMetadata::distinct(
             RuleId::new("enters-as-copy"),
@@ -206,15 +206,6 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 27] = [
     },
     LexUnsupportedRuleDef {
         metadata: RegistryRuleMetadata::distinct(
-            RuleId::new("if-you-sacrifice-an-island-this-way"),
-            HeadDiscriminator::words(&["if"]),
-        ),
-        shape_mask: 0,
-        message: "unsupported if-you-sacrifice-an-island-this-way clause",
-        predicate: inner::sentence_has_if_you_sacrifice_an_island_this_way_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
-        metadata: RegistryRuleMetadata::distinct(
             RuleId::new("spent-to-cast-condition"),
             HeadDiscriminator::words(&["if", "unless", "when", "as"]),
         ),
@@ -252,7 +243,7 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 27] = [
 ];
 
 const SENTENCE_UNSUPPORTED_DIAGNOSER_LEXED: LexUnsupportedDiagnoser =
-    LexUnsupportedDiagnoser::new(&SENTENCE_UNSUPPORTED_RULES_LEXED);
+    LexUnsupportedDiagnoser::new(SENTENCE_UNSUPPORTED_RULES_LEXED);
 
 pub(super) fn diagnose_sentence_unsupported_lexed(
     tokens: &[OwnedLexToken],

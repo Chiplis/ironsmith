@@ -24,12 +24,18 @@ fn static_ability_uses_persistent_chosen_player(
 }
 
 fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuilder) {
-    let has_persistent_reference = builder.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            AbilityKind::Static(static_ability)
-                if static_ability_uses_persistent_chosen_player(static_ability)
-        )
+    let has_persistent_reference = builder.abilities.iter().any(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability) => {
+            static_ability_uses_persistent_chosen_player(static_ability)
+        }
+        // "When this creature enters, secretly choose an opponent. / Reveal
+        // the player you chose: ... controlled by the chosen player."
+        // (Stalking Leonin): a later activation reads the source's chosen
+        // player, so the entry choice must be remembered on the source.
+        AbilityKind::Activated(activated) => {
+            format!("{:?}", activated.effects).contains("ChosenPlayer")
+        }
+        AbilityKind::Triggered(_) => false,
     });
     if !has_persistent_reference {
         return;
@@ -109,6 +115,8 @@ fn static_ability_uses_persistent_chosen_object(
         crate::static_abilities::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {
             filter_uses_persistent_chosen_object(&copy.filter)
         }
+        // "Enchanted creature is a copy of the chosen creature."
+        crate::static_abilities::StaticAbilityPayload::AttachedIsCopyOfChosenObject(_) => true,
         _ => false,
     }
 }

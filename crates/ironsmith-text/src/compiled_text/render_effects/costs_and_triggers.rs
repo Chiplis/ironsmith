@@ -1532,6 +1532,40 @@ fn describe_behold_then_exile_cost(
 
 /// CR 701.59a: "collect evidence N" is exiling any number of cards from your
 /// graveyard with total mana value N or greater. The payment lowers to that
+/// "Tap any number of untapped creatures you control" (Explosive
+/// Singularity): an any-number battlefield choice followed by tapping exactly
+/// the chosen objects.
+fn describe_choose_any_number_then_tap_cost(
+    choose_cost: &crate::costs::Cost,
+    tap_cost: &crate::costs::Cost,
+) -> Option<String> {
+    let choose = unwrap_basic_tag_wrappers(choose_cost.effect_ref()?)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let tap = unwrap_basic_tag_wrappers(tap_cost.effect_ref()?)
+        .downcast_ref::<crate::effects::TapEffect>()?;
+    if !choose.count.is_any_number()
+        || choose.count_value.is_some()
+        || choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.reveal
+        || choose.aggregate_constraint.is_some()
+        || choose_primary_zone(choose).is_some_and(|zone| zone != Zone::Battlefield)
+        || tap.actor.is_some()
+        || !matches!(tap.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == choose.tag.as_str())
+    {
+        return None;
+    }
+    let description = choose.filter.description();
+    let mut selected = strip_leading_article(&description).trim().to_string();
+    if let Some(rest) = selected.strip_suffix(" on the battlefield") {
+        selected = rest.to_string();
+    }
+    Some(format!(
+        "Tap any number of {}",
+        pluralize_noun_phrase(&selected)
+    ))
+}
+
 /// choose-then-exile pair; render the keyword action it proves.
 fn describe_collect_evidence_cost(
     choose_cost: &crate::costs::Cost,
@@ -1579,6 +1613,13 @@ fn describe_cost_component_parts_with_target(
             && let Some(evidence) = describe_collect_evidence_cost(&costs[idx], &costs[idx + 1])
         {
             parts.push(evidence);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(tap) = describe_choose_any_number_then_tap_cost(&costs[idx], &costs[idx + 1])
+        {
+            parts.push(tap);
             idx += 2;
             continue;
         }
@@ -2739,7 +2780,7 @@ pub(crate) fn describe_for_each_devotion_damage(
     }
     if !matches!(
         deal.amount,
-        Value::Devotion { .. } | Value::DevotionToChosenColor(_)
+        Value::Devotion { .. } | Value::DevotionToColors { .. } | Value::DevotionToChosenColor(_)
     ) {
         return None;
     }

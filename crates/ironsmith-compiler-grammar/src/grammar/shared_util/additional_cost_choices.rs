@@ -25,6 +25,21 @@ pub fn parse_additional_cost_choices(
             normalized.push(option);
         }
     }
+    // "choose a creature you control or a warped creature card you own in
+    // exile" (Close Encounter): one "choose" governs both object phrases, so
+    // a verbless later option inherits the first option's choosing verb.
+    if normalized.len() >= 2
+        && normalized[0].first().is_some_and(|token| token.is_word("choose"))
+    {
+        let verb = normalized[0][0].clone();
+        for option in normalized.iter_mut().skip(1) {
+            // A bare noun phrase ("a warped creature card you own in exile")
+            // opens with its article; "exile" inside it is not its verb.
+            if option.first().is_some_and(|token| token.is_word("a") || token.is_word("an")) {
+                option.insert(0, verb.clone());
+            }
+        }
+    }
     if normalized.len() < 2
         || normalized
             .iter()

@@ -45,3 +45,37 @@ pub fn is_if_did_untap_source_followup(tokens: &[OwnedLexToken]) -> bool {
     )
     .is_ok()
 }
+
+fn parse_may_skip_draw_step_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["if", "you", "would", "begin", "your", "draw", "step"])
+        .parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["you", "may", "skip", "that", "step", "instead"]).parse_next(input)?;
+    opt(primitives::sentence_end()).parse_next(input)?;
+    eof.void().parse_next(input)
+}
+
+/// "If you would begin your draw step, you may skip that step instead."
+/// (Fasting; CR 614.10): an optional replacement of the step's beginning.
+pub fn is_may_skip_draw_step_replacement(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        tokens,
+        parse_may_skip_draw_step_lexed,
+        "may skip draw step replacement",
+    )
+    .is_ok()
+}
+
+/// The words after "If you do," of the skip replacement's follow-up
+/// sentence, or `None` when the sentence is not an "if you do" rider.
+pub fn if_you_do_followup_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let [if_word, you, did, comma, body @ ..] = tokens else {
+        return None;
+    };
+    (if_word.is_word("if")
+        && you.is_word("you")
+        && did.is_word("do")
+        && comma.is_comma()
+        && !body.is_empty())
+    .then_some(body)
+}

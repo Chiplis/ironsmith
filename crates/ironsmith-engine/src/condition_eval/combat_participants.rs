@@ -37,6 +37,20 @@ pub(super) fn evaluate(
             Ok(game.players.iter().filter(|player| player.is_in_game())
                 .all(|player| defender.life >= player.life))
         }
+        Combat::AttackingPlayerHasUnattackedOtherOpponent => {
+            let attack = event.downcast::<PlayerAttackDeclarationEvent>().ok_or_else(missing)?;
+            let declaration = attack.declaration.as_deref().ok_or_else(missing)?;
+            Ok(game.players.iter().any(|player| {
+                player.is_in_game()
+                    && player.id != attack.defender
+                    && player.id != attack.attacker
+                    && game.are_opponents(attack.attacker, player.id)
+                    && !declaration.iter().any(|participant| {
+                        participant.controller == attack.attacker
+                            && participant.defending_player == player.id
+                    })
+            }))
+        }
         Combat::AttackingPlayerAttackedYouOrYourPlaneswalker
         | Combat::AttackingPlayerIsNotAttackingYou
         | Combat::AnyAttackedPlayerIsPoisoned => {

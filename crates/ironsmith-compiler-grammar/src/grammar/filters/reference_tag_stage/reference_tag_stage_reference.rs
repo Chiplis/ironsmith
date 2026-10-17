@@ -525,6 +525,18 @@ pub(in super::super) fn parse_object_filter_inner(
             continue;
         }
 
+        // "other than a basic land" (Eye of Singularity): only lands are
+        // basic (CR 205.4c), so excluding Basic is the whole exclusion; also
+        // excluding Land would wrongly exclude every nonbasic land.
+        if excluded_supertypes == [crate::types::Supertype::Basic]
+            && excluded_subtypes.is_empty()
+            && excluded_colors.is_empty()
+            && excluded_card_types
+                .iter()
+                .all(|card_type| *card_type == crate::types::CardType::Land)
+        {
+            excluded_card_types.clear();
+        }
         for card_type in excluded_card_types {
             if has_specific_exclusion && slice_has(&base_card_types, &card_type) {
                 continue;
@@ -1464,8 +1476,16 @@ pub(in super::super) fn parse_object_filter_inner(
                 .is_some())
             || parse_phrase_choice_at_head(&all_words[idx..], POWER_TOUGHNESS_NOT_EQUAL_PHRASES)
                 .is_some()
+            || (axis == POWER_WORD
+                && parse_phrase_choice_at_head(
+                    &all_words[idx..],
+                    &POWER_GREATER_THAN_THAT_BASE_POWER_PHRASES[1..],
+                )
+                .is_some())
         {
-            idx += 1;
+            // The relational base-power phrase is recorded below; its
+            // "base power" tail must not be read as a second comparison.
+            idx += 4;
             continue;
         }
         let Some((cmp, consumed)) =
@@ -1500,7 +1520,10 @@ pub(in super::super) fn parse_object_filter_inner(
 
     apply_parity_filter_phrases(&clause_words, &mut filter);
 
-    if parse_phrase_anywhere(&clause_words, POWER_GREATER_THAN_BASE_POWER_PHRASE).is_some() {
+    if parse_phrase_anywhere(&clause_words, POWER_GREATER_THAN_BASE_POWER_PHRASE).is_some()
+        || parse_phrase_choice_anywhere(&clause_words, POWER_GREATER_THAN_THAT_BASE_POWER_PHRASES)
+            .is_some()
+    {
         filter.power_greater_than_base_power = true;
     }
     if parse_phrase_choice_anywhere(&clause_words, TOUGHNESS_GREATER_THAN_POWER_PHRASES).is_some() {
@@ -1646,6 +1669,18 @@ pub(in super::super) fn parse_object_filter_inner(
                 || parse_color(negated_word).is_some()
                 || parse_subtype_flexible(negated_word).is_some(),
         );
+        // "other than a basic land" / "isn't a basic land": "basic" modifies
+        // the one noun "land" (only lands are basic, CR 205.4c), so excluding
+        // Basic already excludes exactly the basic lands. Consume the noun
+        // instead of also excluding every land.
+        if matches!(
+            parse_supertype_word(negated_word),
+            Some(crate::types::Supertype::Basic)
+        ) && matches!(all_words.get(target_idx + 1).copied(), Some("land" | "lands"))
+        {
+            negated_word_indices.insert(target_idx + 1);
+            continue;
+        }
         let mut list_idx = target_idx + 1;
         while list_idx < all_words.len() {
             let word = all_words[list_idx];
@@ -1842,6 +1877,7 @@ pub(in super::super) fn parse_object_filter_inner(
             "token" | "tokens" => filter.token = true,
             "nontoken" => filter.nontoken = true,
             "foretold" if !is_negated_word => filter.foretold = true,
+            "warped" if !is_negated_word => filter.warped = true,
             "other" => filter.other = true,
             "tapped" => filter.tapped = true,
             "untapped" => filter.untapped = true,
@@ -1932,6 +1968,7 @@ pub(in super::super) fn parse_object_filter_inner(
             "modified" if !is_negated_word => filter.modified = true,
             "suspected" if !is_negated_word => filter.suspected = true,
             "transformed" if !is_negated_word => filter.transformed = true,
+            "prepared" if !is_negated_word => filter.prepared = true,
             "stickered" if !is_negated_word => {
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
@@ -2510,8 +2547,13 @@ pub(in super::super) fn parse_object_filter_inner(
     if has_power_or_toughness_clause {
         let mut power_or_toughness_cmp = None;
         let mut pt_reference = crate::filter::PtReference::Effective;
+        let mut includes_mana_value = false;
         for idx in 0..all_words.len() {
             let (reference, value_tokens) = match all_words.get(idx..) {
+                Some(["power", "toughness", "or", "mana", "value", rest @ ..]) => {
+                    includes_mana_value = true;
+                    (crate::filter::PtReference::Effective, rest)
+                }
                 Some(["power", "or", "toughness", rest @ ..])
                 | Some(["toughness", "or", "power", rest @ ..]) => {
                     // "with base power or toughness 1" (Sword of the Squeak)
@@ -2544,17 +2586,25 @@ pub(in super::super) fn parse_object_filter_inner(
         base.any_of.clear();
         base.power = None;
         base.toughness = None;
+        if includes_mana_value {
+            base.mana_value = None;
+        }
 
         let mut power_branch = base.clone();
         power_branch.power = Some(cmp.clone());
         power_branch.power_reference = pt_reference;
 
-        let mut toughness_branch = base;
-        toughness_branch.toughness = Some(cmp);
+        let mut toughness_branch = base.clone();
+        toughness_branch.toughness = Some(cmp.clone());
         toughness_branch.toughness_reference = pt_reference;
 
         let mut disjunction = ObjectFilter::default();
         disjunction.any_of = vec![power_branch, toughness_branch];
+        if includes_mana_value {
+            let mut mana_value_branch = base;
+            mana_value_branch.mana_value = Some(cmp);
+            disjunction.any_of.push(mana_value_branch);
+        }
         filter = disjunction;
     }
 
@@ -2661,6 +2711,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()
         || filter.mana_value_parity.is_some()
+        || filter.has_x_in_cost
         || filter.name.is_some()
         || filter.excluded_name.is_some()
         || filter.source
@@ -2737,6 +2788,7 @@ pub(in super::super) fn parse_object_filter_inner(
         || filter.total_power_toughness.is_some()
         || filter.mana_value.is_some()
         || filter.mana_value_parity.is_some()
+        || filter.has_x_in_cost
         || filter.name.is_some()
         || filter.excluded_name.is_some()
         || filter.source
@@ -2850,8 +2902,13 @@ pub(in super::super) fn parse_object_filter_inner(
             let negated_name_tail = all_words.get(index + 2) == Some(&"not")
                 && all_words.get(index + 3) == Some(&"named")
                 && filter.excluded_name.is_some();
+            // "all Auras you control attached to it" (Essence Reliquary):
+            // the attachment tail is admitted once it was captured.
+            let attachment_tail = all_words.get(index + 2) == Some(&"attached")
+                && (filter.attached_to_object.is_some() || filter.attached_to_player.is_some());
             if words == ["you", "control"]
                 && !negated_name_tail
+                && !attachment_tail
                 && let Some(next) = all_words.get(index + 2)
                 && !matches!(
                     *next,

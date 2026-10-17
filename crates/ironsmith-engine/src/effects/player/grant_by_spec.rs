@@ -42,6 +42,45 @@ pub(crate) fn grant_duration_source(
     }
 }
 
+/// Replace each discourse controller/owner reference (a target, the iterated
+/// or triggering player, a tagged object's controller/owner) with the concrete
+/// player it names in this resolution. Unresolvable references stay as they are.
+fn lock_contextual_owner_controller(
+    filter: &crate::target::ObjectFilter,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> crate::target::ObjectFilter {
+    use crate::target::PlayerFilter;
+    let mut bound = filter.clone();
+    crate::effects::player_reference_binding::walk_filter_references(
+        &mut bound,
+        crate::effects::player_reference_binding::PlayerReferenceFields::ControllerOwner,
+        &mut |player| {
+            let contextual = matches!(
+                player,
+                PlayerFilter::Target(_)
+                    | PlayerFilter::AliasedTarget(_)
+                    | PlayerFilter::IteratedPlayer
+                    | PlayerFilter::DamagedPlayer
+                    | PlayerFilter::TaggedPlayer(_)
+                    | PlayerFilter::ChosenPlayer
+                    | PlayerFilter::TargetPlayerOrControllerOfTarget
+                    | PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
+                    | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(_))
+                    | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Tagged(_))
+                    | PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(_))
+            );
+            if contextual && let Ok(id) = resolve_player_filter(game, player, ctx) {
+                *player = PlayerFilter::Specific(id);
+            }
+            Ok::<_, std::convert::Infallible>(())
+        },
+        &mut |_| Ok(()),
+    )
+    .unwrap();
+    bound
+}
+
 /// Effect that grants a [`GrantSpec`] to cards matching its filter for a duration.
 impl EffectExecutor for GrantBySpecEffect {
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&crate::effect::Effect)) {
@@ -95,8 +134,12 @@ impl EffectExecutor for GrantBySpecEffect {
         });
         let mut identity = None;
         for spec in self.spec.zone_specs() {
+            // CR 608.2h: "from that player's graveyard" names the player this
+            // resolution is talking about; the stored permission keeps naming
+            // that player after the resolution context is gone.
+            let filter = lock_contextual_owner_controller(&spec.filter, game, ctx);
             game.effect_store.grant_registry.grant_to_filter(
-                spec.filter.clone(),
+                filter,
                 spec.zone,
                 player_id,
                 spec.grantable.clone(),

@@ -68,6 +68,42 @@ impl AddManaOfColorsAmongEffect {
     }
 }
 
+/// "Add mana equal to enchanted permanent's mana cost" (Elemental
+/// Resonance): one mana per mana symbol of the first object matching
+/// `filter`. A colored symbol adds that color, generic N adds N colorless, a
+/// Phyrexian symbol adds its color, X adds nothing, and a hybrid symbol adds
+/// one of its halves chosen by the player (CR 107.4, 107.4e-f).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AddManaEqualToManaCostEffect {
+    pub filter: ObjectFilter,
+    pub player: PlayerFilter,
+    /// "For each colored mana symbol in <card>'s mana cost, add one mana of
+    /// that color" (Charmed Pendant): only colored symbols add mana (one of
+    /// that color; a hybrid symbol's colored halves are the choices).
+    /// Appended with a serde default.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub colored_symbols_only: bool,
+}
+
+impl AddManaEqualToManaCostEffect {
+    pub fn new(filter: ObjectFilter, player: PlayerFilter) -> Self {
+        Self {
+            filter,
+            player,
+            colored_symbols_only: false,
+        }
+    }
+
+    pub fn with_colored_symbols_only(mut self, colored_symbols_only: bool) -> Self {
+        self.colored_symbols_only = colored_symbols_only;
+        self
+    }
+}
+
 /// Adds exactly one mana whose color is chosen from the colors of objects
 /// matching `filter`.
 ///
@@ -524,6 +560,25 @@ pub enum PhaseOutDuration {
     UntilNextUntap,
     /// Keep it phased out until the ability source leaves the battlefield.
     UntilSourceLeaves,
+    /// As `UntilSourceLeaves`, and it is tapped as it phases in this way
+    /// ("Tap that creature as it phases in this way." Oubliette).
+    UntilSourceLeavesThenTapped,
+    /// "It can't phase in for as long as this artifact remains tapped. When
+    /// this artifact becomes untapped or leaves the battlefield, that
+    /// permanent phases in." (The Pandorica)
+    UntilSourceUntapsOrLeaves,
+}
+
+impl PhaseOutDuration {
+    /// Whether the permanent is held phased out until the source leaves.
+    pub fn is_until_source_leaves(self) -> bool {
+        matches!(
+            self,
+            Self::UntilSourceLeaves
+                | Self::UntilSourceLeavesThenTapped
+                | Self::UntilSourceUntapsOrLeaves
+        )
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -684,6 +739,9 @@ pub struct PreventDamageEffect<E> {
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
     pub protect_you_and_permanents_you_control: bool,
+    /// One finite prevention budget shared by every damage recipient.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub protect_all: bool,
     /// "Prevent the next N damage ... to any number of targets, divided as
     /// you choose": the amount is divided among the targets as the spell is
     /// cast (CR 601.2d) and each target gets its own shield of its share
@@ -702,6 +760,7 @@ impl<E> PreventDamageEffect<E> {
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
+            protect_all: false,
             divided: false,
         }
     }
@@ -742,6 +801,10 @@ pub struct PreventAllDamageToTargetEffect<E> {
     /// stored choice or declaring another target.
     #[cfg_attr(feature = "serde", serde(default))]
     pub source_color_of_your_choice: bool,
+    /// "by a source of your choice" (Shieldmage Advocate): the controller
+    /// chooses one source as the effect resolves.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_of_your_choice: bool,
 }
 
 impl<E> PreventAllDamageToTargetEffect<E> {
@@ -753,6 +816,7 @@ impl<E> PreventAllDamageToTargetEffect<E> {
             combat_only: false,
             damage_filter: DamageFilter::all(),
             source_color_of_your_choice: false,
+            source_of_your_choice: false,
         }
     }
 
@@ -768,6 +832,11 @@ impl<E> PreventAllDamageToTargetEffect<E> {
 
     pub fn with_source_color_choice(mut self) -> Self {
         self.source_color_of_your_choice = true;
+        self
+    }
+
+    pub fn with_source_of_your_choice(mut self) -> Self {
+        self.source_of_your_choice = true;
         self
     }
 
@@ -791,6 +860,11 @@ pub enum NextTimeDamagePreventionPortion {
     HalfRoundedDown,
     AllBut(u32),
     Exactly(Value),
+    /// "instead that source deals that much damage to you and this spell
+    /// deals that much damage to that source's controller" (Eye for an Eye):
+    /// nothing is prevented; the damage is dealt and the reflection rider
+    /// also happens. Appended for wire stability.
+    ReflectOnly,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1000,6 +1074,8 @@ pub struct TimedDamageRedirectionScope {
     pub combat_only: bool,
     pub destination: TimedDamageRedirectDestination,
     pub mode: crate::ReplacementApplyMode,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub optional_by_controller: bool,
     pub display: String,
 }
 
@@ -1061,6 +1137,12 @@ pub struct GrantPlayTaggedEffect<C> {
     /// Additional mana cost imposed on nonland cards cast through this exact
     /// tagged play permission.
     pub spell_cost_increase: Option<ManaCost>,
+    /// "If that spell doesn't target <filter>, it costs {N} more to cast this
+    /// way": `spell_cost_increase` applies only when none of the spell's
+    /// chosen targets (CR 601.2c, before cost determination in 601.2f) is an
+    /// object matching this filter. Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub spell_cost_increase_unless_targets: Option<ObjectFilter>,
     /// Mana reduction for spells cast through this exact permission.
     #[cfg_attr(feature = "serde", serde(default))]
     pub spell_cost_reduction: Option<ManaCost>,
@@ -1085,7 +1167,23 @@ pub struct GrantPlayTaggedEffect<C> {
     /// artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub during_turns_attacked_with: Option<AttackedWithTurnCondition>,
+    /// "You may cast this card from exile as long as you've cast another
+    /// spell this turn": the persistent grant is active only while its
+    /// player has already cast at least one spell this turn (any spell
+    /// counted before this cast is "another"). Appended; absent in older
+    /// artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub during_turns_cast_another_spell: bool,
+    /// "That spell has undaunted." (Durnan of the Yawning Portal): a spell
+    /// cast through this permission costs this much generic mana less for
+    /// each opponent its caster has, counted as the cost is determined
+    /// (CR 702.125a, 601.2f). Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_u32_is_zero"))]
+    pub spell_cost_reduction_per_opponent: u32,
 }
+
+#[cfg(feature = "serde")]
+fn serialized_u32_is_zero(value: &u32) -> bool { *value == 0 }
 
 /// Turns in which the permission's player attacked with at least `minimum`
 /// distinct creatures matching `filter` (CR 508.1: a creature "attacked"
@@ -1124,17 +1222,30 @@ impl<C> GrantPlayTaggedEffect<C> {
             spell_filter: None,
             during_turns_counter_put_on_source: None,
             spell_cost_increase: None,
+            spell_cost_increase_unless_targets: None,
             spell_cost_reduction: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
             alternative_cost: None,
             during_turns_attacked_with: None,
+            during_turns_cast_another_spell: false,
+            spell_cost_reduction_per_opponent: 0,
         }
+    }
+
+    pub fn with_spell_cost_reduction_per_opponent(mut self, amount: u32) -> Self {
+        self.spell_cost_reduction_per_opponent = amount;
+        self
     }
 
     pub fn during_turns_attacked_with(mut self, condition: AttackedWithTurnCondition) -> Self {
         self.during_turns_attacked_with = Some(condition);
+        self
+    }
+
+    pub fn during_turns_cast_another_spell(mut self) -> Self {
+        self.during_turns_cast_another_spell = true;
         self
     }
 
@@ -1186,6 +1297,13 @@ impl<C> GrantPlayTaggedEffect<C> {
 
     pub fn with_spell_cost_increase(mut self, cost: ManaCost) -> Self {
         self.spell_cost_increase = Some(cost);
+        self
+    }
+
+    /// Condition the permission's `spell_cost_increase` on the cast spell not
+    /// targeting an object matching `filter`.
+    pub fn with_spell_cost_increase_unless_targets(mut self, filter: ObjectFilter) -> Self {
+        self.spell_cost_increase_unless_targets = Some(filter);
         self
     }
 
@@ -1307,6 +1425,11 @@ pub struct RegisterDrawReplacementEffect<E = ()> {
     pub player_target: Option<ChooseSpec>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub display: Option<String>,
+    /// Replace the player's next game loss instead of a draw ("The next time
+    /// you would lose the game this turn, instead ...", Stunning Reversal).
+    /// Appended with a serde default for wire stability.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lose_game: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1457,6 +1580,28 @@ impl RegisterNextBatchEnterWithCountersEffect {
     }
 }
 
+/// "The next time one or more creatures or planeswalkers enter this turn,
+/// they enter as copies of the chosen creature" (Mystic Reflection):
+/// registers a turn-scoped replacement for the next simultaneous batch in
+/// which one or more matching permanents would enter. Every matching member
+/// of that batch enters as a copy of the object `copy_source` names at
+/// registration (CR 614.1c, 707.2), then the replacement is consumed.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterNextBatchEnterAsCopyEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub copy_source: ChooseSpec,
+}
+
+impl RegisterNextBatchEnterAsCopyEffect {
+    pub fn new(filter: crate::filter_model::ObjectFilter, copy_source: ChooseSpec) -> Self {
+        Self {
+            filter,
+            copy_source,
+        }
+    }
+}
+
 impl RegisterEnterTappedReplacementEffect {
     pub fn new(filter: crate::filter_model::ObjectFilter, mode: ReplacementApplyMode) -> Self {
         Self { filter, mode }
@@ -1523,6 +1668,7 @@ impl<E> RegisterDrawReplacementEffect<E> {
             mode,
             player_target: None,
             display: None,
+            lose_game: false,
         }
     }
 }
@@ -1709,7 +1855,7 @@ impl NinjutsuEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
@@ -1722,6 +1868,29 @@ pub struct RegenerateEffect<E = ()> {
     /// player of a one-player loop.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub follow_up_player: Option<PlayerFilter>,
+    /// "The next time target land would be destroyed this turn, remove all
+    /// damage marked on it instead." (Pyramids): a one-shot destruction
+    /// replacement that only removes damage. It is not regeneration, so it
+    /// neither taps nor removes from combat and "can't be regenerated" does
+    /// not stop it. Appended with a serde default; omitted from Debug when
+    /// false so existing regeneration output is unchanged.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub remove_damage_only: bool,
+}
+
+impl<E: std::fmt::Debug> std::fmt::Debug for RegenerateEffect<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("RegenerateEffect");
+        debug
+            .field("target", &self.target)
+            .field("duration", &self.duration)
+            .field("follow_up_effects", &self.follow_up_effects)
+            .field("follow_up_player", &self.follow_up_player);
+        if self.remove_damage_only {
+            debug.field("remove_damage_only", &self.remove_damage_only);
+        }
+        debug.finish()
+    }
 }
 
 impl<E> RegenerateEffect<E> {
@@ -1737,6 +1906,7 @@ impl<E> RegenerateEffect<E> {
             duration,
             follow_up_effects: Vec::new(),
             follow_up_player: None,
+            remove_damage_only: false,
         }
     }
 
@@ -1755,6 +1925,11 @@ impl<E> RegenerateEffect<E> {
 
     pub fn with_follow_up_player(mut self, player: Option<PlayerFilter>) -> Self {
         self.follow_up_player = player;
+        self
+    }
+
+    pub fn with_remove_damage_only(mut self, remove_damage_only: bool) -> Self {
+        self.remove_damage_only = remove_damage_only;
         self
     }
 }
@@ -1780,12 +1955,50 @@ impl AddManaFromCommanderColorIdentityEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct AddManaOfAnyColorEffect {
     pub amount: Value,
     pub player: PlayerFilter,
     pub available_colors: Option<Vec<Color>>,
     pub distinct_colors: bool,
+    /// "in any combination of its colors" (Omnath, Locus of All): the colors
+    /// available are those of the objects matching this filter as the effect
+    /// resolves. No matching colored object means no mana is added.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub available_colors_among: Option<ObjectFilter>,
+    /// "one mana of any color chosen as you drafted cards named <name>"
+    /// (Paliano, the High City): the colors available are those the
+    /// controller chose while drafting cards with this name (CR 905.2
+    /// draft-matters text). No such colors means no mana is added. Appended
+    /// with a serde default; omitted from Debug when absent.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub available_colors_chosen_while_drafting_named: Option<String>,
+    /// "one mana of either of the circled colors" (Cryptic Spires): the
+    /// colors available are those recorded for the source card as its owner
+    /// built their deck ("As you create your deck, circle two of the colors
+    /// below."), read by the source's stable identity. Appended with a serde
+    /// default; omitted from Debug when false.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub available_colors_chosen_at_deck_construction: bool,
+}
+
+impl std::fmt::Debug for AddManaOfAnyColorEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("AddManaOfAnyColorEffect");
+        debug
+            .field("amount", &self.amount)
+            .field("player", &self.player)
+            .field("available_colors", &self.available_colors)
+            .field("distinct_colors", &self.distinct_colors)
+            .field("available_colors_among", &self.available_colors_among);
+        if let Some(card_name) = &self.available_colors_chosen_while_drafting_named {
+            debug.field("available_colors_chosen_while_drafting_named", card_name);
+        }
+        if self.available_colors_chosen_at_deck_construction {
+            debug.field("available_colors_chosen_at_deck_construction", &true);
+        }
+        debug.finish()
+    }
 }
 
 impl AddManaOfAnyColorEffect {
@@ -1795,6 +2008,9 @@ impl AddManaOfAnyColorEffect {
             player,
             available_colors: None,
             distinct_colors: false,
+            available_colors_among: None,
+            available_colors_chosen_while_drafting_named: None,
+            available_colors_chosen_at_deck_construction: false,
         }
     }
 
@@ -1804,6 +2020,9 @@ impl AddManaOfAnyColorEffect {
             player,
             available_colors: None,
             distinct_colors: true,
+            available_colors_among: None,
+            available_colors_chosen_while_drafting_named: None,
+            available_colors_chosen_at_deck_construction: false,
         }
     }
 
@@ -1817,6 +2036,9 @@ impl AddManaOfAnyColorEffect {
             player,
             available_colors: Some(available_colors),
             distinct_colors: false,
+            available_colors_among: None,
+            available_colors_chosen_while_drafting_named: None,
+            available_colors_chosen_at_deck_construction: false,
         }
     }
 
@@ -1830,11 +2052,39 @@ impl AddManaOfAnyColorEffect {
             player,
             available_colors: Some(available_colors),
             distinct_colors: true,
+            available_colors_among: None,
+            available_colors_chosen_while_drafting_named: None,
+            available_colors_chosen_at_deck_construction: false,
         }
     }
 
     pub fn you(amount: impl Into<Value>) -> Self {
         Self::new(amount, PlayerFilter::You)
+    }
+
+    /// Mana in any combination of the colors of the objects matching
+    /// `filter` ("add three mana in any combination of its colors").
+    pub fn among(amount: impl Into<Value>, player: PlayerFilter, filter: ObjectFilter) -> Self {
+        let mut effect = Self::new(amount, player);
+        effect.available_colors_among = Some(filter);
+        effect
+    }
+
+    /// Mana of any color the controller chose while drafting cards named
+    /// `card_name` ("any color chosen as you drafted cards named ...").
+    pub fn with_colors_chosen_while_drafting_named(
+        mut self,
+        card_name: impl Into<String>,
+    ) -> Self {
+        self.available_colors_chosen_while_drafting_named = Some(card_name.into());
+        self
+    }
+
+    /// Mana of either color recorded for the source card at deck
+    /// construction ("one mana of either of the circled colors").
+    pub fn with_colors_chosen_at_deck_construction(mut self) -> Self {
+        self.available_colors_chosen_at_deck_construction = true;
+        self
     }
 
     pub fn you_distinct(amount: impl Into<Value>) -> Self {
@@ -2248,6 +2498,21 @@ impl EmptyManaPoolEffect {
     }
 }
 
+/// "<player> activates a mana ability of each land they control" (Drain
+/// Power, Pygmy Hippo): for each land that player controls, they choose one of
+/// its mana abilities whose costs they can pay and activate it (CR 605.3a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ActivateManaAbilityOfEachLandEffect {
+    pub player: PlayerFilter,
+}
+
+impl ActivateManaAbilityOfEachLandEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct EndTurnEffect {
@@ -2561,6 +2826,21 @@ impl RollDieEffect {
     }
 }
 
+/// "Roll the planar die." (Fractured Powerstone): an effect-driven planar die
+/// roll (CR 901.9, 901.10). It does not increase the cost of voluntary rolls,
+/// and outside a Planechase game there is no planar die, so nothing happens.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RollPlanarDieEffect {
+    pub player: PlayerFilter,
+}
+
+impl RollPlanarDieEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct RollDiceChooseResultEffect {
@@ -2572,6 +2852,28 @@ pub struct RollDiceChooseResultEffect {
     /// with no choice (Berserker's Frenzy).
     #[cfg_attr(feature = "serde", serde(default))]
     pub ignore_lower: bool,
+    /// "Roll X d6" / "roll two six-sided dice" read as "the total of those
+    /// results": the result is the sum of every retained roll, with no choice
+    /// (Neverwinter Hydra, Pair o' Dice Lost).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "serialized_bool_is_false")
+    )]
+    pub total: bool,
+    /// A dynamic number of dice ("roll X d6"); replaces `count` when present.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub count_value: Option<Value>,
+    /// "Roll a six-sided die twice. ... the first result ... the second
+    /// result" (Vedalken Squirrel-Whacker): nothing is chosen; the first
+    /// roll is the result and the second is the other result.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "serialized_bool_is_false")
+    )]
+    pub in_order: bool,
 }
 
 impl RollDiceChooseResultEffect {
@@ -2582,6 +2884,9 @@ impl RollDiceChooseResultEffect {
             sides,
             die_text: None,
             ignore_lower: false,
+            total: false,
+            count_value: None,
+            in_order: false,
         }
     }
 
@@ -2597,12 +2902,29 @@ impl RollDiceChooseResultEffect {
             sides,
             die_text,
             ignore_lower: false,
+            total: false,
+            count_value: None,
+            in_order: false,
         }
     }
 
     /// Keep the highest roll instead of choosing one.
     pub fn with_ignore_lower(mut self, ignore_lower: bool) -> Self {
         self.ignore_lower = ignore_lower;
+        self
+    }
+
+    /// The result is the total of all rolls; `count_value` (when present)
+    /// is the dynamic number of dice.
+    pub fn with_total(mut self, count_value: Option<Value>) -> Self {
+        self.total = true;
+        self.count_value = count_value;
+        self
+    }
+
+    /// The first roll is the result and the second the other result.
+    pub fn with_in_order(mut self, in_order: bool) -> Self {
+        self.in_order = in_order;
         self
     }
 }
@@ -2803,6 +3125,18 @@ impl ConvertEffect {
 pub struct PutStickerEffect {
     pub target: ChooseSpec,
     pub action: crate::event_model::KeywordActionKind,
+    /// "an ability sticker with ticket cost X or less" (Pin Collection).
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub max_ticket_cost: Option<Value>,
+    /// "without paying that sticker's ticket cost".
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "serialized_bool_is_false")
+    )]
+    pub without_paying_ticket_cost: bool,
 }
 
 /// Unlock a locked door of a Room matching `room_filter` during resolution.
@@ -2835,19 +3169,61 @@ impl UnlockRoomDoorEffect {
 
 impl PutStickerEffect {
     pub fn new(target: ChooseSpec, action: crate::event_model::KeywordActionKind) -> Self {
-        Self { target, action }
+        Self {
+            target,
+            action,
+            max_ticket_cost: None,
+            without_paying_ticket_cost: false,
+        }
+    }
+
+    /// The sticker's ticket-cost cap and whether its ticket cost is waived.
+    pub fn with_ticket_terms(
+        mut self,
+        max_ticket_cost: Option<Value>,
+        without_paying_ticket_cost: bool,
+    ) -> Self {
+        self.max_ticket_cost = max_ticket_cost;
+        self.without_paying_ticket_cost = without_paying_ticket_cost;
+        self
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ReorderGraveyardEffect {
     pub player: PlayerFilter,
+    /// "Reorder your graveyard at random" (Search for Survivors): a random
+    /// permutation rather than the player's chosen order.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub at_random: bool,
+}
+
+impl std::fmt::Debug for ReorderGraveyardEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("ReorderGraveyardEffect");
+        debug.field("player", &self.player);
+        // Absent randomness keeps the historical Debug bytes.
+        if self.at_random {
+            debug.field("at_random", &self.at_random);
+        }
+        debug.finish()
+    }
 }
 
 impl ReorderGraveyardEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            at_random: false,
+        }
+    }
+
+    pub fn at_random(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            at_random: true,
+        }
     }
 
     pub fn you() -> Self {
@@ -2888,6 +3264,44 @@ impl ExtraTurnAfterNextTurnEffect {
 pub enum AdditionalPhase {
     Combat,
     Main,
+    /// "an additional beginning phase" (Sphinx of the Second Sun): untap,
+    /// upkeep, and draw steps (CR 500.8).
+    Beginning,
+}
+
+/// A step that an effect adds to the current turn (CR 500.10).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum AdditionalStepKind {
+    Untap,
+    Upkeep,
+    Draw,
+    End,
+}
+
+/// Where an added step goes relative to the step or phase in which the
+/// effect resolves.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum AdditionalStepAnchor {
+    /// "after this step": directly after the current step.
+    AfterThisStep,
+    /// "after this phase": each added step is its own phase directly after
+    /// the current phase (CR 500.10).
+    AfterThisPhase,
+}
+
+/// "You get an additional upkeep step after this step" / "there is an
+/// additional end step after this step" (CR 500.10).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AdditionalStepsEffect {
+    pub step: AdditionalStepKind,
+    pub count: Value,
+    pub anchor: AdditionalStepAnchor,
+    /// CR 500.10a: a player who "gets" an additional step gets it only
+    /// during their own turn. `None` is the impersonal "there is" form.
+    pub player: Option<PlayerFilter>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2924,6 +3338,46 @@ pub struct TagTriggeringObjectEffect {
 impl TagTriggeringObjectEffect {
     pub fn new(tag: impl Into<TagKey>) -> Self {
         Self { tag: tag.into() }
+    }
+}
+
+/// Tags the cards spliced onto a spell (CR 702.47): "a card spliced onto
+/// that spell". The spliced cards stay in their owner's hand; the capture is
+/// read from the spell's stack entry, so lowering places it before any
+/// instruction that removes that spell from the stack.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TagSplicedCardsEffect {
+    pub spell: ChooseSpec,
+    pub tag: TagKey,
+}
+
+/// Tags the source of the most recent damage event this turn matching
+/// `query` ("the last red instant or sorcery spell that dealt damage to you
+/// this turn"), as its characteristics were when it dealt that damage. The
+/// tag is empty when no damage this turn matches.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct TagLastDamageSourceEffect {
+    pub query: crate::DamageHistoryQuery,
+    pub tag: TagKey,
+}
+
+impl TagLastDamageSourceEffect {
+    pub fn new(query: crate::DamageHistoryQuery, tag: impl Into<TagKey>) -> Self {
+        Self {
+            query,
+            tag: tag.into(),
+        }
+    }
+}
+
+impl TagSplicedCardsEffect {
+    pub fn new(spell: ChooseSpec, tag: impl Into<TagKey>) -> Self {
+        Self {
+            spell,
+            tag: tag.into(),
+        }
     }
 }
 
@@ -3073,6 +3527,15 @@ pub enum CounterMoveAmount {
     AnyNumber,
     /// Every counter of the named kind present on each donor at resolution.
     All,
+    /// "Move any number of counters from among <donors> onto <recipient>":
+    /// zero through all of each counter kind on each donor, of every kind
+    /// (the effect's `counter_type` is not consulted).
+    AnyNumberOfAnyKind,
+    /// "Move a counter of each kind not on <recipient> from <donor> onto
+    /// <recipient>" (Goldberry, River-Daughter): exactly one counter of each
+    /// kind on the donor that the recipient has none of (the effect's
+    /// `counter_type` is not consulted). Appended for wire stability.
+    OneOfEachKindAbsentFromRecipient,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3364,6 +3827,14 @@ pub enum PlayerControlStart {
     Immediate,
     /// Starts at the beginning of the target player's next turn.
     NextTurn,
+    /// Starts at the beginning of the target player's next combat phase
+    /// (Secret of Bloodbending).
+    NextCombatPhase,
+    /// Starts when the source spell begins resolving ("you control the player
+    /// while that spell is resolving", CR 722). Paired with
+    /// [`PlayerControlDuration::UntilSourceFinishesResolving`]; the source is
+    /// the stable identity of that spell. Appended for stable indices.
+    WhenSourceResolves,
 }
 
 /// How long a player-control effect lasts.
@@ -3378,11 +3849,19 @@ pub enum PlayerControlDuration {
     UntilSourceLeaves,
     /// No duration limit.
     Forever,
+    /// Through the end of the combat phase in which control began
+    /// ("during their next combat phase").
+    ThroughCombatPhase,
+    /// Until the source spell or ability finishes resolving ("You control
+    /// that player until this spell finishes resolving", CR 722.1). Removed by
+    /// the stack-resolution owner when that entry completes. Appended for
+    /// stable indices.
+    UntilSourceFinishesResolving,
 }
 
 /// Effect that lets a player control another player's decisions.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ControlPlayerEffect {
     /// Which player is controlled.
     pub player: PlayerFilter,
@@ -3392,6 +3871,27 @@ pub struct ControlPlayerEffect {
     pub duration: PlayerControlDuration,
     /// Target spec if this effect targets a player.
     pub target_spec: Option<ChooseSpec>,
+    /// The controlling player when it is not the effect's controller ("The
+    /// first player controls the second player during the second player's
+    /// next turn", Cruel Entertainment). `None` means the effect controller.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub controller: Option<PlayerFilter>,
+}
+
+// Manual Debug keeps the established shape when no explicit controller is set.
+impl std::fmt::Debug for ControlPlayerEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("ControlPlayerEffect");
+        debug
+            .field("player", &self.player)
+            .field("start", &self.start)
+            .field("duration", &self.duration)
+            .field("target_spec", &self.target_spec);
+        if let Some(controller) = &self.controller {
+            debug.field("controller", controller);
+        }
+        debug.finish()
+    }
 }
 
 impl ControlPlayerEffect {
@@ -3412,7 +3912,15 @@ impl ControlPlayerEffect {
             start,
             duration,
             target_spec,
+            controller: None,
         }
+    }
+
+    /// The same control, exercised by `controller` rather than the effect's
+    /// controller.
+    pub fn controlled_by(mut self, controller: PlayerFilter) -> Self {
+        self.controller = Some(controller);
+        self
     }
 
     /// Control a player until end of turn.
@@ -3433,12 +3941,30 @@ impl ControlPlayerEffect {
         )
     }
 
+    /// Control a player during their next combat phase.
+    pub fn during_next_combat_phase(player: PlayerFilter) -> Self {
+        Self::new(
+            player,
+            PlayerControlStart::NextCombatPhase,
+            PlayerControlDuration::ThroughCombatPhase,
+        )
+    }
+
     /// Control a player indefinitely.
     pub fn forever(player: PlayerFilter) -> Self {
         Self::new(
             player,
             PlayerControlStart::Immediate,
             PlayerControlDuration::Forever,
+        )
+    }
+
+    /// Control a player until the source finishes resolving.
+    pub fn until_source_finishes_resolving(player: PlayerFilter) -> Self {
+        Self::new(
+            player,
+            PlayerControlStart::Immediate,
+            PlayerControlDuration::UntilSourceFinishesResolving,
         )
     }
 }
@@ -3546,6 +4072,12 @@ pub struct DamageFilter {
     /// only by its Stack -> Battlefield transition, never by stable-card lookup.
     #[cfg_attr(feature = "serde", serde(default))]
     pub resolved_permanent_source: Option<crate::ids::ObjectId>,
+    /// Only prevent damage whose causing spell or ability targets the
+    /// protected object (Silhouette: "If a spell or ability that targets that
+    /// creature would cause a source to deal damage to that creature"). The
+    /// damage event's `EventCause::targeted_objects` carries those targets.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub cause_targets_protected: bool,
 }
 
 impl DamageFilter {
@@ -4046,6 +4578,8 @@ pub enum RestrictionStart {
     NextTurn(PlayerFilter),
     /// Only during the combat created by the preceding additional-phase effect.
     LastAddedCombatPhase,
+    /// During the exact extra turn created earlier in this resolution.
+    CreatedExtraTurn,
 }
 
 /// Authored placement of a temporary restriction's duration.
@@ -4684,6 +5218,15 @@ pub struct CastTaggedEffect<C> {
     /// Other additional costs still apply. None preserves the ordinary price.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub alternative_cost: Option<crate::TotalCost<C>>,
+    /// While casting, the caster may activate only mana abilities of lands
+    /// they control, and that mana funds only this spell or other such land
+    /// mana abilities (Word of Command).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub caster_land_mana_abilities_only: bool,
+    /// When the caster is not the instruction's controller, the controller
+    /// controls the caster while the cast spell resolves (CR 722).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub control_caster_while_spell_resolves: bool,
 }
 
 /// A payment the resolving instruction substitutes for the cast spell's mana
@@ -4708,6 +5251,9 @@ impl<C: PartialEq> PartialEq for CastTaggedEffect<C> {
             && self.mana_spend_mode == other.mana_spend_mode
             && self.alternative_payment == other.alternative_payment
             && self.alternative_cost == other.alternative_cost
+            && self.caster_land_mana_abilities_only == other.caster_land_mana_abilities_only
+            && self.control_caster_while_spell_resolves
+                == other.control_caster_while_spell_resolves
     }
 }
 
@@ -4727,7 +5273,19 @@ impl<C> CastTaggedEffect<C> {
             mana_spend_mode: crate::value_model::ManaSpendMode::Normal,
             alternative_payment: None,
             alternative_cost: None,
+            caster_land_mana_abilities_only: false,
+            control_caster_while_spell_resolves: false,
         }
+    }
+
+    pub fn caster_land_mana_abilities_only(mut self) -> Self {
+        self.caster_land_mana_abilities_only = true;
+        self
+    }
+
+    pub fn control_caster_while_spell_resolves(mut self) -> Self {
+        self.control_caster_while_spell_resolves = true;
+        self
     }
 
     pub fn with_alternative_cost(mut self, cost: crate::TotalCost<C>) -> Self {
@@ -4745,6 +5303,8 @@ impl<C> CastTaggedEffect<C> {
             additional_mana_cost: self.additional_mana_cost, cost_reduction: self.cost_reduction,
             mana_spend_mode: self.mana_spend_mode, alternative_payment: self.alternative_payment,
             alternative_cost: self.alternative_cost.map(|cost| cost.try_map(&mut map)).transpose()?,
+            caster_land_mana_abilities_only: self.caster_land_mana_abilities_only,
+            control_caster_while_spell_resolves: self.control_caster_while_spell_resolves,
         })
     }
 
@@ -5063,6 +5623,10 @@ pub struct RepeatProcessEffect<E> {
     /// process except that opponent can't choose a card already chosen").
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub choice_history: Vec<RepeatProcessChoiceHistory>,
+    /// The most times the process is performed ("you may pay {G} up to
+    /// three times"); `None` repeats while the continuation holds.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub max_iterations: Option<u32>,
 }
 
 /// One choice accumulated across the rounds of a repeated process.
@@ -5133,11 +5697,17 @@ impl<E> RepeatProcessEffect<E> {
             condition,
             predicate,
             choice_history: Vec::new(),
+            max_iterations: None,
         }
     }
 
     pub fn with_choice_history(mut self, choice_history: Vec<RepeatProcessChoiceHistory>) -> Self {
         self.choice_history = choice_history;
+        self
+    }
+
+    pub fn with_max_iterations(mut self, max_iterations: Option<u32>) -> Self {
+        self.max_iterations = max_iterations;
         self
     }
 }
@@ -5162,12 +5732,15 @@ impl<E> RepeatEffectsEffect<E> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum LifeBidStart {
     Fixed(u32),
+    /// "You start the bidding with a bid of any number" (Pain's Reward).
+    ControllerChooses,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct BidLifeEffect<E> {
-    pub target: ChooseSpec,
+    /// The auctioned object; `None` for an untargeted auction.
+    pub target: Option<ChooseSpec>,
     pub starting_bid: LifeBidStart,
     pub winner_effects: Vec<E>,
 }
@@ -5175,7 +5748,15 @@ pub struct BidLifeEffect<E> {
 impl<E> BidLifeEffect<E> {
     pub fn new(target: ChooseSpec, starting_bid: LifeBidStart, winner_effects: Vec<E>) -> Self {
         Self {
-            target,
+            target: Some(target),
+            starting_bid,
+            winner_effects,
+        }
+    }
+
+    pub fn untargeted(starting_bid: LifeBidStart, winner_effects: Vec<E>) -> Self {
+        Self {
+            target: None,
             starting_bid,
             winner_effects,
         }
@@ -5238,6 +5819,12 @@ pub struct ChoosePlayerEffect {
     pub excluded_tags: Vec<crate::tag::TagKey>,
     pub random: bool,
     pub remember_as_chosen_player: bool,
+    /// "For each of those permanents, choose a different opponent." (Dack
+    /// Fayden, Helping Hand): every player this effect chooses is also
+    /// appended to this tag, and players already in it can't be chosen, so
+    /// each iteration of an enclosing loop chooses a different player.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub accumulate_into: Option<crate::tag::TagKey>,
 }
 
 impl ChoosePlayerEffect {
@@ -5253,7 +5840,14 @@ impl ChoosePlayerEffect {
             excluded_tags: Vec::new(),
             random: false,
             remember_as_chosen_player: false,
+            accumulate_into: None,
         }
+    }
+
+    /// Choose a player not already in `tag`, then add the choice to it.
+    pub fn accumulating_into(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
+        self.accumulate_into = Some(tag.into());
+        self
     }
 
     pub fn excluding_tags(mut self, tags: Vec<crate::tag::TagKey>) -> Self {
@@ -5605,6 +6199,10 @@ pub enum ScheduledSkipKind {
     CombatPhase,
     Turn,
     DrawStep,
+    /// "Take an extra turn after this one. Skip the untap step of that turn."
+    /// (Savor the Moment): bound to the extra turn created by the same
+    /// resolution, not to the player's next untap step.
+    UntapStepOfCreatedExtraTurn,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5786,6 +6384,24 @@ pub struct GrantLoyaltyActivationAllowanceEffect {
 impl GrantLoyaltyActivationAllowanceEffect {
     pub fn new(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> Self {
         Self { scope, allowance }
+    }
+}
+
+/// "Until end of turn, you may tap lands you don't control for mana."
+/// (Piracy): for the rest of this turn `player` may activate the {T} mana
+/// abilities of lands they don't control (CR 605.3a: the activator controls
+/// the ability and gets the mana). Spending restrictions active while this
+/// resolves ("Spend this mana only to cast spells.") bind every mana produced
+/// through the permission.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GrantTapUncontrolledLandsForManaEffect {
+    pub player: PlayerFilter,
+}
+
+impl GrantTapUncontrolledLandsForManaEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
     }
 }
 

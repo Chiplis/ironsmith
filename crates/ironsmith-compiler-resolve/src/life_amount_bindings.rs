@@ -116,7 +116,66 @@ pub(super) fn supplies_requested_life_metric(
     if metrics.is_empty() {
         return None;
     }
-    Some(life_producer(producer).is_some_and(|(metric, _)| metrics.contains(&metric)))
+    Some(
+        life_producer(producer).is_some_and(|(metric, _)| metrics.contains(&metric))
+            || exchange_life_producers(producer)
+                .iter()
+                .any(|(metric, _)| metrics.contains(metric)),
+    )
+}
+/// A life-total exchange (CR 118.7) is one instruction whose result holds a
+/// gain for one participant and a loss for the other. It exports both
+/// directions for both exact participants; a query must name the participant
+/// it reads ("if you lost life this way").
+pub(super) fn exchange_life_producers(effect: &EffectAst) -> Vec<(EffectMetric, PlayerFilter)> {
+    fn participant(player: PlayerAst) -> Option<PlayerFilter> {
+        Some(match player {
+            PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+            PlayerAst::Target => PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            _ => return None,
+        })
+    }
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action:
+                SubjectVerbActionAst::Exchanges(
+                    crate::cards::builders::ExchangeActionAst::ExchangeLifeTotals { player2 },
+                ),
+            ..
+        }) => {
+            let (Some(first), Some(second)) = (participant(subject.player), participant(*player2))
+            else {
+                return Vec::new();
+            };
+            [first, second]
+                .into_iter()
+                .flat_map(|player| {
+                    [
+                        (EffectMetric::LifeLost, player.clone()),
+                        (EffectMetric::LifeGained, player),
+                    ]
+                })
+                .collect()
+        }
+        EffectAst::Permissions(
+            crate::cards::builders::PermissionEffectAst::May { effects }
+            | crate::cards::builders::PermissionEffectAst::MayByPlayer {
+                player: PlayerAst::You | PlayerAst::Implicit,
+                effects,
+            },
+        )
+        | EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects, .. } => {
+            let mut producers = effects.iter().map(exchange_life_producers).filter(|p| !p.is_empty());
+            match (producers.next(), producers.next()) {
+                (Some(only), None) => only,
+                _ => Vec::new(),
+            }
+        }
+        _ => Vec::new(),
+    }
 }
 /// Transparent bodies can be annotated twice. A resolved query retains its
 /// producer's exact ID; reuse it instead of creating an unobserved new result.
@@ -175,6 +234,16 @@ pub(super) fn remember_life_producer(
             metric,
             player,
         });
+        return;
+    }
+    let exchange = exchange_life_producers(effect);
+    if !exchange.is_empty() {
+        producers.retain(|producer| producer.effect_id != id);
+        producers.extend(exchange.into_iter().map(|(metric, player)| LifeAmountProducer {
+            effect_id: id,
+            metric,
+            player,
+        }));
     }
 }
 pub(super) fn bind_life_query(

@@ -11,6 +11,9 @@ fn participant(words: &[&str], contraction: bool) -> Option<(PlayerFilter, usize
         ["theyve" | "they've", ..] if contraction => Some((PlayerFilter::IteratedPlayer, 1)),
         ["that", "player", ..] => Some((PlayerFilter::IteratedPlayer, 2)),
         ["your", "opponents", ..] => Some((PlayerFilter::Opponent, 2)),
+        // "the damage dealt to target opponent this turn" (Knollspine Dragon).
+        ["target", "opponent", ..] => Some((PlayerFilter::target_opponent(), 2)),
+        ["target", "player", ..] => Some((PlayerFilter::target_player(), 2)),
         _ => None,
     }
 }

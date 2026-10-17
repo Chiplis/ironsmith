@@ -16,6 +16,8 @@ use crate::zone::Zone;
 
 #[path = "divvy/binary_program.rs"]
 mod binary_program;
+#[path = "divvy/pile_programs.rs"]
+mod pile_programs;
 
 fn membership_predicate_for_iterated_object(tag: crate::tag::CompilerReferenceTag) -> PredicateAst {
     PredicateAst::TaggedMatches(
@@ -141,7 +143,46 @@ fn parse_cross_zone_target_swap(
     ]))
 }
 
+/// A divvy program that separates objects into piles records that this
+/// spell or ability made players group cards or permanents into a pile
+/// (CR 700.3), for "each spell or ability that caused one or more players to
+/// ... group cards or permanents into a pile this turn". The record is
+/// runtime-only instrumentation; it renders no text.
 pub(super) fn try_parse_divvy_sentence_sequence(
+    sentences: &[SentenceInput],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Space sculptor sector instructions share the statement entry points.
+    if let Some(effects) = super::sector_programs::parse_sector_sentences(sentences)? {
+        return Ok(Some(effects));
+    }
+    let Some(mut effects) = try_parse_divvy_sentence_sequence_program(sentences)? else {
+        return Ok(None);
+    };
+    let groups_into_piles = sentences.iter().any(|sentence| {
+        crate::lexer::token_word_refs(sentence.lexed())
+            .iter()
+            .any(|word| matches!(*word, "pile" | "piles"))
+    });
+    if groups_into_piles {
+        let record = EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::GroupIntoPiles,
+            1,
+        );
+        // A conditional program ("If your library has ten or more cards,
+        // ...") separates piles only when its condition holds.
+        match effects.as_mut_slice() {
+            [EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                if_true,
+                if_false,
+                ..
+            })] if if_false.is_empty() => if_true.push(record),
+            _ => effects.push(record),
+        }
+    }
+    Ok(Some(effects))
+}
+
+fn try_parse_divvy_sentence_sequence_program(
     sentences: &[SentenceInput],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_tokens = sentences
@@ -157,6 +198,9 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
     if let DivvySequenceShape::BinaryCards(program) = shape {
         return binary_program::lower(program, sentences).map(Some);
+    }
+    if let DivvySequenceShape::PileProgram(program) = shape {
+        return pile_programs::lower(program, sentences).map(Some);
     }
 
     if let DivvySequenceShape::ChosenOpponentFaceDownPiles {

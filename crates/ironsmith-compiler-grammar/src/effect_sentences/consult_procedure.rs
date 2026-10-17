@@ -175,6 +175,11 @@ enum Statement {
     /// "The creature gets +1/+0 until end of turn for each card revealed this
     /// way." (plain reading, a reveal traversal)
     RevealPump,
+    /// "If it is, that player puts the rest of the revealed cards into their
+    /// graveyard and puts the card with the chosen name on top of their
+    /// library." (Tunnel Vision; plain reading, a reveal traversal): gated on
+    /// a match being found; an "Otherwise" sentence fills the false branch.
+    IfFoundOthersGraveyardMatchOnTop,
 }
 
 impl Statement {
@@ -188,7 +193,8 @@ impl Statement {
             | Self::PutCountersOnMatch
             | Self::BattlefieldOrHand
             | Self::Cleanup
-            | Self::RevealPump => Reading::Plain,
+            | Self::RevealPump
+            | Self::IfFoundOthersGraveyardMatchOnTop => Reading::Plain,
             Self::HandOthersGraveyard | Self::BattlefieldGraveyard => Reading::Gated,
         }
     }
@@ -246,6 +252,9 @@ fn first_statement(
         }
         if mode == LibraryConsultModeAst::Reveal && reveal_pump(next).is_some() {
             return Some(Statement::RevealPump);
+        }
+        if mode == LibraryConsultModeAst::Reveal && if_found_others_graveyard_match_on_top(next) {
+            return Some(Statement::IfFoundOthersGraveyardMatchOnTop);
         }
         if cleanup(next).is_some() {
             return Some(Statement::Cleanup);
@@ -773,6 +782,21 @@ pub(super) fn continue_with(
                 .push(reveal_pump(sentence).expect("the statement was recognized"));
             group.pumped = true;
         }
+        Statement::IfFoundOthersGraveyardMatchOnTop => {
+            // The revealed cards stay on top of the library in reveal order,
+            // so removing every revealed card except the match leaves the
+            // match on top.
+            group
+                .followups
+                .push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TaggedMatches(
+                        crate::tag::TagRef::of(match_tag.clone()),
+                        ObjectFilter::default(),
+                    ),
+                    if_true: vec![others_into_graveyard(all_tag, match_tag)],
+                    if_false: Vec::new(),
+                }));
+        }
         Statement::HandExileOthers => {
             group.followups.push(EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
@@ -882,6 +906,22 @@ pub(super) fn continue_with(
     }
     group.consumed += 1;
     Ok(true)
+}
+
+/// "If it is, that player puts the rest of the revealed cards into their
+/// graveyard and puts the card with the chosen name on top of their library."
+fn if_found_others_graveyard_match_on_top(next: &SentenceInput) -> bool {
+    let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        next.lowered(),
+    ));
+    matches!(
+        words.as_slice(),
+        [
+            "if", "it", "is" | "was", "that" | "the", "player", "puts", "the", "rest", "of", "the",
+            "revealed", "cards", "into", "their", "graveyard", "and", "puts", "the", "card", "with",
+            "the", "chosen", "name", "on", "top", "of", "their", "library",
+        ]
+    )
 }
 
 fn controller(controller_you: bool) -> ReturnControllerAst {

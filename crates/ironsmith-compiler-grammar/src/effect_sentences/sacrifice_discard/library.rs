@@ -6,6 +6,102 @@ pub fn parse_discard(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
+    // "discard a card of target opponent's choice" / "discards a card of your
+    // choice" (Rakdos Augermage): another player picks the card from the
+    // discarding player's hand, then that card is discarded.
+    {
+        let words = crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens));
+        let chooser = match words.as_slice() {
+            ["a", "card", "of", "your", "choice"] => Some(PlayerAst::You),
+            ["a", "card", "of", "target", "opponent's" | "opponents" | "opponent’s", "choice"] => {
+                Some(PlayerAst::TargetOpponent)
+            }
+            ["a", "card", "of", "that", "player's" | "players" | "player’s", "choice"] => {
+                Some(PlayerAst::That)
+            }
+            ["a", "card", "of", "an", "opponent's" | "opponents" | "opponent’s", "choice"] => {
+                Some(PlayerAst::Opponent)
+            }
+            _ => None,
+        };
+        if let Some(chooser) = chooser {
+            let owner = discard_subject_owner_filter(subject).unwrap_or(PlayerFilter::You);
+            let tag = crate::util::helper_tag_for_tokens(tokens, "chosen_discard");
+            let mut pool = ObjectFilter::default().owned_by(owner);
+            pool.zone = Some(Zone::Hand);
+            let mut chosen = ObjectFilter::tagged(tag.clone());
+            chosen.zone = Some(Zone::Hand);
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ObjectChoices(
+                        crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                            filter: pool,
+                            count: crate::effect::ChoiceCount::exactly(1),
+                            count_value: None,
+                            player: chooser,
+                            tag,
+                        },
+                    ),
+                    EffectAst::subject_verb_discard(
+                        player,
+                        Value::Fixed(1),
+                        false,
+                        false,
+                        Some(chosen),
+                        None,
+                    ),
+                ],
+            });
+        }
+    }
+
+    // "discards each card with the same name as a card spliced onto that
+    // spell" (CR 702.47): capture the cards spliced onto the spell, then
+    // discard every card in hand sharing a name with one of them.
+    {
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let words = crate::lexer::token_word_refs(trimmed);
+        if words.len() == trimmed.len()
+            && let [
+                "each" | "all",
+                "card" | "cards",
+                "with",
+                "the",
+                "same",
+                "name",
+                "as",
+                "a",
+                "card",
+                "spliced",
+                "onto",
+                spell_words @ ..,
+            ] = words.as_slice()
+            && !spell_words.is_empty()
+        {
+            let spell = parse_target_phrase(&trimmed[trimmed.len() - spell_words.len()..])?;
+            let tag = crate::util::helper_tag_for_tokens(tokens, "spliced_cards");
+            let mut filter = ObjectFilter::default()
+                .match_tagged(tag.clone(), TaggedOpbjectRelation::SameNameAsTagged);
+            filter.zone = Some(Zone::Hand);
+            if let Some(owner) = discard_subject_owner_filter(subject) {
+                filter.owner = Some(owner);
+            }
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::TagSplicedCards { spell, tag },
+                    EffectAst::subject_verb_discard(
+                        player,
+                        Value::Count(filter.clone()),
+                        false,
+                        false,
+                        Some(filter),
+                        None,
+                    ),
+                ],
+            });
+        }
+    }
+
     if let Some((denominator, your_hand, rounded_up)) =
         sacrifice_discard_grammar::parse_fraction_hand_discard(tokens)
     {

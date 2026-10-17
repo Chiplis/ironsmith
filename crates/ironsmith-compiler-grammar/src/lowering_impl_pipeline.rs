@@ -166,9 +166,16 @@ mod tests {
     fn time_vault_turn_skip_followup_survives_preparation() -> Result<(), CardTextError> {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Time Vault Variant");
         let text = "If you would begin your turn while this artifact is tapped, you may skip that turn instead. If you do, untap this artifact.";
+        // CR 614.10: the turn-begin replacement is a static ability of the
+        // permanent, offered before the turn begins; it must not become a
+        // resolution-time spell check.
         let (semantic, _) = parse_text_to_semantic_document(builder, text.to_string(), false)?;
         let parsed = parse_semantic_document(semantic)?;
-        normalize_parsed_document(parsed)?;
+        let prepared = normalize_parsed_document(parsed)?;
+        let lowered = lower_prepared_document_with_facts(prepared)?;
+        assert!(lowered.definition.spell_effect.is_none(), "turn-begin skip must not be a spell effect");
+        let debug = format!("{:?}", lowered.definition.abilities);
+        assert!(debug.contains("MaySkipTurnWhileSourceTappedThenUntap"), "{debug}");
         Ok(())
     }
 

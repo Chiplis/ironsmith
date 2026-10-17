@@ -46,7 +46,9 @@ mod wins_clash;
 pub use any_of::AnyOfTrigger;
 pub use becomes_tapped::BecomesTappedTrigger;
 pub use becomes_untapped::BecomesUntappedTrigger;
-pub use chapter_ability_resolved::FinalChapterAbilityResolvedTrigger;
+pub use chapter_ability_resolved::{
+    FinalChapterAbilityResolvedTrigger, FinalChapterAbilityTriggersTrigger,
+};
 pub use class_becomes_level::ClassBecomesLevelTrigger;
 pub use condition_qualified::ConditionQualifiedTrigger;
 pub use zone_gated::ZoneGatedTrigger;
@@ -79,7 +81,9 @@ pub use wins_clash::WinsClashTrigger;
 mod qualified_die_roll;
 pub use qualified_die_roll::QualifiedDieRollTrigger;
 mod damage_prevented_this_way;
-pub use damage_prevented_this_way::DamagePreventedThisWayTrigger;
+pub use damage_prevented_this_way::{
+    DamagePreventedBySourceTrigger, DamagePreventedThisWayTrigger, DamageToPlayerPreventedTrigger,
+};
 
 mod player_becomes_monarch;
 pub use player_becomes_monarch::PlayerBecomesMonarchTrigger;

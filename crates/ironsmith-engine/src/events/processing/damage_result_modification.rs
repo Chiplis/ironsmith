@@ -36,6 +36,7 @@ fn apply_damage_result_modification(
         EventModification::Halve { round_up } => {
             u128::from(if *round_up { amount.div_ceil(2) } else { amount / 2 })
         }
+        EventModification::LeaveOneCounter => u128::from(amount),
     };
     // A rules-imposed maximum (an event-local player-counter lock) is
     // applied mathematically before asking whether the final event fits.

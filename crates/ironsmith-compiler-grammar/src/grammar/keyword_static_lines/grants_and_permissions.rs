@@ -88,6 +88,12 @@ pub enum ManaSpendPermissionShape<'a> {
     SymbolAsAnyColorForSourceActivation {
         symbol: ManaSymbol,
     },
+    /// "You may spend white mana as though it were red mana." (Sunglasses of
+    /// Urza): one colored symbol pays pips of one other color.
+    SymbolAsSymbol {
+        symbol: ManaSymbol,
+        as_symbol: ManaSymbol,
+    },
 }
 
 pub fn parse_mana_value_grant_tokens(tokens: &[OwnedLexToken]) -> Option<ManaValueGrantSpec<'_>> {
@@ -148,6 +154,7 @@ pub fn parse_mana_spend_permission_tokens(
         tokens,
         alt((
             parse_symbol_mana_spend_lexed,
+            parse_symbol_as_symbol_mana_spend_lexed,
             parse_symbol_source_activation_mana_spend_lexed,
             parse_any_type_cast_mana_spend_lexed,
             parse_any_type_activation_mana_spend_lexed,
@@ -373,6 +380,29 @@ fn parse_symbol_mana_spend_lexed<'a>(
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(ManaSpendPermissionShape::SymbolAsAnyColorOtherAsColorless { symbol })
+}
+
+fn colored_mana_word<'a>(input: &mut LexStream<'a>) -> WResult<ManaSymbol> {
+    alt((
+        primitives::kw("white").value(ManaSymbol::White),
+        primitives::kw("blue").value(ManaSymbol::Blue),
+        primitives::kw("black").value(ManaSymbol::Black),
+        primitives::kw("red").value(ManaSymbol::Red),
+        primitives::kw("green").value(ManaSymbol::Green),
+    ))
+    .parse_next(input)
+}
+
+fn parse_symbol_as_symbol_mana_spend_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ManaSpendPermissionShape<'a>> {
+    primitives::phrase(&["you", "may", "spend"]).parse_next(input)?;
+    let symbol = colored_mana_word.parse_next(input)?;
+    primitives::phrase(&["mana", "as", "though", "it", "were"]).parse_next(input)?;
+    let as_symbol = colored_mana_word.parse_next(input)?;
+    primitives::kw("mana").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ManaSpendPermissionShape::SymbolAsSymbol { symbol, as_symbol })
 }
 
 fn parse_symbol_source_activation_mana_spend_lexed<'a>(

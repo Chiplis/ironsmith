@@ -247,6 +247,20 @@ fn prepare_token_proposal(
         })?;
     }
     materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
+    // CR 122.6: counters a token "enters with" are part of its entry event;
+    // their amounts are fixed as the instruction resolves.
+    let mut initial_counters = Vec::with_capacity(effect.entry_counters.len());
+    for counter in &effect.entry_counters {
+        if counter.condition.is_some() || counter.object_filter.is_some() {
+            return Err(ExecutionError::InternalError(
+                "conditional token entry counters are not a token-creation instruction".into(),
+            ));
+        }
+        let amount = resolve_value(game, &counter.amount, ctx)?.max(0) as u32;
+        if amount > 0 {
+            initial_counters.push((counter.counter_type, amount));
+        }
+    }
     let token_preview = crate::object::Object::from_token_definition(
         ObjectId::from_raw(0),
         &resolved_token,
@@ -255,7 +269,7 @@ fn prepare_token_proposal(
     Ok(TokenProposal {
         effect: effect.clone(),
         resolved_token,
-        initial_counters: Vec::new(),
+        initial_counters,
         completion: None,
         token_preview: Some(token_preview),
         controller: controller_id,
@@ -329,7 +343,7 @@ pub(crate) fn create_tokens_with_entry_counters_with_outputs(
     completion: Option<(crate::events::KeywordActionKind, u32)>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let mut proposal = prepare_token_proposal(effect, game, ctx)?;
-    proposal.initial_counters = counters;
+    proposal.initial_counters.extend(counters);
     proposal.completion = completion;
     complete_token_proposal(proposal, game, ctx)
 }

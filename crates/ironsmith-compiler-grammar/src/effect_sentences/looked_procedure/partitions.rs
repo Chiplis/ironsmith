@@ -71,6 +71,7 @@ pub(super) fn exiled_permission(sentence: &SentenceInput, exiled: TagKey) -> Opt
             filter,
             during_turns_counter_put_on_source: None,
             during_turns_attacked_with: None,
+            during_turns_cast_another_spell: false,
             ..
         }) => Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(

@@ -74,6 +74,13 @@ pub enum AnthemCountExpression {
     /// Mana symbols of `color` in the affected object's mana cost (chroma,
     /// CR 702.49; hybrid symbols count). Appended.
     ManaSymbolsOfColorInAffectedCost(crate::Color),
+    /// "for each point of bushido it has" (Takeno, Samurai General): the
+    /// affected creature's total bushido, summed over its bushido instances
+    /// (CR 702.45b). Appended.
+    BushidoOfAffected,
+    /// The source's current power ("as long as Kianne's power is even",
+    /// Kianne, Corrupted Memory). Appended.
+    SourcePower,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -122,6 +129,7 @@ impl AnthemValue {
                     AnthemCountExpression::AttachedToAffected(_)
                     | AnthemCountExpression::ColorsOfAffected
                     | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_)
+                    | AnthemCountExpression::BushidoOfAffected
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
                 ..
@@ -130,6 +138,7 @@ impl AnthemValue {
                 count:
                     AnthemCountExpression::AttachedToAffected(_)
                     | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_)
+                    | AnthemCountExpression::BushidoOfAffected
                     | AnthemCountExpression::ColorsOfAffected
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
@@ -333,6 +342,42 @@ mod controller_state_anthem_value_tests {
             assert!(!supports_controller_state_anthem_value(&value), "{value:?}");
         }
     }
+}
+
+/// Recipient-relative quantities an Aura's anthem reads while layer 7c applies
+/// it (Snowblind): the affected creature's own power or toughness as layered
+/// so far ("enchanted creature's toughness minus 1"), and counts of objects
+/// controlled by the enchanted creature's controller or by the defending
+/// player. They must be evaluated per recipient inside the P/T layer, never
+/// once at discovery.
+pub fn supports_recipient_relative_anthem_value(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::Fixed(_) => true,
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) => {
+            matches!(spec.unhinted(), crate::ChooseSpec::Iterated)
+        }
+        Value::Count(filter) => recipient_relative_count_filter(filter),
+        Value::Scaled(inner, _) => supports_recipient_relative_anthem_value(inner),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            supports_recipient_relative_anthem_value(left)
+                && supports_recipient_relative_anthem_value(right)
+        }
+        _ => false,
+    }
+}
+
+fn recipient_relative_count_filter(filter: &ObjectFilter) -> bool {
+    let relative_controller = match &filter.controller {
+        Some(PlayerFilter::Defending) => true,
+        Some(PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))) => tag.as_str() == "enchanted",
+        _ => false,
+    };
+    if !relative_controller {
+        return false;
+    }
+    let mut independent = filter.clone();
+    independent.controller = Some(PlayerFilter::You);
+    controller_state_filter(&independent)
 }
 
 /// Statically bound object quantities with an explicit source/recipient anchor.

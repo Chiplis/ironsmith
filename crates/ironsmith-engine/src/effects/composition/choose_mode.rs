@@ -98,6 +98,7 @@ impl EffectExecutor for ChooseModeEffect {
             distinct_player_targets_per_mode: self.distinct_player_targets_per_mode,
             conditional_mode_range: self.conditional_mode_range.clone(),
             cast_chooser: self.cast_chooser.clone(),
+            optional_choice: self.optional_choice,
         })
     }
 

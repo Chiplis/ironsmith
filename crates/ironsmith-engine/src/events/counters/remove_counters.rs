@@ -21,6 +21,9 @@ pub struct RemoveCountersEvent {
     pub source: Option<ObjectId>,
     pub actor: Option<PlayerId>,
     pub cause: EventCause,
+    /// This removal is the result of damage dealt to a planeswalker or
+    /// battle (CR 120.3c-d), not an instruction or cost.
+    pub from_damage: bool,
 }
 
 impl RemoveCountersEvent {
@@ -33,7 +36,14 @@ impl RemoveCountersEvent {
             source: None,
             actor: None,
             cause: EventCause::effect(),
+            from_damage: false,
         }
+    }
+
+    /// Mark this removal as the result of damage (CR 120.3c-d).
+    pub fn as_damage_result(mut self) -> Self {
+        self.from_damage = true;
+        self
     }
 
     pub fn with_attribution(mut self, source: Option<ObjectId>, actor: Option<PlayerId>) -> Self {

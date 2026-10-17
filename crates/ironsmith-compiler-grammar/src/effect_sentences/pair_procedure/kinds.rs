@@ -111,6 +111,66 @@ pub(super) fn open_chosen_creature_type(
     Ok(None)
 }
 
+/// "When this artifact enters, draw a card, then choose a color. This
+/// artifact becomes the chosen color." (Puca's Eye): the color is chosen once
+/// and sets the object's color, exactly "becomes the color of your choice".
+pub(super) fn open_chosen_color_become(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Pair>, CardTextError> {
+    let (Some(sentence), Some(next)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    let first = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let len = first.len();
+    if len < 3
+        || !first[len - 3..]
+            .iter()
+            .zip(["choose", "a", "color"])
+            .all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let mut prefix = &first[..len - 3];
+    while prefix
+        .last()
+        .is_some_and(|token| token.is_comma() || token.is_word("then"))
+    {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+    let second = crate::util::trim_edge_punctuation_tokens(next.lowered());
+    let Some(become_idx) = second
+        .iter()
+        .position(|token| token.is_any_word(&["becomes", "become"]))
+    else {
+        return Ok(None);
+    };
+    let tail = &second[become_idx + 1..];
+    if become_idx == 0
+        || tail.len() < 3
+        || !tail[..3]
+            .iter()
+            .zip(["the", "chosen", "color"])
+            .all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let mut become_tokens =
+        crate::lexer::synthetic_word_tokens(["the", "color", "of", "your", "choice"]);
+    become_tokens.extend_from_slice(&tail[3..]);
+    let mut effects = if prefix.is_empty() {
+        Vec::new()
+    } else {
+        crate::effect_sentences::chain_carry::parse_effect_chain(prefix)?
+    };
+    effects.push(crate::effect_sentences::clause_dispatch::parse_become_clause(
+        &second[..become_idx],
+        &become_tokens,
+    )?);
+    Ok(Some(Pair::ChosenColorBecome(effects)))
+}
+
 pub(super) fn open_delayed_upkeep_payment(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -288,7 +348,43 @@ pub(super) fn open_copy_next_spell_retarget(
             copy_next_spell_delayed_trigger(filter, vec![copy_triggering_spell(1)]),
         )));
     }
+    if is_copy_next_loyalty_ability_sentence(sentence) && is_copy_retarget_sentence(next) {
+        return Ok(Some(Pair::CopyNextSpellRetarget(
+            copy_next_loyalty_ability_delayed_trigger(vec![copy_triggering_spell(1)]),
+        )));
+    }
     Ok(None)
+}
+
+/// "copy the next loyalty ability you activate this turn when you activate
+/// it" (Jaya's Phoenix).
+fn is_copy_next_loyalty_ability_sentence(sentence: &SentenceInput) -> bool {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let words = crate::lexer::token_word_refs(tokens);
+    words.len() == tokens.len()
+        && words.as_slice()
+            == [
+                "copy", "the", "next", "loyalty", "ability", "you", "activate", "this", "turn",
+                "when", "you", "activate", "it",
+            ]
+}
+
+/// A one-shot delayed trigger on your next loyalty-ability activation this
+/// turn; the copy reads that ability as the triggering stack object.
+fn copy_next_loyalty_ability_delayed_trigger(effects: Vec<EffectAst>) -> EffectAst {
+    EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: crate::cards::builders::TriggerSpec::AbilityActivated {
+            activator: crate::target::PlayerFilter::You,
+            filter: crate::target::ObjectFilter::default(),
+            non_mana_only: false,
+            loyalty_only: true,
+            activation_cost_has_tap: None,
+        },
+        effects,
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    })
 }
 
 /// "Copy the next instant or sorcery spell with mana value 2 or less you

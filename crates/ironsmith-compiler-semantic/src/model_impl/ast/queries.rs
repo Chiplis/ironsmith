@@ -100,6 +100,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn {
                 target,
@@ -150,6 +151,7 @@ pub fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst> {
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
                 target: Some(target),
                 ..
@@ -319,7 +321,8 @@ pub fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
             _ => false,
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
             let mut applied = false;
             for mode in modes {
                 applied |= apply_cant_be_regenerated_to_effects_tail(&mut mode.effects);

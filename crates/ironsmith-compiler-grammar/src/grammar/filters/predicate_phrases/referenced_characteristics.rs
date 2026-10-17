@@ -68,6 +68,18 @@ pub(super) fn parse_referenced_characteristic_state(
         filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(tokens));
         return Ok(Some(demonstrative_match_predicate(filter, when)));
     }
+    // "If that spell was all colors" (Jenson Carthalion) / "If that card was
+    // all colors" (Jared Carthalion): the referenced object is all five colors.
+    if let Some((descriptor, negative, _, _, when)) = demonstrative_descriptor_filter_tokens(tokens)
+        && LexedClause::new(&descriptor).word_refs().as_slice() == ["all", "colors"]
+    {
+        let mut filter = ObjectFilter {
+            all_colors: Some(!negative),
+            ..Default::default()
+        };
+        filter.set_demonstrative_antecedent_surface(demonstrative_antecedent_surface(tokens));
+        return Ok(Some(demonstrative_match_predicate(filter, when)));
+    }
     if let Some(index) = words
         .windows(4)
         .position(|words| words == ["was", "attached", "to", "it"])

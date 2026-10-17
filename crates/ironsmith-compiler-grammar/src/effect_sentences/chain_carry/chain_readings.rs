@@ -88,6 +88,18 @@ pub(super) const CHAIN_COMPOSITION_REGISTRY: RuleId = RuleId::new("chain-composi
 /// The readings, in the order they were ranked.
 const CHAIN_READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("effect-and-delayed-schedule"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_effect_and_delayed_schedule(input)),
+    },
+    Reading {
+        id: RuleId::new("put-triggering-counter-kind"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_put_triggering_counter_kind(input)),
+    },
+    Reading {
         id: RuleId::new("die-result-arithmetic"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -748,6 +760,11 @@ fn read_additional_phases(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, C
             shape.phases,
         )]));
     }
+    if let Some(effect) =
+        crate::effect_sentences::zone_handlers::parse_there_is_additional_step_sentence(tokens)
+    {
+        return Ok(Some(vec![effect]));
+    }
     Ok(None)
 }
 fn read_tap_object_union_then(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -864,6 +881,9 @@ fn read_any_player_or_opponent_may(
     input: &Chain<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if let Some(offer) = parse_any_other_player_may_pay_lexed(tokens)? {
+        return Ok(Some(vec![offer]));
+    }
     // "Any player may pay ..." is a turn-order offer that ends when one
     // player accepts, rather than a single optional action performed by an
     // arbitrary player. Keep the payer and payer-relative dynamic values
@@ -906,6 +926,36 @@ fn read_any_player_or_opponent_may(
         }
     }
     Ok(None)
+}
+/// "Whenever a player casts a spell, any other player may pay ..." (Ice
+/// Cave): the same turn-order offer as "any player may pay", made to every
+/// player except the one the trigger names (the triggering spell's
+/// controller).
+pub fn parse_any_other_player_may_pay_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["any", "other", "player", "may", "pay"]) {
+        return Ok(None);
+    }
+    let stripped = remove_through_first_word(tokens);
+    let stripped = crate::util::trim_edge_punctuation_tokens(&stripped);
+    if !stripped.first().is_some_and(|token| token.is_word("pay")) {
+        return Ok(None);
+    }
+    let payment = super::super::zone_handlers::parse_pay(
+        crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
+        Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
+    )?;
+    Ok(Some(EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
+        players: PlayerFilter::Excluding {
+            base: Box::new(PlayerFilter::Any),
+            excluded: Box::new(PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::Triggering.bind(),
+            ))),
+        },
+        effects: vec![payment],
+    })))
 }
 fn read_any_player_may_sacrifice(
     input: &Chain<'_>,
@@ -1002,6 +1052,25 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
             bind_implicit_player_context(&mut permission, player);
             return Ok(Some(vec![permission]));
         }
+        // "you may pay {G} up to three times" (Tranquil Frillback): a bounded
+        // repeated optional payment whose result counts the payments made.
+        if let Some((max, body)) = split_up_to_times_suffix(&stripped)
+            && let Ok(mut effects) = parse_effect_chain_lexed(body)
+            && is_repeatable_optional_payment(&effects)
+        {
+            for effect in &mut effects {
+                bind_implicit_player_context(effect, player);
+            }
+            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                    player,
+                    effects,
+                })],
+                continue_effect_index: 0,
+                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                max_iterations: Some(max),
+            })]));
+        }
         let stripped_words = crate::lexer::parser_token_word_refs(&stripped);
         let has_copy_exception =
             crate::slice_primitives::select_last_position(&stripped_words, |word| {
@@ -1019,6 +1088,13 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
                 .is_some()
             });
         let mut effects = if let Some(effect) =
+            super::super::damage_counter_replacement::parse(&stripped)?
+        {
+            // "may choose that for each 1 damage that would be dealt to you
+            // ..., you remove ... instead" (Soul Echo): one replacement, not
+            // a comma-split chain.
+            vec![effect]
+        } else if let Some(effect) =
             super::super::dispatch_entry::parse_complete_become_statement(&stripped)?
         {
             vec![effect]
@@ -1050,6 +1126,7 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
                     })],
                     continue_effect_index: 0,
                     continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                    max_iterations: None,
                 },
             )]));
         }
@@ -1074,6 +1151,17 @@ fn read_leading_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
         if let Some(permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
             return Ok(Some(vec![permission]));
         }
+        if let Some((max, body)) = split_up_to_times_suffix(&stripped)
+            && let Ok(effects) = parse_effect_chain_lexed(body)
+            && is_repeatable_optional_payment(&effects)
+        {
+            return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
+                continue_effect_index: 0,
+                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                max_iterations: Some(max),
+            })]));
+        }
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
@@ -1089,6 +1177,7 @@ fn read_leading_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
                     effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
                     continue_effect_index: 0,
                     continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                    max_iterations: None,
                 },
             )]));
         }
@@ -1333,6 +1422,41 @@ fn read_coordinated_and_segments(
 
 // A numeric modifier belongs to the same random instruction. Splitting at
 // "and" would misread the modifier as a mana-producing add action.
+/// "[they|you] put the same number and kind of counters on <target>"
+/// (Captain Marvel, Bold Plagiarist): the counters copy the triggering
+/// counter placement. The "and" is part of the noun phrase, not a
+/// coordination of two actions.
+fn read_put_triggering_counter_kind(
+    input: &Chain<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation(input.tokens);
+    let words = crate::lexer::token_word_refs(&tokens);
+    let Some(put) = words.iter().position(|word| matches!(*word, "put" | "puts")) else {
+        return Ok(None);
+    };
+    if !matches!(
+        &words[..put],
+        [] | ["you"] | ["they"] | ["that", "player"] | ["its", "controller"]
+    ) {
+        return Ok(None);
+    }
+    let after = &words[put + 1..];
+    const NOUN: usize = 8;
+    if after.len() <= NOUN
+        || !(after[..NOUN] == ["the", "same", "number", "and", "kind", "of", "counters", "on"]
+            || after[..NOUN] == ["the", "same", "kind", "and", "number", "of", "counters", "on"])
+    {
+        return Ok(None);
+    }
+    let token_view = TokenWordView::new(&tokens);
+    let starts = token_view.token_start_indices();
+    let Some(&target_start) = starts.get(put + 1 + NOUN) else {
+        return Ok(None);
+    };
+    let target = crate::util::parse_target_phrase(&tokens[target_start..])?;
+    Ok(Some(vec![EffectAst::PutTriggeringCounterKind { target }]))
+}
+
 fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     let start = if tokens.first().is_some_and(|token| token.is_word("you")) { 1 } else { 0 };
@@ -1345,4 +1469,88 @@ fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>
         || tail.get(2).is_some_and(|token| token.kind == crate::lexer::TokenKind::ManaGroup)
     { return Ok(None); }
     super::super::zone_handlers::misc_actions::parse_roll(body, None).map(|effect| Some(vec![effect]))
+}
+
+/// "this creature assigns no combat damage this turn and at the beginning of
+/// your next main phase this turn, you add an amount of {C} equal to the
+/// amount of mana that player lost this way" (Pygmy Hippo): an action
+/// coordinated with a complete delayed schedule sentence. The coordinated
+/// segment reader would hand the delayed half to the trigger-line reader.
+fn read_effect_and_delayed_schedule(
+    input: &Chain<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = input.tokens;
+    let Some(and_idx) = (1..tokens.len()).find(|&idx| {
+        tokens[idx].is_word("and")
+            && tokens.get(idx + 1).is_some_and(|next| next.is_word("at"))
+            && crate::grammar::effects::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(
+                &tokens[idx + 1..],
+            )
+            .is_some()
+    }) else {
+        return Ok(None);
+    };
+    let (head, tail) = (&tokens[..and_idx], &tokens[and_idx + 1..]);
+    let Ok(mut effects) = crate::effect_sentences::parse_effect_sentence_lexed(head) else {
+        return Ok(None);
+    };
+    let Ok(mut delayed) = crate::effect_sentences::parse_effect_sentence_lexed(tail) else {
+        return Ok(None);
+    };
+    if effects.is_empty() || delayed.is_empty() {
+        return Ok(None);
+    }
+    for effect in &mut delayed {
+        freeze_prior_result_amount_into_delayed(effect);
+    }
+    effects.extend(delayed);
+    Ok(Some(effects))
+}
+
+/// A delayed body can't read the scheduling instruction's result when it
+/// resolves later. Bind that amount as X while scheduling and let the body
+/// read X, which the delayed trigger retains.
+pub(crate) fn freeze_prior_result_amount_into_delayed(effect: &mut EffectAst) {
+    fn take_prior_result_amount(effect: &mut EffectAst) -> Option<crate::effect::Value> {
+        use crate::cards::builders::{LifeResourceActionAst, ManaActionAst};
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
+            let slot = match &mut subject_verb.action {
+                SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                    count: amount,
+                }) => Some(amount),
+                _ => None,
+            };
+            if let Some(slot) = slot
+                && matches!(
+                    slot.unhinted(),
+                    crate::effect::Value::PendingPriorEffectMetric(_)
+                )
+            {
+                return Some(std::mem::replace(slot, crate::effect::Value::X));
+            }
+        }
+        let mut found = None;
+        crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+            for inner in nested {
+                if found.is_none() {
+                    found = take_prior_result_amount(inner);
+                }
+            }
+        });
+        found
+    }
+    if !matches!(effect, EffectAst::Delayed(_)) {
+        return;
+    }
+    let Some(value) = take_prior_result_amount(effect) else {
+        return;
+    };
+    let delayed = std::mem::replace(effect, EffectAst::ResolvesDespiteIllegalTargets);
+    *effect = EffectAst::BindX {
+        value,
+        effects: vec![delayed],
+    };
 }

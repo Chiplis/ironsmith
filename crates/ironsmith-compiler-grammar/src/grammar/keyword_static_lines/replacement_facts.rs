@@ -42,6 +42,9 @@ pub enum CounterReplacementShape<'a> {
     PlusOneAdd {
         filter_tokens: &'a [OwnedLexToken],
         additional: u32,
+        /// "If a modular triggered ability would put ...": only placements
+        /// caused by that kind of resolving ability (CR 702.43a).
+        ability_kind: Option<ironsmith_core::CauseAbilityKindFilter>,
     },
     PlusOneDouble {
         filter_tokens: &'a [OwnedLexToken],
@@ -162,12 +165,12 @@ pub fn parse_counter_replacement_tokens(
             parse_player_counter_per_turn_limit_lexed,
             parse_counter_adjustment_lexed,
             parse_plus_one_add_lexed,
+            parse_ability_caused_plus_one_add_lexed,
             parse_plus_one_double_lexed,
             parse_any_kind_add_lexed,
             parse_player_any_kind_add_lexed,
             parse_actor_any_kind_multiply_lexed,
-            parse_actor_any_kind_add_lexed,
-            parse_any_kind_double_lexed,
+            alt((parse_actor_any_kind_add_lexed, parse_any_kind_double_lexed)),
         )),
         "counter replacement",
     )
@@ -801,6 +804,53 @@ fn parse_plus_one_add_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CounterRep
     Ok(CounterReplacementShape::PlusOneAdd {
         filter_tokens: trim_lexed_commas(filter_tokens),
         additional,
+        ability_kind: None,
+    })
+}
+
+/// "If a modular triggered ability would put one or more +1/+1 counters on a
+/// creature you control, that many plus one +1/+1 counters are put on it
+/// instead." (Zabaz, the Glimmerwasp)
+fn parse_ability_caused_plus_one_add_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<CounterReplacementShape<'a>> {
+    primitives::kw("if").parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let ability_kind = alt((
+        primitives::phrase(&["modular", "triggered", "ability"])
+            .value(ironsmith_core::CauseAbilityKindFilter::ModularTrigger),
+        primitives::phrase(&["triggered", "ability"])
+            .value(ironsmith_core::CauseAbilityKindFilter::Triggered),
+        primitives::phrase(&["activated", "ability"])
+            .value(ironsmith_core::CauseAbilityKindFilter::Activated),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&[
+        "would", "put", "one", "or", "more", "+1/+1", "counters", "on",
+    ])
+    .parse_next(input)?;
+    let filter_tokens = take_until_replacement_phrase(input, &["that", "many", "plus"])?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["that", "many", "plus"]).parse_next(input)?;
+    let additional = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+    opt((
+        primitives::kw("+1/+1"),
+        alt((primitives::kw("counter"), primitives::kw("counters"))),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["are", "put", "on"]).parse_next(input)?;
+    alt((
+        primitives::kw("it").void(),
+        primitives::phrase(&["that", "creature"]),
+        primitives::phrase(&["that", "permanent"]),
+    ))
+    .parse_next(input)?;
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(CounterReplacementShape::PlusOneAdd {
+        filter_tokens: trim_lexed_commas(filter_tokens),
+        additional,
+        ability_kind: Some(ability_kind),
     })
 }
 

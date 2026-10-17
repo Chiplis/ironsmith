@@ -98,6 +98,8 @@ pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<Obje
     for p in game.players.iter() {
         sources.extend(p.library.last().copied());
     }
+    // A resolving permission can name another player's revealed hand.
+    sources.extend(other_players_granted_hand_cards(game, player));
     sources.extend(game.command_zone.iter().copied());
     if let Some(p) = game.player(player) {
         sources.extend(p.sideboard.iter().copied());
@@ -129,6 +131,34 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
 /// Enumerate authoritative spell faces before querying marked readers. A
 /// permission may match only Bestow/Prototype/the linked face; ordinary absence
 /// on another face is not missing evidence and must not poison the menu.
+/// Several independent usage-limited permissions from one source can authorize
+/// the same card (one budget per permanent type, and a card with two of those
+/// types). Which budget the play spends is the player's choice as it is played,
+/// so each budget is offered as an exact permission rather than the engine's
+/// first match. An unlimited permission from that source spends no budget.
+pub(crate) fn is_limited_budget_choice(
+    game: &GameState, player: PlayerId, grants: &[crate::grant_registry::Grant],
+    grant: &crate::grant_registry::Grant,
+) -> bool {
+    let source = grant.source.source_id();
+    let plain = |candidate: &crate::grant_registry::Grant| {
+        matches!(candidate.grantable, crate::grant::Grantable::PlayFrom)
+            && candidate.source.source_id() == source
+            && candidate.play_from_constraints.cast_mana_spend_mode.is_normal()
+    };
+    if !plain(grant) || grant.usage_limit.is_none() || grant.shared_usage_id.is_some()
+        || grants.iter().any(|candidate| plain(candidate)
+            && candidate.usage_limit.is_none() && candidate.shared_usage_id.is_none())
+    {
+        return false;
+    }
+    grants.iter().any(|candidate| plain(candidate)
+        && candidate.usage_limit.is_some()
+        && candidate.shared_usage_id.is_none()
+        && candidate.permission_identity != grant.permission_identity
+        && grant_usage_limit_allows(game, player, candidate.permission_identity.as_ref(), candidate.usage_limit))
+}
+
 fn append_exact_permission_actions_for_card(
     game: &GameState, actions: &mut Vec<LegalAction>, player: PlayerId,
     card: &crate::object::Object, zone: Zone, view: &DerivedGameView<'_>,
@@ -162,7 +192,8 @@ fn append_exact_permission_actions_for_card_selected(
         if let Some(error) = query.token_resource_failure() { return Err(error); }
         for (index, grant) in grants.iter().enumerate() {
             if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
-                || selected.map_or(grant.play_from_constraints.cast_mana_spend_mode.is_normal(), |selected|
+                || selected.map_or(grant.play_from_constraints.cast_mana_spend_mode.is_normal()
+                    && !is_limited_budget_choice(&query, player, &grants, grant), |selected|
                     grant.permission_identity.as_ref() != Some(&selected.identity) || grant.source.source_id() != selected.source)
                 || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
             let identity = grant.permission_identity.clone().ok_or_else(|| crate::effects::ExecutionError::IncompleteEvidence(
@@ -281,9 +312,17 @@ fn append_granted_play_from_actions_for_card(
     view: &DerivedGameView<'_>,
 ) -> Result<(), crate::effects::ExecutionError> {
     append_exact_permission_actions_for_card(game, actions, player, card, source_zone, view)?;
+    // Budget choices were offered above as exact permissions; an unselected
+    // action here would let the engine pick the budget instead of the player.
+    let budget_choice_sources = {
+        let grants = game.effect_store.grant_registry.get_grants_for_card(game, card_id, source_zone, player);
+        grants.iter().filter(|grant| is_limited_budget_choice(game, player, &grants, grant))
+            .map(|grant| grant.source.source_id()).collect::<Vec<_>>()
+    };
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
         if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
+        if grant.usage_limit.is_some() && budget_choice_sources.contains(&grant.source_id) { continue; }
         if !grant_usage_limit_allows(
             game,
             player,
@@ -1191,6 +1230,40 @@ fn add_land_actions(
         }
         push_back_face_land_play_action(game, actions, player, card_id, card)?;
     }
+    for card_id in other_players_granted_hand_cards(game, player) {
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        if !requested_action_source(card_id)
+            || (!card.is_land()
+                && crate::decision::linked_other_face_land_definition(game, card).is_none())
+        {
+            continue;
+        }
+        let action = SpecialAction::PlayLand { card_id };
+        if special_action_is_legal(can_perform_check(&action, game, player))? {
+            actions.push(LegalAction::PlayLand { land_id: card_id });
+        }
+        push_back_face_land_play_action(game, actions, player, card_id, card)?;
+    }
+    if library_has_active_grants {
+        for card_id in other_players_granted_library_tops(game, player) {
+            let Some(card) = game.object(card_id) else {
+                continue;
+            };
+            if !requested_action_source(card_id)
+                || (!card.is_land()
+                    && crate::decision::linked_other_face_land_definition(game, card).is_none())
+            {
+                continue;
+            }
+            let action = SpecialAction::PlayLand { card_id };
+            if special_action_is_legal(can_perform_check(&action, game, player))? {
+                actions.push(LegalAction::PlayLand { land_id: card_id });
+            }
+            push_back_face_land_play_action(game, actions, player, card_id, card)?;
+        }
+    }
     Ok(())
 }
 
@@ -1220,13 +1293,32 @@ fn add_hand_special_actions(
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     hand_summaries: &[HandCardSummary<'_>],
+    hand_has_active_grants: bool,
 ) -> Result<(), crate::effects::ExecutionError> {
     for summary in hand_summaries {
-        if !summary.has_any_hand_special_action() {
+        // A granted special-action keyword ("Each nonland card in your hand
+        // without foretell has foretell", Dream Devourer) offers the same
+        // hand action as a printed one.
+        let granted: Vec<crate::alternative_cast::AlternativeCastingMethod> =
+            if hand_has_active_grants {
+                game.effect_store
+                    .grant_registry
+                    .granted_alternative_casts_for_card(game, summary.card_id, Zone::Hand, player)
+                    .into_iter()
+                    .map(|granted| granted.method)
+                    .filter(|method| {
+                        crate::alternative_cast::hand_special_action(method, summary.card_id)
+                            .is_some()
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+        if !summary.has_any_hand_special_action() && granted.is_empty() {
             continue;
         }
         let mut offered = Vec::new();
-        for method in &summary.card.alternative_casts {
+        for method in summary.card.alternative_casts.iter().chain(granted.iter()) {
             let Some(action) =
                 crate::alternative_cast::hand_special_action(method, summary.card_id)
             else {
@@ -1281,29 +1373,87 @@ fn add_library_cast_actions(
     if !library_has_active_grants {
         return Ok(());
     }
-    let Some(card_id) = game
+    if let Some(card_id) = game
         .player(player)
         .and_then(|player_obj| player_obj.library.last().copied())
-    else {
-        return Ok(());
-    };
-    if !requested_action_source(card_id) {
-        return Ok(());
+        && requested_action_source(card_id)
+        && let Some(card) = game.object(card_id)
+    {
+        append_cast_actions_from_zone_for_card(
+            game,
+            actions,
+            player,
+            card_id,
+            card,
+            Zone::Library,
+            view,
+            true,
+        )?;
     }
-    let Some(card) = game.object(card_id) else {
-        return Ok(());
-    };
-    append_cast_actions_from_zone_for_card(
-        game,
-        actions,
-        player,
-        card_id,
-        card,
-        Zone::Library,
-        view,
-        true,
-    )?;
+    // A resolved permission can name another player's library top ("you may
+    // play the top card of their library"); only a grant to this player that
+    // covers that exact top opens it.
+    for card_id in other_players_granted_library_tops(game, player) {
+        if !requested_action_source(card_id) {
+            continue;
+        }
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        append_cast_actions_from_zone_for_card(
+            game,
+            actions,
+            player,
+            card_id,
+            card,
+            Zone::Library,
+            view,
+            true,
+        )?;
+    }
     Ok(())
+}
+
+/// Cards in other players' hands that a resolving permission to `player`
+/// covers ("You may play lands and cast spells from that player's hand this
+/// turn", Sen Triplets). Such a permission is granted only alongside a
+/// public reveal of that hand, so the covered cards are public information.
+fn other_players_granted_hand_cards(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    if !game.effect_store.grant_registry.grants.iter().any(|grant| {
+        grant.zone == Zone::Hand
+            && grant.player == player
+            && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+    }) {
+        return Vec::new();
+    }
+    game.players
+        .iter()
+        .filter(|other| other.id != player)
+        .flat_map(|other| other.hand.iter().copied())
+        .filter(|&card_id| {
+            !game
+                .effect_store
+                .grant_registry
+                .granted_play_from_for_card(game, card_id, Zone::Hand, player)
+                .is_empty()
+        })
+        .collect()
+}
+
+/// Other players' current library tops that a grant to `player` covers.
+fn other_players_granted_library_tops(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.players
+        .iter()
+        .filter(|other| other.id != player)
+        .filter_map(|other| other.library.last().copied())
+        .filter(|&card_id| {
+            !game
+                .effect_store
+                .grant_registry
+                .get_grants_for_card(game, card_id, Zone::Library, player)
+                .is_empty()
+        })
+        .collect()
 }
 
 /// Native exile designations authorize this exact card/copy for one player.
@@ -1488,7 +1638,8 @@ fn add_battlefield_actions(
                         ability_index,
                     }
                 }
-                crate::static_abilities::StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn => {
+                crate::static_abilities::StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
+                | crate::static_abilities::StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn => {
                     SpecialAction::IgnoreSourceEffect {
                         source_id,
                         ability_index,
@@ -1771,11 +1922,33 @@ fn compute_legal_actions_checked(
         .copied()
         .filter(|id| requested_action_source(*id))
         .collect();
-    let filtered_graveyard: Vec<_> = graveyard
+    let mut filtered_graveyard: Vec<_> = graveyard
         .iter()
         .copied()
         .filter(|id| requested_action_source(*id))
         .collect();
+    // A resolving permission over another player's graveyard ("cast a
+    // creature spell from that player's graveyard this turn", "cast spells
+    // from other players' graveyards") offers exactly the covered cards.
+    if game.effect_store.grant_registry.grants.iter().any(|grant| {
+        grant.zone == Zone::Graveyard
+            && grant.player == player
+            && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+    }) {
+        for other in game.players.iter().filter(|other| other.id != player) {
+            for &card_id in &other.graveyard {
+                if requested_action_source(card_id)
+                    && !game
+                        .effect_store
+                        .grant_registry
+                        .granted_play_from_for_card(game, card_id, Zone::Graveyard, player)
+                        .is_empty()
+                {
+                    filtered_graveyard.push(card_id);
+                }
+            }
+        }
+    }
     let hand = filtered_hand.as_slice();
     let graveyard = filtered_graveyard.as_slice();
     let mut actions = Vec::with_capacity(
@@ -1896,7 +2069,7 @@ fn compute_legal_actions_checked(
     perf.hand_casts_ms = hand_casts_started_at.elapsed_ms();
 
     let hand_special_actions_started_at = PerfTimer::start();
-    add_hand_special_actions(game, &mut actions, player, &hand_summaries)?;
+    add_hand_special_actions(game, &mut actions, player, &hand_summaries, hand_has_active_grants)?;
     perf.hand_special_actions_ms = hand_special_actions_started_at.elapsed_ms();
 
     let graveyard_casts_started_at = PerfTimer::start();
@@ -1915,6 +2088,24 @@ fn compute_legal_actions_checked(
     perf.exile_casts_ms = exile_casts_started_at.elapsed_ms();
 
     add_library_cast_actions(game, &mut actions, player, &view, library_has_active_grants)?;
+    for card_id in other_players_granted_hand_cards(game, player) {
+        if !requested_action_source(card_id) {
+            continue;
+        }
+        let Some(card) = game.object(card_id) else {
+            continue;
+        };
+        append_cast_actions_from_zone_for_card(
+            game,
+            &mut actions,
+            player,
+            card_id,
+            card,
+            Zone::Hand,
+            &view,
+            true,
+        )?;
+    }
     if view.player_has_active_grants_for_zone(player, Zone::OutsideGame) {
         for &card_id in &game.player(player).expect("active player").sideboard {
             if !requested_action_source(card_id) {
@@ -2104,6 +2295,10 @@ pub(crate) fn activation_timing_allows(
         }
         // "Only your opponents may activate this ability": the activating
         // player must be an opponent of the source's current controller.
+        // "Only this creature's owner may activate this ability".
+        crate::ability::ActivationTiming::AnyTimeBySourceOwner => game
+            .object(source)
+            .is_some_and(|object| object.owner == controller),
         crate::ability::ActivationTiming::AnyTimeByOpponents => game
             .current_controller(source)
             .is_some_and(|source_controller| game.are_opponents(controller, source_controller)),
@@ -2144,6 +2339,9 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::DuringAnyUpkeep => {
             game.turn.phase == Phase::Beginning
                 && game.turn.step == Some(crate::game_state::Step::Upkeep)
+        }
+        crate::ability::ActivationTiming::AnyTimeByGrantingPlayer(granter) => {
+            granter.is_none_or(|granter| granter == controller)
         }
         timing => activation_step_window_allows(game, controller, *timing),
     }
@@ -2232,12 +2430,30 @@ fn loyalty_activation_special_rules_allow(
 
     // CR 606.3: one loyalty activation per permanent each turn, unless an
     // effect this turn allows more ("twice this turn rather than only once").
-    let allowed = 1 + crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+    let mut allowed = 1 + crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
         game,
         controller,
         source,
         crate::effects::LoyaltyActivationAllowance::ExtraActivation,
     );
+    // Oath of Teferi: twice each turn rather than once for planeswalkers its
+    // controller controls; Urza, Planeswalker states the same for itself.
+    // Multiple such statics are redundant.
+    if game.current_has_static_ability_id(
+        source,
+        crate::static_abilities::StaticAbilityId::SourceLoyaltyAbilitiesTwiceEachTurn,
+    ) || game.object_has_card_type(source, crate::types::CardType::Planeswalker)
+        && game.battlefield.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|object| game.controller_of(object) == controller)
+                && game.current_has_static_ability_id(
+                    id,
+                    crate::static_abilities::StaticAbilityId::LoyaltyAbilitiesTwiceEachTurn,
+                )
+        })
+    {
+        allowed += 1;
+    }
     game.loyalty_activations_this_turn(source) < allowed
         && ((game.is_active_player(controller)
             && matches!(game.turn.phase, Phase::FirstMain | Phase::NextMain)
@@ -2541,6 +2757,19 @@ fn activation_precheck_with_view(
                 .cant_effects
                 .cant_activate_loyalty_abilities_of
                 .contains(&source))
+    {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
+    if !activated.is_loyalty_ability()
+        && game
+            .effect_store
+            .cant_effects
+            .cant_activate_non_mana_non_loyalty_abilities
+            .contains(&controller)
     {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());

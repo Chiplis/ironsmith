@@ -12,8 +12,10 @@ use ironsmith_core::TextChange;
 
 const A: PlayerId = PlayerId::from_index(0);
 
+// Unmodeled executors are held only when their image can hold the word.
 #[derive(Debug, Clone)]
-struct UnmodeledWords;
+#[allow(dead_code)]
+struct UnmodeledWords(&'static str);
 impl ironsmith::effects::EffectExecutor for UnmodeledWords {
     fn execute(&self, _: &mut GameState, _: &mut ironsmith::effects::EffectContext)
         -> Result<ironsmith::effect::EffectOutcome, ExecutionError>
@@ -115,7 +117,7 @@ fn unsupported_program_rolls_back_registered_text_effects_and_context_receipts()
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
         let id = game.create_object_from_definition(&target, A, Zone::Battlefield);
         std::sync::Arc::make_mut(&mut game.object_mut(id).unwrap().abilities)
-            .push(Ability::activated(ironsmith::cost::TotalCost::free(), vec![Effect::new(UnmodeledWords)]));
+            .push(Ability::activated(ironsmith::cost::TotalCost::free(), vec![Effect::new(UnmodeledWords("Human words"))]));
         game.refresh_continuous_state().unwrap();
         let count = game.effect_store.continuous_effects.effects().len();
         let timestamp = game.effect_store.continuous_effects.current_timestamp();

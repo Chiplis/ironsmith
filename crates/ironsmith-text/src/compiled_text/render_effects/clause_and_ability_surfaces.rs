@@ -1411,6 +1411,7 @@ pub(super) fn describe_shared_declared_target_grant_then_pt_pump(
         || grant.resolve_set_pt_values_at_resolution
         || pump.resolve_set_pt_values_at_resolution
         || grant.require_creature_target
+        || grant.grant_only_if_absent
         || !pump.require_creature_target
         || !grant.runtime_modifications.is_empty()
         || pump.modification.is_some()
@@ -3595,7 +3596,7 @@ fn describe_draw_then_same_cards_top_or_bottom(
         || choose.common_suffix_effect_count != 0
         || choose.disallow_previously_chosen_modes
         || choose.disallow_previously_chosen_modes_this_turn
-        || choose.distinct_player_targets_per_mode
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
         || choose.conditional_mode_range.is_some()
     {
         return None;
@@ -4285,6 +4286,7 @@ fn describe_source_animation_with_triggering_spell_color_protection(
             || grant.lock_filter_at_resolution
             || grant.resolve_set_pt_values_at_resolution
             || grant.require_creature_target
+            || grant.grant_only_if_absent
             || !matches!(
                 grant.target_spec.as_ref().map(ChooseSpec::unhinted),
                 Some(ChooseSpec::Source)
@@ -10288,6 +10290,9 @@ pub(crate) fn describe_static_ability_with_subject(
         } else {
             with_indefinite_article(&trigger.description())
         };
+        if required.source {
+            return format!("If {trigger_text} attacks, this creature also attacks if able");
+        }
         return format!(
             "If {trigger_text} attacks, all {} attack if able",
             required.description()
@@ -11384,6 +11389,8 @@ pub(crate) fn restore_modeled_value_surface(
                     ("reveal ", "revealing "),
                     ("return ", "returning "),
                     ("tap ", "tapping "),
+                    ("remove ", "removing "),
+                    ("put ", "putting "),
                 ]
                 .into_iter()
                 .find_map(|(verb, gerund)| {

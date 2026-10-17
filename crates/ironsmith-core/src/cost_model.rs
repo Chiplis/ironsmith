@@ -38,6 +38,10 @@ pub struct DynamicManaCost {
     /// binds cost-choice references before the total cost is locked.
     #[cfg_attr(feature = "serde", serde(default))]
     pub mana_cost_of: Option<Box<crate::ChooseSpec>>,
+    /// "its mana cost reduced by {2}" (Flash): generic mana removed from the
+    /// resolved cost; colored requirements are never reduced (CR 601.2f).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub generic_reduction: u32,
 }
 
 impl DynamicManaCost {
@@ -57,6 +61,7 @@ impl DynamicManaCost {
             multiplier,
             display_hint,
             mana_cost_of: None,
+            generic_reduction: 0,
         }
     }
 
@@ -90,6 +95,7 @@ impl DynamicManaCost {
             multiplier: None,
             display_hint: DynamicManaDisplayHint::Default,
             mana_cost_of: None,
+            generic_reduction: 0,
         }
     }
 
@@ -106,6 +112,7 @@ impl DynamicManaCost {
             && self.x_value.is_none()
             && self.additional_generic.is_none()
             && self.multiplier.is_none()
+            && self.generic_reduction == 0
         {
             return Some(self.base.clone());
         }
@@ -115,6 +122,9 @@ impl DynamicManaCost {
     pub fn display(&self) -> String {
         if self.mana_cost_of.is_some() {
             if self.x_value.is_none() && self.additional_generic.is_none() && self.multiplier.is_none() {
+                if self.generic_reduction > 0 {
+                    return format!("its mana cost reduced by {{{}}}", self.generic_reduction);
+                }
                 return if self.display_hint == DynamicManaDisplayHint::EnchantedCreatureManaCost {
                     "enchanted creature's mana cost".into()
                 } else { "its mana cost".into() };
@@ -1077,6 +1087,13 @@ impl OptionalCostKind {
             || matches!((self, stored),
                 (Self::AlternativeCast(query), Self::AlternativeCast(stored))
                     if stored.matches_query(query)
+            )
+            // A named alternative-cost query that lowering could not correlate
+            // with a printed method (e.g. a static ability's "if this was cast
+            // using web-slinging") still reads the named casting receipt.
+            || matches!((self, stored),
+                (Self::CustomUnsupported(name), Self::AlternativeCast(stored))
+                    if stored.method_name().eq_ignore_ascii_case(name.trim())
             )
             || matches!(
                 (self, stored),

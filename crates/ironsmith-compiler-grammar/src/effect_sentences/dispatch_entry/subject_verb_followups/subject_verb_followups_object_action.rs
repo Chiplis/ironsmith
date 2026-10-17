@@ -34,6 +34,26 @@ pub(super) fn pre_rule_token_followups(
         return Ok(None);
     }
     let reminder_facts = followup_shapes::token_reminder_followup_facts(reminder_tokens);
+    // "Sacrifice all tokens created this way at the beginning of the next end
+    // step" (Stangg, Echo Warrior) covers every token the instructions
+    // created, not only the latest creation.
+    if crate::util::non_article_token_word_refs(sentence_tokens)
+        == [
+            "sacrifice", "all", "tokens", "created", "this", "way", "at", "beginning", "of",
+            "next", "end", "step",
+        ]
+    {
+        let mut marked_effects = state.effects.to_vec();
+        if mark_every_created_token_for_next_end_step_sacrifice(&mut marked_effects) > 1 {
+            *state.effects = marked_effects;
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+                route: Some(
+                    "subject-verb verb=Sacrifice subject=implicit recognizer=all-created-tokens-next-end-step",
+                ),
+            }));
+        }
+    }
     if try_bind_conditional_token_entry_followup(state.effects, authored_reminder_tokens)? {
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
@@ -478,4 +498,49 @@ pub(super) fn trailing_optional_copy_effects_mut(
             .and_then(trailing_optional_copy_effects_mut),
         _ => None,
     }
+}
+
+/// Every token creation reachable in `effects` sacrifices its tokens at the
+/// beginning of the next end step. Returns how many creations were marked.
+fn mark_every_created_token_for_next_end_step_sacrifice(effects: &mut [EffectAst]) -> usize {
+    let mut marked = 0;
+    for effect in effects.iter_mut() {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Tokens(action),
+            ..
+        }) = effect
+        {
+            match action {
+                TokenActionAst::CreateTokenWithMods {
+                    sacrifice_at_next_end_step,
+                    ..
+                } => {
+                    *sacrifice_at_next_end_step = true;
+                    marked += 1;
+                    continue;
+                }
+                TokenActionAst::CreateTokenCopy {
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    ..
+                }
+                | TokenActionAst::CreateTokenCopyFromSource {
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    ..
+                } => {
+                    *sacrifice_at_next_end_step = true;
+                    *sacrifice_at_next_end_step_reference_surface =
+                        Some(crate::effect::TokenCopyReferenceSurface::TokensCreatedThisWay);
+                    marked += 1;
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+            marked += mark_every_created_token_for_next_end_step_sacrifice(nested);
+        });
+    }
+    marked
 }

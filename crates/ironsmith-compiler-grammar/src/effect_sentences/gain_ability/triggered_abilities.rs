@@ -479,6 +479,21 @@ fn recognize_granted_trigger_ability(
                 tokens,
                 max_triggers_per_turn,
             );
+            // "becomes tapped for the first time during each of your turns"
+            // (Tale of Katara and Toph): only on its controller's turns.
+            let frequency = if trigger_surface::parse_becomes_tapped_during_your_turn_tokens(tokens)
+                .is_some()
+            {
+                Some(match frequency {
+                    Some(limit) => crate::cards::builders::PredicateAst::And(
+                        Box::new(crate::cards::builders::PredicateAst::YourTurn),
+                        Box::new(limit),
+                    ),
+                    None => crate::cards::builders::PredicateAst::YourTurn,
+                })
+            } else {
+                frequency
+            };
             // A leading "if" right after the trigger comma that governs the
             // whole body is the ability's intervening-if (CR 603.4).
             let leads_with_if = tokens

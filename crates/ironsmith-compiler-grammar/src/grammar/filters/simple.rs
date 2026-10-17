@@ -53,12 +53,14 @@ enum SimpleObjectFilterAtom {
     Token,
     Nontoken,
     Foretold,
+    Warped,
     Suspended,
     Historic,
     Nonhistoric,
     Modified,
     Suspected,
     Transformed,
+    Prepared,
     Stickered,
     Goaded,
     RingBearer,
@@ -540,6 +542,7 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Token => filter.token = true,
             SimpleObjectFilterAtom::Nontoken => filter.nontoken = true,
             SimpleObjectFilterAtom::Foretold => filter.foretold = true,
+            SimpleObjectFilterAtom::Warped => filter.warped = true,
             SimpleObjectFilterAtom::Suspended => {
                 filter.zone = Some(Zone::Exile);
                 filter.alternative_cast = Some(AlternativeCastKind::Suspend);
@@ -550,6 +553,7 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Modified => filter.modified = true,
             SimpleObjectFilterAtom::Suspected => filter.suspected = true,
             SimpleObjectFilterAtom::Transformed => filter.transformed = true,
+            SimpleObjectFilterAtom::Prepared => filter.prepared = true,
             SimpleObjectFilterAtom::Stickered => {
                 filter.sticker = Some(crate::events::KeywordActionKind::Sticker);
             }
@@ -726,10 +730,11 @@ fn parse_compound_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjec
 /// A subtype word the broad parser rejects as an ordinary English noun
 /// ("blood") is unambiguous when it heads a token noun: "thirteen Blood
 /// tokens" names the Blood artifact subtype. The token noun itself is left
-/// for the flag atom.
+/// for the flag atom. A card or spell noun is the same type-line context:
+/// "search your library for a Plan card" names the Plan enchantment subtype.
 fn parse_token_headed_subtype_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     if let [word, next, ..] = *input
-        && matches!(*next, "token" | "tokens")
+        && matches!(*next, "token" | "tokens" | "card" | "cards" | "spell" | "spells")
         && parse_subtype_flexible(word).is_none()
         && let Some(subtype) = super::super::leaf::classify_token_definition_subtype(word)
     {
@@ -869,12 +874,14 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "token" | "tokens" => SimpleObjectFilterAtom::Token,
         "nontoken" | "non-token" => SimpleObjectFilterAtom::Nontoken,
         "foretold" => SimpleObjectFilterAtom::Foretold,
+        "warped" => SimpleObjectFilterAtom::Warped,
         "suspended" => SimpleObjectFilterAtom::Suspended,
         "historic" => SimpleObjectFilterAtom::Historic,
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,
         "suspected" => SimpleObjectFilterAtom::Suspected,
         "transformed" => SimpleObjectFilterAtom::Transformed,
+        "prepared" => SimpleObjectFilterAtom::Prepared,
         "stickered" => SimpleObjectFilterAtom::Stickered,
         "goaded" => SimpleObjectFilterAtom::Goaded,
         "commander" | "commanders" => SimpleObjectFilterAtom::Commander,

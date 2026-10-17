@@ -238,6 +238,8 @@ fn counted_shared_characteristic(tokens: &[OwnedLexToken]) -> Option<(u32, Objec
     // compared in that same canonical form.
     let characteristic = if has_relative(&["color"]) {
         ObjectCharacteristic::Color
+    } else if has_relative(&["all", "their", "card", "types"]) {
+        ObjectCharacteristic::AllCardTypes
     } else if has_relative(&["card", "type"]) {
         ObjectCharacteristic::CardType
     } else if has_relative(&["permanent", "type"]) {

@@ -247,6 +247,9 @@ pub fn parse_sentence_must_attack_creature_type_of_choice(
 pub fn parse_sentence_put_sticker_on(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effect) = parse_put_ability_sticker_with_ticket_terms(clause.tokens())? {
+        return Ok(Some(vec![effect]));
+    }
     let Some(shape) = combat_shapes::parse_put_sticker_shape(clause.tokens()) else {
         return Ok(None);
     };
@@ -265,12 +268,45 @@ pub fn parse_sentence_put_sticker_on(
         ]));
     }
 
+    // "put up to two name stickers on it" (_____ _____ Rocketship): each
+    // sticker is its own (optional, for "up to") placement.
+    let repeat = {
+        let words = crate::lexer::token_word_refs(clause.tokens());
+        match words.as_slice() {
+            ["put", "up", "to", amount, ..] => {
+                crate::util::parse_number_word_u32(amount).map(|amount| (amount, true))
+            }
+            ["put", amount, _, "stickers", ..] | ["put", amount, "stickers", ..] => {
+                crate::util::parse_number_word_u32(amount)
+                    .filter(|amount| *amount > 1)
+                    .map(|amount| (amount, false))
+            }
+            _ => None,
+        }
+    };
+    let repeated = |put: EffectAst| -> EffectAst {
+        let Some((amount, optional)) = repeat else {
+            return put;
+        };
+        let placement = if optional {
+            EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+                effects: vec![put],
+            })
+        } else {
+            put
+        };
+        EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+            count: crate::effect::Value::Fixed(i32::try_from(amount).unwrap_or(i32::MAX)),
+            effects: vec![placement],
+        })
+    };
+
     if shape.target_is_reference {
         let target = parse_target_phrase(target_clause.tokens())?;
-        return Ok(Some(vec![EffectAst::subject_verb_put_sticker(
+        return Ok(Some(vec![repeated(EffectAst::subject_verb_put_sticker(
             target,
             shape.action,
-        )]));
+        ))]));
     }
 
     let mut filter = parse_object_filter(target_clause.tokens(), false)?;
@@ -281,6 +317,55 @@ pub fn parse_sentence_put_sticker_on(
         TargetAst::Object(filter, None, None),
         shape.action,
     )]))
+}
+
+/// "put an ability sticker with ticket cost X or less on it [without paying
+/// that sticker's ticket cost]" (Pin Collection).
+fn parse_put_ability_sticker_with_ticket_terms(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let ["put", "an" | "a", "ability", "sticker", "with", "ticket", "cost", _, "or", "less", "on", ..] =
+        words.as_slice()
+    else {
+        return Ok(None);
+    };
+    let without = words.iter().position(|word| *word == "without");
+    let free = match without {
+        Some(idx) => {
+            let tail = &words[idx..];
+            if !(tail.starts_with(&["without", "paying"]) && tail.ends_with(&["ticket", "cost"])) {
+                return Ok(None);
+            }
+            true
+        }
+        None => false,
+    };
+    let target_end = without.unwrap_or(words.len());
+    if target_end <= 11 {
+        return Ok(None);
+    }
+    let (Some(cap_span), Some(target_span)) = (
+        view.token_span_for_words(7, 8),
+        view.token_span_for_words(11, target_end),
+    ) else {
+        return Ok(None);
+    };
+    let Some((cap, used)) = parse_value(&tokens[cap_span.clone()]) else {
+        return Ok(None);
+    };
+    if used != cap_span.len() {
+        return Ok(None);
+    }
+    let target = parse_target_phrase(&tokens[target_span])?;
+    Ok(Some(EffectAst::subject_verb_put_sticker_with_ticket_terms(
+        target,
+        crate::events::KeywordActionKind::AbilitySticker,
+        Some(cap),
+        free,
+    )))
 }
 
 fn parse_put_sticker_then_becomes_aura(
@@ -559,12 +644,25 @@ pub fn parse_distribute_counters_sentence(
     }
 
     let amount_clause = clause.from(1);
-    let (count, used) = parse_value(amount_clause.tokens()).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "missing distributed counter amount (clause: '{}')",
-            clause.text()
-        ))
-    })?;
+    if let Some(effect) = parse_distribute_stickers(amount_clause.tokens())? {
+        return Ok(Some(effect));
+    }
+    // "distribute up to that many +1/+1 counters" (Lathiel): the counted
+    // prefixes of "put ... counters" ("up to N", "that many") read the same.
+    let (count, used) = match parse_value(amount_clause.tokens()) {
+        Some(parsed) => parsed,
+        None => crate::effect_sentences::zone_counter_helpers::parse_put_counter_count_value(
+            amount_clause.tokens(),
+        )
+        .ok()
+        .filter(|(_, used)| *used > 0)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing distributed counter amount (clause: '{}')",
+                clause.text()
+            ))
+        })?,
+    };
     let rest_clause = clause.from(1 + used);
     let counter_type = parse_counter_type_from_tokens(rest_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
@@ -584,6 +682,23 @@ pub fn parse_distribute_counters_sentence(
             "missing distributed counter targets (clause: '{}')",
             clause.text()
         )));
+    }
+    // "among it and any number of commanders": the leading object is a
+    // mandatory member of the division (it always receives at least one
+    // counter); the counted phrase names the optional recipients.
+    let mut required_recipient = None;
+    let mut target_clause = target_clause;
+    if let Some((member, rest)) = target_clause.split_once_on_word_trimmed("and")
+        && !member.is_empty()
+        && !rest.is_empty()
+        && {
+            let member_words = member.trimmed_word_refs();
+            member_words == ["it"] || crate::util::is_source_reference_words(&member_words)
+        }
+        && parse_counter_target_count_prefix(rest.tokens())?.is_some()
+    {
+        required_recipient = Some(TargetAst::Source(span_from_tokens(member.tokens())));
+        target_clause = rest;
     }
     let (target_count, used_count) = parse_counter_target_count_prefix(target_clause.tokens())?
         .ok_or_else(|| {
@@ -608,13 +723,88 @@ pub fn parse_distribute_counters_sentence(
             span_from_tokens(target_phrase.tokens()))
     };
 
-    Ok(Some(EffectAst::subject_verb_put_counters(
+    let mut effect = EffectAst::subject_verb_put_counters(
         counter_type,
         count,
         target,
         Some(target_count),
         true,
-    )))
+    );
+    if let Some(required) = required_recipient
+        && let EffectAst::SubjectVerb(subject) = &mut effect
+        && let crate::cards::builders::SubjectVerbActionAst::Counters(
+            crate::cards::builders::CounterActionAst::PutCounters {
+                required_recipient: slot,
+                ..
+            },
+        ) = &mut subject.action
+    {
+        *slot = Some(required);
+    }
+    Ok(Some(effect))
+}
+
+/// "distribute up to two art stickers among one or two nonland permanents
+/// you own" (Roxi, Publicist to the Stars). Stickers are placed one at a
+/// time; choosing fewer recipients is always allowed, so the reachable
+/// placements are exactly N (optional, for "up to N") placements of that
+/// sticker kind, each on a matching permanent.
+fn parse_distribute_stickers(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(among) = words.iter().position(|word| *word == "among") else {
+        return Ok(None);
+    };
+    if !matches!(words.get(among.saturating_sub(1)), Some(&"sticker" | &"stickers")) {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let up_to = words.starts_with(&["up", "to"]);
+    let amount_start = if up_to { 2 } else { 0 };
+    let Some(amount_token) = view.map_word_to_token_start(amount_start) else {
+        return Ok(None);
+    };
+    let Some((count, used)) = parse_value(&tokens[amount_token..]) else {
+        return Ok(None);
+    };
+    let crate::effect::Value::Fixed(count) = count else {
+        return Ok(None);
+    };
+    let Some(kind_end) = view.map_word_to_token_start(among) else {
+        return Ok(None);
+    };
+    let kind_tokens = &tokens[amount_token + used..kind_end];
+    let kind_words = crate::lexer::token_word_refs(kind_tokens);
+    let action = match kind_words.as_slice() {
+        ["art", "sticker" | "stickers"] => crate::events::KeywordActionKind::ArtSticker,
+        ["ability", "sticker" | "stickers"] => crate::events::KeywordActionKind::AbilitySticker,
+        ["name", "sticker" | "stickers"] => crate::events::KeywordActionKind::NameSticker,
+        ["sticker" | "stickers"] => crate::events::KeywordActionKind::Sticker,
+        _ => return Ok(None),
+    };
+    let target_tokens = &tokens[kind_end + 1..];
+    let Some((_recipients, used_count)) = parse_counter_target_count_prefix(target_tokens)? else {
+        return Ok(None);
+    };
+    let filter_tokens = &target_tokens[used_count..];
+    if filter_tokens.is_empty() || filter_tokens.iter().any(|token| token.is_word("target")) {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter(filter_tokens, false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+    }
+    let put = EffectAst::subject_verb_put_sticker(TargetAst::Object(filter, None, None), action);
+    let placement = if up_to {
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+            effects: vec![put],
+        })
+    } else {
+        put
+    };
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count: crate::effect::Value::Fixed(count),
+        effects: vec![placement],
+    })))
 }
 
 pub fn parse_sentence_distribute_counters(
@@ -661,6 +851,28 @@ pub fn parse_sentence_transform_with_followup(
     };
 
     let target_clause = head_clause.from(1).trimmed();
+    // "transform this creature and your life total becomes 3" (Enduring
+    // Angel): a self-reference followed by a coordinated instruction. The
+    // source reader would otherwise accept the whole tail as "this creature"
+    // and drop the second instruction.
+    if tail_clause.is_none()
+        && let Some(and_idx) = target_clause.tokens().iter().position(|token| token.is_word("and"))
+        && and_idx > 0
+        && and_idx + 1 < target_clause.tokens().len()
+        && matches!(
+            crate::grammar::effects::zone_counter_shapes::parse_transform_target_shape(
+                &target_clause.tokens()[..and_idx]
+            ),
+            crate::grammar::effects::zone_counter_shapes::TransformTargetShape::Source { .. }
+        )
+    {
+        let head = &target_clause.tokens()[..and_idx];
+        let tail = &target_clause.tokens()[and_idx + 1..];
+        let transform = if is_transform { parse_transform(head)? } else { parse_convert(head)? };
+        let mut effects = vec![transform];
+        effects.extend(parse_effect_chain(tail)?);
+        return Ok(Some(effects));
+    }
     let trailing_if =
         crate::grammar::structure::split_trailing_if_clause_lexed(target_clause.tokens());
     let transform_target_tokens = trailing_if
@@ -909,4 +1121,45 @@ mod coordinated_return_tests {
             })
         )));
     }
+}
+
+/// "[Then] for each card you put on top of your library [this way], <effects>"
+/// (Starving Revenant, after "surveil N"): iterate the cards the preceding
+/// surveil kept on top, which the surveil publishes under its well-known
+/// kept-on-top tag.
+pub fn parse_sentence_for_each_card_kept_on_top_of_library(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    clause.parse_with_lexed(parse_for_each_card_kept_on_top_of_library_sentence)
+}
+
+fn parse_for_each_card_kept_on_top_of_library_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::grammar::primitives;
+    let tokens = trim_lexed_commas(tokens);
+    let tokens = primitives::strip_lexed_prefix_phrase(tokens, &["then"])
+        .map(trim_lexed_commas)
+        .unwrap_or(tokens);
+    let Some(rest) = primitives::strip_lexed_prefix_phrase(
+        tokens,
+        &["for", "each", "card", "you", "put", "on", "top", "of", "your", "library"],
+    ) else {
+        return Ok(None);
+    };
+    let rest = trim_lexed_commas(rest);
+    let effect_tokens = primitives::strip_lexed_prefix_phrase(rest, &["this", "way"])
+        .unwrap_or(rest);
+    let effect_tokens = crate::util::trim_edge_punctuation_tokens(trim_lexed_commas(effect_tokens));
+    if effect_tokens.is_empty() {
+        return Ok(None);
+    }
+    let effects = parse_effect_chain(effect_tokens)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+        tag: crate::tag::CompilerReferenceTag::SurveilKeptOnTop.bind(),
+        effects,
+    })]))
 }

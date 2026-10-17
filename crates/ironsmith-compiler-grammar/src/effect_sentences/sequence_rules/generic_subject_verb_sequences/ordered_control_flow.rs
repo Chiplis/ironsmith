@@ -1367,6 +1367,7 @@ pub(crate) use ordered_control_flow_library_programs::compose_choose_from_looked
 use ordered_control_flow_library_programs::parse_choose_from_looked_cards_for_each_filter;
 pub use ordered_control_flow_library_programs::{
     parse_look_at_top_reveal_match_put_rest_bottom,
+    parse_reveal_top_exile_one_per_card_type_rest_graveyard_threshold_cast_rest_hand,
     parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_graveyard,
     parse_top_cards_for_each_card_type_among_spells_put_matching_into_hand_rest_bottom,
     parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom,
@@ -1756,6 +1757,7 @@ pub fn parse_look_at_top_partition_face_down_then_filtered_permission(
                 spell_cost_increase: None,
                 lands_enter_tapped: false,
                 during_turns_attacked_with: None,
+                during_turns_cast_another_spell: false,
                 ..
             }),
         ..

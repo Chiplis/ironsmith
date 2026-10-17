@@ -484,3 +484,182 @@ pub fn parse_look_at_top_reveal_match_put_rest_bottom(
     );
     Ok(Some(effects))
 }
+
+/// "Reveal the top X cards of your library. For each card type, you may exile
+/// a card of that type from among them. Put the rest into your graveyard. You
+/// may cast a spell from among the exiled cards without paying its mana cost
+/// if you exiled N or more cards this way. Then put the rest of the exiled
+/// cards into your hand."
+///
+/// The per-type selection is one simultaneous choice of any number of the
+/// revealed cards, each filling a distinct card-type slot (the
+/// `one_per_card_type` constraint assigns multitype cards to distinct slots).
+/// The exiled set keeps one tag through the program: its size gates the free
+/// cast, the cast draws only from it, and whatever of it is still in exile
+/// afterwards goes to hand.
+pub fn parse_reveal_top_exile_one_per_card_type_rest_graveyard_threshold_cast_rest_hand(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, true)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = crate::lexer::token_word_refs(&second_tokens);
+    let permanent_types = match second_words.as_slice() {
+        [
+            "for", "each", type_class, "type", "you", "may", "exile", "a", "card", "of", "that",
+            "type", "from", "among", "them",
+        ] => match *type_class {
+            "card" => false,
+            "permanent" => true,
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    if triple_grammar::parse_looked_remainder_shape(sentences[sentence_idx + 2].lowered())
+        != Some(triple_grammar::LookedRemainderShape::Graveyard)
+    {
+        return Ok(None);
+    }
+    let fourth_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    let fourth_words = crate::lexer::token_word_refs(&fourth_tokens);
+    const CAST_FREE: &[&str] = &[
+        "you", "may", "cast", "a", "spell", "from", "among", "the", "exiled", "cards", "without",
+        "paying", "its", "mana", "cost",
+    ];
+    let threshold_word = match fourth_words.as_slice() {
+        [cast @ .., "if", "you", "exiled", n, "or", "more", "cards", "this", "way"]
+            if cast == CAST_FREE =>
+        {
+            *n
+        }
+        ["if", "you", "exiled", n, "or", "more", "cards", "this", "way", cast @ ..]
+            if cast == CAST_FREE =>
+        {
+            *n
+        }
+        _ => return Ok(None),
+    };
+    let Some(threshold) = crate::util::parse_number_word_u32(threshold_word) else {
+        return Ok(None);
+    };
+    let fifth_tokens = trim_commas(sentences[sentence_idx + 4].lowered());
+    let fifth_words = crate::lexer::token_word_refs(&fifth_tokens);
+    let fifth_body: &[&str] = match fifth_words.as_slice() {
+        ["then", rest @ ..] => rest,
+        rest => rest,
+    };
+    if fifth_body
+        != [
+            "put", "the", "rest", "of", "the", "exiled", "cards", "into", "your", "hand",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let exiled_tag = helper_tag_for_tokens(&second_tokens, "exiled");
+    let cast_tag = helper_tag_for_tokens(&fourth_tokens, "cast_from_collection");
+
+    let mut choice_filter = ObjectFilter::tagged(revealed_tag.clone());
+    choice_filter.zone = Some(Zone::Library);
+    if permanent_types {
+        choice_filter.card_types = vec![
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+        ];
+    }
+    choice_filter.one_per_card_type = true;
+
+    // The exiled cards that are still in exile (tags follow the cards into
+    // exile; the zone keeps a cast spell out of the set).
+    let still_exiled = || {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: exiled_tag.clone().into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        filter
+    };
+    let mut cast_filter = still_exiled();
+    cast_filter.excluded_card_types.push(CardType::Land);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_top_cards(
+            player,
+            count,
+            crate::tag::TagRef::of(revealed_tag.clone()),
+        ),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: choice_filter,
+            count: ChoiceCount::any_number(),
+            player,
+            tag: crate::tag::TagRef::of(exiled_tag.clone()),
+            zone: Zone::Library,
+        }),
+        EffectAst::subject_verb_exile(
+            TargetAst::Tagged(crate::tag::TagRef::of(exiled_tag.clone()), None),
+            false,
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+                tag: crate::tag::TagRef::of(revealed_tag),
+                keep_tagged: crate::tag::TagRef::of(exiled_tag.clone()),
+                zone: Zone::Graveyard,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
+            }),
+        ),
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: Value::Count(still_exiled()),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(threshold as i32),
+            },
+            if_true: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter: cast_filter,
+                    count: ChoiceCount::up_to(1),
+                    count_value: None,
+                    player,
+                    tag: crate::tag::TagRef::of(cast_tag.clone()),
+                }),
+                EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(cast_tag),
+                    effects: vec![
+                        EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            player,
+                            false,
+                            false,
+                            true,
+                            None,
+                            None,
+                            ironsmith_core::value_model::ManaSpendMode::Normal,
+                        ),
+                    ],
+                }),
+            ],
+            if_false: Vec::new(),
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+            filter: still_exiled(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
+                Zone::Hand,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        }),
+    ]))
+}

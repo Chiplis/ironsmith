@@ -16,6 +16,19 @@ pub fn parse_onto_battlefield_destination_shape(
     let tapped = primitives::contains_word(&destination_tail, "tapped");
     let attacking = primitives::contains_word(&destination_tail, "attacking");
     let face_down = permission_shapes::contains_tokens(&destination_tail, &["face", "down"]);
+    let transformed = primitives::contains_word(&destination_tail, "transformed");
+    if transformed {
+        destination_tail.retain(|token| !token.is_word("transformed"));
+    }
+    // "onto the battlefield face up" (Dermoplasm): permanents enter face up
+    // unless an effect says otherwise (CR 110.5b), so the words restate the
+    // default entry.
+    if !face_down
+        && let Some((index, (), _)) =
+            primitives::find_prefix(&destination_tail, || primitives::phrase(&["face", "up"]))
+    {
+        destination_tail.drain(index..index + 2);
+    }
 
     if let Some((index, _, rest)) = primitives::find_prefix(&destination_tail, || {
         primitives::phrase(&["from", "command", "zone"]).void()
@@ -28,11 +41,15 @@ pub fn parse_onto_battlefield_destination_shape(
     }
     // "attacking that opponent" / "attacking that player or a planeswalker
     // they control": the attack target of the entering attacker.
-    const ATTACK_TARGETS: [(&[&str], bool); 4] = [
+    // "attacking defending player or a planeswalker they control" (Hans
+    // Eriksson) names the same defending player.
+    const ATTACK_TARGETS: [(&[&str], bool); 6] = [
         (&["that", "player", "or", "planeswalker", "they", "control"], false),
         (&["that", "opponent", "or", "planeswalker", "they", "control"], false),
+        (&["defending", "player", "or", "planeswalker", "they", "control"], false),
         (&["that", "opponent"], true),
         (&["that", "player"], true),
+        (&["defending", "player"], true),
     ];
     let mut attack_target = None;
     if attacking {
@@ -129,5 +146,6 @@ pub fn parse_onto_battlefield_destination_shape(
         supported_tail,
         attack_target,
         blocking_tokens,
+        transformed,
     })
 }

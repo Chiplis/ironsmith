@@ -51,6 +51,21 @@ pub(super) fn parse_source_exiled_tail_lexed<'a>(
     let owned_by_you = opt(primitives::phrase(&["you", "own"]))
         .parse_next(input)?
         .is_some();
+    // "cards exiled with it" (Kylox's Voltstrider): inside the source's own
+    // ability the pronoun names the source.
+    if opt(primitives::phrase(&["exiled", "with", "it"]))
+        .parse_next(input)?
+        .is_some()
+    {
+        return Ok((
+            owned_by_you,
+            SourceExiledReference {
+                surface: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                    "this".to_string(),
+                ),
+            },
+        ));
+    }
     primitives::phrase(&["exiled", "with", "this"]).parse_next(input)?;
     let source_kind = opt(alt((
         primitives::kw("enchantment").value("enchantment"),
@@ -143,6 +158,42 @@ pub fn parse_look_and_play_source_exiled_tokens(
     Some(reference)
 }
 
+
+/// A per-player source-linked pool narrowed to the cards each player exiled:
+/// "Each player may look at cards they exiled with this enchantment, and they
+/// may play lands and cast spells from among those cards." (Shared Fate) and
+/// "Each player may play lands and cast spells from among cards they exiled
+/// with this artifact this turn." (Uba Mask). Returns the source reference,
+/// whether the private look is granted, and whether the pool is this turn's.
+pub fn parse_each_player_source_exiled_by_them_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(SourceExiledReference, bool, bool)> {
+    let (_, rest) = primitives::parse_prefix(tokens,
+        primitives::phrase(&["each", "player", "may"]))?;
+    if let Some((_, rest)) = primitives::parse_prefix(rest,
+        primitives::phrase(&["look", "at", "cards", "they"]))
+    {
+        let ((owned_by_you, reference), tail) =
+            primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+        if owned_by_you { return None; }
+        primitives::probe_all(tail, (opt(primitives::comma()), primitives::phrase(&[
+            "and", "they", "may", "play", "lands", "and", "cast", "spells", "from", "among", "those", "cards",
+        ]), primitives::sentence_end()).void(), "per-exiler inspection and play permission")?;
+        return Some((reference, true, false));
+    }
+    let (_, rest) = primitives::parse_prefix(rest, primitives::phrase(&[
+        "play", "lands", "and", "cast", "spells", "from", "among", "cards", "they",
+    ]))?;
+    let ((owned_by_you, reference), tail) =
+        primitives::parse_prefix(rest, parse_source_exiled_tail_lexed)?;
+    if owned_by_you { return None; }
+    let (this_turn, tail) = match primitives::parse_prefix(tail, primitives::phrase(&["this", "turn"])) {
+        Some((_, tail)) => (true, tail),
+        None => (false, tail),
+    };
+    primitives::probe_all(tail, primitives::sentence_end(), "per-exiler play permission")?;
+    Some((reference, false, this_turn))
+}
 
 pub fn parse_look_source_exiled_tokens(tokens: &[OwnedLexToken]) -> Option<SourceExiledReference> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["you", "may", "look", "at", "cards"]))?;

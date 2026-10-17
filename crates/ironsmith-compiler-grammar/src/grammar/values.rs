@@ -593,6 +593,25 @@ pub fn parse_value_comparison_words<'a>(
     for (phrase, operator) in [
         (&["is", "exactly"][..], ValueComparisonOperator::Equal),
         (&["exactly"][..], ValueComparisonOperator::Equal),
+        // "power equal to or greater than the enchanted creature's
+        // toughness" (Ironclaw Curse): the inclusive ordered comparison,
+        // read before the bare "equal to" prefix claims its first words.
+        (
+            &["is", "equal", "to", "or", "greater", "than"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["equal", "to", "or", "greater", "than"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["is", "equal", "to", "or", "less", "than"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            &["equal", "to", "or", "less", "than"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
         (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
         (&["equal", "to"][..], ValueComparisonOperator::Equal),
         (

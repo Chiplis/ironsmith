@@ -1034,6 +1034,7 @@ impl GameState {
             .filter(|effect| {
                 matches!(&effect.duration,
                     Until::PlayersNextUntapStep { player: crate::target::PlayerFilter::Specific(bound) }
+                        | Until::PlayersNextTurn { player: crate::target::PlayerFilter::Specific(bound) }
                         if *bound == player)
                 || (effect.controller == player
                     && effect.untap_step_object.is_none()
@@ -1130,6 +1131,9 @@ impl GameState {
                 .chosen_named_options
                 .retain(|source, _| !removed_ids.contains(source));
             choices.numeric_acquisitions.retain(|owner,_|!removed_ids.contains(&owner.host));
+            choices
+                .numbers_chosen_by_source
+                .retain(|source, _| !removed_ids.contains(source));
         }
 
         {
@@ -1219,6 +1223,19 @@ impl GameState {
             delayed.bound_extra_turn_index = slot_remap.get(slot).copied().flatten();
             delayed.bound_extra_turn_index.is_some()
         });
+        let untap_skips = std::mem::take(&mut self.turn_store.extra_turn_untap_skips);
+        self.effect_store.restriction_effects.retain_mut(|effect| {
+            let Some(slot) = effect.bound_extra_turn_index else { return true; };
+            effect.bound_extra_turn_index = slot_remap.get(slot).copied().flatten();
+            effect.bound_extra_turn_index.is_some()
+        });
+        self.turn_store.extra_turn_untap_skips = untap_skips
+            .into_iter()
+            .filter_map(|slot| slot_remap.get(slot).copied().flatten())
+            .collect();
+        self.turn_store
+            .extra_turn_untap_skip_players
+            .retain(|candidate| *candidate != player);
         self.turn_store
             .extra_turns
             .retain(|candidate| *candidate != player);
@@ -1431,7 +1448,59 @@ impl GameState {
     /// 1. If there are extra turns queued, the most recently created one is considered first
     /// 2. If any candidate turn should be skipped, it is skipped (and removed from the skip list)
     /// 3. Otherwise, proceed to the next player in turn order
+    /// The player who would begin the next turn if the current turn ended
+    /// now, following `next_turn_single_lane`'s selection: extra turns queued
+    /// after that player's next turn, the extra-turn queue, extra-turn skips
+    /// and pending turn skips. `None` for Grand Melee and shared team turns,
+    /// whose turn players are selected per lane or per team.
+    pub fn upcoming_turn_player(&self) -> Option<PlayerId> {
+        if self.grand_melee.is_some()
+            || self.shared_team_turns_enabled()
+            || self.turn_store.turn_order.is_empty()
+        {
+            return None;
+        }
+        let completed_turn = self.turn.turn_number;
+        let completed_players = self.turn_players();
+        let mut extra_turns = self.turn_store.extra_turns.clone();
+        for (player, created_turn) in &self.turn_store.extra_turns_after_next_turn {
+            if completed_turn > *created_turn && completed_players.contains(player) {
+                extra_turns.push(self.team_turn_representative(*player));
+            }
+        }
+        let mut skips = self.turn_store.skip_next_turn.clone();
+        let order = &self.turn_store.turn_order;
+        let anchor = self.normal_turn_order_anchor();
+        let current_index = order.iter().position(|&player| player == anchor).unwrap_or(0);
+        let mut normal_index = (current_index + 1) % order.len();
+        let max_iterations = order
+            .len()
+            .saturating_mul(16)
+            .saturating_add(extra_turns.len().saturating_mul(2))
+            .saturating_add(16);
+        for _ in 0..max_iterations {
+            let (candidate, is_extra_turn) = if let Some(extra_turn) = extra_turns.pop() {
+                (self.team_turn_representative(extra_turn), true)
+            } else {
+                let player = order[normal_index];
+                normal_index = (normal_index + 1) % order.len();
+                (player, false)
+            };
+            let skipped = !self
+                .player(candidate)
+                .is_some_and(|player| player.is_in_game())
+                || (is_extra_turn && self.player_skips_extra_turn(candidate))
+                || skips.remove(&candidate);
+            if !skipped {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
     pub fn next_turn(&mut self) {
+        self.turn_store.turn_begin_skip_declined.clear();
+        self.turn_store.draw_step_skip_declined.clear();
         self.queue_extra_turns_after_completed_turn();
         if self.grand_melee.is_some() {
             self.next_grand_melee_turn();
@@ -1522,6 +1591,8 @@ impl GameState {
                     self.effect_store
                         .delayed_triggers
                         .retain(|delayed| delayed.bound_extra_turn_index != Some(slot));
+                    self.turn_store.extra_turn_untap_skips.retain(|bound| *bound != slot);
+                    self.effect_store.restriction_effects.retain(|effect| effect.bound_extra_turn_index != Some(slot));
                 }
                 continue;
             }
@@ -1529,8 +1600,29 @@ impl GameState {
         };
         // The extra turn a "that turn" delayed trigger waited for begins now:
         // bind it to this turn's number so it can fire during this turn only.
+        if let Some(slot) = selected_extra_turn_slot
+            && let Some(position) = self
+                .turn_store
+                .extra_turn_untap_skips
+                .iter()
+                .position(|bound| *bound == slot)
+        {
+            // "Skip the untap step of that turn": this is that turn.
+            self.turn_store.extra_turn_untap_skips.remove(position);
+            *self
+                .turn_store
+                .skipped_steps
+                .entry((next_player, Step::Untap))
+                .or_default() += 1;
+        }
         if let Some(slot) = selected_extra_turn_slot {
             let turn_number = self.turn.turn_number + 1;
+            for effect in self.effect_store.restriction_effects.iter_mut()
+                .filter(|effect| effect.bound_extra_turn_index == Some(slot))
+            {
+                effect.bound_extra_turn_index = None;
+                effect.expires_end_of_turn = turn_number;
+            }
             for delayed in self
                 .effect_store
                 .delayed_triggers
@@ -1551,6 +1643,20 @@ impl GameState {
         } else {
             next_player
         });
+        if self.turn_store.current_turn_is_extra
+            && let Some(position) = self
+                .turn_store
+                .extra_turn_untap_skip_players
+                .iter()
+                .position(|bound| *bound == next_player)
+        {
+            self.turn_store.extra_turn_untap_skip_players.remove(position);
+            *self
+                .turn_store
+                .skipped_steps
+                .entry((next_player, Step::Untap))
+                .or_default() += 1;
+        }
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
         self.turn.turn_number += 1;
@@ -1573,6 +1679,14 @@ impl GameState {
         self.finish_draw_step_tracking();
         self.turn_store.combat_phases_started_this_turn = 0;
         self.turn_store.main_phases_started_this_turn = 0;
+        self.turn_store.upkeep_steps_started_this_turn = 0;
+        self.turn_store.end_steps_started_this_turn = 0;
+        self.turn_store.untapped_at_turn_start = self
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|&id| !self.is_tapped(id))
+            .collect();
         self.turn_store.additional_phases.clear();
         self.turn_store.additional_phase_orders.clear();
         self.turn_store.additional_phase_only_steps.clear();
@@ -1678,7 +1792,7 @@ impl GameState {
         // next turn of its controller, including inserted or skipped turns.
         for delayed in self.effect_store.delayed_triggers.iter_mut() {
             if delayed.expires_after_controller_turn_after.is_some_and(|anchor|
-                self.turn.turn_number > anchor && active_players.contains(&delayed.controller))
+                self.turn.turn_number > anchor && active_players.contains(&delayed.duration_owner()))
             {
                 delayed.expires_at_turn = Some(self.turn.turn_number);
                 delayed.expires_after_controller_turn_after = None;
@@ -1840,6 +1954,44 @@ impl GameState {
             .turn_store
             .combat_phases_started_this_turn
             .saturating_add(1);
+        // "You control target opponent during their next combat phase"
+        // (CR 723.1): control begins as that player's combat phase begins.
+        let turn_players = self.turn_players();
+        if self
+            .auxiliary_tracking
+            .player_control_effects
+            .iter()
+            .any(|effect| {
+                !effect.active
+                    && matches!(effect.start, PlayerControlStart::NextCombatPhase)
+                    && turn_players.contains(&effect.target)
+            })
+        {
+            for effect in &mut self.auxiliary_tracking_mut().player_control_effects {
+                if !effect.active
+                    && matches!(effect.start, PlayerControlStart::NextCombatPhase)
+                    && turn_players.contains(&effect.target)
+                {
+                    effect.active = true;
+                }
+            }
+        }
+    }
+
+    /// End control that lasted "during their next combat phase" as that
+    /// combat phase ends.
+    pub(crate) fn end_combat_phase_player_control(&mut self) {
+        if !self.auxiliary_tracking.player_control_effects.iter().any(|effect| {
+            effect.active && matches!(effect.duration, PlayerControlDuration::ThroughCombatPhase)
+        }) {
+            return;
+        }
+        self.auxiliary_tracking_mut()
+            .player_control_effects
+            .retain(|effect| {
+                !(effect.active
+                    && matches!(effect.duration, PlayerControlDuration::ThroughCombatPhase))
+            });
     }
 
     /// Add a player-control effect.
@@ -1975,6 +2127,83 @@ impl GameState {
                 timestamp,
             });
         timestamp
+    }
+
+    /// True when a resolution-bounded player-control record is in force, so a
+    /// suspended resolution must capture its routing before rolling back.
+    pub(crate) fn has_active_resolution_player_control(&self) -> bool {
+        self.auxiliary_tracking.player_control_effects.iter().any(|effect| {
+            effect.active
+                && matches!(
+                    effect.duration,
+                    PlayerControlDuration::UntilSourceFinishesResolving
+                )
+        })
+    }
+
+    /// CR 722: "you control the player while that spell is resolving" starts
+    /// as the stack entry whose source identity is `source` begins resolving.
+    pub(crate) fn begin_resolution_player_control(&mut self, source: StableId) {
+        let waiting = |effect: &PlayerControlEffect| {
+            !effect.active
+                && matches!(effect.start, PlayerControlStart::WhenSourceResolves)
+                && effect.source == Some(source)
+        };
+        if !self
+            .auxiliary_tracking
+            .player_control_effects
+            .iter()
+            .any(|effect| waiting(effect))
+        {
+            return;
+        }
+        for effect in &mut self.auxiliary_tracking_mut().player_control_effects {
+            if waiting(&*effect) {
+                effect.active = true;
+            }
+        }
+    }
+
+    /// End every resolution-bounded control record of the entry that just
+    /// finished resolving, and drop waiting records whose spell is no longer
+    /// on the stack (countered, or otherwise left without resolving).
+    pub(crate) fn finish_resolution_player_control(&mut self, source: Option<StableId>) {
+        if !self
+            .auxiliary_tracking
+            .player_control_effects
+            .iter()
+            .any(|effect| {
+                matches!(
+                    effect.duration,
+                    PlayerControlDuration::UntilSourceFinishesResolving
+                )
+            })
+        {
+            return;
+        }
+        let on_stack: HashSet<StableId> = self
+            .stack
+            .iter()
+            .filter(|entry| !entry.is_ability)
+            .filter_map(|entry| self.object(entry.object_id).map(|object| object.stable_id))
+            .collect();
+        self.auxiliary_tracking_mut()
+            .player_control_effects
+            .retain(|effect| {
+                if !matches!(
+                    effect.duration,
+                    PlayerControlDuration::UntilSourceFinishesResolving
+                ) {
+                    return true;
+                }
+                let Some(effect_source) = effect.source else {
+                    return false;
+                };
+                if source == Some(effect_source) {
+                    return false;
+                }
+                effect.active || on_stack.contains(&effect_source)
+            });
     }
 
     /// Remove a resolving-scope player-control effect.
@@ -2167,6 +2396,89 @@ impl GameState {
             .rev()
             .find(|(_, turn)| *turn == current_turn)
             .map(|(controller, _)| *controller)
+    }
+
+    /// "Until end of turn, you may tap lands you don't control for mana."
+    /// (Piracy): `restrictions` bind the mana produced through it.
+    pub fn grant_tap_uncontrolled_lands_for_mana_this_turn(
+        &mut self,
+        player: PlayerId,
+        restrictions: Vec<crate::ability::ManaUsageRestriction>,
+    ) {
+        let current_turn = self.turn.turn_number;
+        let permissions = &mut self.auxiliary_tracking_mut().uncontrolled_land_mana_permissions;
+        permissions.retain(|permission| permission.turn == current_turn);
+        permissions.push(super::UncontrolledLandManaPermission {
+            player,
+            turn: current_turn,
+            mana_usage_restrictions: restrictions,
+        });
+        self.bump_mutation_revision();
+    }
+
+    /// Whether any player may tap lands they don't control for mana this turn.
+    pub fn any_uncontrolled_land_mana_permission(&self) -> bool {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking
+            .uncontrolled_land_mana_permissions
+            .iter()
+            .any(|permission| permission.turn == current_turn)
+    }
+
+    /// Whether `player` holds a this-turn permission to tap lands they don't
+    /// control for mana.
+    pub fn has_uncontrolled_land_mana_permission(&self, player: PlayerId) -> bool {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking
+            .uncontrolled_land_mana_permissions
+            .iter()
+            .any(|permission| permission.player == player && permission.turn == current_turn)
+    }
+
+    /// Whether `player` may activate this mana ability of `source` only
+    /// through the uncontrolled-land permission: `source` is a land another
+    /// player controls and the ability has a {T} cost.
+    pub fn may_tap_uncontrolled_land_for_mana(
+        &self,
+        player: PlayerId,
+        source: ObjectId,
+        ability: &crate::ability::ActivatedAbility,
+    ) -> bool {
+        self.controller_of_id(source).is_some_and(|controller| controller != player)
+            && ability.has_tap_cost()
+            && self.object_has_card_type(source, crate::types::CardType::Land)
+            && self.has_uncontrolled_land_mana_permission(player)
+    }
+
+    /// The spending restrictions on mana `player` produces by tapping a land
+    /// they don't control. With several permissions the player uses the least
+    /// restrictive one (an unrestricted permission wins).
+    pub(crate) fn uncontrolled_land_mana_restrictions(
+        &self,
+        player: PlayerId,
+    ) -> Vec<crate::ability::ManaUsageRestriction> {
+        let current_turn = self.turn.turn_number;
+        let mut active = self
+            .auxiliary_tracking
+            .uncontrolled_land_mana_permissions
+            .iter()
+            .filter(|permission| permission.player == player && permission.turn == current_turn);
+        let Some(first) = active.next() else {
+            return Vec::new();
+        };
+        if first.mana_usage_restrictions.is_empty() {
+            return Vec::new();
+        }
+        let mut restrictions = first.mana_usage_restrictions.clone();
+        for permission in active {
+            if permission.mana_usage_restrictions.is_empty() {
+                return Vec::new();
+            }
+            if permission.mana_usage_restrictions.len() < restrictions.len() {
+                restrictions = permission.mana_usage_restrictions.clone();
+            }
+        }
+        restrictions
     }
 
     pub fn cleanup_vote_control_end_of_turn(&mut self) {
@@ -3854,6 +4166,14 @@ impl GameState {
         }
 
         self.mark_tapped_state_changed(id);
+        if self
+            .battlefield_flags
+            .phase_out_holds_release_on_untap
+            .contains(&id)
+        {
+            // "When The Pandorica becomes untapped ..., that permanent phases in."
+            self.release_phase_out_holds_for_source(id);
+        }
         let removed_continuous = self
             .effect_store
             .continuous_effects

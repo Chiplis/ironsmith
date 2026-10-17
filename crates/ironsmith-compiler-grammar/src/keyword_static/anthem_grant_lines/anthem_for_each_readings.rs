@@ -182,6 +182,9 @@ fn read_special_shape(
             anthem_grant_grammar::ForEachSpecialShape::PlayersLostGame => {
                 return Ok(Some(AnthemCountExpression::PlayersLostGame));
             }
+            anthem_grant_grammar::ForEachSpecialShape::BushidoOfAffected => {
+                return Ok(Some(AnthemCountExpression::BushidoOfAffected));
+            }
             anthem_grant_grammar::ForEachSpecialShape::ManaSymbolsOfColorInAffectedCost(color) => {
                 return Ok(Some(AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(
                     color,

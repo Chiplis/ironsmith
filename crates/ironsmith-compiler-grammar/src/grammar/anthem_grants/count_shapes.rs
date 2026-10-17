@@ -37,6 +37,8 @@ pub enum ForEachSpecialShape<'a> {
     PlayersLostGame,
     /// "white mana symbol in its mana cost" (chroma, Light from Within).
     ManaSymbolsOfColorInAffectedCost(crate::color::Color),
+    /// "point of bushido it has" (Takeno, Samurai General).
+    BushidoOfAffected,
 }
 
 pub fn parse_for_each_rest(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -126,6 +128,15 @@ pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachS
         ],
     ) {
         return Some(ForEachSpecialShape::PlayersLostGame);
+    }
+    if parse_complete_any_phrase(
+        tokens,
+        &[
+            &["point", "of", "bushido", "it", "has"],
+            &["point", "of", "bushido", "they", "have"],
+        ],
+    ) {
+        return Some(ForEachSpecialShape::BushidoOfAffected);
     }
     if let [color, rest @ ..] = tokens
         && let Some(color) = color

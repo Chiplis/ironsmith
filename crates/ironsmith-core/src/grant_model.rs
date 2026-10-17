@@ -60,6 +60,22 @@ pub enum DerivedAlternativeCast<C> {
     /// Madness (CR 702.35a) whose cost is the card's mana cost ("The madness
     /// cost is equal to its mana cost."). Appended for wire compatibility.
     MadnessFromCardManaCost,
+    /// Cast from `zone` by paying the card's mana cost plus the extra cost
+    /// components ("you may cast creature spells from among cards you own
+    /// exiled with this creature by removing three counters from among
+    /// creatures you control in addition to paying their other costs",
+    /// Dawnhand Dissident; "... from the top of your library by sacrificing
+    /// a nonland permanent ...", Into the Pit). Appended for wire
+    /// compatibility.
+    ZoneCastFromCardManaCost {
+        zone: Zone,
+        additional_costs: Vec<C>,
+    },
+    /// Foretell whose cost is the card's mana cost reduced by a fixed
+    /// generic amount ("Each nonland card in your hand without foretell has
+    /// foretell. Its foretell cost is equal to its mana cost reduced by
+    /// {2}.", Dream Devourer; CR 702.143a). Appended for wire compatibility.
+    ForetellFromCardManaCostReducedBy { reduction: u32 },
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -76,6 +92,8 @@ impl<C> DerivedAlternativeCast<C> {
             Self::LifeEqualManaValueFromZone { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
             Self::MadnessFromCardManaCost => "Madness",
+            Self::ForetellFromCardManaCostReducedBy { .. } => "Foretell",
+            Self::ZoneCastFromCardManaCost { .. } => "Cast with additional cost",
         }
     }
 
@@ -132,6 +150,19 @@ impl<C> DerivedAlternativeCast<C> {
                 exiles_after_resolution,
             },
             Self::MadnessFromCardManaCost => DerivedAlternativeCast::MadnessFromCardManaCost,
+            Self::ForetellFromCardManaCostReducedBy { reduction } => {
+                DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
+            }
+            Self::ZoneCastFromCardManaCost {
+                zone,
+                additional_costs,
+            } => DerivedAlternativeCast::ZoneCastFromCardManaCost {
+                zone,
+                additional_costs: additional_costs
+                    .into_iter()
+                    .map(&mut map_cost)
+                    .collect::<Result<Vec<_>, _>>()?,
+            },
         })
     }
 }
@@ -195,6 +226,10 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
     pub fn miracle_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
         Self::MiracleFromCardManaCostReducedBy { reduction }
+    }
+
+    pub fn foretell_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
+        Self::ForetellFromCardManaCostReducedBy { reduction }
     }
 
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
@@ -368,6 +403,13 @@ where
     pub fn miracle_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
         Self::DerivedAlternativeCast(
             DerivedAlternativeCast::miracle_from_cards_mana_cost_reduced_by(reduction),
+        )
+    }
+
+    /// Foretell with the granted card's mana cost reduced by `reduction`.
+    pub fn foretell_from_cards_mana_cost_reduced_by(reduction: u32) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::foretell_from_cards_mana_cost_reduced_by(reduction),
         )
     }
 
@@ -843,6 +885,48 @@ where
     }
 
     fn display_base(&self) -> String {
+        // The permission reads as the plain play permission, then names the
+        // extra cost paid with each cast through it.
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::ZoneCastFromCardManaCost {
+            additional_costs,
+            ..
+        }) = &self.grantable
+            && !additional_costs.is_empty()
+        {
+            let mut permission = self.clone();
+            permission.grantable = Grantable::PlayFrom;
+            let base = permission.display_base();
+            let costs = additional_costs
+                .iter()
+                .map(|cost| {
+                    let text = cost.display();
+                    let text = text.trim().trim_end_matches('.');
+                    let lowered = text
+                        .chars()
+                        .next()
+                        .map(|first| format!("{}{}", first.to_lowercase(), &text[first.len_utf8()..]))
+                        .unwrap_or_default();
+                    [
+                        ("sacrifice ", "sacrificing "),
+                        ("exile ", "exiling "),
+                        ("discard ", "discarding "),
+                        ("pay ", "paying "),
+                        ("reveal ", "revealing "),
+                        ("return ", "returning "),
+                        ("tap ", "tapping "),
+                        ("remove ", "removing "),
+                        ("put ", "putting "),
+                    ]
+                    .into_iter()
+                    .find_map(|(verb, gerund)| {
+                        lowered.strip_prefix(verb).map(|rest| format!("{gerund}{rest}"))
+                    })
+                    .unwrap_or(lowered)
+                })
+                .collect::<Vec<_>>()
+                .join(" and ");
+            return format!("{base} by {costs} in addition to paying their other costs");
+        }
         fn zone_name(zone: Zone) -> &'static str {
             match zone {
                 Zone::Battlefield => "battlefield",
@@ -1248,7 +1332,7 @@ where
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     "That player may".to_string()
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     "That player may".to_string()
                 }
                 PlayerFilter::OpponentOf(_)
@@ -1687,6 +1771,31 @@ where
                 cast_this_way_suffix()
             );
         }
+        // "Each player may ... cards they exiled with <source> [this turn]":
+        // a per-beneficiary pool narrowed by each card's recorded exiler.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && matches!(self.beneficiary, PlayerFilter::Any)
+            && let Some(surface) = self.source_exiled_surface.as_ref()
+            && let Some(this_turn) = self.filter.tagged_constraints.iter().find_map(|constraint| {
+                (constraint.relation == crate::filter_model::TaggedOpbjectRelation::IsTaggedObject)
+                    .then_some(())
+                    .and_then(|()| match constraint.tag.as_str() {
+                        crate::tag::SOURCE_EXILED_BY_YOU_TAG => Some(false),
+                        crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG => Some(true),
+                        _ => None,
+                    })
+            })
+        {
+            let source = surface.source.display_text();
+            let when = if this_turn { " this turn" } else { "" };
+            if self.may_look_at_linked_exile {
+                return format!("Each player may look at cards they exiled with {source}{when}, and they may play lands and cast spells from among those cards{}",
+                    cast_this_way_suffix());
+            }
+            return format!("Each player may play lands and cast spells from among cards they exiled with {source}{when}{}",
+                cast_this_way_suffix());
+        }
         // "You may play cards exiled with <source>": the pool admits lands,
         // so the permission is to play, not only to cast.
         if matches!(self.grantable, Grantable::PlayFrom)
@@ -1990,6 +2099,29 @@ where
                 .unwrap_or(cast_desc);
             return format!(
                 "Each {filter_desc} has emerge. The emerge cost is equal to its mana cost"
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction },
+        ) = &self.grantable
+            && self.zone == Zone::Hand
+        {
+            let mut base_filter = self.filter.clone();
+            base_filter.zone = None;
+            if matches!(base_filter.owner, Some(PlayerFilter::You)) {
+                base_filter.owner = None;
+            }
+            let base = castable_filter_description(&base_filter)
+                .strip_suffix(" spells")
+                .unwrap_or("cards")
+                .to_string();
+            let owner_phrase = if matches!(self.filter.owner, Some(PlayerFilter::You)) {
+                "your"
+            } else {
+                "that"
+            };
+            return format!(
+                "Each {base} card in {owner_phrase} hand without foretell has foretell. Its foretell cost is equal to its mana cost reduced by {{{reduction}}}"
             );
         }
         if let Grantable::DerivedAlternativeCast(

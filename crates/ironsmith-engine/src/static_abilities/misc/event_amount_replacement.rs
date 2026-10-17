@@ -55,6 +55,8 @@ pub(crate) fn amount_modification(modifier: AmountModifierSpec) -> EventModifica
         }
         AmountModifierSpec::SetTo(amount) => EventModification::SetTo(amount),
         AmountModifierSpec::Half { round_up } => EventModification::Halve { round_up },
+        AmountModifierSpec::AllButOne => EventModification::LeaveOneCounter,
+        AmountModifierSpec::Subtract(amount) => EventModification::Subtract(amount),
     }
 }
 
@@ -137,6 +139,7 @@ impl ReplacementMatcher for AmountEventMatcher {
         match &self.event {
             AmountEventSpec::Damage { .. } => kind == EventKind::Damage,
             AmountEventSpec::KeywordAction { .. } => kind == EventKind::KeywordAction,
+            AmountEventSpec::DamageRemovesAllCounters { .. } => kind == EventKind::RemoveCounters,
         }
     }
 
@@ -174,6 +177,31 @@ impl ReplacementMatcher for AmountEventMatcher {
                     .with_performer_filter(Some(performer.clone()))
                     .matches_prepared_event(event, ctx)
             }
+            // CR 120.3c: the loyalty (or defense) counters that damage
+            // removes; only a removal that would leave none matches.
+            AmountEventSpec::DamageRemovesAllCounters {
+                object,
+                counter_type,
+            } => {
+                let Some(removal) =
+                    downcast_event::<crate::events::RemoveCountersEvent>(event)
+                else {
+                    return false;
+                };
+                let current = ctx.game.counter_count(removal.target, *counter_type);
+                removal.from_damage
+                    && removal.counter_type == *counter_type
+                    && current > 0
+                    && removal.count >= current
+                    && ctx.game.object(removal.target).is_some_and(|permanent| {
+                        crate::filter::ObjectFilterExt::matches(
+                            object,
+                            permanent,
+                            &ctx.filter_ctx,
+                            ctx.game,
+                        )
+                    })
+            }
         };
         matches && self.condition_holds(ctx)
     }
@@ -186,6 +214,10 @@ impl ReplacementMatcher for AmountEventMatcher {
             AmountEventSpec::KeywordAction { action, .. } => {
                 format!("If a matching player would {}", action.infinitive())
             }
+            AmountEventSpec::DamageRemovesAllCounters { counter_type, .. } => format!(
+                "If damage would remove all {} counters from a matching permanent",
+                counter_type.description()
+            ),
         }
     }
 }

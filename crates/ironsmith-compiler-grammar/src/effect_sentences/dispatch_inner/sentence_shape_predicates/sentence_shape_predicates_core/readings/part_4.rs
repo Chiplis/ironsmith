@@ -207,10 +207,61 @@ pub(super) fn read_for_each_dynamic_target_effect(
     )
 }
 
+/// "For each colored mana symbol in the milled card's mana cost, add one
+/// mana of that color" (Charmed Pendant): one mana per colored symbol of the
+/// referenced card's mana cost; "the milled card" is the card milled to pay
+/// the ability's cost.
+pub(super) fn colored_mana_symbol_mana_shape(
+    tokens: &[crate::lexer::OwnedLexToken],
+) -> Option<crate::target::ObjectFilter> {
+    let trimmed = crate::util::trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
+    let [
+        "for",
+        "each",
+        "colored",
+        "mana",
+        "symbol",
+        "in",
+        object @ ..,
+        "mana",
+        "cost",
+        "add",
+        "one",
+        "mana",
+        "of",
+        "that",
+        "color",
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    match object {
+        ["the", "milled", "card's" | "cards"] | ["the", "milled", "card", "s"] => Some(
+            crate::target::ObjectFilter::tagged(ironsmith_core::tag::COST_MILLED_TAG),
+        ),
+        _ => None,
+    }
+}
+
+pub(super) fn read_for_each_colored_mana_symbol_add(
+    input: &Sentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(colored_mana_symbol_mana_shape(input.tokens).map(|filter| {
+        vec![EffectAst::subject_verb_add_mana_for_each_colored_symbol_in_mana_cost(
+            crate::cards::builders::PlayerAst::Implicit,
+            filter,
+        )]
+    }))
+}
+
 pub(super) fn read_for_each_object_filter_effect(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    if colored_mana_symbol_mana_shape(tokens).is_some() {
+        return Ok(None);
+    }
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
         if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_for_each_graveyard_effect(

@@ -34,6 +34,22 @@ impl crate::effects::ResolutionPreludeBinding for TagTriggeringSourceEffect {
         let event = ctx.triggering_event.as_ref().ok_or_else(|| {
             ExecutionError::UnresolvableValue("missing triggering event".to_string())
         })?;
+        // A replaced draw names the activated ability that caused it ("the
+        // cycled card"): its source as last known when the ability resolved.
+        if let Some(draw) = event.downcast::<crate::events::DrawEvent>() {
+            let Some(cause) = draw.cause_ability.as_ref() else {
+                return Ok(EffectOutcome::count(0));
+            };
+            let snapshot = cause
+                .source_snapshot
+                .clone()
+                .or_else(|| game.source_last_known_snapshot(cause.source).cloned());
+            let Some(snapshot) = snapshot else {
+                return Ok(EffectOutcome::count(0));
+            };
+            ctx.set_tagged_objects(self.tag.as_str(), vec![snapshot]);
+            return Ok(EffectOutcome::count(1));
+        }
         let source_id = event.source_object().ok_or_else(|| {
             ExecutionError::UnresolvableValue("triggering event missing source".to_string())
         })?;

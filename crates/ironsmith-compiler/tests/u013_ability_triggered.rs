@@ -26,6 +26,7 @@ fn ability_trigger_clause_lowers_to_the_typed_trigger_model() {
                 source_filter: None,
                 caused_by_source_entering: false,
                 caused_by_source_attacking: false,
+                caused_by_permanent_entering: false,
             }
         );
     }

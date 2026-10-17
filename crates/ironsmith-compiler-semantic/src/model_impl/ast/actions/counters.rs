@@ -16,6 +16,10 @@ pub enum CounterActionAst {
         target: TargetAst,
         target_count: Option<ChoiceCount>,
         distributed: bool,
+        /// "distribute ... among it and any number of commanders": a
+        /// recipient that always belongs to the distribution and receives at
+        /// least one counter; `target` names the optional recipients.
+        required_recipient: Option<TargetAst>,
     },
     PutCounterChoice {
         counter_types: Vec<CounterType>,
@@ -88,6 +92,13 @@ pub enum CounterActionAst {
         each: Option<ObjectFilter>,
         exclude_kind_object: bool,
         only_if_absent: bool,
+    },
+    /// "Choose a kind of counter at random [that <target> doesn't have on
+    /// it] from among <kinds>. Put a counter of that kind on <target>."
+    PutCounterOfRandomKind {
+        kinds: Vec<CounterType>,
+        target: TargetAst,
+        only_absent_kinds: bool,
     },
     DoubleCountersOnEach {
         counter_type: Option<CounterType>,

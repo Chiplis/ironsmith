@@ -10,6 +10,7 @@ pub fn parse_where_x_value_shape_tokens(
     for parser in [
         parse_commander_choice_where_lexed
             as for<'a> fn(&mut LexStream<'a>) -> WResult<WhereXValueShape>,
+        parse_station_contribution_where_lexed,
         parse_tap_cost_power_where_lexed,
         parse_chosen_objects_power_difference_where_lexed,
         parse_colors_among_where_lexed,

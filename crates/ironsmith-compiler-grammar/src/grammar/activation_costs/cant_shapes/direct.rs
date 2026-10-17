@@ -81,6 +81,10 @@ pub enum DirectCantFact {
     SourceCantAttack,
     SourceCantBlock,
     SourceCantAttackItsOwner,
+    /// Port Razer.
+    SourceCantAttackPlayerAlreadyAttacked,
+    /// Ogre Enforcer.
+    SourceLethalDamageMustBeFromSingleSource,
     PermanentsYouControlCantBeSacrificed,
     OpponentCausesCantMakeYouSacrifice,
     SourceCantBeBlocked,
@@ -92,6 +96,12 @@ pub enum DirectCantFact {
     SourceCantAttackOrBlockAlone,
     SourceCantAttackOrBlockUnlessMaxSpeed,
     DomainAttackTax,
+    /// "All damage is dealt to you as though its source had infect."
+    /// (Phyrexian Unlife)
+    DamageToYouAsThoughInfect,
+    /// "All damage is dealt as though its source had wither."
+    /// (Everlasting Torment)
+    AllDamageAsThoughWither,
 }
 
 pub fn parse_direct_cant_fact_tokens(tokens: &[OwnedLexToken]) -> Option<DirectCantFact> {
@@ -121,6 +131,15 @@ fn parse_special_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult<Dire
         )
             .value(DirectCantFact::OpponentCausesCantMakeYouSacrifice),
         parse_domain_attack_tax,
+        primitives::phrase(&[
+            "all", "damage", "is", "dealt", "to", "you", "as", "though", "its", "source", "had",
+            "infect",
+        ])
+        .value(DirectCantFact::DamageToYouAsThoughInfect),
+        primitives::phrase(&[
+            "all", "damage", "is", "dealt", "as", "though", "its", "source", "had", "wither",
+        ])
+        .value(DirectCantFact::AllDamageAsThoughWither),
     ))
     .parse_next(input)
 }
@@ -212,6 +231,23 @@ fn parse_other_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult
             parse_cant,
             primitives::phrase(&["be", "copied"]),
         ).value(DirectCantFact::ThisSpellCantBeCopied),
+        (
+            primitives::phrase(&["this", "creature"]),
+            parse_cant,
+            primitives::phrase(&[
+                "attack", "a", "player", "it", "has", "already", "attacked", "this", "turn",
+            ]),
+        )
+            .value(DirectCantFact::SourceCantAttackPlayerAlreadyAttacked),
+        (
+            primitives::phrase(&["this", "creature"]),
+            parse_cant,
+            primitives::phrase(&[
+                "be", "destroyed", "by", "lethal", "damage", "unless", "lethal", "damage",
+                "dealt", "by", "a", "single", "source", "is", "marked", "on", "it",
+            ]),
+        )
+            .value(DirectCantFact::SourceLethalDamageMustBeFromSingleSource),
         (
             primitives::phrase(&["permanents", "you", "control"]),
             parse_cant,

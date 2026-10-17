@@ -119,7 +119,16 @@ pub fn parse_add_mana_clause_facts(tokens: &[OwnedLexToken]) -> AddManaClauseFac
         && word_occurs(&words, &["identity"]);
     let different_colors = phrase_offset(&words, &["different", "colors"]).is_some();
     let chosen_color_reference = parse_chosen_color_reference(&words);
-    let one_that_color_tail = prefix_tail_tokens(tokens, &view, ADD_MANA_ONE_THAT_COLOR_PREFIX);
+    // "adds an additional one mana of that color" (Gauntlet of Power): the
+    // additional-mana article does not change the chosen-color output.
+    let one_that_color_tail = prefix_tail_tokens(tokens, &view, ADD_MANA_ONE_THAT_COLOR_PREFIX)
+        .or_else(|| {
+            prefix_tail_tokens(
+                tokens,
+                &view,
+                &["an", "additional", "one", "mana", "of", "that", "color"],
+            )
+        });
     let amount_that_color = phrase_is_prefix(&words, ADD_MANA_THAT_COLOR_AMOUNT_PREFIX);
     let amount_that_type = phrase_offset(&words, &["mana", "of", "that", "type"])
         .is_some_and(|offset| matches!(&words[offset + 4..], [] | ["instead"]));
@@ -370,7 +379,11 @@ pub fn parse_land_could_produce_shape(
 ) -> Option<LandCouldProduceShape<'_>> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    if words.len() < 3 || !phrase_is_prefix(&words, &["that"]) {
+    // "any type that a land you control could produce" and the relative
+    // pronoun-less "any type the sacrificed land could produce" (Squandered
+    // Resources) name the same producer filter.
+    let leading_that = phrase_is_prefix(&words, &["that"]);
+    if words.len() < 3 || (!leading_that && !words.ends_with(&["could", "produce"])) {
         return None;
     }
     let (marker_word, marker_length, triggering_event) =
@@ -383,7 +396,7 @@ pub fn parse_land_could_produce_shape(
         return Some(LandCouldProduceShape::UnsupportedTrailing);
     }
     let marker_token = view.token_start_indices().get(marker_word).copied()?;
-    let filter = trim_leading_commas(&tokens[1..marker_token]);
+    let filter = trim_leading_commas(&tokens[usize::from(leading_that)..marker_token]);
     if triggering_event {
         Some(LandCouldProduceShape::TriggeringEventProducedFilter(filter))
     } else {

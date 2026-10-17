@@ -452,6 +452,12 @@ fn materialize_ability(
 ) -> Result<CardDefinitionBuilder, CardTextError> {
     let mut ability = lower_prepared_ability(ability)?;
     super::finalization_support::preserve_triggered_source_zone_alternatives(&mut ability);
+    super::finalization_support::mark_trigger_only_intervening_if(
+        &mut ability,
+        semantic_facts
+            .triggered_ability
+            .intervening_if_checked_only_on_trigger,
+    );
     preserve_ability_self_replacement_surface(&mut ability, &semantic_facts.statement);
     preserve_triggered_leading_unless_surface(
         &mut ability,
@@ -488,6 +494,12 @@ fn materialize_triggered(
         prepared: Some(NormalizedPreparedAbility::Triggered { trigger, prepared }),
     })?;
     super::finalization_support::preserve_triggered_source_zone_alternatives(&mut parsed);
+    super::finalization_support::mark_trigger_only_intervening_if(
+        &mut parsed,
+        semantic_facts
+            .triggered_ability
+            .intervening_if_checked_only_on_trigger,
+    );
     preserve_ability_self_replacement_surface(&mut parsed, &semantic_facts.statement);
     preserve_triggered_leading_unless_surface(
         &mut parsed,
@@ -823,6 +835,7 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         || !initial_prevention.follow_up_effects.is_empty()
         || initial_prevention.source_of_your_choice
         || initial_prevention.protect_you_and_permanents_you_control
+        || initial_prevention.protect_all
     {
         return false;
     }
@@ -902,6 +915,7 @@ fn fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         || prevention.damage_filter != ironsmith_core::DamageFilter::all()
         || prevention.source_of_your_choice
         || prevention.protect_you_and_permanents_you_control
+        || prevention.protect_all
     {
         return false;
     }

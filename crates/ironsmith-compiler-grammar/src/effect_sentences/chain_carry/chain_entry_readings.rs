@@ -104,6 +104,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_atomic_put_counter_for_each(input)),
     },
     Reading {
+        id: RuleId::new("atomic-permanent-and-suspended-counters"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_atomic_permanent_and_suspended_counters(input)),
+    },
+    Reading {
         id: RuleId::new("atomic-token-copy-exception"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -362,6 +368,12 @@ fn read_atomic_put_counter_for_each(
         ]));
     }
     Ok(None)
+}
+fn read_atomic_permanent_and_suspended_counters(
+    input: &ChainEntry<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(parse_atomic_permanent_and_suspended_counter_sentence(input.tokens)?
+        .map(|effect| vec![effect]))
 }
 fn read_atomic_token_copy_exception(
     input: &ChainEntry<'_>,

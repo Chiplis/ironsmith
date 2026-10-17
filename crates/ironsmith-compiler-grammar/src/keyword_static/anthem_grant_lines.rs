@@ -294,6 +294,86 @@ pub fn parse_subject_has_keywords_and_cant_be_blocked_line(
     Ok(Some(granted))
 }
 
+/// "Fish you control have haste and can't be blocked by Humans." A filtered
+/// (non-attached) subject shares both verb phrases: the keywords are a grant
+/// to the matching set and the negated tail is a restriction on that same set.
+/// Plain "and can't be blocked" and "... by more than N" keep their own
+/// productions; attached subjects use the attached-object family.
+pub fn parse_subject_has_keywords_and_negated_restriction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    if tokens.is_empty()
+        || crate::grammar::attached_object_static_lines::parse_attached_has_tokens(&tokens)
+            .is_some()
+    {
+        return Ok(None);
+    }
+    let Some(head) = anthem_grant_grammar::parse_has_keyword_unblockable_head(&tokens) else {
+        return Ok(None);
+    };
+    let has_idx = head.has_token;
+    let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
+    if parse_keywords_and_cant_be_blocked_clause(&ability_tokens).is_some()
+        || parse_keywords_and_cant_be_blocked_by_more_than_clause(&tokens).is_some()
+    {
+        return Ok(None);
+    }
+    let Some(and_index) = ability_tokens.iter().enumerate().find_map(|(index, token)| {
+        (token.is_word("and")
+            && ability_tokens.get(index + 1).is_some_and(|next| {
+                next.is_word("can't") || next.is_word("cant") || next.is_word("cannot")
+            }))
+        .then_some(index)
+    }) else {
+        return Ok(None);
+    };
+    let granted_tokens = trim_edge_punctuation(&ability_tokens[..and_index]);
+    let negated_tail = trim_edge_punctuation(&ability_tokens[and_index + 1..]);
+    if granted_tokens.is_empty() || negated_tail.is_empty() {
+        return Ok(None);
+    }
+    let subject_tokens = trim_commas(&tokens[..has_idx]);
+    if subject_tokens.is_empty()
+        || anthem_grant_grammar::parse_anthem_modifier_head(&subject_tokens).is_some()
+    {
+        return Ok(None);
+    }
+    let Ok(AnthemSubjectAst::Filter(filter)) = parse_anthem_subject(&subject_tokens) else {
+        return Ok(None);
+    };
+    let Some(actions) = parse_ability_line(&granted_tokens) else {
+        return Ok(None);
+    };
+    let clause_words = crate::lexer::token_word_refs(&tokens);
+    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+    if actions.is_empty() || !actions.iter().all(|action| action.lowers_to_static_ability()) {
+        return Ok(None);
+    }
+    let mut restriction_tokens = subject_tokens.clone();
+    restriction_tokens.extend_from_slice(&negated_tail);
+    let Some(parsed_restriction) = parse_negated_object_restriction_clause(&restriction_tokens)?
+    else {
+        return Ok(None);
+    };
+    if parsed_restriction.target.is_some() {
+        return Ok(None);
+    }
+    let mut granted = actions
+        .into_iter()
+        .map(|action| StaticAbilityAst::GrantKeywordAction {
+            filter: filter.clone(),
+            action,
+            condition: None,
+        })
+        .collect::<Vec<_>>();
+    granted.push(StaticAbilityAst::Static(StaticAbility::restriction(
+        parsed_restriction.restriction,
+        display_text_for_tokens(&restriction_tokens, true),
+    )));
+    Ok(Some(granted))
+}
+
 pub fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -501,10 +581,12 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
         }
     }
     let granted = match subject {
-        AnthemSubjectAst::Source => StaticAbilityAst::ConditionalKeywordAction {
-            action: KeywordAction::Unblockable,
-            condition,
-        },
+        AnthemSubjectAst::Source => StaticAbilityAst::Static(
+            StaticAbility::restriction(
+                crate::effect::Restriction::be_blocked(ObjectFilter::source()),
+                "This permanent can't be blocked".to_string(),
+            ).with_condition(condition),
+        ),
         AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
             filter,
             action: KeywordAction::Unblockable,
@@ -1189,9 +1271,91 @@ fn parse_complete_miracle_cost_grant_line(
     }]))
 }
 
+/// "Each nonland card in your hand without foretell has foretell. Its
+/// foretell cost is equal to its mana cost reduced by {2}." (Dream Devourer):
+/// a hand grant of foretell with a derived cost (CR 702.143a). "Without
+/// foretell" needs no filter: a card's own foretell cost is preferred over a
+/// granted one whenever it has both.
+fn parse_complete_foretell_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let first = trim_edge_punctuation(first);
+    let first_words = crate::lexer::token_word_refs(&first);
+    let Some(has) = first_words.iter().position(|word| matches!(*word, "has" | "have")) else {
+        return Ok(None);
+    };
+    if first_words.get(has + 1..) != Some(&["foretell"][..]) || has == 0 {
+        return Ok(None);
+    }
+    let second_tokens = trim_edge_punctuation(second);
+    let second_words = crate::lexer::token_word_refs(&second_tokens);
+    let [
+        "its" | "the", "foretell", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
+        ..,
+    ] = second_words.as_slice()
+    else {
+        return Ok(None);
+    };
+    let Some(by) = second_tokens.iter().position(|token| token.is_word("by")) else {
+        return Ok(None);
+    };
+    let Some((cost, used)) = crate::util::leading_mana_cost_from_tokens(&second_tokens[by + 1..])
+    else {
+        return Ok(None);
+    };
+    if used != second_tokens.len() - by - 1 {
+        return Ok(None);
+    }
+    let reduction = cost.generic_mana_total();
+    if reduction == 0 || cost.mana_value() != reduction {
+        return Ok(None);
+    }
+    // The subject word tokens up to "has", without a trailing "without
+    // foretell" qualifier.
+    let word_tokens: Vec<OwnedLexToken> = first
+        .iter()
+        .filter(|token| token.as_word().is_some())
+        .cloned()
+        .collect();
+    let mut subject = word_tokens[..has].to_vec();
+    if crate::lexer::token_word_refs(&subject).ends_with(&["without", "foretell"]) {
+        subject.truncate(subject.len() - 2);
+    }
+    if subject.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter(&subject, false)?;
+    let zone = filter.zone.unwrap_or(Zone::Battlefield);
+    if zone != Zone::Hand {
+        return Ok(None);
+    }
+    filter.zone = None;
+    let spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::foretell_from_cards_mana_cost_reduced_by(reduction),
+        filter,
+        zone,
+    );
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // A spell subject's cast-time keyword ("The first spell you cast from
+    // anywhere other than your hand each turn has demonstrate.") is owned by
+    // the typed spell-keyword reader, whose subject filter keeps the stack
+    // qualifiers; this anthem reader must not offer a competing reading.
+    if matches!(
+        crate::keyword_static::parse_granted_spell_keyword_line(tokens),
+        Ok(Some(_))
+    ) {
+        return Ok(None);
+    }
     // A combat requirement's `if able` belongs to that requirement, not
     // to the preceding keyword. Parse the complete keyword prefix first
     // and give the sibling requirement the same recipient and condition.
@@ -1274,6 +1438,7 @@ fn parse_granted_keyword_static_line_inner(
         return self::combat_requirements::parse_combat_requirement_static_line(tokens);
     }
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
+    if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete as-entry characteristic replacement is not a keyword grant
     // to the descriptor at its tail (for example a Dinosaur creature).
@@ -2985,6 +3150,18 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
         _ => tokens,
     };
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
+    // An explicit source joined to other matching objects is a union, not
+    // an intersection of `source` and `other` on one recipient filter.
+    if let Some(and) = tokens.iter().position(|token| token.is_word("and"))
+        && is_source_reference_words(&crate::lexer::parser_token_word_refs(&tokens[..and]))
+        && tokens.get(and + 1).is_some_and(|token| token.is_word("other"))
+    {
+        let others = parse_object_filter(&tokens[and + 1..], false)?;
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(Zone::Battlefield);
+        filter.any_of = vec![ObjectFilter::source(), others];
+        return Ok(AnthemSubjectAst::Filter(filter));
+    }
     // A duration is not part of the affected-object set. Its owning reader
     // must consume it before this subject parser can apply a grant; otherwise
     // the tolerant filter can turn a timed target into every creature forever.
@@ -3332,10 +3509,51 @@ fn static_condition_clause_bound(tokens: &[OwnedLexToken]) -> Option<crate::Cond
 #[path = "anthem_grant_lines/static_condition_readings.rs"]
 mod static_condition_readings;
 
+fn parse_defending_player_counter_condition(words: &[&str]) -> Option<PredicateAst> {
+    let rest = words
+        .strip_prefix(&["defending", "player", "has"][..])
+        .or_else(|| words.strip_prefix(&["the", "defending", "player", "has"][..]))?;
+    let (count, rest) = match rest {
+        ["a" | "an" | "one", rest @ ..] => (1u32, rest),
+        [number, "or", "more", rest @ ..] => {
+            (crate::util::parse_number_word_u32(number)
+                .or_else(|| number.parse::<u32>().ok())?, rest)
+        }
+        _ => return None,
+    };
+    let [kind, counter_noun] = rest else {
+        return None;
+    };
+    if !matches!(*counter_noun, "counter" | "counters") {
+        return None;
+    }
+    let counter_type = crate::grammar::filters::parse_counter_type_words(&[*kind, "counter"])?;
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerHasCountersOrMore {
+        player: PlayerAst::Defending,
+        counter_type,
+        count,
+    }))
+}
+
 pub fn parse_static_condition_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<PredicateAst, CardTextError> {
+    // A gendered pronoun for a named legendary source ("if her power is 1 or
+    // less", Stature) reads exactly like the neuter possessive "its".
+    if tokens
+        .first()
+        .is_some_and(|token| token.is_word("her") || token.is_word("his"))
+    {
+        let mut neutral = tokens.to_vec();
+        neutral[0] = OwnedLexToken::word("its".to_string(), tokens[0].span());
+        return parse_static_condition_clause(&neutral);
+    }
     let tokens = trim_edge_punctuation(tokens);
+    if let Some(predicate) =
+        crate::grammar::anthem_grants::parse_chosen_color_most_common_predicate(&tokens)
+    {
+        return Ok(predicate);
+    }
     let clause_word_storage = AnthemNormalizedWords::new(&tokens);
     let clause_words = clause_word_storage.word_refs();
     if clause_words.is_empty() {
@@ -3353,9 +3571,50 @@ pub fn parse_static_condition_clause(
             right: Value::Fixed(minimum),
         });
     }
+    // "defending player has a rad counter" / "defending player has three or
+    // more poison counters" (Nightkin Ambusher): a player-counter threshold
+    // read for the combat's defending player.
+    if let Some(predicate) = parse_defending_player_counter_condition(&clause_words) {
+        return Ok(predicate);
+    }
+    // "another player controls enchanted creature" (Dog Umbra): exactly the
+    // negation of "you control enchanted creature".
+    if let ["another", "player", "controls", attached @ ("enchanted" | "equipped"), noun] =
+        clause_words.as_slice()
+    {
+        let rewritten = crate::lexer::synthetic_word_tokens(["you", "control", *attached, *noun]);
+        if let Ok(condition) = parse_static_condition_clause(&rewritten) {
+            return Ok(PredicateAst::Not(Box::new(condition)));
+        }
+    }
     let display = clause_words.join(" ");
     if let Some(condition) = toughness_assignment::attached_axis_condition(&tokens) {
         return Ok(condition);
+    }
+
+    // "an artifact creature you control is attacking" (Sanwell, Avenger
+    // Ace): an existential over your permanents in a combat role reads as
+    // "you control an attacking artifact creature".
+    if tokens.len() >= 6
+        && tokens
+            .first()
+            .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        && tokens[tokens.len() - 4].is_word("you")
+        && tokens[tokens.len() - 3].is_word("control")
+        && tokens[tokens.len() - 2].is_word("is")
+        && (tokens[tokens.len() - 1].is_word("attacking")
+            || tokens[tokens.len() - 1].is_word("blocking"))
+    {
+        let mut rewritten = vec![
+            OwnedLexToken::word("you".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("control".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("an".to_string(), TextSpan::synthetic()),
+            tokens[tokens.len() - 1].clone(),
+        ];
+        rewritten.extend_from_slice(&tokens[1..tokens.len() - 4]);
+        if let Ok(condition) = parse_static_condition_clause(&rewritten) {
+            return Ok(condition);
+        }
     }
 
     // "you control a Human creature and a non-Human creature" (Of One Mind):
@@ -3569,6 +3828,8 @@ pub fn parse_static_condition_clause(
                     });
                 }
                 ExistentialConditionTail::Generic { filter_tokens } => {
+                    let other = filter_tokens.first().is_some_and(|token| token.is_word("another") || token.is_word("other"));
+                    let filter_tokens = if other { &filter_tokens[1..] } else { filter_tokens };
                     if filter_tokens.is_empty() {
                         return Err(CardTextError::ParseError(format!(
                             "missing object phrase in static condition (clause: '{display}')"
@@ -3591,13 +3852,14 @@ pub fn parse_static_condition_clause(
                             right: Value::Fixed(threshold),
                         });
                     }
-                    let filter = parse_permanent_card_count_filter(filter_tokens)
-                        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false)))
+                    let mut filter = parse_permanent_card_count_filter(filter_tokens)
+                        .or_else(|| crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, other)))
                         .ok_or_else(|| {
                             CardTextError::ParseError(format!(
                                 "unsupported counted object phrase in static condition (clause: '{display}')"
                             ))
                         })?;
+                    filter.other |= other;
                     return Ok(PredicateAst::CountComparison {
                         count: AnthemCountExpression::MatchingFilter(filter),
                         comparison: shape.comparison,
@@ -3798,25 +4060,58 @@ fn parse_devotion_static_condition(
         DevotionPlayerKind::IteratedPlayer => PlayerFilter::IteratedPlayer,
         DevotionPlayerKind::Opponent => PlayerFilter::Opponent,
     };
-    let mut values = shape
-        .colors
-        .into_iter()
-        .map(|color| crate::effect::Value::Devotion {
-            player: player.clone(),
-            color,
-        });
-    let Some(mut left) = values.next() else {
+    if shape.colors.is_empty() {
         return Ok(None);
-    };
-    for value in values {
-        left = crate::effect::Value::Add(Box::new(left), Box::new(value));
     }
+    let left = crate::effect::Value::devotion_to_colors(player, shape.colors.into_iter().collect());
 
     Ok(Some(PredicateAst::ValueComparison {
         left,
         operator: shape.operator,
         right: crate::effect::Value::Fixed(shape.amount as i32),
     }))
+}
+
+#[cfg(test)]
+mod devotion_combination_query_tests {
+    use super::*;
+    #[test]
+    fn controlled_serial_union_keeps_the_supertype_on_its_own_arm() {
+        let tokens = crate::lexer::lex_line("God, a Demigod, or a legendary enchantment", 0).unwrap();
+        let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(&tokens, false).unwrap();
+        assert_eq!(filter.any_of.len(), 3, "{filter:?}");
+        assert_eq!(filter.any_of[0].subtypes, vec![crate::types::Subtype::God]);
+        assert_eq!(filter.any_of[1].subtypes, vec![crate::types::Subtype::Demigod]);
+        assert!(filter.any_of[0].supertypes.is_empty());
+        assert!(filter.any_of[1].supertypes.is_empty());
+        assert_eq!(filter.any_of[2].supertypes, vec![crate::types::Supertype::Legendary]);
+        assert_eq!(filter.any_of[2].card_types, vec![CardType::Enchantment]);
+        fn check_control(predicate: PredicateAst, stage: &str) {
+            let PredicateAst::Player(PlayerPredicateAst::PlayerControls { filter, .. }) = predicate
+                else { panic!("{stage}: expected control predicate: {predicate:?}"); };
+            assert_eq!(filter.any_of.len(), 3, "{stage}: {filter:?}");
+        }
+        let tokens = crate::lexer::lex_line("you control a God, a Demigod, or a legendary enchantment", 0).unwrap();
+        check_control(crate::grammar::filters::parse_condition_predicate_lexed(&tokens).unwrap(), "predicate entry");
+        let tokens = crate::lexer::lex_line("If you control a God, a Demigod, or a legendary enchantment, you gain 1 life.", 0).unwrap();
+        let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+        let [EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })] = effects.as_slice()
+            else { panic!("conditional document: {effects:?}"); };
+        check_control(predicate.clone(), "conditional document");
+    }
+    #[test]
+    fn devotion_combination_is_one_typed_query_in_static_and_activated_grammar() {
+        let tokens = crate::lexer::lex_line("Your devotion to white and blue is greater than or equal to three.", 0).unwrap();
+        let predicate = parse_devotion_static_condition(&tokens).unwrap().unwrap();
+        let PredicateAst::ValueComparison { left, .. } = predicate else { panic!("devotion comparison"); };
+        let expected = crate::effect::Value::DevotionToColors {
+            player: PlayerFilter::You,
+            colors: crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLUE),
+        };
+        assert_eq!(left, expected);
+        let tokens = crate::lexer::lex_line("your devotion to white and blue", 0).unwrap();
+        assert_eq!(crate::grammar::activated_lines::parse_activated_devotion_value_tokens(&tokens).unwrap(), Some(expected));
+    }
 }
 
 fn parse_conjoined_static_condition_clause(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3899,6 +4194,36 @@ fn source_counter_count_expression(
     } else {
         AnthemCountExpression::CountersOnSource(counter_type)
     }
+}
+
+/// "for each A and +N/+M for each B", repeating the clause's own modifier:
+/// the modifier applies once per A plus once per B, i.e. per (A + B).
+fn repeated_modifier_for_each_sum(tail: &[OwnedLexToken], modifier: &str) -> Option<Value> {
+    let and_idx = tail.windows(4).position(|window| {
+        window[0].is_word("and")
+            && window[1]
+                .as_word()
+                .is_some_and(|word| word.eq_ignore_ascii_case(modifier))
+            && window[2].is_word("for")
+            && window[3].is_word("each")
+    })?;
+    let first = &tail[..and_idx];
+    let mut second = vec![tail[and_idx + 2].clone(), tail[and_idx + 3].clone()];
+    second.extend_from_slice(&tail[and_idx + 4..]);
+    let mut total: Option<Value> = None;
+    for part in [first, second.as_slice()] {
+        let part = trim_edge_punctuation(part);
+        let words = crate::lexer::token_word_refs(&part);
+        let (value, used) = parse_for_each_count_value_words(&words)?;
+        if used != words.len() || !dynamic_anthem_values::supports_game_state_binding(&value) {
+            return None;
+        }
+        total = Some(match total {
+            None => value.unhinted().clone(),
+            Some(previous) => Value::Add(Box::new(previous), Box::new(value.unhinted().clone())),
+        });
+    }
+    total.map(|value| value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach))
 }
 
 fn anthem_count_expression_from_value(value: Value) -> Option<AnthemCountExpression> {
@@ -4080,6 +4405,27 @@ pub fn parse_anthem_prefix_condition(
             .comma_subject_start
             .or_else(|| find_source_reference_start(&tokens[..get_idx]))
             .unwrap_or(shape.prefix_end);
+        // "During your turn, as long as Cloud is equipped, it has double
+        // strike" (Cloud, Planet's Champion): both leading conditions apply.
+        if subject_start < get_idx
+            && let Some(inner_shape) = anthem_grant_grammar::parse_prefix_condition_shape(
+                &tokens[subject_start..],
+                get_idx - subject_start,
+            )
+            && inner_shape.kind == anthem_grant_grammar::AnthemPrefixConditionKind::AsLongAs
+            && let (Some(inner), inner_start) =
+                parse_anthem_prefix_condition(&tokens[subject_start..], get_idx - subject_start)?
+        {
+            return Ok((
+                Some(PredicateAst::And(
+                    Box::new(PredicateAst::ActivationTiming(
+                        crate::ability::ActivationTiming::DuringYourTurn,
+                    )),
+                    Box::new(inner),
+                )),
+                subject_start + inner_start,
+            ));
+        }
         return Ok((
             Some(PredicateAst::ActivationTiming(
                 crate::ability::ActivationTiming::DuringYourTurn,
@@ -4163,6 +4509,47 @@ fn bind_unique_count_condition_anthem_subject(
     );
 }
 
+/// "Nonartifact creatures get +2/+2 as long as they all share a color"
+/// (Common Cause): the anthem's own subjects share a color exactly when, for
+/// some color, no matching object lacks it (a colorless object lacks every
+/// color, so it shares none).
+fn subject_all_share_a_color_condition(
+    subject_tokens: &[OwnedLexToken],
+    condition_tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let condition_tokens = trim_edge_punctuation(condition_tokens);
+    let words = crate::lexer::token_word_refs(&condition_tokens);
+    if !matches!(
+        words.as_slice(),
+        ["they", "all", "share", "a", "color"] | ["they", "share", "a", "color"]
+    ) {
+        return None;
+    }
+    let AnthemSubjectAst::Filter(mut subject) = parse_anthem_subject(subject_tokens).ok()? else {
+        return None;
+    };
+    if subject.zone.is_none() {
+        subject = subject.in_zone(crate::zone::Zone::Battlefield);
+    }
+    let display = "they all share a color".to_string();
+    [
+        crate::color::Color::White,
+        crate::color::Color::Blue,
+        crate::color::Color::Black,
+        crate::color::Color::Red,
+        crate::color::Color::Green,
+    ]
+    .into_iter()
+    .map(|color| PredicateAst::CountComparison {
+        count: AnthemCountExpression::MatchingFilter(
+            subject.clone().without_colors(ColorSet::from(color)),
+        ),
+        comparison: crate::effect::Comparison::Equal(0),
+        display: Some(display.clone()),
+    })
+    .reduce(|left, right| PredicateAst::Or(Box::new(left), Box::new(right)))
+}
+
 pub fn parse_anthem_clause(
     tokens: &[OwnedLexToken],
     get_idx: usize,
@@ -4232,7 +4619,12 @@ pub fn parse_anthem_clause(
     if let Some(split) = trailing_condition {
         suffix_attached_subject =
             infer_attached_subject_filter_from_condition_tokens(split.condition_tokens);
-        suffix_condition = Some(parse_static_condition_clause(split.condition_tokens)?);
+        suffix_condition = Some(
+            match subject_all_share_a_color_condition(&subject_tokens, split.condition_tokens) {
+                Some(condition) => condition,
+                None => parse_static_condition_clause(split.condition_tokens)?,
+            },
+        );
     }
     if explicit_values.is_none() && !anthem_tail_tokens.is_empty() {
         match anthem_grant_grammar::parse_tail_shape(anthem_tail_tokens) {
@@ -4255,7 +4647,11 @@ pub fn parse_anthem_clause(
                 value_scale = Some(value);
             }
             Some(anthem_grant_grammar::AnthemTailShape::ForEach(tail)) => {
-                if anthem_for_each_prefers_specialized_parser(tail) {
+                if let Some(sum) = repeated_modifier_for_each_sum(tail, modifier_token) {
+                    // "+1/+1 for each creature you control and +1/+1 for
+                    // each Aura you control" (Eidolon of Countless Battles).
+                    value_scale = Some(sum);
+                } else if anthem_for_each_prefers_specialized_parser(tail) {
                     scale = Some(parse_anthem_for_each_expression(tail)?);
                 } else {
                     let words = crate::lexer::token_word_refs(tail);
@@ -4328,6 +4724,20 @@ pub fn parse_anthem_clause(
                     scale = Some(count);
                 } else if matches!(x_value.unhinted(), Value::PartySize(_))
                     || dynamic_anthem_values::supports_game_state_binding(&x_value)
+                    // "where X is the exiled card's power" (Drach'Nyen,
+                    // Phyrexian Ingester): a characteristic of the card this
+                    // source exiled, the same linked reference the paired
+                    // "+X/+Y ... and Y is its toughness" form keeps.
+                    || matches!(
+                        x_value.unhinted(),
+                        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
+                            if matches!(
+                                spec.base(),
+                                crate::target::ChooseSpec::Tagged(tag)
+                                    if tag.as_str()
+                                        == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
+                            )
+                    )
                 {
                     // The shared binding is already typed. Retain its complete
                     // expression rather than forcing it into the narrower
@@ -4345,6 +4755,13 @@ pub fn parse_anthem_clause(
                 suffix_attached_subject =
                     infer_attached_subject_filter_from_condition_tokens(condition_tokens);
                 suffix_condition = Some(parse_static_condition_clause(condition_tokens)?);
+            }
+            Some(anthem_grant_grammar::AnthemTailShape::Unless { condition_tokens }) => {
+                suffix_attached_subject =
+                    infer_attached_subject_filter_from_condition_tokens(condition_tokens);
+                suffix_condition = Some(PredicateAst::Not(Box::new(
+                    parse_static_condition_clause(condition_tokens)?,
+                )));
             }
             None => {
                 return Err(CardTextError::ParseError(format!(
@@ -4650,6 +5067,9 @@ pub struct TypeColorAdditionClause {
     pub set_colors: ColorSet,
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
+    /// "is a legendary Soldier in addition to its other types" (Super-Soldier
+    /// Serum): supertypes are part of the type line (CR 205.4a).
+    pub supertypes: Vec<Supertype>,
 }
 
 pub fn parse_type_color_addition_clause(
@@ -4681,6 +5101,7 @@ pub fn parse_type_color_addition_clause(
             set_colors,
             card_types: Vec::new(),
             subtypes: Vec::new(),
+            supertypes: Vec::new(),
         }));
     }
 
@@ -4728,7 +5149,14 @@ pub fn parse_type_color_addition_clause(
     let mut set_colors = ColorSet::new();
     let mut card_types = Vec::new();
     let mut subtypes = Vec::new();
+    let mut supertypes = Vec::new();
     for descriptor in descriptor_words {
+        if allow_types && let Some(supertype) = crate::util::parse_supertype_word(descriptor) {
+            if !supertypes.contains(&supertype) {
+                supertypes.push(supertype);
+            }
+            continue;
+        }
         if let Some(color) = parse_color(descriptor) {
             if allow_colors {
                 added_colors = added_colors.union(color);
@@ -4785,6 +5213,7 @@ pub fn parse_type_color_addition_clause(
         && set_colors.is_empty()
         && card_types.is_empty()
         && subtypes.is_empty()
+        && supertypes.is_empty()
     {
         return Err(CardTextError::ParseError(format!(
             "missing type/color additions in in-addition clause (clause: '{}')",
@@ -4797,6 +5226,7 @@ pub fn parse_type_color_addition_clause(
         set_colors,
         card_types,
         subtypes,
+        supertypes,
     }))
 }
 

@@ -17,6 +17,11 @@ pub enum SpecialTriggeredProgram {
     OpponentGraveyardMinorityReturn,
     RandomDiscardCreatureReturnUnlessLife { life: u32 },
     OpponentCombatAttackPile,
+    /// Oath of Mages: the upkeep player targets an opponent with more life.
+    OpponentLifeMajorityDamage,
+    /// Oath of Scholars: the upkeep player targets an opponent with more
+    /// cards in hand.
+    OpponentHandMajorityRedraw,
 }
 
 pub fn parse_special_triggered_program_tokens(
@@ -35,9 +40,58 @@ fn parse_special_triggered_program(input: &mut LexStream<'_>) -> WResult<Special
         parse_opponent_land_majority_search,
         parse_opponent_graveyard_minority_return,
         parse_random_discard_creature_return,
-        parse_opponent_combat_attack_pile,
+        alt((
+            parse_opponent_combat_attack_pile,
+            parse_opponent_life_majority_damage,
+            parse_opponent_hand_majority_redraw,
+        )),
     ))
     .parse_next(input)
+}
+
+/// "At the beginning of each player's upkeep, that player chooses target
+/// player who has more <life | cards in hand> than they do and is their
+/// opponent." The comparison is required word for word: a different chooser
+/// or comparison must not fall into these programs.
+fn parse_upkeep_player_targets_opponent_with_more(
+    input: &mut LexStream<'_>,
+    quantity: &'static [&'static str],
+) -> WResult<()> {
+    primitives::phrase(&["at", "the", "beginning", "of", "each", "player's", "upkeep"])
+        .parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["that", "player", "chooses", "target", "player", "who", "has", "more"])
+        .parse_next(input)?;
+    primitives::phrase(quantity).parse_next(input)?;
+    primitives::phrase(&["than", "they", "do", "and", "is", "their", "opponent"])
+        .parse_next(input)?;
+    primitives::period().parse_next(input)?;
+    Ok(())
+}
+
+fn parse_opponent_life_majority_damage(
+    input: &mut LexStream<'_>,
+) -> WResult<SpecialTriggeredProgram> {
+    parse_upkeep_player_targets_opponent_with_more(input, &["life"])?;
+    primitives::phrase(&["the", "first", "player", "may", "have", "this"]).parse_next(input)?;
+    alt((primitives::kw("enchantment").void(), winnow::combinator::empty)).parse_next(input)?;
+    primitives::phrase(&["deal", "1", "damage", "to", "the", "second", "player"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(SpecialTriggeredProgram::OpponentLifeMajorityDamage)
+}
+
+fn parse_opponent_hand_majority_redraw(
+    input: &mut LexStream<'_>,
+) -> WResult<SpecialTriggeredProgram> {
+    parse_upkeep_player_targets_opponent_with_more(input, &["cards", "in", "hand"])?;
+    primitives::phrase(&[
+        "the", "first", "player", "may", "discard", "their", "hand", "and", "draw", "three",
+        "cards",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(SpecialTriggeredProgram::OpponentHandMajorityRedraw)
 }
 
 fn seek_phrase(input: &mut LexStream<'_>, expected: &'static [&'static str]) -> WResult<()> {
@@ -221,6 +275,69 @@ fn parse_opponent_land_majority_search(
     primitives::phrase(&["then", "shuffle"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(SpecialTriggeredProgram::OpponentLandMajoritySearch)
+}
+
+/// Effects of the Oath opponent-majority programs (Oath of Mages / Oath of
+/// Scholars): the upkeep player announces a target opponent who has more of
+/// the compared quantity (a real target, CR 115.1, rechecked on resolution),
+/// then may perform the reward. "The first player" is that upkeep player and
+/// "the second player" the announced target.
+pub fn oath_opponent_majority_effects(
+    program: SpecialTriggeredProgram,
+) -> Option<Vec<crate::cards::builders::EffectAst>> {
+    use crate::cards::builders::{
+        DamageActionAst, EffectAst, LifeResourceActionAst, PermissionEffectAst, PlayerAst,
+        SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
+    };
+    use crate::target::PlayerFilter;
+    let (quantity, reward) = match program {
+        SpecialTriggeredProgram::OpponentLifeMajorityDamage => (
+            ironsmith_core::PlayerQuantity::Life,
+            vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::Damage(DamageActionAst::DealDamage {
+                    amount: crate::effect::Value::Fixed(1),
+                    target: TargetAst::Player(
+                        PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+                        None,
+                    ),
+                    unpreventable: false,
+                }),
+            )],
+        ),
+        SpecialTriggeredProgram::OpponentHandMajorityRedraw => (
+            ironsmith_core::PlayerQuantity::CardsInHand,
+            vec![
+                EffectAst::subject_verb_discard_hand(PlayerAst::Active),
+                EffectAst::subject_verb(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::Active,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                        count: crate::effect::Value::Fixed(3),
+                    }),
+                ),
+            ],
+        ),
+        _ => return None,
+    };
+    Some(vec![
+        EffectAst::subject_verb_explicit_target_only_for_chooser(
+            TargetAst::Player(
+                PlayerFilter::QuantityGreaterThanPlayer {
+                    base: Box::new(PlayerFilter::OpponentOf(Box::new(PlayerFilter::Active))),
+                    other: Box::new(PlayerFilter::Active),
+                    quantity,
+                },
+                Some(crate::TextSpan::synthetic()),
+            ),
+            PlayerAst::Active,
+        ),
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+            player: PlayerAst::Active,
+            effects: reward,
+        }),
+    ])
 }
 
 #[cfg(test)]

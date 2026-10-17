@@ -269,12 +269,28 @@ pub fn parse_controlled_creatures_may_assign_as_unblocked_line(
         ),
         None => (None, tokens),
     };
-    if !crate::grammar::abilities::is_each_controlled_may_assign_damage_as_unblocked_lexed(body) {
+    let filter = if crate::grammar::abilities::is_each_controlled_may_assign_damage_as_unblocked_lexed(body) {
+        ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::You)
+    } else if let Some(filter_tokens) =
+        crate::grammar::abilities::split_each_filtered_may_assign_damage_as_unblocked_lexed(body)
+    {
+        // "For each creature you control with no abilities, ..." (Ruxa):
+        // the same grant, restricted to the iterated creatures.
+        let mut filter = parse_object_filter(filter_tokens, false)?;
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        if filter.zone != Some(Zone::Battlefield)
+            || !filter.card_types.contains(&crate::types::CardType::Creature)
+        {
+            return Ok(None);
+        }
+        filter
+    } else {
         return Ok(None);
-    }
-    let filter = ObjectFilter::creature()
-        .in_zone(Zone::Battlefield)
-        .controlled_by(PlayerFilter::You);
+    };
     Ok(Some(vec![StaticAbilityAst::GrantStaticAbility {
         filter,
         ability: Box::new(StaticAbilityAst::Static(
@@ -964,6 +980,12 @@ fn push_type_color_additions_for_anthem_subject(
             additions.card_types,
         ));
     }
+    if !additions.supertypes.is_empty() {
+        push_static(StaticAbility::add_supertypes(
+            filter.clone(),
+            additions.supertypes,
+        ));
+    }
     if !additions.subtypes.is_empty() {
         push_static(StaticAbility::add_subtypes(filter, additions.subtypes));
     }
@@ -1095,6 +1117,7 @@ fn add_static_ability_ast_condition(
         | StaticAbilityAst::EquipmentKeywordActionsGrant { .. }
         | StaticAbilityAst::EntryReplacementWithGrantedAbilities { .. }
         | StaticAbilityAst::SoulbondSharedObjectAbility { .. }
+        | StaticAbilityAst::SourceHasFullTextOfTopGraveyardCard { .. }
         | StaticAbilityAst::AttachmentRestriction { .. } => {
             return Err(CardTextError::ParseError(
                 "cannot apply leading static condition to unsupported static ability shape"
@@ -1901,6 +1924,28 @@ fn parse_heterogeneous_granted_tail_remaining(
 
         if let Some(additions) = parse_type_color_addition_clause(&segment)? {
             parsed.type_color_additions.push(additions);
+            continue;
+        }
+
+        // "Enchanted creature gets +3/+0 and can only attack alone."
+        // (Errantry): CR 508.1c restriction carried by the recipient.
+        if crate::grammar::primitives::parse_all(
+            trim_edge_punctuation_tokens(&segment),
+            winnow::combinator::alt((
+                crate::grammar::primitives::phrase(&["can", "only", "attack", "alone"]),
+                crate::grammar::primitives::phrase(&["can", "attack", "only", "alone"]),
+            )),
+            "granted can-only-attack-alone restriction",
+        )
+        .is_ok()
+        {
+            parsed.granted_static.push(
+                StaticAbility::restriction(
+                    crate::effect::Restriction::attack_only_alone(ObjectFilter::source()),
+                    "This creature can only attack alone".to_string(),
+                )
+                .into(),
+            );
             continue;
         }
 
@@ -4091,6 +4136,7 @@ pub fn parse_filter_has_granted_ability_line(
     }
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
+    if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete comma-separated predicate list owns every clause and every
     // local condition; this family cannot suffix-match one of its `has` verbs.

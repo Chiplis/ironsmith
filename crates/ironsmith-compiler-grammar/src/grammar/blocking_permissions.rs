@@ -94,11 +94,14 @@ fn parse_additional_lexed<'a>(input: &mut LexStream<'a>) -> ModalResult<u32> {
             opt(leaf::parse_leaf_number_prefix_lexed),
         )
             .map(|(_, _, count)| count.unwrap_or(1)),
+        // "can block up to two additional creatures" (Yare): blocking the
+        // extra creatures is already optional, so "up to" adds nothing.
         (
+            opt(primitives::phrase(&["up", "to"])),
             leaf::parse_leaf_number_prefix_lexed,
             primitives::kw("additional"),
         )
-            .map(|(count, _)| count),
+            .map(|(_, count, _)| count),
     ))
     .parse_next(input)?;
     alt((primitives::kw("creature"), primitives::kw("creatures"))).parse_next(input)?;

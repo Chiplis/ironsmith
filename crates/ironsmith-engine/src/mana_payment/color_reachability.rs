@@ -26,6 +26,14 @@ fn production(game: &GameState, controller: crate::ids::PlayerId,
         ManaProduction::ChooseColors { available, amount: Value::Fixed(n), .. } => {
             if *n > 0 { for &color in available { add(ManaSymbol::from_color(color), colors)?; } }
         }
+        ManaProduction::DraftChosenColors { amount: Value::Fixed(n), card_name, .. } => {
+            if *n > 0 {
+                let drafted = game.draft_chosen_colors(controller, card_name);
+                for color in COLORS {
+                    if drafted.contains(color) { add(ManaSymbol::from_color(color), colors)?; }
+                }
+            }
+        }
         ManaProduction::ChosenColor { amount, fixed_option, .. } => {
             // The fixed option is an *alternative* to the stored chosen color.
             // Quantity still reads that stored choice, not the output option.
@@ -131,7 +139,11 @@ fn reachable_colors(game: &GameState, request: &ManaPaymentRequest,
                     game, object.id, game.controller_of(object)) => {
                     if object.zone != Zone::Battlefield { return None; }
                     if game.controller_of(object) != request.payer {
-                        if activated.allows_any_player_to_activate() { return None; }
+                        if activated.allows_any_player_to_activate()
+                            || game.may_tap_uncontrolled_land_for_mana(request.payer, object.id, activated)
+                        {
+                            return None;
+                        }
                         continue;
                     }
                     let costs = activated.mana_cost.as_all()?;

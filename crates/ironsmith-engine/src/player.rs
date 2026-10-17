@@ -40,6 +40,10 @@ pub struct ManaSpendPolicy {
     pub mode: ironsmith_core::value_model::ManaSpendMode,
     pub any_color_mana_symbols: Vec<ManaSymbol>,
     pub other_mana_only_as_colorless: bool,
+    /// (spent, paid) symbol conversions: "spend white mana as though it were
+    /// red mana" (Sunglasses of Urza).
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub symbol_as_symbol: Vec<(ManaSymbol, ManaSymbol)>,
 }
 
 impl ManaSpendPolicy {
@@ -67,8 +71,16 @@ impl ManaSpendPolicy {
         }
     }
 
+    pub fn add_symbol_as_symbol(&mut self, symbol: ManaSymbol, as_symbol: ManaSymbol) {
+        if !self.symbol_as_symbol.contains(&(symbol, as_symbol)) {
+            self.symbol_as_symbol.push((symbol, as_symbol));
+        }
+    }
+
     pub(crate) fn has_any_color_spending(&self) -> bool {
-        self.mode.allows_any_color() || !self.any_color_mana_symbols.is_empty()
+        self.mode.allows_any_color()
+            || !self.any_color_mana_symbols.is_empty()
+            || !self.symbol_as_symbol.is_empty()
     }
 
     fn symbol_spends_as_any_color(&self, symbol: ManaSymbol) -> bool {
@@ -96,6 +108,7 @@ impl ManaSpendPolicy {
                     && (!self.other_mana_only_as_colorless
                         || self.any_color_mana_symbols.contains(&symbol)))
                     || self.symbol_spends_as_any_color(symbol)
+                    || self.symbol_as_symbol.contains(&(symbol, required))
             }
             ManaSymbol::Colorless => self.symbol_spends_as_colorless(symbol),
             ManaSymbol::Generic(_) => matches!(
@@ -797,6 +810,14 @@ pub struct Player {
 
     // Game-scoped tracking
     pub spells_cast_this_game: u32,
+    /// Name at casting time, keyed by the exact cast spell incarnation.
+    pub spell_cast_names_this_game: std::collections::BTreeMap<ObjectId, String>,
+    /// Creature spells this player has cast this game ("until a player
+    /// casts a creature spell").
+    pub creature_spells_cast_this_game: u32,
+    /// Times this player has cycled a card with each name this game
+    /// ("if you've cycled a card named ... four or more times this game").
+    pub cycled_card_names_this_game: std::collections::BTreeMap<String, u32>,
 
     // Hand size
     pub max_hand_size: i32,
@@ -857,6 +878,9 @@ impl Player {
             lands_played_this_turn: 0,
             land_plays_per_turn: 1,
             spells_cast_this_game: 0,
+            spell_cast_names_this_game: std::collections::BTreeMap::new(),
+            creature_spells_cast_this_game: 0,
+            cycled_card_names_this_game: std::collections::BTreeMap::new(),
             max_hand_size: 7,
             has_lost: false,
             has_won: false,

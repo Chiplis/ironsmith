@@ -474,12 +474,60 @@ pub(crate) fn execute_mana_losses_with_outputs(
                     .sum(),
                 "simultaneous lost mana receipt",
             )?;
+            let mut outcomes = outcomes;
+            if let Some(burn) = lose_life_for_lost_mana(game, ctx, &outcomes)? {
+                outcomes.push(burn);
+            }
             Ok(crate::effects::CompletedEffectOutputs::from_children(
                 outcomes,
                 EffectOutcome::aggregate_summing_counts,
             ))
         },
     )
+}
+
+/// "A player losing unspent mana causes that player to lose that much life."
+/// (Yurlok of Scorch Thrash): while such a static ability is on the
+/// battlefield, each player loses life equal to the unspent mana they just
+/// lost. Converted mana (CR 106.4, "becomes colorless instead") was not lost.
+fn lose_life_for_lost_mana(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    outcomes: &[crate::effects::CompletedEffectOutputs],
+) -> Result<Option<crate::effects::CompletedEffectOutputs>, ExecutionError> {
+    let burn_active = game.battlefield.iter().any(|&id| {
+        game.calculated_characteristics_arc(id).is_some_and(|chars| {
+            chars.static_abilities.iter().any(|ability| {
+                ability.id() == crate::static_abilities::StaticAbilityId::LoseLifeForUnspentMana
+            })
+        })
+    });
+    if !burn_active {
+        return Ok(None);
+    }
+    let losses = outcomes
+        .iter()
+        .flat_map(|output| output.outcome.events.iter())
+        .filter_map(|event| event.downcast::<ManaLostEvent>())
+        .filter(|loss| loss.converted_to.is_none())
+        .map(|loss| (loss.player, loss.mana.total()))
+        .filter(|(_, amount)| *amount > 0)
+        .collect::<Vec<_>>();
+    if losses.is_empty() {
+        return Ok(None);
+    }
+    let mut events = Vec::new();
+    for (player, amount) in losses {
+        let effect = crate::effect::Effect::lose_life_player(
+            i32::try_from(amount).unwrap_or(i32::MAX),
+            crate::target::PlayerFilter::Specific(player),
+        );
+        let outcome = crate::effects::execute_effect(game, &effect, ctx)?;
+        events.extend(outcome.events);
+    }
+    Ok(Some(crate::effects::CompletedEffectOutputs::aggregate_only(
+        EffectOutcome::count(0).with_events(events),
+    )))
 }
 
 #[cfg(test)]

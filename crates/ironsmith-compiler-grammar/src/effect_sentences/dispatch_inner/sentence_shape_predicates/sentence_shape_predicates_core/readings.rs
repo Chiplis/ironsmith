@@ -105,6 +105,17 @@ const SENTENCE_READINGS: &[Reading] = &[
         },
     },
     Reading {
+        id: RuleId::new("temporary-legend-rule-exemption"),
+        head: HeadDiscriminator::words(&["the"]),
+        admits: |_| true,
+        read: |input| {
+            input.outcome(Ok(
+                crate::effect_sentences::temporary_legend_rule_exemption::parse(input.tokens)
+                    .map(|effect| vec![effect]),
+            ))
+        },
+    },
+    Reading {
         id: RuleId::new("win-the-game"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1629,6 +1640,12 @@ const SENTENCE_COMPOSITION: &[Reading] = &[
         read: |input| input.outcome(part_4::read_for_each_object_effect(input)),
     },
     Reading {
+        id: RuleId::new("for-each-colored-mana-symbol-add"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(part_4::read_for_each_colored_mana_symbol_add(input)),
+    },
+    Reading {
         id: RuleId::new("for-each-object-filter-effect"),
         head: HeadDiscriminator::Any,
         admits: |input| {
@@ -1657,6 +1674,16 @@ const SENTENCE_COMPOSITION: &[Reading] = &[
                 .is_none()
         },
         read: |input| input.outcome(part_5::read_leading_if_conditional(input)),
+    },
+    Reading {
+        id: RuleId::new("you-and-players-each-chain"),
+        head: HeadDiscriminator::Any,
+        admits: |input| {
+            let tokens = input.tokens;
+            (super::super::super::sentence_unsupported::diagnose_known_partial_parse_lexed(tokens))
+                .is_none()
+        },
+        read: |input| input.outcome(part_5::read_you_and_players_each_chain(input)),
     },
     Reading {
         id: RuleId::new("explicit-comma-then-boundary"),

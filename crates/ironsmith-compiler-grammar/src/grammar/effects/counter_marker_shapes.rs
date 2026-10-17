@@ -132,6 +132,10 @@ pub struct PutCounterChoiceShape<'a> {
     /// Counters placed by each mode, parallel to `counter_types` ("a +1/+1
     /// counter or two charge counters").
     pub counter_counts: Vec<u32>,
+    /// "put that many +1/+1 counters or charge counters on ..." (Dismantle):
+    /// one shared referential amount for every mode; `counter_counts` is
+    /// then meaningless.
+    pub shared_that_many: bool,
     pub target_tokens: &'a [OwnedLexToken],
 }
 
@@ -1080,6 +1084,9 @@ fn parse_put_counter_choice_lexed<'a>(
         primitives::kw("put").void(),
     ))
     .parse_next(input)?;
+    let shared_that_many = opt(primitives::phrase(&["that", "many"]))
+        .parse_next(input)?
+        .is_some();
     let modes: Vec<(CounterType, u32)> = alt((
         (
             primitives::phrase(&["a", "counter", "from", "among"]),
@@ -1107,6 +1114,7 @@ fn parse_put_counter_choice_lexed<'a>(
             .map(|(counter_type, _)| *counter_type)
             .collect(),
         counter_counts: modes.iter().map(|(_, count)| *count).collect(),
+        shared_that_many,
         target_tokens,
     })
 }

@@ -89,12 +89,45 @@ impl GameState {
         }
     }
 
+    /// Greatest damage currently marked on `id` from any one source.
+    pub fn max_damage_marked_from_single_source(&self, id: ObjectId) -> u32 {
+        self.battlefield_flags
+            .damage_marked_by_source
+            .get(&id)
+            .and_then(|by_source| by_source.values().copied().max())
+            .unwrap_or(0)
+    }
+
+    /// Attribute newly marked damage to its source.
+    pub fn mark_damage_from_source(&mut self, id: ObjectId, source: ObjectId, amount: u32) {
+        if amount == 0 {
+            return;
+        }
+        let entry = self
+            .battlefield_flags_mut()
+            .damage_marked_by_source
+            .entry(id)
+            .or_default()
+            .entry(source)
+            .or_insert(0);
+        *entry = entry.saturating_add(amount);
+    }
+
     /// Set the exact damage marked on an object.
     pub fn set_damage_marked(&mut self, id: ObjectId, amount: u32) {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
+        // Removing marked damage can't leave more attributed to one source
+        // than remains in total.
+        if let Some(by_source) = self.battlefield_flags_mut().damage_marked_by_source.get_mut(&id) {
+            for marked in by_source.values_mut() {
+                *marked = (*marked).min(amount);
+            }
+            by_source.retain(|_, marked| *marked > 0);
+        }
         if amount == 0 {
             self.battlefield_flags_mut().damage_marked.remove(&id);
+            self.battlefield_flags_mut().damage_marked_by_source.remove(&id);
         } else {
             self.battlefield_flags_mut()
                 .damage_marked
@@ -234,6 +267,7 @@ impl GameState {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
         self.battlefield_flags_mut().damage_marked.remove(&id);
+        self.battlefield_flags_mut().damage_marked_by_source.remove(&id);
     }
 
     /// Get the number of regeneration shields on an object.
@@ -329,12 +363,14 @@ impl GameState {
         }
         let BattlefieldFlags {
             damage_marked,
+            damage_marked_by_source,
             damage_persists,
             regeneration_shields,
             regenerated_this_turn,
             ..
         } = self.battlefield_flags_mut();
         damage_marked.retain(|object, _| damage_persists.contains(object));
+        damage_marked_by_source.retain(|object, _| damage_persists.contains(object));
         regeneration_shields.clear();
         regenerated_this_turn.clear();
     }
@@ -368,6 +404,29 @@ impl GameState {
     /// Whether this permanent has dealt damage since it entered.
     pub fn has_dealt_damage_since_entered(&self, id: ObjectId) -> bool {
         self.battlefield_flags.dealt_damage_since_entered.contains(&id)
+    }
+
+    pub fn has_dealt_combat_damage_since_entered(&self, id: ObjectId) -> bool {
+        self.battlefield_flags
+            .dealt_combat_damage_since_entered
+            .contains(&id)
+    }
+
+    /// Record that a battlefield permanent dealt (unprevented) combat damage.
+    pub fn mark_dealt_combat_damage_since_entered(&mut self, id: ObjectId) {
+        if !self
+            .object(id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+        {
+            return;
+        }
+        if self
+            .battlefield_flags_mut()
+            .dealt_combat_damage_since_entered
+            .insert(id)
+        {
+            self.mark_object_changed_and_continuous_state_dirty(id);
+        }
     }
 
     /// Record that a battlefield permanent dealt (unprevented) damage.
@@ -525,6 +584,21 @@ impl GameState {
     /// Check if a permanent is prepared.
     pub fn is_prepared(&self, id: ObjectId) -> bool {
         self.battlefield_flags.prepared.contains(&id)
+    }
+
+    /// Record that a stack object was cast from a prepare spell copy.
+    pub fn record_prepared_spell_cast(&mut self, spell_id: ObjectId) {
+        self.cast_permission_flags_mut()
+            .prepared_spells_cast
+            .insert(spell_id);
+    }
+
+    /// Whether a stack object is a prepared spell (cast from a prepare spell
+    /// copy).
+    pub fn was_cast_as_prepared_spell(&self, spell_id: ObjectId) -> bool {
+        self.cast_permission_flags
+            .prepared_spells_cast
+            .contains(&spell_id)
     }
 
     /// Return all currently prepared permanents.
@@ -1632,6 +1706,20 @@ impl GameState {
             .insert(permanent);
     }
 
+    /// The Pandorica: this source's holds end when it becomes untapped.
+    pub fn release_phase_out_holds_when_source_untaps(&mut self, source: ObjectId) {
+        self.battlefield_flags_mut()
+            .phase_out_holds_release_on_untap
+            .insert(source);
+    }
+
+    /// Tap `permanent` as its source-linked hold phases it in.
+    pub fn tap_as_held_phase_in(&mut self, permanent: ObjectId) {
+        if self.is_phased_out(permanent) {
+            self.battlefield_flags_mut().tap_on_held_phase_in.insert(permanent);
+        }
+    }
+
     pub(super) fn is_phase_out_held(&self, permanent: ObjectId) -> bool {
         self.battlefield_flags
             .phase_out_holds_by_source
@@ -1646,8 +1734,18 @@ impl GameState {
             .phase_out_holds_by_source
             .remove(&source)
             .unwrap_or_default();
+        self.battlefield_flags_mut()
+            .phase_out_holds_release_on_untap
+            .remove(&source);
         let mut held = held.into_iter().collect::<Vec<_>>();
         held.sort();
+        // CR 702.26: "tapped as it phases in" — it is already tapped when it
+        // phases in, not tapped afterward.
+        for permanent in &held {
+            if self.battlefield_flags_mut().tap_on_held_phase_in.remove(permanent) {
+                self.tap(*permanent);
+            }
+        }
         self.phase_in_simultaneously(&held);
     }
 
@@ -1941,6 +2039,16 @@ impl GameState {
         })
     }
 
+    /// Whether this exact exiled card was exiled by warp's delayed trigger.
+    pub fn is_warped(&self, id: ObjectId) -> bool {
+        self.exile_tracking.warped_cards.contains(&id)
+    }
+
+    /// Mark an exact exiled card as warped.
+    pub fn set_warped(&mut self, id: ObjectId) {
+        self.exile_tracking_mut().warped_cards.insert(id);
+    }
+
     /// Clear plot state for a card.
     pub fn clear_plotted(&mut self, id: ObjectId) {
         self.exile_tracking_mut().plotted_cards.remove(&id);
@@ -1984,9 +2092,12 @@ impl GameState {
             flags.controller_at_last_refresh.remove(&id);
             flags.control_event_snapshots.remove(&id);
             flags.damage_marked.remove(&id);
+            flags.damage_marked_by_source.remove(&id);
+            flags.tap_on_held_phase_in.remove(&id);
             flags.battle_protectors.remove(&id);
             flags.monstrous.remove(&id);
             flags.dealt_damage_since_entered.remove(&id);
+            flags.dealt_combat_damage_since_entered.remove(&id);
             flags.suspected.remove(&id);
             flags.dealt_deathtouch_damage_since_sba.remove(&id);
             flags.regeneration_shields.remove(&id);
@@ -2018,6 +2129,7 @@ impl GameState {
         }
         self.exile_tracking_mut().imprinted_cards.remove(&id);
         self.object_annotations_mut().noted_life_totals.remove(&id);
+        self.object_annotations_mut().noted_creature_types.remove(&id);
         {
             let choices = self.choice_store_mut();
             choices.chosen_colors.remove(&id);
@@ -2032,6 +2144,7 @@ impl GameState {
             choices.chosen_player_sets.remove(&id);
             choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
+            choices.numbers_chosen_by_source.remove(&id);
             choices
                 .numeric_acquisitions
                 .retain(|owner, _| owner.host != id);
@@ -2314,6 +2427,7 @@ impl GameState {
         {
             let tracking = self.exile_tracking_mut();
             tracking.plotted_cards.remove(&id);
+            tracking.warped_cards.remove(&id);
             tracking.face_down_exile_viewers.remove(&id);
             tracking.face_down_exile_view_sources.remove(&id);
         }
@@ -2705,6 +2819,24 @@ impl GameState {
         }
     }
 
+    /// Numbers `source` already chose in "... that hasn't been chosen"
+    /// instructions.
+    pub fn numbers_chosen_by_source(&self, source: ObjectId) -> &[u32] {
+        self.choice_store
+            .numbers_chosen_by_source
+            .get(&source)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    pub fn record_number_chosen_by_source(&mut self, source: ObjectId, number: u32) {
+        self.bump_mutation_revision();
+        self.choice_store_mut()
+            .numbers_chosen_by_source
+            .entry(source)
+            .or_default()
+            .push(number);
+    }
+
     pub fn set_number_for_acquisition(
         &mut self,
         owner: crate::source_numbers::NumberChoiceOwner,
@@ -2852,6 +2984,54 @@ impl GameState {
                 .or_default();
             *revision = revision.saturating_add(1);
         }
+    }
+
+    /// Record the player who performed the exile of this exact incarnation,
+    /// and the current turn.
+    pub fn record_source_exiler(&mut self, exiled_card_id: ObjectId, exiler: PlayerId) {
+        let turn = self.turn.turn_number;
+        self.exile_tracking_mut()
+            .source_exilers
+            .insert(exiled_card_id, (exiler, turn));
+        // An active per-exiler look permission entitles its exiler now
+        // (CR 406.3), before any later control reconciliation.
+        self.remember_linked_exile_inspection_entitlements();
+    }
+
+    /// The player who exiled this exact incarnation with its linked source.
+    pub fn source_exiler(&self, exiled_card_id: ObjectId) -> Option<PlayerId> {
+        self.exile_tracking.source_exilers.get(&exiled_card_id).map(|(player, _)| *player)
+    }
+
+    /// The turn number on which this exact incarnation was exiled with its source.
+    pub fn source_exile_turn(&self, exiled_card_id: ObjectId) -> Option<u32> {
+        self.exile_tracking.source_exilers.get(&exiled_card_id).map(|(_, turn)| *turn)
+    }
+
+    /// "cards they exiled with this <source> this turn" (Uba Mask).
+    pub fn exiled_with_source_by_player_this_turn(
+        &self,
+        source_id: ObjectId,
+        exiled_card_id: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        self.exiled_with_source_by_player(source_id, exiled_card_id, player)
+            && self.source_exile_turn(exiled_card_id) == Some(self.turn.turn_number)
+    }
+
+    /// "cards they exiled with this <source>": linked to `source_id`, still in
+    /// exile, and exiled by `player`.
+    pub fn exiled_with_source_by_player(
+        &self,
+        source_id: ObjectId,
+        exiled_card_id: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        self.get_exiled_with_source_links(source_id).contains(&exiled_card_id)
+            && self
+                .object(exiled_card_id)
+                .is_some_and(|object| object.zone == Zone::Exile)
+            && self.source_exiler(exiled_card_id) == Some(player)
     }
 
     pub fn add_exiled_with_source_link_returning_to(
@@ -3181,6 +3361,80 @@ impl GameState {
             .token_creation_sources
             .get(&token_stable_id)
             .is_some_and(|created_by| *created_by == source_stable_id)
+    }
+
+    /// Record that the source instance `source` put (`removed == false`) or
+    /// removed (`removed == true`) counters of `counter_type` on/from the
+    /// exact object `object`. The record lasts the whole game.
+    pub fn record_counter_source_history(
+        &mut self,
+        source: StableId,
+        object: ObjectId,
+        counter_type: crate::object::CounterType,
+        removed: bool,
+    ) {
+        let key = (source, object, counter_type);
+        let annotations = &self.object_annotations;
+        let known = if removed {
+            annotations.counters_removed_by_source.contains(&key)
+        } else {
+            annotations.counters_put_by_source.contains(&key)
+        };
+        if known {
+            return;
+        }
+        let annotations = self.object_annotations_mut();
+        if removed {
+            annotations.counters_removed_by_source.insert(key);
+        } else {
+            annotations.counters_put_by_source.insert(key);
+        }
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+    }
+
+    /// Whether the source instance has ever put a counter of this kind on
+    /// this exact object ("a land that a mire counter was put onto with this
+    /// artifact").
+    pub fn source_put_counter_on_object(
+        &self,
+        source: StableId,
+        object: ObjectId,
+        counter_type: crate::object::CounterType,
+    ) -> bool {
+        self.object_annotations
+            .counters_put_by_source
+            .contains(&(source, object, counter_type))
+    }
+
+    /// Whether the source instance has ever removed a counter of this kind
+    /// from this exact object.
+    pub fn source_removed_counter_from_object(
+        &self,
+        source: StableId,
+        object: ObjectId,
+        counter_type: crate::object::CounterType,
+    ) -> bool {
+        self.object_annotations
+            .counters_removed_by_source
+            .contains(&(source, object, counter_type))
+    }
+
+    /// The stable identity of an instruction's counter source: the live
+    /// object, or the resolving context's last-known source when the source
+    /// has left its zone (a delayed trigger from a card now in a graveyard).
+    pub(crate) fn counter_history_source_identity(
+        &self,
+        source: ObjectId,
+        ctx: &crate::effects::ExecutionContext,
+    ) -> Option<StableId> {
+        self.object(source)
+            .map(|object| object.stable_id)
+            .or_else(|| {
+                (source == ctx.source)
+                    .then(|| ctx.source_snapshot.as_ref().map(|snapshot| snapshot.stable_id))
+                    .flatten()
+            })
     }
 
     pub fn exiled_with_source_entries(&self) -> impl Iterator<Item = (&ObjectId, &Vec<ObjectId>)> {
@@ -3870,10 +4124,33 @@ impl GameState {
         if let Some(mutated) = event.downcast::<crate::events::other::MutatedEvent>() {
             self.mark_mutated(mutated.permanent);
         }
-        if let Some(spell_cast) = event.downcast::<crate::events::spells::SpellCastEvent>()
-            && let Some(player) = self.player_mut(spell_cast.caster)
+        if let Some(spell_cast) = event.downcast::<crate::events::spells::SpellCastEvent>() {
+            let name = spell_cast.snapshot.as_ref().map(|snapshot| snapshot.name.to_string())
+                .or_else(|| self.object(spell_cast.spell).map(|object| object.name.to_string()));
+            let is_creature_spell = match spell_cast.snapshot.as_ref() {
+                Some(snapshot) => snapshot.card_types.contains(&crate::types::CardType::Creature),
+                None => self
+                    .object(spell_cast.spell)
+                    .is_some_and(|object| object.card_types.iter().any(|kind| *kind == crate::types::CardType::Creature)),
+            };
+            if let Some(player) = self.player_mut(spell_cast.caster) {
+                player.spells_cast_this_game = player.spells_cast_this_game.saturating_add(1);
+                if let Some(name) = name {
+                    player.spell_cast_names_this_game.insert(spell_cast.spell, name);
+                }
+                if is_creature_spell {
+                    player.creature_spells_cast_this_game =
+                        player.creature_spells_cast_this_game.saturating_add(1);
+                }
+            }
+        }
+        if let Some(cycle) = event.downcast::<crate::events::KeywordActionEvent>()
+            && cycle.action == crate::events::KeywordActionKind::Cycle
+            && let Some(name) = self.object(cycle.source).map(|object| object.name.to_string())
+            && let Some(player) = self.player_mut(cycle.player)
         {
-            player.spells_cast_this_game = player.spells_cast_this_game.saturating_add(1);
+            let count = player.cycled_card_names_this_game.entry(name).or_insert(0);
+            *count = count.saturating_add(1);
         }
         if let Some(attacked) = event.downcast::<crate::events::combat::CreatureAttackedEvent>()
             && let Some(stable_id) = self

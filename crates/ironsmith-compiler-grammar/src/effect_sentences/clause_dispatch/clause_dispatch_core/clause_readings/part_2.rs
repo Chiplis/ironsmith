@@ -76,7 +76,42 @@ pub(super) fn read_leading_may_additional_land_plays(
             }
             return Ok(Some(permission));
         }
-        let mut effects = parse_effect_chain_with_subject_verb_primitives(shape.effect_tokens)?;
+        // "that creature's controller may have it deal damage ... to any
+        // target of their choice" (Pandemonium): the deciding player also
+        // chooses the target. Declare the target with that player as its
+        // chooser ahead of the optional action, which then reuses it.
+        let mut delegated_target_declaration = None;
+        let mut effect_tokens = shape.effect_tokens;
+        if let clause_grammar::LeadingMayActorShape::Player(player) = shape.actor
+            && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+        {
+            let words = crate::lexer::parser_token_word_refs(effect_tokens);
+            if crate::word_primitives::parse_sequence_suffix(&words, &["of", "their", "choice"])
+                && effect_tokens.len() > 3
+            {
+                let stripped = &effect_tokens[..effect_tokens.len() - 3];
+                if let Some(to_idx) = stripped.iter().rposition(|token| token.is_word("to"))
+                    && stripped[to_idx + 1..]
+                        .iter()
+                        .any(|token| token.is_word("target"))
+                    && let Ok(target) = parse_target_phrase(&stripped[to_idx + 1..])
+                {
+                    delegated_target_declaration = Some(EffectAst::subject_verb(
+                        crate::cards::builders::SubjectVerbRoleAst::Chooser,
+                        player,
+                        crate::cards::builders::SubjectVerbActionAst::TargetOnly {
+                            target,
+                            explicit_declaration: false,
+                        },
+                    ));
+                    effect_tokens = stripped;
+                }
+            }
+        }
+        let mut effects = parse_effect_chain_with_subject_verb_primitives(effect_tokens)?;
+        if let Some(declaration) = delegated_target_declaration {
+            effects.insert(0, declaration);
+        }
         return Ok(Some(match shape.actor {
             clause_grammar::LeadingMayActorShape::Player(player) => {
                 for effect in &mut effects {

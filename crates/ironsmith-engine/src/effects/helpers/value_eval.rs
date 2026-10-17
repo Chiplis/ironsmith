@@ -517,8 +517,37 @@ pub(crate) fn resolve_wide(
         Value::BasePowerOf(target_spec) => context
             .object_number(target_spec, NumericProperty::BasePower)
             .map(i64::from),
+        Value::StationContributionOf(target_spec) => {
+            let uses_toughness = context
+                .execution()
+                .and_then(|ctx| resolve_primary_object_from_value_spec(game, target_spec, ctx).ok())
+                .is_some_and(|id| crate::effects::permanents::stations_using_toughness(game, id));
+            context.object_number_wide(
+                target_spec,
+                if uses_toughness {
+                    NumericProperty::Toughness
+                } else {
+                    NumericProperty::Power
+                },
+            )
+        }
         Value::ToughnessOf(target_spec) => {
             context.object_number_wide(target_spec, NumericProperty::Toughness)
+        }
+        // "the number of times you chose a mode for that spell" (Riku of
+        // Many Paths): the committed modes of that spell's stack entry.
+        Value::ModeSelectionsOf(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "mode-selection counts require a resolving context",
+            );
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            Ok(game
+                .stack
+                .iter()
+                .find(|entry| entry.object_id == id)
+                .and_then(|entry| entry.chosen_modes.as_ref())
+                .map_or(0, |modes| modes.len() as i64))
         }
         Value::KicksPaidOf(target_spec) => context
             .object_number(target_spec, NumericProperty::KickerCount)
@@ -553,6 +582,68 @@ pub(crate) fn resolve_wide(
                 return Err(ExecutionError::ObjectNotFound(id));
             };
             Ok(i64::from(colors.intersection(chosen).count()))
+        }
+        // "for each creature type noted for target permanent ..." (Volo,
+        // Itinerant Scholar): the referenced object's noted-creature-type set.
+        Value::NotedCreatureTypeCount(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "noted creature type counts require a resolving context",
+            );
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            Ok(game.noted_creature_types_for_source(id).len() as i64)
+        }
+        // "for each supertype, card type, and subtype it has" (Embiggen):
+        // the referenced object's current characteristics (CR 205).
+        // CR 702.164c: the total toxic value is the sum of the N of each toxic
+        // ability the object has (Goliath Hatchery).
+        Value::TotalToxicValueOf(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "toxic totals require a resolving context",
+            );
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            if let Some(chars) = game.calculated_characteristics_arc(id) {
+                return Ok(chars
+                    .static_abilities
+                    .iter()
+                    .filter_map(|ability| ability.toxic_amount())
+                    .map(i64::from)
+                    .sum());
+            }
+            if let ChooseSpec::Tagged(tag) = target_spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                return Ok(snapshot
+                    .abilities
+                    .iter()
+                    .filter_map(|ability| match &ability.kind {
+                        crate::ability::AbilityKind::Static(ability) => ability.toxic_amount(),
+                        _ => None,
+                    })
+                    .map(i64::from)
+                    .sum());
+            }
+            Err(ExecutionError::ObjectNotFound(id))
+        }
+        Value::TypeCountOf(target_spec) => {
+            let ctx = context.require_execution(
+                value,
+                "type counts require a resolving context",
+            );
+            let id = resolve_primary_object_from_value_spec(game, target_spec, ctx)?;
+            if let Some(chars) = game.calculated_characteristics_arc(id) {
+                return Ok((chars.supertypes.len() + chars.card_types.len() + chars.subtypes.len())
+                    as i64);
+            }
+            if let ChooseSpec::Tagged(tag) = target_spec.base()
+                && let Some(snapshot) = ctx.get_tagged(tag)
+            {
+                return Ok((snapshot.supertypes.len()
+                    + snapshot.card_types.len()
+                    + snapshot.subtypes.len()) as i64);
+            }
+            Err(ExecutionError::ObjectNotFound(id))
         }
         Value::ManaSymbolsInManaCostOf {
             spec: target_spec,
@@ -656,6 +747,15 @@ pub(crate) fn resolve_wide(
         Value::NameStickerCharacterCountOnSource { character, .. } => Ok(i64::from(
             game.name_sticker_character_count_on_object(context.source, *character) as i64,
         )),
+        Value::StickersOnSource { action, .. } => Ok(i64::from(
+            game.sticker_count_on_object(context.source, *action, None),
+        )),
+        Value::NameStickersOnSourceStartingWithChosenLetter { .. } => Ok(game
+            .chosen_named_option(context.source)
+            .and_then(|letter| letter.chars().next())
+            .map_or(0, |letter| {
+                i64::from(game.name_sticker_count_starting_with(context.source, letter))
+            })),
         Value::MaximumLifeTotal(players) => Ok(context
             .aggregate_player_ids(value, players)?
             .into_iter()
@@ -712,6 +812,18 @@ pub(crate) fn resolve_wide(
         Value::Speed(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             Ok(i64::from(player.speed.unwrap_or(0) as i64))
+        }
+        // The highest speed among the matching players (0 when none match).
+        Value::MaxSpeed(player_spec) => {
+            let player_ids = context.player_ids(value, player_spec)?;
+            let mut max_speed = 0i64;
+            for pid in player_ids {
+                let player = game
+                    .player(pid)
+                    .ok_or(ExecutionError::PlayerNotFound(pid))?;
+                max_speed = max_speed.max(i64::from(player.speed.unwrap_or(0)));
+            }
+            Ok(max_speed)
         }
         Value::StartingLifeTotal(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -1051,6 +1163,10 @@ pub(crate) fn resolve_wide(
 
             Ok(i64::from(types.len() as i64))
         }
+        Value::DevotionToColors { player, colors } => {
+            let players = context.player_ids(value, player)?;
+            Ok(players.iter().map(|player| game.devotion_to_colors(*player, *colors) as i64).sum())
+        }
         Value::Devotion { player, color } => {
             let player_ids = context.player_ids(value, player)?;
             let devotion: i64 = player_ids
@@ -1184,6 +1300,34 @@ pub(crate) fn resolve_wide(
                 ))
             }
         }
+        Value::ColorsOfManaSpentToCastTriggeringObject => {
+            let ctx = context.require_execution(value, RESOLUTION_ONLY);
+            let Some(triggering_event) = &ctx.triggering_event else {
+                return Ok(i64::from(0));
+            };
+            let Some(spell_cast) = triggering_event.downcast::<crate::events::SpellCastEvent>()
+            else {
+                return Ok(i64::from(0));
+            };
+            let spent = match spell_cast.snapshot.as_ref() {
+                Some(snapshot) => snapshot.mana_spent_to_cast.clone(),
+                None => match game.object(spell_cast.spell) {
+                    Some(object) => object.mana_spent_to_cast.clone(),
+                    None => return Ok(i64::from(0)),
+                },
+            };
+            let distinct_colors = [
+                spent.white > 0,
+                spent.blue > 0,
+                spent.black > 0,
+                spent.red > 0,
+                spent.green > 0,
+            ]
+            .into_iter()
+            .filter(|present| *present)
+            .count();
+            Ok(i64::from(distinct_colors as i64))
+        }
         Value::UnspentMana(player) => {
             let player_ids = context.player_ids(value, player)?;
             let total = player_ids
@@ -1217,6 +1361,11 @@ pub(crate) fn resolve_wide(
         }
         Value::DraftRemovedCardCount { card_name } => Ok(i64::from(
             game.draft_removed_card_count(context.controller, card_name)
+                .try_into()
+                .unwrap_or(i32::MAX),
+        )),
+        Value::DraftCorrectGuessCount { card_name } => Ok(i64::from(
+            game.draft_correct_guess_count(context.controller, card_name)
                 .try_into()
                 .unwrap_or(i32::MAX),
         )),
@@ -1611,6 +1760,33 @@ pub(crate) fn resolve_wide(
                 }
             }
         }
+        // CR 700.3: one per distinct spell or ability that made players guess
+        // or group cards or permanents into piles this turn.
+        Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => Ok(i64::try_from(
+            game.turn_store
+                .turn_history
+                .pile_or_guess_instructions_this_turn
+                .len(),
+        )
+        .unwrap_or(i64::MAX)),
+        Value::PlayersChosenNumberExtreme { highest, guess } => {
+            let ctx = context.require_execution(
+                value,
+                "chosen-number extremes require a resolving per-player number choice",
+            );
+            let numbers = ctx
+                .secret_choice_results
+                .get(&ctx.source)
+                .map(|result| {
+                    (if *guess { &result.guesses } else { &result.number_choices })
+                        .iter()
+                        .map(|(_, number)| *number)
+                });
+            Ok(numbers
+                .and_then(|numbers| if *highest { numbers.max() } else { numbers.min() })
+                .map(i64::from)
+                .unwrap_or(0))
+        }
         Value::VoteCount(option) => {
             let ctx =
                 context.require_execution(value, "vote totals require a resolving vote context");
@@ -1709,6 +1885,94 @@ fn resolve_event_value(
                 "life-change event scalar",
             )
             .map(i64::from)
+        }
+        EventValueSpec::LoyaltyCountersRemovedToActivate => {
+            let activation = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "loyalty cost value requires its ability-activated event".into(),
+                    )
+                })?;
+            let Some(crate::ability::AbilityKind::Activated(activated)) =
+                activation.activated_ability.as_ref().map(|ability| &ability.kind)
+            else {
+                return Ok(0);
+            };
+            let removed = match activated.mana_cost.kind() {
+                ironsmith_core::TotalCostKind::All(costs) => costs
+                    .iter()
+                    .filter_map(|cost| {
+                        // CR 606.4: a loyalty cost removes loyalty counters
+                        // from the source itself.
+                        let effect = cost.effect_ref()?;
+                        let effect = effect
+                            .downcast_ref::<crate::effects::WithIdEffect>()
+                            .map_or(effect, |observed| &observed.effect);
+                        let effect = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+                        if effect.counter_type != crate::CounterType::Loyalty
+                            || !matches!(effect.target.base(), crate::target::ChooseSpec::Source)
+                        {
+                            return None;
+                        }
+                        let Value::Fixed(count) = &effect.count else {
+                            return None;
+                        };
+                        Some((*count).max(0) as u32)
+                    })
+                    .sum::<u32>(),
+                _ => 0,
+            };
+            Ok(i64::from(removed))
+        }
+        EventValueSpec::ExcessDamage => {
+            let damage = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::DamageEvent>())
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "excess damage requires its triggering damage event".into(),
+                    )
+                })?;
+            Ok(i64::from(damage.excess_damage))
+        }
+        EventValueSpec::LifePaidToActivate => {
+            let activation = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "life cost value requires its ability-activated event".into(),
+                    )
+                })?;
+            // Fixed "Pay N life" components of the activation cost, as a
+            // floor for the life the payment receipts recorded (which also
+            // include life paid for Phyrexian mana, CR 107.4f).
+            let fixed_cost_life = match activation.activated_ability.as_ref().map(|ability| &ability.kind) {
+                Some(crate::ability::AbilityKind::Activated(activated)) => match activated.mana_cost.kind() {
+                    ironsmith_core::TotalCostKind::All(costs) => costs
+                        .iter()
+                        .filter_map(|cost| {
+                            let effect = cost.effect_ref()?;
+                            let effect = effect
+                                .downcast_ref::<crate::effects::WithIdEffect>()
+                                .map_or(effect, |observed| &observed.effect);
+                            let effect = effect.downcast_ref::<crate::effects::PayLifeEffect>()?;
+                            let Value::Fixed(amount) = &effect.amount else {
+                                return None;
+                            };
+                            Some((*amount).max(0) as u32)
+                        })
+                        .sum::<u32>(),
+                    _ => 0,
+                },
+                _ => 0,
+            };
+            Ok(i64::from(activation.life_paid_to_activate.max(fixed_cost_life)))
         }
         EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
             let roll = ctx

@@ -36,6 +36,7 @@ fn encode_apply_continuous(model: ApplyContinuousEffect) -> Result<WireApply, Er
         until, condition, source_type, source_reference_surface, set_quantifier_surface,
         type_retention_surface, animation_pt_surface, animation_duration_surface,
         lock_filter_at_resolution, resolve_set_pt_values_at_resolution, require_creature_target,
+        grant_only_if_absent,
     } = model;
     if source_type.is_some() {
         // The canonical decoder currently instantiates SourceType = () and
@@ -69,6 +70,7 @@ fn encode_apply_continuous(model: ApplyContinuousEffect) -> Result<WireApply, Er
         until, condition, source_type: None, source_reference_surface, set_quantifier_surface,
         type_retention_surface, animation_pt_surface, animation_duration_surface,
         lock_filter_at_resolution, resolve_set_pt_values_at_resolution, require_creature_target,
+        grant_only_if_absent,
     })
 }
 

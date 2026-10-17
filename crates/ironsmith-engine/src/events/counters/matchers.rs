@@ -270,6 +270,7 @@ mod tests {
             cause_type: Some(CauseTypeFilter::Exact(CauseType::Effect)),
             source_filter: None,
             controller_filter: None,
+            ability_kind: None,
         });
 
         let event = PutCountersEvent::with_cause(

@@ -12,6 +12,9 @@ pub struct DamageAmountReplacementShape<'a> {
     /// definite description of the preceding instruction's chosen damage
     /// source, rather than `it` or this object.
     pub definite_source: bool,
+    /// "it deals twice that much damage to itself instead" (Cut
+    /// Propulsion): the replacement repeats a self-damage recipient.
+    pub self_recipient: bool,
 }
 
 pub fn parse_damage_amount_replacement(
@@ -47,6 +50,14 @@ pub fn parse_damage_amount_replacement(
     if !repeats_source && !self_source && !definite_source {
         return None;
     }
+    // "... deals twice that much damage to itself": the self recipient is
+    // the repeated recipient of a self-damage instruction; the caller checks
+    // the replaced instruction damages its own source.
+    let self_recipient = repeats_source
+        && action.len() >= 2
+        && action[action.len() - 2].is_word("to")
+        && action[action.len() - 1].is_word("itself");
+    let action = if self_recipient { &action[..action.len() - 2] } else { action };
     // The entire action ends at `damage`: explicit destinations, additional
     // instructions, riders and repeated `instead` markers belong elsewhere.
     if !action.last()?.is_word("damage") || deal + 2 >= action.len() {
@@ -58,6 +69,7 @@ pub fn parse_damage_amount_replacement(
         amount_tokens,
         repeats_source,
         definite_source,
+        self_recipient,
     })
 }
 

@@ -44,8 +44,8 @@ pub(super) fn contains_historical_block_partner_relation(tokens: &[OwnedLexToken
 /// blocked creature. Leave the connective for the reference/tag grammar so it
 /// can retain the source-relative combat constraint.
 pub(super) fn contains_current_block_partner_relation(tokens: &[OwnedLexToken]) -> bool {
-    crate::word_primitives::sequence_occurs(
+    crate::word_primitives::find_current_block_partner_relation(
         &TokenWordView::new(tokens).word_refs(),
-        &["blocking", "or", "blocked", "by"],
     )
+    .is_some()
 }

@@ -8,6 +8,24 @@ use crate::cards::builders::StackActionAst;
 use crate::cards::builders::StatChangeActionAst;
 use crate::cards::builders::TokenActionAst;
 
+/// The card a play permission's "it"/"that card" names. An intervening
+/// source-subject instruction ("This creature gets +X/+0 ... where X is that
+/// card's mana value. You may play that card this turn.") makes the source
+/// the newest object antecedent, but a play permission over "that card" still
+/// names the object the source subject superseded.
+fn play_permission_it_antecedent(ctx: &EffectLoweringContext) -> Option<TagKey> {
+    ctx.last_object_tag.clone().or_else(|| {
+        if !ctx.source_object_antecedent {
+            return None;
+        }
+        let alias = ironsmith_compiler_resolve::reference_helpers::source_superseded_antecedent_alias();
+        ctx.snapshot_tag_aliases
+            .iter()
+            .find(|(existing, _)| existing == &alias)
+            .map(|(_, previous)| previous.clone())
+    })
+}
+
 pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
     matches!(
         action,
@@ -626,11 +644,13 @@ pub(super) fn compile_grant_abilities_to_target_action(
         duration,
         condition,
         set_quantifier_surface,
+        only_if_absent,
     }) = &subject_verb.action
     else {
         unreachable!("typed grant route requires a GrantAbilitiesToTarget action")
     };
-    let modifications = lower_granted_ability_grant_modifications(abilities)?;
+    let mut modifications = lower_granted_ability_grant_modifications(abilities)?;
+    bind_granted_trigger_outer_player(&mut modifications, ctx.last_player_filter.as_ref());
     let Some(first_modification) = modifications.first() else {
         return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
             Effect::new(crate::effects::TargetOnlyEffect::new(spec))
@@ -713,6 +733,9 @@ pub(super) fn compile_grant_abilities_to_target_action(
             if let Some(condition) = &resolved_condition {
                 apply = apply.with_condition(condition.clone());
             }
+            if *only_if_absent {
+                apply = apply.grant_only_if_absent();
+            }
             if let Some(surface) = source_reference_surface {
                 apply = apply.with_source_reference_surface(surface);
             }
@@ -750,19 +773,46 @@ pub(super) fn compile_pump_all_action(
     let power = resolve_pump_all_value(power, &resolved_filter, &refs);
     let toughness = resolve_pump_all_value(toughness, &resolved_filter, &refs);
     let tag = ctx.next_tag("pumped");
-    let effect = Effect::new(
-        crate::effects::ApplyContinuousEffect::new_runtime(
-            crate::continuous::EffectTarget::Filter(resolved_filter),
+    // A remaining singular reference belongs to each affected object
+    // ("for each poison counter its controller has"). Set-wide references
+    // and earlier antecedents were already resolved above. Bind the object
+    // before evaluating its amount instead of evaluating an unbound tag once.
+    use ironsmith_core::tag::TagKeyWalk;
+    let mut per_object = false;
+    for value in [&power, &toughness] {
+        value.for_each_tag_key(&mut |key| {
+            per_object |= key.as_str() == crate::tag::CompilerReferenceTag::It.as_str();
+        });
+    }
+    let apply = if per_object {
+        crate::effects::ApplyContinuousEffect::with_spec_runtime(
+            ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.as_str()),
             crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
                 power,
                 toughness,
             },
             duration.clone(),
         )
-        .with_set_quantifier_surface(*set_quantifier_surface)
-        .lock_filter_at_resolution(),
-    )
-    .tag_all(tag.clone());
+    } else {
+        crate::effects::ApplyContinuousEffect::new_runtime(
+            crate::continuous::EffectTarget::Filter(resolved_filter.clone()),
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+            duration.clone(),
+        )
+    }
+    .with_set_quantifier_surface(*set_quantifier_surface)
+    .lock_filter_at_resolution();
+    let effect = if per_object {
+        Effect::new(crate::effects::ForEachObject::new(
+            resolved_filter,
+            vec![Effect::new(apply)],
+        ))
+    } else {
+        Effect::new(apply)
+    }.tag_all(tag.clone());
     ctx.last_object_tag = Some(tag);
     Ok((vec![effect], Vec::new()))
 }
@@ -1087,7 +1137,38 @@ pub(super) fn compile_cant_action(
         unreachable!("typed restriction route requires a Cant action")
     };
 
-    let restriction = resolve_restriction_it_tag(restriction, &current_reference_env(ctx))?;
+    let mut restriction = resolve_restriction_it_tag(restriction, &current_reference_env(ctx))?;
+    // "That player can't attack you ... during their next turn": outside an
+    // iteration, the relative player is the discourse player, both for the
+    // restricted attackers and for whose next turn starts the restriction.
+    let mut start = start.clone();
+    if !ctx.iterated_player
+        && let Some(player) = ctx
+            .last_player_filter
+            .clone()
+            .filter(|player| !player.mentions_iterated_player())
+    {
+        if start == crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer) {
+            start = crate::effect::RestrictionStart::NextTurn(player.clone());
+        }
+        if let crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            attackers, ..
+        } = &mut restriction
+            && attackers.controller == Some(PlayerFilter::IteratedPlayer)
+        {
+            attackers.controller = Some(player.clone());
+        }
+        // "You can't attack that player this turn" (Call for Aid): the
+        // protected player is the discourse player.
+        if let crate::effect::Restriction::AttackPlayer {
+            player: protected, ..
+        } = &mut restriction
+            && *protected == PlayerFilter::IteratedPlayer
+        {
+            *protected = player;
+        }
+    }
+    let start = &start;
     if matches!(duration, crate::effect::Until::UntilControllersNextUntapStep { .. }) {
         return Err(CardTextError::ParseError(
             "next-untap beginning duration has no restriction lifetime owner".into(),
@@ -1104,7 +1185,10 @@ pub(super) fn compile_cant_action(
         // set carries no controller of its own, so "that player" is the
         // declared target player the preceding instruction already bound.
         let player = match &filter.controller {
-            Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_))) => {
+            // "Clash with an opponent. If you win, creatures that player
+            // controls don't untap during the player's next untap step."
+            // (Pollen Lullaby): the clashed opponent is a bound player tag.
+            Some(player @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) | PlayerFilter::TaggedPlayer(_))) => {
                 player.clone()
             }
             // A global set ("creatures") also uses an explicitly declared
@@ -1222,6 +1306,39 @@ fn mark_copy_source_as_one_of_tagged_set(spec: &mut ChooseSpec) -> Option<Object
         }
         _ => None,
     }
+}
+
+/// Token copies that enter attached to an object: create them, then attach
+/// every created copy to the resolved object.
+fn attach_created_token_copies(
+    effect: Effect,
+    attached_to: Option<(ChooseSpec, Vec<ChooseSpec>)>,
+    created_tag: Option<TagKey>,
+    choices: &mut Vec<ChooseSpec>,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Vec<Effect>, CardTextError> {
+    let mut compiled = vec![effect];
+    let Some((target_spec, target_choices)) = attached_to else {
+        return Ok(compiled);
+    };
+    for choice in target_choices {
+        push_choice(choices, choice);
+    }
+    let Some(created_tag) = created_tag else {
+        return Err(CardTextError::InvariantViolation(
+            "attached token copy requires its created token tag".to_string(),
+        ));
+    };
+    let objects = ChooseSpec::All(ObjectFilter::tagged(created_tag.clone()));
+    let mut attach_effect = Effect::attach_objects(objects, target_spec);
+    if ctx.auto_tag_object_targets {
+        let tag = ctx.next_tag("attachment_target");
+        attach_effect = attach_effect.tag(tag);
+    }
+    compiled.push(attach_effect);
+    // The created copies stay the newest object antecedent.
+    ctx.last_object_tag = Some(created_tag);
+    Ok(compiled)
 }
 
 pub(super) fn compile_subject_verb_middle(
@@ -1521,6 +1638,8 @@ pub(super) fn compile_subject_verb_middle(
             cost_reduction,
             mana_spend_mode,
             alternative_payment,
+            caster_land_mana_abilities_only,
+            control_caster_while_spell_resolves,
         }) => {
             // "if this card is in your graveyard, ... you may cast it": with
             // no object antecedent other than the source the condition named,
@@ -1587,26 +1706,28 @@ pub(super) fn compile_subject_verb_middle(
                 }
                 _ => resolve_non_target_player_filter(*player, &current_reference_env(ctx))?,
             };
-            Ok((
-                vec![Effect::cast_tagged(
-                    resolved_tag,
-                    player_filter,
-                    *allow_land,
-                    *as_copy,
-                    *copy_cast_reminder_surface,
-                    *copy_instruction_surface,
-                    *without_paying_mana_cost,
-                    additional_mana_cost.clone(),
-                    cost_reduction.clone(),
-                    *mana_spend_mode,
-                    *alternative_payment,
-                    alternative_cost.as_ref().map(|cost| {
-                        let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
-                        resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
-                    }).transpose()?,
-                )],
-                Vec::new(),
-            ))
+            let cast = Effect::cast_tagged(
+                resolved_tag,
+                player_filter,
+                *allow_land,
+                *as_copy,
+                *copy_cast_reminder_surface,
+                *copy_instruction_surface,
+                *without_paying_mana_cost,
+                additional_mana_cost.clone(),
+                cost_reduction.clone(),
+                *mana_spend_mode,
+                *alternative_payment,
+                alternative_cost.as_ref().map(|cost| {
+                    let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                    resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+                }).transpose()?,
+            )
+            .with_cast_tagged_instruction_riders(
+                *caster_land_mana_abilities_only,
+                *control_caster_while_spell_resolves,
+            );
+            Ok((vec![cast], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
             alternative_cost,
@@ -1619,6 +1740,7 @@ pub(super) fn compile_subject_verb_middle(
             free_cast_from_current_zone,
             until_source_exiles_another,
             spell_cost_reduction,
+            spell_cost_increase_unless_targets,
             max_plays,
             surface,
         }) => {
@@ -1631,7 +1753,7 @@ pub(super) fn compile_subject_verb_middle(
                     )
                 })?
             } else if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                ctx.last_object_tag.clone().ok_or_else(|| {
+                play_permission_it_antecedent(ctx).ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
@@ -1666,6 +1788,11 @@ pub(super) fn compile_subject_verb_middle(
             }
             if let Some(cost) = spell_cost_reduction.clone() {
                 grant_play = grant_play.with_spell_cost_reduction(cost);
+            }
+            if let Some((cost, unless_targets)) = spell_cost_increase_unless_targets.clone() {
+                grant_play = grant_play
+                    .with_spell_cost_increase(cost)
+                    .with_spell_cost_increase_unless_targets(unless_targets);
             }
             let surface_refers_to_plural_exiled_pool = surface.as_ref().is_some_and(|surface| {
                 matches!(
@@ -1742,14 +1869,16 @@ pub(super) fn compile_subject_verb_middle(
             allow_any_color_for_cast,
             until_next_end_step,
             until_next_turn_start,
+            during_next_turn,
             spell_filter,
             surface,
             max_plays,
+            without_paying_mana_cost,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                ctx.last_object_tag.clone().ok_or_else(|| {
+                play_permission_it_antecedent(ctx).ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
@@ -1764,7 +1893,9 @@ pub(super) fn compile_subject_verb_middle(
             let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter,
-                if *until_next_turn_start {
+                if *during_next_turn {
+                    crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn
+                } else if *until_next_turn_start {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
                 } else if *until_next_end_step {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
@@ -1777,6 +1908,11 @@ pub(super) fn compile_subject_verb_middle(
             .with_max_plays(*max_plays);
             grant_play.spell_filter = spell_filter.clone();
             grant_play.surface = surface.clone();
+            if *without_paying_mana_cost {
+                // An empty replacement price is "without paying its mana
+                // cost" (CR 118.9); lands are played normally.
+                grant_play.alternative_cost = Some(crate::cost::TotalCost::free());
+            }
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
@@ -1797,11 +1933,13 @@ pub(super) fn compile_subject_verb_middle(
             lands_enter_tapped,
             surface,
             during_turns_attacked_with,
+            during_turns_cast_another_spell,
+            spell_cost_reduction_per_opponent,
         }) => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                ctx.last_object_tag.clone().ok_or_else(|| {
+                play_permission_it_antecedent(ctx).ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
@@ -1824,7 +1962,7 @@ pub(super) fn compile_subject_verb_middle(
                 if resolved_tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
                     || ctx.last_exiled_collection_tag.as_ref() != Some(&resolved_tag)
                     || *without_paying_mana_cost || during_turns_counter_put_on_source.is_some()
-                    || during_turns_attacked_with.is_some()
+                    || during_turns_attacked_with.is_some() || *during_turns_cast_another_spell
                 { return Err(CardTextError::ParseError("marked exile permission lost its exact producer".into())); }
                 grant_play.permission_bound_mana = true;
             }
@@ -1842,8 +1980,15 @@ pub(super) fn compile_subject_verb_middle(
             if let Some(condition) = during_turns_attacked_with.clone() {
                 grant_play = grant_play.during_turns_attacked_with(condition);
             }
+            if *during_turns_cast_another_spell {
+                grant_play = grant_play.during_turns_cast_another_spell();
+            }
             if let Some(cost) = spell_cost_increase.clone() {
                 grant_play = grant_play.with_spell_cost_increase(cost);
+            }
+            if *spell_cost_reduction_per_opponent > 0 {
+                grant_play = grant_play
+                    .with_spell_cost_reduction_per_opponent(*spell_cost_reduction_per_opponent);
             }
             grant_play = grant_play.with_lands_enter_tapped(*lands_enter_tapped);
             if let Some(surface) = surface.clone() {
@@ -1895,7 +2040,7 @@ pub(super) fn compile_subject_verb_middle(
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
-                ctx.last_object_tag.clone().ok_or_else(|| {
+                play_permission_it_antecedent(ctx).ok_or_else(|| {
                     CardTextError::ParseError(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
@@ -1982,6 +2127,9 @@ pub(super) fn compile_subject_verb_middle(
             count_value,
             as_aura,
             top_only,
+            as_non_aura,
+            tapped_if,
+            noted_counters,
         }) => {
             let explicit_actor = if matches!(player, PlayerAst::Implicit) {
                 None
@@ -2002,6 +2150,9 @@ pub(super) fn compile_subject_verb_middle(
                 || matches!(spec.base(), ChooseSpec::Object(filter) | ChooseSpec::All(filter)
                     if filter.match_captured_public_destination)
                 || *transformed
+                || *as_non_aura
+                || tapped_if.is_some()
+                || noted_counters.is_some()
                 || !matches!(controller, ReturnControllerAst::Preserve);
             let implicit_chooser = if let Some(actor) = explicit_actor.as_ref() {
                 actor.clone_player_filter()
@@ -2131,6 +2282,16 @@ pub(super) fn compile_subject_verb_middle(
                 } else {
                     move_back
                 };
+                let move_back = if *as_non_aura {
+                    move_back.as_non_aura()
+                } else {
+                    move_back
+                };
+                let mut move_back = move_back;
+                move_back.enters_tapped_if = tapped_if.clone();
+                if let Some(noted) = noted_counters {
+                    move_back = move_back.with_noted_counters(noted.clone());
+                }
                 let move_back = match controller {
                     ReturnControllerAst::Preserve => move_back,
                     ReturnControllerAst::Owner => move_back.under_owner_control(),
@@ -2236,6 +2397,7 @@ pub(super) fn compile_subject_verb_middle(
             face_down,
             controller,
             verb_surface,
+            aura_attachment_filter,
         }) => {
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let refers_to_milled_cards =
@@ -2258,6 +2420,11 @@ pub(super) fn compile_subject_verb_middle(
                     .with_verb_surface(*verb_surface);
             let return_all = if *face_down {
                 return_all.face_down()
+            } else {
+                return_all
+            };
+            let return_all = if let Some(attachment_filter) = aura_attachment_filter {
+                return_all.with_aura_attachment_filter(attachment_filter.clone())
             } else {
                 return_all
             };
@@ -3221,13 +3388,17 @@ pub(super) fn compile_subject_verb_middle(
                 target,
                 duration,
                 excluded_subtypes,
+                in_addition_to_other_types,
             },
         ) => compile_tagged_effect_for_target(target, ctx, "become_creature_type_choice", |spec| {
-            Effect::new(crate::effects::BecomeCreatureTypeChoiceEffect::new(
-                spec,
-                duration.clone(),
-                excluded_subtypes.clone(),
-            ))
+            Effect::new(
+                crate::effects::BecomeCreatureTypeChoiceEffect::new(
+                    spec,
+                    duration.clone(),
+                    excluded_subtypes.clone(),
+                )
+                .in_addition_to_other_types(*in_addition_to_other_types),
+            )
         }),
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ChangeText { target, selection, duration }) =>
             compile_tagged_effect_for_target(target, ctx, "text_changed", |spec|
@@ -3890,6 +4061,7 @@ pub(super) fn compile_subject_verb_middle(
             set_base_power_toughness_to_source_totals,
             starting_loyalty,
             granted_abilities,
+            attached_to,
         }) => {
             let ObjectRefAst::Tagged(tag) = object;
             let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
@@ -3917,7 +4089,7 @@ pub(super) fn compile_subject_verb_middle(
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.into_player_filter();
-            let choices = subject.into_choices();
+            let mut choices = subject.into_choices();
             let aggregate_tag = tag.clone();
             let mut effect = crate::effects::CreateTokenCopyEffect::new(
                 ChooseSpec::Tagged(tag),
@@ -4014,16 +4186,36 @@ pub(super) fn compile_subject_verb_middle(
                     effect = effect.grant_static_ability(static_ability);
                 }
             }
+            // "... attached to <object>": the copy enters attached there, so
+            // its controller doesn't choose what an Aura copy enchants.
+            if attached_to.is_some() {
+                effect.suppress_aura_attachment_choice = true;
+            }
+            let resolved_attached_to = attached_to
+                .as_ref()
+                .map(|target| {
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))
+                })
+                .transpose()?;
             let mut effect = Effect::new(effect);
-            if ctx.auto_tag_object_targets {
+            let mut created_tag = None;
+            if ctx.auto_tag_object_targets || attached_to.is_some() {
                 let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
                 if unmodified_copy {
                     ctx.token_copy_sources.push((tag.clone(), copy_source_tag));
                 }
-                effect = effect.tag(tag);
+                effect = effect.tag(tag.clone());
+                created_tag = Some(tag);
             }
-            Ok((vec![effect], choices))
+            let compiled = attach_created_token_copies(
+                effect,
+                resolved_attached_to,
+                created_tag,
+                &mut choices,
+                ctx,
+            )?;
+            Ok((compiled, choices))
         }
         SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
             source,
@@ -4058,6 +4250,7 @@ pub(super) fn compile_subject_verb_middle(
             granted_abilities,
             set_name,
             added_supertypes,
+            attached_to,
         }) => {
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
@@ -4226,16 +4419,34 @@ pub(super) fn compile_subject_verb_middle(
                 }
             }
 
+            if attached_to.is_some() {
+                effect.suppress_aura_attachment_choice = true;
+            }
+            let resolved_attached_to = attached_to
+                .as_ref()
+                .map(|target| {
+                    resolve_target_spec_with_choices(target, &current_reference_env(ctx))
+                })
+                .transpose()?;
             let mut effect = Effect::new(effect);
-            if ctx.auto_tag_object_targets {
+            let mut created_tag = None;
+            if ctx.auto_tag_object_targets || attached_to.is_some() {
                 let tag = super::reserved_or_fresh_result_tag(ctx, "created");
                 ctx.last_object_tag = Some(tag.clone());
                 if unmodified_copy && let Some(copy_source_tag) = copy_source_tag {
                     ctx.token_copy_sources.push((tag.clone(), copy_source_tag));
                 }
-                effect = effect.tag(tag);
+                effect = effect.tag(tag.clone());
+                created_tag = Some(tag);
             }
-            Ok((vec![effect], choices))
+            let compiled = attach_created_token_copies(
+                effect,
+                resolved_attached_to,
+                created_tag,
+                &mut choices,
+                ctx,
+            )?;
+            Ok((compiled, choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Meld {
             result_name,
@@ -4344,6 +4555,10 @@ pub(super) fn compile_subject_verb_middle(
 
             let compiled_mode = match mode {
                 RetargetModeAst::All => crate::effects::RetargetMode::All,
+                RetargetModeAst::AllAtRandom => {
+                    effect = effect.at_random();
+                    crate::effects::RetargetMode::All
+                }
                 RetargetModeAst::OneToFixed { target: fixed } => {
                     let (fixed_spec, fixed_choices) =
                         resolve_target_spec_with_choices(fixed, &current_reference_env(ctx))?;

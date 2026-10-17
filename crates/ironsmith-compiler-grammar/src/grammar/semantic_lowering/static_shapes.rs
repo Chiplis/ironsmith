@@ -12,6 +12,8 @@ use super::{
 pub enum StaticSpecialLineShape {
     BlackManaMayBePaidWithLife,
     BoastTwice,
+    /// Oath of Teferi.
+    LoyaltyTwice,
     EquipAtInstantSpeed,
     /// "During your turn, you may activate equip abilities any time you
     /// could cast an instant." (Forge Anew).
@@ -114,6 +116,19 @@ fn is_draft_rule(words: &[&str]) -> bool {
             && phrase_is_present(words, &["booster", "pack"]))
 }
 
+/// "As you create your deck, circle two of the colors below." (Cryptic
+/// Spires): a choice made while building the deck, kept as
+/// deck-construction rule text that pregame setup reads back.
+fn is_deck_construction_instruction(words: &[&str]) -> bool {
+    [
+        &["as", "you", "create", "your", "deck"][..],
+        &["as", "you", "build", "your", "deck"],
+        &["as", "you", "construct", "your", "deck"],
+    ]
+    .iter()
+    .any(|prefix| phrase_is_prefix(words, prefix) && words.len() > prefix.len())
+}
+
 fn is_hidden_agenda(words: &[&str]) -> bool {
     phrase_is_exact(words, &["hidden", "agenda"])
 }
@@ -157,6 +172,14 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::BlackManaMayBePaidWithLife)
     } else if is_boast_twice(&words) {
         Some(StaticSpecialLineShape::BoastTwice)
+    } else if phrase_is_exact(
+        &words,
+        &[
+            "you", "may", "activate", "the", "loyalty", "abilities", "of", "planeswalkers",
+            "you", "control", "twice", "each", "turn", "rather", "than", "only", "once",
+        ],
+    ) {
+        Some(StaticSpecialLineShape::LoyaltyTwice)
     } else if is_equip_at_instant_speed(&words) {
         Some(StaticSpecialLineShape::EquipAtInstantSpeed)
     } else if words.len() > 3
@@ -177,7 +200,7 @@ pub fn parse_static_special_line_tokens(
         Some(StaticSpecialLineShape::DoubleAgenda)
     } else if is_draft_rule(&words) {
         Some(StaticSpecialLineShape::DraftRule)
-    } else if is_named_deck_construction(&words) {
+    } else if is_named_deck_construction(&words) || is_deck_construction_instruction(&words) {
         Some(StaticSpecialLineShape::AnyNumberNamedDeckConstruction)
     } else if super::parse_first_keyword_cost_alternative_tokens(tokens).is_some() {
         Some(StaticSpecialLineShape::FirstEquipCostAlternative)

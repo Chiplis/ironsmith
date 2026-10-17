@@ -178,4 +178,16 @@ pub enum PlayerPredicateAst {
         with_cards_named: String,
     },
     PlayerWasMonarchAtTurnStart { player: PlayerAst },
+    /// "If that player is you": the referenced player is this ability's controller.
+    PlayerIsYou { player: PlayerAst },
+    /// "If the player is your opponent": the referenced player is an
+    /// opponent of this ability's controller (CR 102.2, 102.3).
+    PlayerIsOpponent { player: PlayerAst },
+    /// "if they don't have any rad counters": a player-counter threshold of
+    /// any kind (CR 122.1).
+    PlayerHasCountersOrMore {
+        player: PlayerAst,
+        counter_type: crate::object::CounterType,
+        count: u32,
+    },
 }

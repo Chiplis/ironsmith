@@ -96,6 +96,14 @@ impl EffectExecutor for RepeatProcessEffect {
                                 maximum: i64::MAX as u128,
                             },
                         )?;
+                        // "up to three times": the bounded process stops once
+                        // it has been performed its maximum number of times.
+                        if self
+                            .max_iterations
+                            .is_some_and(|max| continuation_count >= i64::from(max))
+                        {
+                            break (outcome.status, outcome.value);
+                        }
                         crate::effects::capture_triggers_before_added_program(
                             game,
                             ctx,

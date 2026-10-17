@@ -84,6 +84,10 @@ pub enum PossessivePlayerReference {
     You,
     Opponent,
     Any,
+    /// "at the beginning of that player's upkeep" inside a granted ability
+    /// (Takklemaggot): a player named outside the trigger, bound by the
+    /// granting resolution.
+    ThatPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +328,10 @@ pub fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerRefe
         || normalized_phrase_occurs(words, &["opponents"])
     {
         return PossessivePlayerReference::Opponent;
+    }
+    if normalized_phrase_occurs(words, &["that", "players"]) && !exact_word_occurs(words, &["next"])
+    {
+        return PossessivePlayerReference::ThatPlayer;
     }
     PossessivePlayerReference::Any
 }

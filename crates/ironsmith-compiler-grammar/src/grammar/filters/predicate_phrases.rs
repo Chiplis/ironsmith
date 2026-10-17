@@ -242,10 +242,17 @@ const PREDICATE_REFERENCE_NOUN_WORDS: &[&str] = &[
     // `TargetMatches` once the previous action's target is explicit.
     "target",
     "token",
+    // "If that Island is snow" (Snowfall): a basic land type names the
+    // triggering land exactly like "that land".
+    "plains",
+    "island",
+    "swamp",
+    "mountain",
+    "forest",
 ];
 const ENCHANTMENT_WORD: &str = "enchantment";
 const PREDICATE_REFERENCE_START_WORDS: &[&str] = &[
-    "it", "its", "this", "that", "you", "your", "opponent", "player", "target", "source", "there",
+    "it", "its", "this", "that", "you", "youve", "you've", "your", "opponent", "player", "target", "source", "there",
 ];
 const OR_COMPARISON_TAIL_WORDS: &[&str] = &["more", "fewer", "less", "greater", "equal"];
 const ITS_WORDS: &[&str] = &["its", "it's"];
@@ -1101,6 +1108,20 @@ fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Op
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
+    // "as long as Kianne's power is even/odd": parity of the source's power.
+    if let [parity] = amount_clause.tokens()
+        && (parity.is_word("even") || parity.is_word("odd"))
+    {
+        let even = parity.is_word("even");
+        return Some(PredicateAst::CountParity {
+            count: crate::static_abilities::AnthemCountExpression::SourcePower,
+            even,
+            display: Some(format!(
+                "this creature's power is {}",
+                if even { "even" } else { "odd" }
+            )),
+        });
+    }
     source_power_at_least_from_amount_tokens(amount_clause.tokens())
 }
 
@@ -1131,7 +1152,37 @@ fn source_power_at_least_from_amount_tokens(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn parse_source_simple_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_source_bare_state_shape(tokens).or_else(|| parse_source_copula_state_shape(tokens))
+    parse_source_bare_state_shape(tokens)
+        .or_else(|| parse_source_copula_state_shape(tokens))
+        .or_else(|| parse_source_started_turn_state_shape(tokens))
+}
+
+/// "if Rasputin started the turn untapped" (Rasputin Dreamweaver): the
+/// source's tapped status as the current turn began.
+fn parse_source_started_turn_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let (subject_words, tapped) = if let Some(subject) =
+        words.strip_suffix(&["started", "the", "turn", "untapped"])
+    {
+        (subject, false)
+    } else {
+        (words.strip_suffix(&["started", "the", "turn", "tapped"])?, true)
+    };
+    if subject_words.is_empty() {
+        return None;
+    }
+    let subject_end = tokens
+        .iter()
+        .position(|token| token.is_word("started"))?;
+    if !is_source_state_subject_clause(LexedClause::new(&tokens[..subject_end])) {
+        return None;
+    }
+    let untapped = PredicateAst::Source(SourcePredicateAst::SourceStartedTurnUntapped);
+    Some(if tapped {
+        PredicateAst::Not(Box::new(untapped))
+    } else {
+        untapped
+    })
 }
 
 fn parse_source_crewed_by_exactly_predicate(
@@ -1915,14 +1966,40 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let subject_clause = matched.capture_clause_by_role(WinnowCaptureRole::Subject, clause)?;
-    if !is_triggering_object_counter_subject_clause(subject_clause) {
-        return None;
-    }
     let target_clause = matched.capture_clause("target", clause)?;
     if !is_exact_counter_on_triggering_object_tail_clause(target_clause) {
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    if !is_triggering_object_counter_subject_clause(subject_clause) {
+        // "Destroy target artifact. If that artifact had counters on it, ..."
+        // (Dismantle): a demonstrative naming the object an earlier
+        // instruction acted on. Its last-known counters are read from the
+        // `it` reference, never from a triggering event.
+        if surface::exact_any(
+            subject_clause,
+            &[
+                &["that", "artifact"],
+                &["that", "enchantment"],
+                &["that", "land"],
+                &["that", "planeswalker"],
+                &["that", "battle"],
+            ],
+        ) && surface::exact_any(counter_clause, &[&["counter"], &["counters"]])
+        {
+            return Some(PredicateAst::ValueComparison {
+                left: Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        (crate::tag::CompilerReferenceTag::It.bind()).into(),
+                    )),
+                    None,
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            });
+        }
+        return None;
+    }
     if counter_clause
         .token(0)
         .is_some_and(|token| token_word_is(token, NO_WORD))
@@ -2829,6 +2906,7 @@ fn parse_you_control_conjoined_predicate(
                     | "cards"
                     | "creatures"
                     | "enchantments"
+                    | "equipment"
                     | "lands"
                     | "permanents"
                     | "spells"
@@ -2836,8 +2914,20 @@ fn parse_you_control_conjoined_predicate(
             )
         });
     if has_shared_named_head {
+        // "Equipment named A, B, and C" (Helm of Kaldra): a serial list of
+        // names under one head; each comma segment after the first is another
+        // independently required name.
+        let mut segments = left_object
+            .tokens()
+            .split(|token| token.kind == TokenKind::Comma)
+            .filter(|segment| !segment.is_empty());
+        let first_segment = segments.next().unwrap_or(left_object.tokens());
+        let extra_names = segments
+            .map(|segment| render_token_slice(segment).trim().to_ascii_lowercase())
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>();
         let shared_named_result =
-            parse_object_filter(left_object.tokens(), false).and_then(|mut left_filter| {
+            parse_object_filter(first_segment, false).and_then(|mut left_filter| {
                 let right_name = render_token_slice(right_object.tokens())
                     .trim()
                     .to_ascii_lowercase();
@@ -2846,20 +2936,23 @@ fn parse_you_control_conjoined_predicate(
                         "missing card name in conjoined named-control condition".to_string(),
                     ));
                 }
-                let mut right_filter = left_filter.clone();
-                right_filter.name = Some(right_name);
                 left_filter.controller = Some(PlayerFilter::You);
-                right_filter.controller = Some(PlayerFilter::You);
-                Ok(PredicateAst::And(
-                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-                        player: PlayerAst::You,
-                        filter: left_filter,
-                    })),
-                    Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
-                        player: PlayerAst::You,
-                        filter: right_filter,
-                    })),
-                ))
+                let mut predicate = PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: left_filter.clone(),
+                });
+                for name in extra_names.into_iter().chain(std::iter::once(right_name)) {
+                    let mut named = left_filter.clone();
+                    named.name = Some(name);
+                    predicate = PredicateAst::And(
+                        Box::new(predicate),
+                        Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                            player: PlayerAst::You,
+                            filter: named,
+                        })),
+                    );
+                }
+                Ok(predicate)
             });
         return Some(shared_named_result);
     }
@@ -3641,9 +3734,56 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
     None
 }
 
+/// "you sacrifice an Island this way" (Serendib Djinn): the active form of
+/// "an Island was sacrificed this way", read from the same sacrificed set.
+fn parse_active_this_way_sacrifice_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let rest = primitives::strip_lexed_prefix_phrase(tokens, &["you", "sacrifice"])
+        .or_else(|| primitives::strip_lexed_prefix_phrase(tokens, &["you", "sacrificed"]))?;
+    let object_tokens = primitives::strip_lexed_suffix_phrase(rest, &["this", "way"])?;
+    if object_tokens.is_empty() {
+        return None;
+    }
+    let mut filter = parse_this_way_object_filter_clause(LexedClause::new(object_tokens))?;
+    filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Sacrificed));
+    Some(PredicateAst::TaggedMatches(
+        crate::tag::CompilerReferenceTag::ThisWaySacrificed.bind(),
+        filter,
+    ))
+}
+
+/// "you put a noncreature, nonland card into your graveyard this way"
+/// (Chandra, Chill of Compliance): the active form of "a card was put into
+/// your graveyard this way" after a surveil/mill-style producer.
+fn parse_active_this_way_put_into_graveyard_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let rest = primitives::strip_lexed_prefix_phrase(tokens, &["you", "put"])?;
+    let object_tokens = primitives::strip_lexed_suffix_phrase(
+        rest,
+        &["into", "your", "graveyard", "this", "way"],
+    )?;
+    if object_tokens.is_empty() {
+        return None;
+    }
+    let mut filter = parse_this_way_object_filter_clause(LexedClause::new(object_tokens))?;
+    filter.set_prior_effect_action_surface(Some(
+        ironsmith_core::PriorEffectAction::PutIntoGraveyard,
+    ));
+    Some(PredicateAst::TaggedMatches(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        filter,
+    ))
+}
+
 fn parse_passive_this_way_tagged_object_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    if let Some(predicate) = parse_active_this_way_sacrifice_predicate(tokens) {
+        return Ok(Some(predicate));
+    }
+    if let Some(predicate) = parse_active_this_way_put_into_graveyard_predicate(tokens) {
+        return Ok(Some(predicate));
+    }
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[
         &["is", "countered"],
@@ -3936,6 +4076,56 @@ fn parse_active_this_way_battlefield_predicate(
                 "missing object in this-way battlefield predicate".to_string(),
             )
         })?;
+    // "If you put fewer than two lands onto the battlefield this way"
+    // (Expand the Sphere): a quantified object phrase compares the number of
+    // objects that producer actually put onto the battlefield, rather than
+    // asking whether the tagged object matches the noun.
+    if let Some(quantity) =
+        crate::grammar::shared_util::value_shapes::parse_quantity_comparison_prefix_tokens(
+            filter_clause.tokens(),
+            false,
+            false,
+        )
+        && quantity.consumed_tokens < filter_clause.tokens().len()
+    {
+        let (operator, threshold) = match quantity.comparison {
+            crate::effect::Comparison::GreaterThan(n) => {
+                (crate::effect::ValueComparisonOperator::GreaterThan, n)
+            }
+            crate::effect::Comparison::GreaterThanOrEqual(n) => {
+                (crate::effect::ValueComparisonOperator::GreaterThanOrEqual, n)
+            }
+            crate::effect::Comparison::Equal(n) => (crate::effect::ValueComparisonOperator::Equal, n),
+            crate::effect::Comparison::LessThan(n) => {
+                (crate::effect::ValueComparisonOperator::LessThan, n)
+            }
+            crate::effect::Comparison::LessThanOrEqual(n) => {
+                (crate::effect::ValueComparisonOperator::LessThanOrEqual, n)
+            }
+            crate::effect::Comparison::NotEqual(n) => {
+                (crate::effect::ValueComparisonOperator::NotEqual, n)
+            }
+            _ => return Ok(None),
+        };
+        let noun_words =
+            TokenWordView::new(&filter_clause.tokens()[quantity.consumed_tokens..]).to_word_refs();
+        let mut count_words = vec!["the", "number", "of"];
+        count_words.extend(noun_words.iter().copied());
+        count_words.extend(["put", "onto", "the", "battlefield", "this", "way"]);
+        let Some((count, used)) =
+            crate::grammar::shared_util::value_expr::parse_value_expr_words(&count_words)
+        else {
+            return Ok(None);
+        };
+        if used != count_words.len() {
+            return Ok(None);
+        }
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: count,
+            operator,
+            right: Value::Fixed(threshold),
+        }));
+    }
     let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
@@ -4100,8 +4290,11 @@ fn parse_repeated_and_predicate(
 }
 
 fn predicate_conjunction_side_looks_standalone(tokens: &[OwnedLexToken]) -> bool {
-    predicate_tokens_start_with_reference(tokens)
-        && predicate_tokens_contain_predicate_operator(tokens)
+    (predicate_tokens_start_with_reference(tokens)
+        && predicate_tokens_contain_predicate_operator(tokens))
+        // "the gift was promised and that creature isn't legendary" (Coiling
+        // Rebirth): a complete cast-label predicate is its own conjunct.
+        || advanced::parse_this_spell_paid_named_label_shape(tokens).is_some()
 }
 
 fn predicate_tokens_contain_predicate_operator(tokens: &[OwnedLexToken]) -> bool {
@@ -4188,6 +4381,11 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
         &["it"],
         &["its"],
         &["it", "s"],
+        // "If the copy is a permanent spell, it gains haste" (Mizzix,
+        // Spider-Verse): the copy a preceding copy instruction created is
+        // that instruction's object result, the same antecedent "it" binds.
+        &["the", "copy"],
+        &["that", "copy"],
     ])])
     .parse_prefix(clause)
     {
@@ -4197,6 +4395,25 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
             tagged_that_enchantment: false,
             reference_is_creature: false,
             antecedent_surface: None,
+        });
+    }
+
+    // "If the exiled card is a land card" (Sin, Deicide, Storm Elemental):
+    // the card the preceding instruction exiled, exactly like "that card".
+    // "If the discovered card's mana value is less than 10" (Hit the Mother
+    // Lode): the card the preceding discover exiled and cast or put in hand.
+    if let Some(matched) = WinnowSequence::new(&[WinnowSequence::any_phrase(&[
+        &["the", "exiled", "card"],
+        &["the", "discovered", "card"],
+    ])])
+    .parse_prefix(clause)
+    {
+        return Some(DemonstrativeReferencePrefix {
+            word_len: matched.word_range.end,
+            kind: DemonstrativeReferenceKind::ThatObject,
+            tagged_that_enchantment: false,
+            reference_is_creature: false,
+            antecedent_surface: ironsmith_core::DemonstrativeAntecedentSurface::from_noun("card"),
         });
     }
 
@@ -5119,8 +5336,85 @@ fn is_you_both_own_and_clause(clause: LexedClause<'_>) -> bool {
     surface::exact(clause, &["you", "both", "own", "and"])
 }
 
+/// The completed roll of the preceding instruction ("the result").
+fn completed_roll_result_value() -> Value {
+    Value::PendingPriorEffectMetric(
+        ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::Outcome,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Rolled),
+    )
+}
+
+/// "the result is greater than the damage dealt or the result is 12"
+/// (Sword of Hours): comparisons of the completed roll against the
+/// triggering damage amount or an exact number, joined by "or".
+fn parse_roll_against_event_or_exact_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let words: Vec<&str> = words.iter().copied().filter(|word| *word != "the").collect();
+    if let Some(or_idx) = words.iter().position(|word| *word == "or")
+        && words.get(or_idx + 1) == Some(&"result")
+    {
+        let left = parse_roll_against_event_or_exact_predicate(&words[..or_idx])?;
+        let right = parse_roll_against_event_or_exact_predicate(&words[or_idx + 1..])?;
+        return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
+    }
+    match words.as_slice() {
+        ["result", "is", "greater", "than", "damage", "dealt"] => {
+            Some(PredicateAst::ValueComparison {
+                left: completed_roll_result_value(),
+                operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                right: Value::EventValue(crate::effect::EventValueSpec::Amount),
+            })
+        }
+        ["result", "is", number] => {
+            let crate::grammar::trigger_clauses::RollResultShape::Fixed(value) =
+                crate::grammar::trigger_clauses::parse_roll_result_words(&[*number])?
+            else {
+                return None;
+            };
+            Some(PredicateAst::ValueComparison {
+                left: completed_roll_result_value(),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: Value::Fixed(i32::try_from(value).ok()?),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_completed_roll_against_value(words: &[&str]) -> Option<PredicateAst> {
+    use crate::effect::ValueComparisonOperator as Op;
+    const COMPARISONS: &[(&[&str], Op)] = &[
+        (&["equal", "to", "or", "less", "than"], Op::LessThanOrEqual),
+        (&["less", "than", "or", "equal", "to"], Op::LessThanOrEqual),
+        (&["equal", "to", "or", "greater", "than"], Op::GreaterThanOrEqual),
+        (&["greater", "than", "or", "equal", "to"], Op::GreaterThanOrEqual),
+        (&["less", "than"], Op::LessThan),
+        (&["greater", "than"], Op::GreaterThan),
+        (&["equal", "to"], Op::Equal),
+    ];
+    let (rest, operator) = COMPARISONS
+        .iter()
+        .find_map(|(phrase, operator)| words.strip_prefix(*phrase).map(|rest| (rest, *operator)))?;
+    let (right, used) = crate::grammar::shared_util::value_expr::parse_value_expr_words(rest)?;
+    if used != rest.len() || matches!(right, Value::Fixed(_)) {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: completed_roll_result_value(),
+        operator,
+        right,
+    })
+}
+
 fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
+    if words.iter().any(|word| *word == "damage")
+        && let Some(predicate) = parse_roll_against_event_or_exact_predicate(&words)
+    {
+        return Some(predicate);
+    }
     let triggering_roll = words.starts_with(&["you", "rolled"]);
     let (grouped, number) = if let Some(rest) = words
         .strip_prefix(&["any", "of", "those", "results", "was"])
@@ -5131,12 +5425,21 @@ fn parse_completed_die_result_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         .strip_prefix(&["the", "roll", "was"])
         .or_else(|| words.strip_prefix(&["the", "result", "is"]))
         .or_else(|| words.strip_prefix(&["the", "result", "was"]))
+        .or_else(|| words.strip_prefix(&["result", "is"]))
         .or_else(|| words.strip_prefix(&["you", "rolled"]))
     {
         (false, rest)
     } else {
         return None;
     };
+    // "If the result is equal to or less than the number of Robots you
+    // control" (Clowning Around): the completed roll against a quantity.
+    if !grouped
+        && !triggering_roll
+        && let Some(predicate) = parse_completed_roll_against_value(number)
+    {
+        return Some(predicate);
+    }
     // "If the result is 3 or less" (Dissatisfied Customer, Non-Human
     // Cannonball): the completed roll's result at most the bound.
     let (number, operator) = if let Some(number) = number

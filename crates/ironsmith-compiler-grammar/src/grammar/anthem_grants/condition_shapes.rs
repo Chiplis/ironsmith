@@ -283,7 +283,14 @@ pub fn parse_existential_condition_shape(
         }));
     }
 
-    let filter_tokens = strip_leading_card_noun(quantity.rest);
+    // "Another" supplies a minimum of one and excludes the source. Keep it
+    // in the object phrase after reading its quantitative meaning.
+    let object_tokens = if quantified.first().is_some_and(|token| token.is_word("another")) {
+        quantified
+    } else {
+        quantity.rest
+    };
+    let filter_tokens = strip_leading_card_noun(object_tokens);
     let tail = if parse_complete_phrase(filter_tokens, &["in", "your", "graveyard"]) {
         ExistentialConditionTail::CardsInYourGraveyard
     } else if let Some((_, among_filter)) = primitives::parse_prefix(

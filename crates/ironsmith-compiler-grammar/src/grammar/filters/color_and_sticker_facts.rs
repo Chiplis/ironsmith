@@ -55,13 +55,14 @@ fn parse_sticker_filter_prefix<'a>(
             .value(KeywordActionKind::PowerToughnessSticker),
     ))
     .parse_next(input)?;
-    (
-        primitives::word_slice_exact("sticker"),
+    primitives::word_slice_exact("sticker").parse_next(input)?;
+    // "with an art sticker on it" / "with an art sticker" (Roxi): the
+    // trailing "on it" is optional.
+    let _ = winnow::combinator::opt((
         primitives::word_slice_exact("on"),
         primitives::word_slice_exact("it"),
-    )
-        .void()
-        .parse_next(input)?;
+    ))
+    .parse_next(input)?;
     Ok(action)
 }
 

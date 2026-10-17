@@ -11,13 +11,74 @@ fn tagged(tag: crate::tag::CompilerReferenceTag, surface: &str) -> Box<ChooseSpe
 
 pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     use crate::tag::CompilerReferenceTag as Tag;
+    // "draw cards equal to its total toxic value" (Goliath Hatchery): the
+    // summed toxic N of the object the preceding choice named (CR 702.164c).
+    if words.starts_with(&["its", "total", "toxic", "value"]) {
+        return Some((
+            Value::TotalToxicValueOf(Box::new(ChooseSpec::Tagged(Tag::It.key()))),
+            4,
+        ));
+    }
     // A plural possessive names the exact preceding object set. This is a
     // sum over that set, not the first card and not a fresh zone-wide search.
     if words.starts_with(&["their", "total", "mana", "value"]) {
         return Some((Value::TotalManaValue(ObjectFilter::tagged(Tag::It.bind())), 4));
     }
+    // "its toughness becomes their total toughness" (Dracoplasm): the summed
+    // characteristic of the same preceding object set.
+    if words.starts_with(&["their", "total", "power"]) {
+        return Some((Value::TotalPower(ObjectFilter::tagged(Tag::It.bind())), 3));
+    }
+    if words.starts_with(&["their", "total", "toughness"]) {
+        return Some((Value::TotalToughness(ObjectFilter::tagged(Tag::It.bind())), 3));
+    }
+    // "the total power of those creatures" names the exact preceding set
+    // (the creatures sacrificed this way), never every creature.
+    if let ["the", "total", characteristic @ ("power" | "toughness"), "of", "those", noun, ..] =
+        words
+        && matches!(*noun, "creatures" | "permanents" | "cards")
+    {
+        let filter = ObjectFilter::tagged(Tag::It.bind());
+        let value = if *characteristic == "power" {
+            Value::TotalPower(filter)
+        } else {
+            Value::TotalToughness(filter)
+        };
+        return Some((value, 6));
+    }
     let offset = usize::from(words.first() == Some(&"the"));
     let rest = &words[offset..];
+    // "the toughness of the creature you sacrificed this way" (Danse
+    // Macabre): after "each player sacrifices ...", only the object the
+    // instruction's controller sacrificed, read as it last existed.
+    let (axis_len, characteristic) = match rest {
+        ["power", ..] => (1, "power"),
+        ["toughness", ..] => (1, "toughness"),
+        ["mana", "value", ..] => (2, "mana value"),
+        _ => (0, ""),
+    };
+    if axis_len > 0
+        && let Some(
+            [
+                "of",
+                "the",
+                "creature" | "creatures" | "permanent" | "permanents" | "artifact" | "card",
+                "you",
+                "sacrificed",
+                "this",
+                "way",
+                ..,
+            ],
+        ) = rest.get(axis_len..)
+    {
+        let filter = ObjectFilter::tagged(Tag::It.bind()).controlled_by(PlayerFilter::You);
+        let value = match characteristic {
+            "power" => Value::TotalPower(filter),
+            "toughness" => Value::TotalToughness(filter),
+            _ => Value::TotalManaValue(filter),
+        };
+        return Some((value, offset + axis_len + 7));
+    }
     // A definite exiled card can be linked by a different ability of this
     // source. It is not an unqualified result of the previous instruction.
     // The explicit "this way" surface remains owned by prior-action metrics.
@@ -93,6 +154,16 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         }
     }
 
+    // "the number of times you chose a mode for that spell" (Riku of Many
+    // Paths, CR 700.2).
+    if rest.starts_with(&[
+        "number", "of", "times", "you", "chose", "a", "mode", "for", "that", "spell",
+    ]) {
+        return Some((
+            Value::ModeSelectionsOf(tagged(Tag::It, "that spell")),
+            offset + 10,
+        ));
+    }
     if rest.starts_with(&["number", "of", "times", "that", "spell", "was", "kicked"]) {
         return Some((
             Value::KicksPaidOf(tagged(Tag::It, "that spell")),

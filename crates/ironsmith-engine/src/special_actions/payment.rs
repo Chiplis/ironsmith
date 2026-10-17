@@ -19,9 +19,11 @@ impl SpecialAction {
         use crate::costs::PaymentReason;
         let (source, cost, reason) = match *self {
             Self::PlayLand { .. } | Self::PlayLandBackFace { .. } | Self::TurnConspiracyFaceUp { .. }
+            // Discarding the card is the whole action; it has no cost.
+            | Self::DiscardFromHand { .. }
             // Mana abilities already own a nested, interactive cost transaction.
             | Self::ActivateManaAbility { .. } => return Ok(None),
-            Self::Plot { card_id } => (card_id, TotalCost::mana(plot_cost(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?), PaymentReason::Other),
+            Self::Plot { card_id } => (card_id, TotalCost::mana(plot_special_action_cost(game, player, card_id)?), PaymentReason::Other),
             Self::Suspend { card_id } => (card_id, TotalCost::mana(suspend_spec(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?.1), PaymentReason::Other),
             Self::Foretell { card_id } => (card_id, TotalCost::mana(foretell_special_action_quote(game, player, card_id)?.0), PaymentReason::Foretell),
             Self::Companion { card_id } => (card_id, TotalCost::mana(companion_action_cost()), PaymentReason::Other),
@@ -38,7 +40,7 @@ impl SpecialAction {
                 (source, TotalCost::mana(planar_die_cost(game.planar_die_roll_cost(player).ok_or(ActionError::InvalidTiming)?)), PaymentReason::Other)
             }
             Self::IgnoreAttachedRestriction { source_id, .. } => (source_id, ignore_attached_restriction_cost(), PaymentReason::Other),
-            Self::IgnoreSourceEffect { source_id, ability_index } => (source_id, TotalCost::mana(ignore_source_effect_mana_cost(game, source_id, ability_index)?), PaymentReason::Other),
+            Self::IgnoreSourceEffect { source_id, ability_index } => (source_id, ignore_source_effect_total_cost(game, source_id, ability_index)?, PaymentReason::Other),
             Self::PayDelayedTrigger { delayed_trigger_index } => {
                 let payment = delayed_trigger_prepayment(game, delayed_trigger_index)?;
                 (payment.source, payment.cost.clone(), PaymentReason::Other)

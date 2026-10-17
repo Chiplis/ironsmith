@@ -66,6 +66,12 @@ pub enum StackActionAst {
         mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
         alternative_payment: Option<ironsmith_core::CastTaggedAlternativePayment>,
         alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
+        /// "While doing so, the player can activate mana abilities only if
+        /// they're from lands that player controls ..." (Word of Command).
+        caster_land_mana_abilities_only: bool,
+        /// "If the chosen card is cast as a spell, you control the player
+        /// while that spell is resolving." (CR 722).
+        control_caster_while_spell_resolves: bool,
     },
     RetargetStackObject {
         target: TargetAst,

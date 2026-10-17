@@ -673,6 +673,50 @@ pub fn parse_exile_then_shuffle_graveyard_into_library_sentence(
 pub fn parse_exile_source_with_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "exile a card from your hand with a number of time counters on it equal
+    // to its mana value" (The Eleventh Doctor): the count is read from the
+    // exiled card.
+    {
+        let tokens = clause.tokens();
+        let words = crate::lexer::token_word_refs(tokens);
+        if words.first() == Some(&"exile")
+            && let Some(with_at) = words
+                .windows(4)
+                .position(|window| window == ["with", "a", "number", "of"])
+            && let Some(counters_at) = words
+                .windows(7)
+                .position(|window| window == ["counters", "on", "it", "equal", "to", "its", "mana"])
+            && counters_at > with_at + 4
+            && words.get(counters_at + 7) == Some(&"value")
+            && words.len() == counters_at + 8
+        {
+            let mut kind_words = words[with_at + 4..counters_at].to_vec();
+            kind_words.push("counter");
+            let Some(counter_type) =
+                crate::grammar::filters::parse_counter_type_words(&kind_words)
+            else {
+                return Ok(None);
+            };
+            // Word and token positions agree for this all-word clause.
+            let target_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[1..with_at]);
+            if target_tokens.is_empty() {
+                return Ok(None);
+            }
+            let it = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
+            return Ok(Some(vec![
+                EffectAst::subject_verb_exile(parse_target_phrase(target_tokens)?, false),
+                EffectAst::subject_verb_put_counters(
+                    counter_type,
+                    Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind().into(),
+                    ))),
+                    it,
+                    None,
+                    false,
+                ),
+            ]));
+        }
+    }
     let Some(shape) = effect_grammar::parse_exile_source_counter_shape(clause.tokens()) else {
         return Ok(None);
     };
@@ -681,6 +725,50 @@ pub fn parse_exile_source_with_counters_sentence(
         Err(error) if shape.source_reference => return Err(error),
         Err(_) => return Ok(None),
     };
+    // "exile the top card of each player's library with a collection counter
+    // on it" (Evelyn, the Covetous): a library-top exile per library owner,
+    // then the counters go on every card exiled this way. Reading the
+    // library phrase as an object target would collapse it to one choice.
+    if !shape.source_reference
+        && !shape.it_reference
+        && let Some(library) =
+            effect_grammar::parse_exile_top_library_shape(shape.target_tokens, PlayerAst::Implicit)
+        && library.player != effect_grammar::ExileLibraryPlayerShape::Player(PlayerAst::Implicit)
+    {
+        let exiled = crate::util::helper_tag_for_tokens(shape.target_tokens, "exiled");
+        let exile_for = |player: PlayerAst| {
+            EffectAst::subject_verb_exile_top_of_library_with_optional_surface(
+                player,
+                library.count.clone(),
+                Vec::new(),
+                vec![exiled.clone()],
+                None,
+            )
+        };
+        let exile = match library.player {
+            effect_grammar::ExileLibraryPlayerShape::EachPlayer => {
+                EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                    effects: vec![exile_for(PlayerAst::That)],
+                })
+            }
+            effect_grammar::ExileLibraryPlayerShape::EachOpponent => {
+                EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                    effects: vec![exile_for(PlayerAst::That)],
+                })
+            }
+            effect_grammar::ExileLibraryPlayerShape::Player(player) => exile_for(player),
+        };
+        return Ok(Some(vec![
+            exile,
+            EffectAst::subject_verb_put_counters(
+                counter_type,
+                Value::Fixed(count as i32),
+                TargetAst::Tagged(exiled, clause.span()),
+                None,
+                false,
+            ),
+        ]));
+    }
     let (exile_target, counter_target) = if shape.source_reference {
         let source = TargetAst::Source(clause.span());
         (source.clone(), source)

@@ -9,6 +9,7 @@ mod register_future_zone_replacement;
 mod register_mana_replacement;
 mod register_mana_rewrite;
 mod register_mana_spend_permission;
+mod register_next_batch_enter_as_copy;
 mod register_next_batch_enter_with_counters;
 mod register_zone_replacement;
 mod move_replaced_object_to_library;
@@ -24,6 +25,7 @@ pub use register_future_zone_replacement::RegisterFutureZoneReplacementEffect;
 pub use register_mana_replacement::RegisterManaReplacementEffect;
 pub use register_mana_rewrite::RegisterManaRewriteEffect;
 pub use register_mana_spend_permission::RegisterManaSpendPermissionEffect;
+pub use register_next_batch_enter_as_copy::RegisterNextBatchEnterAsCopyEffect;
 pub use register_next_batch_enter_with_counters::RegisterNextBatchEnterWithCountersEffect;
 pub use register_zone_replacement::RegisterZoneReplacementEffect;
 
@@ -58,8 +60,12 @@ pub(crate) use execute_payload::{
 
 mod register_damage_addition;
 mod register_damage_multiplier;
+mod register_damage_counter_replacement;
 pub use register_damage_addition::RegisterDamageAdditionEffect;
 pub use register_damage_multiplier::RegisterDamageMultiplierEffect;
+pub use register_damage_counter_replacement::{
+    RegisterDamageCounterReplacementEffect, RegisteredReplacementExpiry,
+};
 
 mod draw_continuation;
 

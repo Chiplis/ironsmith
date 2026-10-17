@@ -1360,6 +1360,31 @@ pub fn parse_player_has_quantity_object_condition(
         .then_some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
 
+/// A life relation whose subject is "that player or that planeswalker's
+/// controller" has no player-predicate form; read it as a life-total
+/// comparison against your life total.
+pub fn target_or_controller_life_relation_predicate(
+    relation: &PlayerLifeRelationConditionAst,
+) -> Option<PredicateAst> {
+    if relation.player != PlayerFilter::TargetPlayerOrControllerOfTarget {
+        return None;
+    }
+    let operator = match relation.relation {
+        PlayerLifeRelationAst::HasMoreLifeThanYou => {
+            crate::effect::ValueComparisonOperator::GreaterThan
+        }
+        PlayerLifeRelationAst::HasLessLifeThanYou => {
+            crate::effect::ValueComparisonOperator::LessThan
+        }
+        _ => return None,
+    };
+    Some(PredicateAst::ValueComparison {
+        left: crate::effect::Value::LifeTotal(PlayerFilter::TargetPlayerOrControllerOfTarget),
+        operator,
+        right: crate::effect::Value::LifeTotal(PlayerFilter::You),
+    })
+}
+
 pub fn parse_player_life_relation_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerLifeRelationConditionAst> {
@@ -1919,6 +1944,16 @@ fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<P
 }
 
 fn parse_life_relation_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
+    // "that player or that planeswalker's controller" (Pulse of the Forge):
+    // the player a "target player or planeswalker" names, or the controller of
+    // the planeswalker it names.
+    if matches!(
+        crate::lexer::token_word_refs(clause.tokens()).as_slice(),
+        ["that", "player", "or", "that", "planeswalker's" | "planeswalkers", "controller"]
+            | ["that", "player", "or", "that", "planeswalker", "s", "controller"]
+    ) {
+        return Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    }
     let reference = parse_leaf_player_reference_tokens(
         clause.tokens(),
         LeafPlayerReferenceMode::LifeRelationSubject,

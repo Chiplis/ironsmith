@@ -2,7 +2,7 @@ use crate::cards::builders::{
     CharacteristicActionAst, ChoiceActionAst, ConditionalEffectAst, CounterActionAst,
     DamageActionAst, DelayedEffectAst, EffectAst, GrantActionAst, LibraryActionAst,
     LifeResourceActionAst, ObjectChoiceEffectAst, PermissionEffectAst, PredicateAst,
-    RevealLookActionAst, StatChangeActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    RevealLookActionAst, StackActionAst, StatChangeActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     TargetAst, VoteEffectAst, ZoneMoveActionAst,
 };
 use crate::effect::Value;
@@ -452,7 +452,8 @@ fn bind_typed_where_x_references(effects: &mut [EffectAst], inherited: Option<Va
                 bind_typed_where_x_references(effects, binding.clone());
             }
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
                 for mode in modes {
                     bind_typed_where_x_references(&mut mode.effects, binding.clone());
                 }
@@ -504,17 +505,23 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
     fn peel_mut(effect: &mut EffectAst) -> &mut EffectAst {
         let single =
             matches!(effect, EffectAst::SourceSentence { effects, .. } if effects.len() == 1);
-        if !single {
-            return effect;
+        if single {
+            let EffectAst::SourceSentence { effects, .. } = effect else { unreachable!("checked above") };
+            return peel_mut(&mut effects[0]);
         }
-        let EffectAst::SourceSentence { effects, .. } = effect else {
-            unreachable!("checked above");
-        };
-        peel_mut(&mut effects[0])
+        let coordinated = matches!(effect, EffectAst::Coordination(coordination)
+            if coordination.members.first().is_some_and(|member| !member.effects.is_empty()));
+        if coordinated {
+            let EffectAst::Coordination(coordination) = effect else { unreachable!("checked above") };
+            return peel_mut(&mut coordination.members[0].effects[0]);
+        }
+        effect
     }
     fn peel(effect: &EffectAst) -> &EffectAst {
         match effect {
             EffectAst::SourceSentence { effects, .. } if effects.len() == 1 => peel(&effects[0]),
+            EffectAst::Coordination(coordination) => coordination.members.first()
+                .and_then(|member| member.effects.first()).map(peel).unwrap_or(effect),
             _ => effect,
         }
     }
@@ -524,6 +531,11 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
                 ConditionalEffectAst::IfResult { effects, .. }
                 | ConditionalEffectAst::ResolvedIfResult { effects, .. },
             ) => Some(effects),
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, if_true, if_false })
+                if if_false.is_empty() && matches!(&*predicate,
+                    PredicateAst::ValueComparison { left, .. }
+                        if matches!(left.unhinted(), Value::PendingPriorEffectMetric(query)
+                            if matches!(query.metric, ironsmith_core::EffectMetric::CoinHeads | ironsmith_core::EffectMetric::CoinTails))) => Some(if_true),
             _ => None,
         }
     }
@@ -539,27 +551,34 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
                 | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     target, ..
                 }) if matches!(target, TargetAst::Object(_, Some(_), _)) => Some(target),
+                SubjectVerbActionAst::Stack(StackActionAst::Counter { target, .. }
+                    | StackActionAst::CounterUnlessPays { target, .. })
+                    if matches!(target, TargetAst::Object(_, Some(_), _) | TargetAst::Spell(Some(_))) => Some(target),
                 _ => None,
             },
             _ => None,
         }
     }
-    fn branch_reads_it(branch: &[EffectAst]) -> bool {
-        branch
-            .first()
-            .map(peel)
-            .and_then(crate::cards::builders::primary_target_from_effect)
-            .is_some_and(|target| {
-                matches!(target, TargetAst::Tagged(tag, _)
-                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
-            })
+    fn stack_target(target: &TargetAst) -> bool {
+        matches!(target, TargetAst::Spell(Some(_)))
+            || matches!(target, TargetAst::Object(filter, Some(_), _) if filter.zone == Some(crate::zone::Zone::Stack))
+    }
+    fn branch_reads_it(branch: &[EffectAst], declared_stack_target: bool) -> bool {
+        let Some(effect) = branch.first().map(peel) else { return false };
+        let Some(TargetAst::Tagged(tag, _)) = crate::cards::builders::primary_target_from_effect(effect) else { return false };
+        tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            || (declared_stack_target && tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+                && matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. }), .. })))
     }
     let mut index = 0;
     while index < effects.len() {
         let (head, tail) = effects.split_at_mut(index + 1);
+        let declared_stack_target = result_branch_mut(&mut head[index])
+            .and_then(|branch| introduced_target_mut(branch))
+            .is_some_and(|target| stack_target(target));
         let sibling_reads_it = tail
             .iter_mut()
-            .any(|effect| result_branch_mut(effect).is_some_and(|branch| branch_reads_it(branch)));
+            .any(|effect| result_branch_mut(effect).is_some_and(|branch| branch_reads_it(branch, declared_stack_target)));
         let declared = if sibling_reads_it {
             result_branch_mut(&mut head[index])
                 .and_then(|branch| introduced_target_mut(branch))
@@ -573,6 +592,21 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
             None
         };
         if let Some(target) = declared {
+            if declared_stack_target {
+                // A stack-object demonstrative parsed as the ambient trigger
+                // names this explicit declaration in a sibling result branch.
+                for effect in tail {
+                    if let Some(branch) = result_branch_mut(effect)
+                        && branch_reads_it(branch, true)
+                        && let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::Stack(StackActionAst::CopySpell { target, .. }), ..
+                        })) = branch.first_mut().map(peel_mut)
+                        && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str())
+                    {
+                        *target = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+                    }
+                }
+            }
             // Declare ahead of the result producer ("Flip a coin"), so each
             // branch still reads that producer's result.
             let mut first_branch = index;
@@ -583,7 +617,8 @@ fn declare_branch_introduced_object_targets(effects: &mut Vec<EffectAst>) {
             if insert_into_sentence(
                 effects,
                 insert_at,
-                EffectAst::subject_verb_target_only(target),
+                if declared_stack_target { EffectAst::subject_verb_explicit_target_only(target) }
+                else { EffectAst::subject_verb_target_only(target) },
             ) {
                 index += 1;
             }
@@ -602,6 +637,9 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
         match restriction {
             Restriction::PreventDamageFrom {
                 sources: filter, ..
+            }
+            | Restriction::PreventDamageTo {
+                recipients: filter, ..
             }
             | Restriction::ActivateLoyaltyAbilitiesOf(filter)
             | Restriction::MustAttack(filter)
@@ -834,8 +872,182 @@ fn correlate_result_gated_choice_search_followups(effects: &mut Vec<EffectAst>) 
     }
 }
 
+/// "If they don't, return this card to the battlefield ... as a non-Aura
+/// enchantment. It loses ... and gains ..." (Takklemaggot): the following
+/// sentence describes the permanent that branch returned, so it belongs to
+/// that branch. Outside it the returned object doesn't exist.
+fn transport_non_aura_return_followups(effects: &mut Vec<EffectAst>) {
+    fn branch_ends_in_non_aura_return(branch: &[EffectAst]) -> bool {
+        branch.last().map(sentence_tail).is_some_and(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(
+                        ZoneMoveActionAst::ReturnToBattlefield { as_non_aura: true, .. }
+                    ),
+                    ..
+                })
+            )
+        })
+    }
+    let mut index = 0;
+    while index + 1 < effects.len() {
+        let returns_non_aura = match sentence_tail(&effects[index]) {
+            EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult { effects: branch, .. }
+                | ConditionalEffectAst::ResolvedIfResult { effects: branch, .. },
+            ) => branch_ends_in_non_aura_return(branch),
+            _ => false,
+        };
+        let follower_is_plain =
+            !matches!(sentence_tail(&effects[index + 1]), EffectAst::Conditionals(_));
+        if returns_non_aura && follower_is_plain {
+            let follower = effects.remove(index + 1);
+            if let EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult { effects: branch, .. }
+                | ConditionalEffectAst::ResolvedIfResult { effects: branch, .. },
+            ) = sentence_tail_mut(&mut effects[index])
+            {
+                branch.push(follower);
+            }
+        }
+        index += 1;
+    }
+}
+
+/// "roll a d20. 1—14 | ... 15—20 | Create one of those tokens. You may roll
+/// again." (Delina, Wild Mage): rolling again repeats the roll and its whole
+/// result table, not the row that offered it. The row's optional repeat
+/// marker becomes the continuation gate of one loop around the roll and every
+/// row; the gate re-tests the same row against that iteration's roll, so a
+/// result outside the row ends the process without offering the choice.
+/// Runs before nested normalization so the marker is not first claimed by
+/// the row's own effects.
+fn rewrite_die_table_roll_again(effects: &mut Vec<EffectAst>) {
+    use crate::cards::builders::{IfResultPredicate, PlayerAst};
+    use ironsmith_compiler_semantic::model::RandomActionAst;
+    fn is_may_repeat_marker(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay) => true,
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects,
+            }) => matches!(
+                effects.as_slice(),
+                [EffectAst::ForEach(
+                    ForEachEffectAst::RepeatThisProcessMay | ForEachEffectAst::RepeatThisProcess
+                )]
+            ),
+            _ => false,
+        }
+    }
+    fn is_die_row(effect: &EffectAst) -> bool {
+        matches!(
+            effect,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::DieValue(_),
+                ..
+            })
+        )
+    }
+    fn leaves<'a>(effect: &'a EffectAst, out: &mut Vec<&'a EffectAst>) {
+        match effect {
+            EffectAst::SourceSentence { effects, .. }
+            | EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
+            | EffectAst::Coordinated { effects, .. } => {
+                for effect in effects {
+                    leaves(effect, out);
+                }
+            }
+            EffectAst::Coordination(coordination) => {
+                for member in &coordination.members {
+                    for effect in &member.effects {
+                        leaves(effect, out);
+                    }
+                }
+            }
+            _ => out.push(effect),
+        }
+    }
+    // The repeated head is only the roll, optionally after the ability's
+    // target declarations ("choose target creature you control, then roll").
+    fn declares_targets_then_rolls(effect: &EffectAst) -> bool {
+        let mut flat = Vec::new();
+        leaves(effect, &mut flat);
+        let Some((last, prefix)) = flat.split_last() else {
+            return false;
+        };
+        matches!(
+            last,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. }),
+                ..
+            })
+        ) && prefix.iter().all(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { .. },
+                    ..
+                })
+            )
+        })
+    }
+    let Some(marked) = effects.iter().position(|effect| {
+        matches!(
+            effect,
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: IfResultPredicate::DieValue(_),
+                effects: row,
+            }) if row.len() > 1 && row.last().is_some_and(is_may_repeat_marker)
+        )
+    }) else {
+        return;
+    };
+    let mut first_row = marked;
+    while first_row > 0 && is_die_row(&effects[first_row - 1]) {
+        first_row -= 1;
+    }
+    let mut last_row = marked;
+    while last_row + 1 < effects.len() && is_die_row(&effects[last_row + 1]) {
+        last_row += 1;
+    }
+    if first_row == 0 || !declares_targets_then_rolls(&effects[first_row - 1]) {
+        return;
+    }
+    let EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+        predicate,
+        effects: row,
+    }) = &mut effects[marked]
+    else {
+        unreachable!("the marked row was matched above");
+    };
+    row.pop();
+    let gate = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+        predicate: predicate.clone(),
+        effects: vec![EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)],
+    });
+    let head = first_row - 1;
+    let mut body: Vec<EffectAst> = effects.drain(head..=last_row).collect();
+    body.push(gate);
+    let continue_effect_index = body.len() - 1;
+    effects.insert(
+        head,
+        EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+            effects: body,
+            continue_effect_index,
+            continue_predicate: IfResultPredicate::Did,
+            max_iterations: None,
+        }),
+    );
+}
+
 fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
+    rewrite_die_table_roll_again(effects);
     transport_reflexive_result_followups(effects);
+    transport_non_aura_return_followups(effects);
     transport_tap_quantity_reflexive_into_player_loop(effects);
     bind_tapped_this_way_to_tap_all(effects);
     declare_predicate_introduced_player_targets(effects);
@@ -889,6 +1101,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     bind_choice_remainder_to_choice_domain(effects);
     bind_consult_remainder_to_revealed_collection(effects);
     bind_plural_total_power_to_prior_object_set(effects);
+    fold_trailing_shuffle_into_search_branch(effects);
     if let Some(rewritten) = rewrite_repeat_process(effects) {
         *effects = rewritten;
     }
@@ -2749,6 +2962,9 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             effects, ..
         })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDeclareAttackersStep {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
@@ -2774,7 +2990,8 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         // slice-exposing helper cannot express. New wrapper variants must be
         // added here and kept in sync with the traversal macro.
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
             for mode in modes {
                 normalize_effects_vec(&mut mode.effects);
             }
@@ -2879,6 +3096,7 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
                 effects: body,
                 continue_effect_index: end - 1,
                 continue_predicate: crate::cards::builders::IfResultPredicate::ConditionMatched,
+                max_iterations: None,
             })];
             rewritten.extend_from_slice(&effects[end..]);
             return Some(rewritten);
@@ -3003,6 +3221,7 @@ fn rewrite_repeat_process_result(effects: &[EffectAst]) -> Option<Vec<EffectAst>
         effects: body,
         continue_effect_index,
         continue_predicate,
+        max_iterations: None,
     })])
 }
 
@@ -3037,6 +3256,45 @@ fn peel_single_source_sentence(effect: &EffectAst) -> &EffectAst {
             peel_single_source_sentence(&effects[0])
         }
         _ => effect,
+    }
+}
+
+/// "If the exiled card is a God card, search its controller's graveyard,
+/// hand, and library ... and exile them. Then that player shuffles."
+/// (Deicide): the shuffle completes the conditional search, so it happens
+/// only when the search does, and "that player" names the searched player.
+fn fold_trailing_shuffle_into_search_branch(effects: &mut Vec<EffectAst>) {
+    fn is_shuffle(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+                ..
+            }) => true,
+            EffectAst::SourceSentence { effects, .. } => {
+                effects.len() == 1 && is_shuffle(&effects[0])
+            }
+            _ => false,
+        }
+    }
+    let mut index = 0;
+    while index + 1 < effects.len() {
+        let folds = matches!(
+            &effects[index],
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. })
+                if if_false.is_empty()
+                    && if_true
+                        .iter()
+                        .any(crate::reference_resolution::effect_is_library_search)
+        ) && is_shuffle(&effects[index + 1]);
+        if folds {
+            let shuffle = effects.remove(index + 1);
+            if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) =
+                &mut effects[index]
+            {
+                if_true.push(shuffle);
+            }
+        }
+        index += 1;
     }
 }
 
@@ -3097,6 +3355,7 @@ fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         effects: effects[..=marker_index].to_vec(),
         continue_effect_index: marker_index,
         continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+        max_iterations: None,
     })];
     rewritten.extend_from_slice(&effects[marker_index + 1..]);
     Some(rewritten)
@@ -3806,6 +4065,7 @@ mod tests {
                 effects,
                 continue_effect_index,
                 continue_predicate,
+                ..
             }),
         ] = normalized.as_slice()
         else {
@@ -3849,6 +4109,7 @@ mod tests {
                 effects,
                 continue_effect_index: 0,
                 continue_predicate: IfResultPredicate::WonClash,
+                ..
             })] if effects.len() == 1
         ));
     }

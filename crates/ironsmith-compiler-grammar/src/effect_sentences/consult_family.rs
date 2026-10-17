@@ -119,6 +119,28 @@ pub(crate) fn parse_consult_traversal_sentence_with_player(
             value.with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs),
         );
     }
+    // "until you reveal a creature card with greater mana value" (Lukka,
+    // Coppercoat Outcast): the comparison is against the object the prefix
+    // instruction acted on (bound below like the shares-a-type relations).
+    let mut filter_tokens = filter_tokens;
+    let mut greater_mana_value_than_antecedent = false;
+    {
+        let words = crate::lexer::token_word_refs(&filter_tokens);
+        for suffix in [
+            &["with", "greater", "mana", "value"][..],
+            &["with", "greater", "mana", "value", "than", "it"][..],
+            &["with", "greater", "mana", "value", "than", "that", "creature"][..],
+        ] {
+            if words.len() > suffix.len()
+                && words.ends_with(suffix)
+                && let Some(with_index) = filter_tokens.iter().rposition(|token| token.is_word("with"))
+            {
+                filter_tokens.truncate(with_index);
+                greater_mana_value_than_antecedent = true;
+                break;
+            }
+        }
+    }
     let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
         filter
     } else if matches!(stop_kind, effect_grammar::ConsultTraversalStopKind::Passive)
@@ -133,6 +155,13 @@ pub(crate) fn parse_consult_traversal_sentence_with_player(
     };
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
+    if greater_mana_value_than_antecedent {
+        filter.mana_value = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind().into(),
+            ))),
+        )));
+    }
     bind_consult_it_relation_to_prefix_affected_object(tokens, &mut prefix_effects, &mut filter);
 
     let all_tag = helper_tag_for_tokens(
@@ -394,7 +423,7 @@ fn bind_consult_it_relation_to_prefix_affected_object(
                     | TaggedOpbjectRelation::SameManaValueAsTagged
                     | TaggedOpbjectRelation::SameNameAsTagged
             )
-    });
+    }) || consult_mana_value_reads_it(filter);
     if !relation_uses_it {
         return;
     }
@@ -427,6 +456,23 @@ fn bind_consult_it_relation_to_prefix_affected_object(
             constraint.tag = antecedent_tag.clone().into();
         }
     }
+    if consult_mana_value_reads_it(filter) {
+        filter.mana_value = Some(crate::filter::Comparison::GreaterThanExpr(Box::new(
+            Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                antecedent_tag.clone().into(),
+            ))),
+        )));
+    }
+}
+
+fn consult_mana_value_reads_it(filter: &ObjectFilter) -> bool {
+    matches!(
+        &filter.mana_value,
+        Some(crate::filter::Comparison::GreaterThanExpr(value))
+            if matches!(value.as_ref(), Value::ManaValueOf(spec)
+                if matches!(spec.as_ref(), crate::target::ChooseSpec::Tagged(tag)
+                    if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()))
+    )
 }
 
 fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {

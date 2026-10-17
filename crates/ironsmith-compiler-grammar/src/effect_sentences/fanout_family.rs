@@ -1,3 +1,4 @@
+mod chosen_amount_damage;
 mod multi_source_damage;
 mod reciprocal_power_damage;
 mod shared_amount_recipient_set;
@@ -702,6 +703,29 @@ fn lower_damage_part_shape(
             };
             Ok(Some(CompoundDamagePart::EachPlayer(filter)))
         }
+        fanout_grammar::DamagePartShape::EachPlayerWhoControls {
+            opponent_only,
+            filter_tokens,
+        } => {
+            let mut objects = match parse_object_filter(&filter_tokens, false) {
+                Ok(filter) => filter,
+                Err(_) => return Ok(None),
+            };
+            if objects.zone.is_none() {
+                objects.zone = Some(Zone::Battlefield);
+            }
+            let controls = PlayerFilter::ControlsMatchingObject {
+                filter: Box::new(objects),
+            };
+            Ok(Some(CompoundDamagePart::EachPlayer(if opponent_only {
+                PlayerFilter::Excluding {
+                    base: Box::new(controls),
+                    excluded: Box::new(PlayerFilter::You),
+                }
+            } else {
+                controls
+            })))
+        }
         fanout_grammar::DamagePartShape::EachObject {
             filter_tokens,
             controller,
@@ -1017,6 +1041,9 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = chosen_amount_damage::parse(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = reciprocal_power_damage::parse(tokens)? {
         return Ok(Some(effects));
     }

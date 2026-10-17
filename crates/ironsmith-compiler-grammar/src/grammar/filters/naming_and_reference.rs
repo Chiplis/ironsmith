@@ -897,7 +897,7 @@ pub(super) fn try_apply_color_count_phrase(
     let drain_start = if color_count_idx > 0
         && matches!(
             all_words[color_count_idx - 1],
-            "of" | "thats" | "that's" | "that"
+            "of" | "thats" | "that's" | "that" | "with"
         ) {
         color_count_idx - 1
     } else {
@@ -1288,6 +1288,15 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if word == MULTICOLORED_WORD {
             filter.multicolored = true;
         }
+        // "Commander spells you cast cost {1} less" (Myth Unbound, rewritten
+        // from "Your commander costs ...").
+        if matches!(word, "commander" | "commanders")
+            && words
+                .get(idx + 1)
+                .is_some_and(|next| matches!(*next, "spell" | "spells"))
+        {
+            filter.is_commander = true;
+        }
         // "Historic spells you cast cost {1} less" (Jhoira's Familiar,
         // CR 700.6) and "monocolored spells".
         match word {
@@ -1432,8 +1441,34 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     apply_spell_filter_source_creature_type_relation(&mut filter, words);
     apply_spell_filter_parity_phrases(words, &mut filter);
     apply_spell_filter_cast_origin_tail(&mut filter, words);
+    apply_spell_filter_exact_color_count(&mut filter, words);
 
     build_spell_filter_power_or_toughness_disjunction(&filter, words, words).unwrap_or(filter)
+}
+
+/// "spells with exactly three colors" (Meeting of the Five's mana
+/// restriction): an exact color count on the spell.
+fn apply_spell_filter_exact_color_count(filter: &mut ObjectFilter, words: &[&str]) {
+    let Some(index) = words.iter().position(|word| *word == "exactly") else {
+        return;
+    };
+    if index == 0 || !matches!(words[index - 1], "with" | "of" | "thats" | "that's") {
+        return;
+    }
+    let Some((count, used)) = parse_color_count_number_words(&words[index + 1..]) else {
+        return;
+    };
+    if !words
+        .get(index + 1 + used)
+        .is_some_and(|word| matches!(*word, "color" | "colors"))
+    {
+        return;
+    }
+    if count == 2 {
+        filter.exactly_two_colors = Some(true);
+    } else if let Ok(count) = i32::try_from(count) {
+        filter.color_count = Some(crate::filter::Comparison::Equal(count));
+    }
 }
 
 #[cfg(test)]
@@ -1757,11 +1792,9 @@ fn find_crewed_by_source_this_turn_phrase(words: &[&str]) -> Option<usize> {
 }
 
 fn find_blocking_or_blocked_by_source_phrase(words: &[&str]) -> Option<usize> {
-    const RELATION: &[&str] = &["blocking", "or", "blocked", "by"];
     words.iter().enumerate().find_map(|(idx, _)| {
-        (words_start_with_phrase(&words[idx..], RELATION)
-            && is_source_reference_words(&words[idx + RELATION.len()..]))
-        .then_some(idx)
+        let len = crate::word_primitives::current_block_partner_relation_prefix_len(&words[idx..])?;
+        is_source_reference_words(&words[idx + len..]).then_some(idx)
     })
 }
 

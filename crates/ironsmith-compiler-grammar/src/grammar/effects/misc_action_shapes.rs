@@ -161,6 +161,7 @@ fn skip_player_prefix(input: &mut LexStream<'_>) -> WResult<(PlayerAst, bool)> {
         alt((
             primitives::phrase(&["that", "turn"]),
             primitives::kw("turn").void(),
+            primitives::phrase(&["the", "untap", "step", "of", "that", "turn"]),
         ))
         .value((PlayerAst::Implicit, true)),
     ))
@@ -190,6 +191,12 @@ pub fn parse_skip_action_tokens(
         | ["combat", "phases", "of", "your" | "their", "next", "turn"] => SkipActionKind::CombatPhases,
         ["draw", "step"] | ["draw", "step", "this", "turn"] => SkipActionKind::DrawStep,
         ["turn"] | ["that", "turn"] => SkipActionKind::Turn,
+        // "Take an extra turn after this one. Skip the untap step of that
+        // turn." (Savor the Moment)
+        ["the", "untap", "step", "of", "that", "turn"] => SkipActionKind::Scheduled {
+            kind: K::UntapStepOfCreatedExtraTurn,
+            count: 1,
+        },
         _ => {
             let rest = words.strip_prefix(&["next"])?;
             let (count, unit) = if let Some((number, consumed)) = ironsmith_core::parse_cardinal_words(rest) {

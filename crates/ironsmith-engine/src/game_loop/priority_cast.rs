@@ -1753,6 +1753,44 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price_and_outputs(
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<Option<EffectDrivenCastOutputs>, GameLoopError> {
+    cast_spell_from_resolving_effect_with_price_lock_and_outputs(
+        game,
+        spell_id,
+        from_zone,
+        caster,
+        casting_method,
+        base_mana_cost_waived,
+        alternative_cost,
+        mana_cost_reduction,
+        additional_mana_cost,
+        mana_spend_mode,
+        false,
+        tagged_objects,
+        provenance,
+        decision_maker,
+    )
+}
+
+/// As [`cast_spell_from_resolving_effect_with_price_and_outputs`], with the
+/// instruction's payment lock: when `land_mana_abilities_only`, the caster
+/// may activate only mana abilities of lands they control while paying.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn cast_spell_from_resolving_effect_with_price_lock_and_outputs(
+    game: &mut GameState,
+    spell_id: ObjectId,
+    from_zone: Zone,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+    base_mana_cost_waived: bool,
+    alternative_cost: Option<&crate::cost::TotalCost>,
+    mana_cost_reduction: Option<&crate::mana::ManaCost>,
+    additional_mana_cost: Option<&crate::mana::ManaCost>,
+    mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    land_mana_abilities_only: bool,
+    tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    provenance: ProvNodeId,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<Option<EffectDrivenCastOutputs>, GameLoopError> {
     cast_spell_from_resolving_effect_with_captured_price_and_outputs(
         game,
         spell_id,
@@ -1765,6 +1803,7 @@ pub(crate) fn cast_spell_from_resolving_effect_with_price_and_outputs(
         mana_cost_reduction,
         additional_mana_cost,
         mana_spend_mode,
+        land_mana_abilities_only,
         tagged_objects,
         provenance,
         decision_maker,
@@ -1811,6 +1850,7 @@ pub(crate) fn cast_spell_from_revealed_miracle_with_outputs(
         None,
         None,
         Default::default(),
+        false,
         Default::default(),
         provenance,
         decision_maker,
@@ -1853,6 +1893,7 @@ fn cast_spell_from_resolving_effect_with_captured_price(
         mana_cost_reduction,
         additional_mana_cost,
         mana_spend_mode,
+        false,
         tagged_objects,
         provenance,
         decision_maker,
@@ -1873,6 +1914,7 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
     mana_cost_reduction: Option<&crate::mana::ManaCost>,
     additional_mana_cost: Option<&crate::mana::ManaCost>,
     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    land_mana_abilities_only: bool,
     tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     provenance: ProvNodeId,
     decision_maker: &mut impl DecisionMaker,
@@ -2137,6 +2179,7 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
     pending.effect_mana_cost_reduction = mana_cost_reduction.cloned();
     pending.effect_additional_mana_cost = additional_mana_cost.cloned();
     pending.effect_mana_spend_mode = mana_spend_mode;
+    pending.effect_land_mana_abilities_only = land_mana_abilities_only;
     pending.tagged_objects = tagged_objects;
     pending.effect_driven = true;
 
@@ -4849,6 +4892,20 @@ pub(super) fn spell_mana_payment_request(
             .is_some_and(|object| object.zone == Zone::Battlefield)
     {
         request.reserved_permanent_sources.push(resource);
+    }
+    if pending.effect_land_mana_abilities_only {
+        // Only mana abilities of lands the caster controls may fund this
+        // cast; every other permanent's mana abilities stay unavailable for
+        // the whole payment, including nested land-ability costs.
+        request.activation_excluded_sources.extend(
+            game.battlefield.iter().copied().filter(|&id| {
+                !game.object(id).is_some_and(|object| {
+                    object.is_land() && game.controller_of(object) == pending.caster
+                })
+            }),
+        );
+        request.activation_excluded_sources.sort_unstable();
+        request.activation_excluded_sources.dedup();
     }
     Ok(request)
 }
@@ -8411,7 +8468,8 @@ pub(super) fn finalize_pending_activation_with_outputs(
             .with_loyalty_ability(pending.is_loyalty_ability)
             .with_activation_cost_has_x(pending.activation_cost_has_x)
             .with_activation_cost_has_tap(pending.activation_cost_has_tap)
-            .with_stack_entry_provenance(Some(pending.provenance)),
+            .with_stack_entry_provenance(Some(pending.provenance))
+            .with_targets(pending.chosen_targets.clone()),
         Err(error) => {
             state.rollback_action(game);
             return Err(GameLoopError::ExecutionFailed(error));

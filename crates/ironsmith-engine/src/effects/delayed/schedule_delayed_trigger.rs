@@ -58,6 +58,9 @@ pub struct ScheduleDelayedTriggerEffect {
     /// delayed trigger and expose its accumulated prevented damage as the
     /// delayed ability's numeric event value.
     pub event_value_from_prior_prevention: bool,
+    /// Player whose turns bound a next-turn duration, resolved at
+    /// registration and also tagged as `DELAYED_DURATION_PLAYER_TAG`.
+    pub duration_player: Option<PlayerFilter>,
 }
 
 impl ScheduleDelayedTriggerEffect {
@@ -88,7 +91,15 @@ impl ScheduleDelayedTriggerEffect {
             controller,
             prepayment: None,
             event_value_from_prior_prevention: false,
+            duration_player: None,
         }
+    }
+
+    /// Bound a next-turn duration by this player's turns instead of the
+    /// controller's (see `ironsmith_core::ScheduleDelayedTriggerEffect`).
+    pub fn with_duration_player(mut self, player: PlayerFilter) -> Self {
+        self.duration_player = Some(player);
+        self
     }
 
     pub fn from_tag(
@@ -118,6 +129,7 @@ impl ScheduleDelayedTriggerEffect {
             controller,
             prepayment: None,
             event_value_from_prior_prevention: false,
+            duration_player: None,
         }
     }
 
@@ -237,7 +249,9 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 | crate::events::EventKind::CreatureAttackedAndUnblocked
                 | crate::events::EventKind::CreatureBecameBlocked | crate::events::EventKind::Damage)));
         let needs_defender = self.effects.all_effects().iter()
-            .any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending));
+            .any(|effect| effect.0.mentions_player_filter(&crate::target::PlayerFilter::Defending))
+            || self.duration_player.as_ref().is_some_and(|player|
+                player.mentions_player_filter(&crate::target::PlayerFilter::Defending));
         let defending_player_reference = if needs_defender && !new_combat_observation {
             if !ctx.bind_defending_player(game)? { return Ok(EffectOutcome::resolved()); }
             ctx.combat.defending_player_reference.or_else(|| ctx.combat.defending_player
@@ -254,8 +268,28 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             if self.watch_ability_source { Some(ctx.source) }
             else { resolve_source_object_id(game, ctx) }
         }).unwrap_or(ctx.source);
+        let duration_player = self
+            .duration_player
+            .as_ref()
+            .map(|player| resolve_player_filter(game, player, ctx))
+            .transpose()?;
         let filter_ctx = ctx.filter_context(game);
         let mut tagged_players = filter_ctx.tagged_players.clone();
+        // "they draw a card at the beginning of the next end step" (Horn of
+        // Plenty): the player bound when the registration is created stays
+        // "that player" for the delayed ability. `IteratedPlayer` falls back
+        // to the `__it__` player tag when no loop binds it at resolution.
+        if let Some(player) = ctx.iteration.iterated_player {
+            tagged_players
+                .entry("__it__".into())
+                .or_insert_with(|| vec![player]);
+        }
+        if let Some(player) = duration_player {
+            tagged_players.insert(
+                ironsmith_core::DELAYED_DURATION_PLAYER_TAG.into(),
+                vec![player],
+            );
+        }
         if !ctx.targets_are_cost_choices {
             let mut target_players = ctx
                 .targets

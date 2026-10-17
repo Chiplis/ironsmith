@@ -528,9 +528,15 @@ fn player_gain_effects_for_abilities(
     subject_tokens: &[OwnedLexToken],
     player_filter: PlayerFilter,
 ) -> Option<Vec<EffectAst>> {
+    // A `Target(_)` player filter is a back-reference ("that player"), not a
+    // new target announcement, so it carries no explicit target span.
     let player_target = TargetAst::Player(
         player_filter.clone(),
-        span_from_lexed_tokens(subject_tokens),
+        if matches!(player_filter, PlayerFilter::Target(_)) {
+            None
+        } else {
+            span_from_lexed_tokens(subject_tokens)
+        },
     );
     let mut effects = Vec::new();
 
@@ -598,6 +604,27 @@ fn player_gain_effects_for_abilities(
                     EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
                         player_target.clone(),
                         filter.clone(),
+                        duration.clone(),
+                    ),
+                );
+            }
+            // "You ... gain protection from the chosen player" (Guardian
+            // Archon): the same player protection (CR 702.16b, 702.16e)
+            // against objects the chosen player controls.
+            KeywordAction::ProtectionFromChosenPlayer => {
+                let filter = ObjectFilter::default().controlled_by(PlayerFilter::ChosenPlayer);
+                effects.push(EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_targeted_player_from(
+                        player_filter.clone(),
+                        filter.clone(),
+                    ),
+                    duration.clone(),
+                    None,
+                ));
+                effects.push(
+                    EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+                        player_target.clone(),
+                        filter,
                         duration.clone(),
                     ),
                 );
@@ -716,6 +743,25 @@ fn parse_granted_ability_component_for_gain(
     } else { ability_tokens };
     if ability_tokens.is_empty() {
         return Ok(None);
+    }
+    // `"Enchanted land has '{T}: Add one mana of any color.'"` (Preston
+    // Garvey's Settlement token): a quoted static rule whose own granted
+    // ability is nested in apostrophes. The static line owns the rule; its
+    // colon belongs to the nested ability, so check that the first nested
+    // quote opens before any colon or trigger intro.
+    if authored_as_quoted_ability
+        && !ability_tokens
+            .first()
+            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+        && let Some(first_apostrophe) = ability_tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Apostrophe)
+        && !ability_tokens[..first_apostrophe]
+            .iter()
+            .any(|token| token.kind == TokenKind::Colon)
+        && let Some(abilities) = parse_nested_quoted_static_grant(&ability_tokens)
+    {
+        return Ok(Some(abilities));
     }
     let ability_words = crate::lexer::token_word_refs(&ability_tokens);
     if authored_as_quoted_ability
@@ -2317,6 +2363,57 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(Some(grant));
     }
 
+    // "Target creature loses your choice of flying, first strike, or trample
+    // until end of turn" (Walking Sponge): one declared object, then a modal
+    // choice of which single ability it loses.
+    if losing
+        && ability_tokens.first().is_some_and(|token| token.is_word("your"))
+        && let Some(choice) = gain_shapes::parse_ability_choice_shape(&ability_tokens)
+    {
+        let mut options = Vec::new();
+        for option in &choice.options {
+            let (parsed, _) = parse_granted_abilities_for_gain_clause(option, &clause_words, false)?;
+            let [ability] = parsed.as_slice() else {
+                return Ok(None);
+            };
+            options.push(ability.clone());
+        }
+        reject_unsupported_lost_abilities(true, &options)?;
+        let subject_shape = gain_shapes::classify_gain_subject(&subject_word_refs);
+        let pronoun = implied_it_subject
+            || subject_shape.tagged_pronoun
+            || subject_shape.demonstrative_object;
+        if !pronoun && !subject_shape.target {
+            return Ok(None);
+        }
+        let span = span_from_lexed_tokens(subject_tokens);
+        let it = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span);
+        let modes = options
+            .into_iter()
+            .map(|ability| crate::cards::builders::ChooseOneModeAst {
+                description: String::new(),
+                effects: vec![EffectAst::subject_verb_remove_abilities_from_target(
+                    it.clone(),
+                    vec![ability],
+                    duration.clone(),
+                )],
+            })
+            .collect();
+        let choose = EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseOneOf {
+            chooser: crate::target::PlayerFilter::You,
+            modes,
+        });
+        if pronoun {
+            return Ok(Some(choose));
+        }
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(parse_target_phrase(subject_tokens)?),
+                choose,
+            ],
+        }));
+    }
+
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
     let ability_surface = gain_shapes::classify_ability_reference_surface(&ability_word_refs);
     let (abilities, is_choice) =
@@ -2422,6 +2519,35 @@ fn parse_simple_ability_modifier_clause_lexed(
         } else {
             EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
         }));
+    }
+
+    // "You and target permanent you control each gain protection from the
+    // chosen player" (Guardian Archon): the player half and the one targeted
+    // permanent each receive the same grant.
+    if !losing
+        && !is_choice
+        && let [you, and, rest @ ..] = subject_tokens
+        && you.is_word("you")
+        && and.is_word("and")
+        && rest.first().is_some_and(|token| token.is_word("target"))
+    {
+        let rest = match rest.split_last() {
+            Some((last, head)) if last.is_word("each") => head,
+            _ => rest,
+        };
+        let target = parse_target_phrase(rest)?;
+        let Some(mut effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            subject_tokens,
+            PlayerFilter::You,
+        ) else {
+            return Ok(None);
+        };
+        effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            target, abilities, duration,
+        ));
+        return Ok(Some(EffectAst::Sequence { effects }));
     }
 
     let is_demonstrative_subject = subject_shape.demonstrative_object;
@@ -2645,9 +2771,86 @@ fn parse_gain_then_lose_other_abilities(tokens: &[OwnedLexToken]) -> Result<Opti
     Ok(Some(vec![EffectAst::Sequence { effects }]))
 }
 
+/// "It has flying and is an Angel in addition to its other types." (Valkyrie's
+/// Call) / "It's a Skeleton in addition to its other types and has no
+/// abilities." (Xu-Ifit): one pronoun subject with an ability predicate and a
+/// type-addition predicate. Returns `(has_tail, type_descriptor)`: the words
+/// after "has" and the descriptor the become grammar reads.
+pub fn split_pronoun_ability_and_type_pair(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(trim_lexed_commas(tokens));
+    let (head, rest) = tokens.split_first()?;
+    let pair_at = |second: &str| {
+        rest.windows(2)
+            .position(|pair| pair[0].is_word("and") && pair[1].is_word(second))
+    };
+    let (has_tail, descriptor) = if head.is_word("it") && rest.first()?.is_word("has") {
+        let and = pair_at("is")?;
+        (rest.get(1..and)?, rest.get(and + 2..)?)
+    } else if head.is_any_word(&["it's", "it’s"]) {
+        let and = pair_at("has")?;
+        (rest.get(and + 2..)?, rest.get(..and)?)
+    } else {
+        return None;
+    };
+    let has_tail = trim_lexed_commas(has_tail);
+    let descriptor = trim_lexed_commas(descriptor);
+    let descriptor_words = crate::lexer::parser_token_word_refs(descriptor);
+    if has_tail.is_empty()
+        || !descriptor_words
+            .windows(3)
+            .any(|window| window == ["in", "addition", "to"])
+    {
+        return None;
+    }
+    Some((has_tail, descriptor))
+}
+
+/// Whether a mixed pronoun pair opens with the contracted copula ("it's").
+pub fn pronoun_pair_is_contracted(tokens: &[OwnedLexToken]) -> bool {
+    crate::util::trim_edge_punctuation_tokens(trim_lexed_commas(tokens))
+        .first()
+        .is_some_and(|token| token.is_any_word(&["it's", "it’s"]))
+}
+
+/// Lower [`split_pronoun_ability_and_type_pair`]: the type addition reads as
+/// "becomes", "has no abilities" as losing all abilities, and any other ability
+/// tail as an ordinary lasting grant.
+pub fn parse_pronoun_ability_and_type_pair(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((has_tail, descriptor)) = split_pronoun_ability_and_type_pair(tokens) else {
+        return Ok(None);
+    };
+    let it = crate::lexer::synthetic_word_tokens(["it"]);
+    let become_effect = parse_become_clause(&it, descriptor)?;
+    let ability_effect = if crate::lexer::parser_token_word_refs(has_tail) == ["no", "abilities"] {
+        let lose = crate::lexer::synthetic_word_tokens(["it", "loses", "all", "abilities"]);
+        parse_simple_lose_ability_clause_lexed(&lose)?
+    } else {
+        let mut has = crate::lexer::synthetic_word_tokens(["it", "has"]);
+        has.extend_from_slice(has_tail);
+        parse_simple_gain_ability_clause_lexed(&has)?
+    };
+    let Some(ability_effect) = ability_effect else {
+        return Ok(None);
+    };
+    Ok(Some(vec![ability_effect, become_effect]))
+}
+
 pub fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // A mixed ability/type pair: the "it has ... and is ..." form is read here
+    // (follow-up sentences reach this reader); the contracted "it's ... and
+    // has ..." form is owned by the top-level copular-animation reading.
+    if split_pronoun_ability_and_type_pair(tokens).is_some() {
+        if pronoun_pair_is_contracted(tokens) {
+            return Ok(None);
+        }
+        return parse_pronoun_ability_and_type_pair(tokens);
+    }
     if let Some(effects) = parse_gain_then_lose_other_abilities(tokens)? {
         return Ok(Some(effects));
     }
@@ -2805,7 +3008,7 @@ pub(crate) fn parse_mana_cost_keyword_grant(
     let price_words = crate::lexer::parser_token_word_refs(price);
     let ["the" | "its", keyword, "cost", "is", "equal", "to", "its", "mana", "cost"]
         = price_words.as_slice() else { return Ok(None); };
-    if !matches!(*keyword, "encore" | "harmonize") { return Ok(None); }
+    if !matches!(*keyword, "encore" | "harmonize" | "embalm") { return Ok(None); }
     let grant = trim_edge_punctuation(grant);
     let Some(gain) = grant.iter().position(|token| token.is_any_word(&["gain", "gains"])) else {
         return Ok(None);
@@ -2822,6 +3025,14 @@ pub(crate) fn parse_mana_cost_keyword_grant(
             vec![GrantedAbilityAst::KeywordAction(Box::new(KeywordAction::EncoreFromSourceCost {
                 mana_value_generic: false,
             }))],
+            Until::EndOfTurn,
+        )
+    } else if *keyword == "embalm" {
+        EffectAst::subject_verb_grant_abilities_to_target(
+            target,
+            vec![GrantedAbilityAst::KeywordAction(Box::new(
+                KeywordAction::EmbalmFromSourceCost,
+            ))],
             Until::EndOfTurn,
         )
     } else {

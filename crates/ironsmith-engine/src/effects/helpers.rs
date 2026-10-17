@@ -751,6 +751,19 @@ fn resolve_effect_metric(
             })
             .count() as i64);
     }
+    // "For each different result" (Circuits Act): the retained dice live in
+    // the roll's completion child, so read the aggregated outcome's events.
+    if metric == EffectMetric::DistinctDieResults {
+        let Some(outcome) = ctx.get_outcome(effect_id) else {
+            return Ok(0);
+        };
+        let results: std::collections::BTreeSet<u32> = outcome
+            .events_of_type::<crate::events::other::DieRolledEvent>()
+            .filter(|event| !event.is_planar)
+            .map(|event| event.result)
+            .collect();
+        return Ok(results.len() as i64);
+    }
     // A metric over an instruction that never ran counts nothing.
     let Some(outcome) = ctx.get_outcome(effect_id) else {
         return Ok(0);
@@ -765,6 +778,9 @@ fn resolve_effect_metric(
         | EffectMetric::CoinFlipsLost
         | EffectMetric::CoinHeads
         | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
+        EffectMetric::DistinctDieResults => {
+            unreachable!("die-result metrics handled before generic outcomes")
+        }
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
         EffectMetric::ChosenCount => {
             effect_metric_object_count(game, outcome, EffectMetricSource::ChosenObjects)
@@ -915,9 +931,46 @@ fn resolve_effect_metric(
                 _ => None,
             })
             .unwrap_or(0),
+        EffectMetric::CountersPut => {
+            let filter_ctx = ctx.filter_context(game);
+            counters_put_by_outcome(game, outcome, None, None, &filter_ctx)?
+        }
     };
 
     Ok(resolved)
+}
+
+/// Counters an instruction actually put: its added counter markers, of the
+/// requested kind when given and on recipients matching `filter` when given.
+fn counters_put_by_outcome(
+    game: &GameState,
+    outcome: &EffectOutcome,
+    counter_type: Option<crate::object::CounterType>,
+    filter: Option<&crate::target::ObjectFilter>,
+    filter_ctx: &FilterContext,
+) -> Result<i64, ExecutionError> {
+    outcome
+        .events_of_type::<MarkersChangedEvent>()
+        .filter(|event| event.change_type == crate::events::MarkerChangeType::Added)
+        .filter(|event| match &event.marker {
+            crate::marker::Marker::Counter(kind) => {
+                counter_type.is_none_or(|wanted| wanted == *kind)
+            }
+        })
+        .filter(|event| match (&event.location, filter) {
+            (_, None) => true,
+            (crate::marker::MarkerLocation::Object(id), Some(filter)) => game
+                .object(*id)
+                .is_some_and(|object| filter.matches(object, filter_ctx, game)),
+            (crate::marker::MarkerLocation::Player(_), Some(_)) => false,
+        })
+        .try_fold(0i64, |sum, event| {
+            sum.checked_add(i64::from(event.amount)).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "counter placement metric exceeds supported range".into(),
+                )
+            })
+        })
 }
 
 fn resolve_capped_damage_result(
@@ -1221,6 +1274,56 @@ fn resolve_prior_effect_metric(
             events.try_fold(0i64, |sum, event| sum.checked_add(i64::from(event.amount))
                 .ok_or_else(|| ExecutionError::UnresolvableValue("investigate count exceeds supported range".into())))
         };
+    }
+    if query.action == Some(ironsmith_core::PriorEffectAction::ManaLost) {
+        // "the amount of mana that player lost this way": the unspent mana
+        // the producer actually removed. Converted mana was not lost.
+        if query.source != EffectMetricSource::Outcome
+            || query.metric != EffectMetric::Count
+            || query.filter.is_some()
+        {
+            return Err(ExecutionError::UnresolvableValue(
+                "a mana-lost query reads only the producer's lost amount".into(),
+            ));
+        }
+        let Some(outcome) = ctx.get_outcome(effect_id) else {
+            return Ok(0);
+        };
+        let filter_ctx = ctx.filter_context(game);
+        let players = query
+            .player
+            .as_ref()
+            .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
+            .transpose()?;
+        // A wrapper ("you may have that player ... lose all unspent mana")
+        // keeps every child observation in its aggregate outcome.
+        return outcome
+            .events_of_type::<crate::events::ManaLostEvent>()
+            .filter(|loss| loss.converted_to.is_none())
+            .filter(|loss| players.as_ref().is_none_or(|players| players.contains(&loss.player)))
+            .try_fold(0i64, |sum, loss| {
+                sum.checked_add(i64::from(loss.mana.total())).ok_or_else(|| {
+                    ExecutionError::UnresolvableValue("mana lost exceeds supported range".into())
+                })
+            });
+    }
+    if query.metric == EffectMetric::CountersPut {
+        if query.player.is_some() || destination_memory.is_some() {
+            return Err(ExecutionError::UnresolvableValue(
+                "counter placement metrics accept only a kind and a recipient filter".into(),
+            ));
+        }
+        let Some(outcome) = ctx.get_outcome(effect_id) else {
+            return Ok(0);
+        };
+        let filter_ctx = ctx.filter_context(game);
+        return counters_put_by_outcome(
+            game,
+            outcome.instruction_result(),
+            query.counter_type,
+            query.filter.as_ref(),
+            &filter_ctx,
+        );
     }
     if query.filter.is_none() && query.player.is_none() && destination_memory.is_none() {
         return resolve_effect_metric(game, ctx, effect_id, query.source, query.metric);
@@ -2159,6 +2262,27 @@ pub(crate) fn an_opponent_choice_candidates(
 }
 
 /// Resolve a PlayerFilter to a concrete PlayerId.
+/// Freeze the named player of a player-keyed duration ("during that player's
+/// next untap step", "until that player's next turn") to `Specific`, so the
+/// registered effect keeps its player after this context is gone.
+pub fn freeze_duration_player(
+    game: &GameState,
+    duration: &crate::effect::Until,
+    ctx: &ExecutionContext,
+) -> Result<crate::effect::Until, ExecutionError> {
+    Ok(match duration {
+        crate::effect::Until::PlayersNextUntapStep { player } => {
+            crate::effect::Until::PlayersNextUntapStep {
+                player: PlayerFilter::Specific(resolve_player_filter(game, player, ctx)?),
+            }
+        }
+        crate::effect::Until::PlayersNextTurn { player } => crate::effect::Until::PlayersNextTurn {
+            player: PlayerFilter::Specific(resolve_player_filter(game, player, ctx)?),
+        },
+        other => other.clone(),
+    })
+}
+
 pub fn resolve_player_filter(
     game: &GameState,
     spec: &PlayerFilter,
@@ -2363,7 +2487,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. }
@@ -3090,6 +3214,24 @@ fn candidate_object_ids_for_filter(
         .collect()
 }
 
+/// Whether a complete object selection satisfies its whole-set aggregate
+/// bound (CR 205.2a types counted across the selection, total power, ...).
+fn aggregate_choice_satisfies(
+    game: &GameState,
+    chosen: &[ObjectId],
+    constraint: &crate::effect::ChoiceAggregateConstraint,
+    ctx: &ExecutionContext,
+) -> Result<bool, ExecutionError> {
+    let total =
+        crate::targeting::aggregate_object_set_value(game, chosen.iter().copied(), constraint.metric);
+    if let Some(minimum) = constraint.minimum.as_ref()
+        && total < resolve_value(game, minimum, ctx)?
+    {
+        return Ok(false);
+    }
+    Ok(total <= resolve_value(game, &constraint.maximum, ctx)?)
+}
+
 pub fn resolve_objects_for_effect(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -3346,6 +3488,13 @@ pub fn resolve_objects_for_effect_with_choice_description(
                 .allow_partial_completion()
                 .require_explicit_choice();
         }
+        // "exile any number of cards from your graveyard with four or more
+        // card types among them" (Winter, Cynical Opportunist): a non-target
+        // selection keeps its whole-set aggregate bound.
+        let aggregate_constraint = filter.target_set_aggregate_constraint.as_deref().cloned();
+        if let Some(constraint) = aggregate_constraint.clone() {
+            choice_spec = choice_spec.with_aggregate_constraint(constraint);
+        }
         let chosen: Vec<ObjectId> = make_decision(
             game,
             ctx.decision_maker,
@@ -3392,6 +3541,17 @@ pub fn resolve_objects_for_effect_with_choice_description(
         if chosen.len() < min {
             return Err(ExecutionError::InvalidTarget);
         }
+        if let Some(constraint) = aggregate_constraint.as_ref()
+            && !chosen.is_empty()
+            && !aggregate_choice_satisfies(game, &chosen, constraint, ctx)?
+        {
+            // An illegal whole-set selection performs nothing; a required
+            // selection that cannot be met is an illegal instruction.
+            if min == 0 {
+                return Ok(Vec::new());
+            }
+            return Err(ExecutionError::InvalidTarget);
+        }
         return Ok(chosen);
     }
 
@@ -3399,6 +3559,23 @@ pub fn resolve_objects_for_effect_with_choice_description(
     // count wrapper must not disappear merely because the inner tagged spec
     // resolves to every remembered object. This is used by exact partitions
     // such as "return two of the cards ... and put the rest ...".
+    // "Return a card exiled with it at random": a random bounded pick from
+    // a remembered set involves no player choice; every peer draws it with
+    // the shared game RNG.
+    if !spec.is_target()
+        && let ChooseSpec::WithCount(inner, count) = spec
+        && matches!(inner.base(), ChooseSpec::Tagged(_))
+        && !count.dynamic_x
+        && count.random
+    {
+        let mut candidates = resolve_objects_from_spec(game, inner, ctx)?;
+        if candidates.len() < count.min {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        game.shuffle_slice(&mut candidates);
+        candidates.truncate(count.max.unwrap_or(candidates.len()));
+        return Ok(candidates);
+    }
     if !spec.is_target()
         && let ChooseSpec::WithCount(inner, count) = spec
         && matches!(inner.base(), ChooseSpec::Tagged(_))
@@ -4664,7 +4841,7 @@ pub(crate) fn resolve_player_filter_to_list(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => Ok(game
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

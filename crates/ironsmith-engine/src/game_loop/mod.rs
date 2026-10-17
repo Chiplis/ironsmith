@@ -122,7 +122,8 @@ pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_p
 pub(crate) use self::priority_cast::{
     EffectDrivenCastOutputs, cast_spell_from_resolving_effect_with_context,
     cast_spell_from_resolving_effect_with_outputs, cast_spell_from_resolving_effect_with_price,
-    cast_spell_from_resolving_effect_with_price_and_outputs, cast_spell_from_revealed_miracle,
+    cast_spell_from_resolving_effect_with_price_and_outputs,
+    cast_spell_from_resolving_effect_with_price_lock_and_outputs, cast_spell_from_revealed_miracle,
     cast_spell_from_revealed_miracle_with_outputs,
 };
 pub use self::priority_core::*;

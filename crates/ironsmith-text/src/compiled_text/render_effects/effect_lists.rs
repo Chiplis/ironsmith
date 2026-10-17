@@ -6238,6 +6238,7 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
         || grant.while_on_top_of_library
         || grant.filter.is_some()
         || grant.cast_pool_is_plural
+        || grant.during_turns_cast_another_spell
     {
         return None;
     }
@@ -6264,6 +6265,9 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
             }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
                 format!("You may {verb} that card until your next end step{mana_suffix}")
+            }
+            crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => {
+                format!("During your next turn, you may {verb} that card{mana_suffix}")
             }
             _ => return None,
         }
@@ -13295,7 +13299,7 @@ pub(in crate::compiled_text) fn describe_fixed_counter_and_counter_choice_same_t
         || choice.mode_point_costs.iter().any(|cost| *cost != 1)
         || choice.disallow_previously_chosen_modes
         || choice.disallow_previously_chosen_modes_this_turn
-        || choice.distinct_player_targets_per_mode
+        || choice.distinct_player_targets_per_mode || choice.optional_choice
         || choice.conditional_mode_range.is_some()
         || choice.modes.len() < 2
     {
@@ -13358,7 +13362,7 @@ pub(super) fn describe_target_base_stat_choice_inline(effects: &[Effect]) -> Opt
         || choice.mode_point_costs != [1, 1]
         || choice.disallow_previously_chosen_modes
         || choice.disallow_previously_chosen_modes_this_turn
-        || choice.distinct_player_targets_per_mode
+        || choice.distinct_player_targets_per_mode || choice.optional_choice
         || choice.conditional_mode_range.is_some()
         || choice.presentation_label.is_some()
         || choice.modes.len() != 2
@@ -13462,7 +13466,7 @@ fn describe_target_ability_removal_choice_inline(effects: &[Effect]) -> Option<S
         || choice.mode_point_costs != [1, 1]
         || choice.disallow_previously_chosen_modes
         || choice.disallow_previously_chosen_modes_this_turn
-        || choice.distinct_player_targets_per_mode
+        || choice.distinct_player_targets_per_mode || choice.optional_choice
         || choice.conditional_mode_range.is_some()
         || choice.presentation_label.is_some()
         || choice.modes.len() != 2
@@ -15122,6 +15126,75 @@ pub(in crate::compiled_text) fn refer_back_to_declared_any_target(
     )
 }
 
+/// Space sculptor sector instructions (CR 702.158): "... in the sector of
+/// your choice" (a sector named-option choice followed by the instruction
+/// reading the chosen sector), and the per-sector blocking restriction triple
+/// "<creatures> in each sector can be blocked this turn only by <creatures>
+/// in the same sector".
+fn describe_space_sculptor_sector_effects(effects: &[Effect]) -> Option<String> {
+    use ironsmith_core::filter_model::{SectorName, SectorPredicate};
+    if let [choose_effect, rest @ ..] = effects
+        && !rest.is_empty()
+        && let Some(choose) = structural_unwrap_render_wrappers(choose_effect)
+            .downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
+        && choose.chooser == PlayerFilter::You
+        && choose
+            .options
+            .iter()
+            .map(String::as_str)
+            .eq(SectorName::ALL.iter().map(|sector| sector.word()))
+    {
+        let body = describe_effect_list_inner(rest);
+        if body.contains("in the chosen sector") {
+            return Some(body.replacen("in the chosen sector", "in the sector of your choice", 1));
+        }
+        return None;
+    }
+    if effects.len() != SectorName::ALL.len() {
+        return None;
+    }
+    let mut nouns: Option<(ObjectFilter, ObjectFilter)> = None;
+    for (effect, sector) in effects.iter().zip(SectorName::ALL) {
+        let cant = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::CantEffect>()?;
+        let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } =
+            &cant.restriction
+        else {
+            return None;
+        };
+        if cant.duration != Until::EndOfTurn
+            || attacker.sector != Some(SectorPredicate::In(sector))
+            || blockers.sector != Some(SectorPredicate::NotIn(sector))
+        {
+            return None;
+        }
+        let mut attacker_noun = attacker.clone();
+        attacker_noun.sector = None;
+        let mut blocker_noun = blockers.clone();
+        blocker_noun.sector = None;
+        match &nouns {
+            Some((attackers, blockers)) => {
+                if attackers != &attacker_noun || blockers != &blocker_noun {
+                    return None;
+                }
+            }
+            None => nouns = Some((attacker_noun, blocker_noun)),
+        }
+    }
+    let (attackers, blockers) = nouns?;
+    let plural = |filter: &ObjectFilter| {
+        pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+    };
+    let mut attackers_text = plural(&attackers);
+    if let Some(first) = attackers_text.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    Some(format!(
+        "{attackers_text} in each sector can be blocked this turn only by {} in the same sector",
+        plural(&blockers)
+    ))
+}
+
 fn describe_effect_list_inner(effects: &[Effect]) -> String {
     if let Some(text) = describe_choose_land_of_each_basic_land_type(effects) {
         return text;
@@ -15688,6 +15761,9 @@ fn describe_effect_list_inner(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_land_or_nonland_chosen_kind_consult(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_space_sculptor_sector_effects(effects) {
         return compact;
     }
     if let [consult, move_matches, bottom] = effects
@@ -16940,7 +17016,7 @@ fn describe_linked_exile_top_play_parts(
         .mana_spend_cast_suffix(spell_reference)
         .unwrap_or_default();
 
-    if grant_play.during_turns_attacked_with.is_some() {
+    if grant_play.during_turns_attacked_with.is_some() || grant_play.during_turns_cast_another_spell {
         return None;
     }
     let permission = if let Some(counter_type) = grant_play.during_turns_counter_put_on_source {

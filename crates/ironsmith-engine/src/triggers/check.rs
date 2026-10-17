@@ -459,6 +459,18 @@ pub struct DelayedTrigger {
     pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
 }
 
+impl DelayedTrigger {
+    /// The player whose turns bound this registration's next-turn duration:
+    /// a resolved `duration_player` (exposed as the delayed duration player
+    /// tag) or else its controller.
+    pub fn duration_owner(&self) -> PlayerId {
+        self.tagged_players
+            .get(ironsmith_core::DELAYED_DURATION_PLAYER_TAG)
+            .and_then(|players| players.first().copied())
+            .unwrap_or(self.controller)
+    }
+}
+
 /// Queue of triggered abilities waiting to be put on the stack.
 #[derive(Debug, Clone, Default)]
 pub struct TriggerQueue {
@@ -930,6 +942,16 @@ fn trigger_is_suppressed(
     view: &crate::derived_view::DerivedGameView<'_>,
     entry: &TriggeredAbilityEntry,
 ) -> bool {
+    // "Changing targets this way doesn't trigger abilities of permanents
+    // named <name>" (Psychic Battle).
+    if let Some(targeted) = entry
+        .triggering_event
+        .downcast::<crate::events::spells::BecomesTargetedEvent>()
+        && let Some(name) = targeted.untriggered_source_name.as_deref()
+        && entry.source_name.eq_ignore_ascii_case(name)
+    {
+        return true;
+    }
     for &obj_id in &game.battlefield {
         if game.is_phased_out(obj_id) {
             continue;
@@ -1610,6 +1632,7 @@ pub(crate) fn check_triggers_batch(
                     | EventKind::BeginningOfDrawStep
                     | EventKind::BeginningOfPrecombatMainPhase
                     | EventKind::BeginningOfCombat
+                    | EventKind::BeginningOfDeclareAttackersStep
                     | EventKind::BeginningOfPostcombatMainPhase
                     | EventKind::BeginningOfEndStep
                     | EventKind::BeginningOfCleanupStep
@@ -3830,7 +3853,7 @@ pub(crate) fn take_delayed_untap_step_actions(
             || delayed
                 .expires_before_controller_turn_after
                 .is_some_and(|anchor| {
-                    game.turn.turn_number > anchor && game.is_active_player(delayed.controller)
+                    game.turn.turn_number > anchor && game.is_active_player(delayed.duration_owner())
                 })
         {
             to_remove.push(idx);
@@ -3958,7 +3981,7 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         if delayed
             .expires_before_controller_turn_after
             .is_some_and(|anchor| {
-                game.turn.turn_number > anchor && game.is_active_player(delayed.controller)
+                game.turn.turn_number > anchor && game.is_active_player(delayed.duration_owner())
             })
         {
             to_remove.push(idx);
@@ -4437,7 +4460,7 @@ pub fn player_filter_matches_with_context(
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             let mut filter_ctx = game.filter_context_for(controller, None);
             filter_ctx.defending_player = defending_player;
             player_filter_matches_game(spec, player, game, &filter_ctx)
@@ -4555,8 +4578,8 @@ pub fn generate_step_trigger_events(game: &GameState) -> Option<TriggerEvent> {
 /// without an active-player parameter (currently end of combat) remain single.
 pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<TriggerEvent> {
     use crate::events::phase::{
-        BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDrawStepEvent,
-        BeginningOfEndStepEvent, BeginningOfPostcombatMainPhaseEvent,
+        BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDeclareAttackersStepEvent,
+        BeginningOfDrawStepEvent, BeginningOfEndStepEvent, BeginningOfPostcombatMainPhaseEvent,
         BeginningOfPrecombatMainPhaseEvent, BeginningOfUpkeepEvent, EndOfCombatEvent,
     };
 
@@ -4595,6 +4618,12 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
         (Phase::Combat, Some(Step::BeginCombat)) => events(|active| {
             TriggerEvent::new_with_provenance(
                 BeginningOfCombatEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Combat, Some(Step::DeclareAttackers)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfDeclareAttackersStepEvent::new(active),
                 crate::provenance::ProvNodeId::default(),
             )
         }),

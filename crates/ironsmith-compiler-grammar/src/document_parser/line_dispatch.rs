@@ -1020,6 +1020,17 @@ pub(super) fn attach_compiler_trigger_facts(
                     ],
                 ))
             }
+            Some(
+                program @ (semantic_grammar::SpecialTriggeredProgram::OpponentLifeMajorityDamage
+                | semantic_grammar::SpecialTriggeredProgram::OpponentHandMajorityRedraw),
+            ) => {
+                let trigger = super::super::activation_and_restrictions::parse_trigger_clause_lexed_with_context(
+                    context,
+                    &triggered.trigger_parse_tokens,
+                )?;
+                semantic_grammar::oath_opponent_majority_effects(program)
+                    .map(|effects| (trigger, effects))
+            }
             _ => None,
         };
         let x_cost_trigger =
@@ -1103,6 +1114,12 @@ pub(super) fn attach_compiler_trigger_facts(
                     &triggered.effect_parse_tokens,
                 ))
                 .or_else(|| crate::semantic_line_parsing::exact_target_graveyard_any_type_may_cast_bundle(
+                    &triggered.effect_parse_tokens,
+                ))
+                .or_else(|| crate::semantic_line_parsing::exact_target_same_name_graveyard_may_cast_bundle(
+                    &triggered.effect_parse_tokens,
+                ))
+                .or_else(|| crate::semantic_line_parsing::exact_each_other_player_copies_triggering_spell_bundle(
                     &triggered.effect_parse_tokens,
                 ))
                 .map(Ok)

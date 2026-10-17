@@ -195,6 +195,12 @@ impl std::ops::Index<usize> for TurnEventRecords {
     }
 }
 
+/// Identity of one resolving spell or ability for per-turn "spell or ability
+/// that caused ..." counts: its source, its resolution's object-id floor, and
+/// which triggered or activated ability of that source it is.
+pub type PileOrGuessInstructionKey =
+    (ObjectId, Option<ObjectId>, Option<TriggerIdentity>, Option<usize>);
+
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
@@ -266,6 +272,11 @@ pub struct TurnHistory {
     /// turn" is decided here, not when a crew cost is paid).
     pub crew_abilities_resolved_this_turn: HashSet<ObjectId>,
     pub saddled_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Spells and abilities that made one or more players guess or group
+    /// cards or permanents into piles this turn (CR 700.3), one entry per
+    /// resolution: (source, first object id allocated after the resolution
+    /// began, triggered-ability identity, activated-ability index).
+    pub pile_or_guess_instructions_this_turn: HashSet<PileOrGuessInstructionKey>,
     pub spell_warped_this_turn: bool,
     /// Spells each player has cast this game (never cleared between turns).
     pub spells_cast_this_game: HashMap<PlayerId, u32>,
@@ -324,6 +335,7 @@ impl TurnHistory {
         self.crewed_this_turn.clear();
         self.crew_abilities_resolved_this_turn.clear();
         self.saddled_this_turn.clear();
+        self.pile_or_guess_instructions_this_turn.clear();
         self.spell_warped_this_turn = false;
         self.checkpoint_targeted_objects.clear();
         self.event_records.clear();
@@ -884,6 +896,17 @@ impl TurnHistory {
                     return None;
                 }
                 Some(damage.amount)
+            })
+            .sum()
+    }
+
+    pub fn total_combat_damage_to_player(&self, player: PlayerId) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<DamageEvent>())
+            .filter(|event| event.is_combat)
+            .filter_map(|event| match event.target {
+                crate::events::DamageTarget::Player(pid) if pid == player => Some(event.amount),
+                _ => None,
             })
             .sum()
     }
@@ -1583,6 +1606,30 @@ impl TurnHistory {
     /// Retained declaration events outlive removal from combat, but not the
     /// exact object incarnation or combat phase. Missing phase evidence cannot
     /// silently turn an earlier combat into the current one.
+    /// Whether `creature` was declared as an attacker in `combat_phase`;
+    /// `None` when a retained declaration lacks its combat phase.
+    pub fn creature_attacked_in_combat(
+        &self,
+        creature: ObjectId,
+        combat_phase: u32,
+    ) -> Option<bool> {
+        let mut missing_phase = false;
+        for record in self.projected_records() {
+            let Some(event) = record.event.downcast::<CreatureAttackedEvent>() else {
+                continue;
+            };
+            if event.attacker != creature {
+                continue;
+            }
+            match event.combat_phase {
+                Some(phase) if phase == combat_phase => return Some(true),
+                None => missing_phase = true,
+                _ => {}
+            }
+        }
+        (!missing_phase).then_some(false)
+    }
+
     pub fn creature_attacked_or_blocked_in_combat(
         &self,
         creature: ObjectId,
@@ -1622,6 +1669,19 @@ impl TurnHistory {
                 .downcast::<CreatureBlockedEvent>()
                 .is_some_and(|event| event.attacker == attacker && event.blocker == blocker)
         })
+    }
+
+    /// Every creature declared as blocking `attacker` in `combat_phase`
+    /// (declarations missing their phase count as this combat's).
+    pub fn blockers_of_in_combat(&self, attacker: ObjectId, combat_phase: u32) -> Vec<ObjectId> {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<CreatureBlockedEvent>())
+            .filter(|event| {
+                event.attacker == attacker
+                    && event.combat_phase.is_none_or(|phase| phase == combat_phase)
+            })
+            .map(|event| event.blocker)
+            .collect()
     }
 
     /// Current-combat LKI for a source that left after an ability triggered.
@@ -1782,6 +1842,16 @@ impl TurnHistory {
         self.die_rolls_this_turn
             .get(&player)
             .is_some_and(|rolls| rolls.contains(&result))
+    }
+
+    /// Whether `permanent` (a battlefield identity) was sacrificed this turn.
+    pub fn permanent_was_sacrificed_this_turn(&self, permanent: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<SacrificeEvent>()
+                .is_some_and(|event| event.permanent == permanent)
+        })
     }
 
     pub fn player_sacrificed_artifact_this_turn(&self, player: PlayerId) -> bool {
@@ -2516,6 +2586,22 @@ pub(crate) fn resolve_turn_history_count(
             }
             seen.len() as i32
         }
+        TurnHistoryCount::DealtExcessDamage(filter) => history
+            .projected_records()
+            .filter_map(|record| {
+                let event = record.event.downcast::<DamageEvent>()?;
+                if event.excess_damage == 0
+                    || !matches!(event.target, DamageTarget::Object(_))
+                {
+                    return None;
+                }
+                event
+                    .target_snapshot
+                    .as_ref()
+                    .or(record.object_snapshot.as_ref())
+            })
+            .filter(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
+            .count() as i32,
         TurnHistoryCount::LandsPlayed(player) => game
             .players
             .iter()

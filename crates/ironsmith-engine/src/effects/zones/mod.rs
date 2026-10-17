@@ -38,7 +38,7 @@ pub(crate) use continuation::{
     ZoneInstructionDraws, complete_zone_instruction, prepare_zone_instruction_completion,
 };
 mod become_plotted;
-pub use become_plotted::BecomePlottedEffect;
+pub use become_plotted::{BecomePlottedEffect, BecomeForetoldEffect};
 mod destroy;
 pub(crate) use destroy::execute_resolved_destroy_with_outputs;
 mod destroy_no_regen;

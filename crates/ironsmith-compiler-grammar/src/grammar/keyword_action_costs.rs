@@ -823,6 +823,7 @@ pub struct DynamicKeywordAmountShape<'a> {
 pub enum DefinedXKeyword {
     Bushido,
     Soulshift,
+    Annihilator,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -839,13 +840,14 @@ pub fn parse_defined_x_keyword_tokens(tokens: &[OwnedLexToken]) -> Option<Define
     fn read<'a>(input: &mut LexStream<'a>) -> WResult<DefinedXKeywordShape<'a>> {
         opt((
             primitives::kw("this"),
-            alt((primitives::kw("creature"), primitives::kw("permanent"))),
+            opt(alt((primitives::kw("creature"), primitives::kw("permanent")))),
             primitives::kw("has"),
         ))
         .parse_next(input)?;
         let kind = alt((
             primitives::kw("bushido").value(DefinedXKeyword::Bushido),
             primitives::kw("soulshift").value(DefinedXKeyword::Soulshift),
+            primitives::kw("annihilator").value(DefinedXKeyword::Annihilator),
         ))
         .parse_next(input)?;
         primitives::kw("x").parse_next(input)?;

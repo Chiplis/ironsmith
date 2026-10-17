@@ -5,7 +5,10 @@ use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 
-pub use ironsmith_core::{CauseFilter, CauseType, CauseTypeFilter, ControllerFilter, EventCause};
+pub use ironsmith_core::{
+    CauseAbilityKind, CauseAbilityKindFilter, CauseFilter, CauseType, CauseTypeFilter,
+    ControllerFilter, EventCause,
+};
 
 pub trait CauseFilterRuntimeExt {
     fn matches(&self, cause: &EventCause, game: &GameState, affected_player: PlayerId) -> bool;
@@ -32,6 +35,12 @@ impl CauseFilterRuntimeExt for CauseFilter {
     ) -> bool {
         if let Some(ref type_filter) = self.cause_type
             && !type_filter.matches(cause.cause_type)
+        {
+            return false;
+        }
+
+        if let Some(ability_kind) = self.ability_kind
+            && !ability_kind.matches(cause.resolving_ability)
         {
             return false;
         }

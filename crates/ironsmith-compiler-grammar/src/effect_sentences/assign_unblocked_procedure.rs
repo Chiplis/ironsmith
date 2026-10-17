@@ -58,3 +58,65 @@ pub(super) fn continue_with(
 pub(super) fn finish(group: AssignUnblockedGroup) -> Vec<EffectAst> {
     group.effects
 }
+
+/// "X target blocked creatures assign their combat damage this turn as though
+/// they weren't blocked." (Outmaneuver): a resolving grant of the mandatory
+/// unblocked assignment (CR 510.1c) to the targets until end of turn. The
+/// optional "may have ... assign" form stays with [`open`].
+pub(crate) fn parse_targeted_mandatory_unblocked_assignment(
+    tokens: &[crate::lexer::OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let mut tokens = tokens;
+    while tokens.last().is_some_and(|token| token.is_period()) {
+        tokens = &tokens[..tokens.len() - 1];
+    }
+    let Some(verb) = tokens
+        .iter()
+        .position(|token| token.is_word("assign") || token.is_word("assigns"))
+    else {
+        return Ok(None);
+    };
+    let subject = &tokens[..verb];
+    if subject.is_empty()
+        || !subject.iter().any(|token| token.is_word("target"))
+        || subject
+            .iter()
+            .any(|token| ["may", "can", "have", "has"].iter().any(|word| token.is_word(word)))
+    {
+        return Ok(None);
+    }
+    let mut body = crate::lexer::token_word_refs(&tokens[verb + 1..]);
+    let mut duration = Until::Forever;
+    if let Some(index) = body
+        .windows(2)
+        .position(|pair| pair == ["this", "turn"])
+    {
+        body.drain(index..index + 2);
+        duration = Until::EndOfTurn;
+    }
+    if duration != Until::EndOfTurn
+        || !matches!(
+            body.as_slice(),
+            [
+                "their" | "its",
+                "combat",
+                "damage",
+                "as",
+                "though",
+                "they" | "it",
+                "weren't" | "werent" | "wasn't" | "wasnt",
+                "blocked",
+            ]
+        )
+    {
+        return Ok(None);
+    }
+    let target = crate::util::parse_target_phrase(subject)?;
+    Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+        target,
+        vec![GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
+            StaticAbility::assigns_damage_as_unblocked(),
+        )))],
+        duration,
+    )))
+}

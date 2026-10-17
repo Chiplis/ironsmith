@@ -415,6 +415,9 @@ pub enum CompilerReferenceTag {
     JobSelectCreated,
     SourceExiledSelf,
     SourceEmergeSacrifice,
+    /// The cards a surveil kept on top of its player's library (runtime
+    /// `SURVEIL_KEPT_ON_TOP_TAG`): "for each card you put on top of your library".
+    SurveilKeptOnTop,
 }
 
 impl CompilerReferenceTag {
@@ -562,6 +565,7 @@ impl CompilerReferenceTag {
             Self::TappedThisWayResult => "__tapped_this_way_result__",
             Self::OffBattlefieldCardAntecedent => "__off_battlefield_card_antecedent__",
             Self::CoordinatedCreatedResult => "__coordinated_created_result__",
+            Self::SurveilKeptOnTop => "__surveil_kept_on_top__",
         }
     }
 
@@ -667,7 +671,7 @@ impl CompilerReferenceTag {
             | Self::SourceEmergeSacrifice
             | Self::BeheldCost0 => (R::CostPaid, D::Object),
             Self::SourceObject => (R::Source, D::Object),
-            Self::MilledThisWay => (R::Affected, D::Card),
+            Self::MilledThisWay | Self::SurveilKeptOnTop => (R::Affected, D::Card),
             _ => (R::Affected, D::Object),
         }
     }

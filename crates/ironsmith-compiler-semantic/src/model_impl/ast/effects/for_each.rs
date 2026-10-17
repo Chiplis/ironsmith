@@ -78,5 +78,7 @@ pub enum ForEachEffectAst {
         effects: Vec<EffectAst>,
         continue_effect_index: usize,
         continue_predicate: IfResultPredicate,
+        /// The most times the process is performed ("up to three times").
+        max_iterations: Option<u32>,
     },
 }

@@ -32,6 +32,18 @@ fn bind_sequence(
             } else {
                 *previous = Some(action.clone());
             }
+        } else if let EffectAst::SubjectVerb(subject) = effect
+            && let SubjectVerbActionAst::Tokens(action) = &subject.action
+            && matches!(
+                action,
+                TokenActionAst::CreateTokenCopy { .. }
+                    | TokenActionAst::CreateTokenCopyFromSource { .. }
+            )
+        {
+            // "Create a tapped and attacking token that's a copy of that
+            // creature, except ... 15—20 | Create one of those tokens."
+            // (Delina, Wild Mage): a copy token is an authored blueprint too.
+            *previous = Some(action.clone());
         }
         match effect {
             // The original instruction is authored before the replacement,
@@ -75,6 +87,39 @@ fn bind_action(action: &mut TokenActionAst, prototype: &TokenActionAst) {
         exile_at_next_end_step, next_end_step_player, granted_abilities, ability_presentation, ..
     } = action else { unreachable!("only token definition references are bound") };
     let mut bound = prototype.clone();
+    if let TokenActionAst::CreateTokenCopy {
+        count: bound_count,
+        enters_tapped: bound_tapped,
+        enters_attacking: bound_attacking,
+        exile_at_end_of_combat: bound_combat_exile,
+        sacrifice_at_next_end_step: bound_end_sacrifice,
+        exile_at_next_end_step: bound_end_exile,
+        granted_abilities: bound_grants,
+        ..
+    }
+    | TokenActionAst::CreateTokenCopyFromSource {
+        count: bound_count,
+        enters_tapped: bound_tapped,
+        enters_attacking: bound_attacking,
+        exile_at_end_of_combat: bound_combat_exile,
+        sacrifice_at_next_end_step: bound_end_sacrifice,
+        exile_at_next_end_step: bound_end_exile,
+        granted_abilities: bound_grants,
+        ..
+    } = &mut bound
+    {
+        // A copy blueprint keeps its copied object and exceptions; the
+        // reference supplies how many and any extra entry riders.
+        *bound_count = count.clone();
+        *bound_tapped |= *tapped;
+        *bound_attacking |= *attacking;
+        *bound_combat_exile |= *exile_at_end_of_combat;
+        *bound_end_sacrifice |= *sacrifice_at_next_end_step;
+        *bound_end_exile |= *exile_at_next_end_step;
+        bound_grants.extend(granted_abilities.iter().cloned());
+        *action = bound;
+        return;
+    }
     let TokenActionAst::CreateTokenWithMods {
         count: bound_count, player: bound_player, actor_surface_explicit: bound_actor,
         tapped: bound_tapped, attacking: bound_attacking, attached_to: bound_attachment,

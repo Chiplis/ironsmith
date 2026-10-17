@@ -9,6 +9,12 @@ pub fn parse_pay(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    // "you may pay that much life again" (Verrak): repeating the amount
+    // already paid is an ordinary payment of that amount.
+    let tokens = match tokens.iter().rposition(|token| token.as_word().is_some()) {
+        Some(last) if last > 0 && tokens[last].is_word("again") => &tokens[..last],
+        _ => tokens,
+    };
     let energy_symbol_count = tokens
         .iter()
         .filter(|token| energy_symbol_token(token))

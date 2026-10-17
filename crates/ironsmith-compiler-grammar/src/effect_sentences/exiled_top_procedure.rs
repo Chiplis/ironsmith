@@ -128,15 +128,31 @@ fn cast_collection(
         relation: TaggedOpbjectRelation::IsTaggedObject,
     });
     let chosen_tag = helper_tag_for_tokens(sentence.lowered(), "cast_from_exiled_collection");
-    Ok(Some((
-        vec![
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+    let choose = match shape.total_mana_value.clone() {
+        // "any number of spells with total mana value 10 or less" (Primeval
+        // Spawn): the chosen spells' summed mana value is capped.
+        Some(maximum) => EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
                 filter,
                 count: shape.count,
                 player: PlayerAst::You,
                 tag: crate::tag::TagRef::of(chosen_tag.clone()),
-                zone: Zone::Exile,
-            }),
+                constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(
+                    maximum,
+                ),
+            },
+        ),
+        None => EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count: shape.count,
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            zone: Zone::Exile,
+        }),
+    };
+    Ok(Some((
+        vec![
+            choose,
             EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::TagRef::of(chosen_tag.clone()),
                 effects: vec![EffectAst::subject_verb_cast_tagged(

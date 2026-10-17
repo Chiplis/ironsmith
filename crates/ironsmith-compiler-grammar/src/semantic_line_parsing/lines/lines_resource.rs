@@ -61,6 +61,34 @@ pub fn try_parse_optional_waterbend_additional_cost(
     })))
 }
 
+/// "reveal a Dragon card from your hand or choose a Dragon you control"
+/// (Dragon's Fire) is beholding spelled out (CR 701.66a): read it as
+/// "behold a Dragon" so the cost, its paid label, and the beheld object's
+/// cost tag are the behold mechanism's own.
+fn spelled_out_behold_cost_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let start = tokens
+        .iter()
+        .position(|token| token.is_word("reveal") || token.is_word("choose"))?;
+    let words = crate::lexer::token_word_refs(&tokens[start..]);
+    let subtype = match words.as_slice() {
+        [
+            "reveal", "a" | "an", revealed, "card", "from", "your", "hand", "or", "choose",
+            "a" | "an", chosen, "you", "control",
+        ]
+        | [
+            "choose", "a" | "an", chosen, "you", "control", "or", "reveal", "a" | "an",
+            revealed, "card", "from", "your", "hand",
+        ] if revealed == chosen => *revealed,
+        _ => return None,
+    };
+    let span = tokens[start].span();
+    let mut rewritten = tokens[..start].to_vec();
+    for word in ["behold", "a", subtype] {
+        rewritten.push(OwnedLexToken::word(word.to_string(), span));
+    }
+    Some(rewritten)
+}
+
 pub fn try_parse_optional_behold_additional_cost(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
@@ -68,6 +96,8 @@ pub fn try_parse_optional_behold_additional_cost(
     if line.kind != RewriteKeywordLineKind::AdditionalCost {
         return Ok(None);
     }
+    let spelled_out = spelled_out_behold_cost_tokens(parse_tokens);
+    let parse_tokens = spelled_out.as_deref().unwrap_or(parse_tokens);
 
     let Some(shape) =
         keyword_special_grammar::parse_optional_keyword_additional_cost_tokens(parse_tokens)

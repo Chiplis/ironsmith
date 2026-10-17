@@ -217,6 +217,8 @@ pub struct ParsedModalHeader {
     /// "An opponent chooses one —": the players one of whom chooses the
     /// modes as the spell is cast (CR 700.2).
     pub cast_chooser: Option<crate::target::PlayerFilter>,
+    /// "you may choose two" (CR 700.2): choosing no modes is also legal.
+    pub optional_choice: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -74,6 +74,196 @@ pub(super) fn try_parse_level_header_block(
     )))
 }
 
+/// "Tiered (Choose one additional cost.)" whose shared instruction sits on its
+/// own line before the tier bullets, each bullet naming a cost and only the
+/// characteristic the instruction leaves open ("Until end of turn, target
+/// creature you control ... has the chosen base power and toughness." /
+/// "• Galian Beast — {0} — 3/2."; Vincent's Limit Break, CR 702.183): each
+/// tier is the shared instruction with its own base power and toughness, and
+/// carries its cost as the tier's additional mana cost.
+fn try_parse_tiered_shared_body_block(
+    preprocessed: &PreprocessedDocument,
+    idx: usize,
+    line: &PreprocessedLine,
+    normalized_header: &str,
+) -> Result<Option<(RecognizedLine, usize)>, CardTextError> {
+    if !crate::string_primitives::starts_with(normalized_header, "tiered") {
+        return Ok(None);
+    }
+    let (Some(PreprocessedItem::Line(body)), Some(PreprocessedItem::Line(first_tier))) =
+        (preprocessed.items.get(idx + 1), preprocessed.items.get(idx + 2))
+    else {
+        return Ok(None);
+    };
+    if is_bullet_line(body) || !is_bullet_line(first_tier) {
+        return Ok(None);
+    }
+    const OPEN: [&str; 6] = ["the", "chosen", "base", "power", "and", "toughness"];
+    let Some(open_at) = body.tokens.windows(OPEN.len()).position(|window| {
+        window.iter().zip(OPEN).all(|(token, word)| token.is_word(word))
+    }) else {
+        return Ok(None);
+    };
+    let mut modes = Vec::new();
+    let mut probe_idx = idx + 2;
+    while let Some(PreprocessedItem::Line(tier)) = preprocessed.items.get(probe_idx) {
+        if !is_bullet_line(tier) {
+            break;
+        }
+        let Some((cost, body_first)) = parse_tiered_mode_prefix_tokens(&tier.tokens) else {
+            return Ok(None);
+        };
+        let pt_words = crate::lexer::parser_token_word_refs(
+            crate::util::trim_edge_punctuation_tokens(tier.tokens.get(body_first..).unwrap_or_default()),
+        );
+        let [pt] = pt_words.as_slice() else {
+            return Ok(None);
+        };
+        if !pt.contains('/') {
+            return Ok(None);
+        }
+        let mut tokens = body.tokens[..open_at].to_vec();
+        tokens.extend(crate::lexer::lex_line(
+            &format!("base power and toughness {pt}"),
+            body.info.line_index,
+        )?);
+        tokens.extend_from_slice(&body.tokens[open_at + OPEN.len()..]);
+        let effects_ast = parse_effect_sentences_lexed(&tokens)?;
+        if effects_ast.is_empty() {
+            return Ok(None);
+        }
+        let surface = strip_modal_bullet_prefix_tokens(&tier.tokens);
+        let text = render_original_text_for_token_slice(tier, surface)
+            .unwrap_or_else(|| render_token_slice(surface))
+            .trim()
+            .to_string();
+        modes.push(RecognizedModalMode {
+            info: tier.info.clone(),
+            text,
+            point_cost: None,
+            additional_mana_cost: Some(cost),
+            effects_ast,
+        });
+        probe_idx += 1;
+    }
+    if modes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some((
+        RecognizedLine::Modal(RecognizedModalBlock {
+            header: line.info.clone(),
+            header_tokens: line.tokens.clone(),
+            modes,
+            saga_chapters: None,
+        }),
+        probe_idx,
+    )))
+}
+
+/// "{2}, {T}, Choose flying, first strike, trample, or shadow: Until end of
+/// turn, target creature with the chosen ability loses it and another target
+/// creature gains it." (Phyrexian Splicer): the keyword is chosen as the
+/// ability is activated, before its targets (CR 602.2b), and the targets
+/// depend on it. That is exactly a modal activation whose modes are the
+/// instruction read once per listed keyword (CR 700.2), so each mode
+/// substitutes its keyword for "the chosen ability" and for "it" after
+/// "loses"/"gains".
+fn try_parse_chosen_keyword_cost_block(
+    line: &PreprocessedLine,
+) -> Result<Option<(RecognizedLine, usize)>, CardTextError> {
+    let tokens = &line.tokens;
+    let Some(colon) = tokens.iter().position(|token| token.kind == TokenKind::Colon) else {
+        return Ok(None);
+    };
+    if tokens.iter().any(|token| token.kind == TokenKind::Quote) {
+        return Ok(None);
+    }
+    let cost = &tokens[..colon];
+    let Some(choose_idx) = cost.iter().rposition(|token| token.is_word("choose")) else {
+        return Ok(None);
+    };
+    if choose_idx == 0 || !cost[choose_idx - 1].is_comma() {
+        return Ok(None);
+    }
+    let options = &cost[choose_idx + 1..];
+    let mut keywords: Vec<&[OwnedLexToken]> = Vec::new();
+    for option in options.split(|token| token.is_comma() || token.is_word("or")) {
+        if option.is_empty() {
+            continue;
+        }
+        if crate::keyword_static::parse_ability_line(option).is_none_or(|actions| actions.len() != 1)
+        {
+            return Ok(None);
+        }
+        keywords.push(option);
+    }
+    if keywords.len() < 2 {
+        return Ok(None);
+    }
+    let body = &tokens[colon + 1..];
+    let chosen_at = body.windows(3).position(|window| {
+        window[0].is_word("the") && window[1].is_word("chosen") && window[2].is_word("ability")
+    });
+    if chosen_at.is_none() {
+        return Ok(None);
+    }
+    let mut modes = Vec::with_capacity(keywords.len());
+    for keyword in &keywords {
+        let mut substituted = Vec::with_capacity(body.len() + keyword.len() * 3);
+        let mut index = 0;
+        while index < body.len() {
+            if index + 2 < body.len()
+                && body[index].is_word("the")
+                && body[index + 1].is_word("chosen")
+                && body[index + 2].is_word("ability")
+            {
+                substituted.extend_from_slice(keyword);
+                index += 3;
+                continue;
+            }
+            if body[index].is_word("it")
+                && index > 0
+                && body[index - 1].is_any_word(&["loses", "lose", "gains", "gain"])
+            {
+                substituted.extend_from_slice(keyword);
+                index += 1;
+                continue;
+            }
+            substituted.push(body[index].clone());
+            index += 1;
+        }
+        let effects_ast = parse_effect_sentences_lexed(&substituted)?;
+        if effects_ast.is_empty() {
+            return Ok(None);
+        }
+        let text = render_token_slice(&substituted).trim().to_string();
+        let mut chars = text.chars();
+        let text = match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => text,
+        };
+        modes.push(RecognizedModalMode {
+            info: line.info.clone(),
+            text,
+            point_cost: None,
+            additional_mana_cost: None,
+            effects_ast,
+        });
+    }
+    let mut header_tokens = cost[..choose_idx - 1].to_vec();
+    header_tokens.push(tokens[colon].clone());
+    header_tokens.extend(crate::lexer::lex_line("choose one —", line.info.line_index)?);
+    Ok(Some((
+        RecognizedLine::Modal(RecognizedModalBlock {
+            header: line.info.clone(),
+            header_tokens,
+            modes,
+            saga_chapters: None,
+        }),
+        1,
+    )))
+}
+
 pub(super) fn try_parse_modal_bullet_block(
     preprocessed: &PreprocessedDocument,
     idx: usize,
@@ -82,11 +272,17 @@ pub(super) fn try_parse_modal_bullet_block(
     if is_bullet_line(line) {
         return Ok(None);
     }
+    if let Some((block, consumed)) = try_parse_chosen_keyword_cost_block(line)? {
+        return Ok(Some((block, idx + consumed)));
+    }
     if is_named_option_as_enters_choice_header(line) {
         return Ok(None);
     }
 
     let normalized_header = line.info.raw_line.trim_start().to_ascii_lowercase();
+    if let Some(block) = try_parse_tiered_shared_body_block(preprocessed, idx, line, &normalized_header)? {
+        return Ok(Some(block));
+    }
     let spree_header = crate::string_primitives::starts_with(&normalized_header, "spree");
     let next_line_is_mode = preprocessed
         .items

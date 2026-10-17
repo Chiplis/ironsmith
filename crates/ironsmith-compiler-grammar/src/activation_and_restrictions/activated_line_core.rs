@@ -707,10 +707,13 @@ pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount }) => {
                 value_contains_unbound_x(amount)
             }
             SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. }) => false,
             _ => false,
         },

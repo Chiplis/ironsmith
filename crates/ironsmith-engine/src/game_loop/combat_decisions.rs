@@ -132,6 +132,90 @@ pub(crate) fn active_conditional_attack_requirements(
     active
 }
 
+/// "Each opponent must attack you or a planeswalker you control with at least
+/// one creature each combat if able" (Trove of Temptation): one requirement
+/// per such permanent an opponent of the active player controls, naming that
+/// permanent's controller. Each is obeyed by the declaration as a whole
+/// (CR 508.1d), not by any one attacker.
+///
+/// "Each opponent must attack with at least one creature each combat if
+/// able" (Seeker of Slaanesh) names no defender: it is listed as `None`, and
+/// any attacking creature obeys it.
+pub(crate) fn active_group_attack_requirements(game: &GameState) -> Vec<Option<PlayerId>> {
+    use crate::static_abilities::StaticAbilityId;
+    let active_player = game.turn.active_player;
+    let mut requirements = Vec::new();
+    for &source in &game.battlefield {
+        if game.is_phased_out(source) {
+            continue;
+        }
+        let Some(controller) = game.object(source).map(|object| game.controller_of(object)) else {
+            continue;
+        };
+        if controller == active_player {
+            continue;
+        }
+        if game.current_has_static_ability_id(
+            source,
+            StaticAbilityId::OpponentsAttackYouWithAtLeastOneCreature,
+        ) {
+            requirements.push(Some(controller));
+        }
+        if game.current_has_static_ability_id(
+            source,
+            StaticAbilityId::OpponentsAttackWithAtLeastOneCreature,
+        ) {
+            requirements.push(None);
+        }
+    }
+    requirements
+}
+
+/// Whether a group requirement accepts this attack target: a named player
+/// requires that player or a planeswalker they control; `None` accepts any.
+pub(crate) fn group_attack_requirement_accepts(
+    game: &GameState,
+    required: Option<PlayerId>,
+    target: &AttackTarget,
+) -> bool {
+    match required {
+        Some(player) => attack_target_is_player_or_their_planeswalker(game, target, player),
+        None => true,
+    }
+}
+
+/// Group requirements obeyed by `declarations`: at least one attacker attacks
+/// the named player or a planeswalker that player controls (or, for an
+/// unnamed requirement, any attacker attacks).
+pub(crate) fn group_attack_requirement_score(
+    game: &GameState,
+    required: &[Option<PlayerId>],
+    declarations: &[AttackerDeclaration],
+) -> usize {
+    required
+        .iter()
+        .filter(|&&player| {
+            declarations
+                .iter()
+                .any(|declaration| group_attack_requirement_accepts(game, player, &declaration.target))
+        })
+        .count()
+}
+
+pub(crate) fn attack_target_is_player_or_their_planeswalker(
+    game: &GameState,
+    target: &AttackTarget,
+    player: PlayerId,
+) -> bool {
+    match target {
+        AttackTarget::Player(defender) => *defender == player,
+        AttackTarget::Planeswalker(planeswalker) => game
+            .object(*planeswalker)
+            .is_some_and(|object| game.controller_of(object) == player),
+        _ => false,
+    }
+}
+
 /// Active conditional requirements that apply to `attacker` (each is an
 /// "attack if able" requirement, independent of the attack target).
 pub(crate) fn conditional_attack_requirement_score(
@@ -174,6 +258,23 @@ fn attack_requirement_score_for_target(
     score += game
         .required_attack_players_this_turn(attacker.id)
         .filter(|player| matches!(target, AttackTarget::Player(defender) if defender == player))
+        .count();
+
+    // "... attack Gideon Jura if able": counted only when the creature
+    // attacks that planeswalker or battle (CR 508.1d).
+    score += game
+        .effect_store
+        .cant_effects
+        .must_attack_permanents
+        .get(&attacker.id)
+        .into_iter()
+        .flatten()
+        .filter(|&&required| {
+            matches!(
+                target,
+                AttackTarget::Planeswalker(id) | AttackTarget::Battle(id) if *id == required
+            )
+        })
         .count();
 
     // Use the same authoritative designation set as legal-attack previews.
@@ -456,6 +557,18 @@ fn prepare_attacker_declarations_internal(
         )
         .into());
     }
+    // CR 508.1c: a creature that "can only attack alone" can't be declared
+    // alongside any other attacker.
+    if declarations.len() > 1
+        && declarations
+            .iter()
+            .any(|declaration| !game.can_attack_with_others(declaration.creature))
+    {
+        return Err(ResponseError::InvalidAttackers(
+            "This creature can only attack alone".to_string(),
+        )
+        .into());
+    }
 
     let mut attackers_per_defending_player: HashMap<PlayerId, u32> = HashMap::new();
     let mut generic_attack_mana_costs: HashMap<PlayerId, u32> = HashMap::new();
@@ -626,6 +739,12 @@ fn prepare_attacker_declarations_internal(
         declarations.iter().map(|declaration| &declaration.target),
     )?;
 
+    let group_requirements = if enforce_requirements {
+        active_group_attack_requirements(game)
+    } else {
+        Vec::new()
+    };
+    requirements_obeyed += group_attack_requirement_score(game, &group_requirements, declarations);
     if enforce_requirements
         && attack_declaration_obeying_more_requirements_exists(
             game,
@@ -634,6 +753,7 @@ fn prepare_attacker_declarations_internal(
             declarations,
             requirements_obeyed,
             &conditional_requirements,
+            &group_requirements,
         )
     {
         if let Some(omitted) = legal_attackers
@@ -673,6 +793,7 @@ fn attack_declaration_obeying_more_requirements_exists(
     current_declarations: &[AttackerDeclaration],
     baseline: usize,
     conditional_requirements: &[ActiveConditionalAttackRequirement],
+    group_requirements: &[Option<PlayerId>],
 ) -> bool {
     struct ScoredAttackOption<'a> {
         option: &'a crate::decision::AttackerOption,
@@ -754,18 +875,22 @@ fn attack_declaration_obeying_more_requirements_exists(
     let unconstrained_maximum = unconstrained_scores
         .into_iter()
         .take(global_cap)
-        .sum::<usize>();
+        .sum::<usize>()
+        + group_requirements.len();
     if baseline >= unconstrained_maximum {
         return false;
     }
 
     options.sort_by_key(|option| std::cmp::Reverse(option.maximum_score));
+    // Group requirements can still be obeyed by any later attacker, so they
+    // count toward every suffix's upper bound.
     let remaining_requirements = (0..=options.len())
         .map(|index| {
             options[index..]
                 .iter()
                 .map(|option| option.maximum_score)
-                .sum()
+                .sum::<usize>()
+                + group_requirements.len()
         })
         .collect::<Vec<_>>();
 
@@ -780,8 +905,11 @@ fn attack_declaration_obeying_more_requirements_exists(
         requirements_obeyed: usize,
         baseline: usize,
         global_cap: usize,
+        group_requirements: &[Option<PlayerId>],
     ) -> bool {
-        if requirements_obeyed > baseline
+        let obeyed = requirements_obeyed
+            + group_attack_requirement_score(game, group_requirements, declarations);
+        if obeyed > baseline
             && prepare_attacker_declarations_internal(game, combat, declarations, false).is_ok()
         {
             return true;
@@ -844,6 +972,7 @@ fn attack_declaration_obeying_more_requirements_exists(
                     requirements_obeyed + option.target_scores[target_index],
                     baseline,
                     global_cap,
+                    group_requirements,
                 ) {
                     return true;
                 }
@@ -862,6 +991,7 @@ fn attack_declaration_obeying_more_requirements_exists(
             requirements_obeyed,
             baseline,
             global_cap,
+            group_requirements,
         )
     }
 
@@ -876,6 +1006,7 @@ fn attack_declaration_obeying_more_requirements_exists(
         0,
         baseline,
         global_cap,
+        group_requirements,
     )
 }
 
@@ -955,7 +1086,8 @@ fn tap_prepared_attackers(
         game,
         game.turn.active_player,
         Default::default(),
-    );
+    )
+    .as_attack_declaration();
     for prepared_decl in &prepared.declarations {
         let creature = prepared_decl.declaration.creature;
         if prepared_decl.has_vigilance

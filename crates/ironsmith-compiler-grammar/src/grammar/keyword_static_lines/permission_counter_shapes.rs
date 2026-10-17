@@ -295,6 +295,10 @@ fn parse_cast_this_way_enters_with_intro(input: &mut LexStream<'_>) -> WResult<O
     alt((
         primitives::phrase(&["that", "creature", "enters", "with"]),
         primitives::phrase(&["that", "permanent", "enters", "with"]),
+        // "If you cast a spell this way, that artifact enters with a
+        // finality counter on it." (Noctis, Prince of Lucis)
+        primitives::phrase(&["that", "artifact", "enters", "with"]),
+        primitives::phrase(&["that", "enchantment", "enters", "with"]),
         primitives::phrase(&["it", "enters", "with"]),
     ))
     .void()

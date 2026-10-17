@@ -32,6 +32,7 @@ impl EffectExecutor for RegisterNextBatchEnterWithCountersEffect {
             ctx.controller,
             matcher,
             ReplacementAction::EnterWithCounters {
+                counter_kinds_from: None,
                 counter_type: self.counter_type,
                 count: self.count.clone(),
                 count_condition: None,

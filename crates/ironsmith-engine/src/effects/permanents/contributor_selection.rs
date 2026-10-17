@@ -167,6 +167,19 @@ fn power_bonus_from_marker(marker: &str, crew: bool) -> Option<i32> {
         })
 }
 
+/// "Each creature you control with toughness greater than its power
+/// stations permanents using its toughness rather than its power" (Tapestry
+/// Warden) grants this marker; a creature with it contributes its toughness
+/// when it is tapped to station a permanent (CR 702.184a).
+pub(crate) const STATIONS_USING_TOUGHNESS_MARKER: &str =
+    "this creature stations permanents using its toughness rather than its power";
+
+pub(crate) fn stations_using_toughness(game: &GameState, object_id: ObjectId) -> bool {
+    keyword_marker_texts(game, object_id)
+        .iter()
+        .any(|marker| marker.trim_end_matches('.') == STATIONS_USING_TOUGHNESS_MARKER)
+}
+
 pub(super) fn contribution_value(game: &GameState, object_id: ObjectId, crew: bool) -> i32 {
     let markers = keyword_marker_texts(game, object_id);
     let use_toughness = markers.iter().any(|marker| {

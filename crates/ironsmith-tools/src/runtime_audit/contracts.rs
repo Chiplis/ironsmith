@@ -314,7 +314,7 @@ impl Auditor {
             // trigger alone does not prove a DamagedPlayer reference invalid.
             "DamagedPlayer" if scope.damaged_player != Binding::Present => self.gap(path, "damage_recipient_dataflow", "DamagedPlayer may come from the triggering event, tagged players, or a prior damage outcome"),
             "ChosenPlayer" | "ChosenNumber" | "TaggedCount" | "LastNotedLifeTotal" | "Defending" | "Attacking" | "TargetPlayerOrControllerOfTarget" => self.gap(path, "persistent_or_choice_context", format!("{name} requires game-state, target, choice, or combat-context validation")),
-            "ManaSpentToCastTriggeringObject" | "CasterManaSpentToCastTriggeringObject" => self.require(path, name, scope.cast_event),
+            "ManaSpentToCastTriggeringObject" | "ColorsOfManaSpentToCastTriggeringObject" | "CasterManaSpentToCastTriggeringObject" => self.require(path, name, scope.cast_event),
             "ThisAbilityResolvedThisTurnCount" | "ThisAbilityManaProductionCountThisTurn" => self.require(path, name, scope.ability),
             name if is_pending_value(name) => self.finding(path, "error", "unresolved_compiler_value", format!("Compiler-only {name} reached the executable definition")),
             _ => {}
@@ -337,17 +337,24 @@ impl Auditor {
             | "TriggeringObjectHadCounters"
             | "EvolveEnteringCreatureIsLarger"
             | "TriggeringObjectBecameTappedFirstTimeThisTurn"
+            | "TriggeringObjectTappedForAttack"
+            | "TriggeringObjectWasSacrificed"
+            | "TriggeringKeywordActionIs"
             | "TriggeringObjectHadCountersPutFirstTimeThisTurn"
             | "TriggeringObjectHadToAttackThisCombat"
             | "TriggeringObjectEnlistedThisCombat"
             | "TriggeringObjectWasCast"
             | "TriggeringObjectWasCastFromZone"
+            | "TriggeringObjectEnteredFromZone"
             | "TriggeringObjectDied"
             | "TriggeringPlayerAttackedControllerLastTurn"
+            | "TriggeringPlayerWasAttackedThisTurnBy"
             | "TriggeringPlayersTurn"
             | "TriggeringObjectsNoneWereCastOrNoManaSpent"
             | "TriggeringAttackerBlockers"
             | "TriggeringAbilityIsManaAbility"
+            | "TriggeringManaIncludesSourceChosenColor"
+            | "TriggeringSacrificePaidEmergeCost"
             | "YouWonTriggeringClash"
             | "YouChoseAnotherRingBearer"
             | "TriggeringAbilityManaSpentToActivateAtLeast"

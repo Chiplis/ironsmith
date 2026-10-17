@@ -172,6 +172,16 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_zone_replacement(input)),
     },
     Reading {
+        id: RuleId::new("top-of-target-graveyard-conditional-move"),
+        head: HeadDiscriminator::words(&["if"]),
+        admits: |input| input.sentences.len() == 1,
+        read: |input| {
+            input.outcome(Ok(input.sentences.first().and_then(|sentence| {
+                crate::effect_sentences::top_of_target_graveyard::parse(sentence)
+            })))
+        },
+    },
+    Reading {
         id: RuleId::new("conditional-sentence-family"),
         head: HeadDiscriminator::Any,
         admits: |input| {
@@ -687,6 +697,14 @@ fn read_zone_replacement(
     {
         return Ok(Some(vec![effect]));
     }
+    // "If a spell or ability that targets that creature would cause a source
+    // to deal damage to that creature this turn, prevent that damage." is a
+    // prevention shield, not a runtime-gated conditional (CR 615.1).
+    if sentences.len() == 1
+        && let Some(effect) = super::targeting_cause_prevention_from_tokens(tokens)
+    {
+        return Ok(Some(vec![effect]));
+    }
     Ok(None)
 }
 fn read_conditional_sentence_family(
@@ -827,7 +845,14 @@ pub(crate) fn parse_owned_exile_free_cast(tokens: &[OwnedLexToken]) -> Option<Ve
         }
         _ => (None, rest),
     };
-    let Some(rest) = rest.strip_prefix(POOL_WORDS) else {
+    // "from among cards in exile with page counters on them" (Tasha, the
+    // Witch Queen): any owner's exiled cards marked by the counter kind.
+    const ANY_OWNER_POOL_WORDS: &[&str] = &["spell", "from", "among", "cards", "in", "exile"];
+    let (owned, rest) = if let Some(rest) = rest.strip_prefix(POOL_WORDS) {
+        (true, rest)
+    } else if let Some(rest) = rest.strip_prefix(ANY_OWNER_POOL_WORDS) {
+        (false, rest)
+    } else {
         return None;
     };
     let (counter_type, rest) = match rest {
@@ -841,13 +866,14 @@ pub(crate) fn parse_owned_exile_free_cast(tokens: &[OwnedLexToken]) -> Option<Ve
         }
         _ => (None, rest),
     };
-    if rest != FREE_WORDS {
+    if rest != FREE_WORDS || (!owned && counter_type.is_none()) {
         return None;
     }
     let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.bind();
-    let mut filter = ObjectFilter::default()
-        .owned_by(PlayerFilter::You)
-        .in_zone(Zone::Exile);
+    let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+    if owned {
+        filter = filter.owned_by(PlayerFilter::You);
+    }
     if let Some(card_type) = spell_type {
         filter = filter.with_type(card_type);
     }

@@ -1351,9 +1351,19 @@ fn check_permanent_sbas_for_ids(
                     power_lethal_controllers
                         .map(|controllers| controllers.contains(&game.controller_of(obj))),
                 );
-                if lethal_damage_threshold
-                    .is_some_and(|threshold| threshold > 0 && damage_marked >= threshold as u32)
-                    && !is_indestructible
+                // Ogre Enforcer: only lethal damage from a single source
+                // destroys it.
+                let single_source_required = game.current_has_static_ability_id(
+                    obj_id,
+                    crate::static_abilities::StaticAbilityId::LethalDamageMustBeFromSingleSource,
+                );
+                if lethal_damage_threshold.is_some_and(|threshold| {
+                    threshold > 0
+                        && damage_marked >= threshold as u32
+                        && (!single_source_required
+                            || game.max_damage_marked_from_single_source(obj_id)
+                                >= threshold as u32)
+                }) && !is_indestructible
                 {
                     actions.push(StateBasedAction::ObjectDies(obj_id));
                     continue;

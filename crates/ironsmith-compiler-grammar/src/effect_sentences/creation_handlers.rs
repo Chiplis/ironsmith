@@ -1368,9 +1368,79 @@ fn parse_create_choice_of_options(
     )))
 }
 
+/// "Create a 2/2 green Wolf creature token with two +1/+1 counters on it"
+/// (and "... tokens with a +1/+1 counter on each of them"): the counters are
+/// part of the token's entry event (CR 122.6). Split the trailing counter
+/// descriptor off the creation clause so the token description never
+/// silently absorbs it; lowering folds the inline-entry put into the
+/// creation instruction.
+fn split_token_entry_counters(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::object::CounterType, Value)> {
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    // Quoted token rules may themselves mention counters; leave them whole.
+    if trimmed.iter().any(|token| token.kind == TokenKind::Quote) {
+        return None;
+    }
+    let with_idx = trimmed.iter().rposition(|token| token.is_word("with"))?;
+    let mut prefix = &trimmed[..with_idx];
+    if !prefix.iter().any(|token| token.is_any_word(&["token", "tokens"])) {
+        return None;
+    }
+    let tail = &trimmed[with_idx + 1..];
+    if tail.is_empty() || tail.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let (amount, used) = parse_value(tail)?;
+    let rest = token_word_refs(&tail[used..]);
+    let counter_word = match rest.as_slice() {
+        [counter, "counter" | "counters", "on", "it" | "them"]
+        | [counter, "counter" | "counters", "on", "each", "of", "them"] => *counter,
+        _ => return None,
+    };
+    let counter_type =
+        crate::grammar::filters::parse_counter_type_words(&[counter_word, "counter"])?;
+    while prefix
+        .last()
+        .is_some_and(|token| token.is_comma() || token.is_word("and"))
+    {
+        prefix = &prefix[..prefix.len() - 1];
+    }
+    if prefix.is_empty() {
+        return None;
+    }
+    Some((
+        prefix.to_vec(),
+        counter_type,
+        amount.with_surface_hint(ValueSurfaceHint::InlineBattlefieldEntryCounter),
+    ))
+}
+
+fn with_token_entry_counter(
+    create: EffectAst,
+    counter_type: crate::object::CounterType,
+    amount: Value,
+    tokens: &[OwnedLexToken],
+) -> EffectAst {
+    let put = EffectAst::subject_verb_put_counters(
+        counter_type,
+        amount,
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
+        None,
+        false,
+    );
+    EffectAst::Sequence {
+        effects: vec![create, put],
+    }
+}
+
 pub fn lower_complete_simple_create_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
+        let create = lower_complete_simple_create_shape(&prefix)?;
+        return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
+    }
     let head = creation_grammar::parse_create_head_tokens(tokens).ok_or_else(|| {
         CardTextError::ParseError(
             "complete simple create shape is missing a token head".to_string(),
@@ -1431,6 +1501,10 @@ pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if let Some((prefix, counter_type, amount)) = split_token_entry_counters(tokens) {
+        let create = parse_create(&prefix, subject)?;
+        return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
+    }
     if let Some(index) = tokens.iter().position(|token| token.is_word("if")) {
         let predicate_words = crate::lexer::parser_token_word_refs(&tokens[index + 1..]);
         if predicate_words == ["you", "revealed", "it", "this", "way"] {
@@ -1558,7 +1632,10 @@ pub fn parse_create(
     }
     let mut attached_to_target: Option<TargetAst> = None;
     if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
-        attached_to_target = Some(parse_target_phrase(attached.target_tokens)?);
+        attached_to_target = Some(match parse_target_phrase(attached.target_tokens) {
+            Ok(target) => target,
+            Err(err) => named_permanent_reference_target(attached.target_tokens).ok_or(err)?,
+        });
         tail_tokens = attached.prefix_tokens.to_vec();
     }
     // CR 509.4: "... token that's blocking that creature" (Brimaz) names the
@@ -1592,12 +1669,6 @@ pub fn parse_create(
     }
     let tail_words = token_word_refs(&tail_tokens);
     let tail_surface = creation_grammar::CreationWords::new(&tail_words);
-    if attached_to_target.is_some() && tail_surface.has(CreateWord::Copy) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported aura-copy attachment fanout clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
     let for_each_clause = creation_grammar::parse_for_each_clause_tokens(&tail_tokens);
     let for_each_idx = for_each_clause.as_ref().map(|clause| clause.start_word);
     let mut for_each_dynamic_count: Option<Value> = None;
@@ -1619,6 +1690,13 @@ pub fn parse_create(
             }
         } else if let Some(dynamic) =
             creation_grammar::parse_creation_for_each_dynamic_count_tokens(filter_tokens)
+                .or_else(|| {
+                    // "for each opponent who was dealt damage this turn"
+                    // (You've Been Caught Stealing) counts a turn-history set.
+                    crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(
+                        filter_tokens,
+                    )
+                })
         {
             for_each_dynamic_count = Some(dynamic.with_surface_hint(ValueSurfaceHint::ForEach));
         } else {
@@ -1813,8 +1891,20 @@ pub fn parse_create(
             if player == PlayerAst::Implicit {
                 player = PlayerAst::You;
             }
-            let (sacrifice_at_next_end_step, _, sacrifice_player) =
+            let (mut sacrifice_at_next_end_step, _, sacrifice_player) =
                 parse_next_end_step_token_delay_flags(&tail_words);
+            // A conditional quoted end-step sacrifice ("At the beginning of
+            // the end step, if you don't control a planeswalker, sacrifice
+            // this creature." Face Yourself) exists only as the copy's
+            // granted triggered ability (CR 603.4); an unconditional delayed
+            // sacrifice would drop its intervening-if condition.
+            if sacrifice_at_next_end_step
+                && double_quoted_rule_bodies(&tail_tokens)
+                    .into_iter()
+                    .any(|body| token_word_refs(body).contains(&"if"))
+            {
+                sacrifice_at_next_end_step = false;
+            }
             // A quoted exile instruction is an intrinsic copied ability, not
             // a delayed instruction belonging to the creating spell.
             let outside_quotes = tokens_outside_double_quoted_rules(&tail_tokens);
@@ -1886,6 +1976,7 @@ pub fn parse_create(
                             granted_abilities,
                             set_name: copy_name,
                             added_supertypes,
+                            attached_to: attached_to_target.clone(),
                         }),
                     );
                     return Ok(wrap_for_each_player_condition(wrap_delayed_create(
@@ -1933,6 +2024,7 @@ pub fn parse_create(
                     set_base_power_toughness_to_source_totals,
                     starting_loyalty,
                     granted_abilities,
+                    attached_to: attached_to_target.clone(),
                 }),
             );
             return Ok(wrap_for_each_player_condition(wrap_delayed_create(
@@ -2138,8 +2230,26 @@ pub fn parse_create(
             _ => {}
         }
     }
+    // "a 3/3 Kavu creature token with trample that's all colors" (Jared
+    // Carthalion): the color suffix trails the keyword list.
+    let trailing_all_colors_suffix = {
+        let words = crate::lexer::token_word_refs(&tail_tokens);
+        let suffix_words = match words.as_slice() {
+            [.., "that's" | "thats", "all", "colors"] => Some(3),
+            [.., "that", "is" | "are", "all", "colors"] => Some(4),
+            _ => None,
+        };
+        suffix_words
+            .filter(|len| words.len() > *len && words.len() == tail_tokens.len())
+            .map(|len| tail_tokens[tail_tokens.len() - len..].to_vec())
+    };
     if let Some((postnominal_colors, color_role)) =
         token_definition_grammar::parse_postnominal_token_color_words_tokens(&tail_tokens)
+            .or_else(|| {
+                trailing_all_colors_suffix.as_deref().and_then(
+                    token_definition_grammar::parse_postnominal_token_color_words_tokens,
+                )
+            })
     {
         if let crate::model::token_definition::TokenDefinitionSpec::Builtin(template) = &definition {
             definition = crate::model::token_definition::TokenDefinitionSpec::ModifiedBuiltin(
@@ -2493,12 +2603,20 @@ fn parse_create_for_each_player_condition(
         return Ok(None);
     };
 
-    let predicate = parse_who_player_predicate_lexed(who_tokens).ok_or_else(|| {
-        CardTextError::ParseError(format!(
+    let Some(predicate) = parse_who_player_predicate_lexed(who_tokens) else {
+        // A turn-history player count ("opponent who was dealt damage this
+        // turn") is a count, not a per-player predicate; the dynamic-count
+        // reading owns it.
+        if crate::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
+            .is_some()
+        {
+            return Ok(None);
+        }
+        return Err(CardTextError::ParseError(format!(
             "unsupported player predicate after create for-each clause (clause: '{}')",
             clause_words.join(" ")
-        ))
-    })?;
+        )));
+    };
     Ok(Some((filter, predicate)))
 }
 
@@ -2586,7 +2704,13 @@ pub fn parse_investigate(
         count = where_count;
         return Ok(EffectAst::subject_verb_investigate(player, count));
     }
-    let trailing_ok = creation_grammar::parse_time_only_words(&trailing_words);
+    // "investigate an additional time" (Erdwal Illuminator): one more
+    // investigation, counted like "investigate once".
+    let additional_time = matches!(
+        trailing_words.as_slice(),
+        ["additional", "time"] | ["additional", "times"]
+    );
+    let trailing_ok = additional_time || creation_grammar::parse_time_only_words(&trailing_words);
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing investigate clause (clause: '{}')",
@@ -2669,6 +2793,57 @@ pub fn parse_incubate(
     }
 
     Ok(EffectAst::subject_verb_incubate(player, amount, count))
+}
+
+/// "... attached to Stangg Twin": a bare proper name (a token the ability
+/// created and named earlier) names the permanent with that name.
+fn named_permanent_reference_target(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
+    let words = token_word_refs(tokens);
+    if words.is_empty() || words.len() > 4 {
+        return None;
+    }
+    if words.iter().any(|word| {
+        matches!(
+            *word,
+            "a" | "an"
+                | "the"
+                | "target"
+                | "each"
+                | "all"
+                | "that"
+                | "this"
+                | "those"
+                | "it"
+                | "them"
+                | "another"
+                | "other"
+                | "you"
+                | "your"
+                | "control"
+                | "controls"
+                | "creature"
+                | "creatures"
+                | "permanent"
+                | "permanents"
+                | "player"
+                | "token"
+                | "tokens"
+                | "and"
+                | "or"
+        )
+    }) {
+        return None;
+    }
+    let name = crate::lexer::render_literal_token_slice(tokens)
+        .trim()
+        .trim_end_matches(|ch: char| ch == '.' || ch == ',')
+        .to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let mut filter = ObjectFilter::default().in_zone(crate::Zone::Battlefield);
+    filter.name = Some(name);
+    Some(TargetAst::Object(filter, None, None))
 }
 
 #[cfg(test)]
@@ -3911,3 +4086,4 @@ mod mana_spent_token_count_tests {
         }
     }
 }
+

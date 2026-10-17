@@ -297,12 +297,100 @@ pub(crate) fn attach_battlefield_object_to_target(
     true
 }
 
+/// "As this Equipment becomes attached to a creature, choose a creature card
+/// name and a creature type." (Psychic Paper): the source's controller names
+/// a creature card and a creature type each time it becomes attached; the
+/// choices replace the previous ones on the attachment.
+fn choose_creature_card_name_and_type_as_becomes_attached(
+    game: &mut GameState,
+    ctx: &mut crate::effects::ExecutionContext<'_>,
+    attachment_id: ObjectId,
+    target: AttachmentTarget,
+) {
+    if !matches!(target, AttachmentTarget::Object(_)) {
+        return;
+    }
+    let has_choice_ability = game
+        .calculated_characteristics_arc(attachment_id)
+        .map(|chars| chars.static_abilities.clone())
+        .unwrap_or_else(|| {
+            game.object(attachment_id)
+                .map(|object| crate::ability::extract_static_abilities(&object.abilities))
+                .unwrap_or_default()
+                .into()
+        })
+        .into_iter()
+        .any(|ability| ability.creature_card_name_and_type_choice_as_becomes_attached());
+    if !has_choice_ability {
+        return;
+    }
+    let Some(chooser) = game.controller_of_id(attachment_id) else {
+        return;
+    };
+
+    let name_ctx = crate::decisions::context::TextInputContext::new(
+        chooser,
+        Some(attachment_id),
+        "Choose a creature card name",
+    )
+    .with_placeholder("Enter a creature card name")
+    .require_known_value(true);
+    let chosen_name = ctx.decision_maker.decide_text(game, &name_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    let chosen_name = chosen_name.trim();
+    if !chosen_name.is_empty() {
+        let mut registry = crate::cards::CardRegistry::new();
+        registry.ensure_cards_loaded([chosen_name]);
+        if let Some(definition) = registry.get(chosen_name)
+            && definition
+                .card
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+        {
+            let name = definition.name().to_string();
+            game.set_chosen_named_option(attachment_id, name);
+        }
+    }
+
+    let types = crate::types::Subtype::all_creature_types();
+    let selectable = types
+        .iter()
+        .enumerate()
+        .map(|(idx, subtype)| crate::decisions::SelectableOption::new(idx, subtype.to_string()))
+        .collect();
+    let type_ctx = crate::decisions::SelectOptionsContext::new(
+        chooser,
+        Some(attachment_id),
+        "Choose a creature type",
+        selectable,
+        1,
+        1,
+    );
+    let chosen = ctx
+        .decision_maker
+        .decide_options(game, &type_ctx)
+        .into_iter()
+        .next();
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    if let Some(subtype) = chosen.and_then(|idx| types.get(idx).copied()) {
+        game.set_chosen_creature_type(attachment_id, subtype);
+    }
+}
+
 pub(crate) fn choose_color_as_becomes_attached(
     game: &mut GameState,
     ctx: &mut crate::effects::ExecutionContext<'_>,
     attachment_id: ObjectId,
     target: AttachmentTarget,
 ) {
+    choose_creature_card_name_and_type_as_becomes_attached(game, ctx, attachment_id, target);
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
     let has_choice_ability = game
         .calculated_characteristics_arc(attachment_id)
         .map(|chars| chars.static_abilities.clone())
@@ -410,3 +498,4 @@ pub use untap::UntapEffect;
 pub(crate) mod face_down_entry;
 
 mod contributor_selection;
+pub(crate) use contributor_selection::stations_using_toughness;

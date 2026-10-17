@@ -59,13 +59,42 @@ pub fn parse_numeric_result_prefix_tokens(
 ) -> Option<NumericResultPrefixShape> {
     // Recognize the complete header, not a numeric prefix somewhere before
     // a pipe. Recognition, continuation attachment and lowering must agree.
-    let pipe = tokens.iter().position(|token| token.kind == TokenKind::Pipe)?;
     let number = |token: &OwnedLexToken| {
         (token.kind == TokenKind::Number)
             .then(|| token.parser_text().parse::<i32>().ok())
             .flatten()
     };
+    // "1 or 2 — ...", "3 — ..." (Comet, Stellar Pup): a numeric header ended
+    // by an em dash is the same result row as the pipe typography. Only a
+    // leading, purely numeric header qualifies, so ability-word labels and
+    // in-sentence dashes are never read as rows.
+    let pipe = match tokens.iter().position(|token| token.kind == TokenKind::Pipe) {
+        Some(pipe) => pipe,
+        None => {
+            let dash = tokens
+                .iter()
+                .position(|token| token.kind == TokenKind::EmDash)
+                .filter(|dash| (1..=3).contains(dash))?;
+            let header = &tokens[..dash];
+            let numeric = match header {
+                [exact] => number(exact).is_some(),
+                [low, or, high] if or.is_word("or") => {
+                    matches!((number(low), number(high)), (Some(low), Some(high)) if high == low + 1)
+                }
+                _ => false,
+            };
+            if !numeric || dash + 1 >= tokens.len() {
+                return None;
+            }
+            dash
+        }
+    };
     let comparison = match &tokens[..pipe] {
+        [low, or, high] if or.is_word("or") && tokens[pipe].kind == TokenKind::EmDash => {
+            let (low, high) = (number(low)?, number(high)?);
+            if high != low + 1 { return None; }
+            Comparison::BetweenInclusive(low, high)
+        }
         [exact] if exact.kind == TokenKind::Number => Comparison::Equal(number(exact)?),
         [range] if range.kind == TokenKind::Word => {
             let (min, max) = crate::word_primitives::parse_ascii_numeric_range(range.parser_text())?;

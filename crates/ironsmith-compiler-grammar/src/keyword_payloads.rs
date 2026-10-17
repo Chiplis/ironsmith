@@ -225,6 +225,39 @@ pub(super) fn parse_additional_cost(
         return Ok(ast(LineAst::OptionalCost(optional)));
     }
     let trimmed = crate::util::trim_edge_punctuation_tokens(effect_tokens);
+    // "you may pay {1}{R} and/or {1}{G} any number of times" (Primitive
+    // Justice): two independent repeatable additional payments, each counted
+    // by its own "for each additional <cost> you paid".
+    if trimmed.len() >= 9
+        && trimmed[0].is_word("you") && trimmed[1].is_word("may") && trimmed[2].is_word("pay")
+        && crate::lexer::parser_token_word_refs(&trimmed[trimmed.len() - 4..]) == ["any", "number", "of", "times"]
+        && let Some(split) = trimmed[3..trimmed.len() - 4]
+            .iter()
+            .position(|token| token.is_word("and/or"))
+            .map(|offset| offset + 3)
+    {
+        let mut optional_costs = Vec::new();
+        for cost_tokens in [&trimmed[3..split], &trimmed[split + 1..trimmed.len() - 4]] {
+            if cost_tokens.is_empty() {
+                optional_costs.clear();
+                break;
+            }
+            let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(cost_tokens)?;
+            let Some(reference) = (!cost.has_non_mana_costs())
+                .then(|| cost.mana_cost().map(crate::util::additional_mana_payment_reference))
+                .flatten()
+            else {
+                optional_costs.clear();
+                break;
+            };
+            let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost).repeatable();
+            optional.reference = reference;
+            optional_costs.push(LineAst::OptionalCost(optional));
+        }
+        if optional_costs.len() == 2 {
+            return Ok(ast(LineAst::Multiple(optional_costs)));
+        }
+    }
     if trimmed.len() >= 8
         && trimmed[0].is_word("you") && trimmed[1].is_word("may") && trimmed[2].is_word("pay")
         && crate::lexer::parser_token_word_refs(&trimmed[trimmed.len() - 4..]) == ["any", "number", "of", "times"]
@@ -237,6 +270,18 @@ pub(super) fn parse_additional_cost(
             return Ok(ast(LineAst::OptionalCost(optional)));
         }
     }
+    // "you may sacrifice any number of Spirits" (Devouring Greed): sacrificing
+    // zero is already a legal payment of the ordinary additional cost, whose
+    // sacrificed set the body then counts ("for each Spirit sacrificed this
+    // way").
+    let effect_tokens = if words.starts_with(&["you", "may", "sacrifice", "any", "number", "of"])
+        && words.len() > 6
+        && effect_tokens.get(2).is_some_and(|token| token.is_word("sacrifice"))
+    {
+        &effect_tokens[2..]
+    } else {
+        effect_tokens
+    };
     // Optional additional costs are announced and recorded as optional costs.
     // A MayEffect in the mandatory cost program cannot publish the paid label
     // queried by a later "if this spell's additional cost was paid" clause.

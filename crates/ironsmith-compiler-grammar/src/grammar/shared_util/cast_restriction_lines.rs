@@ -21,8 +21,23 @@ pub fn parse_cast_this_spell_only(
     if let Some((kind, text)) = control_quantity_restriction(tail) {
         return Ok(Some(StaticAbility::this_spell_cast_restriction(kind, text)));
     }
-    Ok(fixed_restriction(tail)
-        .map(|(kind, text)| StaticAbility::this_spell_cast_restriction(kind, text)))
+    if let Some((kind, text)) = fixed_restriction(tail) {
+        return Ok(Some(StaticAbility::this_spell_cast_restriction(kind, text)));
+    }
+    // "Cast this spell only if you were dealt damage this turn by a red
+    // instant or sorcery spell." (Suffocation): any typed static condition
+    // gates casting (CR 601.3).
+    if tail.first() == Some(&"if")
+        && let Some(if_idx) = tokens.iter().position(|token| token.is_word("if"))
+        && let Some(condition) =
+            crate::keyword_static::cast_only_if_condition(&tokens[if_idx + 1..])
+    {
+        return Ok(Some(StaticAbility::this_spell_cast_restriction(
+            Restriction::only_if(condition),
+            crate::lexer::render_token_slice(tokens).trim().to_string(),
+        )));
+    }
+    Ok(None)
 }
 
 fn named_permanent_restriction(words: &[&str]) -> Option<StaticAbility> {

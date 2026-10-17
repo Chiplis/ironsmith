@@ -625,7 +625,9 @@ impl IncrementalBattlefieldGroups {
         player: PlayerId,
     ) -> (bool, bool) {
         let own = perspective == player || game.controlling_player_for(player) == perspective;
-        let top = (own && game.effect_store.grant_registry.grants_private_library_top_view(game, player)) || self.visibility.values().any(|(controller, flags)| {
+        let top = (own && game.effect_store.grant_registry.grants_private_library_top_view(game, player))
+            || (!own && game.effect_store.grant_registry.grants_private_library_top_view_of(game, perspective, player))
+            || self.visibility.values().any(|(controller, flags)| {
             flags & 4 != 0 || (*controller == player && (flags & 2 != 0 || (own && flags & 1 != 0)))
         });
         let hand = self
@@ -2198,7 +2200,9 @@ fn can_view_library_top(game: &GameState, perspective: PlayerId, player: PlayerI
 
 #[cfg(test)]
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    // A resolved "play with their hand revealed for as long as ..." effect
+    // (Stromgald Spy) opens the same public hand view as the statics.
+    game.hand_revealed_by_effect(player) || game.object_store.battlefield.iter().any(|id| {
         !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
             let controller = game.current_controller(*id).unwrap_or(object.owner);
             game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)

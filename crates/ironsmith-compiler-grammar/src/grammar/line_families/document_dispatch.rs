@@ -210,6 +210,12 @@ fn draft_rule_prefix(input: &mut LexStream<'_>) -> WResult<()> {
         primitives::phrase(&["as", "you", "draft"]),
         primitives::phrase(&["during", "the", "draft"]),
         primitives::phrase(&["immediately", "after", "the", "draft"]),
+        // Deck-construction instructions are pregame rule text too ("As you
+        // create your deck, circle two of the colors below.", Cryptic
+        // Spires); the static grammar files them as deck-construction rules.
+        primitives::phrase(&["as", "you", "create", "your", "deck"]),
+        primitives::phrase(&["as", "you", "build", "your", "deck"]),
+        primitives::phrase(&["as", "you", "construct", "your", "deck"]),
     ))
     .void()
     .parse_next(input)

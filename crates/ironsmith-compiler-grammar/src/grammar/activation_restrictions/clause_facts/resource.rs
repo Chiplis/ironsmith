@@ -11,6 +11,7 @@ pub fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRetentionTa
             &[
                 "lose", "this", "mana", "as", "steps", "and", "phases", "end",
             ],
+            &["lose", "this", "mana", "as", "steps", "end"],
         ],
     )
     .then_some(ManaRetentionTailKind::ThisMana)

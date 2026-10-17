@@ -192,6 +192,7 @@ pub fn parse_iterative_library_procedure_sequence(
             ],
             continue_effect_index: 1,
             continue_predicate: IfResultPredicate::WasDeclined,
+            max_iterations: None,
         },
     )]))
 }

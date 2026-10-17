@@ -124,6 +124,9 @@ pub enum FilterTailDecoration {
     /// Tracker): any one of three or more listed keywords. Fixed capacity so
     /// the decoration stays `Copy`.
     WithAnyKeyword([Option<FilterKeywordConstraint>; MAX_KEYWORD_LIST]),
+    /// "without first strike, double strike, or vigilance" (Grand Master of
+    /// Flowers): lacking every one of three or more listed keywords.
+    WithoutAnyKeyword([Option<FilterKeywordConstraint>; MAX_KEYWORD_LIST]),
 }
 
 /// The longest serial keyword list a "with" tail decoration carries.
@@ -315,6 +318,11 @@ pub fn apply_filter_tail_decoration(filter: &mut ObjectFilter, decoration: Filte
             apply_filter_keyword_constraint(filter, first_constraint, true);
             apply_filter_keyword_constraint(filter, second_constraint, true);
         }
+        FilterTailDecoration::WithoutAnyKeyword(keywords) => {
+            for constraint in keywords.iter().flatten() {
+                apply_filter_keyword_constraint(filter, *constraint, true);
+            }
+        }
     }
 }
 
@@ -359,6 +367,20 @@ fn parse_with_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDe
 
 fn parse_without_tail_decoration(input: &mut WordInput<'_>) -> WResult<FilterTailDecoration> {
     let checkpoint = *input;
+    if let Some((constraints, connective, consumed)) =
+        crate::util::parse_filter_keyword_constraint_list_words(input)
+        && constraints.len() > 2
+        && constraints.len() <= MAX_KEYWORD_LIST
+        && connective == crate::util::FilterKeywordListConnective::Or
+        && consumed <= input.len()
+    {
+        let mut keywords = [None; MAX_KEYWORD_LIST];
+        for (slot, constraint) in keywords.iter_mut().zip(constraints) {
+            *slot = Some(constraint);
+        }
+        *input = &input[consumed..];
+        return Ok(FilterTailDecoration::WithoutAnyKeyword(keywords));
+    }
     if let Ok(constraint) = parse_keyword_constraint.parse_next(input) {
         let after_first = *input;
         if primitives::word_slice_exact("or")

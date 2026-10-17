@@ -1,6 +1,23 @@
     use super::*;
 
     #[test]
+    fn all_but_count_library_placement_preserves_pool_keep_choice_and_random_order() {
+        for kept in [1, 2] {
+            let tokens = crate::lexer::lex_line(&format!("Put all but {kept} of them on the bottom of your library in a random order."), 0).unwrap();
+            let EffectAst::Sequence { effects } = parse_put_into_hand(&tokens, None).unwrap() else { panic!("expected partition composition"); };
+            assert_eq!(effects.len(), 3);
+            let EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, tag, filter, zone, .. }) = &effects[1] else { panic!("keep choice"); };
+            assert_eq!(*count, crate::effect::ChoiceCount::exactly(kept));
+            assert_eq!(*zone, Zone::Library);
+            assert_eq!(filter.zone, Some(Zone::Library));
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderOnBottomOfLibrary { tag: pool, keep_tagged: Some(keep), order, .. }), .. }) = &effects[2] else { panic!("remainder move"); };
+            assert_eq!(keep, tag);
+            assert_ne!(pool, keep);
+            assert_eq!(*order, crate::cards::builders::LibraryBottomOrderAst::Random);
+        }
+    }
+
+    #[test]
     fn life_loss_handler_wraps_delayed_draw_step_unless_payment() {
         let tokens = crate::lexer::lex_line(
             "1 life at the beginning of their next draw step unless they pay {1} before that draw step.",

@@ -302,7 +302,33 @@ fn split_conditional_grant_list(line: &str) -> Option<Vec<String>> {
     )
 }
 
+/// "This creature escapes with "<ability>"" (Skyway Robber): an escaped
+/// permanent has the quoted ability for as long as it remains on the
+/// battlefield (CR 702.138c). Read it as a self grant gated on the permanent
+/// having escaped; the renderer restores the "escapes with" surface.
+fn rewrite_escapes_with_quoted_ability_line(line: &str) -> Option<String> {
+    let (subject, rest) = line.split_once(" escapes with ")?;
+    let rest = rest.trim();
+    if !rest.starts_with(['"', '\u{201C}']) || !rest.ends_with(['"', '\u{201D}']) {
+        return None;
+    }
+    let subject = subject.trim();
+    if subject.is_empty() || subject.contains(['.', ',', '"', '\u{201C}', '\u{201D}']) {
+        return None;
+    }
+    let lowered = subject.to_ascii_lowercase();
+    let subject = if lowered.starts_with("this ") && lowered.split_whitespace().count() == 2 {
+        lowered
+    } else {
+        "it".to_string()
+    };
+    Some(format!("As long as {subject} escaped, it has {rest}"))
+}
+
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
+    if let Some(rewritten) = rewrite_escapes_with_quoted_ability_line(line) {
+        return vec![rewritten];
+    }
     // Separate the static tapped-entry ability from a following entry program.
     // Its pronoun names the same source, so retain the first sentence's subject.
     if let Some(period) = line_tokens.iter().position(|token| token.kind == TokenKind::Period) {
@@ -319,6 +345,27 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
             return vec![
                 format!("{}.", render_token_slice(first)),
                 format!("As {} {}", render_token_slice(&first[..enters]), render_token_slice(&second[2..])),
+            ];
+        }
+    }
+    // "This creature escapes with two +1/+1 counters on it. When it enters
+    // this way, ..." (Pharika's Spawn): the escape entry replacement and an
+    // ETB trigger whose intervening condition is that it escaped.
+    if let Some(period) = line_tokens.iter().position(|token| token.kind == TokenKind::Period) {
+        let first = &line_tokens[..period];
+        let second = &line_tokens[period + 1..];
+        let second_words = crate::lexer::token_word_refs(second);
+        if let Some(escapes) = first.iter().position(|token| token.is_word("escapes"))
+            && escapes > 0
+            && first.get(escapes + 1).is_some_and(|token| token.is_word("with"))
+            && second_words.starts_with(&["when", "it", "enters", "this", "way"])
+            && let Some(comma) = second.iter().position(|token| token.kind == TokenKind::Comma)
+        {
+            let subject = render_token_slice(&first[..escapes]);
+            let rest = render_token_slice(&second[comma + 1..]);
+            return vec![
+                format!("{}.", render_token_slice(first)),
+                format!("When {} enters, if it escaped, {}", subject.trim(), rest.trim()),
             ];
         }
     }
@@ -452,6 +499,17 @@ fn replace_names_with_map(
 
     fn is_keyword_ability_name(name: &SelfReferenceName) -> bool {
         preprocess_grammar::parse_keyword_ability_name_tokens(name.tokens()).is_some()
+    }
+
+    /// A keyword-marker line ("Space sculptor" on Space Beleren, before its
+    /// reminder text) names the keyword, not the card, even when the card's
+    /// short name opens it.
+    fn is_keyword_marker_line(tokens: &[OwnedLexToken]) -> bool {
+        let end = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::LParen)
+            .unwrap_or(tokens.len());
+        crate::grammar::sentence_markers::parse_keyword_marker_tokens(&tokens[..end]).is_some()
     }
 
     /// "The flashback cost is equal to its mana cost." on a card named
@@ -648,6 +706,41 @@ fn replace_names_with_map(
             return false;
         }
         token_word_appears_before_sentence_end(bytes, idx + name_len)
+    }
+
+    /// "create Stangg Twin, a legendary 3/4 ... token. ... attached to
+    /// Stangg Twin": a later mention of a created token's name that begins
+    /// with the source's short name names that token, not the source.
+    fn names_token_created_earlier(bytes: &[u8], idx: usize, name_len: usize) -> bool {
+        const CREATE: &[u8] = b"create ";
+        let mut search = 0;
+        while search < idx {
+            let Some(offset) = bytes[search..idx]
+                .windows(CREATE.len())
+                .position(|window| window == CREATE)
+            else {
+                return false;
+            };
+            let start = search + offset + CREATE.len();
+            search = start;
+            let Some(comma) = bytes[start..].iter().position(|byte| *byte == b',') else {
+                continue;
+            };
+            let created = &bytes[start..start + comma];
+            if created.len() <= name_len
+                || created.iter().any(|byte| matches!(*byte, b'.' | b';'))
+                || !created.starts_with(&bytes[idx..idx + name_len])
+                || !token_word_appears_before_sentence_end(bytes, start + comma)
+            {
+                continue;
+            }
+            if bytes_start_with(&bytes[idx..], created)
+                && has_word_boundaries_at(bytes, idx, created.len())
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn should_preserve_single_word_keyword_verb_usage(
@@ -1185,10 +1278,12 @@ fn replace_names_with_map(
             && !(is_keyword_ability_name(short_name) && preceded_by_ability_grant_word(bytes, idx))
             && !(is_keyword_ability_name(short_name)
                 && followed_by_cost_word(bytes, idx + short_bytes.len()))
+            && !(idx == 0 && is_keyword_marker_line(line_tokens))
             && !preceded_by_named_keyword(bytes, idx)
             && !preceded_by_meld_into(bytes, idx)
             && !is_rolled_die_noun(bytes, idx)
             && !appears_to_be_created_token_name(bytes, idx, short_bytes.len())
+            && !names_token_created_earlier(bytes, idx, short_bytes.len())
             && !within_vote_choice_clause(bytes, line_tokens, idx)
             && !is_indefinite_become_descriptor(bytes, idx)
             && !is_empower_jace_subtype(bytes, idx, short_bytes.len())
@@ -1470,6 +1565,117 @@ fn rewrite_borrow_static_sentence(sentence: &[OwnedLexToken]) -> String {
 /// "If you cast a spell this way, mana of any type can be spent to cast it."
 /// (Bloodsoaked Insight) restates the rider the permission grammar already
 /// reads as "Mana of any type can be spent to cast spells this way."
+/// "Your commander costs {1} less to cast for each time it's been cast from
+/// the command zone this game." (Myth Unbound): the commander-spell cost
+/// modifier with the commander-tax history count spelled out.
+fn rewrite_commander_cost_subject_line(text: &str) -> String {
+    let Some(rest) = text.strip_prefix("your commander costs ") else {
+        return text.to_string();
+    };
+    let rest = rest
+        .replace(
+            "for each time it's been cast from the command zone this game",
+            "for each time you've cast your commander from the command zone this game",
+        )
+        .replace(
+            "for each time its been cast from the command zone this game",
+            "for each time you've cast your commander from the command zone this game",
+        );
+    format!("commander spells you cast cost {rest}")
+}
+
+/// "As long as ..., you may cast the exiled card, and mana of any type can be
+/// spent to cast that spell." (Null Summoner): a standing permission over the
+/// card this permanent's own ability exiled (CR 607.2a), in the linked-exile
+/// wording the source-exiled permission grammar reads.
+fn rewrite_static_cast_the_exiled_card_line(text: &str) -> String {
+    const PERMISSION: &str =
+        "you may cast the exiled card, and mana of any type can be spent to cast that spell";
+    if !text.contains("as long as ") || !text.trim_end_matches('.').ends_with(PERMISSION) {
+        return text.to_string();
+    }
+    text.replacen(
+        PERMISSION,
+        "you may play cards exiled with this creature, and mana of any type can be spent to cast those spells",
+        1,
+    )
+}
+
+/// "If you control an Employee, a Performer, or a Robot, ... If you control
+/// all three, ..." (Done for the Day): the later "all three" / "both" names
+/// every alternative of the earlier control list at once, so it is spelled
+/// out as one control requirement per listed permanent.
+fn rewrite_control_all_listed_line(text: &str) -> String {
+    const ANAPHORS: &[(&str, usize)] = &[
+        ("if you control all three", 3),
+        ("if you control both", 2),
+    ];
+    let lower = text.to_ascii_lowercase();
+    let Some((anaphor_at, anaphor, count)) = ANAPHORS
+        .iter()
+        .filter_map(|(anaphor, count)| lower.find(anaphor).map(|at| (at, *anaphor, *count)))
+        .min_by_key(|(at, _, _)| *at)
+    else {
+        return text.to_string();
+    };
+    // The anaphor must close its own clause ("all three, ...").
+    if !lower[anaphor_at + anaphor.len()..].starts_with(',') {
+        return text.to_string();
+    }
+    const HEAD: &str = "if you control ";
+    let Some(list_start) = lower[..anaphor_at].rfind(HEAD).map(|at| at + HEAD.len()) else {
+        return text.to_string();
+    };
+    // Items: "an employee", "a performer", "or a robot" — the list ends at
+    // its "or" item; a two-item list is "a x or a y".
+    let mut items = Vec::new();
+    let mut rest = &text[list_start..anaphor_at];
+    let mut first = true;
+    loop {
+        let Some(comma) = rest.find(", ") else {
+            return text.to_string();
+        };
+        let item = &rest[..comma];
+        rest = &rest[comma + 2..];
+        let item_lower = item.to_ascii_lowercase();
+        if first && count == 2 {
+            let Some(or_at) = item_lower.find(" or ") else {
+                return text.to_string();
+            };
+            items.push(item[..or_at].to_string());
+            items.push(item[or_at + 4..].to_string());
+            break;
+        }
+        first = false;
+        if item_lower.starts_with("or ") {
+            items.push(item[3..].to_string());
+            break;
+        }
+        items.push(item.to_string());
+        if items.len() > count {
+            return text.to_string();
+        }
+    }
+    if items.len() != count
+        || !items.iter().all(|item| {
+            let item = item.to_ascii_lowercase();
+            item.starts_with("a ") || item.starts_with("an ")
+        })
+    {
+        return text.to_string();
+    }
+    let requirement = items
+        .iter()
+        .map(|item| format!("you control {item}"))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    format!(
+        "{}if {requirement}{}",
+        &text[..anaphor_at],
+        &text[anaphor_at + anaphor.len()..]
+    )
+}
+
 fn rewrite_any_type_cast_rider_line(text: &str) -> String {
     text.replace(
         "if you cast a spell this way, mana of any type can be spent to cast it",
@@ -1532,6 +1738,44 @@ pub(super) fn rewrite_personal_pronouns_tokens(tokens: &[OwnedLexToken]) -> Vec<
             )
         })
         .collect()
+}
+
+/// A plural card name ("The Notary Hobbits enter") takes plural agreement and
+/// plural self pronouns ("if they're not a token, create ... copies of
+/// them"). Once the self reference has become `this` and the plural verb
+/// proves the name is plural, rewrite that line's plural pronouns onto the
+/// singular self reference the grammar reads.
+fn rewrite_plural_self_reference_line(text: &str) -> String {
+    const PLURAL_SELF_VERBS: &[&str] = &["this enter", "this attack", "this die", "this block"];
+    let Some(verb) = PLURAL_SELF_VERBS.iter().find(|verb| {
+        text.match_indices(*verb).any(|(index, _)| {
+            let end = index + verb.len();
+            !text[end..].starts_with(|ch: char| ch.is_ascii_alphabetic())
+        })
+    }) else {
+        return text.to_string();
+    };
+    let singular = format!("{verb}s");
+    let mut rewritten = Vec::new();
+    for word in text.replacen(verb, &singular, 1).split(' ') {
+        let trailing_len = word.len()
+            - word
+                .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
+                .len();
+        let (core, trailing) = word.split_at(word.len() - trailing_len);
+        let replacement = match core {
+            "they're" => Some("it's"),
+            "they" => Some("it"),
+            "them" => Some("it"),
+            "their" => Some("its"),
+            _ => None,
+        };
+        match replacement {
+            Some(replacement) => rewritten.push(format!("{replacement}{trailing}")),
+            None => rewritten.push(word.to_string()),
+        }
+    }
+    rewritten.join(" ")
 }
 
 fn rewrite_personal_pronouns_line(text: &str) -> String {
@@ -1609,6 +1853,43 @@ fn rewrite_entry_instead_then_put_line(text: &str) -> (String, bool) {
         return unchanged();
     }
     (format!("as this {subject} enters, {program}."), true)
+}
+
+/// "At the beginning of your upkeep, this deals 2 damage to each opponent.
+/// This ability triggers only if this is on the battlefield or if this is in
+/// your graveyard and you control a Giant." (Quakebringer): the trailing
+/// trigger condition is the ability's trigger-time gate, read as the
+/// intervening "if" of the same trigger so the source-location alternatives
+/// also decide the zones the ability functions from (CR 113.6). The boolean
+/// reports the rewrite: the line's facts then mark that condition as checked
+/// only when the trigger event happens, never again on resolution.
+fn rewrite_trailing_trigger_only_if_line(text: &str) -> (String, bool) {
+    const MARKER: &str = ". this ability triggers only if ";
+    let unchanged = || (text.to_string(), false);
+    let Some(marker_idx) = text.find(MARKER) else {
+        return unchanged();
+    };
+    let tail = &text[marker_idx + MARKER.len()..];
+    let Some(condition) = tail.strip_suffix('.').or(Some(tail)) else {
+        return unchanged();
+    };
+    let condition = condition.trim();
+    if condition.is_empty() || condition.contains(". ") || condition.contains('"') {
+        return unchanged();
+    }
+    let head = &text[..marker_idx];
+    if !(head.starts_with("at ") || head.starts_with("when ") || head.starts_with("whenever ")) {
+        return unchanged();
+    }
+    let Some(comma_idx) = head.find(", ") else {
+        return unchanged();
+    };
+    let intro = &head[..comma_idx];
+    let body = head[comma_idx + 2..].trim();
+    if body.is_empty() || body.starts_with("if ") || intro.contains(". ") {
+        return unchanged();
+    }
+    (format!("{intro}, if {condition}, {body}."), true)
 }
 
 fn rewrite_trailing_instead_if_spell_label_line(text: &str) -> String {
@@ -1812,6 +2093,129 @@ fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec
     rewritten
 }
 
+/// "If X is 4 or more, do all of the above." (Multiple Choice): the earlier
+/// "If X is N, ..." paragraphs repeat, in order, under this paragraph's own
+/// condition. Each copy keeps its paragraph's sentences together, exactly as
+/// the original paragraph parses.
+fn expand_do_all_of_the_above_line<'a>(
+    line: &str,
+    previous_lines: impl Iterator<Item = &'a str>,
+) -> Option<Vec<String>> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let condition = lower.strip_suffix(", do all of the above")?;
+    let threshold = condition.strip_prefix("if x is ")?.strip_suffix(" or more")?;
+    if threshold.is_empty() || threshold.contains(' ') {
+        return None;
+    }
+    let prefix = &trimmed[..condition.len()];
+    let bodies = previous_lines
+        .filter_map(|previous| {
+            let previous = previous.trim();
+            let lower = previous.to_ascii_lowercase();
+            let rest = lower.strip_prefix("if x is ")?;
+            let comma = rest.find(", ")?;
+            let value = &rest[..comma];
+            (!value.is_empty() && !value.contains(' '))
+                .then(|| previous["if x is ".len() + comma + 2..].to_string())
+        })
+        .collect::<Vec<_>>();
+    if bodies.is_empty() || bodies.len() > 7 {
+        return None;
+    }
+    Some(bodies.into_iter().map(|body| format!("{prefix}, {body}")).collect())
+}
+
+/// "Exile this card from your graveyard: ... It gains this card's other
+/// abilities." (Symbiote Spider-Man): the card's other printed abilities are
+/// known from its own text, so the grant is the quoted list of those lines.
+/// "choose a player or planeswalker that opponent is attacking. <Subject> is
+/// attacking that player or planeswalker." (Tahngarth, First Mate) is one
+/// instruction: the subject enters combat attacking one of the things that
+/// player is attacking. Fold the pair into the single clause
+/// "<Subject> is attacking a player or planeswalker attacked by that opponent."
+/// so a leading "If you do," keeps governing both halves.
+fn fold_chosen_attacked_target_line(line: &str) -> Option<String> {
+    const CHOOSE: &str = "choose a player or planeswalker that ";
+    const MIDDLE: &str = " is attacking. ";
+    const TAIL: &str = " is attacking that player or planeswalker.";
+    let lower = line.to_ascii_lowercase();
+    if lower.len() != line.len() {
+        return None;
+    }
+    let start = lower.find(CHOOSE)?;
+    let player_start = start + CHOOSE.len();
+    let player_len = lower[player_start..].find(MIDDLE)?;
+    let player = &line[player_start..player_start + player_len];
+    let subject_start = player_start + player_len + MIDDLE.len();
+    let subject_len = lower[subject_start..].find(TAIL)?;
+    let subject = &line[subject_start..subject_start + subject_len];
+    if player.is_empty()
+        || subject.is_empty()
+        || player.contains('.')
+        || subject.contains('.')
+        || player.split_whitespace().count() > 2
+    {
+        return None;
+    }
+    let rest = &line[subject_start + subject_len + TAIL.len()..];
+    Some(format!(
+        "{}{subject} is attacking a player or planeswalker attacked by that {player}.{rest}",
+        &line[..start]
+    ))
+}
+
+fn expand_gains_this_cards_other_abilities_line<'a>(
+    line: &str,
+    line_index: usize,
+    all_lines: impl Iterator<Item = &'a str>,
+) -> Option<String> {
+    const PHRASE: &str = "gains this card's other abilities";
+    let lower = line.to_ascii_lowercase();
+    let start = lower.find(PHRASE)?;
+    let mut others = Vec::new();
+    for (index, other) in all_lines.enumerate() {
+        if index == line_index {
+            continue;
+        }
+        let other = other.trim();
+        if other.is_empty() || matches!(parse_metadata_line(other), Ok(Some(_))) {
+            continue;
+        }
+        // Reminder text is not part of the ability; nested quotes cannot be
+        // re-quoted faithfully.
+        let mut stripped = String::new();
+        let mut depth = 0usize;
+        for ch in other.chars() {
+            match ch {
+                '(' => depth += 1,
+                ')' => depth = depth.saturating_sub(1),
+                _ if depth == 0 => stripped.push(ch),
+                _ => {}
+            }
+        }
+        let stripped = collapse_whitespace_runs(stripped.trim());
+        if stripped.is_empty() || stripped.contains('"') {
+            return None;
+        }
+        others.push(stripped);
+    }
+    if others.is_empty() || others.len() > 6 {
+        return None;
+    }
+    let quoted = others
+        .iter()
+        .map(|ability| format!("\"{}\"", ability.trim_end_matches('.').to_string() + "."))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    Some(format!(
+        "{}gains {}{}",
+        &line[..start],
+        quoted,
+        &line[start + PHRASE.len()..]
+    ))
+}
+
 fn is_ignorable_unparsed_line(line: &str) -> bool {
     stage_tokens(line).is_some_and(|tokens| {
         preprocess_grammar::parse_ignorable_parenthetical_line_tokens(&tokens)
@@ -1957,9 +2361,18 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized = expand_borrow_ability_line(entry_rewritten.as_str());
         let expanded_normalized = expand_recruit_keyword_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_any_type_cast_rider_line(expanded_normalized.as_str());
+        let expanded_normalized = rewrite_commander_cost_subject_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_static_cast_the_exiled_card_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
         let expanded_normalized =
+            rewrite_plural_self_reference_line(expanded_normalized.as_str());
+        let expanded_normalized =
             rewrite_trailing_instead_if_spell_label_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_control_all_listed_line(expanded_normalized.as_str());
+        let (expanded_normalized, trigger_only_intervening_if) =
+            rewrite_trailing_trigger_only_if_line(expanded_normalized.as_str());
         let rewritten_normalized = rewrite_vote_count_followups_line(expanded_normalized.as_str());
         // Keep explicit exile/return sentences intact. The effect-sequence bundle
         // parser folds them into one source-leaves runtime effect while retaining
@@ -2048,6 +2461,9 @@ pub fn preprocess_document_with_provenance(
             line_semantic_facts::parse_line_semantic_facts_tokens(&source_tokens)
                 .triggered_ability
                 .leading_unless_surface;
+        semantic_facts
+            .triggered_ability
+            .intervening_if_checked_only_on_trigger = trigger_only_intervening_if;
         Ok(Some(PreprocessedLine {
             info: LineInfo {
                 line_index,
@@ -2144,10 +2560,19 @@ pub fn preprocess_document_with_provenance(
         }
 
         let line_tokens = stage_tokens(line).unwrap_or_default();
-        for (split_index, split_line) in split_parse_line_variants(line, &line_tokens)
-            .into_iter()
-            .enumerate()
-        {
+        let variants = expand_do_all_of_the_above_line(line, text.lines().take(line_index))
+            .or_else(|| {
+                expand_gains_this_cards_other_abilities_line(line, line_index, text.lines())
+                    .map(|expanded| vec![expanded])
+            })
+            .or_else(|| {
+                fold_chosen_attacked_target_line(line).map(|folded| {
+                    let folded_tokens = stage_tokens(&folded).unwrap_or_default();
+                    split_parse_line_variants(&folded, &folded_tokens)
+                })
+            })
+            .unwrap_or_else(|| split_parse_line_variants(line, &line_tokens));
+        for (split_index, split_line) in variants.into_iter().enumerate() {
             let preserve_source_surfaces = source_surface_name_is_lexable
                 && card.card_types_ref().iter().any(|card_type| {
                     matches!(

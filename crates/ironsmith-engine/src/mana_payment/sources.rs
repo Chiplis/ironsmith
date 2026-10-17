@@ -119,7 +119,11 @@ impl<'a> ManaSourceAnalysis<'a> {
         // The source controller and the ability activator can differ. This
         // projection's event context binds the former; retain full execution
         // for public activator permissions until it carries an explicit actor.
-        if activated.allows_any_player_to_activate() {
+        // A player permission to tap lands they don't control (Piracy) is
+        // such an activator permission too.
+        if activated.allows_any_player_to_activate()
+            || self.game.any_uncontrolled_land_mana_permission()
+        {
             return None;
         }
         let costs = activated.mana_cost.as_all()?;
@@ -266,7 +270,9 @@ impl<'a> ManaSourceAnalysis<'a> {
         let AbilityKind::Activated(activated) = &ability.kind else {
             return None;
         };
-        if activated.allows_any_player_to_activate() {
+        if activated.allows_any_player_to_activate()
+            || self.game.any_uncontrolled_land_mana_permission()
+        {
             return None;
         }
         // Tapping is the only state change allowed before the fixed production.

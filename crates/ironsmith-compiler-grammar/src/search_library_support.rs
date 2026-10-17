@@ -42,9 +42,52 @@ fn card_type_set_includes(card_types: &[CardType], expected: CardType) -> bool {
     false
 }
 
+/// "a basic, Sphere, or Locus land card" (Monument to Perfection): a list of
+/// land qualities (the basic supertype or land subtypes) sharing one
+/// "land card" noun; each arm is a land with that quality.
+pub(crate) fn parse_land_quality_union_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = token_word_refs(tokens);
+    let words = match words.as_slice() {
+        ["a" | "an", rest @ ..] => rest,
+        rest => rest,
+    };
+    let qualities = words
+        .strip_suffix(&["land", "card"][..])
+        .or_else(|| words.strip_suffix(&["land", "cards"][..]))
+        .or_else(|| words.strip_suffix(&["lands"][..]))?;
+    let mut arms = Vec::new();
+    let mut saw_connective = false;
+    for word in qualities {
+        if matches!(*word, "or" | "and/or" | "and") {
+            saw_connective = true;
+            continue;
+        }
+        let mut arm = ObjectFilter::default().with_type(crate::types::CardType::Land);
+        if *word == "basic" {
+            arm = arm.with_supertype(crate::types::Supertype::Basic);
+        } else {
+            let subtype = crate::util::parse_subtype_word(word)?;
+            if !subtype.is_land_subtype() {
+                return None;
+            }
+            arm.subtypes.push(subtype);
+        }
+        arms.push(arm);
+    }
+    if arms.len() < 2 || !saw_connective {
+        return None;
+    }
+    let mut filter = ObjectFilter::default();
+    filter.any_of = arms;
+    Some(filter)
+}
+
 pub fn parse_search_library_disjunction_filter(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
+    if let Some(filter) = parse_land_quality_union_filter(filter_tokens) {
+        return Some(filter);
+    }
     let uses_and_or = filter_tokens.iter().any(|token| token.is_word("and/or"));
     let segments = if uses_and_or {
         let mut segments = Vec::new();

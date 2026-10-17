@@ -372,6 +372,11 @@ fn static_ability_has_minimum_total_spell_mana(
 }
 
 impl<'a> DerivedGameView<'a> {
+    /// The game this view derives from.
+    pub(crate) fn game_state(&self) -> &'a GameState {
+        self.game
+    }
+
     pub(crate) fn rule_maximum_blockers(&self, attacker: ObjectId) -> Option<usize> {
         self.game.effect_store.cant_effects.maximum_blockers.get(&attacker).copied()
     }
@@ -1118,11 +1123,22 @@ impl<'a> DerivedGameView<'a> {
                         )
                     })
             };
+            // "you may tap lands you don't control for mana" (Piracy).
+            let via_uncontrolled_land_permission = |ability_index: &usize| {
+                !player_controls_source
+                    && abilities.get(*ability_index).is_some_and(|ability| {
+                        matches!(
+                            &ability.kind,
+                            crate::ability::AbilityKind::Activated(activated)
+                                if self.game.may_tap_uncontrolled_land_for_mana(player, perm_id, activated)
+                        )
+                    })
+            };
             let mana_ability_indices = ability_summary
                 .mana_ability_indices()
                 .iter()
                 .copied()
-                .filter(player_may_activate)
+                .filter(|index| player_may_activate(index) || via_uncontrolled_land_permission(index))
                 .collect::<Vec<_>>();
             let activated_ability_indices = ability_summary
                 .activated_ability_indices()
@@ -1154,6 +1170,11 @@ impl<'a> DerivedGameView<'a> {
                 let Some(ability) = abilities.get(ability_index) else {
                     continue;
                 };
+                // Permission activations carry the permission's spending
+                // restrictions; they always take the full activation check.
+                if !player_may_activate(&ability_index) {
+                    continue;
+                }
                 let Some(output) = crate::decision::simple_battlefield_mana_ability_output(
                     self.game,
                     player,

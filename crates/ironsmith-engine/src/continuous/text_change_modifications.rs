@@ -61,6 +61,12 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
         Until::PlayersNextUntapStep { player } => Until::PlayersNextUntapStep {
             player: rewrite_player_filter_words(player, change)?,
         },
+        Until::PlayersNextTurn { player } => Until::PlayersNextTurn {
+            player: rewrite_player_filter_words(player, change)?,
+        },
+        Until::PlayersNextTurnEnd { player } => Until::PlayersNextTurnEnd {
+            player: rewrite_player_filter_words(player, change)?,
+        },
         Until::ForAsLongAs(predicate) => {
             fn check(predicate: &ironsmith_core::ContinuousDurationPredicate) {
                 use ironsmith_core::ContinuousDurationPredicate as P;
@@ -68,7 +74,7 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
                     P::All(children) => children.iter().for_each(check),
                     P::ObjectOnBattlefield(_) | P::ObjectInZone { .. } | P::ObjectTapped(_)
                     | P::ObjectControlledBy { .. } | P::ObjectHasCounter { .. }
-                    | P::ObjectAttachedTo { .. } | P::ObjectIsEnchanted(_)
+                    | P::ObjectAttachedTo { .. } | P::ObjectIsEnchanted(_) | P::ObjectFaceUp(_)
                     | P::PlayerIsMonarch(_) | P::ObjectPowerAtMostObject { .. } => {}
                 }
             }
@@ -81,7 +87,8 @@ pub(crate) fn rewrite_until_words(until: &Until, change: TextChange) -> Result<U
         | Until::ControllersNextUntapStep | Until::NextEndStep | Until::EndOfCombat
         | Until::ThisLeavesTheBattlefield | Until::SourceUntaps | Until::YouStopControllingThis
         | Until::ObjectIsCast { .. } | Until::YourNextUntapStep
-        | Until::UntilControllersNextUntapStep { .. } => until.clone(),
+        | Until::UntilControllersNextUntapStep { .. }
+        | Until::AnyPlayerCastsCreatureSpell { .. } => until.clone(),
     })
 }
 

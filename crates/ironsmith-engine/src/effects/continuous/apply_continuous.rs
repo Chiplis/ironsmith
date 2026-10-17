@@ -845,6 +845,9 @@ pub(crate) fn materialize_duration_predicate(
         Predicate::ObjectIsEnchanted(object) => Predicate::ObjectIsEnchanted(
             materialize_duration_object(object, target, source_type, ctx)?,
         ),
+        Predicate::ObjectFaceUp(object) => Predicate::ObjectFaceUp(
+            materialize_duration_object(object, target, source_type, ctx)?,
+        ),
         Predicate::PlayerIsMonarch(player) => Predicate::PlayerIsMonarch(
             materialize_duration_player(player, target, source_type, game, ctx)?,
         ),
@@ -903,6 +906,94 @@ fn entry_count_needs_resolution_context(value: &Value) -> bool {
         }
     }
     needs_context(value) && !reads_entering_object(value)
+}
+
+/// A granted upkeep trigger naming a player of the granting resolution ("...
+/// and gains 'At the beginning of that player's upkeep, ...'", Takklemaggot)
+/// can't read this resolution's tagged objects once it is on the permanent,
+/// so the player is fixed as the grant resolves. Attachment-relative
+/// references ("enchanted"/"equipped") stay dynamic: the trigger matcher
+/// follows the source's current attachment.
+fn bind_granted_upkeep_trigger_outer_player(
+    modification: Modification,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Modification {
+    let Modification::AddAbilityGeneric(mut ability) = modification else {
+        return modification;
+    };
+    if let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind
+        && let Some(upkeep) = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+        && let PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+        | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) = &upkeep.player
+        && !matches!(tag.as_str(), "enchanted" | "equipped")
+        && ctx.get_tagged(tag.as_str()).is_some()
+        && let Ok(player) = resolve_player_filter(game, &upkeep.player, ctx)
+    {
+        let intro = triggered.trigger.intro_surface();
+        let mut bound =
+            crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::Specific(player));
+        if let Some(intro) = intro {
+            bound = bound.with_intro_surface(intro);
+        }
+        triggered.trigger = bound;
+    }
+    Modification::AddAbilityGeneric(ability)
+}
+
+/// "If it doesn't have \"...,\" it gains that ability" (Musician): drop every
+/// locked recipient whose current abilities already include each ability this
+/// instruction grants, in the form the layer system would add it. When no
+/// recipient remains the instruction resolves without registering anything,
+/// so repeated resolutions never stack duplicate copies.
+fn skip_objects_already_having_grants(
+    mods: &[Modification],
+    source_type: &mut Option<EffectSourceType>,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Option<AcquiredContinuousAction> {
+    let granted = mods
+        .iter()
+        .filter_map(|modification| {
+            let bound = bind_granted_upkeep_trigger_outer_player(
+                modification.clone().bind_granting_player_activation(ctx.controller),
+                game,
+                ctx,
+            );
+            match bound {
+                Modification::AddAbilityGeneric(ability) => Some(
+                    crate::continuous::bind_effect_controller_in_ability(&ability, ctx.controller),
+                ),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
+    if granted.is_empty() {
+        return None;
+    }
+    let Some(EffectSourceType::Resolution { locked_targets }) = source_type else {
+        return None;
+    };
+    // Runtime effect equality is executor identity; an equal ability granted
+    // by an independently compiled source (another copy of the card, or a
+    // restored checkpoint) is the same ability by its structure (CR 113.2).
+    let granted_surfaces = granted
+        .iter()
+        .map(|ability| format!("{ability:?}"))
+        .collect::<Vec<_>>();
+    locked_targets.retain(|id| match game.current_abilities(*id) {
+        Some(current) => granted.iter().zip(&granted_surfaces).any(|(ability, surface)| {
+            !current.iter().any(|existing| {
+                existing == ability || format!("{existing:?}") == *surface
+            })
+        }),
+        None => true,
+    });
+    locked_targets
+        .is_empty()
+        .then(|| AcquiredContinuousAction::Terminal(EffectOutcome::resolved()))
 }
 
 /// A granted "enters with counters" ability outlives this resolution: freeze
@@ -1185,6 +1276,9 @@ fn acquire_continuous_action(
             }
             Until::ForAsLongAs(predicate)
         }
+        Until::AnyPlayerCastsCreatureSpell { .. } => Until::AnyPlayerCastsCreatureSpell {
+            creature_spells_observed: crate::continuous::creature_spells_cast_this_game(game),
+        },
         Until::EndOfTurnOrAnyPlayerRolls { result, .. } => {
             let matching_rolls_observed = game
                 .turn_store
@@ -1306,6 +1400,11 @@ fn acquire_continuous_action(
         for modification in &mut mods { if let Modification::CopyOf { retain_original_name, .. } = modification { *retain_original_name = true; } }
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
+    if definition.grant_only_if_absent
+        && let Some(terminal) = skip_objects_already_having_grants(&mods, &mut source_type, game, ctx)
+    {
+        return Ok(terminal);
+    }
     let effect_group =
         (mods.len() > 1).then(|| game.effect_store.continuous_effects.next_effect_group_id());
 
@@ -1356,7 +1455,10 @@ impl ContinuousActionInputs {
             game,
             ctx,
         )
-        .bind_chosen_protection_qualities(game, ctx.source, false);
+        .bind_chosen_protection_qualities(game, ctx.source, false)
+        .bind_granting_player_activation(ctx.controller);
+        let resolved_modification =
+            bind_granted_upkeep_trigger_outer_player(resolved_modification, game, ctx);
         if let Modification::ChangeController(new_controller) = &resolved_modification {
             // CR 800.4b: an effect cannot give control of an object to a
             // player who has left the game.

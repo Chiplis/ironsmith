@@ -101,6 +101,7 @@ fn hash_policy<H: Hasher>(policy: &crate::player::ManaSpendPolicy, state: &mut H
     policy.mode.hash(state);
     policy.any_color_mana_symbols.hash(state);
     policy.other_mana_only_as_colorless.hash(state);
+    policy.symbol_as_symbol.hash(state);
 }
 
 fn hash_source<H: Hasher>(source: &AvailableManaSource, state: &mut H) {

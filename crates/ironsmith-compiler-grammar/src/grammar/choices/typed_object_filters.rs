@@ -73,8 +73,63 @@ fn parse_typed_choice_filter_words(
         filter.chosen_color = true;
         return Ok(filter);
     }
+    if let Some(filter) = parse_choice_source_filter_words(words)? {
+        return Ok(filter);
+    }
     crate::object_filters::parse_object_filter_words(words, false)
         .map_err(|_| ChoiceObjectClauseSyntaxError::UnsupportedFilter)
+}
+
+/// "choose a source you control" / "choose a red source": a source is any
+/// object that can deal damage (CR 120.1, 609.7a) — a permanent on the
+/// battlefield or a spell on the stack — so the choice spans both zones as a
+/// zone union. `None` when the chosen noun is not "source".
+fn parse_choice_source_filter_words(
+    words: &[&str],
+) -> Result<Option<ObjectFilter>, ChoiceObjectClauseSyntaxError> {
+    let Some(noun) = words
+        .iter()
+        .position(|word| matches!(*word, "source" | "sources"))
+    else {
+        return Ok(None);
+    };
+    let (descriptor, tail) = (&words[..noun], &words[noun + 1..]);
+    let controller = match tail {
+        [] => None,
+        ["you", "control"] => Some(crate::target::PlayerFilter::You),
+        ["you", "don't" | "dont", "control"] => Some(crate::target::PlayerFilter::NotYou),
+        ["an", "opponent", "controls"] | ["your", "opponents", "control"] => {
+            Some(crate::target::PlayerFilter::Opponent)
+        }
+        _ => return Ok(None),
+    };
+    let mut filter = if descriptor.is_empty() {
+        ObjectFilter::default()
+    } else {
+        let Ok(mut filter) = crate::object_filters::parse_object_filter_words(descriptor, false)
+        else {
+            return Ok(None);
+        };
+        if !filter.any_of.is_empty() {
+            return Ok(None);
+        }
+        filter.zone = None;
+        filter
+    };
+    if controller.is_some() {
+        filter.controller = controller;
+    }
+    filter.any_of = vec![
+        ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            ..ObjectFilter::default()
+        },
+        ObjectFilter {
+            zone: Some(Zone::Stack),
+            ..ObjectFilter::default()
+        },
+    ];
+    Ok(Some(filter))
 }
 
 pub fn parse_typed_target_player_choice_tokens(

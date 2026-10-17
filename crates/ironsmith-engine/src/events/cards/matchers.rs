@@ -199,6 +199,16 @@ impl WouldDiscardMatcher {
         .with_card_filter(ObjectFilter::source())
     }
 
+    /// Matches when a spell or ability an opponent controls would cause you
+    /// to discard any card (Nephalia Academy).
+    pub fn you_from_opponent_effect() -> Self {
+        Self::new(
+            PlayerFilter::You,
+            CauseFilter::effect_like()
+                .with_controller(crate::events::cause::ControllerFilter::Opponent),
+        )
+    }
+
     /// Matches when any player would discard a card.
     pub fn any_player() -> Self {
         Self::new(PlayerFilter::Any, CauseFilter::any())

@@ -693,7 +693,9 @@ impl GameState {
             if !permission.allows(self, payer, source) {
                 continue;
             }
-            if let Some(symbol) = permission.permission.any_color_mana_symbol {
+            if let Some((symbol, as_symbol)) = permission.permission.mana_symbol_as {
+                policy.add_symbol_as_symbol(symbol, as_symbol);
+            } else if let Some(symbol) = permission.permission.any_color_mana_symbol {
                 policy.add_symbol_as_any_color(symbol);
             } else {
                 policy.allow_mode(permission.permission.mode);
@@ -1320,6 +1322,48 @@ impl GameState {
         })
         .unwrap_or(false)
             && self.player(player).is_some()
+    }
+
+    /// CR 614.10 (Time Vault): a tapped permanent `player` controls whose
+    /// static ability lets them skip a turn they would begin, excluding the
+    /// sources already declined at this turn boundary.
+    pub fn turn_begin_skip_offer(&self, player: PlayerId) -> Option<ObjectId> {
+        let declined = &self.turn_store.turn_begin_skip_declined;
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            (controller == player
+                && ability.id()
+                    == crate::static_abilities::StaticAbilityId::MaySkipTurnWhileSourceTappedThenUntap
+                && self.is_tapped(source)
+                && !declined.contains(&source))
+            .then_some(source)
+        })
+    }
+
+    /// CR 614.10 (Fasting): a permanent `player` controls whose static
+    /// ability lets them skip the draw step they would begin, with the
+    /// program to run if they do. Sources already declined at this draw step
+    /// are excluded.
+    pub fn draw_step_skip_offer(
+        &self,
+        player: PlayerId,
+    ) -> Option<(ObjectId, Vec<crate::effect::Effect>)> {
+        let declined = &self.turn_store.draw_step_skip_declined;
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            if controller != player
+                || ability.id()
+                    != crate::static_abilities::StaticAbilityId::MaySkipDrawStepWithFollowup
+                || declined.contains(&source)
+            {
+                return None;
+            }
+            match &ability.compiled_model()?.payload {
+                ironsmith_core::StaticAbilityPayload::MaySkipDrawStepWithFollowup {
+                    if_you_do,
+                    ..
+                } => Some((source, if_you_do.clone())),
+                _ => None,
+            }
+        })
     }
 
     fn may_have_player_skips_upkeep_static_ability(&self) -> bool {
@@ -3465,6 +3509,7 @@ impl GameState {
                     enters_with_counters,
                     granted_abilities,
                     granted_keywords,
+                    enters_with_counter_values,
                 } if self.cast_spell_filter_matches_payment_source(
                     unit,
                     filter,
@@ -3476,15 +3521,33 @@ impl GameState {
                         enters_with_counters.clone(),
                         granted_abilities.clone(),
                         granted_keywords.clone(),
+                        enters_with_counter_values.clone(),
                     ))
                 }
                 _ => None,
             })
             .collect::<Vec<_>>();
 
-        for (grant_uncounterable, enters_with_counters, granted_abilities, granted_keywords) in
-            bonuses
+        for (
+            grant_uncounterable,
+            enters_with_counters,
+            granted_abilities,
+            granted_keywords,
+            enters_with_counter_values,
+        ) in bonuses
         {
+            for (counter_type, count) in enters_with_counter_values {
+                let ability =
+                    crate::static_abilities::StaticAbility::enters_with_counters_value(
+                        counter_type,
+                        count,
+                    );
+                self.install_authored_object_ability(
+                    spell_id,
+                    crate::ability::Ability::static_ability(ability),
+                    AuthoredAbilityDuplicatePolicy::PreserveAll,
+                );
+            }
             if grant_uncounterable {
                 let ability = crate::static_abilities::StaticAbility::uncounterable();
                 self.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
@@ -4664,27 +4727,39 @@ impl GameState {
     /// Devotion counts colored mana symbols in mana costs. Hybrid symbols count
     /// if they include the queried color.
     pub fn devotion_to_color(&self, controller: PlayerId, color: crate::color::Color) -> usize {
+        self.devotion_to_colors(controller, color.into())
+    }
+
+    pub fn devotion_to_colors(&self, controller: PlayerId, colors: crate::color::ColorSet) -> usize {
+        if colors.is_empty() { return 0; }
         self.permanents_controlled_by(controller)
             .into_iter()
-            .filter_map(|id| self.object(id))
-            .filter_map(|obj| obj.mana_cost.as_ref())
-            .map(|mana_cost| {
-                mana_cost
+            .filter_map(|id| self.current_characteristics(id))
+            .map(|chars| {
+                let symbols = chars.mana_cost.as_ref().map(|mana_cost| mana_cost
                     .pips()
                     .iter()
                     .map(|pip| {
                         usize::from(pip.iter().copied().any(|symbol| {
-                            matches!(
-                                (symbol, color),
-                                (crate::mana::ManaSymbol::White, crate::color::Color::White)
-                                    | (crate::mana::ManaSymbol::Blue, crate::color::Color::Blue)
-                                    | (crate::mana::ManaSymbol::Black, crate::color::Color::Black)
-                                    | (crate::mana::ManaSymbol::Red, crate::color::Color::Red)
-                                    | (crate::mana::ManaSymbol::Green, crate::color::Color::Green)
-                            )
+                            let color = match symbol {
+                                crate::mana::ManaSymbol::White => crate::color::Color::White,
+                                crate::mana::ManaSymbol::Blue => crate::color::Color::Blue,
+                                crate::mana::ManaSymbol::Black => crate::color::Color::Black,
+                                crate::mana::ManaSymbol::Red => crate::color::Color::Red,
+                                crate::mana::ManaSymbol::Green => crate::color::Color::Green,
+                                _ => return false,
+                            };
+                            colors.contains(color)
                         }))
                     })
-                    .sum::<usize>()
+                    .sum::<usize>()).unwrap_or(0);
+                let bonus = chars.static_abilities.iter().filter_map(|ability| {
+                    match &ability.compiled_model()?.payload {
+                        ironsmith_core::StaticAbilityPayload::DevotionIncrease { amount } => Some(*amount as usize),
+                        _ => None,
+                    }
+                }).sum::<usize>();
+                symbols.saturating_add(bonus)
             })
             .sum()
     }

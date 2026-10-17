@@ -206,6 +206,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::MaxDiceRolledThisTurn(player)
         | crate::effect::Value::LandsEnteredBattlefieldThisTurn(player)
         | crate::effect::Value::MaxCardsInHand(player)
+        | crate::effect::Value::MaxSpeed(player)
         | crate::effect::Value::CardsInGraveyard(player)
         | crate::effect::Value::SpellsCastThisTurn(player)
         | crate::effect::Value::SpellsCastBeforeThisTurn(player)
@@ -213,7 +214,8 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {
             player, ..
         } => player.mentions_iterated_player(),
-        crate::effect::Value::Devotion { player, .. } => player.mentions_iterated_player(),
+        crate::effect::Value::Devotion { player, .. }
+        | crate::effect::Value::DevotionToColors { player, .. } => player.mentions_iterated_player(),
         crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. }
         | crate::effect::Value::TotalManaValueOfSpellsCastThisTurnMatching {
             player, filter, ..

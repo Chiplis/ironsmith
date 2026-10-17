@@ -33,6 +33,11 @@ pub fn parse_target_player_choose_objects_clause_with_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
+    // "target opponent chooses a number" is a numeric choice, read by
+    // bounded_number_choice, not an object choice.
+    if clause_words.ends_with(&["chooses", "a", "number"]) {
+        return Ok(None);
+    }
     let parsed = match parse_typed_target_player_choice_tokens(tokens) {
         Ok(Some(parsed)) => parsed,
         Ok(None) => return Ok(None),
@@ -62,6 +67,7 @@ pub fn parse_target_player_choose_objects_clause_with_count_value(
         TargetPlayerChoiceActor::Opponent => PlayerAst::Opponent,
         TargetPlayerChoiceActor::ThatPlayer | TargetPlayerChoiceActor::Voter => PlayerAst::That,
         TargetPlayerChoiceActor::DefendingPlayer => PlayerAst::Defending,
+        TargetPlayerChoiceActor::ObjectController => PlayerAst::ItsController,
     };
     let mut choose_filter = parsed.filter;
     if chooser == PlayerAst::That
@@ -79,6 +85,41 @@ pub fn parse_target_player_choose_objects_clause_with_count_value(
         Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile)
     ) {
         choose_filter.controller = None;
+    }
+    // "An opponent chooses one of those cards" (Emergent Ultimatum): the
+    // chosen set is exactly the referenced antecedent, wherever it is and
+    // whoever controls it. Neither the chooser's hand nor the chooser's
+    // control is implied.
+    let words_after_chooses = clause_words
+        .iter()
+        .position(|word| *word == "chooses" || *word == "choose")
+        .map(|index| &clause_words[index + 1..]);
+    if let Some(after) = words_after_chooses
+        && matches!(
+            after,
+            ["one", "of", "those", "cards"]
+                | ["one", "of", "them"]
+                | ["one", "of", "those", "objects"]
+                | ["one", "of", "those", "permanents"]
+        )
+        && choose_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+        // Only the chooser-hand default is wrong for a referenced set; an
+        // explicit library/graveyard reading of the antecedent stays.
+        && choose_filter.zone == Some(Zone::Hand)
+    {
+        if after.last() != Some(&"permanents") {
+            // The referenced cards may have moved (searched and exiled):
+            // follow them to their public destination.
+            choose_filter.zone = None;
+            choose_filter.match_captured_public_destination = true;
+        }
+        choose_filter.controller = None;
+        choose_filter.owner = None;
+        let count_value = choice_count_value(parsed.count_source, &clause_words)?;
+        return Ok(Some((chooser, choose_filter, parsed.count, count_value)));
     }
     // Choosing an unrestricted battlefield object does not imply that the
     // chooser controls it. Preserve an inferred controller only for a tagged
@@ -181,6 +222,15 @@ pub fn parse_you_choose_objects_clause_with_count_value(
     let references_it = parsed.references.references_it;
     let count_value = choice_count_value(parsed.count_source, &clause_words)?;
     let mut choose_filter = parsed.filter;
+    // "choose another creature on the battlefield" (Vesuvan Shapeshifter):
+    // the count reader consumes "another" as the article, but it still
+    // excludes this object.
+    if clause_words
+        .windows(2)
+        .any(|pair| pair[0] == "choose" && pair[1] == "another")
+    {
+        choose_filter.other = true;
+    }
     let chooser = match parsed.actor {
         // Preserve the implicit actor until the enclosing sentence shape is
         // known. At top level lowering resolves it to you; inside
@@ -205,11 +255,15 @@ pub fn parse_you_choose_objects_clause_with_count_value(
             });
     }
 
+    // A pool named by a prior instruction ("a card revealed this way" after
+    // "Target player reveals their hand", Psychotic Episode) is exactly that
+    // instruction's objects; "you choose" names the chooser, not whose cards.
     if !references_it
         && chooser == PlayerAst::You
         && choose_filter.controller.is_none()
         && choose_filter.owner.is_none()
         && choose_filter.could_be_targeted_by.is_none()
+        && choose_filter.tagged_constraints.is_empty()
     {
         choose_filter.controller = Some(PlayerFilter::You);
     }
@@ -799,6 +853,21 @@ pub fn parse_coordinated_object_and_player_choice(
     player_tokens.extend_from_slice(&tokens[*separator + 1..]);
     let Some((player_chooser, player_filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(&player_tokens)? else { return Ok(None); };
+    // "choose a color and an opponent" (Call to Arms): a color choice and a
+    // player choice, each its own result producer.
+    if crate::lexer::token_word_refs(&tokens[prefix..*separator]) == ["a", "color"] {
+        return Ok(Some(vec![
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::Chooser,
+                crate::cards::builders::PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::Choices(
+                    crate::cards::builders::ChoiceActionAst::ChooseColor,
+                ),
+            ),
+            EffectAst::subject_verb_choose_player(player_chooser, player_filter,
+                crate::tag::CompilerReferenceTag::It.bind(), random, exclude_previous_choices),
+        ]));
+    }
     let Some((object_chooser, object_filter, count, count_value)) =
         parse_you_choose_objects_clause_with_count_value(&tokens[..*separator])? else { return Ok(None); };
     Ok(Some(vec![EffectAst::Coordinated {

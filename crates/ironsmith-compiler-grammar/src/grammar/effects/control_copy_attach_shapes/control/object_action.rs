@@ -20,10 +20,13 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
         ])));
     }
     if has_all_words(tokens, &["aura", "attached", "to"]) {
+        // "for as long as that Aura is attached to it" (Eriette): the Aura is
+        // the attachment participant of the attachment trigger; its ordinary
+        // triggering demonstrative is the recipient ("that permanent").
         return Some(Until::ForAsLongAs(Predicate::ObjectAttachedTo {
-            attachment: ObjectRef::Tagged(
-                (crate::tag::CompilerReferenceTag::Triggering.bind()).into(),
-            ),
+            attachment: ObjectRef::Tagged(ironsmith_core::tag::TagKey::from(
+                ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG,
+            )),
             attached_to: ObjectRef::AffectedObject,
         }));
     }
@@ -96,8 +99,16 @@ pub(super) fn parse_control_duration_shape_with_optional_context(
     {
         return Some(ControlDurationAst::AsLongAsYouControlSource);
     }
+    // "during their next combat phase" (Secret of Bloodbending).
+    if has_all_words(tokens, &["during", "next", "combat", "phase"]) {
+        return Some(ControlDurationAst::DuringNextCombatPhase);
+    }
     if has_all_words(tokens, &["during", "next", "turn"]) {
         return Some(ControlDurationAst::DuringNextTurn);
+    }
+    // "until this spell finishes resolving" (Word of Command, CR 722.1).
+    if has_all_words(tokens, &["until", "finishes", "resolving"]) {
+        return Some(ControlDurationAst::UntilSourceFinishesResolving);
     }
     if has_all_words(tokens, &["until", "end", "next", "turn"]) {
         return Some(ControlDurationAst::UntilYourNextTurnEnd);
@@ -127,6 +138,14 @@ pub(super) fn parse_permanent_control_duration_shape_with_optional_context(
 ) -> Option<PermanentControlDurationShape> {
     if let Some(shape) = parse_source_remains_on_battlefield(context, tokens) {
         return Some(shape);
+    }
+    // "gain control of Tahngarth until end of combat" (Tahngarth, First Mate).
+    if crate::lexer::parser_token_word_refs(tokens) == ["until", "end", "of", "combat"] {
+        return Some(PermanentControlDurationShape {
+            until: Until::EndOfCombat,
+            condition: None,
+            source_surface: None,
+        });
     }
     // A malformed battlefield-lifetime predicate must not fall through into
     // permissive legacy word-presence duration readers and lose its tail.
@@ -161,7 +180,11 @@ pub(super) fn parse_permanent_control_duration_shape_with_optional_context(
         ControlDurationAst::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
         ControlDurationAst::Forever => Until::Forever,
         ControlDurationAst::AsLongAsYouControlSource => Until::YouStopControllingThis,
-        ControlDurationAst::DuringNextTurn => return None,
+        ControlDurationAst::DuringNextTurn
+        | ControlDurationAst::DuringNextCombatPhase
+        | ControlDurationAst::UntilSourceFinishesResolving => {
+            return None;
+        }
     };
     Some(PermanentControlDurationShape {
         until,

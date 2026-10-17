@@ -340,15 +340,20 @@ fn parse_explicit_target_exile_pair(
     until_source_leaves: bool,
     face_down: bool,
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // A lone `or` inside one operand is that target's type disjunction
+    // ("target instant or sorcery card from your graveyard and target
+    // instant or sorcery card from an opponent's graveyard", Spelltwine);
+    // each operand still names exactly one target.
     let single_target_operand = |branch: &[OwnedLexToken]| {
         branch.first().is_some_and(|token| token.is_word("target"))
             && branch.iter().filter(|token| token.is_word("target")).count() == 1
             && !branch.iter().any(|token| {
                 token.is_any_word(&[
-                    "and", "or", "then", "destroy", "exile", "return", "put", "copy", "cast",
+                    "and", "then", "destroy", "exile", "return", "put", "copy", "cast",
                     "draw", "gain", "gains", "lose", "loses", "until",
                 ])
             })
+            && !branch.windows(2).any(|pair| pair[0].is_word("or") && pair[1].is_word("target"))
     };
     if !single_target_operand(first_tokens) || !single_target_operand(second_tokens) {
         return Ok(None);
@@ -899,6 +904,52 @@ fn parse_battlefield_graveyard_exile_all_pair(
     Ok(Some(EffectAst::Sequence { effects }))
 }
 
+/// "Exile all creatures and graveyards." (Ultimate Nullification): an
+/// exhaustive object filter conjoined with every graveyard. The second arm
+/// names whole zones, not a card type, so it must neither narrow the first
+/// arm nor be narrowed by it.
+pub fn parse_exile_all_and_all_graveyards(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    until_source_leaves: bool,
+    face_down: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    if until_source_leaves {
+        return Ok(None);
+    }
+    let Some(filter_tokens) = effect_grammar::strip_exile_all_or_each_shape(tokens) else {
+        return Ok(None);
+    };
+    let words = crate::lexer::parser_token_word_refs(filter_tokens);
+    if !(words.ends_with(&["and", "all", "graveyards"]) || words.ends_with(&["and", "graveyards"])) {
+        return Ok(None);
+    }
+    let Some(and_idx) = filter_tokens.iter().rposition(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let first_tokens = trim_commas(&filter_tokens[..and_idx]);
+    if first_tokens.is_empty()
+        || crate::lexer::parser_token_word_refs(&first_tokens)
+            .iter()
+            .any(|word| matches!(*word, "graveyard" | "graveyards" | "card" | "cards"))
+    {
+        return Ok(None);
+    }
+    let mut first = parse_object_filter_lexed(&first_tokens, false)?;
+    apply_exile_subject_owner_context(&mut first, subject);
+    if first.zone.is_some_and(|zone| zone != Zone::Battlefield) {
+        return Ok(None);
+    }
+    // Every card in every graveyard, as "Exile all graveyards" reads.
+    let graveyards = ObjectFilter::default().in_zone(Zone::Graveyard);
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_exile_all(first, face_down),
+            EffectAst::subject_verb_exile_all(graveyards, face_down),
+        ],
+    }))
+}
+
 fn parse_mixed_target_and_all_exile_list(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -1164,12 +1215,16 @@ fn parse_exile_bottom_library_clause(
     let mut filter = ObjectFilter::default();
     filter.zone = Some(Zone::Library);
 
+    let (choice_count, count_value) = match &shape.count {
+        Value::Fixed(1) => (crate::effect::ChoiceCount::exactly(1), None),
+        count => (crate::effect::ChoiceCount::dynamic_x(), Some(count.clone())),
+    };
     let choose_and_exile = |player: PlayerAst, tag: TagKey| {
         vec![
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
                 filter: filter.clone(),
-                count: crate::effect::ChoiceCount::exactly(1),
-                count_value: None,
+                count: choice_count,
+                count_value: count_value.clone(),
                 player,
                 tag: crate::tag::TagRef::of(tag.clone()),
             }),

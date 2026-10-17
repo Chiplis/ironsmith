@@ -722,6 +722,64 @@ pub fn parse_life_bid_sentences<'a>(
     })
 }
 
+/// The five sentences of an untargeted life auction (Pain's Reward): "Each
+/// player may bid life. You start the bidding with a bid of any number. ...
+/// The high bidder loses life equal to the high bid and <reward>."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UntargetedLifeBidShape<'a> {
+    /// `None` when the controller opens with "a bid of any number".
+    pub starting_bid: Option<u32>,
+    /// The high bidder's reward actions after "... equal to the high bid and".
+    pub reward: &'a [OwnedLexToken],
+}
+
+pub fn parse_untargeted_life_bid_sentences<'a>(
+    sentences: &[&'a [OwnedLexToken]],
+) -> Option<UntargetedLifeBidShape<'a>> {
+    let &[first, start, top, stands, reward] = sentences else {
+        return None;
+    };
+    if !exact_surface(first, &["each", "player", "may", "bid", "life"])
+        || !exact_surface(
+            top,
+            &[
+                "in", "turn", "order", "each", "player", "may", "top", "the", "high", "bid",
+            ],
+        )
+        || !exact_surface(
+            stands,
+            &[
+                "the", "bidding", "ends", "if", "the", "high", "bid", "stands",
+            ],
+        )
+    {
+        return None;
+    }
+    let start_words = parser_token_word_refs(start);
+    let starting_bid = match consume_head(
+        &start_words,
+        &["you", "start", "the", "bidding", "with", "a", "bid", "of"],
+    )? {
+        ["any", "number"] => None,
+        [amount] => Some(amount.parse::<u32>().ok()?),
+        _ => return None,
+    };
+    let reward_words = parser_token_word_refs(reward);
+    const LEAD: &[&str] = &[
+        "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid", "and",
+    ];
+    consume_head(&reward_words, LEAD)?;
+    let reward = token_slice_for_words(reward, LEAD.len()..reward_words.len())?;
+    let reward = trim_lexed_commas(reward);
+    if reward.is_empty() {
+        return None;
+    }
+    Some(UntargetedLifeBidShape {
+        starting_bid,
+        reward,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegenerateControlShape<'a> {
     pub regenerate_target: &'a [OwnedLexToken],

@@ -96,7 +96,7 @@ impl EffectExecutor for PhaseOutEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.duration == PhaseOutDuration::UntilSourceLeaves
+        if self.duration.is_until_source_leaves()
             && source_not_on_battlefield(game, ctx.source)
         {
             return Ok(EffectOutcome::count(0));
@@ -131,9 +131,15 @@ impl EffectExecutor for PhaseOutEffect {
         // CR 702.26h: the selected permanents phase out at the same time, so
         // an attachment phasing out with its host does so only indirectly.
         game.phase_out_simultaneously(&affected);
-        if self.duration == PhaseOutDuration::UntilSourceLeaves {
+        if self.duration.is_until_source_leaves() {
             for &object_id in &affected {
                 game.hold_phased_out_until_source_leaves(object_id, ctx.source);
+                if self.duration == PhaseOutDuration::UntilSourceLeavesThenTapped {
+                    game.tap_as_held_phase_in(object_id);
+                }
+                if self.duration == PhaseOutDuration::UntilSourceUntapsOrLeaves {
+                    game.release_phase_out_holds_when_source_untaps(ctx.source);
+                }
             }
         }
 

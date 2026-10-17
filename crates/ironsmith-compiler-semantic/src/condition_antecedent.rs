@@ -36,6 +36,24 @@ pub fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<Ob
             crate::tag::CompilerReferenceTag::Equipped.key(),
         ));
     }
+    // "If that Equipment was attached to a creature, Unforge deals 2 damage
+    // to that creature": the consequence names the attachment's former host.
+    let attached_host = |tag: ironsmith_core::TagKey, filter: &ObjectFilter| {
+        filter.attached_to_object.as_ref().map(|host| {
+            host.as_ref()
+                .clone()
+                .match_tagged(tag, TaggedOpbjectRelation::WasHostOfTaggedObject)
+        })
+    };
+    match predicate {
+        PredicateAst::ItMatchedLastKnown(filter) if filter.attached_to_object.is_some() => {
+            return attached_host(crate::tag::CompilerReferenceTag::It.key().into(), filter);
+        }
+        PredicateAst::TaggedMatchedLastKnown(tag, filter) if filter.attached_to_object.is_some() => {
+            return attached_host(tag.into(), filter);
+        }
+        _ => {}
+    }
     match predicate {
         // "if enchanted creature is untapped, tap it": the tagged condition
         // subject is the antecedent for "it" in the body effects.
@@ -976,6 +994,112 @@ pub fn bind_condition_it_counter_antecedent_in_effects(
     };
     for effect in effects {
         bind_condition_it_counter_antecedent_in_effect(effect, counter_type);
+    }
+}
+
+/// "When this creature dies, if it had two or more +1/+1 counters on it,
+/// ... The token enters with half that many +1/+1 counters on it" (Ochre
+/// Jelly), "if it had one or more -1/-1 counters on it, its owner draws that
+/// many cards": a death event has no amount, so "that many" counts the
+/// counters of the kind the intervening if counted on the triggering object
+/// (last known information). No-op for any other predicate.
+pub fn bind_triggering_had_counters_that_many_in_effects(
+    effects: &mut [EffectAst],
+    predicate: &PredicateAst,
+) {
+    let PredicateAst::Triggering(
+        crate::cards::builders::TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
+            counter_type,
+            ..
+        },
+    ) = predicate
+    else {
+        return;
+    };
+    fn rebind(value: &mut Value, counter_type: CounterType) -> bool {
+        let hints = value.surface_hints().to_vec();
+        match value.unhinted() {
+            Value::EventValue(crate::effect::EventValueSpec::Amount) => {
+                *value = Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::declared_key("triggering").into(),
+                    )),
+                    Some(counter_type),
+                )
+                .with_surface_hints(hints);
+                true
+            }
+            Value::HalfRoundedDown(inner) => {
+                let mut inner = (**inner).clone();
+                if !rebind(&mut inner, counter_type) {
+                    return false;
+                }
+                *value = Value::HalfRoundedDown(Box::new(inner)).with_surface_hints(hints);
+                true
+            }
+            _ => false,
+        }
+    }
+    fn bind_effect(effect: &mut EffectAst, counter_type: CounterType) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. })
+            | SubjectVerbActionAst::LifeResources(
+                crate::cards::builders::LifeResourceActionAst::Draw { count },
+            ) = &mut subject_verb.action
+        {
+            rebind(count, counter_type);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for effect in nested {
+                bind_effect(effect, counter_type);
+            }
+        });
+    }
+    for effect in effects {
+        bind_effect(effect, *counter_type);
+    }
+}
+
+/// "if life was paid to activate it, you may pay that much life again"
+/// (Verrak): "that much" is the life the intervening if measured.
+pub fn bind_activation_life_that_much_in_effects(
+    effects: &mut [EffectAst],
+    predicate: &PredicateAst,
+) {
+    let PredicateAst::ValueComparison { left, .. } = predicate else {
+        return;
+    };
+    if !matches!(
+        left.unhinted(),
+        Value::EventValue(crate::effect::EventValueSpec::LifePaidToActivate)
+    ) {
+        return;
+    }
+    fn bind_effect(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::LifeResources(
+                crate::cards::builders::LifeResourceActionAst::PayLife { amount },
+            ) = &mut subject_verb.action
+            && matches!(
+                amount.unhinted(),
+                Value::EventValue(
+                    crate::effect::EventValueSpec::Amount
+                        | crate::effect::EventValueSpec::LifeAmount
+                )
+            )
+        {
+            let hints = amount.surface_hints().to_vec();
+            *amount = Value::EventValue(crate::effect::EventValueSpec::LifePaidToActivate)
+                .with_surface_hints(hints);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for effect in nested {
+                bind_effect(effect);
+            }
+        });
+    }
+    for effect in effects {
+        bind_effect(effect);
     }
 }
 

@@ -103,6 +103,8 @@ pub enum BecomeExactKind {
     /// "becomes unprepared": the prepared designation is removed.
     Unprepared,
     Plotted,
+    /// "becomes foretold" (The Foretold Soldier).
+    Foretold,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

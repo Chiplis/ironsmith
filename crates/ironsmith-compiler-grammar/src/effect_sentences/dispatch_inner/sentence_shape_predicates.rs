@@ -473,6 +473,18 @@ pub fn lower_where_x_shape(
                 },
             ),
         ),
+        sentence_shapes::WhereXValueShape::StationTapCostContribution => (
+            None,
+            Value::StationContributionOf(Box::new(crate::target::ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::TapCost0.bind()).into(),
+            )))
+            .with_surface_hint(
+                ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
+                    card_type: crate::types::CardType::Creature,
+                    action: ironsmith_core::PriorEffectAction::Tapped,
+                },
+            ),
+        ),
         sentence_shapes::WhereXValueShape::CommanderCastCount => {
             (None, Value::CommanderCastCount(PlayerFilter::You))
         }
@@ -711,10 +723,6 @@ sentence_unsupported_adapters_lexed!(
         sentence_has_target_creature_token_player_planeswalker_clause
     ),
     (
-        sentence_has_if_you_sacrifice_an_island_this_way_clause_rule_lexed,
-        sentence_has_if_you_sacrifice_an_island_this_way_clause
-    ),
-    (
         sentence_has_spent_to_cast_clause_rule_lexed,
         sentence_has_spent_to_cast_clause
     ),
@@ -849,13 +857,6 @@ fn sentence_has_target_creature_token_player_planeswalker_clause(
     tokens: &[OwnedLexToken],
 ) -> bool {
     effect_grammar::has_target_creature_token_player_planeswalker_clause_sentence_lexed(tokens)
-}
-
-fn sentence_has_if_you_sacrifice_an_island_this_way_clause(
-    words: &[&str],
-    _: &[OwnedLexToken],
-) -> bool {
-    effect_grammar::has_if_you_sacrifice_an_island_this_way_clause_sentence_lexed(words)
 }
 
 fn sentence_has_spent_to_cast_clause(words: &[&str], _: &[OwnedLexToken]) -> bool {

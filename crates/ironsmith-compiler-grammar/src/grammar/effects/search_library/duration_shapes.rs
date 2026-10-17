@@ -35,6 +35,13 @@ fn until_source_leaves<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::sentence_end().parse_next(input)
 }
 
+/// "until a player casts a creature spell" (Soul Sculptor).
+fn until_a_player_casts_a_creature_spell<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["until", "a", "player", "casts", "a", "creature", "spell"])
+        .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)
+}
+
 /// A complete source-lifetime tail shared by continuous effect bodies.
 pub fn parse_source_lifetime_duration(tokens: &[OwnedLexToken]) -> Option<Until> {
     if primitives::parse_all(tokens, until_source_leaves, "source lifetime duration").is_ok() {
@@ -106,6 +113,7 @@ fn until_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
         leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
         leaf::LeafDurationPhrase::UntilControllersNextUntapStep => return None,
         leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
+        leaf::LeafDurationPhrase::UntilThatPlayersNextTurn => return None,
         leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
     })
@@ -178,6 +186,18 @@ pub fn parse_search_restriction_duration_shape_lexed(
     {
         return Ok(Some(SearchRestrictionDurationShape {
             duration: Until::ThisLeavesTheBattlefield,
+            remainder: trim_lexed_commas(&tokens[..start]).to_vec(),
+            placement: SearchRestrictionDurationPlacement::Suffix,
+        }));
+    }
+
+    if let Some((start, (), rest)) =
+        primitives::find_prefix(tokens, || until_a_player_casts_a_creature_spell)
+        && rest.is_empty() && start > 0
+        && tokens[..start].iter().filter(|token| token.is_quote()).count() % 2 == 0
+    {
+        return Ok(Some(SearchRestrictionDurationShape {
+            duration: Until::AnyPlayerCastsCreatureSpell { creature_spells_observed: 0 },
             remainder: trim_lexed_commas(&tokens[..start]).to_vec(),
             placement: SearchRestrictionDurationPlacement::Suffix,
         }));

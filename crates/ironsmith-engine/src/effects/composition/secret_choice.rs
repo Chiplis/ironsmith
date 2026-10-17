@@ -15,6 +15,11 @@ use crate::zone::Zone;
 pub struct SecretChoiceResult {
     pub choices: Vec<(PlayerId, String)>,
     pub object_choices: Vec<(PlayerId, ObjectSnapshot)>,
+    /// Per-player number choices ("each player secretly chooses a number").
+    pub number_choices: Vec<(PlayerId, u32)>,
+    /// Guesses at those numbers ("an opponent guesses which number you
+    /// chose").
+    pub guesses: Vec<(PlayerId, u32)>,
 }
 
 impl SecretChoiceResult {
@@ -162,6 +167,8 @@ impl SecretChoiceEffect {
             SecretChoiceResult {
                 choices: Vec::new(),
                 object_choices,
+                number_choices: Vec::new(),
+                guesses: Vec::new(),
             },
         );
         Ok(EffectOutcome::count(count as i32))
@@ -215,6 +222,8 @@ impl EffectExecutor for SecretChoiceEffect {
             SecretChoiceResult {
                 choices,
                 object_choices: Vec::new(),
+                number_choices: Vec::new(),
+                guesses: Vec::new(),
             },
         );
         Ok(EffectOutcome::count(count as i32))

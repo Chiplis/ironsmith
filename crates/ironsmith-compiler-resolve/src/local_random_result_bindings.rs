@@ -27,7 +27,7 @@ impl Family {
                 && query.metric == EffectMetric::Count && query.color_choice.is_some();
         }
         let (action, metric) = match self {
-            Self::Die => (PriorEffectAction::Rolled, query.metric == EffectMetric::Count),
+            Self::Die => (PriorEffectAction::Rolled, matches!(query.metric, EffectMetric::Count | EffectMetric::DistinctDieResults)),
             Self::Number => (PriorEffectAction::ChosenNumber, query.metric == EffectMetric::Count),
             Self::Color | Self::Reveal => unreachable!(),
             Self::Coin => (PriorEffectAction::Flipped, matches!(query.metric,
@@ -39,7 +39,7 @@ impl Family {
     fn direct(self, effect: &EffectAst) -> bool {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else { return false; };
         match self {
-            Self::Die => matches!(action, SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. })),
+            Self::Die => matches!(action, SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })),
             Self::Coin => matches!(action, SubjectVerbActionAst::Random(RandomActionAst::FlipCoin | RandomActionAst::FlipCoinFaceOnly | RandomActionAst::FlipCoins { .. })),
             Self::Number => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })),
             Self::Color => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)),
@@ -51,7 +51,16 @@ impl Family {
         match effect {
             EffectAst::Sequence { effects } | EffectAst::CommaThen { effects }
             | EffectAst::SourceSentence { effects, .. } | EffectAst::Coordinated { effects, .. } => {
-                matches!(effects.as_slice(), [only] if self.compatible(only))
+                // "Choose a card name and a number": the wrapper's terminal
+                // effect is the only producer of this family, so the wrapper's
+                // assigned result ID lands on it (lowering wraps the last effect).
+                match effects.as_slice() {
+                    [only] => self.compatible(only),
+                    [earlier @ .., last] => {
+                        self.compatible(last) && !earlier.iter().any(|effect| self.contains(effect))
+                    }
+                    [] => false,
+                }
             }
             EffectAst::Permissions(PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. })
                 if self == Self::Coin => matches!(effects.as_slice(), [only] if self.compatible(only)),

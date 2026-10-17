@@ -197,7 +197,7 @@ pub fn parse_target_preparation_facts(
 pub fn parse_target_controller_set_suffix(tokens: &[OwnedLexToken]) -> TargetControllerSetSplit {
     let view = TokenWordView::new(tokens);
     let words = view.to_word_refs();
-    for tail_words in [5usize, 4] {
+    for tail_words in [5usize, 4, 3] {
         let Some(tail_start) = words.len().checked_sub(tail_words) else {
             continue;
         };
@@ -244,6 +244,14 @@ fn parse_controller_set_constraint_words(words: &[&str]) -> Option<TargetControl
                 primitives::word_slice_exact("by"),
                 primitives::word_slice_exact("different"),
                 primitives::word_slice_exact("players"),
+            )
+                .value(TargetControllerSetConstraint::DifferentControllers),
+            // "any number of target tapped creatures with different
+            // controllers" (Cloud's Limit Break).
+            (
+                primitives::word_slice_exact("with"),
+                primitives::word_slice_exact("different"),
+                primitives::word_slice_exact("controllers"),
             )
                 .value(TargetControllerSetConstraint::DifferentControllers),
         )),

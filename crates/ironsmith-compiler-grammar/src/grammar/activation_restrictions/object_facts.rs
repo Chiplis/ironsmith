@@ -312,9 +312,15 @@ pub fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTa
         // "can't attack you" leaves the player's planeswalkers attackable —
         // a distinct, narrower restriction than the Ghostly Prison shape.
         Some(NegatedObjectTailShape::AttackYou)
-    } else if exact(
+    } else if exact_any(
         words,
-        &["attack", "you", "or", "planeswalkers", "you", "control"],
+        &[
+            &["attack", "you", "or", "planeswalkers", "you", "control"],
+            // "can't attack you or a permanent you control" (Immortal
+            // Obligation): the attackable permanents a player controls.
+            &["attack", "you", "or", "a", "permanent", "you", "control"],
+            &["attack", "you", "or", "permanents", "you", "control"],
+        ],
     ) {
         Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers)
     } else if prefix(words, &["be", "blocked", "this", "turn", "except", "by"]) {

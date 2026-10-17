@@ -26,14 +26,22 @@ pub(super) fn next_upkeep_end_duration_body(tokens: &[OwnedLexToken]) -> Option<
 pub(super) fn subject(tokens: &[OwnedLexToken]) -> Option<(Axes, Vec<OwnedLexToken>)> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
-    for (axes, marker) in [
-        (Axes::Both, &["base", "power", "and", "toughness"][..]),
+    // CR 613.4b: "this creature's power becomes N" (without "base") is the
+    // same layer-7b setting effect as "base power becomes N". Accept the bare
+    // characteristic only as a possessive destination ("its toughness"), so
+    // "the power of target creature" stays a value, never a destination.
+    for (axes, marker, bare) in [
+        (Axes::Both, &["base", "power", "and", "toughness"][..], false),
         (
             Axes::Both,
             &["base", "power", "and", "base", "toughness"][..],
+            false,
         ),
-        (Axes::Power, &["base", "power"][..]),
-        (Axes::Toughness, &["base", "toughness"][..]),
+        (Axes::Power, &["base", "power"][..], false),
+        (Axes::Toughness, &["base", "toughness"][..], false),
+        (Axes::Both, &["power", "and", "toughness"][..], true),
+        (Axes::Power, &["power"][..], true),
+        (Axes::Toughness, &["toughness"][..], true),
     ] {
         let Some(start) = words
             .windows(marker.len())
@@ -42,8 +50,11 @@ pub(super) fn subject(tokens: &[OwnedLexToken]) -> Option<(Axes, Vec<OwnedLexTok
             continue;
         };
         let after = start + marker.len();
+        if bare && (after != words.len() || start == 0 || words[start - 1] == "base") {
+            continue;
+        }
         let (range, possessive) =
-            if start <= 1 && words.get(after) == Some(&"of") && (start == 0 || words[0] == "the") {
+            if !bare && start <= 1 && words.get(after) == Some(&"of") && (start == 0 || words[0] == "the") {
                 (view.token_span_for_words(after + 1, words.len())?, false)
             } else if start > 0 && after == words.len() {
                 (view.token_span_for_words(0, start)?, true)
@@ -134,6 +145,29 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
     } else {
         (None, tokens)
     };
+    // A trailing fixed offset of the referenced characteristic: "the
+    // toughness of target creature blocking this creature minus 1".
+    let (fixed_suffix, rest) = {
+        let view = TokenWordView::new(rest);
+        let words = view.word_refs();
+        let count = words.len();
+        if count >= 4
+            && matches!(words[count - 2], "minus" | "plus")
+            && let Some(number_range) = view.token_span_for_words(count - 1, count)
+            && let Some((value, used)) = crate::util::parse_number(&rest[number_range.clone()])
+            && used == number_range.len()
+            && let Ok(value) = i32::try_from(value)
+            && let Some(body_range) = view.token_span_for_words(0, count - 2)
+        {
+            let signed = if words[count - 2] == "minus" { -value } else { value };
+            (Some(signed), &rest[body_range])
+        } else {
+            (None, rest)
+        }
+    };
+    if fixed_prefix.is_some() && fixed_suffix.is_some() {
+        return None;
+    }
     let view = TokenWordView::new(rest);
     let words = view.word_refs();
     let (axes, reference_range, possessive) =
@@ -177,16 +211,57 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
             return None;
         };
     let mut reference = rest[reference_range].to_vec();
+    if possessive {
+        normalize_possessive(&mut reference);
+    }
+    let offset = |scalar: Value| match (fixed_prefix, fixed_suffix) {
+        (Some(fixed), _) => Value::Add(Box::new(Value::Fixed(fixed)), Box::new(scalar)),
+        (None, Some(fixed)) => Value::Add(Box::new(scalar), Box::new(Value::Fixed(fixed))),
+        (None, None) => scalar,
+    };
+    if (fixed_prefix.is_some() || fixed_suffix.is_some()) && axes == Axes::Both {
+        return None;
+    }
     if !reference
         .first()
         .is_some_and(|token| token.is_word("target"))
     {
-        return None;
+        // An anaphoric operand ("the power of that creature") names an object
+        // an earlier clause announced. The ordinary value grammar owns its
+        // reference surface, which keeps a demonstrative distinct from the
+        // source the clause's own "its" names.
+        if axes == Axes::Both {
+            return None;
+        }
+        let scalar = complete_value(rest).or_else(|| {
+            let reference_words = crate::lexer::parser_token_word_refs(&reference);
+            let ["that", noun] = reference_words.as_slice() else {
+                return None;
+            };
+            // The demonstrative surface keeps "that creature" from naming the
+            // source subject (see the superseded-antecedent resolver).
+            let spec = Box::new(
+                ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key()).with_surface_hint(
+                    ironsmith_core::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType(format!(
+                            "that {noun}"
+                        )),
+                    ),
+                ),
+            );
+            Some(if axes == Axes::Toughness {
+                Value::ToughnessOf(spec)
+            } else {
+                Value::PowerOf(spec)
+            })
+        })?;
+        return Some(Quantity {
+            power: offset(scalar),
+            toughness: None,
+            declared_reference: None,
+        });
     }
-    if possessive {
-        normalize_possessive(&mut reference);
-    }
-    let target = parse_target_phrase(&reference).ok()?;
+    let declared_reference = Some(parse_target_phrase(&reference).ok()?);
     let spec = Box::new(ChooseSpec::Tagged(
         crate::tag::CompilerReferenceTag::It.key(),
     ));
@@ -195,17 +270,11 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
     } else {
         Value::PowerOf(spec.clone())
     };
-    let power = fixed_prefix.map_or_else(
-        || scalar.clone(),
-        |fixed| Value::Add(Box::new(Value::Fixed(fixed)), Box::new(scalar.clone())),
-    );
-    if fixed_prefix.is_some() && axes == Axes::Both {
-        return None;
-    }
+    let power = offset(scalar);
     Some(Quantity {
         power,
         toughness: (axes == Axes::Both).then(|| Value::ToughnessOf(spec)),
-        declared_reference: Some(target),
+        declared_reference,
     })
 }
 

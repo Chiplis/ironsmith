@@ -1055,6 +1055,12 @@ fn commit_object_counter_removal(
                     "counter-removal commit disagrees with its resolved amount".into(),
                 ));
             }
+            if removed > 0
+                && let Some(source) = removal.source
+                && let Some(source) = game.counter_history_source_identity(source, ctx)
+            {
+                game.record_counter_source_history(source, target, removal.counter_type, true);
+            }
             if removal.source == Some(ctx.source)
                 && game.object(ctx.source).is_none()
                 && let Some(snapshot) = &ctx.source_snapshot

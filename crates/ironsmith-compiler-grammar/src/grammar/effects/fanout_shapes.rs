@@ -109,6 +109,12 @@ pub enum DamagePartShape {
     EachPlayer {
         opponent_only: bool,
     },
+    /// "each player who controls a white creature" (Disorder): the players
+    /// who control at least one permanent matching the trailing filter.
+    EachPlayerWhoControls {
+        opponent_only: bool,
+        filter_tokens: Vec<OwnedLexToken>,
+    },
     EachObject {
         filter_tokens: Vec<OwnedLexToken>,
         controller: Option<ControllerSurface>,
@@ -719,6 +725,21 @@ fn parse_each_damage_part_shape(tokens: &[OwnedLexToken]) -> Option<DamagePartSh
     if exact_any(&tokens, PLAYER_OR_OPPONENT) {
         return Some(DamagePartShape::EachPlayer {
             opponent_only: exact_any(&tokens, OPPONENT),
+        });
+    }
+    if let Some((opponent_only, rest)) = primitives::parse_prefix(
+        &tokens,
+        alt((
+            primitives::phrase(&["player", "who", "controls"]).map(|_| false),
+            primitives::phrase(&["players", "who", "control"]).map(|_| false),
+            primitives::phrase(&["opponent", "who", "controls"]).map(|_| true),
+            primitives::phrase(&["opponents", "who", "control"]).map(|_| true),
+        )),
+    ) {
+        let rest = trimmed(rest);
+        return (!rest.is_empty()).then(|| DamagePartShape::EachPlayerWhoControls {
+            opponent_only,
+            filter_tokens: rest.to_vec(),
         });
     }
     if primitives::parse_prefix(

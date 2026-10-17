@@ -5,6 +5,7 @@ use winnow::token::any;
 
 use crate::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use crate::mana::ManaSymbol;
+use ironsmith_core::value_model::ManaSpendMode;
 
 use super::super::{leaf, primitives};
 
@@ -354,6 +355,22 @@ fn temporary_symbol_spend_permission<'a>(input: &mut LexStream<'a>) -> Result<Ma
 }
 pub fn parse_temporary_symbol_spend_permission_shape(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
     primitives::probe_all(tokens, temporary_symbol_spend_permission, "temporary-symbol-mana-spend-permission")
+}
+
+/// "For one spell this turn, you may spend mana as though it were mana of any
+/// type to pay that spell's mana cost." -> the single-use permission's mode.
+fn one_spell_spend_permission<'a>(input: &mut LexStream<'a>) -> Result<ManaSpendMode, ErrMode<ContextError>> {
+    primitives::phrase(&["for", "one", "spell", "this", "turn"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any"]).parse_next(input)?;
+    let mode = alt((primitives::kw("type").value(ManaSpendMode::AnyType),
+        primitives::kw("color").value(ManaSpendMode::AnyColor))).parse_next(input)?;
+    primitives::phrase(&["to", "pay", "that", "spell's", "mana", "cost"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(mode)
+}
+pub fn parse_one_spell_spend_permission_shape(tokens: &[OwnedLexToken]) -> Option<ManaSpendMode> {
+    primitives::probe_all(tokens, one_spell_spend_permission, "one-spell-mana-spend-permission")
 }
 
 #[cfg(test)]

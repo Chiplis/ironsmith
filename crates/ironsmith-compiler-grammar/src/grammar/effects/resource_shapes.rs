@@ -46,6 +46,11 @@ pub enum ResourceLookShape<'a> {
     EachPlayerTopCards {
         count: Value,
     },
+    /// "look at the top card of each opponent's library" (Lobelia, Defender
+    /// of Bag End): you look at each opponent's top cards in turn.
+    EachOpponentTopCards {
+        count: Value,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,7 +393,11 @@ fn library_owner<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
             semantic_phrase(&["its", "owners"]),
         ))
         .value(PlayerAst::ItsOwner),
-        semantic_phrase(&["his", "or", "her"]).value(PlayerAst::That),
+        alt((
+            semantic_phrase(&["his", "or", "her"]).value(PlayerAst::That),
+            // The library already named by the trigger belongs to that player.
+            primitives::kw("that").value(PlayerAst::That),
+        )),
         // "look at the top card of defending player's library" (Coral
         // Fighters): the library owner; the implicit "you" still looks.
         alt((
@@ -591,8 +600,21 @@ pub fn parse_resource_look_shape<'a>(
         primitives::kw("of").void().parse_next(input)
     })?;
     let owner_surface = strip_articles(owner_surface);
-    let (player, owner_rest) =
-        if let Some((player, rest)) = primitives::parse_prefix(owner_surface, library_owner) {
+    let mut each_opponent_library = false;
+    let (player, owner_rest) = if let Some(((), rest)) =
+        primitives::parse_prefix(owner_surface, |input: &mut LexStream<'_>| {
+            alt((
+                semantic_phrase(&["each", "opponent's"]),
+                semantic_phrase(&["each", "opponents"]),
+            ))
+            .void()
+            .parse_next(input)?;
+            library_noun.parse_next(input)?;
+            Ok(())
+        }) {
+        each_opponent_library = true;
+        (PlayerAst::Opponent, rest)
+    } else if let Some((player, rest)) = primitives::parse_prefix(owner_surface, library_owner) {
             (player, rest)
         } else if trimmed(owner_surface).is_empty() {
             (subject_player?, owner_surface)
@@ -628,7 +650,9 @@ pub fn parse_resource_look_shape<'a>(
             })?;
         super::looked_card_shapes::parse_where_x_value(trimmed(value_tokens))?
     };
-    if matches!(player, PlayerAst::Any) {
+    if each_opponent_library {
+        Some(ResourceLookShape::EachOpponentTopCards { count })
+    } else if matches!(player, PlayerAst::Any) {
         Some(ResourceLookShape::EachPlayerTopCards { count })
     } else {
         Some(ResourceLookShape::TopCards { player, count })

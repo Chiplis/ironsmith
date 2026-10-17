@@ -725,6 +725,16 @@ pub fn search_library_with_that_name_suffix<'a>(
         .parse_next(input)
 }
 
+/// "a card with the same name" with no "as ...": the same name as the
+/// object the preceding instruction chose (Mimeofacture).
+pub fn search_library_with_the_same_name_suffix<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    primitives::any_phrase(&[&["with", "the", "same", "name"], &["with", "same", "name"]])
+        .void()
+        .parse_next(input)
+}
+
 pub fn search_library_with_the_chosen_name_suffix<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -1520,6 +1530,14 @@ pub fn parse_search_library_same_name_reference_lexed(
         filter_tokens = base_tokens;
         same_name_reference = Some(SearchLibrarySameNameReference::Tagged(
             (crate::tag::CompilerReferenceTag::ChosenName.bind()).into(),
+        ));
+    } else if let Some(base_tokens) = strip_search_library_suffix_lexed(
+        raw_filter_tokens,
+        search_library_with_the_same_name_suffix,
+    ) {
+        filter_tokens = base_tokens;
+        same_name_reference = Some(SearchLibrarySameNameReference::Tagged(
+            (crate::tag::CompilerReferenceTag::It.bind()).into(),
         ));
     } else if let Some((base_filter_tokens, reference_tokens, relation)) =
         split_search_same_name_reference_filter(raw_filter_tokens)

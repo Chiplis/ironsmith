@@ -43,10 +43,33 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                resolve_single_object_for_effect(game, ctx, &self.target)?;
+                if let Some(target) = &self.target {
+                    resolve_single_object_for_effect(game, ctx, target)?;
+                }
 
-                let (high_bidder, high_bid) = match self.starting_bid {
-                    LifeBidStart::Fixed(amount) => {
+                // "You start the bidding with a bid of any number" (Pain's
+                // Reward): the controller names the opening bid.
+                let opening = match self.starting_bid {
+                    LifeBidStart::Fixed(amount) => amount,
+                    LifeBidStart::ControllerChooses => {
+                        let decision = NumberContext::new(
+                            ctx.controller,
+                            Some(ctx.source),
+                            0,
+                            u32::MAX,
+                            "Choose your opening life bid".to_string(),
+                        );
+                        let amount = ctx.decision_maker.decide_number(game, &decision);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(CompletedEffectOutputs::aggregate_only(
+                                EffectOutcome::count(0),
+                            ));
+                        }
+                        amount
+                    }
+                };
+                let (high_bidder, high_bid) = match opening {
+                    amount => {
                         let original = ctx.controller;
                         let mut high_bidder = original;
                         let mut high_bid = amount;
@@ -151,7 +174,7 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        self.target.as_ref()
     }
 
     fn target_description(&self) -> &'static str {

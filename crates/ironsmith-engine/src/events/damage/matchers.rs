@@ -782,6 +782,8 @@ impl DamageSourceConstraint {
 pub enum DamageTargetConstraint {
     /// Any damage target.
     Any,
+    /// Damage is dealt to any player.
+    AnyPlayer,
     /// Damage is dealt to a specific player.
     Player(PlayerId),
     /// Damage is dealt to a specific object.
@@ -847,6 +849,11 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
         // Target constraint.
         match &self.target {
             DamageTargetConstraint::Any => {}
+            DamageTargetConstraint::AnyPlayer => {
+                if !matches!(damage.target, DamageTarget::Player(_)) {
+                    return false;
+                }
+            }
             DamageTargetConstraint::Player(player_id) => match damage.target {
                 DamageTarget::Player(pid) => {
                     if &pid != player_id {

@@ -1380,6 +1380,8 @@ fn apply_mana_payment_plan_response_inner(
             )
             .into());
         }
+        let canceling_effect_cast = state.pending_cast.as_ref()
+            .is_some_and(|pending| pending.effect_driven);
         state.rollback_action(game);
         if let Some(original_queue) = blind_queue {
             *trigger_queue = original_queue;
@@ -1395,6 +1397,11 @@ fn apply_mana_payment_plan_response_inner(
         state.pending_mana_parents.clear();
         if state.pending_exile_face_down.is_some() {
             return super::exile_face_down::resume(game, state);
+        }
+        if canceling_effect_cast {
+            // The resolving parent owns the outer stack. Cancel just this
+            // CR 601 proposal and let its caller continue that resolution.
+            return Err(GameLoopError::ActionCancelled("effect-driven spell payment canceled".into()));
         }
         return advance_priority_with_dm(game, trigger_queue, decision_maker);
     }
@@ -5024,6 +5031,16 @@ pub(super) fn finalize_spell_cast(
             game, new_id, caster,
         );
     }
+    // "For one spell this turn" spending permissions are used up by the first
+    // spell their controller finishes casting.
+    let one_spell_permissions_before = game.effect_store.mana_spend_effects.permissions.len();
+    game.effect_store.mana_spend_effects.permissions.retain(|permission| {
+        !(permission.controller == caster
+            && matches!(permission.permission.scope, crate::effect::ManaSpendScope::OneSpellCast))
+    });
+    if game.effect_store.mana_spend_effects.permissions.len() != one_spell_permissions_before {
+        game.mark_continuous_state_dirty();
+    }
     queue_targeting_crime(game, trigger_queue, &targets, new_id, caster, provenance);
 
     if from_zone == Zone::Command {
@@ -5033,6 +5050,9 @@ pub(super) fn finalize_spell_cast(
     // CR: the creature stops being prepared as its prepare spell copy is cast.
     // The copy is already on the stack, so it survives losing the designation.
     if from_zone == Zone::Exile {
+        if game.is_prepared_spell_copy(spell_id) {
+            game.record_prepared_spell_cast(new_id);
+        }
         game.unprepare_for_cast(spell_id);
     }
 

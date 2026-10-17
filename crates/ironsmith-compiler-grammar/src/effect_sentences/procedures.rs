@@ -9,7 +9,7 @@
 use super::dispatch_entry::SentenceInput;
 use super::{
     consult_procedure, copy_cast_procedure, exiled_top_procedure, graveyard_cast_procedure,
-    assign_unblocked_procedure, hand_procedure, keyword_choice_procedure, player_option_choice_procedure, vote_option_set_procedure, chosen_counter_kind_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
+    assign_unblocked_procedure, extra_targets_procedure, each_reveal_procedure, chosen_hand_reveal_procedure, tiered_payment_procedure, gained_control_followup_procedure, exchange_blocks_procedure, hand_procedure, keyword_choice_procedure, player_option_choice_procedure, vote_option_set_procedure, chosen_counter_kind_procedure, repeat_choice_procedure, distinct_player_assignment_procedure, looked_procedure, search_partition_procedure, mill_procedure, pair_procedure, rider_procedure,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
 
@@ -30,9 +30,17 @@ pub(super) enum Procedure {
     KeywordChoice(keyword_choice_procedure::KeywordChoiceGroup),
     SearchPartition(search_partition_procedure::SearchPartitionGroup),
     AssignUnblocked(assign_unblocked_procedure::AssignUnblockedGroup),
+    ExtraTargets(extra_targets_procedure::ExtraTargetsGroup),
+    EachReveal(each_reveal_procedure::EachRevealGroup),
+    ChosenHandReveal(chosen_hand_reveal_procedure::ChosenHandRevealGroup),
+    TieredPayment(tiered_payment_procedure::TieredPaymentGroup),
+    GainedControlFollowup(gained_control_followup_procedure::GainedControlFollowupGroup),
+    ExchangeBlocks(exchange_blocks_procedure::ExchangeBlocksGroup),
     PlayerOptionChoice(player_option_choice_procedure::PlayerOptionChoiceGroup),
     VoteOptionSet(vote_option_set_procedure::VoteOptionSetGroup),
     ChosenCounterKind(chosen_counter_kind_procedure::ChosenCounterKindGroup),
+    RepeatChoice(repeat_choice_procedure::RepeatChoiceGroup),
+    DistinctPlayerAssignment(distinct_player_assignment_procedure::DistinctPlayerAssignmentGroup),
 }
 
 /// A closed procedure: its effects and the sentences it consumed.
@@ -95,6 +103,30 @@ fn open_all(
             .map(|group| group.map(Procedure::AssignUnblocked)),
     );
     consider(
+        extra_targets_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::ExtraTargets)),
+    );
+    consider(
+        each_reveal_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::EachReveal)),
+    );
+    consider(
+        chosen_hand_reveal_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::ChosenHandReveal)),
+    );
+    consider(
+        tiered_payment_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::TieredPayment)),
+    );
+    consider(
+        gained_control_followup_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::GainedControlFollowup)),
+    );
+    consider(
+        exchange_blocks_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::ExchangeBlocks)),
+    );
+    consider(
         keyword_choice_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::KeywordChoice)),
     );
@@ -109,6 +141,14 @@ fn open_all(
     consider(
         chosen_counter_kind_procedure::open(sentences, sentence_idx)
             .map(|group| group.map(Procedure::ChosenCounterKind)),
+    );
+    consider(
+        repeat_choice_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::RepeatChoice)),
+    );
+    consider(
+        distinct_player_assignment_procedure::open(sentences, sentence_idx)
+            .map(|group| group.map(Procedure::DistinctPlayerAssignment)),
     );
     match (opened.is_empty(), deferred) {
         (true, Some(error)) => Err(error),
@@ -137,12 +177,26 @@ pub(super) fn continue_with(
         Procedure::KeywordChoice(group) => keyword_choice_procedure::continue_with(group, sentence),
         Procedure::SearchPartition(group) => search_partition_procedure::continue_with(group, sentence),
         Procedure::AssignUnblocked(group) => assign_unblocked_procedure::continue_with(group, sentence),
+        Procedure::ExtraTargets(group) => extra_targets_procedure::continue_with(group, sentence),
+        Procedure::EachReveal(group) => each_reveal_procedure::continue_with(group, sentence),
+        Procedure::ChosenHandReveal(group) => {
+            chosen_hand_reveal_procedure::continue_with(group, sentence)
+        }
+        Procedure::TieredPayment(group) => tiered_payment_procedure::continue_with(group, sentence),
+        Procedure::GainedControlFollowup(group) => {
+            gained_control_followup_procedure::continue_with(group, sentence)
+        }
+        Procedure::ExchangeBlocks(group) => exchange_blocks_procedure::continue_with(group, sentence),
         Procedure::PlayerOptionChoice(group) => {
             player_option_choice_procedure::continue_with(group, sentence)
         }
         Procedure::VoteOptionSet(group) => vote_option_set_procedure::continue_with(group, sentence),
         Procedure::ChosenCounterKind(group) => {
             chosen_counter_kind_procedure::continue_with(group, sentence)
+        }
+        Procedure::RepeatChoice(group) => repeat_choice_procedure::continue_with(group, sentence),
+        Procedure::DistinctPlayerAssignment(group) => {
+            distinct_player_assignment_procedure::continue_with(group, sentence)
         }
     }
 }
@@ -209,6 +263,36 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             consumed: group.consumed,
             effects: assign_unblocked_procedure::finish(group),
         },
+        Procedure::ExtraTargets(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: extra_targets_procedure::finish(group),
+        },
+        Procedure::EachReveal(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: each_reveal_procedure::finish(group),
+        },
+        Procedure::ChosenHandReveal(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: chosen_hand_reveal_procedure::finish(group),
+        },
+        Procedure::TieredPayment(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: tiered_payment_procedure::finish(group),
+        },
+        Procedure::GainedControlFollowup(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: gained_control_followup_procedure::finish(group),
+        },
+        Procedure::ExchangeBlocks(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: exchange_blocks_procedure::finish(group),
+        },
         Procedure::PlayerOptionChoice(group) => Closed {
             first_sentence: group.first_sentence,
             consumed: group.consumed,
@@ -223,6 +307,16 @@ pub(super) fn finish(procedure: Procedure) -> Closed {
             first_sentence: group.first_sentence,
             consumed: group.consumed,
             effects: chosen_counter_kind_procedure::finish(group),
+        },
+        Procedure::RepeatChoice(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: repeat_choice_procedure::finish(group),
+        },
+        Procedure::DistinctPlayerAssignment(group) => Closed {
+            first_sentence: group.first_sentence,
+            consumed: group.consumed,
+            effects: distinct_player_assignment_procedure::finish(group),
         },
     }
 }
@@ -241,9 +335,17 @@ pub(super) fn kind(procedure: &Procedure) -> &'static str {
         Procedure::KeywordChoice(_) => "keyword-choice",
         Procedure::SearchPartition(_) => "search-partition",
         Procedure::AssignUnblocked(_) => "assign-unblocked",
+        Procedure::ExtraTargets(_) => "extra-targets",
+        Procedure::EachReveal(_) => "each-reveal",
+        Procedure::ChosenHandReveal(_) => "chosen-hand-reveal",
+        Procedure::TieredPayment(_) => "tiered-payment",
+        Procedure::GainedControlFollowup(_) => "gained-control-followup",
+        Procedure::ExchangeBlocks(_) => "exchange-blocks",
         Procedure::PlayerOptionChoice(_) => "player-option-choice",
         Procedure::VoteOptionSet(_) => "vote-option-set",
         Procedure::ChosenCounterKind(_) => "chosen-counter-kind",
+        Procedure::RepeatChoice(_) => "repeat-choice",
+        Procedure::DistinctPlayerAssignment(_) => "distinct-player-assignment",
     }
 }
 
@@ -261,9 +363,17 @@ fn name(procedure: &Procedure) -> &'static str {
         Procedure::KeywordChoice(_) => "keyword-choice-procedure",
         Procedure::SearchPartition(_) => "search-partition-procedure",
         Procedure::AssignUnblocked(_) => "assign-unblocked-procedure",
+        Procedure::ExtraTargets(_) => "extra-targets-procedure",
+        Procedure::EachReveal(_) => "each-reveal-procedure",
+        Procedure::ChosenHandReveal(_) => "chosen-hand-reveal-procedure",
+        Procedure::TieredPayment(_) => "tiered-payment-procedure",
+        Procedure::GainedControlFollowup(_) => "gained-control-followup-procedure",
+        Procedure::ExchangeBlocks(_) => "exchange-blocks-procedure",
         Procedure::PlayerOptionChoice(_) => "player-option-choice-procedure",
         Procedure::VoteOptionSet(_) => "vote-option-set-procedure",
         Procedure::ChosenCounterKind(_) => "chosen-counter-kind-procedure",
+        Procedure::RepeatChoice(_) => "repeat-choice-procedure",
+        Procedure::DistinctPlayerAssignment(_) => "distinct-player-assignment-procedure",
     }
 }
 

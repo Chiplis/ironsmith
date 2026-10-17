@@ -1541,6 +1541,7 @@ mod tests {
                                 ])),
                                 source_filter: None,
                                 controller_filter: Some(ControllerFilter::Opponent),
+                                ability_kind: None,
                             },
                         },
                         String::new(),
@@ -1552,6 +1553,8 @@ mod tests {
                 game.update_cant_effects();
                 let cause = EventCause {
                     resolving_spell: None,
+                    targeted_objects: Vec::new(),
+                    resolving_ability: None,
                     cause_type,
                     source: Some(protector),
                     source_controller: Some(cause_controller),
@@ -1593,6 +1596,7 @@ mod tests {
                         ])),
                         source_filter: None,
                         controller_filter: Some(ControllerFilter::Opponent),
+                        ability_kind: None,
                     },
                 },
                 String::new(),

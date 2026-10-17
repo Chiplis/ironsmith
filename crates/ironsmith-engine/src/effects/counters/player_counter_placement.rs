@@ -38,6 +38,7 @@ pub(super) fn player_counter_request_outcome(
         .turn_store
         .turn_history
         .player_counter_is_locked_this_turn(player, proposed.counter_type)
+        || !game.can_get_counters(player)
         || (proposed.counter_type == CounterType::Poison && !game.can_get_poison_counters(player))
     {
         return Ok(Some(prevented()));
@@ -140,6 +141,7 @@ pub(super) fn commit_player_counter_placement_with_outputs(
                 .turn_store
                 .turn_history
                 .player_counter_is_locked_this_turn(player, resolved.counter_type)
+                || !game.can_get_counters(player)
                 || (resolved.counter_type == CounterType::Poison
                     && !game.can_get_poison_counters(player))
             {

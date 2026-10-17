@@ -48,6 +48,7 @@ fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
         || statement_shapes::is_first_coin_batch_heads_win(tokens)
         || statement_shapes::is_extra_die_ignore_lowest(tokens)
         || statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
+        || statement_shapes::parse_die_roll_exchange_with_source_base_pt(tokens).is_some()
 }
 
 fn parse_any_player_no_one_does_statement(
@@ -739,7 +740,8 @@ fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
         Some(EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
             action: crate::model::ast::SubjectVerbActionAst::Random(
                 crate::model::ast::RandomActionAst::RollDie { .. }
-                | crate::model::ast::RandomActionAst::RollDiceChooseResult { .. },
+                | crate::model::ast::RandomActionAst::RollDiceChooseResult { .. }
+                | crate::model::ast::RandomActionAst::RollDiceTotal { .. },
             ),
             ..
         }))

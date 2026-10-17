@@ -723,16 +723,7 @@ fn parse_two_color_devotion_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     }
     let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
     Some(PredicateAst::ValueComparison {
-        left: Value::Add(
-            Box::new(Value::Devotion {
-                player: PlayerFilter::You,
-                color: first,
-            }),
-            Box::new(Value::Devotion {
-                player: PlayerFilter::You,
-                color: second,
-            }),
-        ),
+        left: Value::devotion_to_colors(PlayerFilter::You, [first, second].into_iter().collect()),
         operator,
         right: Value::Fixed(amount),
     })
@@ -901,7 +892,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         union.any_of = vec![left, right];
         union
     } else {
-        parse_object_filter(filter_tokens, false)?
+        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint(filter_tokens, false)?
     };
     filter.controller = Some(controller);
     filter.power_greater_than_base_power |= above_base;

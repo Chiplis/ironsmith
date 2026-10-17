@@ -1941,6 +1941,40 @@ impl<'a> ExecutionContext<'a> {
             ironsmith_core::tag::CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG.into(),
             attacking,
         );
+        // "Whenever one or more Devils you control attack one or more players,
+        // you and those players each ...": the players directly attacked by
+        // the trigger's matched attacking group in that declaration.
+        if let Some(attacked) = self
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.downcast::<crate::events::combat::CreatureAttackedEvent>())
+            && let Some(group) =
+                tagged_objects.get(&TagKey::from(ironsmith_core::ATTACKING_GROUP_TAG))
+        {
+            let group_ids: Vec<_> = group.iter().map(|snapshot| snapshot.object_id).collect();
+            let mut defenders = Vec::new();
+            match attacked.declared_attackers.as_deref() {
+                Some(declared) => {
+                    for info in declared {
+                        if group_ids.contains(&info.creature)
+                            && let crate::combat_state::AttackTarget::Player(player) = &info.target
+                            && !defenders.contains(player)
+                        {
+                            defenders.push(*player);
+                        }
+                    }
+                }
+                None => {
+                    if let crate::triggers::AttackEventTarget::Player(player) = &attacked.target {
+                        defenders.push(*player);
+                    }
+                }
+            }
+            tagged_players.insert(
+                ironsmith_core::tag::ATTACKING_GROUP_DEFENDERS_TAG.into(),
+                defenders,
+            );
+        }
         let linked = match &self.linked_exile_owner {
             Some(owner) => match game.linked_exile_pair_members(owner) {
                 Ok(members) => members,

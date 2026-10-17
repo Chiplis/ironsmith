@@ -43,6 +43,16 @@ pub fn parse_land_could_produce_filter(
             words.join(" ")
         )));
     }
-    let filter = parse_object_filter(filter_tokens, false)?;
+    // "the sacrificed land" is the object paid for this ability's cost; its
+    // last-known abilities decide what it could produce.
+    let filter = if TokenWordView::new(filter_tokens).to_word_refs() == ["the", "sacrificed", "land"]
+    {
+        ObjectFilter::land().match_tagged(
+            crate::tag::CompilerReferenceTag::AdditionalCostObject.bind(),
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        )
+    } else {
+        parse_object_filter(filter_tokens, false)?
+    };
     Ok(Some((filter, mana_type_source)))
 }

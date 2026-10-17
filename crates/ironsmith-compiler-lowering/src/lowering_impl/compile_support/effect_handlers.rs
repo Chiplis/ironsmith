@@ -736,6 +736,9 @@ fn apply_delayed_trigger_duration(
         Until::EndOfCombat => Ok(delayed.until_end_of_combat()),
         Until::YourNextTurn => Ok(delayed.until_controller_next_turn()),
         Until::YourNextTurnEnd => Ok(delayed.until_controller_next_turn_end()),
+        Until::PlayersNextTurnEnd { player } => Ok(delayed
+            .until_controller_next_turn_end()
+            .with_duration_player(player.clone())),
         other => Err(CardTextError::ParseError(format!(
             "unsupported delayed-trigger duration: {other:?}"
         ))),
@@ -1290,6 +1293,27 @@ pub(super) fn try_compile_timing_and_control_effect(
                 Vec::new(),
                 PlayerFilter::You,
             ));
+            (vec![effect], choices)
+        }
+        EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDeclareAttackersStep {
+            player,
+            effects,
+            upcoming,
+        }) => {
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+            let delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfDeclareAttackersStep(
+                    player.clone(),
+                ),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            );
+            // A one-shot registration fires at the next matching step; the
+            // "on <player>'s next turn" form also waits for a later turn.
+            let effect = Effect::new(if *upcoming { delayed } else { delayed.starting_next_turn() });
             (vec![effect], choices)
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase {

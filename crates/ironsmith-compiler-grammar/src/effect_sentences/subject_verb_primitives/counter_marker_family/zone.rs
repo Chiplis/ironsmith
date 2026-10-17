@@ -75,6 +75,7 @@ pub fn clone_return_effect_with_subtype(base: &EffectAst, subtype: Subtype) -> O
                 face_down,
                 controller,
                 verb_surface,
+                aura_attachment_filter: _,
             }) => {
                 let mut cloned_filter = filter.clone();
                 cloned_filter.subtypes = vec![subtype];

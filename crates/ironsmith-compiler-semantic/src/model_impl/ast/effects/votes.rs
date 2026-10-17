@@ -5,8 +5,11 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum VoteEffectAst {
     BidLife {
-        target: TargetAst,
-        starting_bid: u32,
+        /// The auctioned object (Illicit Auction); `None` for an untargeted
+        /// auction whose reward is the winner's actions (Pain's Reward).
+        target: Option<TargetAst>,
+        /// `None` when the controller opens with "a bid of any number".
+        starting_bid: Option<u32>,
         winner_effects: Vec<EffectAst>,
     },
     VoteStart {

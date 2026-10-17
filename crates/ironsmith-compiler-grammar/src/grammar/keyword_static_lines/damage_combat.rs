@@ -276,12 +276,27 @@ fn parse_damage_multiplier_lexed<'a>(
         primitives::phrase(&["that", "source", "deals"]),
     ))
     .parse_next(input)?;
+    // "it deals double that damage" / "it deals twice that much damage"
+    // (Neriv, Heart of the Storm) name the same multiplier.
     let factor = alt((
-        primitives::kw("double").value(2),
-        primitives::kw("triple").value(3),
+        (
+            alt((
+                primitives::kw("double").value(2),
+                primitives::kw("triple").value(3),
+            )),
+            primitives::phrase(&["that", "damage"]),
+        )
+            .map(|(factor, _)| factor),
+        (
+            alt((
+                primitives::kw("twice").value(2),
+                primitives::phrase(&["three", "times"]).value(3),
+            )),
+            primitives::phrase(&["that", "much", "damage"]),
+        )
+            .map(|(factor, _)| factor),
     ))
     .parse_next(input)?;
-    primitives::phrase(&["that", "damage"]).parse_next(input)?;
     let repeated_target_tokens = opt((
         primitives::kw("to"),
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("instead")))
@@ -758,6 +773,7 @@ pub struct FilteredDamagePreventionShape<'a> {
     /// An explicitly repeated "that spell ... to that [recipient]" tail.
     pub repeated_spell_target_tokens: Option<&'a [OwnedLexToken]>,
     pub amount: FilteredPreventionAmountShape<'a>,
+    pub optional_by_controller: bool,
 }
 
 pub fn parse_filtered_damage_prevention_tokens(
@@ -784,9 +800,11 @@ fn parse_filtered_damage_prevention_lexed<'a>(
     primitives::phrase(&["damage", "to"]).parse_next(input)?;
     let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1.., any.void(),
-        peek((primitives::comma(), primitives::kw("prevent"))),
+        peek((primitives::comma(), opt(primitives::phrase(&["you", "may"])), primitives::kw("prevent"))),
     ).map(|((), _)| ()).take().parse_next(input)?;
     primitives::comma().parse_next(input)?;
+    let optional_by_controller = opt(primitives::phrase(&["you", "may"]))
+        .parse_next(input)?.is_some();
     primitives::kw("prevent").parse_next(input)?;
     let mut repeated_spell_target_tokens = None;
     let amount = if opt(primitives::phrase(&["all", "but"]))
@@ -841,6 +859,7 @@ fn parse_filtered_damage_prevention_lexed<'a>(
         maximum_damage,
         repeated_spell_target_tokens,
         amount,
+        optional_by_controller,
     })
 }
 
@@ -857,6 +876,31 @@ pub fn parse_passive_damage_prevention_head(
 ) -> Option<PassiveDamagePreventionHead<'_>> {
     primitives::probe_all(tokens, parse_passive_damage_prevention_head_lexed,
         "passive damage prevention event")
+        .or_else(|| primitives::probe_all(tokens, parse_recipient_first_damage_prevention_head_lexed,
+            "passive damage prevention event"))
+}
+
+/// "If equipped creature would be dealt damage, prevent that damage" (Panther
+/// Habit): the recipient-first spelling of the same passive event.
+fn parse_recipient_first_damage_prevention_head_lexed<'a>(input: &mut LexStream<'a>)
+    -> WResult<PassiveDamagePreventionHead<'a>>
+{
+    primitives::kw("if").parse_next(input)?;
+    let damaged_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1.., any.void(), peek(primitives::phrase(&["would", "be", "dealt"])),
+    ).map(|((), _)| ()).take().parse_next(input)?;
+    primitives::phrase(&["would", "be", "dealt"]).parse_next(input)?;
+    let kind = opt(alt((primitives::kw("combat").value(true),
+        primitives::kw("noncombat").value(false)))).parse_next(input)?;
+    primitives::kw("damage").parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["prevent", "that", "damage"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(PassiveDamagePreventionHead {
+        damaged_tokens,
+        combat_only: kind == Some(true),
+        noncombat_only: kind == Some(false),
+    })
 }
 
 fn parse_passive_damage_prevention_head_lexed<'a>(input: &mut LexStream<'a>)
@@ -905,8 +949,12 @@ fn parse_permanent_damage_prevention_lexed<'a>(
     primitives::phrase(&["prevent", "all"]).parse_next(input)?;
     let kind = opt(alt((primitives::kw("combat").value(true),
         primitives::kw("noncombat").value(false)))).parse_next(input)?;
-    primitives::phrase(&["damage", "that"]).parse_next(input)?;
-    let (damaged_tokens, source) = if opt(primitives::phrase(&["would", "be", "dealt"]))
+    primitives::kw("damage").parse_next(input)?;
+    // "prevent all damage Deserts would deal to this creature" (Camel): the
+    // relative "that" is optional before an explicit source subject.
+    let has_that = opt(primitives::kw("that")).parse_next(input)?.is_some();
+    let (damaged_tokens, source) = if has_that
+        && opt(primitives::phrase(&["would", "be", "dealt"]))
         .parse_next(input)?.is_some()
     {
         let damaged: &'a [OwnedLexToken] = if opt(primitives::kw("to")).parse_next(input)?.is_some() {

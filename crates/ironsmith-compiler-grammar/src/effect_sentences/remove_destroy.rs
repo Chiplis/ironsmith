@@ -311,6 +311,28 @@ fn lower_destroy_all_shape(shape: shapes::DestroyAllShape<'_>) -> Result<EffectA
             filter.dealt_damage_to_player_this_turn = Some(player);
             Ok(EffectAst::subject_verb_destroy_all(filter))
         }
+        shapes::DestroyAllShape::ControllerDealtCombatDamageBySourceThisTurn {
+            filter_tokens,
+            source_tokens,
+        } => {
+            let source_words = crate::lexer::token_word_refs(source_tokens);
+            if !crate::util::is_source_reference_words(&source_words) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported combat damage source in destroy-all clause: '{}'",
+                    source_words.join(" ")
+                )));
+            }
+            let sources = crate::util::source_reference_surface_for_words(&source_words)
+                .map(ObjectFilter::source_with_surface)
+                .unwrap_or_else(ObjectFilter::source);
+            let mut filter = parse_destroy_all_filter(filter_tokens)?;
+            filter.controller = Some(PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
+                base: Box::new(PlayerFilter::Any),
+                sources: Box::new(sources),
+                minimum: 1,
+            });
+            Ok(EffectAst::subject_verb_destroy_all(filter))
+        }
         shapes::DestroyAllShape::AttachedTo {
             filter_tokens,
             target_tokens,
@@ -426,6 +448,30 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
             leading_duration: false,
             result_conjunction: false,
         });
+    }
+    // "destroy it and all creatures it blocked this turn" (Defiant Vanguard):
+    // a bare object reference joined with an independent universal set.
+    if let Some(and_index) = tokens.iter().position(|token| token.is_word("and"))
+        && tokens
+            .get(and_index + 1)
+            .is_some_and(|token| token.is_any_word(&["all", "each"]))
+    {
+        let left_words = crate::lexer::token_word_refs(&tokens[..and_index]);
+        if matches!(
+            left_words.as_slice(),
+            ["it"] | ["that", "creature"] | ["that", "permanent"]
+        ) {
+            let first = EffectAst::subject_verb_destroy(TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                None,
+            ));
+            let second = parse_destroy(&tokens[and_index + 1..])?;
+            return Ok(EffectAst::Coordinated {
+                effects: vec![first, second],
+                leading_duration: false,
+                result_conjunction: false,
+            });
+        }
     }
     let original_clause = crate::lexer::token_word_refs(tokens).join(" ");
     if crate::word_primitives::parse_sequence_complete(
@@ -789,11 +835,26 @@ pub fn apply_except_filter_exclusions(
     if let Some(name) = &exception.name {
         base.excluded_name = Some(name.clone());
     }
+    // "except for basic lands" (Eye of Singularity): only lands are basic
+    // (CR 205.4c), so excluding the Basic supertype excludes exactly the
+    // basic lands without excluding every land.
+    let basic_land_exception = exception.supertypes == [crate::types::Supertype::Basic]
+        && exception
+            .card_types
+            .iter()
+            .chain(exception.all_card_types.iter())
+            .all(|card_type| *card_type == crate::types::CardType::Land);
+    if basic_land_exception {
+        if !base.excluded_supertypes.contains(&crate::types::Supertype::Basic) {
+            base.excluded_supertypes.push(crate::types::Supertype::Basic);
+        }
+    }
     for card_type in exception
         .card_types
         .iter()
         .copied()
         .chain(exception.all_card_types.iter().copied())
+        .filter(|_| !basic_land_exception)
     {
         if !base.excluded_card_types.contains(&card_type) {
             base.excluded_card_types.push(card_type);
@@ -823,6 +884,9 @@ pub fn apply_except_filter_exclusions(
     residual.card_types.clear();
     residual.all_card_types.clear();
     residual.subtypes.clear();
+    if basic_land_exception {
+        residual.supertypes.clear();
+    }
     residual.is_commander = false;
     residual.token = false;
     residual.zone = None;

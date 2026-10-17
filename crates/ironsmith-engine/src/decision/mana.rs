@@ -126,6 +126,14 @@ fn shared_spell_characteristic_count(
                     .unwrap_or_else(|| object.colors())
                     .intersection(spell_colors)
                     .is_empty(),
+                crate::ObjectCharacteristic::AllCardTypes => {
+                    crate::ObjectCharacteristic::card_type_sets_match(
+                        &game
+                            .current_card_types(object.id)
+                            .unwrap_or_else(|| object.card_types.to_vec()),
+                        &spell_types,
+                    )
+                }
                 crate::ObjectCharacteristic::CardType
                 | crate::ObjectCharacteristic::PermanentType => game
                     .current_card_types(object.id)
@@ -147,6 +155,19 @@ fn shared_spell_characteristic_count(
     }
 
     match intersection.characteristic {
+        crate::ObjectCharacteristic::AllCardTypes => {
+            let spell_types = game
+                .current_card_types(spell.id)
+                .unwrap_or_else(|| spell.card_types.to_vec());
+            comparison_objects.iter().any(|object| {
+                crate::ObjectCharacteristic::card_type_sets_match(
+                    &game
+                        .current_card_types(object.id)
+                        .unwrap_or_else(|| object.card_types.to_vec()),
+                    &spell_types,
+                )
+            }) as i32
+        }
         crate::ObjectCharacteristic::CardType => {
             let comparison = comparison_objects
                 .iter()
@@ -745,7 +766,62 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
         }
     }
 
-    crate::cost::TotalCost::from_costs(costs)
+    merge_loyalty_cost_components(crate::cost::TotalCost::from_costs(costs))
+}
+
+/// An additional loyalty cost ("Planeswalkers' loyalty abilities you activate
+/// cost an additional [+1] to activate", Carth the Lion) changes the printed
+/// loyalty cost rather than adding a second payment: [-2] becomes [-1] and
+/// [+1] becomes [+2], so a planeswalker with 1 loyalty may activate [-2].
+fn merge_loyalty_cost_components(cost: crate::cost::TotalCost) -> crate::cost::TotalCost {
+    use crate::object::CounterType;
+    let loyalty_delta = |component: &crate::costs::Cost| -> Option<i64> {
+        match component.compiled_model()? {
+            ironsmith_core::Cost::AddCounters {
+                counter_type: CounterType::Loyalty,
+                count,
+            } => Some(i64::from(*count)),
+            ironsmith_core::Cost::RemoveCounters {
+                counter_type: CounterType::Loyalty,
+                count,
+            } => Some(-i64::from(*count)),
+            _ => None,
+        }
+    };
+    let components = cost.costs();
+    let loyalty = components
+        .iter()
+        .enumerate()
+        .filter_map(|(index, component)| loyalty_delta(component).map(|delta| (index, delta)))
+        .collect::<Vec<_>>();
+    if loyalty.len() < 2 {
+        return cost;
+    }
+    let net: i64 = loyalty.iter().map(|(_, delta)| delta).sum();
+    let merged = if net < 0 {
+        crate::costs::Cost::remove_counters(
+            CounterType::Loyalty,
+            u32::try_from(-net).unwrap_or(u32::MAX),
+        )
+    } else {
+        crate::costs::Cost::add_counters(CounterType::Loyalty, u32::try_from(net).unwrap_or(u32::MAX))
+    };
+    let first = loyalty[0].0;
+    crate::cost::TotalCost::from_costs(
+        components
+            .iter()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                if index == first {
+                    Some(merged.clone())
+                } else if loyalty.iter().any(|(loyalty_index, _)| *loyalty_index == index) {
+                    None
+                } else {
+                    Some(component.clone())
+                }
+            })
+            .collect(),
+    )
 }
 
 /// Calculate the effective mana portion of an activated ability's cost.
@@ -2326,6 +2402,58 @@ pub(crate) fn target_dependent_flash_matches(
     })
 }
 
+fn cast_choice_flash_permissions(
+    spell: &crate::object::Object,
+) -> Vec<ironsmith_core::FlashCastChoice> {
+    spell
+        .abilities
+        .iter()
+        .filter_map(|ability| {
+            let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+                return None;
+            };
+            match &ability.compiled_model()?.payload {
+                ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(choice) => {
+                    Some(choice.clone())
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// "You may cast this spell as though it had flash if X is 3 or less" / "if
+/// it's cast using teamwork": the decision is made during casting (CR
+/// 601.2b-c), so casting may begin; the completed proposal is checked by
+/// [`cast_choice_flash_matches`].
+fn cast_choice_flash_can_begin(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+) -> bool {
+    !game
+        .effect_store
+        .cant_effects
+        .cast_spells_only_as_sorcery
+        .contains(&player)
+        && !cast_choice_flash_permissions(spell).is_empty()
+}
+
+/// Test a completed proposal's committed X and optional-cost choices against
+/// its decision-dependent flash permissions.
+pub(crate) fn cast_choice_flash_matches(spell: &crate::object::Object) -> bool {
+    cast_choice_flash_permissions(spell)
+        .iter()
+        .any(|choice| match choice {
+            ironsmith_core::FlashCastChoice::XAtMost(max) => {
+                spell.x_value.unwrap_or(0) <= *max
+            }
+            ironsmith_core::FlashCastChoice::OptionalCostPaid(label) => {
+                spell.optional_costs_paid.was_paid_label(label.clone())
+            }
+        })
+}
+
 fn target_dependent_flash_can_begin(
     game: &GameState,
     player: PlayerId,
@@ -2380,6 +2508,7 @@ pub(crate) fn has_valid_spell_timing_with_view(
 ) -> bool {
     has_valid_spell_timing_without_target_permission(game, player, spell, spell_id, view)
         || target_dependent_flash_can_begin(game, player, spell)
+        || cast_choice_flash_can_begin(game, player, spell)
 }
 
 pub(crate) fn has_valid_spell_timing_without_target_permission(
@@ -2490,7 +2619,10 @@ fn casting_method_grants_flash_timing(
     matches!(
         method,
         Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
-    ) || flash_timing_optional_cost_grants_timing(game, player, spell, casting_method)
+    ) || method
+        .as_ref()
+        .is_some_and(|method| method.grants_instant_timing())
+        || flash_timing_optional_cost_grants_timing(game, player, spell, casting_method)
 }
 
 /// "Cast this spell as though it had flash if you pay {N} more" (an optional
@@ -3101,7 +3233,8 @@ fn completed_cast_proposal_is_legal_with_timing_permission(
             .cant_effects
             .cast_spells_only_as_sorcery
             .contains(&player)
-            && target_dependent_flash_matches(game, player, spell, targets))
+            && (target_dependent_flash_matches(game, player, spell, targets)
+                || cast_choice_flash_matches(spell)))
         || casting_method_grants_special_timing(&ctx, spell, spell.id, casting_method)
 }
 
@@ -3384,6 +3517,11 @@ pub(crate) fn payment_requires_stateful_sources(game: &GameState, player: Player
     // A color-only pool erases spending restrictions. They remain binding
     // even after the permanent that produced the mana has left play.
     if game.player(player).is_some_and(|player| !player.restricted_mana.is_empty()) {
+        return true;
+    }
+    // Lands tapped through "you may tap lands you don't control for mana"
+    // are activated by a non-controller under the permission's restrictions.
+    if game.has_uncontrolled_land_mana_permission(player) {
         return true;
     }
     let analysis = view.simple_battlefield_mana_analysis(player);
@@ -6066,7 +6204,40 @@ pub(crate) fn collect_spell_cost_modifiers(
         if let Some(reduction) = constraints.spell_cost_reduction {
             reduction_pips.extend(reduction.pips().iter().cloned());
         }
-        if let Some(increase) = constraints.spell_cost_increase {
+        // "That spell has undaunted" (CR 702.125a): {1} less per opponent,
+        // counted now as the total cost is determined (CR 601.2f).
+        if constraints.spell_cost_reduction_per_opponent > 0 {
+            let opponents = opponents_of(game, player).len() as u32;
+            let generic = constraints
+                .spell_cost_reduction_per_opponent
+                .saturating_mul(opponents);
+            if generic > 0 {
+                reduction_pips.push(vec![crate::mana::ManaSymbol::Generic(
+                    u8::try_from(generic).unwrap_or(u8::MAX),
+                )]);
+            }
+        }
+        // "If that spell doesn't target <filter>, it costs {N} more to cast
+        // this way": targets are chosen before costs are determined
+        // (CR 601.2c, 601.2f), so the surcharge reads the chosen targets.
+        let surcharge_waived = constraints
+            .spell_cost_increase_unless_targets
+            .as_ref()
+            .is_some_and(|filter| {
+                let ctx = crate::filter::FilterContext::new(player)
+                    .with_source(spell.id)
+                    .with_active_player(game.turn.active_player)
+                    .with_opponents(opponents_of(game, player));
+                chosen_targets.iter().any(|target| match target {
+                    Target::Object(object) => game
+                        .object(*object)
+                        .is_some_and(|object| filter.matches(object, &ctx, game)),
+                    Target::Player(_) => false,
+                })
+            });
+        if let Some(increase) = constraints.spell_cost_increase
+            && !surcharge_waived
+        {
             increase_pips.extend(increase.pips().iter().cloned());
         }
     }
@@ -6887,8 +7058,55 @@ pub(crate) fn resolve_this_spell_cost_reduction_value(
     resolve_cost_modifier_value(game, player, spell, &reduction.reduction)
 }
 
-/// Replace every unbound "permanents sacrificed this way" metric in a cost
-/// modifier amount. Returns `None` when the amount has no such metric.
+/// The actions a spell's own additional or optional cost can perform that a
+/// "This spell costs {N} less to cast for each <object> <action> this way"
+/// reduction counts once that cost is paid: sacrifices (Torgaar, Dargo) and
+/// taps (Explosive Singularity).
+const COST_PAYMENT_METRIC_ACTIONS: [ironsmith_core::PriorEffectAction; 2] = [
+    ironsmith_core::PriorEffectAction::Sacrificed,
+    ironsmith_core::PriorEffectAction::Tapped,
+];
+
+/// The cost-payment actions ([`COST_PAYMENT_METRIC_ACTIONS`]) the spell's
+/// "for each ... this way" reductions read.
+fn spell_cost_payment_metric_actions(
+    spell: &crate::object::Object,
+) -> Vec<ironsmith_core::PriorEffectAction> {
+    let mut actions = Vec::new();
+    for reduction in spell_cost_payment_sacrifice_reductions(spell) {
+        collect_cost_payment_metric_actions(&reduction.reduction, &mut actions);
+    }
+    actions
+}
+
+fn collect_cost_payment_metric_actions(
+    value: &crate::effect::Value,
+    out: &mut Vec<ironsmith_core::PriorEffectAction>,
+) {
+    use crate::effect::Value;
+    match value {
+        Value::PendingPriorEffectMetric(query) => {
+            if let Some(action) = query.action
+                && COST_PAYMENT_METRIC_ACTIONS.contains(&action)
+                && !out.contains(&action)
+            {
+                out.push(action);
+            }
+        }
+        Value::SurfaceHinted { value: inner, .. }
+        | Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => collect_cost_payment_metric_actions(inner, out),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            collect_cost_payment_metric_actions(left, out);
+            collect_cost_payment_metric_actions(right, out);
+        }
+        _ => {}
+    }
+}
+
+/// Replace every unbound "permanents sacrificed / tapped this way" metric in
+/// a cost modifier amount. Returns `None` when the amount has no such metric.
 pub(crate) fn substitute_cost_payment_sacrifice_metric(
     value: &crate::effect::Value,
     replacement: &dyn Fn(&ironsmith_core::PriorEffectMetricQuery) -> crate::effect::Value,
@@ -6906,7 +7124,9 @@ pub(crate) fn substitute_cost_payment_sacrifice_metric(
     };
     match value {
         Value::PendingPriorEffectMetric(query)
-            if query.action == Some(ironsmith_core::PriorEffectAction::Sacrificed) =>
+            if query
+                .action
+                .is_some_and(|action| COST_PAYMENT_METRIC_ACTIONS.contains(&action)) =>
         {
             Some(replacement(query))
         }
@@ -7015,6 +7235,10 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
     }
     let filter_ctx = game.filter_context_for(player, Some(spell.id));
     let cause = crate::events::cause::EventCause::from_cost(spell.id, player);
+    let metric_actions = spell_cost_payment_metric_actions(spell);
+    let sacrifice_metric = metric_actions.contains(&ironsmith_core::PriorEffectAction::Sacrificed);
+    let tap_only_metric = !sacrifice_metric
+        && metric_actions.contains(&ironsmith_core::PriorEffectAction::Tapped);
     let sacrificable = choices
         .iter()
         .filter(|choose| {
@@ -7032,8 +7256,14 @@ fn max_cost_payment_sacrifice_reduction_for_selection(
                 .filter(|(id, object)| {
                     game.controller_of(object) == player
                         && choose.filter.matches(object, &filter_ctx, game)
-                        && game.can_be_sacrificed_with_cause(*id, &cause)
-                        && !game.player_cant_sacrifice_object_to_cast_or_activate(player, *id)
+                        && if tap_only_metric {
+                            // A tap cost can only use untapped permanents.
+                            !game.is_tapped(*id)
+                        } else {
+                            game.can_be_sacrificed_with_cause(*id, &cause)
+                                && !game
+                                    .player_cant_sacrifice_object_to_cast_or_activate(player, *id)
+                        }
                 })
                 .count();
             choose.count.max.map_or(available, |max| available.min(max))
@@ -7103,11 +7333,14 @@ pub(crate) fn cost_payment_sacrifice_reduction(
     let outcomes: std::collections::HashMap<_, _> = completed
         .instruction_outcomes()
         .filter(|outcome| {
-            crate::effects::outcome_recording::action_objects(
-                outcome.instruction_result(),
-                ironsmith_core::PriorEffectAction::Sacrificed,
-                None,
-            ).is_some()
+            COST_PAYMENT_METRIC_ACTIONS.iter().any(|action| {
+                crate::effects::outcome_recording::action_objects(
+                    outcome.instruction_result(),
+                    *action,
+                    None,
+                )
+                .is_some()
+            })
         })
         .enumerate()
         .map(|(index, outcome)| (crate::effect::EffectId(index as u32), outcome.clone()))
@@ -7126,8 +7359,22 @@ pub(crate) fn cost_payment_sacrifice_reduction(
             if let Some(filter) = query.filter.as_mut() {
                 filter.zone = None;
             }
+            // Only the producers that performed this query's action count
+            // (a tap payment never feeds "sacrificed this way").
             effect_ids
                 .iter()
+                .filter(|effect_id| {
+                    query.action.is_some_and(|action| {
+                        outcomes.get(*effect_id).is_some_and(|outcome| {
+                            crate::effects::outcome_recording::action_objects(
+                                outcome.instruction_result(),
+                                action,
+                                None,
+                            )
+                            .is_some()
+                        })
+                    })
+                })
                 .map(|&effect_id| crate::effect::Value::PriorEffectMetric {
                     effect_id,
                     query: query.clone(),

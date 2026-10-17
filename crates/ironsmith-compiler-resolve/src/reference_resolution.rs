@@ -166,6 +166,8 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             matches!(
                 trigger,
                 TriggerSpec::CardsMilled { .. }
+                    | TriggerSpec::DamageToPlayerPrevented(_)
+                    | TriggerSpec::DamagePreventedThisWay { .. }
                     | TriggerSpec::PlayerGainsLife { .. }
                     | TriggerSpec::YouGainLife
                     | TriggerSpec::YouGainLifeCausedBy(_)
@@ -1547,12 +1549,17 @@ fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
         }
         Value::PowerOf(spec)
         | Value::BasePowerOf(spec)
+        | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
+        | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
+        | Value::NotedCreatureTypeCount(spec)
+        | Value::TypeCountOf(spec)
+        | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
@@ -1706,8 +1713,24 @@ fn advance_reference_frames(
     id_gen: &mut IdGenContext,
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
-    for effect in effects {
-        advance_reference_frame_for_effect(effect, id_gen, frame)?;
+    for (index, effect) in effects.iter().enumerate() {
+        // "Mill five cards, then put any number of creature cards milled this
+        // way into your hand": a nested chain member that generates an object
+        // result (mill, discover, manifest, ...) is tagged when a later
+        // sibling refers back to it, exactly as a top-level annotated
+        // sequence does, so "milled this way" finds the milling result even
+        // in ability bodies that do not force auto-tagging.
+        let tag_generated_result = !frame.auto_tag_object_targets
+            && generated_object_result_tag_prefix(effect).is_some()
+            && effects_reference_it_tag(&effects[index + 1..]);
+        if tag_generated_result {
+            frame.auto_tag_object_targets = true;
+        }
+        let result = advance_reference_frame_for_effect(effect, id_gen, frame);
+        if tag_generated_result {
+            frame.auto_tag_object_targets = false;
+        }
+        result?;
     }
     Ok(())
 }
@@ -2301,7 +2324,8 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { target, .. })
-                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target }) => {
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+                | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { target, .. }) => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                     // "Target player loses all poison counters. ~ deals that
                     // much damage to that player" (Leeches): a player holder
@@ -2454,6 +2478,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
                     target,
                     follow_up_effects: _,
+                    ..
                 }) => {
                     // Same result prefix lowering tags the regeneration with,
                     // so lowering adopts this reservation.
@@ -2580,7 +2605,13 @@ fn advance_reference_frame_for_effect(
                     ));
                 }
                 SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer { player, .. }) => {
-                    frame.last_player_filter = Some(player.clone());
+                    // "that player" (an iterated-player placeholder outside
+                    // an iteration) names the already-tracked player.
+                    if !matches!(player, PlayerFilter::IteratedPlayer)
+                        || frame.last_player_filter.is_none()
+                    {
+                        frame.last_player_filter = Some(player.clone());
+                    }
                 }
                 SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { tag, .. }) => {
                     frame.last_object_tag = Some(tag.clone().into());
@@ -3321,6 +3352,9 @@ fn advance_reference_frame_for_effect(
             effects, ..
         })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDeclareAttackersStep {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
@@ -3376,9 +3410,23 @@ fn advance_reference_frame_for_effect(
                     .then(|| true_frame.last_object_tag.clone())
                     .flatten()
                     .filter(|tag| tag.as_str().starts_with("created_"));
+                let branch_player = true_frame.last_player_filter.clone();
                 *frame = saved;
                 if let Some(created) = created {
                     frame.last_object_tag = Some(created);
+                }
+                // Mirror the annotated-env export: an object-relative player
+                // the branch introduced (Deicide's "its controller") is the
+                // only player a following "that player" can name.
+                if frame.last_player_filter.is_none()
+                    && let Some(
+                        player @ (PlayerFilter::ControllerOf(_)
+                        | PlayerFilter::AliasedControllerOf(_)
+                        | PlayerFilter::OwnerOf(_)
+                        | PlayerFilter::AliasedOwnerOf(_)),
+                    ) = branch_player
+                {
+                    frame.last_player_filter = Some(player);
                 }
             } else {
                 let mut false_frame = saved.clone();
@@ -3555,7 +3603,8 @@ fn advance_reference_frame_for_effect(
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
             // Modes are mutually-exclusive branches: resolve references within
             // each in an isolated frame so one mode's bindings don't leak into
             // the next or into following effects.
@@ -3703,11 +3752,26 @@ fn advance_reference_frame_for_effect(
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::SolveCase
         | EffectAst::GreatestManaValueTieBreakExile { .. }
+        | EffectAst::RollDieKeepHighestPlayers { .. }
+        | EffectAst::GrantPlayTaggedUntilPlayerNextEndStep { .. }
         | EffectAst::SetDayNight(_)
         | EffectAst::ChoosePlayerOption(_)
+        | EffectAst::TagSplicedCards { .. }
+        | EffectAst::ExchangeBlocks { .. }
+        | EffectAst::UnblockSoleBlockedAttackers(_)
+        | EffectAst::UnblockSoleBlockedAttackersOf { .. }
+        | EffectAst::BlockAttackerOfChoice { .. }
+        | EffectAst::PlayWithHandRevealed(_)
+        | EffectAst::TagLastDamageSource(_)
         | EffectAst::ControlVotesThisTurn
+        | EffectAst::GrantTapUncontrolledLandsForMana
+        | EffectAst::RevealContestWinnerMayChangeTriggeringTargets { .. }
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::NoteTriggeringCreatureType
+        | EffectAst::NoteCounters { .. }
+        | EffectAst::PutTriggeringCounterKind { .. }
+        | EffectAst::RegisterDamageCounterReplacement { .. }
         | EffectAst::ChooseFriendsOrFoes { .. }
         | EffectAst::GrantLoyaltyActivationAllowance { .. }
         | EffectAst::PayToEndThisEffect { .. }
@@ -3779,6 +3843,61 @@ pub fn predicate_comparison_operands(
 ) -> Option<(Value, Value)> {
     let mut values = match predicate {
         PredicateAst::ValueComparison { left, right, .. } => (left.clone(), right.clone()),
+        // "When this creature dies, if it had one or more -1/-1 counters on
+        // it, its owner draws that many cards" (Oft-Nabbed Goat): the tested
+        // quantity is the triggering object's last-known counter count.
+        PredicateAst::Triggering(
+            crate::cards::builders::TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
+                counter_type,
+                count,
+            },
+        ) => (
+            Value::CountersOn(
+                Box::new(ChooseSpec::Tagged(
+                    crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+                )),
+                Some(*counter_type),
+            ),
+            Value::Fixed(i32::try_from(*count).ok()?),
+        ),
+        // "Whenever another nontoken creature you control dies, if its mana
+        // value was 1 or greater, you may remove that many reprieve counters"
+        // (Magnanimous Magistrate): the tested quantity is the referenced
+        // object's mana value.
+        PredicateAst::TaggedMatches(_, filter)
+        | PredicateAst::ItMatches(filter)
+        | PredicateAst::ItMatchedLastKnown(filter)
+            if matches!(
+                filter.mana_value,
+                Some(
+                    Comparison::GreaterThanOrEqual(_)
+                        | Comparison::GreaterThan(_)
+                        | Comparison::Equal(_)
+                )
+            ) && {
+                let mut rest = filter.clone();
+                rest.mana_value = None;
+                rest.zone = None;
+                rest == ObjectFilter::default()
+            } =>
+        {
+            let tag: TagKey = match predicate {
+                PredicateAst::TaggedMatches(tag, _) => tag.into(),
+                _ => crate::tag::CompilerReferenceTag::It.bind().into(),
+            };
+            let threshold = match filter.mana_value {
+                Some(
+                    Comparison::GreaterThanOrEqual(value)
+                    | Comparison::GreaterThan(value)
+                    | Comparison::Equal(value),
+                ) => value,
+                _ => return None,
+            };
+            (
+                Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag))),
+                Value::Fixed(threshold),
+            )
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreCardsInHandThanYou { player }) => {
             let player = match player {
                 PlayerAst::Opponent | PlayerAst::Any => return None,
@@ -4014,6 +4133,18 @@ fn cost_tag_index_from_env(env: &ReferenceEnv, prefix: &str) -> Option<u32> {
                 .filter_map(|(_, tag)| tag.as_str().strip_prefix(prefix))
                 .find_map(|index| index.parse().ok())
         })
+}
+
+/// "Whenever a creature dealt damage this way dies this turn" watches every
+/// object the preceding instruction produced (CR 603.7c), so that
+/// instruction must export its object set.
+fn effects_watch_last_object_death(effects: &[EffectAst]) -> bool {
+    effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn { .. })
+        )
+    })
 }
 
 fn effect_exports_damage_each_object_set(effect: &EffectAst) -> bool {
@@ -4391,7 +4522,8 @@ fn annotate_effect_sequence_with_env_internal(
                 && (effects_reference_tag_in_object_position(
                     remaining,
                     crate::tag::CompilerReferenceTag::It.as_str(),
-                ) || effects_reference_tag_in_object_position(remaining, "damaged_0"))
+                ) || effects_reference_tag_in_object_position(remaining, "damaged_0")
+                    || effects_watch_last_object_death(remaining))
         } else {
             auto_tag_object_targets
         };
@@ -4941,9 +5073,33 @@ fn result_gate_accepts_producer(gate: &EffectAst, producer: &EffectAst) -> bool 
 fn validate_die_result_successor(producer: &EffectAst, next: Option<&EffectAst>) -> Result<(), CardTextError> {
     let is_die_row = |effect: &EffectAst| result_gate_surface(effect)
         .is_some_and(|(predicate, _)| matches!(predicate, IfResultPredicate::DieValue(_)));
+    // "Roll a d20 and subtract ... . If the result is 0 or less, discard
+    // your hand." (The Deck of Many Things): a condition that reads only the
+    // roll's own result exports no result of its own, so the following rows
+    // still test that roll.
+    fn reads_only_roll_result(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+                if effects.len() == 1 =>
+            {
+                reads_only_roll_result(&effects[0])
+            }
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left:
+                        Value::PendingPriorEffectMetric(query)
+                        | Value::PriorEffectMetric { query, .. },
+                    ..
+                },
+                ..
+            }) => query.action == Some(ironsmith_core::PriorEffectAction::Rolled),
+            _ => false,
+        }
+    }
     if next.is_some_and(is_die_row)
         && !is_die_row(producer)
         && !local_random_result_bindings::Family::Die.compatible(producer)
+        && !reads_only_roll_result(producer)
     {
         return Err(CardTextError::ParseError(
             "numeric result row requires an immediate compatible die instruction".into(),
@@ -4984,7 +5140,7 @@ fn effect_is_searched_library_gate(effect: &EffectAst) -> bool {
         .is_some_and(|(predicate, _)| if_result_predicate_is_searched_library(predicate))
 }
 
-fn effect_is_library_search(effect: &EffectAst) -> bool {
+pub(crate) fn effect_is_library_search(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             zones,
@@ -5023,7 +5179,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => matches!(
             subject_verb.action,
-            SubjectVerbActionAst::Random(RandomActionAst::FlipCoin | RandomActionAst::FlipCoinFaceOnly | RandomActionAst::FlipCoins { .. } | RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. })
+            SubjectVerbActionAst::Random(RandomActionAst::FlipCoin | RandomActionAst::FlipCoinFaceOnly | RandomActionAst::FlipCoins { .. } | RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DestroyAll { .. })
@@ -5043,6 +5199,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::DiscardHand)
                 | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
+                | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
@@ -5104,6 +5261,10 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::TargetOnly { .. }
                 // "put a name sticker on it. ... unique vowels on that sticker"
                 | SubjectVerbActionAst::PutSticker { .. }
+                // "gains control of any number of target permanents you
+                // control. Draw a card for each one they gained control of
+                // this way." (Coveted Falcon): the changed permanents.
+                | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
         ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
@@ -5134,7 +5295,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
             modes.iter().any(|mode| {
                 mode.effects
                     .iter()
@@ -5176,6 +5338,64 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether a statement's terminal effect is the only producer an
+/// independently lowered *following* statement can bind its action-typed
+/// pending metric to ("Destroy up to one target artifact ... / Delirium —
+/// Then if ..., create an X/X Ooze, where X is the total mana value of
+/// permanents destroyed this way").
+///
+/// Only an action-qualified query counts ("destroyed this way"), and only
+/// when no earlier effect of the followup itself can supply that action: a
+/// followup with its own local producer keeps binding locally, so the
+/// previous statement gains no gratuitous result ID.
+pub fn statement_terminal_supplies_followup_metric(
+    producer: &EffectAst,
+    followup: &[EffectAst],
+) -> bool {
+    const ACTIONS: [PriorEffectAction; 20] = [
+        PriorEffectAction::Countered,
+        PriorEffectAction::CountersPut,
+        PriorEffectAction::DealtDamage,
+        PriorEffectAction::Destroyed,
+        PriorEffectAction::Discarded,
+        PriorEffectAction::Drawn,
+        PriorEffectAction::Exiled,
+        PriorEffectAction::Goaded,
+        PriorEffectAction::Milled,
+        PriorEffectAction::PhasedOut,
+        PriorEffectAction::Prevented,
+        PriorEffectAction::PutOntoBattlefield,
+        PriorEffectAction::PutIntoGraveyard,
+        PriorEffectAction::PutIntoHand,
+        PriorEffectAction::Removed,
+        PriorEffectAction::Returned,
+        PriorEffectAction::Revealed,
+        PriorEffectAction::Sacrificed,
+        PriorEffectAction::Shuffled,
+        PriorEffectAction::Tapped,
+    ];
+    if !effect_can_supply_prior_effect_memory(producer) {
+        return false;
+    }
+    ACTIONS.into_iter().any(|action| {
+        if !effect_can_supply_object_memory_for_action(producer, action) {
+            return false;
+        }
+        let Some(consumer_index) = followup
+            .iter()
+            .position(|later| effect_references_pending_metric_action(later, action))
+        else {
+            return false;
+        };
+        !followup[..consumer_index]
+            .iter()
+            .any(|earlier| effect_can_supply_object_memory_for_action(earlier, action))
+            // A followup entry whose own nested body produces the action
+            // before reading it binds locally.
+            && !effect_can_supply_object_memory_for_action(&followup[consumer_index], action)
+    })
 }
 
 fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &EffectAst) -> bool {
@@ -5225,6 +5445,7 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         PriorEffectAction::Searched,
         PriorEffectAction::Shuffled,
         PriorEffectAction::Tapped,
+        PriorEffectAction::ManaLost,
     ] {
         if effect_references_pending_metric_action(consumer, action) {
             return effect_can_supply_object_memory_for_action(effect, action);
@@ -5429,7 +5650,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         PriorEffectAction::Rolled => matches!(
             producer_action,
             SubjectVerbActionAst::Random(
-                RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. }
+                RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. }
             )
         ),
         PriorEffectAction::Destroyed => matches!(
@@ -5480,6 +5701,10 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { .. })
                 | SubjectVerbActionAst::Damage(DamageActionAst::DealDistributedDamage { .. })
+                // CR 701.14a: fighting creatures deal damage to each other, so
+                // "when/if excess damage is dealt ... this way" reads the fight.
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { .. })
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::FightIterated { .. })
         ),
         PriorEffectAction::Discarded => matches!(
             producer_action,
@@ -5518,10 +5743,14 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOut { .. })
                 | SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseOutAll { .. })
         ),
+        // Paying energy removes that player's energy counters (CR 107.14),
+        // so "the amount of {E} paid this way" reads the payment's removal.
         PriorEffectAction::Removed => matches!(
             producer_action,
             SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters { .. })
                 | SubjectVerbActionAst::Counters(CounterActionAst::RemoveCountersAll { .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayAnyEnergy { .. })
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { .. })
         ),
         PriorEffectAction::Prevented => {
             matches!(
@@ -5568,7 +5797,16 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
+                // Surveil's outcome is the cards it put into the graveyard.
+                | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    zone: crate::zone::Zone::Graveyard,
+                    ..
+                })
+                // "... and the rest into your graveyard. Create a Treasure
+                // token for each card put into your graveyard this way."
+                // (Dihada, Binder of Wills): the remainder move's arrivals.
+                | SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
                     zone: crate::zone::Zone::Graveyard,
                     ..
                 })
@@ -5622,6 +5860,10 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             producer_action,
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary)
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
+        ),
+        PriorEffectAction::ManaLost => matches!(
+            producer_action,
+            SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
         ),
         _ => false,
     }
@@ -5804,6 +6046,10 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
             }
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => visit(count),
+        // A frozen X ("at the beginning of your next main phase this turn, add
+        // an amount of {C} equal to the mana lost this way") reads its
+        // producer when the binding runs, not when the delayed body resolves.
+        EffectAst::BindX { value, .. } => visit(value),
         _ => {}
     }
     for_each_nested_effects(effect, true, |nested| {
@@ -5887,6 +6133,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
     }
     match action {
         SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value: Some(value), .. }) => visit(value),
+        SubjectVerbActionAst::Random(RandomActionAst::RollDiceTotal { count, .. }) => visit(count),
         SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier: Some(modifier), .. }) => visit(modifier.value()),
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count })
         | SubjectVerbActionAst::Library(LibraryActionAst::Mill { count })
@@ -5960,6 +6207,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
             amount: count,
         })
+        | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount: count })
@@ -5969,6 +6217,8 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             amount: count,
             ..
         })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount: count, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount: count })
         | SubjectVerbActionAst::DamagePrevention(
             DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget {
@@ -5981,6 +6231,10 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
             ..
         })
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+            count,
+            ..
+        })
+        | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
             count,
             ..
         }) => visit(count),
@@ -6084,6 +6338,11 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         })
         | SubjectVerbActionAst::TagMatchingObjects { filter, .. }
         | SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. })
+        // "Search your library and/or graveyard for a creature card with mana
+        // value less than or equal to the number of creatures sacrificed this
+        // way" (The Hunger Tide Rises): the searched card's characteristic
+        // bound reads the preceding instruction's result.
+        | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary { filter, .. })
         | SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
             filter,
             ..
@@ -6435,8 +6694,34 @@ fn resolve_effect_references_in_effect(
         return Ok(());
     }
 
+    // The bound X is resolved against the producers visible here; its body
+    // reads that local X instead of rebinding X to a later result.
+    if let EffectAst::BindX { value, effects } = effect {
+        resolve_effect_result_value(value, state)?;
+        let nested_state = EffectReferenceResolutionState {
+            has_announced_x: true,
+            ..state
+        };
+        resolve_effect_sequence_references_with_state_in_place(effects, id_gen, nested_state)?;
+        return Ok(());
+    }
+
     resolve_effect_result_values_in_fields(effect, state)?;
     let mut nested_state = state;
+    let explicit_life_comparison = match &*effect {
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison { left, right, .. }, ..
+        }) | EffectAst::SelfReplacement {
+            predicate: PredicateAst::ValueComparison { left, right, .. }, ..
+        } if matches!(left.unhinted(),
+            Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
+                if life_amount_bindings::is_life_query(query) && query.player.is_some())
+            && matches!(right.unhinted(), Value::Fixed(0)) =>
+        {
+            Some((left.clone(), right.clone()))
+        }
+        _ => None,
+    };
     if matches!(
         effect,
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -6452,7 +6737,10 @@ fn resolve_effect_references_in_effect(
         // A transparent early pass lacks this branch's lexical player/object
         // bindings. Leave contextual operands pending until its own annotation;
         // never substitute an enclosing or earlier condition's operands.
-        nested_state.last_value_comparison = None;
+        // An exact life-result query already names its participant and result;
+        // it needs no lexical object binding. Preserve it before an early pass
+        // can turn the consequent's amount into the optional gate's Boolean.
+        nested_state.last_value_comparison = explicit_life_comparison.as_ref();
     }
     if let EffectAst::Sequence { effects } = effect
         && let [_, EffectAst::SubjectVerb(counter)] = effects.as_slice()
@@ -6727,10 +7015,27 @@ fn advance_reference_env_for_effect(
                     snapshot_tag_aliases: env.snapshot_tag_aliases.clone(),
                     last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
                         && (exports_branch_result || env.last_it_choice_is_set),
-                    last_player_filter: RefState::join(
+                    last_player_filter: match (
                         &true_sequence.final_env.last_player_filter,
                         &env.last_player_filter,
-                    ),
+                    ) {
+                        // "If the exiled card is a God card, search its
+                        // controller's graveyard, hand, and library ... Then
+                        // that player shuffles." (Deicide): with no earlier
+                        // player in view, the follow-up can only name the
+                        // object-relative player the optional branch
+                        // introduced.
+                        (
+                            RefState::Known(
+                                player @ (PlayerFilter::ControllerOf(_)
+                                | PlayerFilter::AliasedControllerOf(_)
+                                | PlayerFilter::OwnerOf(_)
+                                | PlayerFilter::AliasedOwnerOf(_)),
+                            ),
+                            RefState::Unknown,
+                        ) => RefState::Known(player.clone()),
+                        (branch, outer) => RefState::join(branch, outer),
+                    },
                     // A source-only sacrifice names a fixed object even when
                     // its condition is false. Unlike a newly produced tag,
                     // this antecedent does not depend on executing the branch.
@@ -7082,6 +7387,9 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { count_value, .. }) => {
                 if let Some(value) = count_value { resolve_effect_result_value(value, state)?; }
             }
+            SubjectVerbActionAst::Random(RandomActionAst::RollDiceTotal { count, .. }) => {
+                resolve_effect_result_value(count, state)?;
+            }
             SubjectVerbActionAst::Random(RandomActionAst::RollDie { result_modifier, .. }) => {
                 if let Some(modifier) = result_modifier { resolve_effect_result_value(modifier.value_mut(), state)?; }
             }
@@ -7172,6 +7480,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
                 amount,
             })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
@@ -7184,6 +7493,8 @@ fn resolve_effect_result_values_in_fields(
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
                 count: amount,
@@ -7194,6 +7505,10 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
                 count: amount,
                 ..
             })
@@ -7245,6 +7560,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -7257,7 +7573,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
                 LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
@@ -7266,6 +7582,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -7275,6 +7592,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
             | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
@@ -7296,10 +7614,12 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTop)
             | SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealTagged { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
             | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+            | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
@@ -7348,6 +7668,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
@@ -7407,6 +7728,7 @@ fn resolve_effect_result_values_in_fields(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
@@ -7825,6 +8147,9 @@ fn resolve_effect_result_values_in_fields(
                 ReplacementActionAst::RegisterEnterUnderControlReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterAsCopy { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterTappedReplacement { .. },
             ) => {}
             SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalPhases {
@@ -8209,6 +8534,44 @@ fn resolve_effect_result_value(
                 EventValueSpec::DieResult
             });
         }
+        // "If you lost life this way, draw that many cards" (Mister Negative):
+        // the demonstrative reads the tested participant's life change, not
+        // the producing instruction's generic result (a life exchange has
+        // none).
+        Value::EventValue(EventValueSpec::Amount)
+            if !state.allow_life_event_value
+                && state.last_value_comparison.is_some_and(|(left, right)| {
+                    matches!(left.unhinted(),
+                        Value::PendingPriorEffectMetric(query)
+                        | Value::PriorEffectMetric { query, .. }
+                            if life_amount_bindings::is_life_query(query) && query.player.is_some())
+                        && matches!(right.unhinted(), Value::Fixed(0))
+                }) =>
+        {
+            let left = state.last_value_comparison.unwrap().0.unhinted().clone();
+            *value = match &left {
+                Value::PendingPriorEffectMetric(query) => {
+                    life_amount_bindings::bind_life_query(query, state)?
+                }
+                _ => left,
+            };
+        }
+        // "if it had one or more -1/-1 counters on it, its owner draws that
+        // many cards and each other player loses that much life" (Oft-Nabbed
+        // Goat): every demonstrative amount in the consequent names the
+        // triggering object's tested counter count, not an earlier
+        // instruction's result.
+        Value::EventValue(EventValueSpec::Amount)
+            if !state.allow_life_event_value
+                && state.pinned_effect_metric_id.is_none()
+                && state.last_value_comparison.is_some_and(|(left, right)| {
+                    matches!(left.unhinted(), Value::CountersOn(spec, Some(_)) | Value::ManaValueOf(spec)
+                        if matches!(spec.as_ref(), ChooseSpec::Tagged(_)))
+                        && matches!(right.unhinted(), Value::Fixed(_))
+                }) =>
+        {
+            *value = state.last_value_comparison.unwrap().0.clone();
+        }
         // "If you control N or more ..., create that many ...": the
         // demonstrative reads the tested cardinality at resolution, including
         // a typed turn-history count. A step event has no quantity, and the
@@ -8220,8 +8583,10 @@ fn resolve_effect_result_value(
                     .or(state.last_effect_id)
                     .is_none()
                 && state.last_value_comparison.is_some_and(|(left, right)| {
-                    matches!(left.unhinted(), Value::Count(_) | Value::TurnHistoryCount(_))
-                        && matches!(right.unhinted(), Value::Fixed(_))
+                    matches!(
+                        left.unhinted(),
+                        Value::Count(_) | Value::TurnHistoryCount(_) | Value::CountersOn(..)
+                    ) && matches!(right.unhinted(), Value::Fixed(_))
                 }) =>
         {
             *value = state.last_value_comparison.unwrap().0.clone();
@@ -8499,6 +8864,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -8511,7 +8877,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
                 LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
@@ -8520,6 +8886,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -8527,11 +8894,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
             | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+            | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
@@ -8584,7 +8954,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount })
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
                 amount,
-            }) => bind_unresolved_it_in_value(amount, seed_tag),
+            })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount, .. }) => bind_unresolved_it_in_value(amount, seed_tag),
             SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { count })
             | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { count })
             | SubjectVerbActionAst::Counters(CounterActionAst::ExperienceCounters { count })
@@ -8796,6 +9167,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Detain { target })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Goad { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { target, .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { target, .. })
@@ -8860,6 +9232,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
             SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { target })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { target, .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom {
                 target: Some(target),
                 ..
@@ -8895,8 +9268,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
                 count: amount,
                 ..
             }) => bind_unresolved_it_in_value(amount, seed_tag),
@@ -9617,6 +9996,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ReplacementActionAst::RegisterEnterTappedReplacement { .. },
             ) => 0,
             SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterAsCopy { source, .. },
+            ) => bind_unresolved_it_in_target(source, seed_tag),
+            SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { count, .. },
             )
             | SubjectVerbActionAst::Replacements(
@@ -9944,12 +10326,17 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         }
         Value::PowerOf(spec)
         | Value::BasePowerOf(spec)
+        | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaSpentToCast(spec)
         | Value::KicksPaidOf(spec)
+        | Value::ModeSelectionsOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
+        | Value::NotedCreatureTypeCount(spec)
+        | Value::TypeCountOf(spec)
+        | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => bind_unresolved_it_in_choose_spec(spec, seed_tag),
         _ => 0,
@@ -10023,7 +10410,8 @@ fn bind_unresolved_it_in_restriction(
     use crate::effect::Restriction;
 
     match restriction {
-        Restriction::BeSacrificedByCause { filter, cause } => {
+        Restriction::BeSacrificedByCause { filter, cause }
+        | Restriction::BeExiledByCause { filter, cause } => {
             bind_unresolved_it_in_filter(filter, seed_tag)
                 + cause
                     .source_filter
@@ -10033,6 +10421,9 @@ fn bind_unresolved_it_in_restriction(
 
         Restriction::PreventDamageFrom {
             sources: filter, ..
+        }
+        | Restriction::PreventDamageTo {
+            recipients: filter, ..
         }
         | Restriction::PlayLandsMatching(_, filter)
         | Restriction::ActivateLoyaltyAbilitiesOf(filter)
@@ -10052,6 +10443,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::MaximumBlockers { filter, .. }
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
+        | Restriction::HaveCounterTypeRemoved(filter, _)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)
@@ -10067,6 +10459,7 @@ fn bind_unresolved_it_in_restriction(
         Restriction::BlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBeBlockedBy { blockers, attacker }
+        | Restriction::BeCounteredFrom(blockers, attacker)
         | Restriction::BeAttachedBy(blockers, attacker) => {
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
@@ -12187,6 +12580,7 @@ mod tests {
                 effects: vec![EffectAst::subject_verb_pay_any_life(PlayerAst::Any, 0)],
                 continue_effect_index: 0,
                 continue_predicate: IfResultPredicate::Did,
+                max_iterations: None,
             },
         ));
     }

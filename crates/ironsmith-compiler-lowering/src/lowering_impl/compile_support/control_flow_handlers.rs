@@ -2184,6 +2184,7 @@ mod typed_search_predicate_tests {
             }],
             continue_effect_index: 0,
             continue_predicate: IfResultPredicate::WonClash,
+            max_iterations: None,
         });
 
         let compiled = crate::compile_support::compile_statement_effects(&[process])

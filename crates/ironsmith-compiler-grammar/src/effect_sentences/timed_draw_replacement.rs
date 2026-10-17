@@ -5,6 +5,11 @@ use crate::target::PlayerFilter;
 pub(super) fn parse_timed_draw_replacement_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = crate::grammar::effects::timed_draw_replacement::parse_timed_draw_replacement(tokens) else { return Ok(None); };
     let words = parser_token_word_refs(shape.player);
+    // Only your own game loss can be replaced this way (the registration's
+    // controller is the losing player).
+    if shape.lose_game && words.as_slice() != ["you"] {
+        return Ok(None);
+    }
     let (player, player_target) = match words.as_slice() {
         ["you"] => (PlayerFilter::You, None),
         ["they"] | ["that", "player"] => (PlayerFilter::IteratedPlayer, None),
@@ -15,5 +20,6 @@ pub(super) fn parse_timed_draw_replacement_sentence(tokens: &[OwnedLexToken]) ->
     let duration = if shape.one_shot { ZoneReplacementDurationAst::OneShot } else { ZoneReplacementDurationAst::UntilEndOfTurn };
     Ok(Some(vec![EffectAst::subject_verb_register_timed_draw_replacement(
         player, player_target, effects, duration, render_token_slice(tokens),
-    )]))
+    )
+    .with_lose_game_replacement(shape.lose_game)]))
 }

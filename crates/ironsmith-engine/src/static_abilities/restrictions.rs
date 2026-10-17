@@ -892,7 +892,9 @@ impl StaticAbilityKind for RuleRestriction {
                 .all(|restriction| {
                     matches!(
                         restriction,
-                        Restriction::AdditionalLandPlays(_, _) | Restriction::NoMaximumHandSize(_)
+                        Restriction::AdditionalLandPlays(_, _)
+                            | Restriction::NoMaximumHandSize(_)
+                            | Restriction::ReduceMaximumHandSize(_, _)
                     )
                 })
     }
@@ -1016,6 +1018,29 @@ impl StaticAbilityKind for RuleRestriction {
                 None,
                 &tagged_objects,
             );
+        }
+        // "for that player to ignore this effect until end of turn" (Damping
+        // Engine): a player who took this source's ignore special action is
+        // not bound by its player restrictions this turn.
+        let ignoring = game
+            .players
+            .iter()
+            .map(|player| player.id)
+            .filter(|player| game.player_ignores_source_static_effect_this_turn(source, *player))
+            .collect::<Vec<_>>();
+        for player in ignoring {
+            tracker.cant_gain_life.remove(&player);
+            tracker.cant_search.remove(&player);
+            tracker.cant_cast_filters.remove(&player);
+            tracker.cant_play_land_filters.remove(&player);
+            tracker.cast_spells_only_as_sorcery.remove(&player);
+            tracker.cant_activate_non_mana_abilities.remove(&player);
+            tracker.cant_activate_non_mana_non_loyalty_abilities.remove(&player);
+            tracker.cant_cast_limit_filters.remove(&player);
+            tracker.cant_cast_more_than.remove(&player);
+            tracker.cant_activate_abilities.remove(&player);
+            tracker.cant_draw.remove(&player);
+            tracker.cant_draw_extra_cards.remove(&player);
         }
         game.effect_store.cant_effects.merge(tracker);
     }

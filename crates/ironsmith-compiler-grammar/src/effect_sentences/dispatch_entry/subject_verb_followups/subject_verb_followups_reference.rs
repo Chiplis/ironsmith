@@ -71,6 +71,7 @@ pub(super) fn append_moved_object_entry_followup_to_optional_move(
                     duration: Until::EndOfTurn,
                     condition: None,
                     set_quantifier_surface: None,
+                    only_if_absent: false,
                 }),
             ..
         }) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() && !abilities.is_empty()

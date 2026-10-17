@@ -99,9 +99,31 @@ pub fn parse_leading_condition_wrapped_static_line(
             .first()
             .is_some_and(|token| token.is_word("this")),
     };
-    if remainder_has_pronoun_subject && !condition_is_about_this_object {
+    // "As long as enchanted creature isn't legendary, it doesn't untap ..."
+    // (Stunning Strike): when the condition's subject is the attached
+    // object, a leading "it" names that object, so read the remainder with
+    // the attached subject restored.
+    let rebound_remainder: Option<Vec<OwnedLexToken>> = match &condition {
+        LeadingCondition::AsLongAs(condition_tokens)
+            if remainder_has_pronoun_subject
+                && !condition_is_about_this_object
+                && remainder.first().is_some_and(|token| token.is_word("it"))
+                && condition_tokens.len() > 2
+                && condition_tokens[0].is_any_word(&["enchanted", "equipped"])
+                && condition_tokens[1].is_any_word(&[
+                    "creature", "permanent", "artifact", "land", "planeswalker",
+                ]) =>
+        {
+            let mut rebound = condition_tokens[..2].to_vec();
+            rebound.extend_from_slice(&remainder[1..]);
+            Some(rebound)
+        }
+        _ => None,
+    };
+    if remainder_has_pronoun_subject && !condition_is_about_this_object && rebound_remainder.is_none() {
         return Ok(None);
     }
+    let remainder: &[OwnedLexToken] = rebound_remainder.as_deref().unwrap_or(remainder);
     // One sentence only: a trailing sentence is not under the condition.
     let mut quoted = false;
     let mut unquoted_periods = Vec::new();

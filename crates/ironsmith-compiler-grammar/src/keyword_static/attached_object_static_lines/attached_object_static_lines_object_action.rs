@@ -74,6 +74,46 @@ pub fn parse_attached_gets_and_has_ability_line(
     let anthem = build_anthem_static_ability(&clause);
     let ability_tokens = trim_edge_punctuation(shape.ability_tokens);
 
+    // "Equipped creature gets +1/+1 and has all abilities of ability stickers
+    // on this Equipment." (Pin Collection)
+    if let ["all", "abilities", "of", "ability", "stickers", "on", source @ ..] =
+        crate::lexer::token_word_refs(&ability_tokens).as_slice()
+        && crate::util::is_source_reference_words(source)
+        && crate::lexer::token_word_refs(tokens).first() == Some(&"equipped")
+    {
+        return Ok(Some(vec![
+            anthem.into(),
+            crate::cards::builders::StaticAbilityAst::Static(
+                crate::model::CompilerStaticAbilityCore::attached_has_source_ability_sticker_abilities(),
+            ),
+        ]));
+    }
+
+    // "Equipped creature gets +1/+1 and has all names of nonlegendary
+    // creature cards in addition to its name." (Spy Kit)
+    if let [
+        "all",
+        "names",
+        "of",
+        "nonlegendary",
+        "creature",
+        "cards",
+        "in",
+        "addition",
+        "to",
+        "its",
+        "name",
+    ] = crate::lexer::token_word_refs(&ability_tokens).as_slice()
+        && crate::lexer::token_word_refs(tokens).first() == Some(&"equipped")
+    {
+        return Ok(Some(vec![
+            anthem.into(),
+            crate::cards::builders::StaticAbilityAst::Static(
+                crate::model::CompilerStaticAbilityCore::attached_has_all_nonlegendary_creature_card_names(),
+            ),
+        ]));
+    }
+
     if (ability_tokens.first().is_some_and(|token| token.is_word("can"))
         || shape.ability_tokens.first().is_some_and(OwnedLexToken::is_quote))
         && let Some(tail) = parse_heterogeneous_granted_tail(shape.ability_tokens, &crate::lexer::token_word_refs(tokens), true)? {

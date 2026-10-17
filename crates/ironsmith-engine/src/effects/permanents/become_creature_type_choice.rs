@@ -184,6 +184,7 @@ pub(crate) fn all_creature_types() -> &'static [Subtype] {
         Subtype::Squirrel,
         Subtype::Starfish,
         Subtype::Surrakar,
+        Subtype::Tetravite,
         Subtype::Thopter,
         Subtype::Thrull,
         Subtype::Tiefling,
@@ -253,6 +254,16 @@ impl EffectExecutor for BecomeCreatureTypeChoiceEffect {
             false,
             |selected| {
                 Ok(selected.first().map(|kind| {
+                    if self.in_addition_to_other_types {
+                        return crate::effect::Effect::new(
+                            ApplyContinuousEffect::with_spec(
+                                self.target.clone(),
+                                Modification::AddSubtypes(vec![*kind]),
+                                self.duration.clone(),
+                            )
+                            .require_creature_target(),
+                        );
+                    }
                     crate::effect::Effect::new(
                         ApplyContinuousEffect::with_spec(
                             self.target.clone(),

@@ -125,6 +125,26 @@ fn is_this_source_reference(tokens: &[OwnedLexToken]) -> bool {
     })
 }
 
+/// Strip a trailing "with total mana value N or less" / "X or less" cap on the
+/// whole selection (Rod of Absorption, Primeval Spawn).
+fn split_total_mana_value_cap(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
+    let Some((index, (), bound)) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["with", "total", "mana", "value"])
+    }) else {
+        return (tokens, None);
+    };
+    let words = token_word_refs(trim_lexed_commas(bound));
+    let value = match words.as_slice() {
+        ["x", "or", "less"] => Some(Value::X),
+        [count, "or", "less"] => crate::util::parse_number_word_i32(count).map(Value::Fixed),
+        _ => None,
+    };
+    match value {
+        Some(value) => (trim_lexed_commas(&tokens[..index]), Some(value)),
+        None => (tokens, None),
+    }
+}
+
 /// Split the collection reference from the free-cast tail.
 fn split_free_cast_tail(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], bool)> {
     let Some((index, (), tail)) = primitives::find_prefix(tokens, || {
@@ -214,16 +234,122 @@ pub(crate) fn parse_collection_cast_clause(
         Some(((), rest)) => rest,
         None => match primitives::parse_prefix(body, primitives::kw("cast")) {
             Some((_, rest)) => rest,
-            None => return Ok(None),
+            // "For each player, you may cast ...": the quantified wrapper
+            // owns the optionality and leaves the bare "you cast" body.
+            None => match primitives::parse_prefix(body, primitives::phrase(&["you", "cast"])) {
+                Some(((), rest)) => rest,
+                None => return Ok(None),
+            },
         },
     };
     let (authored_count, rest) = parse_cast_count(rest);
+    // "An opponent chooses one of those cards. Shuffle that card into your
+    // library. You may cast the other cards without paying their mana
+    // costs." (Emergent Ultimatum): the remainder of the collection the
+    // earlier choice was made from. It is the ordinary "the rest" complement
+    // (bound by lowering to the collection's cards still in its zone), and
+    // choosing any number of them is the "may"; each is cast in turn.
+    if authored_count.is_none()
+        && let Some((reference_tokens, without_paying_mana_cost)) = split_free_cast_tail(rest)
+        && matches!(
+            token_word_refs(reference_tokens).as_slice(),
+            ["the", "other", "cards"]
+                | ["the", "rest"]
+                | ["the", "rest", "of", "the", "cards"]
+                | ["the", "rest", "of", "those", "cards"]
+        )
+    {
+        let mut filter = ObjectFilter::default();
+        exclude_lands_from_spell_filter(&mut filter);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::Rest.bind().into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let chosen = super::super::util::helper_tag_for_tokens(tokens, "cast_from_collection");
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::ObjectChoices(
+                    crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                        filter,
+                        count: ChoiceCount::any_number(),
+                        count_value: None,
+                        player: PlayerAst::You,
+                        tag: crate::tag::TagRef::of(chosen.clone()),
+                    },
+                ),
+                EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(chosen),
+                    effects: vec![
+                        EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            PlayerAst::You,
+                            false,
+                            false,
+                            without_paying_mana_cost,
+                            None,
+                            None,
+                            mana_spend_mode,
+                        ),
+                    ],
+                }),
+            ],
+        }));
+    }
+    // "For each player, you may cast a card that player milled this way
+    // without paying its mana cost." (The Ur-Sphinx): one card from the
+    // iterated player's share of the prior mill.
+    if let Some((reference_tokens, without_paying_mana_cost)) = split_free_cast_tail(rest)
+        && matches!(
+            token_word_refs(reference_tokens).as_slice(),
+            ["card" | "spell", "that", "player", "milled", "this", "way"]
+        )
+        && let Some(count) = authored_count
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+        exclude_lands_from_spell_filter(&mut filter);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Milled));
+        let chosen = super::super::util::helper_tag_for_tokens(tokens, "cast_from_collection");
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::ObjectChoices(
+                    crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                        filter,
+                        count,
+                        count_value: None,
+                        player: PlayerAst::You,
+                        tag: crate::tag::TagRef::of(chosen.clone()),
+                    },
+                ),
+                EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                    tag: crate::tag::TagRef::of(chosen),
+                    effects: vec![
+                        EffectAst::subject_verb_cast_tagged_with_additional_cost_and_mana_spend_mode(
+                            crate::tag::CompilerReferenceTag::It.bind(),
+                            PlayerAst::You,
+                            false,
+                            false,
+                            without_paying_mana_cost,
+                            None,
+                            None,
+                            mana_spend_mode,
+                        ),
+                    ],
+                }),
+            ],
+        }));
+    }
     let Some((marker_index, marker, after_marker)) =
         primitives::find_prefix(rest, || collection_marker)
     else {
         return Ok(None);
     };
-    let subject_tokens = trim_lexed_commas(&rest[..marker_index]);
+    let (subject_tokens, subject_total_cap) =
+        split_total_mana_value_cap(trim_lexed_commas(&rest[..marker_index]));
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -247,6 +373,8 @@ pub(crate) fn parse_collection_cast_clause(
     else {
         return Ok(None);
     };
+    let (reference_tokens, reference_total_cap) = split_total_mana_value_cap(reference_tokens);
+    let total_mana_value_cap = subject_total_cap.or(reference_total_cap);
     let collection = match marker {
         CollectionMarker::FromAmong => match parse_tagged_collection(reference_tokens) {
             Some(collection) => collection,
@@ -335,15 +463,29 @@ pub(crate) fn parse_collection_cast_clause(
     }
 
     let chosen = super::super::util::helper_tag_for_tokens(tokens, "cast_from_collection");
-    Ok(Some(EffectAst::Sequence {
-        effects: vec![
-            EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+    let choose = match total_mana_value_cap {
+        Some(maximum) => EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
                 filter,
                 count,
-                count_value: None,
                 player: PlayerAst::You,
                 tag: crate::tag::TagRef::of(chosen.clone()),
-            }),
+                constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(
+                    maximum,
+                ),
+            },
+        ),
+        None => EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count,
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(chosen.clone()),
+        }),
+    };
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            choose,
             EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::TagRef::of(chosen),
                 effects: vec![

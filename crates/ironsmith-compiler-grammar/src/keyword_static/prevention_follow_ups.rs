@@ -44,6 +44,8 @@ pub fn parse_prevention_amount_follow_up_line(
             SubjectVerbRoleAst::AffectedPlayer, PlayerAst::TriggeringSourceController,
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: amount }),
         )]
+    } else if let Some(effects) = controller_and_damaged_player_each_draw(tail) {
+        effects
     } else {
         let view = TokenWordView::new(tail);
         let words = view.word_refs();
@@ -77,6 +79,52 @@ pub fn parse_prevention_amount_follow_up_line(
             display: render_token_slice(tokens),
         },
     )))
+}
+
+/// "This creature's controller and that player each draw half that many
+/// cards, rounded down." (Sokrates, Athenian Teacher's granted ability): the
+/// prevented damage's source controller and the damaged player each draw.
+fn controller_and_damaged_player_each_draw(tail: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let words = parser_token_word_refs(tail);
+    let count_words = match words.as_slice() {
+        [
+            "this",
+            "creatures" | "creature's" | "creature’s",
+            "controller",
+            "and",
+            "that",
+            "player",
+            "each",
+            "draw",
+            rest @ ..,
+        ] => rest,
+        _ => return None,
+    };
+    let amount = Value::EventValue(EventValueSpec::Amount);
+    let count = match count_words {
+        ["half", "that", "many", "cards", "rounded", "down"] => {
+            Value::HalfRoundedDown(Box::new(amount))
+        }
+        ["that", "many", "cards"] => amount,
+        _ => return None,
+    };
+    let draw = |player| {
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
+                count: count.clone(),
+            }),
+        )
+    };
+    Some(vec![
+        draw(PlayerAst::You),
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            sequential: false,
+            filter: PlayerFilter::DamagedPlayer,
+            effects: vec![draw(PlayerAst::Implicit)],
+        }),
+    ])
 }
 
 /// A conjoined "that many" action refers to the proposed damage, unlike an
@@ -123,7 +171,42 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
     let (target_player_filter, target_object_filter) = prevention_recipient_filters(recipient)?;
     let amount = Value::EventValue(EventValueSpec::Amount);
     let words = parser_token_word_refs(tail);
-    let effects = if words == ["mill", "twice", "that", "many", "cards"] {
+    let recipient_words = parser_token_word_refs(recipient);
+    let recipient_is_attached = matches!(
+        recipient_words.as_slice(),
+        ["equipped" | "enchanted", "creature" | "permanent"]
+    );
+    let effects = if recipient_is_attached
+        && words == ["put", "that", "many", "+1/+1", "counters", "on", "it"]
+    {
+        // "If equipped creature would be dealt damage, prevent that damage and
+        // put that many +1/+1 counters on it." (Panther Habit): `it` is the
+        // attached recipient, not the Equipment.
+        vec![EffectAst::subject_verb_put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            amount,
+            crate::util::parse_target_phrase(recipient)?,
+            None,
+            false,
+        )]
+    } else if crate::util::is_source_reference_words(&recipient_words)
+        && words.ends_with(&["gains", "control", "of", "it"])
+        && !words[..words.len() - 1].iter().any(|word| matches!(*word, "it" | "its" | "may" | "unless" | "if" | "instead"))
+    {
+        // "If damage would be dealt to Khârn the Betrayer, prevent that damage
+        // and an opponent of your choice gains control of it." (Khârn the
+        // Betrayer): `it` is the protected source itself.
+        let tail = trim_edge_punctuation_tokens(tail);
+        let Some(it_index) = tail.iter().rposition(|token| token.is_word("it")) else {
+            return Ok(None);
+        };
+        let mut rewritten = tail[..it_index].to_vec();
+        rewritten.extend_from_slice(recipient);
+        rewritten.extend_from_slice(&tail[it_index + 1..]);
+        let effects = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
+        if effects.is_empty() { return Ok(None); }
+        effects
+    } else if words == ["mill", "twice", "that", "many", "cards"] {
         vec![EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer, PlayerAst::You,
             SubjectVerbActionAst::Library(LibraryActionAst::Mill {
@@ -148,7 +231,13 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
             // put-counter and remove-counter prevention readers' programs.
             "remove", "+1/+1",
         ];
-        if words.iter().any(|word| DECLINED.contains(word)) { return Ok(None); }
+        // A serial program that both removes counters and acts again
+        // ("remove that many +1/+1 counters from Sekki, and create that many
+        // Spirit tokens") belongs to neither single-program counter reader.
+        let serial_counter_program = words.contains(&"and")
+            && words.iter().any(|word| *word == "remove" || *word == "+1/+1")
+            && !words.iter().any(|word| matches!(*word, "it" | "its" | "may" | "unless" | "if" | "when" | "whenever" | "instead" | "damage"));
+        if !serial_counter_program && words.iter().any(|word| DECLINED.contains(word)) { return Ok(None); }
         let tail = trim_edge_punctuation_tokens(tail);
         if tail.is_empty() { return Ok(None); }
         let effects = crate::clause_support::parse_effect_sentences_lexed(tail)?;

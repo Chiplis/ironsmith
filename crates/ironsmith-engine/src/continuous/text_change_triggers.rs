@@ -39,7 +39,7 @@ fn rewrite_cause_words(cause: &mut Option<ironsmith_core::CauseFilter>, change: 
     -> Result<(), Error>
 {
     if let Some(ironsmith_core::CauseFilter {
-        cause_type: _, source_filter, controller_filter: _,
+        cause_type: _, source_filter, controller_filter: _, ability_kind: _,
     }) = cause {
         rewrite_optional_filter(source_filter, change)?;
     }
@@ -134,6 +134,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::Dies { filter } | K::PutIntoGraveyard { filter }
         | K::CardsLeaveYourGraveyard { filter, one_or_more: _, during_your_turn: _ }
         | K::PermanentTransforms { filter } | K::FinalChapterAbilityResolved { filter }
+        | K::FinalChapterAbilityTriggers { filter }
         | K::NthCounterPutOn { filter, counter_type: _, counter_number: _ }
         | K::PhasingChanged { filter, phased_in: _, one_or_more: _ }
         | K::PermanentMutates { filter } | K::AttacksPlayerAlone { filter }
@@ -395,11 +396,13 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         | K::ThisIsTurnedFaceUp | K::BecomesTargeted | K::ThisDealsDamage
         | K::ThisDealsCombatDamage | K::YouGainLife | K::OpponentsEachLoseExactLife { amount: _ }
         | K::YouDrawCard | K::Miracle | K::NthSpellOfTurnCast { spell_number: _ }
-        | K::EndOfCombat | K::DayNightChanged | K::ThisEntersBattlefield
+        | K::EndOfCombat | K::DayNightChanged | K::DamageToPlayerPrevented { player: _ }
+        | K::DamagePreventedBySource { source_filter: _ }
+        | K::ThisEntersBattlefield
         | K::ThisTransforms { destination_name: _ }
         | K::ThisTransformsWithSurface { surface: _, destination_name: _ }
         | K::YouCastThisSpell | K::SagaChapter { chapters: _ }
-        | K::DungeonRoom { room: _, leads_to: _ } => {}
+        | K::DungeonRoom { room: _, leads_to: _ } | K::SourceManaAbilityResolves => {}
     }
     Ok(rewritten)
 }
@@ -665,6 +668,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     exact!(AbilityTriggeredTrigger, n, K::AbilityTriggered {
         another: n.another, source_filter: n.source_filter.clone(), caused_by_source_entering: n.caused_by_source_entering,
         caused_by_source_attacking: n.caused_by_source_attacking,
+        caused_by_permanent_entering: n.caused_by_permanent_entering,
     });
     exact!(IsDealtDamageTrigger, n, K::IsDealtDamage {
         target: n.target.clone(), combat_only: n.combat_only, noncombat_only: n.noncombat_only,
@@ -700,6 +704,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     exact!(PermanentSacrificedTrigger, n, K::PermanentSacrificed { filter: n.filter.clone() });
     exact!(PermanentDestroyedTrigger, n, K::PermanentDestroyed { filter: n.filter.clone() });
     exact!(FinalChapterAbilityResolvedTrigger, n, K::FinalChapterAbilityResolved { filter: n.filter.clone() });
+    exact!(FinalChapterAbilityTriggersTrigger, n, K::FinalChapterAbilityTriggers { filter: n.filter.clone() });
     exact!(PermanentMutatesTrigger, n, K::PermanentMutates { filter: n.filter.clone() });
     exact!(DiesDamagedByFilteredSourceThisTurnTrigger, n, K::DiesCreatureDealtDamageByFilteredSourceThisTurn {
         victim: n.victim.clone(), damager_filter: n.damager_filter.clone(),

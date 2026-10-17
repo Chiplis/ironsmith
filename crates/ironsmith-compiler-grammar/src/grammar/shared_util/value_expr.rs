@@ -88,6 +88,14 @@ const TAGGED_POWER_PREFIXES: &[&[&str]] = &[
     &["that", "cards", "power"],
     &["that", "object", "power"],
     &["that", "objects", "power"],
+    // "that land's power" (Earthshape): the land the preceding earthbend
+    // animated.
+    &["that", "land", "power"],
+    &["that", "lands", "power"],
+    &["that", "land's", "power"],
+    &["that", "permanent", "power"],
+    &["that", "permanents", "power"],
+    &["that", "permanent's", "power"],
     &["the", "exiled", "card", "power"],
     &["the", "exiled", "card's", "power"],
     &["the", "exiled", "cards", "power"],
@@ -287,6 +295,27 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
         idx += 1;
     }
 
+    // "for each green mana symbol in those cards' mana costs" (Phosphorescent
+    // Feast): the cards the previous instruction chose/revealed.
+    if words.get(idx) == Some(&"those")
+        && words
+            .get(idx + 1)
+            .is_some_and(|word| matches!(*word, "cards'" | "cards" | "cards’"))
+        && words.get(idx + 2) == Some(&"mana")
+        && words
+            .get(idx + 3)
+            .is_some_and(|word| matches!(*word, "cost" | "costs"))
+    {
+        return Some((
+            Value::ManaSymbolsInManaCostOf {
+                spec: Box::new(ChooseSpec::All(ObjectFilter::tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                ))),
+                color,
+            },
+            idx + 4,
+        ));
+    }
     if words.get(idx) == Some(&"mana")
         && words
             .get(idx + 1)
@@ -443,7 +472,14 @@ fn parse_devotion_value_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::DevotionToChosenColor(player), color_index + 2));
     }
     let color = Color::from_name(words.get(color_index).copied()?)?;
-    Some((Value::Devotion { player, color }, color_index + 1))
+    let mut colors = crate::color::ColorSet::from(color);
+    let mut end = color_index + 1;
+    while words.get(end) == Some(&"and") {
+        let Some(color) = words.get(end + 1).and_then(|word| Color::from_name(word)) else { break; };
+        colors = colors.with(color);
+        end += 2;
+    }
+    Some((Value::devotion_to_colors(player, colors), end))
 }
 
 /// "Half X" as a count whose rounding clause is authored after the counted

@@ -65,6 +65,9 @@ fn participant_prefix<'a>(
     alt((
         alt((primitives::kw("player"), primitives::kw("players"))).void(),
         alt((primitives::kw("opponent"), primitives::kw("opponents"))).void(),
+        // "each of your opponents <verb>" names the opponents, not objects.
+        (primitives::kw("your"), alt((primitives::kw("opponent"), primitives::kw("opponents"))))
+            .void(),
         (
             alt((primitives::kw("other"), primitives::kw("target"))),
             alt((

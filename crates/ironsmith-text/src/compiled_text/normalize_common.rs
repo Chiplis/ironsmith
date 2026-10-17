@@ -182,7 +182,7 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             filter.description()
         }
         PlayerFilter::OpponentOf(base) => {
@@ -1116,6 +1116,24 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
         } else {
             blueprint.push_str(&format!(" with power equal to {} and toughness equal to {}", describe_value(power), describe_value(toughness)));
         }
+    }
+    // "a 2/2 green Wolf creature token with two +1/+1 counters on it".
+    for counter in &create.entry_counters {
+        let name = counter.counter_type.description();
+        let phrase = match counter.amount.unhinted() {
+            Value::Fixed(1) => format!("a {name} counter"),
+            Value::Fixed(n) => format!(
+                "{} {name} counters",
+                number_word(*n).unwrap_or_else(|| n.to_string())
+            ),
+            Value::X => format!("X {name} counters"),
+            _ => format!(
+                "a number of {name} counters equal to {}",
+                describe_value(&counter.amount)
+            ),
+        };
+        let pronoun = if matches!(create.count.unhinted(), Value::Fixed(1)) { "it" } else { "each of them" };
+        blueprint.push_str(&format!(" with {phrase} on {pronoun}"));
     }
     blueprint
 }

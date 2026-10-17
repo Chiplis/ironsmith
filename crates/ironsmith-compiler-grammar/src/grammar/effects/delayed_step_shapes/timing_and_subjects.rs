@@ -61,7 +61,14 @@ fn static_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerAst> {
             .value(PlayerAst::Defending),
         (
             alt((primitives::kw("that"), primitives::kw("the"))),
-            alt((primitives::kw("player"), primitives::kw("players"))),
+            // "unless that opponent pays 3 life" (Prince of Thralls): the
+            // opponent named by the trigger, like "that player".
+            alt((
+                primitives::kw("player"),
+                primitives::kw("players"),
+                primitives::kw("opponent"),
+                primitives::kw("opponents"),
+            )),
         )
             .value(PlayerAst::That),
         alt((

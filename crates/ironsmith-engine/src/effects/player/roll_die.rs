@@ -38,6 +38,16 @@ impl RollDieEffect {
 }
 
 impl EffectExecutor for RollDieEffect {
+    /// "{6}, Roll a d8: ..." (Clay Golem): rolling is a payable cost whose
+    /// completed result the activation retains.
+    fn as_cost_executable(&self) -> Option<&dyn crate::effects::CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        Some(format!("Roll a d{}", self.sides))
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -89,6 +99,32 @@ impl EffectExecutor for RollDieEffect {
                 )
             },
         )
+    }
+}
+
+impl crate::effects::CostExecutableEffect for RollDieEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        _source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), crate::effects::CostValidationError> {
+        let player = match self.player {
+            PlayerFilter::You => controller,
+            PlayerFilter::Specific(player) => player,
+            _ => {
+                return Err(crate::effects::CostValidationError::Other(
+                    "die-roll cost requires a known roller".into(),
+                ));
+            }
+        };
+        if self.sides > 0 && game.player(player).is_some() {
+            Ok(())
+        } else {
+            Err(crate::effects::CostValidationError::Other(
+                "die-roll cost cannot be paid".into(),
+            ))
+        }
     }
 }
 

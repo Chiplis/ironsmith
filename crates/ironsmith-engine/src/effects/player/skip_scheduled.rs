@@ -73,6 +73,17 @@ pub(super) fn execute_schedule_operation(
     match operation {
         ScheduleOperation::Skip { kind, count } => match kind {
             ScheduledSkipKind::Turn => game.turn_store.skip_next_turn.add(player, count),
+            // Bound to the extra turn this resolution created; consumed when
+            // that turn begins (see GameState::advance_turn).
+            ScheduledSkipKind::UntapStepOfCreatedExtraTurn => {
+                if let Some(slot) = ctx.created_extra_turn_index {
+                    game.turn_store.extra_turn_untap_skips.push(slot);
+                } else {
+                    // Grand Melee lanes don't expose queue slots: bind the
+                    // skip to this player's next extra turn instead.
+                    game.turn_store.extra_turn_untap_skip_players.push(player);
+                }
+            }
             ScheduledSkipKind::CombatPhase => game
                 .turn_store
                 .pending_combat_phase_skips

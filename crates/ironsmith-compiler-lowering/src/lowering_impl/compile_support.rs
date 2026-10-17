@@ -386,6 +386,7 @@ pub fn compile_annotated_effects_with_context(
 
     rebind_attachment_host_followups(&mut compiled, ctx);
     bind_exiled_host_before_its_attachments(&mut compiled);
+    bind_exiled_target_host_before_its_attachments(&mut compiled);
     // "put a -1/-1 counter on each creature target player controls"
     // (Contagion Engine): a per-object loop whose own filter names a player
     // target declares that target; the prelude below exposes it.
@@ -463,6 +464,76 @@ fn bind_exiled_host_before_its_attachments(compiled: &mut [Effect]) {
         }
         compiled[index - 1] = compiled[index - 1].clone().tag(result_tag);
         compiled[index] = Effect::new(dependent_exile);
+    }
+}
+
+/// "Exile target creature and all Auras attached to it. ... return that
+/// exiled card ..." (Tawnos's Coffin): a coordinated targeted bundle tags the
+/// host and its attachments separately, and a later singular result
+/// reference ("that exiled card", "that creature") binds to the bundle's last
+/// tag, the attachments'. Its referent is the host: give the host that
+/// result identity, and keep the attachments under their own key.
+fn bind_exiled_target_host_before_its_attachments(compiled: &mut [Effect]) {
+    for effect in compiled.iter_mut() {
+        let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() else {
+            continue;
+        };
+        if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+            || sequence.effects.len() != 2
+        {
+            continue;
+        }
+        let Some(host) = sequence.effects[0].downcast_ref::<crate::effects::TaggedEffect>() else {
+            continue;
+        };
+        let Some(host_exile) = host.effect.downcast_ref::<crate::effects::ExileEffect>() else {
+            continue;
+        };
+        if !host_exile.spec.count().is_single()
+            || !matches!(host_exile.spec.base(), ChooseSpec::Object(_))
+        {
+            continue;
+        }
+        let Some(dependents) = sequence.effects[1].downcast_ref::<crate::effects::TaggedEffect>()
+        else {
+            continue;
+        };
+        let Some(mut dependent_exile) = dependents
+            .effect
+            .downcast_ref::<crate::effects::ExileEffect>()
+            .cloned()
+        else {
+            continue;
+        };
+        let host_tag = host.tag.clone();
+        let result_tag = dependents.tag.clone();
+        if host_tag == result_tag {
+            continue;
+        }
+        let ChooseSpec::All(filter) = &mut dependent_exile.spec else {
+            continue;
+        };
+        let mut rebound = false;
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+                && constraint.tag == host_tag
+            {
+                constraint.tag = result_tag.clone();
+                rebound = true;
+            }
+        }
+        if !rebound {
+            continue;
+        }
+        let attachments_tag = TagKey::from(format!("{}_attachments", result_tag.as_str()));
+        let mut host_effect = host.clone();
+        host_effect.tag = result_tag;
+        let mut dependents_effect = dependents.clone();
+        dependents_effect.tag = attachments_tag;
+        dependents_effect.effect = Box::new(Effect::new(dependent_exile));
+        let mut rebound_sequence = sequence.clone();
+        rebound_sequence.effects = vec![Effect::new(host_effect), Effect::new(dependents_effect)];
+        *effect = Effect::new(rebound_sequence);
     }
 }
 
@@ -983,8 +1054,13 @@ fn bind_relative_iterated_player_filter_to_player_filter(
         PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner) => {
             bind_relative_iterated_player_filter_to_player_filter(inner, player_filter);
         }
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
+            bind_relative_iterated_player_filter_to_player_filter(base, player_filter);
+            bind_relative_iterated_player_filter_to_player_filter(other, player_filter);
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MostLifeTiedAmong { base }
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. }
@@ -1073,6 +1149,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
             match query {
                 TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::CountersRemovedFrom { filter, .. }
+                | TurnHistoryCount::DealtExcessDamage(filter)
                 | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
@@ -1176,6 +1253,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::MaxDiceRolledThisTurn(player)
         | Value::LandsEnteredBattlefieldThisTurn(player)
         | Value::MaxCardsInHand(player)
+        | Value::MaxSpeed(player)
         | Value::CardsInGraveyard(player)
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
@@ -1184,6 +1262,7 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         | Value::PlayerCounters(player, _)
         | Value::PlayerVoteCount(player)
         | Value::Devotion { player, .. }
+        | Value::DevotionToColors { player, .. }
         | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)
@@ -1213,10 +1292,14 @@ pub fn bind_relative_iterated_player_in_value_to_player_filter(
         }
         Value::PowerOf(spec)
         | Value::BasePowerOf(spec)
+        | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
         | Value::ColorsOf(spec)
         | Value::ChosenColorsOf(spec)
+        | Value::NotedCreatureTypeCount(spec)
+        | Value::TypeCountOf(spec)
+        | Value::TotalToxicValueOf(spec)
         | Value::ManaSymbolsInManaCostOf { spec, .. }
         | Value::CountersOn(spec, _) => {
             bind_relative_iterated_player_in_choose_spec_to_player_filter(spec, player_filter);
@@ -1381,6 +1464,26 @@ fn choice_zones_including_hand(filter: &ObjectFilter) -> Option<Vec<Zone>> {
     } else {
         None
     }
+}
+
+/// "choose a source you control": a permanent-or-spell union (CR 120.1 — a
+/// source is a permanent on the battlefield or a spell on the stack). The
+/// choice searches every branch zone instead of defaulting to the battlefield.
+fn permanent_or_spell_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
+    if filter.zone.is_some() || filter.any_of.is_empty() {
+        return None;
+    }
+    let mut zones = Vec::new();
+    for option in &filter.any_of {
+        let zone = option.zone?;
+        if !matches!(zone, Zone::Battlefield | Zone::Stack) {
+            return None;
+        }
+        if !zones.contains(&zone) {
+            zones.push(zone);
+        }
+    }
+    zones.contains(&Zone::Stack).then_some(zones)
 }
 
 fn merge_cross_zone_player_scope(
@@ -2062,6 +2165,36 @@ fn lower_granted_ability_grant_modifications(
         }
     }
     Ok(modifications)
+}
+
+/// A granted step trigger "at the beginning of that player's upkeep"
+/// (Takklemaggot) names a player of the granting resolution, not one of its
+/// own; the grammar leaves that antecedent unbound (`IteratedPlayer`). Bind it
+/// to the granting discourse's player here; the engine then fixes that player
+/// as the grant resolves (CR 611.2c, the grant's referents are locked in).
+pub(crate) fn bind_granted_trigger_outer_player(
+    modifications: &mut [crate::continuous::Modification],
+    outer_player: Option<&PlayerFilter>,
+) {
+    let Some(outer_player) = outer_player.filter(|player| {
+        !player.mentions_iterated_player() && !matches!(player, PlayerFilter::Any)
+    }) else {
+        return;
+    };
+    for modification in modifications {
+        let crate::continuous::Modification::AddAbilityGeneric(ability) = modification else {
+            continue;
+        };
+        let AbilityKind::Triggered(triggered) = &mut ability.kind else {
+            continue;
+        };
+        if let ironsmith_core::trigger_model::TriggerKind::BeginningOfUpkeep { player } =
+            &mut triggered.trigger.kind
+            && *player == PlayerFilter::IteratedPlayer
+        {
+            *player = outer_player.clone();
+        }
+    }
 }
 
 fn granted_ability_mode_description(

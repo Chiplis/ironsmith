@@ -25,6 +25,9 @@ pub enum LeafDurationPhrase {
     YourNextUntapStep,
     UntilControllersNextUntapStep,
     PlayersNextUntapStep,
+    /// "until that player's next turn" (Teferi's Reproach): the referenced
+    /// player's next turn, not the controller's.
+    UntilThatPlayersNextTurn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +70,12 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
     (&["until", "its", "controller's", "next", "untap", "step"], LeafDurationPhrase::UntilControllersNextUntapStep),
     (&["during", "that", "players", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
     (&["during", "that", "player's", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
+    // "during the player's next untap step" (Pollen Lullaby) restates the
+    // same antecedent player.
+    (&["during", "the", "players", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
+    (&["during", "the", "player's", "next", "untap", "step"], LeafDurationPhrase::PlayersNextUntapStep),
+    (&["until", "that", "players", "next", "turn"], LeafDurationPhrase::UntilThatPlayersNextTurn),
+    (&["until", "that", "player's", "next", "turn"], LeafDurationPhrase::UntilThatPlayersNextTurn),
     (
         &["until", "the", "end", "of", "your", "next", "turn"],
         LeafDurationPhrase::UntilYourNextTurnEnd,
@@ -104,6 +113,9 @@ const LEAF_DURATION_PHRASE_VALUES: &[(&[&str], LeafDurationPhrase)] = &[
         LeafDurationPhrase::UntilEndOfCombat,
     ),
     (&["this", "combat"], LeafDurationPhrase::UntilEndOfCombat),
+    // "It can't be blocked that combat" (Noctis): the combat a preceding
+    // delayed return put it into.
+    (&["that", "combat"], LeafDurationPhrase::UntilEndOfCombat),
     (
         &["until", "the", "end", "of", "turn"],
         LeafDurationPhrase::UntilEndOfTurn,
@@ -287,7 +299,20 @@ fn has_source_reference_word(tokens: &[OwnedLexToken]) -> bool {
 pub fn parse_leaf_conditional_duration_kind_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LeafConditionalDurationKind> {
-    primitives::find_prefix(tokens, || primitives::phrase(&["for", "as", "long", "as"]))?;
+    let (_, _, after) =
+        primitives::find_prefix(tokens, || primitives::phrase(&["for", "as", "long", "as"]))?;
+    conditional_duration_kind_body(after)
+}
+
+/// The duration's condition clause runs from its "as long as" introducer to
+/// the next comma: "For as long as that creature has a duty counter on it,
+/// it can't block creatures you control" (Immortal Obligation) does not name
+/// "you control" as its condition.
+fn conditional_duration_kind_body(tokens: &[OwnedLexToken]) -> Option<LeafConditionalDurationKind> {
+    let tokens = match primitives::find_prefix(tokens, || primitives::comma().void()) {
+        Some((comma, _, _)) => &tokens[..comma],
+        None => tokens,
+    };
     if has_lexed_word(tokens, "remains")
         && has_lexed_word(tokens, "tapped")
         && has_source_reference_word(tokens)
@@ -312,8 +337,12 @@ pub fn parse_leaf_conditional_duration_kind_tokens(
 pub fn parse_leaf_conditional_duration_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<LeafDurationPrefix<'a, LeafConditionalDurationKind>> {
-    primitives::parse_prefix(tokens, primitives::phrase(&["for", "as", "long", "as"]))?;
-    let duration = parse_leaf_conditional_duration_kind_tokens(tokens)?;
+    // A leading "As long as this enchantment remains on the battlefield, ..."
+    // inside a resolving effect (Hot Pursuit) names the same duration as
+    // "for as long as".
+    primitives::parse_prefix(tokens, primitives::phrase(&["for", "as", "long", "as"]))
+        .or_else(|| primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"])))?;
+    let duration = conditional_duration_kind_body(tokens)?;
     let condition_end = match duration {
         LeafConditionalDurationKind::SourceRemainsOnBattlefield => {
             crate::slice_primitives::select_position(tokens, |token| token.is_word("battlefield"))?
@@ -327,7 +356,7 @@ pub fn parse_leaf_conditional_duration_prefix_tokens<'a>(
         }
     };
     let prefix = tokens.get(..condition_end)?;
-    if parse_leaf_conditional_duration_kind_tokens(prefix) != Some(duration) {
+    if conditional_duration_kind_body(prefix) != Some(duration) {
         return None;
     }
     let rest = tokens.get(condition_end..)?;
@@ -371,6 +400,7 @@ fn leaf_turn_duration_from_duration(
         | LeafDurationPhrase::YourNextUntapStep
         | LeafDurationPhrase::UntilControllersNextUntapStep
         | LeafDurationPhrase::PlayersNextUntapStep
+        | LeafDurationPhrase::UntilThatPlayersNextTurn
         | LeafDurationPhrase::UntilNextEndStep
         | LeafDurationPhrase::Forever => None,
     }

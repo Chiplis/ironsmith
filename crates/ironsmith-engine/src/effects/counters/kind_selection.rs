@@ -4,7 +4,7 @@ use crate::effects::{CompletedEffectOutputs, ExecutionContext, ExecutionError};
 use crate::target::ChooseSpec;
 use crate::{game_state::GameState, ids::ObjectId, object::CounterType};
 
-pub(super) fn kinds_on(game: &GameState, ids: &[ObjectId]) -> Vec<CounterType> {
+pub(crate) fn kinds_on(game: &GameState, ids: &[ObjectId]) -> Vec<CounterType> {
     let mut kinds = ids
         .iter()
         .filter_map(|id| game.object(*id))

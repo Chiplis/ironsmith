@@ -236,6 +236,24 @@ fn parse_referential_counter_count_shape(
     tokens: &[OwnedLexToken],
     context: Option<crate::parse_context::ParseContextView<'_>>,
 ) -> Option<ReferentialCounterCountShape> {
+    // "put the same number of each kind of counter on that creature"
+    // (Denry Klin): every counter kind on the source, copied at its count;
+    // the source keeps its own counters.
+    if let Some(((), rest)) = primitives::parse_prefix(
+        tokens,
+        (
+            opt(primitives::kw("the")),
+            primitives::phrase(&["same", "number", "of", "each", "kind", "of"]),
+            parse_counter_noun,
+        )
+            .void(),
+    ) {
+        return Some(ReferentialCounterCountShape {
+            source: CounterReferenceSource::Source,
+            counter_type: None,
+            consumed: tokens.len().checked_sub(rest.len())?,
+        });
+    }
     if let Some((source, rest)) = primitives::parse_prefix(
         tokens,
         alt((
@@ -807,6 +825,9 @@ pub fn split_until_opponent_becomes_monarch_shape(
 fn half_starting_life_player<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {
     alt((
         primitives::kw("your").value(PlayerFilter::You),
+        // "half their starting life total" (Torgaar): the subject player;
+        // lowering rebinds this relative player to the actual subject.
+        primitives::kw("their").value(PlayerFilter::IteratedPlayer),
         (
             primitives::kw("target"),
             alt((

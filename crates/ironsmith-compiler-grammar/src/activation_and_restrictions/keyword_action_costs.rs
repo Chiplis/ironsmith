@@ -1316,7 +1316,39 @@ pub fn parse_defined_x_keyword_amount(tokens: &[OwnedLexToken]) -> Option<Keywor
     Some(match shape.kind {
         DefinedXKeyword::Bushido => KeywordAction::BushidoValue(amount),
         DefinedXKeyword::Soulshift => KeywordAction::SoulshiftValue(amount),
+        DefinedXKeyword::Annihilator => KeywordAction::AnnihilatorValue(amount),
     })
+}
+
+/// "[this creature has] echo {X}, where X is <value>." (Volcano Hellion):
+/// echo whose X is computed when the echo payment is made (CR 702.30a,
+/// 107.3c).
+pub fn parse_defined_x_echo_keyword(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let skip_words = match words.as_slice() {
+        ["this", "creature" | "permanent", "has", "echo", ..] => 3,
+        ["this", "has", "echo", ..] => 2,
+        ["echo", ..] => 0,
+        _ => return None,
+    };
+    let positions = crate::lexer::parser_token_word_positions(tokens);
+    let (echo_index, echo_word) = *positions.get(skip_words)?;
+    if echo_word != "echo" || !tokens[echo_index].is_word("echo") {
+        return None;
+    }
+    let cost_tokens = strip_leading_keyword_cost_separator(&tokens[echo_index + 1..]);
+    let prefix = parse_leaf_mana_cost_prefix_tokens(cost_tokens)?;
+    if !prefix.cost.has_x() {
+        return None;
+    }
+    let tail = crate::util::trim_edge_punctuation_tokens(&cost_tokens[prefix.consumed..]);
+    let x_value = crate::keyword_static::parse_value_binding_clause(tail)?;
+    let mana_tokens = &cost_tokens[..prefix.consumed];
+    let total_cost = parse_payment_clause_as_total_cost(mana_tokens).ok()??;
+    let definition = crate::lexer::render_token_slice(tail);
+    let definition = definition.strip_prefix("where x is").map_or(definition.clone(), |rest| format!("where X is{rest}"));
+    let text = format!("{}, {definition}", echo_text(&total_cost, mana_tokens));
+    Some(KeywordAction::Echo { total_cost, text, x_value: Some(x_value) })
 }
 
 pub fn parse_dynamic_keyword_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
@@ -1562,6 +1594,17 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         });
     }
 
+    // "Unearth—Pay eight {E}" (Salvation Colossus): a non-mana unearth cost
+    // after an em dash (CR 702.84a).
+    if keyword_head_is(head, "unearth")
+        && phrase_tokens
+            .get(1)
+            .is_some_and(|token| token.as_word().is_none() && token.mana_group_inner().is_none())
+        && let Ok(Some(cost)) = parse_payment_clause_as_total_cost(&phrase_tokens[2..])
+    {
+        return Some(KeywordAction::UnearthTotalCost(cost));
+    }
+
     // A cost keyword ("unearth {2}{B}"): the heads are exclusive, so the table
     // is a lookup, not a ranking.
     if let Some(action) = COST_KEYWORDS.iter().find_map(|(keyword, fallback, build)| {
@@ -1644,7 +1687,7 @@ pub fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
             match parse_payment_clause_as_total_cost(&cost_tokens) {
                 Ok(Some(total_cost)) => {
                     let text = echo_text(&total_cost, &cost_tokens);
-                    return Some(KeywordAction::Echo { total_cost, text });
+                    return Some(KeywordAction::Echo { total_cost, text, x_value: None });
                 }
                 Ok(None) | Err(_) => {
                     return None;

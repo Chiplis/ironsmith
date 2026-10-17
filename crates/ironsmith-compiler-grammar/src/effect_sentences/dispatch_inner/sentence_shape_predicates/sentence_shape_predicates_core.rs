@@ -70,6 +70,22 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // A quantified collection and whole graveyards are operands of the
+    // same exile instruction, not independent carried-verb clauses.
+    if tokens.first().is_some_and(|token| token.is_word("exile"))
+        && let Some(effect) = crate::effect_sentences::zone_handlers::parse_exile_all_and_all_graveyards(&tokens[1..], None, false, false)?
+    {
+        return Ok(vec![effect]);
+    }
+    // A coordinated choice sentence ("choose a nonland card name and a number
+    // greater than 0") exports one result producer per choice; the generic
+    // choose-objects reading would swallow it as a single object choice.
+    if tokens.first().is_some_and(|token| token.is_word("choose"))
+        && let Some(effects) = crate::effect_sentences::bounded_number_choice::parse_sentence(tokens)?
+        && effects.len() > 1
+    {
+        return Ok(effects);
+    }
     // The second possessive axis belongs to the first subject; ordinary
     // coordination must not bind it to the revealed card used as the value.
     if tokens.first().is_some_and(|token| token.is_word("change")) {
@@ -1065,6 +1081,9 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
     let full_where_is_count_value = !where_shape.comma_tail_has_effect_clause
         && !has_semicolon_tail
         && (turn_history_where.is_some()
+            || super::super::dispatch_entry::parse_exact_where_x_value_expression(
+                where_shape.where_tokens,
+            ).is_some()
             || crate::keyword_static::parse_where_x_is_sum_of_number_of_filter_values(
                 where_shape.where_tokens,
             )
@@ -1346,10 +1365,47 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
         parsed
     };
     rebind_plural_create_followup_damage_source(&mut effects);
-    replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_display)?;
-    for effect in &mut effects {
-        replace_search_filter_x(effect, &where_value);
-        bind_dynamic_target_counts(effect, &where_value);
+    // Coordinated scalar actions share one resolution-time X. Inlining the
+    // value into each action would recompute it after a replacement modifies
+    // the state. These actions introduce no object tags or target counts
+    // that must be established before binding.
+    fn scalar_x_action_count(effect: &EffectAst) -> Option<usize> {
+        use crate::cards::builders::LifeResourceActionAst;
+        match effect {
+            EffectAst::Sequence { effects } => effects.iter().try_fold(0, |count, effect| {
+                scalar_x_action_count(effect).map(|next| count + next)
+            }),
+            EffectAst::Coordination(coordination)
+                if coordination.kind != crate::model::CoordinationKindAst::Disjunction
+                    && coordination.boundaries.iter().all(|boundary| {
+                        boundary.ordering != crate::model::EffectOrderingAst::Alternative
+                    }) => coordination.effects().try_fold(0, |count, effect| {
+                        scalar_x_action_count(effect).map(|next| count + next)
+                    }),
+            EffectAst::SubjectVerb(subject_verb) => {
+                let value = match &subject_verb.action {
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) => count,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount })
+                    | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount }) => amount,
+                    _ => return None,
+                };
+                crate::util::value_contains_unbound_x(value).then_some(1)
+            }
+            _ => None,
+        }
+    }
+    let shared_scalar_x = !typed_where_references_target
+        && effects.iter().try_fold(0, |count, effect| {
+            scalar_x_action_count(effect).map(|next| count + next)
+        }).is_some_and(|count| count > 1);
+    if shared_scalar_x {
+        effects = vec![EffectAst::BindX { value: where_value, effects }];
+    } else {
+        replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_display)?;
+        for effect in &mut effects {
+            replace_search_filter_x(effect, &where_value);
+            bind_dynamic_target_counts(effect, &where_value);
+        }
     }
     if !prelude_effects.is_empty() {
         prelude_effects.append(&mut effects);

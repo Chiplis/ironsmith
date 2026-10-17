@@ -208,6 +208,65 @@ pub fn parse_face_down_pile_sentence_shape(
     })
 }
 
+/// "..., shuffle that pile, then cloak/manifest those cards." tail shared by
+/// the object-only pile: true when the pile is manifested.
+fn parse_shuffled_pile_entry_tail(input: &mut LexStream<'_>) -> WResult<bool> {
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["shuffle", "that", "pile"]).parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::kw("then").parse_next(input)?;
+    let manifest = alt((
+        primitives::kw("cloak").value(false),
+        primitives::kw("manifest").value(true),
+    ))
+    .parse_next(input)?;
+    // "then cloak them" (Expose the Culprit) names the same shuffled pile.
+    alt((
+        primitives::phrase(&["those", "cards"]).void(),
+        primitives::kw("them").void(),
+    ))
+    .parse_next(input)?;
+    opt(primitives::period()).parse_next(input)?;
+    eof.void().parse_next(input)?;
+    Ok(manifest)
+}
+
+fn parse_object_pile_exile<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(&'a [OwnedLexToken], bool)> {
+    primitives::kw("exile").parse_next(input)?;
+    let target_tokens = repeat_till(1.., any.void(), peek(pile_intro))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    pile_intro.parse_next(input)?;
+    let manifest = parse_shuffled_pile_entry_tail.parse_next(input)?;
+    Ok((target_tokens, manifest))
+}
+
+/// "Exile all creature cards from target player's graveyard in a face-down
+/// pile, shuffle that pile, then manifest those cards." (Ghastly
+/// Conscription): the exiled objects alone form the pile. Returns the exiled
+/// object phrase and whether the pile is manifested (else cloaked).
+pub fn parse_object_face_down_pile_sentence_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], bool)> {
+    let (target_tokens, manifest) = crate::grammar::primitives::probe_all(
+        tokens,
+        parse_object_pile_exile,
+        "object-face-down-pile",
+    )?;
+    // The library-joined pile has its own shape.
+    if TokenWordView::new(target_tokens)
+        .word_refs()
+        .windows(2)
+        .any(|pair| pair == ["the", "top"] || pair == ["and", "top"])
+    {
+        return None;
+    }
+    Some((target_tokens, manifest))
+}
+
 /// What happens to the looked-at cards a face-down selection leaves behind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookedFaceDownRemainder {

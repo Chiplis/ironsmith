@@ -12,6 +12,56 @@ pub(super) struct RewriteNormalizationState {
     latest_spell_exports: ReferenceExports,
     latest_additional_cost_exports: ReferenceExports,
     source_number_domain: Option<(u32, Option<u32>)>,
+    /// "Cast this spell only during an opponent's turn": the active player is
+    /// the opponent the spell's "that player" names when no other player
+    /// antecedent was introduced (Delirium).
+    cast_only_during_opponents_turn: bool,
+    /// The leading statement of the next source line, when there is one.
+    /// A statement whose terminal effect is the only producer that next
+    /// line's "<verb>ed this way" metric can read exports its result ID.
+    next_item_statement_followup: Vec<EffectAst>,
+    /// The statement that follows the chunk currently being normalized.
+    current_statement_followup: Vec<EffectAst>,
+}
+
+fn leading_statement_effects(chunk: &LineAst) -> Option<&[EffectAst]> {
+    match chunk {
+        LineAst::Statement { effects } => Some(effects.as_slice()),
+        LineAst::Multiple(chunks) => chunks.first().and_then(leading_statement_effects),
+        _ => None,
+    }
+}
+
+fn item_leading_statement_effects(item: &ParsedCardItem) -> Vec<EffectAst> {
+    match item {
+        ParsedCardItem::Line(line) => line
+            .chunks
+            .first()
+            .and_then(leading_statement_effects)
+            .map(<[EffectAst]>::to_vec)
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+fn normalize_items_with_followups(
+    items: Vec<ParsedCardItem>,
+    state: &mut RewriteNormalizationState,
+) -> Result<Vec<NormalizedCardItem>, CardTextError> {
+    let followups = items
+        .iter()
+        .skip(1)
+        .map(item_leading_statement_effects)
+        .chain(std::iter::once(Vec::new()))
+        .collect::<Vec<_>>();
+    let mut normalized = Vec::with_capacity(items.len());
+    for (item, followup) in items.into_iter().zip(followups) {
+        state.next_item_statement_followup = followup;
+        normalized.push(normalized_item_from_parsed_item(item, state)?);
+    }
+    state.next_item_statement_followup.clear();
+    state.current_statement_followup.clear();
+    Ok(normalized)
 }
 
 impl RewriteNormalizationState {
@@ -51,8 +101,33 @@ impl RewriteNormalizationState {
         imports.has_announced_x |= self.spell_has_announced_x
             || self.latest_spell_exports.has_announced_x
             || additional_cost_has_announced_x;
+        if self.cast_only_during_opponents_turn && imports.last_player_filter.is_none() {
+            imports.last_player_filter = Some(crate::target::PlayerFilter::Active);
+        }
         imports
     }
+}
+
+fn is_opponents_turn_cast_restriction(ability: &StaticAbilityAst) -> bool {
+    use ironsmith_core::ThisSpellCastTiming as Timing;
+    let StaticAbilityAst::Static(ability) = ability else {
+        return false;
+    };
+    matches!(
+        &ability.payload,
+        ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { kind, .. }
+            if matches!(
+                kind.timing,
+                Some(
+                    Timing::DuringOpponentsTurn
+                        | Timing::DuringOpponentsUpkeep
+                        | Timing::DuringOpponentsTurnAfterUpkeep
+                        | Timing::DuringCombatOnOpponentsTurn
+                        | Timing::DuringDeclareBlockersStepOnOpponentsTurn
+                        | Timing::DuringOpponentsTurnBeforeAttackersAreDeclared
+                )
+            )
+    )
 }
 
 fn spell_costs_have_announced_x(items: &[ParsedCardItem]) -> bool {
@@ -223,7 +298,20 @@ fn normalize_line_ast(
         .as_enters_effect_program
         .as_ref()
         .is_some_and(|facts| facts.source_reference_enters_with_counter_surface);
-    for mut chunk in chunks {
+    let chunk_followups = chunks
+        .iter()
+        .skip(1)
+        .map(|next| {
+            leading_statement_effects(next)
+                .map(<[EffectAst]>::to_vec)
+                .unwrap_or_default()
+        })
+        .chain(std::iter::once(std::mem::take(
+            &mut state.next_item_statement_followup,
+        )))
+        .collect::<Vec<_>>();
+    for (mut chunk, followup) in chunks.into_iter().zip(chunk_followups) {
+        state.current_statement_followup = followup;
         if semantic_facts.statement.as_enters_effect_program.is_some() {
             retain_entry_numeric_choices(&mut chunk,&mut state.source_number_domain);
         }
@@ -276,8 +364,18 @@ fn normalize_line_chunk(
             unreachable!("multiple line chunks are flattened before normalization")
         }
         LineAst::Abilities(actions) => NormalizedLineChunk::Abilities(actions),
-        LineAst::StaticAbility(ability) => NormalizedLineChunk::StaticAbility(ability),
-        LineAst::StaticAbilities(abilities) => NormalizedLineChunk::StaticAbilities(abilities),
+        LineAst::StaticAbility(ability) => {
+            if is_opponents_turn_cast_restriction(&ability) {
+                state.cast_only_during_opponents_turn = true;
+            }
+            NormalizedLineChunk::StaticAbility(ability)
+        }
+        LineAst::StaticAbilities(abilities) => {
+            if abilities.iter().any(is_opponents_turn_cast_restriction) {
+                state.cast_only_during_opponents_turn = true;
+            }
+            NormalizedLineChunk::StaticAbilities(abilities)
+        }
         LineAst::Ability(mut parsed) => {
             if parsed.trigger_spec.as_deref().is_some_and(own_upkeep) {
                 if let (Some(domain),Some(effects))=(state.source_number_domain,parsed.effects_ast.as_mut()) {
@@ -358,7 +456,11 @@ fn normalize_line_chunk(
                     cost_tag.clone(),
                 ));
             }
-            let prepared = stage_statement_effects_for_lowering(&effects, imports)?;
+            let prepared = stage_statement_effects_with_followup_for_lowering(
+                &effects,
+                imports,
+                &state.current_statement_followup,
+            )?;
             state.latest_spell_exports = prepared.exports.clone();
             NormalizedLineChunk::Statement {
                 effects_ast: effects,
@@ -473,15 +575,33 @@ fn resolve_as_enters_source_counter_grants(effects: &mut [EffectAst]) {
 fn normalize_modal_ast(
     modal: ParsedModalAst,
     spell_has_announced_x: bool,
+    spell_additional_cost_imports: ReferenceImports,
 ) -> Result<NormalizedModalAst, CardTextError> {
-    let imports = ReferenceImports {
-        has_announced_x: if let Some(activated) = modal.header.activated.as_ref() {
-            crate::model::costs::cost_has_announced_x(&activated.mana_cost)
-        } else {
-            modal.header.trigger.is_none() && spell_has_announced_x
-        },
-        ..Default::default()
+    // A modal spell's modes resolve after the spell's additional costs were
+    // paid, exactly like an unmoded spell statement: "• Return target
+    // creature card ... if its power is less than or equal to the sacrificed
+    // creature's power" (Desperate Plea) names the paid cost object.
+    let spell_modal = modal.header.activated.is_none() && modal.header.trigger.is_none();
+    let mut imports = if spell_modal {
+        spell_additional_cost_imports
+    } else {
+        ReferenceImports::default()
     };
+    let cost_has_announced_x = spell_modal && imports.has_announced_x;
+    imports.has_announced_x = if let Some(activated) = modal.header.activated.as_ref() {
+        crate::model::costs::cost_has_announced_x(&activated.mana_cost)
+    } else {
+        modal.header.trigger.is_none() && (spell_has_announced_x || cost_has_announced_x)
+    };
+    if spell_modal && let Some(cost_tag) = imports.last_object_tag.clone() {
+        imports.snapshot_tag_aliases.retain(|(alias, _)| {
+            alias != &crate::tag::CompilerReferenceTag::AdditionalCostObject.key()
+        });
+        imports.snapshot_tag_aliases.push((
+            (crate::tag::CompilerReferenceTag::AdditionalCostObject.bind()).into(),
+            cost_tag,
+        ));
+    }
     let prepared_prefix = if modal.header.prefix_effects_ast.is_empty() {
         None
     } else if modal.header.trigger.is_some() || modal.header.activated.is_some() {
@@ -568,6 +688,7 @@ fn normalized_item_from_parsed_item(
         ParsedCardItem::Modal(modal) => Ok(NormalizedCardItem::Modal(normalize_modal_ast(
             modal,
             state.spell_has_announced_x,
+            state.latest_additional_cost_exports.to_imports(),
         )?)),
         ParsedCardItem::LevelAbility(level) => Ok(NormalizedCardItem::LevelAbility(level)),
     }
@@ -618,29 +739,20 @@ pub fn normalize_parsed_card_ast_for_lowering(
     };
     let overload_branch = if let Some(branch) = overload_branch {
         let mut state = initial_state.clone();
-        let mut items = Vec::new();
-        for item in branch.items {
-            items.push(normalized_item_from_parsed_item(item, &mut state)?);
-        }
+        let items = normalize_items_with_followups(branch.items, &mut state)?;
         Some(NormalizedOverloadBranch { items })
     } else {
         None
     };
     let cleave_branch = if let Some(branch) = cleave_branch {
         let mut state = initial_state.clone();
-        let mut items = Vec::new();
-        for item in branch.items {
-            items.push(normalized_item_from_parsed_item(item, &mut state)?);
-        }
+        let items = normalize_items_with_followups(branch.items, &mut state)?;
         Some(NormalizedCleaveBranch { items })
     } else {
         None
     };
     let mut state = initial_state;
-    let mut normalized_items = Vec::new();
-    for item in items {
-        normalized_items.push(normalized_item_from_parsed_item(item, &mut state)?);
-    }
+    let normalized_items = normalize_items_with_followups(items, &mut state)?;
 
     drop(document_references);
     Ok(NormalizedCardAst {

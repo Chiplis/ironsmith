@@ -26,6 +26,54 @@ fn tie_axis(sentence: &[OwnedLexToken]) -> Option<(&'static str, bool, &str)> {
     };
     (rest == ["you", "choose", "one", "of", "them"]).then_some((axis, greatest, noun))
 }
+fn is_per_player_tie_clarification(sentence: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(sentence);
+    let Some(rest) = words.strip_prefix(&["if", "two", "or", "more"]) else {
+        return false;
+    };
+    let Some(rest) = rest
+        .strip_prefix(&["creatures"])
+        .or_else(|| rest.strip_prefix(&["permanents"]))
+        .and_then(|rest| rest.strip_prefix(&["a", "player", "controls", "are", "tied", "for"]))
+    else {
+        return false;
+    };
+    let Some(rest) = rest
+        .strip_prefix(&["greatest"])
+        .or_else(|| rest.strip_prefix(&["least"]))
+    else {
+        return false;
+    };
+    let rest = rest
+        .strip_prefix(&["mana", "value"])
+        .or_else(|| rest.strip_prefix(&["power"]))
+        .or_else(|| rest.strip_prefix(&["toughness"]))
+        .unwrap_or(rest);
+    matches!(
+        rest,
+        ["that", "player", "chooses", "one"] | ["that", "player", "chooses", "one", "of", "them"]
+    )
+}
+
+fn has_per_player_choice(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::ForEachPlayer { effects }
+            | crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered { effects, .. },
+        ) => effects.iter().any(|effect| {
+            matches!(
+                effect,
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    player: PlayerAst::That,
+                    count,
+                    ..
+                }) if *count == ChoiceCount::exactly(1)
+            )
+        }),
+        _ => false,
+    }
+}
+
 fn action_target(effect: &mut EffectAst) -> Option<&mut TargetAst> {
     let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
         return None;
@@ -47,6 +95,14 @@ fn action_target(effect: &mut EffectAst) -> Option<&mut TargetAst> {
 /// is not a second operation after destroying/returning/damaging every tie.
 /// Match the typed extremum and reject targeted, counted, or unrelated actions.
 pub(crate) fn bind(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> bool {
+    if is_per_player_tie_clarification(sentence)
+        && effects.last().is_some_and(has_per_player_choice)
+    {
+        // "If two or more creatures a player controls are tied for greatest,
+        // that player chooses one." (Tariff): the preceding per-player
+        // instruction already has that player choose exactly one.
+        return true;
+    }
     let Some((axis, greatest, noun)) = tie_axis(sentence) else {
         return false;
     };

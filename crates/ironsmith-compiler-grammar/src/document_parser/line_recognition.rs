@@ -82,6 +82,23 @@ fn moved_or_cast_origin_trigger_split_index(
 pub(super) fn recognize_triggered_line(
     line: &PreprocessedLine,
 ) -> Result<RecognizedTriggeredLine, CardTextError> {
+    // These complete multi-sentence programs establish a delegated target
+    // choice before the optional reward. Generic effect probing must not
+    // reinterpret that declaration as an anthem subject.
+    let (authored, cap) = strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
+    if matches!(semantic_lowering::parse_special_triggered_program_tokens(authored),
+        Some(semantic_lowering::SpecialTriggeredProgram::OpponentLifeMajorityDamage
+            | semantic_lowering::SpecialTriggeredProgram::OpponentHandMajorityRedraw))
+        && let Some((header, effects)) = grammar::split_lexed_once_on_comma(authored)
+        && header.len() > 1
+    {
+        return Ok(RecognizedTriggeredLine {
+            info: line.info.clone(), full_text: render_token_slice(authored),
+            full_parse_tokens: authored.to_vec(), trigger_parse_tokens: header[1..].to_vec(),
+            effect_parse_tokens: effects.to_vec(), max_triggers_per_turn: cap,
+            intervening_if: None, presentation: None, chosen_option: None,
+        });
+    }
     // Keep the authored producer/reference relation intact before generic
     // trigger splitting can reinterpret its first sentence as a condition.
     if let Some((_, tail)) = grammar::split_lexed_once_on_comma(&line.info.source_tokens) {
@@ -98,7 +115,6 @@ fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<Recogn
     let (source_tokens_without_cap, _) =
         strip_trailing_trigger_cap_suffix_tokens(&line.info.source_tokens);
     let correlated_tail = |effect_tokens: &[OwnedLexToken]| {
-        let words = crate::lexer::parser_token_word_refs(effect_tokens);
         crate::effect_sentences::counter_exile_permission::is_candidate(effect_tokens)
             || crate::semantic_line_parsing::has_created_token_reciprocal_lifecycle_surface(effect_tokens)
             || crate::semantic_line_parsing::has_linked_created_token_next_turn_sacrifice_surface(
@@ -111,11 +127,9 @@ fn recognize_correlated_triggered_line(line: &PreprocessedLine) -> Option<Recogn
             || crate::semantic_line_parsing::is_authored_look_hand_optional_cast_bundle(
                 effect_tokens,
             )
-            || (crate::word_primitives::contains_word(&words, "return")
-                && crate::word_primitives::contains_word(&words, "aura")
-                && crate::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
-                    effect_tokens,
-                ))
+            || crate::semantic_line_parsing::is_exact_correlated_trigger_effect_bundle(
+                effect_tokens,
+            )
     };
 
     if parse_trigger_intro_tokens(source_tokens_without_cap).is_some()
@@ -250,9 +264,15 @@ fn recognize_triggered_line_inner(
         && let Some(spec) =
             structure::split_triggered_conditional_clause_lexed(tokens_without_cap, 1)
     {
+        // "if this card is in your graveyard ..., you may cast it from your
+        // graveyard this turn" (Skyclave Shade): with the source card as the
+        // condition's subject, the effect's object pronoun names that card,
+        // not the triggering object.
+        let rebound_effects =
+            rebind_object_pronoun_to_source_card(&spec.predicate, spec.effects_tokens);
         let probe = probe_triggered_split(
             spec.trigger_tokens,
-            spec.effects_tokens,
+            rebound_effects.as_deref().unwrap_or(spec.effects_tokens),
             Some(spec.predicate.clone()),
             trailing_cap,
         );
@@ -930,6 +950,10 @@ pub(super) fn recognize_modal_mode(
     })
 }
 
+pub(super) fn parse_tiered_mode_prefix_tokens(tokens: &[OwnedLexToken]) -> Option<(crate::mana::ManaCost, usize)> {
+    parse_tiered_mode_prefix(tokens)
+}
+
 fn parse_tiered_mode_prefix(tokens: &[OwnedLexToken]) -> Option<(crate::mana::ManaCost, usize)> {
     if !tokens
         .first()
@@ -975,7 +999,7 @@ fn leading_modal_point_cost_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     super::super::grammar::modal::parse_modal_point_label_tokens(tokens).map(|shape| shape.count)
 }
 
-fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+pub(super) fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if tokens
         .first()
         .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
@@ -1005,4 +1029,30 @@ pub(super) fn recognize_saga_chapter_line(
         text: display_text.to_string(),
         effects_ast,
     })
+}
+
+/// When an intervening-if condition is about the source card's own zone, the
+/// effect's "cast/return/play it" names that card.
+fn rebind_object_pronoun_to_source_card(
+    predicate: &crate::cards::builders::PredicateAst,
+    effects: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    use crate::cards::builders::{PredicateAst, SourcePredicateAst};
+    fn names_source_zone(predicate: &PredicateAst) -> bool {
+        match predicate {
+            PredicateAst::Source(SourcePredicateAst::SourceIsInZone(_)) => true,
+            PredicateAst::And(left, right) => names_source_zone(left) || names_source_zone(right),
+            _ => false,
+        }
+    }
+    if !names_source_zone(predicate) {
+        return None;
+    }
+    let index = (1..effects.len()).find(|&index| {
+        effects[index].is_word("it") && effects[index - 1].is_any_word(&["cast", "return", "play"])
+    })?;
+    let mut rebound = effects[..index].to_vec();
+    rebound.extend(crate::lexer::synthetic_word_tokens(["this", "card"]));
+    rebound.extend_from_slice(&effects[index + 1..]);
+    Some(rebound)
 }

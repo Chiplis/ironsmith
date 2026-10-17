@@ -807,6 +807,39 @@ pub(crate) fn execute_prepared_draw_instruction(
     .map(crate::effects::CompletedEffectOutputs::into_outcome)
 }
 
+/// The activated ability whose resolution is executing this draw instruction:
+/// its source as last known on the stack and its keyword (cycling, ...).
+/// Replacement and triggered programs run without an ability index, so only
+/// the resolving activated ability's own instructions carry a cause.
+fn resolving_activated_ability_draw_cause(
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Option<crate::events::DrawCauseAbility> {
+    let ability_index = ctx.ability_index?;
+    let source_snapshot = ctx
+        .source_snapshot
+        .as_ref()
+        .filter(|snapshot| snapshot.object_id == ctx.source)
+        .cloned()
+        .or_else(|| {
+            game.object(ctx.source).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+            })
+        })
+        .or_else(|| game.source_last_known_snapshot(ctx.source).cloned());
+    let keyword = source_snapshot.as_ref().and_then(|snapshot| {
+        match &snapshot.abilities.get(ability_index)?.kind {
+            crate::ability::AbilityKind::Activated(activated) => activated.keyword,
+            _ => None,
+        }
+    });
+    Some(crate::events::DrawCauseAbility {
+        source: ctx.source,
+        keyword,
+        source_snapshot,
+    })
+}
+
 fn execute_prepared_draw_cards(
     prepared: PreparedDrawInstruction,
     game: &mut GameState,
@@ -836,6 +869,7 @@ fn execute_prepared_draw_cards(
     // CR 121.2: each card is a separate draw, so the one-card limit is
     // checked per card below. A replaced draw (dredge) isn't a draw.
     let count = requested_count;
+    let cause_ability = resolving_activated_ability_draw_cause(game, ctx);
 
     let mut total_drawn: i64 = 0;
     let mut replacement_count = 0;
@@ -870,7 +904,7 @@ fn execute_prepared_draw_cards(
         }
         let (is_during_players_draw_step, cards_previously_drawn_this_draw_step) =
             game.draw_step_context_for_player(player_id);
-        let draw_event = Event::draw_in_instruction(
+        let draw_event = Event::draw_in_instruction_with_cause(
             player_id,
             1,
             is_first,
@@ -880,6 +914,7 @@ fn execute_prepared_draw_cards(
             is_during_players_draw_step
                 && cards_previously_drawn_this_draw_step == 0
                 && direct_drawn.is_empty(),
+            cause_ability.clone(),
         );
         let processed = process_trait_event_with_execution_context(
             game,

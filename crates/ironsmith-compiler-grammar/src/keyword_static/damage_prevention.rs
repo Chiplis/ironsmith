@@ -6,6 +6,11 @@ use ironsmith_core::{PreventMatchingDamageSpec, StaticDamagePreventionAmount};
 pub(super) fn prevention_recipient_filters(
     tokens: &[OwnedLexToken],
 ) -> Result<(Option<PlayerFilter>, Option<ObjectFilter>), CardTextError> {
+    // A matching event already supplies one recipient. "Any creature" is
+    // its domain, rather than a new object-selection quantity.
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("any"))
+        && tokens.get(1).is_some_and(|token| !token.is_any_word(&["of", "number", "target"]))
+    { &tokens[1..] } else { tokens };
     let words = parser_token_word_refs(tokens);
     let known = parse_damage_amount_replacement_target_filters(&words)?;
     if known.0.is_some() || known.1.is_some() {
@@ -39,6 +44,31 @@ pub(super) fn needs_shared_recipient_allocation(tokens: &[OwnedLexToken]) -> boo
         || tokens.iter().any(|token| token.is_word("and/or"))
 }
 
+/// "you and/or one or more creatures you control" as its recipient union
+/// "you or creatures you control": the quantifier only says the recipients
+/// share one budget, which the amount records.
+fn shared_recipient_union_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut union = Vec::with_capacity(tokens.len());
+    let mut index = 0;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if token.is_word("one")
+            && tokens.get(index + 1).is_some_and(|token| token.is_word("or"))
+            && tokens.get(index + 2).is_some_and(|token| token.is_word("more"))
+        {
+            index += 3;
+            continue;
+        }
+        if token.is_word("and/or") {
+            union.push(OwnedLexToken::word("or", token.span));
+        } else {
+            union.push(token.clone());
+        }
+        index += 1;
+    }
+    union
+}
+
 pub fn parse_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -61,14 +91,18 @@ pub fn parse_filtered_damage_prevention_line(
     let Some(shape) = keyword_static_lines::parse_filtered_damage_prevention_tokens(tokens) else {
         return Ok(None);
     };
-    // Quantified simultaneous recipients can share ONE prevention budget
-    // (Cover of Winter), which needs a player-chosen batch allocation. The
-    // single-recipient runtime action must not apply that budget once per target.
-    if needs_shared_recipient_allocation(shape.damaged_tokens) {
-        return Ok(None);
-    }
+    // Quantified simultaneous recipients share ONE prevention budget per
+    // source (Cover of Winter), allocated by the affected player across that
+    // source's simultaneous recipients; the recipients themselves are the
+    // plain union ("you or creatures you control").
+    let shared_recipients = needs_shared_recipient_allocation(shape.damaged_tokens);
+    let recipient_tokens = if shared_recipients {
+        shared_recipient_union_tokens(shape.damaged_tokens)
+    } else {
+        shape.damaged_tokens.to_vec()
+    };
     let (target_player_filter, target_object_filter) =
-        prevention_recipient_filters(shape.damaged_tokens)?;
+        prevention_recipient_filters(&recipient_tokens)?;
     let source_filter = damage_source_filter_from_shape(shape.source)?;
     if let Some(repeated) = shape.repeated_spell_target_tokens {
         // The repeated spell and recipient must refer to the event just read;
@@ -112,6 +146,13 @@ pub fn parse_filtered_damage_prevention_line(
             StaticDamagePreventionAmount::Amount(value)
         }
     };
+    let amount = match (shared_recipients, amount) {
+        (true, StaticDamagePreventionAmount::Amount(value)) => {
+            StaticDamagePreventionAmount::SharedPerSource(value)
+        }
+        (true, StaticDamagePreventionAmount::AllBut(_)) => return Ok(None),
+        (_, amount) => amount,
+    };
     Ok(Some(StaticAbility::prevent_matching_damage(
         PreventMatchingDamageSpec {
             source_filter,
@@ -121,6 +162,7 @@ pub fn parse_filtered_damage_prevention_line(
             noncombat_only: shape.noncombat_only,
             maximum_damage: shape.maximum_damage,
             amount,
+            optional_by_controller: shape.optional_by_controller,
             display: render_token_slice(tokens),
         },
     )))
@@ -133,7 +175,7 @@ pub fn parse_permanent_self_damage_prevention_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word,
-        "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
+        "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
         || words.windows(3).any(|words| words == ["as", "long", "as"])
     {
         return Ok(None);
@@ -156,7 +198,22 @@ pub fn parse_permanent_self_damage_prevention_line(
     {
         return Ok(None);
     }
-    let source_filter = damage_source_filter_from_shape(source)?;
+    // In a self-recipient rule, "spells that target it" refers to that
+    // recipient, rather than an unbound instruction-local pronoun.
+    let source_words = parser_token_word_refs(source.filter_tokens);
+    let source_filter = if !source.source_noun
+        && source.trailing_filter_tokens.is_empty()
+        && source_words.starts_with(&["spells", "that", "target"])
+        && (source_words[3..] == ["it"]
+            || is_source_reference_words(&source_words[3..]))
+    {
+        let mut spells = ObjectFilter::default();
+        spells.zone = Some(Zone::Stack);
+        spells.targets_object = Some(Box::new(ObjectFilter::source()));
+        spells
+    } else {
+        damage_source_filter_from_shape(source)?
+    };
     let mut recipient = ObjectFilter::source();
     recipient.source_surface = source_reference_surface_for_words(
         &parser_token_word_refs(shape.damaged_tokens),
@@ -169,6 +226,7 @@ pub fn parse_permanent_self_damage_prevention_line(
         noncombat_only: shape.noncombat_only,
         maximum_damage: None,
         amount: StaticDamagePreventionAmount::All,
+        optional_by_controller: false,
         display: render_token_slice(tokens),
     })))
 }
@@ -179,6 +237,31 @@ pub fn parse_permanent_self_damage_prevention_line(
 pub fn parse_persistent_filtered_damage_prevention_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // "by sources of the last chosen color" (Chromatic Armor): each new color
+    // choice replaces the source's chosen color, so the last chosen color is
+    // the source's current chosen color.
+    if tokens.windows(3).any(|window| {
+        window[0].is_word("last") && window[1].is_word("chosen") && window[2].is_word("color")
+    }) {
+        let stripped = tokens
+            .iter()
+            .enumerate()
+            .filter(|(index, token)| {
+                !(token.is_word("last")
+                    && tokens.get(index + 1).is_some_and(|next| next.is_word("chosen")))
+            })
+            .map(|(_, token)| token.clone())
+            .collect::<Vec<_>>();
+        let Some(ability) = parse_persistent_filtered_damage_prevention_line(&stripped)? else {
+            return Ok(None);
+        };
+        let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(mut spec) = ability.payload
+        else {
+            return Ok(None);
+        };
+        spec.display = render_token_slice(tokens);
+        return Ok(Some(StaticAbility::prevent_matching_damage(spec)));
+    }
     let words = parser_token_word_refs(tokens);
     if words.iter().any(|word| matches!(*word,
         "target" | "turn" | "until" | "during" | "while" | "unless" | "if" | "then"))
@@ -209,6 +292,7 @@ pub fn parse_persistent_filtered_damage_prevention_line(
         noncombat_only: shape.noncombat_only,
         maximum_damage: None,
         amount: StaticDamagePreventionAmount::All,
+        optional_by_controller: false,
         display: render_token_slice(tokens),
     })))
 }

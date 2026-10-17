@@ -102,11 +102,25 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_battlefield_graveyard_exile_all_pair(input)),
     },
     Reading {
+        id: RuleId::new("exile-all-and-all-graveyards"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(parse_exile_all_and_all_graveyards(
+                input.tokens,
+                input.subject,
+                input.until_source_leaves,
+                input.face_down,
+            ))
+        },
+    },
+    Reading {
         id: RuleId::new("exile-all-or-each-filter"),
         head: HeadDiscriminator::Any,
         admits: |input| {
             // Readings ranked above this one that read the input read it.
             !input.read_by("battlefield-graveyard-exile-all-pair")
+                && !input.read_by("exile-all-and-all-graveyards")
         },
         read: |input| input.outcome(read_exile_all_or_each_filter(input)),
     },

@@ -16,6 +16,8 @@ pub enum LibraryActionAst {
         explicit_all_cards_from: bool,
     },
     ReorderGraveyard,
+    /// "Reorder your graveyard at random" (Search for Survivors).
+    ReorderGraveyardAtRandom,
     PutRestOnBottomOfLibrary,
     ExileTopOfLibrary {
         count: Value,

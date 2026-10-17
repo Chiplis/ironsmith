@@ -97,10 +97,27 @@ impl EffectExecutor for RegenerateEffect {
             if obj.zone != Zone::Battlefield {
                 continue;
             }
+            let controller = ctx.controller;
+            if self.remove_damage_only {
+                // Not regeneration (CR 701.19): the next destruction this turn
+                // is replaced by removing the damage marked on the permanent.
+                let replacement_effect = ReplacementEffect::with_matcher(
+                    target_id,
+                    controller,
+                    crate::events::permanents::matchers::WouldBeDestroyedMatcher::new(
+                        crate::target::ObjectFilter::specific(target_id),
+                    ),
+                    ReplacementAction::Instead(vec![Effect::clear_damage(
+                        ChooseSpec::SpecificObject(target_id),
+                    )]),
+                );
+                let apply = ApplyReplacementEffect::one_shot(replacement_effect);
+                outcomes.push(execute_effect(game, &Effect::new(apply), ctx)?);
+                continue;
+            }
             if !game.can_be_regenerated(target_id) {
                 continue;
             }
-            let controller = ctx.controller;
 
             // Follow-ups run in the replacement program with the shield's
             // controller and source; a reflexive "when it regenerates this

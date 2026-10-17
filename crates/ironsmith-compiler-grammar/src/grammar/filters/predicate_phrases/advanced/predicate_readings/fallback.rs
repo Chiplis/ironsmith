@@ -12,6 +12,22 @@ pub(super) fn read(input: &Predicate<'_>) -> Option<PredicateAst> {
     if let Some(predicate) = negated_mana_spent(input.predicate_tokens) {
         return Some(predicate);
     }
+    if let Some(predicate) = energy_paid_threshold(input.predicate_tokens) {
+        return Some(predicate);
+    }
+    // "any of that damage was dealt by a Warrior" (Mindblade Render): a
+    // qualifier on the triggering damage's sources; the trigger reader
+    // absorbs it into the event's source filter.
+    if let Some(start) = crate::lexer::token_word_refs(input.predicate_tokens)
+        .starts_with(&["any", "of", "that", "damage", "was", "dealt", "by"])
+        .then_some(7)
+        && let Some(filter_tokens) = input.predicate_tokens.get(start..)
+        && !filter_tokens.is_empty()
+        && let Ok(filter) = crate::object_filters::parse_object_filter_lexed(filter_tokens, false)
+        && filter != ObjectFilter::default()
+    {
+        return Some(PredicateAst::ItMatches(filter));
+    }
     let words: Vec<String> = crate::lexer::token_word_refs(input.predicate_tokens)
         .into_iter()
         .map(|word| word.replace(['\'', '’'], ""))
@@ -35,6 +51,9 @@ fn read_words(words: &[&str]) -> Option<PredicateAst> {
         return Some(predicate);
     }
     if let Some(predicate) = definite_referent_had(words) {
+        return Some(predicate);
+    }
+    if let Some(predicate) = exploited_referent_had(words) {
         return Some(predicate);
     }
     // "an oil counter was removed from a permanent you controlled this turn
@@ -201,6 +220,7 @@ fn negated_copula(words: &[&str]) -> Option<PredicateAst> {
 type Shape = fn(&[&str]) -> Option<PredicateAst>;
 
 const SHAPES: &[Shape] = &[
+    player_hasnt_played_that_card,
     source_state,
     creature_blocking_source,
     cards_above_source,
@@ -235,6 +255,14 @@ const SHAPES: &[Shape] = &[
     counted_this_way,
     you_acted_this_way,
     no_life_lost_this_way,
+    you_changed_life_this_way,
+    distinct_names_among_controlled_qualities,
+    source_card_in_your_graveyard,
+    source_is_on_the_stack,
+    source_escaped,
+    referenced_card_mana_symbol_count,
+    two_spells_share_mana_value,
+    you_put_no_cards_into_hand_this_way,
     you_didnt_put_onto_battlefield_this_way,
     creatures_attacked_this_turn,
     card_exiled_with_it,
@@ -242,7 +270,22 @@ const SHAPES: &[Shape] = &[
     target_player_life_total,
     card_directly_above_source,
     same_name_object_exists,
+    players_have_lost_the_game,
 ];
+
+/// "if two or more players have lost the game" (Hot Pursuit): a count of the
+/// players who have left the game by losing (CR 104.3, 800.4).
+fn players_have_lost_the_game(words: &[&str]) -> Option<PredicateAst> {
+    let [count, "or", "more", "players", "have", "lost", "the", "game"] = words else {
+        return None;
+    };
+    let count = number(count)?;
+    Some(PredicateAst::CountComparison {
+        count: ironsmith_core::AnthemCountExpression::PlayersLostGame,
+        comparison: crate::effect::Comparison::GreaterThanOrEqual(i32::try_from(count).ok()?),
+        display: Some(format!("{} or more players have lost the game", words[0])),
+    })
+}
 
 const SOURCE_NOUNS: &[&str] = &[
     "creature",
@@ -989,6 +1032,28 @@ fn you_committed_crime_this_turn(words: &[&str]) -> Option<PredicateAst> {
     }))
 }
 
+/// "if the player hasn't played the card" (Elkin Lair): the card exiled
+/// for that player's permission was not played, so it is still the same
+/// object in exile (playing it moves it out of exile, CR 400.7).
+fn player_hasnt_played_that_card(words: &[&str]) -> Option<PredicateAst> {
+    let words = words
+        .iter()
+        .copied()
+        .filter(|word| !matches!(*word, "the" | "that"))
+        .collect::<Vec<_>>();
+    if !matches!(
+        words.as_slice(),
+        ["player" | "they" | "you", "hasnt" | "havent", "played", "card" | "it"]
+            | ["player" | "they" | "you", "has" | "have", "not", "played", "card" | "it"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::ItMatches(ObjectFilter {
+        zone: Some(crate::zone::Zone::Exile),
+        ..Default::default()
+    }))
+}
+
 /// "you played a land this turn" (River of Tears).
 fn you_played_land_this_turn(words: &[&str]) -> Option<PredicateAst> {
     let ["youve" | "you", "played", "a", "land", "this", "turn"] = words else {
@@ -1069,6 +1134,31 @@ fn definite_referent_had(words: &[&str]) -> Option<PredicateAst> {
     parse_predicate(&crate::lexer::synthetic_word_tokens(rewritten)).ok()
 }
 
+/// "If the exploited creature had power 3 or greater" (Henry Wu, InGen
+/// Geneticist): the creature the triggering exploit sacrificed, checked with
+/// its last-known characteristics (CR 702.110b).
+fn exploited_referent_had(words: &[&str]) -> Option<PredicateAst> {
+    let ["the", "exploited", "creature", "had", rest @ ..] = words else {
+        return None;
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let rewritten: Vec<&str> = ["that", "creature", "had"]
+        .into_iter()
+        .chain(rest.iter().copied())
+        .collect();
+    let PredicateAst::ItMatchedLastKnown(filter) =
+        parse_predicate(&crate::lexer::synthetic_word_tokens(rewritten)).ok()?
+    else {
+        return None;
+    };
+    Some(PredicateAst::TaggedMatchedLastKnown(
+        crate::tag::CompilerReferenceTag::Exploited.bind(),
+        filter,
+    ))
+}
+
 /// "If you controlled it" (Hotshot Investigators, Unyielding Gatekeeper), "If
 /// you controlled that artifact" (Gleeful Demolition): the referenced object's
 /// last-known controller (CR 608.2h) was you.
@@ -1126,8 +1216,12 @@ fn you_acted_this_way(words: &[&str]) -> Option<PredicateAst> {
         ["return" | "returned", rest @ ..] => (&["returned"], rest),
         ["draw" | "drew", rest @ ..] => (&["drawn"], rest),
         ["mill" | "mills" | "milled", rest @ ..] => (&["milled"], rest),
+        // "if you exiled four or more cards this way" (Portent of
+        // Calamity): the count the prior exile instruction moved.
+        ["exile" | "exiles" | "exiled", rest @ ..] => (&["exiled"], rest),
         _ => return None,
     };
+    let exiled = matches!(participle, ["exiled"]);
     let [object @ .., "this", "way"] = rest else {
         return None;
     };
@@ -1153,7 +1247,10 @@ fn you_acted_this_way(words: &[&str]) -> Option<PredicateAst> {
         .chain(["this", "way"])
         .collect();
     let mut count = this_way_count(&object_words)?;
+    // An exile instruction's affected memory is already the caster's own
+    // exile; it records no per-player partition to select.
     if words.first() == Some(&"you")
+        && !exiled
         && let Value::PendingPriorEffectMetric(query) = &mut count {
         query.player = Some(PlayerFilter::You);
     }
@@ -1179,6 +1276,162 @@ fn mill_threshold_counts_remembered_creature_cards_outside_the_battlefield() {
     assert_eq!(right, Value::Fixed(1));
 }
 
+/// "If you put no cards into your hand this way, put a +1/+1 counter on
+/// Nashi." (Nashi, Searcher in the Dark): none of the prior instruction's
+/// cards arrived in your hand.
+fn you_put_no_cards_into_hand_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let ["you", "put", "no", object @ .., "into", "your", "hand", "this", "way"] = words else {
+        return None;
+    };
+    if !matches!(object, ["cards"] | ["card"]) {
+        return None;
+    }
+    let mut count = this_way_count(&["cards", "put", "into", "your", "hand", "this", "way"])?;
+    if let Value::PendingPriorEffectMetric(query) = &mut count {
+        query.player = Some(PlayerFilter::You);
+    }
+    Some(PredicateAst::Not(Box::new(at_least(count, 1))))
+}
+
+/// "you may cast that card without paying its mana cost if the two spells
+/// have the same mana value" (Powerbalance): the triggering spell and the
+/// referenced card have equal mana values.
+fn two_spells_share_mana_value(words: &[&str]) -> Option<PredicateAst> {
+    let ["the", "two", "spells", "have", "the", "same", "mana", "value"] = words else {
+        return None;
+    };
+    let mana_value = |tag: crate::tag::CompilerReferenceTag| {
+        Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag.key())))
+    };
+    Some(PredicateAst::ValueComparison {
+        left: mana_value(crate::tag::CompilerReferenceTag::Triggering),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: mana_value(crate::tag::CompilerReferenceTag::It),
+    })
+}
+
+/// "When this creature enters, if it escaped, ..." (Pharika's Spawn): the
+/// permanent was cast with its escape cost.
+fn source_escaped(words: &[&str]) -> Option<PredicateAst> {
+    matches!(
+        words,
+        ["it", "escaped"] | ["this", "creature" | "permanent" | "spell", "escaped"]
+    )
+    .then_some(PredicateAst::ThisSpellEscaped)
+}
+
+/// "it has three or more colored mana symbols in its mana cost" (Omnath,
+/// Locus of All) / "that card has two or more red mana symbols in its mana
+/// cost": a count of the referenced card's printed pips (a hybrid or
+/// Phyrexian pip is one symbol).
+fn referenced_card_mana_symbol_count(words: &[&str]) -> Option<PredicateAst> {
+    let rest = match words {
+        ["it", "has", rest @ ..] | ["that", "card", "has", rest @ ..] => rest,
+        _ => return None,
+    };
+    let number = |word: &str| crate::util::parse_number_word_u32(word).map(|n| n as usize);
+    let (count, rest) = match rest {
+        [n, "or", "more", rest @ ..] => (crate::effect::ChoiceCount::at_least(number(*n)?), rest),
+        [n, "or", "fewer", rest @ ..] => (crate::effect::ChoiceCount::up_to(number(*n)?), rest),
+        ["exactly", n, rest @ ..] => (crate::effect::ChoiceCount::exactly(number(*n)?), rest),
+        _ => return None,
+    };
+    let [adjective, "mana", "symbol" | "symbols", "in", "its", "mana", "cost"] = rest else {
+        return None;
+    };
+    let mut filter = ObjectFilter::default();
+    if *adjective == "colored" {
+        filter.colored_mana_symbol_count = Some(count);
+    } else {
+        filter.mana_symbol_count = Some((crate::color::Color::from_name(*adjective)?, count));
+    }
+    Some(PredicateAst::ItMatches(filter))
+}
+
+/// "as long as this is on the stack" (Torrent of Lava): the spell's own
+/// zone, which also makes its static ability function from the stack
+/// (CR 113.6).
+fn source_is_on_the_stack(words: &[&str]) -> Option<PredicateAst> {
+    let subject = source_subject_len(words)?;
+    matches!(&words[subject..], ["is", "on", "the", "stack"])
+        .then_some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Stack)))
+}
+
+/// "if this card is in your graveyard [and it's your turn]" (Skyclave
+/// Shade): the source card's own zone, which also makes the triggered
+/// ability function from that zone (CR 113.6k).
+fn source_card_in_your_graveyard(words: &[&str]) -> Option<PredicateAst> {
+    let in_graveyard = PredicateAst::Source(SourcePredicateAst::SourceIsInZone(Zone::Graveyard));
+    match words {
+        ["this", "card", "is", "in", "your", "graveyard"] => Some(in_graveyard),
+        ["this", "card", "is", "in", "your", "graveyard", "and", "its" | "it", "your", "turn"]
+        | ["this", "card", "is", "in", "your", "graveyard", "and", "it", "is", "your", "turn"] => {
+            Some(PredicateAst::And(Box::new(in_graveyard), Box::new(PredicateAst::YourTurn)))
+        }
+        _ => None,
+    }
+}
+
+/// "there are nine or more lands with different names among the basic,
+/// Sphere, and Locus lands you control" (Monument to Perfection): the
+/// number of distinct names among the controlled lands with any listed
+/// quality.
+fn distinct_names_among_controlled_qualities(words: &[&str]) -> Option<PredicateAst> {
+    let ["there", "are", number, "or", "more", rest @ ..] = words else {
+        return None;
+    };
+    let count = crate::util::parse_number_word_u32(number).or_else(|| number.parse::<u32>().ok())?;
+    let among = rest.windows(4).position(|window| window == ["with", "different", "names", "among"])?;
+    let qualities = rest[among + 4..].strip_suffix(&["you", "control"][..])?;
+    let qualities = qualities.strip_prefix(&["the"][..]).unwrap_or(qualities);
+    let tokens = crate::lexer::synthetic_word_tokens(qualities.iter().copied());
+    let mut filter = crate::search_library_support::parse_land_quality_union_filter(&tokens)?;
+    filter.zone = Some(Zone::Battlefield);
+    filter.controller = Some(PlayerFilter::You);
+    Some(PredicateAst::ValueComparison {
+        left: Value::DistinctNames(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(i32::try_from(count).ok()?),
+    })
+}
+
+/// "If seven or more {E} was paid this way" (Wheel of Potential): a
+/// threshold on the energy an earlier "pay any amount of {E}" removed, which
+/// other instructions (a per-player loop) may separate from this gate. The
+/// typed removed-energy query binds that payment, not the nearest result.
+fn energy_paid_threshold(tokens: &[crate::lexer::OwnedLexToken]) -> Option<PredicateAst> {
+    let names_energy = tokens.iter().any(|token| {
+        token
+            .mana_group_inner()
+            .is_some_and(|inner| inner.eq_ignore_ascii_case("e"))
+    });
+    if !names_energy {
+        return None;
+    }
+    let words: Vec<&str> = crate::lexer::token_word_refs(tokens)
+        .into_iter()
+        .filter(|word| !word.eq_ignore_ascii_case("e"))
+        .collect();
+    let count = match words.as_slice() {
+        [count, "or", "more", "was" | "were", "paid", "this", "way"] => *count,
+        _ => return None,
+    };
+    let count = i32::try_from(crate::util::parse_number_word_u32(count)?).ok()?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::Count,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::Removed)
+            .with_counter_type(Some(crate::object::CounterType::Energy)),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::EnergyPaidThisWay),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count),
+    })
+}
+
 /// "If no life is lost this way" (Blitzwing, Cruel Tormentor): the prior
 /// life-loss instruction's actual loss was zero.
 fn no_life_lost_this_way(words: &[&str]) -> Option<PredicateAst> {
@@ -1191,6 +1444,29 @@ fn no_life_lost_this_way(words: &[&str]) -> Option<PredicateAst> {
             ironsmith_core::EffectMetric::LifeLost,
         )),
         operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(0),
+    })
+}
+
+/// "If you lost life this way" / "If you gained life this way" (Mister
+/// Negative's life exchange): your share of the prior life instruction's
+/// actual loss or gain was positive. The participant is explicit so a life
+/// exchange's other player's change never satisfies it.
+fn you_changed_life_this_way(words: &[&str]) -> Option<PredicateAst> {
+    let metric = match words {
+        ["you", "lost", "life", "this", "way"] => ironsmith_core::EffectMetric::LifeLost,
+        ["you", "gained", "life", "this", "way"] => ironsmith_core::EffectMetric::LifeGained,
+        _ => return None,
+    };
+    Some(PredicateAst::ValueComparison {
+        left: Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                metric,
+            )
+            .with_player(PlayerFilter::You),
+        ),
+        operator: crate::effect::ValueComparisonOperator::GreaterThan,
         right: Value::Fixed(0),
     })
 }

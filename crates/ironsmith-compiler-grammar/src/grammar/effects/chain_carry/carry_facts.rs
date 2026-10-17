@@ -87,6 +87,13 @@ pub fn parse_carry_duration_prefix_tokens(
         leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
         leaf::LeafDurationPhrase::UntilControllersNextUntapStep => return None,
         leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
+            // "Until that player's next turn, they ... and their ..." (Teferi's
+            // Reproach): the carried duration names the referenced player.
+            leaf::LeafDurationPhrase::UntilThatPlayersNextTurn => Until::PlayersNextTurn {
+                player: crate::target::PlayerFilter::Target(Box::new(
+                    crate::target::PlayerFilter::Any,
+                )),
+            },
             _ => return None,
         };
         (duration, parsed.rest)

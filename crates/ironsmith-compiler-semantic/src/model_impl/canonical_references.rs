@@ -349,7 +349,8 @@ impl<'a> CanonicalReferenceResolver<'a> {
                 )
             }
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf { modes, .. })
-            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. }) => {
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice { modes, .. })
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes, .. }) => {
                 let branches = modes
                     .iter()
                     .map(|mode| self.resolve_sequence(&mode.effects, env.clone()))
@@ -409,6 +410,10 @@ impl<'a> CanonicalReferenceResolver<'a> {
                 ..
             })
             | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects })
+            | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDeclareAttackersStep {
+                effects,
+                ..
+            })
             | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration { effects, .. })
             | EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {

@@ -14,6 +14,43 @@ pub type CastTaggedEffect = ironsmith_core::CastTaggedEffect<crate::costs::Cost>
 
 use super::runtime_helpers::with_spell_cast_event_with_outputs;
 
+/// "If the chosen card is cast as a spell, you control the player while that
+/// spell is resolving." (CR 722): a waiting control record keyed to the cast
+/// spell, started and ended around its resolution by the stack owner.
+trait CasterControlWhileResolving {
+    fn record_caster_control_while_resolving(
+        &self,
+        game: &mut GameState,
+        ctx: &ExecutionContext,
+        caster: crate::ids::PlayerId,
+        spell: crate::ids::ObjectId,
+    );
+}
+
+impl CasterControlWhileResolving for CastTaggedEffect {
+    fn record_caster_control_while_resolving(
+        &self,
+        game: &mut GameState,
+        ctx: &ExecutionContext,
+        caster: crate::ids::PlayerId,
+        spell: crate::ids::ObjectId,
+    ) {
+        if !self.control_caster_while_spell_resolves || caster == ctx.controller {
+            return;
+        }
+        let Some(stable_id) = game.object(spell).map(|object| object.stable_id) else {
+            return;
+        };
+        game.add_player_control(
+            ctx.controller,
+            caster,
+            crate::game_state::PlayerControlStart::WhenSourceResolves,
+            crate::game_state::PlayerControlDuration::UntilSourceFinishesResolving,
+            Some(stable_id),
+        );
+    }
+}
+
 /// Effect that casts a tagged card immediately.
 impl EffectExecutor for CastTaggedEffect {
     fn result_action(&self) -> Option<crate::effect::PriorEffectAction> {
@@ -212,7 +249,7 @@ impl EffectExecutor for CastTaggedEffect {
                     };
                     let cast_tags = ctx.tagged_objects.clone();
                     let result =
-                        crate::game_loop::cast_spell_from_resolving_effect_with_price_and_outputs(
+                        crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
                             game,
                             copy_id,
                             from_zone,
@@ -223,6 +260,7 @@ impl EffectExecutor for CastTaggedEffect {
                             self.cost_reduction.as_ref(),
                             self.additional_mana_cost.as_ref(),
                             self.mana_spend_mode,
+                            self.caster_land_mana_abilities_only,
                             cast_tags,
                             ctx.provenance,
                             &mut ctx.decision_maker,
@@ -237,6 +275,7 @@ impl EffectExecutor for CastTaggedEffect {
                         };
                     };
                     let new_id = cast.new_id;
+                    self.record_caster_control_while_resolving(game, ctx, caster, new_id);
                     let mut outputs = with_spell_cast_event_with_outputs(
                         EffectOutcome::with_objects(vec![new_id]),
                         game,
@@ -278,7 +317,7 @@ impl EffectExecutor for CastTaggedEffect {
 
                 let cast_tags = ctx.tagged_objects.clone();
                 let result =
-                    crate::game_loop::cast_spell_from_resolving_effect_with_price_and_outputs(
+                    crate::game_loop::cast_spell_from_resolving_effect_with_price_lock_and_outputs(
                         game,
                         object_id,
                         from_zone,
@@ -289,6 +328,7 @@ impl EffectExecutor for CastTaggedEffect {
                         self.cost_reduction.as_ref(),
                         self.additional_mana_cost.as_ref(),
                         self.mana_spend_mode,
+                        self.caster_land_mana_abilities_only,
                         cast_tags,
                         ctx.provenance,
                         &mut ctx.decision_maker,
@@ -302,6 +342,7 @@ impl EffectExecutor for CastTaggedEffect {
                     };
                 };
                 let new_id = cast.new_id;
+                self.record_caster_control_while_resolving(game, ctx, caster, new_id);
                 let mut outputs = with_spell_cast_event_with_outputs(
                     EffectOutcome::with_objects(vec![new_id]),
                     game,

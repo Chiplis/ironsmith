@@ -63,7 +63,12 @@ pub fn apply_keyword_action(
         KeywordAction::Outlast(cost) => builder.outlast(cost),
         KeywordAction::Scavenge(cost) => builder.scavenge(cost),
         KeywordAction::Unearth(cost) => builder.unearth(cost),
+        KeywordAction::UnearthTotalCost(cost) => builder.unearth_total_cost(
+            crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
+                .expect("compiler-owned unearth cost must materialize"),
+        ),
         KeywordAction::Embalm(cost) => builder.embalm(cost),
+        KeywordAction::EmbalmFromSourceCost => builder.embalm_from_source_cost(),
         KeywordAction::Encore(cost) => builder.encore(cost),
         KeywordAction::Eternalize(cost) => builder.eternalize(
             crate::lowering::cost_materialization::materialize_compiler_core_total_cost(&cost)
@@ -119,11 +124,12 @@ pub fn apply_keyword_action(
         KeywordAction::Overload(cost) => builder.overload(cost),
         KeywordAction::Cleave(cost) => builder.cleave(cost),
         KeywordAction::Awaken { amount, cost } => builder.awaken(amount, cost),
-        KeywordAction::Echo { total_cost, .. } => builder.echo(
+        KeywordAction::Echo { total_cost, x_value, .. } => builder.echo_with_x_value(
             crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
                 &total_cost,
             )
             .expect("compiler-owned echo cost must materialize"),
+            x_value,
         ),
         KeywordAction::CumulativeUpkeep { total_cost, .. } => builder.cumulative_upkeep(
             crate::lowering::cost_materialization::materialize_compiler_core_total_cost(
@@ -286,6 +292,7 @@ pub fn apply_keyword_action(
         KeywordAction::ProtectionFromSubtype(subtype) => builder.protection_from_subtype(subtype),
         KeywordAction::Devoid => builder.devoid(),
         KeywordAction::Annihilator(amount) => builder.annihilator(amount),
+        KeywordAction::AnnihilatorValue(amount) => builder.annihilator_value(amount),
         KeywordAction::ForMirrodin => builder.for_mirrodin(),
         KeywordAction::LivingWeapon => builder.living_weapon(),
         KeywordAction::JobSelect => builder.job_select(),

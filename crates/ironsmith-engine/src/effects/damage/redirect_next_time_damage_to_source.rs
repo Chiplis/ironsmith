@@ -123,7 +123,8 @@ impl EffectExecutor for RedirectAllDamageThisTurnToTargetEffect {
                     source_filter, target_player_filter: players, target_object_filter: objects,
                     condition: None, combat_only: scope.combat_only, noncombat_only: false,
                     amount_less_than: None, maximum_damage: None,
-                }, ReplacementAction::Redirect { target, which: RedirectWhich::First });
+                }, ReplacementAction::Redirect { target, which: RedirectWhich::First })
+                .with_controller_option(scope.optional_by_controller);
             match scope.mode {
                 ironsmith_core::ReplacementApplyMode::UntilEndOfTurn => {
                     crate::effects::ApplyReplacementEffect::until_end_of_turn(replacement).execute(game, ctx)?;

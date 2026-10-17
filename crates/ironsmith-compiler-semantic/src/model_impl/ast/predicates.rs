@@ -42,6 +42,9 @@ pub enum PredicateAst {
     Player(PlayerPredicateAst),
     ItIsNight,
     FirstCombatPhaseOfTurn,
+    FirstEndStepOfTurn,
+    FirstUpkeepStepOfTurn,
+    SecondMainPhaseOfTurn,
     ItIsLandCard,
     ItIsSoulbondPaired,
     ItMatches(ObjectFilter),
@@ -129,6 +132,8 @@ pub enum PredicateAst {
     AllTargetsStillLegal,
     /// "if two or more colors of mana were spent to cast it"
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
+    /// "if exactly three colors of mana were spent to activate this ability"
+    ColorsOfManaSpentToActivateThisAbility { amount: u32, exactly: bool },
     /// "if you have a card in hand matching this"
     YouHaveCardInHandMatching(ObjectFilter),
     /// "the top card of your library is a creature card" (Mul Daya
@@ -173,6 +178,9 @@ pub enum PredicateAst {
     /// it is recognized as a predicate rather than resolved on the spot.
     TriggerFrequency(TriggerFrequencyPredicateAst),
     TargetWasKicked,
+    /// "if that creature was cast for its warp cost": the target's own cast
+    /// receipt carries the named paid cost.
+    TargetPaidLabel(OptionalCostRef),
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
     TargetSpellNoManaSpentToCast,
@@ -227,6 +235,8 @@ pub enum TurnHistoryPredicateAst {
     TriggeringObjectEnlistedThisCombat,
     TriggeringObjectWasCast,
     TriggeringObjectWasCastFromZone(Zone),
+    /// "it entered from your <zone>": the triggering entry's origin zone.
+    TriggeringObjectEnteredFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerAst),
     PlayerActivatedLoyaltyAbilityThisTurn(PlayerAst),
     TriggeringObjectDied,
@@ -244,7 +254,10 @@ pub enum TurnHistoryPredicateAst {
     },
     PlayerVisitedAttractionThisTurn(PlayerAst),
     TriggeringPlayerAttackedControllerLastTurn,
+    /// "they attacked you that turn": the active player attacked you this turn.
+    ActivePlayerAttackedControllerThisTurn,
     PlayerLostLifeLastTurn(PlayerAst),
+    PlayerWasDealtNoncombatDamageLastTurn(PlayerAst),
     TriggeringPlayersTurn {
         definite_player: bool,
     },
@@ -263,6 +276,15 @@ pub enum TurnHistoryPredicateAst {
         prohibited: ObjectFilter,
     },
     TriggeringAbilityIsManaAbility,
+    TriggeringPlayerWasAttackedThisTurnBy {
+        attackers: ObjectFilter,
+    },
+    /// "tapped for mana of the chosen color": the triggering mana event
+    /// produced the source's chosen color.
+    TriggeringManaIncludesSourceChosenColor,
+    /// "while casting a spell with emerge": the triggering sacrifice paid a
+    /// spell's emerge cost.
+    TriggeringSacrificePaidEmergeCost,
 }
 
 /// Whether a compared value measures the source object itself ("the number
@@ -274,6 +296,7 @@ fn value_measures_source_object(value: &Value) -> bool {
         Value::CountersOn(spec, _)
         | Value::PowerOf(spec)
         | Value::BasePowerOf(spec)
+        | Value::StationContributionOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec) => matches!(spec.base(), ChooseSpec::Source),
         // A stated source that damaged an existential class remains the
@@ -335,6 +358,7 @@ impl PredicateAst {
             | PredicateAst::Source(SourcePredicateAst::SourceCameUnderYourControlThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn)
             | PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat)
+            | PredicateAst::Source(SourcePredicateAst::SourceAttackedThisCombat)
             | PredicateAst::Source(SourcePredicateAst::SourceInGraveyardWithCardsAbove {
                 ..
             })

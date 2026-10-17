@@ -272,6 +272,10 @@ fn damage_body_modifier<'a>(input: &mut LexStream<'a>) -> WResult<AmountModifier
     .parse_next(input)?;
     let modifier = alt((
         (
+            crate::grammar::primitives::phrase(&["that", "much", "damage", "minus"]),
+            crate::grammar::primitives::number_token,
+        ).map(|(_, amount)| AmountModifierSpec::Subtract(amount)),
+        (
             crate::grammar::primitives::number_token,
             crate::grammar::primitives::kw("damage"),
         )
@@ -337,6 +341,11 @@ fn damage_source_filter(
     let Some((last, description)) = words.split_last() else {
         return Ok(None);
     };
+    if *last == "spell" {
+        let mut filter = parse_object_filter_lexed(source, false)?;
+        filter.zone = Some(crate::zone::Zone::Stack);
+        return Ok(Some(Some(filter)));
+    }
     if *last != "source" {
         return Ok(None);
     }
@@ -456,6 +465,86 @@ pub fn parse_if_event_would_happen_amount_line(
     )))
 }
 
+/// "[As long as <condition>,] if damage dealt to <permanent> would result in
+/// all loyalty counters on it being removed, instead all but one of those
+/// counters are removed." (Deification; CR 120.3c): the damage is dealt in
+/// full, and only the counter removal it causes is reduced to leave one.
+pub fn parse_damage_removes_all_counters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = parser_token_word_refs(&tokens);
+    let (condition_tokens, body_tokens) = if words.starts_with(&["as", "long", "as"]) {
+        let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
+            return Ok(None);
+        };
+        (Some(&tokens[3..comma]), &tokens[comma + 1..])
+    } else {
+        (None, &tokens[..])
+    };
+    let body_positions = crate::lexer::parser_token_word_positions(body_tokens);
+    let body_words = body_positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    const HEAD: &[&str] = &["if", "damage", "dealt", "to"];
+    const MIDDLE: &[&str] = &["would", "result", "in", "all"];
+    const TAIL: &[&str] = &[
+        "counters", "on", "it", "being", "removed", "instead", "all", "but", "one", "of",
+        "those", "counters", "are", "removed",
+    ];
+    if !body_words.starts_with(HEAD) || !body_words.ends_with(TAIL) {
+        return Ok(None);
+    }
+    let Some(middle) = body_words
+        .windows(MIDDLE.len())
+        .position(|window| window == MIDDLE)
+    else {
+        return Ok(None);
+    };
+    let counter_index = middle + MIDDLE.len();
+    if counter_index + TAIL.len() + 1 != body_words.len() {
+        return Ok(None);
+    }
+    let counter_type = match body_words[counter_index] {
+        "loyalty" => crate::object::CounterType::Loyalty,
+        "defense" => crate::object::CounterType::Defense,
+        _ => return Ok(None),
+    };
+    let start = body_positions[HEAD.len()].0;
+    let end = body_positions[middle].0;
+    if start >= end {
+        return Ok(None);
+    }
+    let mut recipient = &body_tokens[start..end];
+    if recipient
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        recipient = &recipient[1..];
+    }
+    if recipient.is_empty() {
+        return Ok(None);
+    }
+    let object = parse_object_filter_lexed(recipient, false)?;
+    if object == ObjectFilter::default() {
+        return Ok(None);
+    }
+    let ability = StaticAbility::event_amount_replacement(
+        AmountEventSpec::DamageRemovesAllCounters {
+            object,
+            counter_type,
+        },
+        AmountModifierSpec::AllButOne,
+        false,
+        amount_display(&tokens),
+    );
+    Ok(Some(match condition_tokens {
+        Some(condition) if !condition.is_empty() => {
+            ability.with_condition(parse_static_condition_clause(condition)?)
+        }
+        Some(_) => return Ok(None),
+        None => ability,
+    }))
+}
+
 /// "You may look at an additional two cards each time you surveil."
 /// (Enhanced Surveillance): an optional additive replacement on the
 /// controller's surveil (CR 614.1a, 701.25).
@@ -490,25 +579,55 @@ pub fn parse_you_may_look_at_additional_cards_each_time_line(
 pub fn parse_damage_life_floor_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    const CLAUSE: &[&str] = &[
-        "damage", "that", "would", "reduce", "your", "life", "total", "to", "less", "than", "1",
-        "reduces", "it", "to", "1", "instead",
-    ];
     let tokens = trim_edge_punctuation(tokens);
-    let (condition_tokens, clause_tokens) = match tokens.first() {
-        Some(first) if first.is_word("if") => {
+    // "If <condition>, ..." (Worship) or "As long as <condition>, ..."
+    // (Elderscale Wurm) gate the floor the same way.
+    let condition_start = match tokens.first() {
+        Some(first) if first.is_word("if") => Some(1),
+        Some(first)
+            if first.is_word("as")
+                && tokens.get(1).is_some_and(|token| token.is_word("long"))
+                && tokens.get(2).is_some_and(|token| token.is_word("as")) =>
+        {
+            Some(3)
+        }
+        _ => None,
+    };
+    let (condition_tokens, clause_tokens) = match condition_start {
+        Some(start) => {
             let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
                 return Ok(None);
             };
-            (Some(&tokens[1..comma]), &tokens[comma + 1..])
+            if comma < start {
+                return Ok(None);
+            }
+            (Some(&tokens[start..comma]), &tokens[comma + 1..])
         }
-        _ => (None, &tokens[..]),
+        None => (None, &tokens[..]),
     };
-    if parser_token_word_refs(clause_tokens).as_slice() != CLAUSE {
+    // "damage that would reduce your life total to less than N reduces it
+    // to N instead": the same N both times (CR 614.1a).
+    let words = parser_token_word_refs(clause_tokens);
+    let [
+        "damage", "that", "would", "reduce", "your", "life", "total", "to", "less", "than",
+        below,
+        "reduces", "it", "to", floor,
+        "instead",
+    ] = words.as_slice()
+    else {
+        return Ok(None);
+    };
+    if below != floor {
+        return Ok(None);
+    }
+    let Ok(floor) = floor.parse::<u32>() else {
+        return Ok(None);
+    };
+    if floor == 0 {
         return Ok(None);
     }
     let ability = StaticAbility::restriction(
-        crate::effect::Restriction::damage_reduce_life_below_one(PlayerFilter::You),
+        crate::effect::Restriction::damage_reduce_life_below(PlayerFilter::You, floor),
         amount_display(&tokens),
     );
     Ok(Some(match condition_tokens {

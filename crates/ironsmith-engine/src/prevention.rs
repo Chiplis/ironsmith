@@ -193,9 +193,9 @@ pub(crate) fn shield_duration_is_active(
     match &shield.duration {
         Until::EndOfCombat => matches!(game.turn.phase, Phase::Combat)
             && game.turn.turn_number == shield.created_turn,
-        Until::YourNextTurn => {
+        Until::YourNextTurn | Until::PlayersNextTurn { .. } => {
             !(game.turn.turn_number > shield.created_turn
-                && game.is_active_player(shield.controller))
+                && game.is_active_player(shield.duration.next_turn_owner(shield.controller)))
         }
         Until::YourNextUpkeep => {
             if game.turn.turn_number <= shield.created_turn
@@ -574,9 +574,10 @@ impl PreventionEffectManager {
                 return false;
             }
             match shield.duration {
-                Until::YourNextTurn => {
+                Until::YourNextTurn | Until::PlayersNextTurn { .. } => {
                     !(turn_number > shield.created_turn
-                        && active_players.contains(&shield.controller))
+                        && active_players
+                            .contains(&shield.duration.next_turn_owner(shield.controller)))
                 }
                 Until::YourNextUpkeep | Until::YourNextTurnEnd => {
                     !(completed_turn_number > shield.created_turn
@@ -591,14 +592,17 @@ impl PreventionEffectManager {
     /// until that player's next turn would have begun.
     pub fn prepare_for_departing_player(&mut self, player: PlayerId, turn_boundary: u32) {
         for shield in self.shields.iter_mut().filter(|shield| {
-            shield.controller == player
+            (shield.controller == player
                 && matches!(
                     shield.duration,
                     Until::YourNextTurn
                         | Until::YourNextTurnEnd
                         | Until::YourNextUpkeep
                         | Until::ControllersNextUntapStep
-                )
+                ))
+                || matches!(&shield.duration, Until::PlayersNextTurn {
+                    player: crate::target::PlayerFilter::Specific(bound),
+                } if *bound == player)
         }) {
             shield.expires_before_turn = Some(turn_boundary);
         }
@@ -714,7 +718,10 @@ impl PreventionEffectManager {
             .filter(|s| {
                 let source_filter_ok = s.damage_filter.from_source.is_none()
                     || source_filter_matches.get(&s.id).copied().unwrap_or(false);
+                // Cause-gated shields need the damage event's cause; they
+                // apply only through the event pipeline.
                 source_filter_ok
+                    && !s.damage_filter.cause_targets_protected
                     && s.damage_filter
                         .matches(is_combat, source, source_colors, source_card_types)
             })
@@ -819,7 +826,10 @@ impl PreventionEffectManager {
             .filter(|s| {
                 let source_filter_ok = s.damage_filter.from_source.is_none()
                     || source_filter_matches.get(&s.id).copied().unwrap_or(false);
+                // Cause-gated shields need the damage event's cause; they
+                // apply only through the event pipeline.
                 source_filter_ok
+                    && !s.damage_filter.cause_targets_protected
                     && s.damage_filter
                         .matches(is_combat, source, source_colors, source_card_types)
             })

@@ -90,6 +90,8 @@ pub enum KeywordActionAst {
     },
     /// "Roll to visit your Attractions" (CR 701.52).
     RollToVisitAttractions,
+    /// "Roll the planar die" (CR 901.9).
+    RollPlanarDie,
     ManifestCardFromHand,
     ManifestDread,
     Earthbend {
@@ -135,6 +137,14 @@ pub enum KeywordActionAst {
     BecomePlotted {
         target: TargetAst,
     },
+    /// "It becomes foretold." (The Foretold Soldier): an exiled card gains the
+    /// foretold designation (CR 702.143).
+    BecomeForetold {
+        target: TargetAst,
+        /// "Its foretell cost is its mana cost reduced by {N}." (Ethereal
+        /// Valkyrie): the generic reduction forming the granted foretell cost.
+        foretell_cost_reduction: Option<u32>,
+    },
     /// "unlock a locked door of up to one target Room you control" (CR 709.5f).
     /// With `allow_lock`: "lock or unlock a door of target Room you control"
     /// (CR 709.5c).
@@ -168,6 +178,10 @@ pub enum KeywordActionAst {
     Regenerate {
         target: TargetAst,
         follow_up_effects: Vec<EffectAst>,
+        /// "The next time <target> would be destroyed this turn, remove all
+        /// damage marked on it instead." (Pyramids): only the damage
+        /// removal, which is not regeneration.
+        remove_damage_only: bool,
     },
     RegenerateAll {
         filter: ObjectFilter,

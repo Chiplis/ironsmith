@@ -67,6 +67,9 @@ pub enum KeywordMechanicShape<'a> {
     Phase {
         direction: PhaseDirectionShape,
         subject: PhaseSubjectShape<'a>,
+        /// "phases out until this enchantment leaves the battlefield": the
+        /// printed source reference ("this enchantment").
+        until_source_leaves: Option<&'a [OwnedLexToken]>,
     },
     PhaseExchange {
         phase_in: &'a [OwnedLexToken],
@@ -127,6 +130,11 @@ pub enum KeywordMechanicShape<'a> {
     },
     DiscoverSameValue,
     Discover {
+        count_tokens: &'a [OwnedLexToken],
+    },
+    /// "Then that player discovers X" (Zoyowa's Justice): the previously
+    /// referenced player discovers.
+    DiscoverByThatPlayer {
         count_tokens: &'a [OwnedLexToken],
     },
     Explore {
@@ -337,6 +345,14 @@ fn parse_all_phase_subject(
 }
 
 fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    // "Untap another target nonland permanent, then it phases out" (The
+    // Pandorica) is two instructions; the phase subject is only `it`.
+    if tokens
+        .iter()
+        .any(|token| token.is_comma() || token.is_word("then"))
+    {
+        return None;
+    }
     let mut input = LexStream::new(tokens);
     let target_tokens = crate::grammar::primitives::take_leaf(&mut input, |input: &mut _| {
         tokens_before(input, 1, eof.void())
@@ -383,6 +399,26 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
         ));
     }
     let direction = phase_marker.parse_next(input)?;
+    // "phases out until this enchantment leaves the battlefield" (Oubliette,
+    // The Moment): a source-linked phasing duration.
+    let until_source_leaves = if direction == PhaseDirectionShape::Out {
+        opt(|input: &mut LexStream<'a>| {
+            primitives::kw("until").parse_next(input)?;
+            let source = tokens_before(
+                input,
+                2,
+                primitives::phrase(&["leaves", "the", "battlefield"]).void(),
+            )?;
+            primitives::phrase(&["leaves", "the", "battlefield"]).parse_next(input)?;
+            if !source.first().is_some_and(|token| token.is_word("this")) {
+                return Err(primitives::backtrack_err("phase duration", "this <source>"));
+            }
+            Ok(source)
+        })
+        .parse_next(input)?
+    } else {
+        None
+    };
     // A restated replacement ("... phases out instead") carries its
     // `instead` marker; the conditional reading owns that surface.
     opt(primitives::kw("instead")).parse_next(input)?;
@@ -394,7 +430,11 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
             primitives::backtrack_err("phase subject", "target or all-filter subject")
         })?)
     };
-    Ok(KeywordMechanicShape::Phase { direction, subject })
+    Ok(KeywordMechanicShape::Phase {
+        direction,
+        subject,
+        until_source_leaves,
+    })
 }
 
 fn parse_open_attraction<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
@@ -703,6 +743,16 @@ fn parse_fateseal<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape
     let count_tokens = tokens_before(input, 1, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::Fateseal { count_tokens })
+}
+
+fn parse_discover_by_that_player<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordMechanicShape<'a>> {
+    alt((primitives::phrase(&["that", "player"]), primitives::phrase(&["they"]))).parse_next(input)?;
+    alt((primitives::kw("discovers"), primitives::kw("discover"))).parse_next(input)?;
+    let count_tokens = tokens_before(input, 1, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::DiscoverByThatPlayer { count_tokens })
 }
 
 fn parse_discover<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {

@@ -48,6 +48,42 @@ const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
     ),
 ];
 
+/// "Whenever one or more <permanents> are on the battlefield, their
+/// controllers sacrifice them." (City in a Bottle): every permanent the state
+/// condition counts is sacrificed by its own controller (CR 701.21a).
+fn state_trigger_controllers_sacrifice_them(
+    predicate: &PredicateAst,
+    effects_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = crate::lexer::token_word_refs(effects_tokens);
+    if words != ["their", "controllers", "sacrifice", "them"] {
+        return None;
+    }
+    let filter = match predicate {
+        PredicateAst::ValueComparison { left, .. } => match left.unhinted() {
+            Value::Count(filter) => filter.clone(),
+            _ => return None,
+        },
+        PredicateAst::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+            ..
+        } => filter.clone(),
+        _ => return None,
+    };
+    if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
+        return None;
+    }
+    let mut owned = filter;
+    owned.zone = Some(Zone::Battlefield);
+    let owned = owned.controlled_by(PlayerFilter::IteratedPlayer);
+    Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+        effects: vec![EffectAst::subject_verb_sacrifice_all(
+            crate::cards::builders::PlayerAst::That,
+            owned,
+        )],
+    })])
+}
+
 fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
     matches!(
         predicate,
@@ -56,34 +92,50 @@ fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
     )
 }
 
-fn bind_event_amount_to_creatures_died_this_turn(value: &mut Value) {
+/// "that many" after an intervening-if that counts something this turn:
+/// "if you gained life this turn, distribute up to that many ..." (Lathiel)
+/// reads the life gained this turn; creature deaths read the death count.
+fn condition_that_many_value(predicate: &PredicateAst) -> Option<Value> {
+    if predicate_counts_creatures_died_this_turn(predicate) {
+        return Some(Value::CreaturesDiedThisTurn);
+    }
+    match predicate {
+        PredicateAst::Player(crate::cards::builders::PlayerPredicateAst::PlayerGainedLifeThisTurnOrMore {
+            player: crate::cards::builders::PlayerAst::You,
+            ..
+        }) => Some(Value::LifeGainedThisTurn(PlayerFilter::You)),
+        _ => None,
+    }
+}
+
+fn bind_event_amount_to_creatures_died_this_turn(value: &mut Value, replacement: &Value) {
     match value {
         Value::EventValue(EventValueSpec::Amount)
         | Value::EventValue(EventValueSpec::LifeAmount) => {
-            *value = Value::CreaturesDiedThisTurn;
+            *value = replacement.clone();
         }
         Value::EventValueOffset(EventValueSpec::Amount, offset)
         | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
             *value = Value::Add(
-                Box::new(Value::CreaturesDiedThisTurn),
+                Box::new(replacement.clone()),
                 Box::new(Value::Fixed(*offset)),
             );
         }
         Value::Add(left, right) | Value::Min(left, right) => {
-            bind_event_amount_to_creatures_died_this_turn(left);
-            bind_event_amount_to_creatures_died_this_turn(right);
+            bind_event_amount_to_creatures_died_this_turn(left, replacement);
+            bind_event_amount_to_creatures_died_this_turn(right, replacement);
         }
         Value::Scaled(inner, _)
         | Value::DividedRoundedDown(inner, _)
         | Value::HalfRoundedDown(inner)
         | Value::SurfaceHinted { value: inner, .. } => {
-            bind_event_amount_to_creatures_died_this_turn(inner);
+            bind_event_amount_to_creatures_died_this_turn(inner, replacement);
         }
         _ => {}
     }
 }
 
-fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
+fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst], replacement: &Value) {
     for effect in effects {
         match effect {
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
@@ -92,7 +144,7 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
                     count: amount,
                     ..
                 }) => {
-                    bind_event_amount_to_creatures_died_this_turn(amount);
+                    bind_event_amount_to_creatures_died_this_turn(amount, replacement);
                 }
                 _ => {}
             },
@@ -101,8 +153,8 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
                 if_false,
                 ..
             }) => {
-                bind_creatures_died_condition_amounts(if_true);
-                bind_creatures_died_condition_amounts(if_false);
+                bind_creatures_died_condition_amounts(if_true, replacement);
+                bind_creatures_died_condition_amounts(if_false, replacement);
             }
             _ => {}
         }
@@ -685,6 +737,14 @@ pub(crate) fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<
 
     if let Some(filter) = color_only_hexproof_filter_words(&words[first_word_idx + 2..]) {
         return Some(vec![KeywordAction::HexproofFrom(filter)]);
+    }
+    // "hexproof from each of its colors" (Tam, Mindful First-Year): sources
+    // sharing a color with the protected permanent itself.
+    if words[first_word_idx + 2..] == ["each", "of", "its", "colors"] {
+        return Some(vec![KeywordAction::HexproofFrom(
+            ObjectFilter::default()
+                .shares_color_with_tagged(ironsmith_core::tag::HEXPROOF_PROTECTED_OBJECT_TAG),
+        )]);
     }
     // "hexproof from monocolored/multicolored/planeswalkers" — the same
     // non-color qualities the granted-ability path accepts.
@@ -1335,8 +1395,8 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
             if let Ok(mut effects) =
                 parse_effect_sentences_or_single_sentence_lexed(&rewritten_effects_tokens)
             {
-                if predicate_counts_creatures_died_this_turn(&spec.predicate) {
-                    bind_creatures_died_condition_amounts(&mut effects);
+                if let Some(replacement) = condition_that_many_value(&spec.predicate) {
+                    bind_creatures_died_condition_amounts(&mut effects, &replacement);
                 }
                 let mut max_triggers_per_turn =
                     parse_triggered_times_each_turn_lexed_from_sentences(&rewritten_effects_tokens);
@@ -1669,7 +1729,13 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                 spec.trigger_tokens,
                 spec.effects_tokens,
             );
-            let effects = parse_effect_sentences_lexed(&effects_tokens)?;
+            let effects = match state_trigger_controllers_sacrifice_them(
+                &spec.predicate,
+                &effects_tokens,
+            ) {
+                Some(effects) => effects,
+                None => parse_effect_sentences_lexed(&effects_tokens)?,
+            };
             return Ok(LineAst::Triggered {
                 trigger: TriggerSpec::StateBased {
                     condition: spec.predicate,

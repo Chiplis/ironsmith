@@ -8,6 +8,7 @@ pub(super) fn parse_redirect_next_damage_lexed<'a>(
         parse_all_to_you_and_permanents,
         parse_all_by_source,
         parse_all_to_target_by_choice,
+        parse_all_this_turn_to_target_by_choice,
         parse_next_time,
         parse_next_amount,
         parse_next_amount_by_chosen_source,
@@ -33,11 +34,22 @@ fn parse_scoped_all_damage<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNex
              primitives::phrase(&["your", "next", "turn"]).value(ironsmith_core::ReplacementApplyMode::UntilYourNextTurn))),
         primitives::comma(),
     ).map(|(_, mode, _)| mode)).parse_next(input)?;
-    primitives::kw("all").parse_next(input)?;
+    let conditional = opt(primitives::kw("if")).parse_next(input)?.is_some();
+    if !conditional { primitives::kw("all").parse_next(input)?; }
     let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
-    primitives::phrase(&["damage", "that", "would", "be", "dealt", "to"]).parse_next(input)?;
-    let left = one_or_more_tokens_before(input, primitives::phrase(&["is", "dealt", "to"]))?;
-    primitives::phrase(&["is", "dealt", "to"]).parse_next(input)?;
+    let left = if conditional {
+        primitives::phrase(&["damage", "would", "be", "dealt", "to"]).parse_next(input)?;
+        let left = one_or_more_tokens_before(input,
+            (primitives::comma(), primitives::phrase(&["you", "may", "have", "that", "damage", "dealt", "to"])).void())?;
+        primitives::comma().parse_next(input)?;
+        primitives::phrase(&["you", "may", "have", "that", "damage", "dealt", "to"]).parse_next(input)?;
+        left
+    } else {
+        primitives::phrase(&["damage", "that", "would", "be", "dealt", "to"]).parse_next(input)?;
+        let left = one_or_more_tokens_before(input, primitives::phrase(&["is", "dealt", "to"]))?;
+        primitives::phrase(&["is", "dealt", "to"]).parse_next(input)?;
+        left
+    };
     let destination = one_or_more_tokens_before(input, primitives::kw("instead").void())?.to_vec();
     primitives::kw("instead").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -58,5 +70,8 @@ fn parse_scoped_all_damage<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNex
         None => (left, None),
     };
     if recipient.is_empty() || source.as_ref().is_some_and(|source| source.is_empty() || has_source_of_your_choice(source)) { return Err(bad()); }
-    Ok(RedirectNextDamageShape::ScopedAll(ScopedAllDamageRedirectionShape { recipient, source, destination, combat_only, mode }))
+    Ok(RedirectNextDamageShape::ScopedAll(ScopedAllDamageRedirectionShape {
+        recipient, source, destination, combat_only, mode,
+        optional_by_controller: conditional,
+    }))
 }

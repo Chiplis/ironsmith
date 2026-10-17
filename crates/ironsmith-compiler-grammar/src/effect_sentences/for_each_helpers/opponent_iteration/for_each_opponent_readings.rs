@@ -569,13 +569,23 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         }
                         _ => IfResultPredicate::Did,
                     };
+                let predicate = tagged_past_action_predicate(tagged_filter_tokens, result_tokens);
+                // "who discarded their hand this way" after "each player may
+                // discard their hand ..." (Snort): the opponent accepted the
+                // optional wheel, even with an empty hand (CR 701.9b).
+                let result_predicate = if predicate.is_none()
+                    && result_predicate == IfResultPredicate::Did
+                    && crate::lexer::token_word_refs(result_tokens)
+                        .ends_with(&["discarded", "their", "hand", "this", "way"])
+                {
+                    IfResultPredicate::AcceptedChoice
+                } else {
+                    result_predicate
+                };
                 return Ok(Some(EffectAst::ForEach(
                     ForEachEffectAst::ForEachOpponentDid {
                         effects: parse_effect_chain_inner(effect_tokens)?,
-                        predicate: tagged_past_action_predicate(
-                            tagged_filter_tokens,
-                            result_tokens,
-                        ),
+                        predicate,
                         result_predicate,
                     },
                 )));

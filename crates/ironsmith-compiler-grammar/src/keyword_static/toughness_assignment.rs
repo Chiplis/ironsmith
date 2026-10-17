@@ -1,9 +1,108 @@
 use super::*;
 use crate::grammar::effects::toughness_assignment as shape;
 
+/// The marker a creature carries when it "stations permanents using its
+/// toughness rather than its power" (CR 702.184a); the station keyword's
+/// amount reads it from the tapped creature.
+const STATIONS_USING_TOUGHNESS_MARKER: &str =
+    "This creature stations permanents using its toughness rather than its power.";
+
+/// The marker for "If this creature's power is negative, it assigns combat
+/// damage as though its power were positive." (Loot, the Anomaly): the
+/// engine assigns combat damage equal to the absolute value of its power.
+/// The authored negative-power condition is implied by the rule (a
+/// nonnegative power is already its own absolute value).
+const ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER: &str =
+    "This creature assigns combat damage as though its power were positive.";
+
+fn parse_source_assigns_as_though_power_positive_line(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(&tokens);
+    let ["if", condition @ .., pronoun, "assigns", "combat", "damage", "as", "though", possessive, "power", "were", "positive"] =
+        words.as_slice()
+    else {
+        return None;
+    };
+    if !matches!(*pronoun, "it" | "he" | "she" | "they")
+        || !matches!(*possessive, "its" | "his" | "her" | "their")
+    {
+        return None;
+    }
+    let [subject @ .., "power", "is", "negative"] = condition else {
+        return None;
+    };
+    let subject = subject
+        .iter()
+        .map(|word| word.trim_end_matches("'s").trim_end_matches("’s"))
+        .filter(|word| !word.is_empty() && *word != "s")
+        .collect::<Vec<_>>();
+    if !(crate::util::is_source_reference_words(&subject)
+        || matches!(subject.as_slice(), ["its" | "his" | "her"]))
+    {
+        return None;
+    }
+    Some(vec![StaticAbilityAst::Static(StaticAbility::keyword_marker(
+        ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER,
+    ))])
+}
+
+/// "Each creature you control with toughness greater than its power stations
+/// permanents using its toughness rather than its power." (Tapestry Warden):
+/// the subject receives the stations-using-toughness rule, exactly as the
+/// combat-damage form grants its own rule.
+fn parse_station_using_toughness_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    const BODY: &[&str] = &[
+        "permanents", "using", "its", "toughness", "rather", "than", "its", "power",
+    ];
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(verb) = tokens
+        .iter()
+        .position(|token| token.is_word("stations") || token.is_word("station"))
+    else {
+        return Ok(None);
+    };
+    let body = crate::lexer::token_word_refs(&tokens[verb + 1..]);
+    if verb == 0 || body.as_slice() != BODY {
+        return Ok(None);
+    }
+    let subject_tokens = trim_commas(&tokens[..verb]);
+    let subject = parse_anthem_subject_with_attached_fallback(&subject_tokens, None)?;
+    let marker = StaticAbility::keyword_marker(STATIONS_USING_TOUGHNESS_MARKER);
+    let ability = match subject {
+        AnthemSubjectAst::Source => StaticAbilityAst::Static(marker),
+        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(marker)),
+            condition: None,
+        },
+    };
+    let ability = match subject_tokens.first().and_then(OwnedLexToken::as_word) {
+        Some("each") => StaticAbilityAst::WithSetQuantifierSurface {
+            ability: Box::new(ability),
+            surface: ironsmith_core::SetQuantifierSurface::Each,
+        },
+        Some("all") => StaticAbilityAst::WithSetQuantifierSurface {
+            ability: Box::new(ability),
+            surface: ironsmith_core::SetQuantifierSurface::All,
+        },
+        _ => ability,
+    };
+    Ok(Some(vec![ability]))
+}
+
 pub(super) fn parse_filtered_toughness_assignment_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = parse_source_assigns_as_though_power_positive_line(tokens) {
+        return Ok(Some(abilities));
+    }
+    if let Some(abilities) = parse_station_using_toughness_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     let Some(verb) = shape::assignment_verb(tokens) else {
         return Ok(None);
     };

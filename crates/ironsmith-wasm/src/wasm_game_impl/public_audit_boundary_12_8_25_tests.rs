@@ -159,6 +159,7 @@ fn static_prevention_source_controller_and_lifetime_survive_public_ability_proje
     use ironsmith_core::{AbilityKind, PreventMatchingDamageSpec, StaticDamagePreventionAmount};
     use ironsmith_compiled_artifact::WireStaticAbility;
     let aura = |combat_only| PreventMatchingDamageSpec {
+        optional_by_controller: false,
         source_filter: ObjectFilter::tagged("enchanted"),
         target_player_filter: Some(PlayerFilter::Any),
         target_object_filter: Some(ObjectFilter::permanent()),

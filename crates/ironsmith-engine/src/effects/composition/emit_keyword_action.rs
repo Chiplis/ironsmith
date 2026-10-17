@@ -18,6 +18,21 @@ pub use ironsmith_core::EmitKeywordActionEffect;
 
 use super::keyword_programs::forage_payments;
 
+/// Record that the resolving spell or ability made one or more players guess
+/// or group cards or permanents into piles this turn (CR 700.3). Several pile
+/// or guess instructions of one resolution count once.
+pub(crate) fn record_pile_or_guess_instruction(game: &mut GameState, ctx: &ExecutionContext) {
+    game.turn_store
+        .turn_history
+        .pile_or_guess_instructions_this_turn
+        .insert((
+            ctx.source,
+            ctx.resolution_object_id_floor,
+            ctx.trigger_identity,
+            ctx.ability_index,
+        ));
+}
+
 fn snapshot_from_memory(_game: &GameState, snapshot: &ObjectSnapshot) -> ObjectSnapshot {
     snapshot.clone()
 }
@@ -82,6 +97,14 @@ impl EffectExecutor for EmitKeywordActionEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
+                // Pile separation is turn-history instrumentation, not a
+                // trigger-visible keyword action.
+                if self.action == KeywordActionKind::GroupIntoPiles {
+                    record_pile_or_guess_instruction(game, ctx);
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::count(0),
+                    ));
+                }
                 if matches!(
                     self.action,
                     KeywordActionKind::Forage

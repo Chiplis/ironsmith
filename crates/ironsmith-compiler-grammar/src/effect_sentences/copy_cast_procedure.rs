@@ -686,3 +686,238 @@ pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<Ef
         cost_reduction: None,
     })])
 }
+
+/// A die-result row whose consequences copy a card exiled earlier in the same
+/// ability and offer the copy to be cast (Wizard's Spellbook):
+///
+/// "Exile target instant or sorcery card from a graveyard. Roll a d20.
+/// 1—9 | Copy that card. You may cast the copy. ... 20 | Copy each card
+/// exiled with this artifact. You may cast any number of the copies ..."
+///
+/// The roll between the exile and the rows does not interrupt the exiled
+/// card's binding: the nearest preceding graveyard exile is tagged and every
+/// row's copy names that card (a card copy, CR 707.12), never a stack spell.
+/// Returns the row's conditional and the number of sentences it consumed.
+pub(super) fn die_row_copy_cast(
+    effects: &mut [EffectAst],
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(EffectAst, usize)> {
+    let header = sentences.get(sentence_idx)?;
+    let (predicate, body_tokens) =
+        crate::grammar::structure::split_leading_numeric_result_prefix_lexed(header.lowered())?;
+    if !matches!(predicate, IfResultPredicate::DieValue(_)) {
+        return None;
+    }
+    let line = header.lexed().first()?.span.line;
+    let next = sentences
+        .get(sentence_idx + 1)
+        .filter(|next| next.lexed().first().is_some_and(|token| token.span.line == line))?;
+    let body = SentenceInput::from_lexed(body_tokens);
+
+    // "Copy each card exiled with this artifact. You may cast any number of
+    // the copies ...": the copied cards are named by a filter.
+    if let Some((filter_tokens, true)) = copy_filtered_cards_statement(&body)
+        && let Some(mut cast) = plural_cast_statement(next)
+        && let Ok(filter) = crate::object_filters::parse_object_filter(filter_tokens, false)
+        && let Some(zone) = filter.zone.filter(|zone| *zone != Zone::Battlefield)
+    {
+        let tag = helper_tag_for_tokens(body.lowered(), "copied");
+        cast.tag = CompilerReferenceTag::It.bind().key.clone();
+        return Some((
+            EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate,
+                effects: vec![
+                    EffectAst::subject_verb_tag_matching_objects(
+                        filter,
+                        vec![zone],
+                        crate::tag::TagRef::of(tag.clone()),
+                    ),
+                    EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+                        tag: crate::tag::TagRef::of(tag),
+                        effects: vec![build_may_cast_tagged_effect(&cast)],
+                    }),
+                ],
+            }),
+            2,
+        ));
+    }
+
+    // "Copy that card. You may cast the copy [by paying {1} rather than
+    // paying its mana cost]." over the exiled card.
+    let mut cast = cast_statement(next)?;
+    let existing = effects.iter().rev().find_map(exact_tagged_graveyard_exile_tag);
+    let helper = helper_tag_for_tokens(header.lowered(), "exiled");
+    let tag = existing.clone().unwrap_or_else(|| helper.key.clone());
+    let Some(CopyStatement::Separate(surface)) = copy_statement(&body, &tag) else {
+        return None;
+    };
+    if existing.is_none() {
+        let exile = effects.iter_mut().rev().find(|effect| is_exact_graveyard_exile(effect))?;
+        let plain = exile.clone();
+        *exile = EffectAst::TagAffected {
+            effect: Box::new(plain),
+            tag: crate::tag::TagRef::of(helper),
+        };
+    }
+    cast.tag = tag;
+    cast.copy_instruction_surface = Some(surface);
+    Some((
+        EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate,
+            effects: vec![build_may_cast_tagged_effect(&cast)],
+        }),
+        2,
+    ))
+}
+
+/// "For as long as that Attraction is on the battlefield, whenever you visit
+/// it, copy the exiled card. You may cast the copy without paying its mana
+/// cost." (Myra the Magnificent): a repeating delayed trigger watching the
+/// chosen Attraction's visits while it stays on the battlefield; the
+/// registration captures both that Attraction and the exiled card, so each
+/// visit copies that exact card (CR 603.7, CR 707.12).
+/// "Copy the enchanted instant card. You may cast the copy without paying its
+/// mana cost." (Spellweaver Volute): the copy is of the card this Aura
+/// enchants (CR 707.12), cast through the tagged-cast copy mode.
+pub(super) fn enchanted_card_copy_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(EffectAst, usize)> {
+    let sentence = sentences.get(sentence_idx)?;
+    let next = sentences.get(sentence_idx + 1)?;
+    let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        sentence.lowered(),
+    ));
+    let qualified = match words.as_slice() {
+        ["copy", "the", "enchanted", "card"] => true,
+        ["copy", "the", "enchanted", descriptor, "card"] => {
+            crate::util::parse_card_type(descriptor).is_some()
+        }
+        _ => false,
+    };
+    if !qualified {
+        return None;
+    }
+    let mut cast = cast_statement(next)?;
+    cast.tag = CompilerReferenceTag::Enchanted.bind().key.clone();
+    cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    Some((build_may_cast_tagged_effect(&cast), 2))
+}
+
+/// "You may copy the other. If you do, you may cast the copy without paying
+/// its mana cost." (Spellweaver Helix): "the other" is a card exiled with
+/// this source other than the one sharing the triggering card's name; when
+/// every linked card shares that name, any of them is the other.
+pub(super) fn linked_other_card_copy_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(Vec<EffectAst>, usize)> {
+    let sentence = sentences.get(sentence_idx)?;
+    let next = sentences.get(sentence_idx + 1)?;
+    let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        sentence.lowered(),
+    ));
+    if !matches!(
+        words.as_slice(),
+        ["you", "may", "copy", "the", "other"] | ["you", "may", "copy", "the", "other", "card"]
+    ) {
+        return None;
+    }
+    let next_tokens = crate::util::trim_edge_punctuation_tokens(next.lowered());
+    let next_words = crate::lexer::parser_token_word_refs(next_tokens);
+    if !next_words.starts_with(&["if", "you", "do"]) {
+        return None;
+    }
+    let comma = next_tokens.iter().position(|token| token.is_comma())?;
+    let cast_tokens = crate::util::trim_commas(&next_tokens[comma + 1..]);
+    let mut cast = parse_may_cast_it_sentence(&cast_tokens)?;
+    if !cast.as_copy || !matches!(cast.player, PlayerAst::Implicit | PlayerAst::You) {
+        return None;
+    }
+    let linked = || {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: CompilerReferenceTag::SourceExiled.bind().into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        filter
+    };
+    let mut other = linked();
+    other.tagged_constraints.push(TaggedObjectConstraint {
+        tag: CompilerReferenceTag::Triggering.bind().into(),
+        relation: TaggedOpbjectRelation::DifferentNameFromTagged,
+    });
+    let chosen = helper_tag_for_tokens(sentence.lowered(), "other");
+    let choose = |filter: ObjectFilter| {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: chosen.clone(),
+        })
+    };
+    let choice = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::Count(other.clone()),
+            operator: crate::effect::ValueComparisonOperator::GreaterThan,
+            right: crate::effect::Value::Fixed(0),
+        },
+        if_true: vec![choose(other)],
+        if_false: vec![choose(linked())],
+    });
+    cast.tag = chosen.key.clone();
+    cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    Some((vec![choice, build_may_cast_tagged_effect(&cast)], 2))
+}
+
+pub(super) fn visit_linked_copy_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(EffectAst, usize)> {
+    let sentence = sentences.get(sentence_idx)?;
+    let next = sentences.get(sentence_idx + 1)?;
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let [
+        "for", "as", "long", "as", "that", _, "is", "on", "the", "battlefield", "whenever", "you",
+        "visit", "it", ..,
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    let body_span = view.token_span_for_words(14, words.len())?;
+    let body = SentenceInput::from_lexed(&tokens[body_span]);
+    let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(
+        body.lowered(),
+    ))?;
+    let [copy_effect] = effects.as_slice() else {
+        return None;
+    };
+    let copy_tag = exact_single_card_copy_tag(copy_effect)?;
+    let mut cast = cast_statement(next)?;
+    cast.tag = copy_tag;
+    cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    let watched = ObjectFilter::default().match_tagged(
+        CompilerReferenceTag::It.bind().key.clone(),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
+    Some((
+        EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerForDuration {
+            trigger: crate::cards::builders::TriggerSpec::KeywordAction {
+                action: crate::events::KeywordActionKind::VisitAttraction,
+                player: crate::target::PlayerFilter::You,
+                source_filter: Some(watched),
+                during_your_turn: false,
+            },
+            effects: vec![build_may_cast_tagged_effect(&cast)],
+            one_shot: false,
+            duration: crate::effect::Until::Forever,
+            either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: Some((CompilerReferenceTag::It.bind(), Zone::Battlefield)),
+        }),
+        2,
+    ))
+}

@@ -24,6 +24,19 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         }
     }
 
+    // "If you do, the first creature assigns no combat damage this turn"
+    // (Laccolith Rig), "return the first card to the battlefield" (Lifeline):
+    // "the first <noun>" names the object mentioned first, the trigger's
+    // subject, as opposed to a later-mentioned target.
+    if matches!(
+        crate::lexer::parser_token_word_refs(tokens).as_slice(),
+        ["the", "first", "creature" | "card" | "permanent"]
+    ) {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::Triggering.bind(),
+            token_slice_span(tokens),
+        ));
+    }
     if matches!(
         crate::lexer::parser_token_word_refs(tokens).as_slice(),
         ["defending", "player"] | ["the", "defending", "player"]
@@ -82,6 +95,15 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
 
     let token_word_view = TokenWordView::new(tokens);
     let token_words = token_word_view.to_word_refs();
+    // "the controller of the last red instant or sorcery spell that dealt
+    // damage to you this turn" names a player through damage history; it is
+    // not an object target, and dropping its head silently retargets the
+    // action. Its statement reading owns it.
+    if token_words.starts_with(&["the", "controller", "of", "the", "last"]) {
+        return Err(CardTextError::ParseError(
+            "unsupported controller-of-last-object reference".to_string(),
+        ));
+    }
     // A definite singular counterpart is an antecedent, rather than every
     // object other than this ability's source ("the other creature"). Damage
     // triggers bind this antecedent to their recipient.
@@ -155,6 +177,21 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             token_slice_span(tokens),
         ));
     }
+    // "any target that was dealt damage this turn" (Needle Drop): both the
+    // object and player domains carry this turn's damage history.
+    if crate::word_primitives::parse_sequence_complete(
+        &token_words,
+        &["any", "target", "that", "was", "dealt", "damage", "this", "turn"],
+    ) {
+        let mut filter = ObjectFilter::permanent();
+        filter.card_types = vec![CardType::Creature, CardType::Planeswalker, CardType::Battle];
+        filter.was_dealt_damage_this_turn = true;
+        return Ok(TargetAst::ObjectOrPlayer(
+            filter,
+            PlayerFilter::TurnHistory(ironsmith_core::PlayerTurnHistoryFilter::WasDealtDamage),
+            token_slice_span(tokens),
+        ));
+    }
     if matches_surface(
         token_words.as_slice(),
         DEFENDING_PLAYER_CHOICE_TARGET_PATTERN,
@@ -201,6 +238,47 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(TargetAst::AttackedPlayerOrPlaneswalker(None));
     }
 
+    // "Return each of them to the battlefield" (The War in Heaven): the
+    // distributive pronoun names every referenced object, exactly as "them".
+    if crate::word_primitives::parse_any_sequence_complete(
+        &token_words,
+        &[&["each", "of", "them"], &["each", "of", "those", "cards"]],
+    ) {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            token_slice_span(tokens),
+        ));
+    }
+    // "put any of those cards you didn't play into your graveyard" (Three
+    // Wishes): a played card left exile and is a new object the delayed
+    // instruction cannot find (CR 400.7, 603.7c), so the referenced set is
+    // exactly the cards that remain.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &token_words,
+        &[
+            &["any", "of", "those", "cards", "you", "didnt", "play"],
+            &["any", "of", "those", "cards", "you", "didn't", "play"],
+            &["any", "of", "those", "cards", "you", "did", "not", "play"],
+            &["any", "of", "those", "cards", "you", "didnt", "cast"],
+            &["any", "of", "those", "cards", "you", "didn't", "cast"],
+        ],
+    ) {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            token_slice_span(tokens),
+        ));
+    }
+    // "Put a stun counter on either of them" (Wicked Slumber): one pick from
+    // the referenced pair, exactly like "one of them".
+    if crate::word_primitives::parse_sequence_complete(&token_words, &["either", "of", "them"]) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                token_slice_span(tokens),
+            ),
+            Some(ChoiceCount::exactly(1)),
+        ));
+    }
     // A demonstrative union refers to the earlier selected recipient. It is
     // not a new selection from all permanents and players. Keeping the tag
     // lets self-replacement lowering reuse the original declared target.
@@ -516,6 +594,27 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::lost_life_this_turn(PlayerFilter::Any),
+                target_span,
+            ),
+            target_count,
+        ));
+    }
+
+    // "target player who attacked this turn" (Fire and Brimstone): only
+    // creatures attack (CR 508.1a), so this is the attacked-with-a-creature
+    // turn history; the qualifier is a target-legality fact (CR 115.1).
+    if crate::word_primitives::parse_any_sequence_complete(
+        &remaining_words,
+        &[
+            &["player", "who", "attacked", "this", "turn"],
+            &["player", "who", "attacked", "with", "a", "creature", "this", "turn"],
+        ],
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Player(
+                PlayerFilter::TurnHistory(
+                    ironsmith_core::PlayerTurnHistoryFilter::AttackedWithCreature,
+                ),
                 target_span,
             ),
             target_count,

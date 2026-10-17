@@ -156,6 +156,11 @@ fn describe_phase_step_value_comparison(
     if let (Value::CardsInGraveyard(player), Equal | LessThanOrEqual, Value::Fixed(0)) =
         (left, operator, right)
     {
+        // "Exile target card from an opponent's graveyard. If no cards are in
+        // that graveyard, ...": the graveyard the referenced card was in.
+        if matches!(player, PlayerFilter::OwnerOf(_)) {
+            return Some("no cards are in that graveyard".to_string());
+        }
         return Some(format!(
             "there are no cards in {} graveyard",
             describe_possessive_graveyard_owner_filter(player)
@@ -827,6 +832,18 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::DealtExcessDamage(filter) => {
+            let subject = with_indefinite_article(&filter.description());
+            if is_present {
+                Some(format!("{subject} was dealt excess damage this turn"))
+            } else if is_absent {
+                Some(format!("no {} was dealt excess damage this turn", filter.description()))
+            } else {
+                Some(format!(
+                    "{subject} was dealt excess damage {count_text} or more times this turn"
+                ))
+            }
+        }
         ironsmith_core::TurnHistoryCount::LandsPlayed(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -1067,6 +1084,9 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => {
             format!("it was cast from your {zone}")
         }
+        TurnHistoryCondition::TriggeringObjectEnteredFromZone(zone) => {
+            format!("it entered from your {zone}")
+        }
         TurnHistoryCondition::PlayerPlayedLandThisTurn(player) => {
             format!("{} played a land this turn", describe_player_filter(player))
         }
@@ -1114,8 +1134,17 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
             "that player attacked you during their last turn".to_string()
         }
+        TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn => {
+            "they attacked you that turn".to_string()
+        }
         TurnHistoryCondition::PlayerLostLifeLastTurn(player) => {
             format!("{} lost life last turn", describe_player_filter(player))
+        }
+        TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(player) => {
+            format!(
+                "{} was dealt noncombat damage last turn",
+                describe_player_filter(player)
+            )
         }
         TurnHistoryCondition::TriggeringPlayersTurn { definite_player } => {
             if *definite_player {
@@ -1164,6 +1193,16 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
             )
         }
         TurnHistoryCondition::TriggeringAbilityIsManaAbility => "it is a mana ability".to_string(),
+        TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor => {
+            "that mana is of the chosen color".to_string()
+        }
+        TurnHistoryCondition::TriggeringSacrificePaidEmergeCost => {
+            "casting a spell with emerge".to_string()
+        }
+        TurnHistoryCondition::TriggeringPlayerWasAttackedThisTurnBy { attackers } => {
+            let attacker = attackers.description().replace(" you control", " you controlled");
+            format!("they were attacked this turn by {attacker}")
+        }
     }
 }
 
@@ -2029,6 +2068,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerWasMonarchAtTurnStart {player} => format!("{} {} the monarch as the turn began",describe_player_filter(player),if *player==PlayerFilter::You {"were"}else{"was"}),
+        Condition::PlayerIsYou { player } => {
+            format!("{} is you", describe_player_filter(player))
+        }
         Condition::PlayerIsMonarch { player } => {
             format!("{} is the monarch", describe_player_filter(player))
         }
@@ -2258,6 +2300,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
             format!("a player lost {count} or more life this turn")
         }
+        Condition::AnyPlayerWasDealtCombatDamageThisTurnOrMore { count } => {
+            format!("a player was dealt {count} or more combat damage this turn")
+        }
         Condition::OpponentWasDealtDamageThisTurn => {
             "an opponent was dealt damage this turn".to_string()
         }
@@ -2394,9 +2439,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
+        Condition::FirstEndStepOfTurn => "it's the first end step of the turn".to_string(),
+        Condition::FirstUpkeepStepOfTurn => "it's the first upkeep of the turn".to_string(),
+        Condition::SecondMainPhaseOfTurn => "it's the second main phase of the turn".to_string(),
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
         Condition::SourceControllersCombatPhase => "it's your combat phase".to_string(),
         Condition::SourceControllersEndStep => "during your end step".to_string(),
+        Condition::SourceControllersUntapStep => "during your untap step".to_string(),
+        Condition::SourceStartedTurnUntapped => "this permanent started the turn untapped".to_string(),
         Condition::OpponentsEndStep => "during each opponent's end step".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
@@ -2406,6 +2456,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetIsTapped => "the target is tapped".to_string(),
         Condition::TargetIsBlocked => "the target is blocked".to_string(),
         Condition::TargetWasKicked => "the target spell was kicked".to_string(),
+        Condition::TargetPaidLabel(label) => {
+            format!("that object was cast for its {} cost", label.display_label().to_ascii_lowercase())
+        }
         Condition::TriggeringSpellWasKicked => "that spell was kicked".to_string(),
         Condition::ThisSpellWasKicked => "this spell was kicked".to_string(),
         Condition::ThisSpellPaidLabel(label) => {
@@ -2420,6 +2473,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         "the {} cost was paid",
                         reference.mana_cost_text().unwrap_or("alternative")
                     ),
+                    ironsmith_core::AlternativeCostReferenceSurface::NamedCost
+                        if matches!(
+                            reference.method_name().to_ascii_lowercase().as_str(),
+                            "web-slinging" | "sneak" | "freerunning"
+                        ) =>
+                    {
+                        format!(
+                            "it was cast using {}",
+                            reference.method_name().to_ascii_lowercase()
+                        )
+                    }
                     ironsmith_core::AlternativeCostReferenceSurface::NamedCost => format!(
                         "this spell's {} cost was paid",
                         reference.method_name().to_ascii_lowercase()
@@ -2461,6 +2525,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if label.eq_ignore_ascii_case("CastAtSorceryTiming") {
                 return "a sorcery could have been cast at the time you cast this spell".to_string();
+            }
+            if matches!(
+                label.to_ascii_lowercase().as_str(),
+                "web-slinging" | "sneak" | "freerunning"
+            ) {
+                return format!("it was cast using {}", label.to_ascii_lowercase());
             }
             format!("this spell's {} cost was paid", label.to_ascii_lowercase())
         }
@@ -2730,6 +2800,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             let amount_text = small_number_word(*amount)
                 .unwrap_or_else(|| amount.to_string());
             format!("{} or more colors of mana were spent to cast this spell", amount_text)
+        }
+        // Rendered as its gate; the trigger-only timing is the surrounding
+        // ability's presentation, not part of the condition's words.
+        Condition::TriggerEventOnly(inner) => describe_condition(inner),
+        Condition::ColorsOfManaSpentToActivateThisAbility { amount, exactly } => {
+            let amount_text = small_number_word(*amount)
+                .unwrap_or_else(|| amount.to_string());
+            if *exactly {
+                format!("exactly {amount_text} colors of mana were spent to activate this ability")
+            } else {
+                format!("{amount_text} or more colors of mana were spent to activate this ability")
+            }
         }
         Condition::YouControlCommander => "you control a commander".to_string(),
         Condition::TargetObjectsHaveDifferentColorSets => {
@@ -3787,6 +3869,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ironsmith_core::CombatParticipantCondition::AttackingPlayerIsNotAttackingYou => "they aren't attacking you",
             ironsmith_core::CombatParticipantCondition::AnyAttackedPlayerIsPoisoned => "one or more players being attacked are poisoned",
             ironsmith_core::CombatParticipantCondition::TriggeringCreatureAttacksMostLifePlayer => "it's attacking the player with the most life or tied for most life",
+            ironsmith_core::CombatParticipantCondition::AttackingPlayerHasUnattackedOtherOpponent => "that player has another opponent who isn't being attacked",
         }.into(),
         Condition::TriggeringEventCausedBy { controller, effect_like_only } => format!(
             "the triggering action was caused by {} controlled by {}",
@@ -3797,6 +3880,42 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => {
             "it's the first time that object has become tapped this turn".to_string()
         }
+        Condition::TriggeringObjectTappedForAttack => {
+            "it's being declared as an attacker".to_string()
+        }
+        Condition::TriggeringObjectWasSacrificed => "it was sacrificed".to_string(),
+        Condition::TriggeringKeywordActionIs(action) => match action {
+            crate::events::KeywordActionKind::ArtSticker => "it's an art sticker".to_string(),
+            crate::events::KeywordActionKind::AbilitySticker => {
+                "it's an ability sticker".to_string()
+            }
+            crate::events::KeywordActionKind::NameSticker => "it's a name sticker".to_string(),
+            crate::events::KeywordActionKind::PowerToughnessSticker => {
+                "it's a power and toughness sticker".to_string()
+            }
+            other => format!("it's {}", other.infinitive()),
+        },
+        Condition::SourceChosenColorMostCommonAmong { filter, strict } => format!(
+            "the chosen color is the most common color among {}{}",
+            strip_indefinite_article(&filter.description()),
+            if *strict {
+                " but isn't tied for most common"
+            } else {
+                " or is tied for most common"
+            }
+        ),
+        Condition::YouCastSpellNamedThisGameAtLeast { name, count, excluding_source } => format!(
+            "you've cast {}spell{} named {} this game",
+            if *excluding_source && *count == 1 { "another ".to_string() }
+                else if *excluding_source { format!("{count} or more other ") }
+                else if *count == 1 { "a ".to_string() } else { format!("{count} or more ") },
+            if *count == 1 { "" } else { "s" }, name.as_deref().unwrap_or("this spell")
+        ),
+        Condition::YouCycledCardNamedThisGameAtLeast { name, count } => format!(
+            "you've cycled a card named {} {} or more times this game",
+            name.as_deref().unwrap_or("this card"),
+            count
+        ),
         Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn => {
             "it's the first time counters have been put on that object this turn".to_string()
         }
@@ -3898,6 +4017,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::DuringOpponentsTurn => "during opponents' turns",
                 crate::ability::ActivationTiming::AnyTimeByEnchantedCreatureController => "by the controller of the enchanted creature",
                 crate::ability::ActivationTiming::AnyTimeByOpponents => "by an opponent",
+                crate::ability::ActivationTiming::AnyTimeBySourceOwner => "by its owner",
                 crate::ability::ActivationTiming::SorcerySpeedByOpponents => {
                     "by an opponent at sorcery speed"
                 }
@@ -3915,6 +4035,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "during an opponent's upkeep"
                 }
                 crate::ability::ActivationTiming::DuringAnyUpkeep => "during any upkeep step",
+                crate::ability::ActivationTiming::AnyTimeByGrantingPlayer(_) => {
+                    "by the player who granted it"
+                }
                 timing => timing.step_window_phrase().unwrap_or("any time"),
             };
             format!("timing restriction: {label}")
@@ -3933,6 +4056,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceIsEnchanted => "this permanent is enchanted".to_string(),
         Condition::SourceIsMonstrous => "this permanent is monstrous".to_string(),
         Condition::SourceHasDealtDamageSinceEntered => "this permanent has dealt damage".to_string(),
+        Condition::SourceHasDealtCombatDamageSinceEntered => {
+            "this permanent has dealt combat damage".to_string()
+        }
         Condition::SourceIsHarnessed => "this permanent is harnessed".to_string(),
         Condition::SourceIsPrepared => "this creature is prepared".to_string(),
         Condition::SourceIsRenowned => "this creature is renowned".to_string(),
@@ -3978,6 +4104,27 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if let Some(rendered) = describe_coin_result_comparison(left, *operator, right) {
                 return rendered;
+            }
+            if let (
+                Value::DraftCorrectGuessCount { card_name },
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                return format!(
+                    "you guessed correctly for a card named {}",
+                    title_case_card_name_fragment(card_name)
+                );
+            }
+            // "if that creature was dealt excess damage this turn"
+            // (Overclocked Electromancer): the triggering damage's excess.
+            if let (
+                Value::EventValue(EventValueSpec::ExcessDamage),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                return "that creature was dealt excess damage this turn".to_string();
             }
             // The triggering die roll ("Whenever you roll a 3 or higher, ...
             // If the roll was 4 or higher, ..." (Monoxa)).
@@ -4120,6 +4267,24 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "you control {count_text} or more {} with the same name as one another",
                     pluralize_noun_phrase(strip_leading_article(&objects.description()))
                 );
+            }
+            // "If you lost life this way" (Mister Negative): one exact
+            // participant's share of a prior life instruction.
+            if let (
+                Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::Fixed(0),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && query.player == Some(PlayerFilter::You)
+                && query.filter.is_none()
+                && query.action.is_none()
+                && let Some(verb) = match query.metric {
+                    crate::effect::EffectMetric::LifeLost => Some("lost"),
+                    crate::effect::EffectMetric::LifeGained => Some("gained"),
+                    _ => None,
+                }
+            {
+                return format!("you {verb} life this way");
             }
             // "If any of those results was 10 or higher" (Farideh, Devil's
             // Chosen).
@@ -5001,6 +5166,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceAttackedOrBlockedThisCombat => {
             "this creature attacked or blocked this combat".to_string()
         }
+        Condition::SourceAttackedThisCombat => "this creature attacked this combat".to_string(),
         Condition::SourceAttackedOrBlockedThisTurn => {
             "this creature attacked or blocked this turn".to_string()
         }
@@ -5752,6 +5918,20 @@ fn bare_color_adjective_words(filter: &ObjectFilter) -> Option<String> {
 fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilter) -> String {
     if filter.has_nonbasic_land_type {
         return "that land had a nonbasic land type".to_string();
+    }
+    // "If that spell was all colors" (Jenson Carthalion).
+    if let Some(all_colors) = filter.all_colors {
+        let mut remainder = filter.clone();
+        remainder.all_colors = None;
+        remainder.set_demonstrative_antecedent_surface(None);
+        if remainder == ObjectFilter::default() {
+            let subject = filter
+                .demonstrative_antecedent_surface()
+                .map(|surface| surface.phrase().to_string())
+                .unwrap_or_else(|| "it".to_string());
+            let verb = if all_colors { "was" } else { "wasn't" };
+            return format!("{subject} {verb} all colors");
+        }
     }
     if let Some(surface) = filter.demonstrative_antecedent_surface() {
         let mut quality = filter.clone();

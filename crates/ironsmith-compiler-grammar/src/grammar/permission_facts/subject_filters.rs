@@ -111,7 +111,70 @@ pub fn parse_cast_permission_filter_tokens(
     if let Some(filter) = parse_simple_spell_type_list_filter_tokens(tokens) {
         return Ok(Some(filter));
     }
+    if let Some(filter) = parse_mixed_spell_disjunction_filter_tokens(tokens)? {
+        return Ok(Some(filter));
+    }
     parse_permission_subject_filter_tokens(tokens)
+}
+
+/// "a Vehicle or artifact creature spell": when one branch of a two-way
+/// spell disjunction is itself a multi-type conjunction, the flat type and
+/// subtype lists cannot express the union (they would read "an artifact or
+/// creature Vehicle spell"), so each branch keeps its own filter.
+fn parse_mixed_spell_disjunction_filter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if tokens.iter().any(|token| token.is_comma()) {
+        return Ok(None);
+    }
+    let or_positions = tokens
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("or"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [or_index] = or_positions.as_slice() else {
+        return Ok(None);
+    };
+    let strip_article = |branch: &[OwnedLexToken]| -> Vec<OwnedLexToken> {
+        let skip = usize::from(
+            branch
+                .first()
+                .is_some_and(|token| token.is_word("a") || token.is_word("an")),
+        );
+        branch[skip..].to_vec()
+    };
+    let mut left = strip_article(&tokens[..*or_index]);
+    let right = strip_article(&tokens[*or_index + 1..]);
+    let Some(noun) = right
+        .last()
+        .filter(|token| token.is_word("spell") || token.is_word("spells"))
+        .cloned()
+    else {
+        return Ok(None);
+    };
+    if left.is_empty() || right.len() < 2 {
+        return Ok(None);
+    }
+    if !left
+        .last()
+        .is_some_and(|token| token.is_word("spell") || token.is_word("spells"))
+    {
+        left.push(noun);
+    }
+    let (Some(left_filter), Some(right_filter)) = (
+        parse_permission_subject_filter_tokens(&left)?,
+        parse_permission_subject_filter_tokens(&right)?,
+    ) else {
+        return Ok(None);
+    };
+    if left_filter.all_card_types.len() < 2 && right_filter.all_card_types.len() < 2 {
+        return Ok(None);
+    }
+    Ok(Some(ObjectFilter {
+        any_of: vec![left_filter, right_filter],
+        ..ObjectFilter::default()
+    }))
 }
 
 pub fn parse_simple_spell_type_list_filter_tokens(

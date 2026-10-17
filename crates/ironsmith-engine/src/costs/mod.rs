@@ -525,7 +525,10 @@ impl Cost {
 
     /// Create a mill cost.
     pub fn mill(count: u32) -> Self {
-        Self::validated_effect(crate::effect::Effect::mill(count as i32))
+        // The milled cards are the cost's result ("the milled card").
+        Self::validated_effect(
+            crate::effect::Effect::mill(count as i32).tag(ironsmith_core::tag::COST_MILLED_TAG),
+        )
     }
 
     // ========================================================================

@@ -293,6 +293,7 @@ mod tests {
                 effects,
                 continue_effect_index,
                 continue_predicate: IfResultPredicate::Did,
+                ..
             }),
         ] = matched.effects.as_slice()
         else {

@@ -346,6 +346,22 @@ pub(crate) fn compute_legal_attackers_with_view(
         let assigned_players = game
             .required_attack_players_this_turn(perm_id)
             .collect::<Vec<_>>();
+        // "... attack Gideon Jura if able": a required planeswalker or battle
+        // target ranks with the required players (CR 508.1d).
+        let required_permanents = game
+            .effect_store
+            .cant_effects
+            .must_attack_permanents
+            .get(&perm_id)
+            .cloned()
+            .unwrap_or_default();
+        let is_required_permanent = |target: &AttackTarget| {
+            matches!(
+                target,
+                AttackTarget::Planeswalker(id) | AttackTarget::Battle(id)
+                    if required_permanents.contains(id)
+            )
+        };
         // CR 508.1c/d, 701.15b: goad and "attacks <player> if able" are
         // requirements, not restrictions. Keep every legal target; the
         // declaration validator maximizes obeyed requirements and never
@@ -357,7 +373,8 @@ pub(crate) fn compute_legal_attackers_with_view(
             .into_iter()
             .zip(target_ranks)
             .map(|(target, (is_goader, is_taxed))| {
-                let is_required = required_player_targets.contains(&target);
+                let is_required =
+                    required_player_targets.contains(&target) || is_required_permanent(&target);
                 (!is_required, is_goader, is_taxed, target)
             })
             .collect::<Vec<_>>();
@@ -382,6 +399,7 @@ pub(crate) fn compute_legal_attackers_with_view(
             || game.effect_store.cant_effects.must_attack.contains_key(&perm_id)
             || !goaded_by.is_empty()
             || has_required_attack_target
+            || valid_targets.iter().any(is_required_permanent)
             || valid_targets.iter().any(|target| matches!(target, AttackTarget::Player(player) if assigned_players.contains(player)));
 
         if !valid_targets.is_empty() {
@@ -394,7 +412,43 @@ pub(crate) fn compute_legal_attackers_with_view(
     }
 
     propagate_conditional_attack_requirements(game, view, &mut options);
+    propagate_group_attack_requirements(game, &mut options);
     options
+}
+
+/// "Each opponent must attack you or a planeswalker you control with at least
+/// one creature each combat if able" (Trove of Temptation): when no creature
+/// that must attack already obeys such a requirement, the first creature able
+/// to attack the named player (or their planeswalker) must attack, with that
+/// target first. This keeps every "declare only the creatures that must
+/// attack" default legal against the declaration validator.
+fn propagate_group_attack_requirements(game: &GameState, options: &mut [AttackerOption]) {
+    for player in crate::game_loop::active_group_attack_requirements(game) {
+        let obeyed = options.iter().any(|option| {
+            option.must_attack
+                && option.valid_targets.first().is_some_and(|target| {
+                    crate::game_loop::group_attack_requirement_accepts(game, player, target)
+                })
+        });
+        if obeyed {
+            continue;
+        }
+        let Some(option) = options.iter_mut().find(|option| {
+            !option.must_attack
+                && option.valid_targets.iter().any(|target| {
+                    crate::game_loop::group_attack_requirement_accepts(game, player, target)
+                })
+        }) else {
+            continue;
+        };
+        if let Some(index) = option.valid_targets.iter().position(|target| {
+            crate::game_loop::group_attack_requirement_accepts(game, player, target)
+        }) {
+            let target = option.valid_targets.remove(index);
+            option.valid_targets.insert(0, target);
+        }
+        option.must_attack = true;
+    }
 }
 
 /// "If <creature> attacks, <creatures> attack if able" (CR 508.1d): when a

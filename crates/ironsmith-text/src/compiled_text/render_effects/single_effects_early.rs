@@ -690,7 +690,7 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::PowerOf(spec) => Some(describe_dynamic_counter_basis(spec, "power")),
         Value::ToughnessOf(spec) => Some(describe_dynamic_counter_basis(spec, "toughness")),
         Value::ManaValueOf(spec) => Some(describe_dynamic_counter_basis(spec, "mana value")),
-        Value::Devotion { .. } | Value::DevotionToChosenColor(_) => Some(describe_value(value)),
+        Value::Devotion { .. } | Value::DevotionToColors { .. } | Value::DevotionToChosenColor(_) => Some(describe_value(value)),
         _ => {
             let rendered = describe_value(value);
             if value_prefers_where_x(value)
@@ -2610,7 +2610,7 @@ pub(super) fn describe_inline_token_creation_choice(
         || choose.spree
         || choose.disallow_previously_chosen_modes
         || choose.disallow_previously_chosen_modes_this_turn
-        || choose.distinct_player_targets_per_mode
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
         || choose.conditional_mode_range.is_some()
         || !choose.mode_additional_mana_costs.is_empty()
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
@@ -2680,7 +2680,7 @@ pub(super) fn describe_permanent_keyword_choice(
         || choose.tiered
         || choose.disallow_previously_chosen_modes
         || choose.disallow_previously_chosen_modes_this_turn
-        || choose.distinct_player_targets_per_mode
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
         || choose.conditional_mode_range.is_some()
         || choose.presentation_label.is_some()
         || !choose.common_prefix_effects.is_empty()
@@ -2759,7 +2759,7 @@ pub(super) fn describe_inline_action_choice(
         || choose.tiered
         || choose.disallow_previously_chosen_modes
         || choose.disallow_previously_chosen_modes_this_turn
-        || choose.distinct_player_targets_per_mode
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
         || choose.conditional_mode_range.is_some()
         || !choose.mode_additional_mana_costs.is_empty()
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
@@ -2889,7 +2889,7 @@ pub(super) fn describe_inline_destroy_all_choice(
         || choose.spree
         || choose.disallow_previously_chosen_modes
         || choose.disallow_previously_chosen_modes_this_turn
-        || choose.distinct_player_targets_per_mode
+        || choose.distinct_player_targets_per_mode || choose.optional_choice
         || choose.conditional_mode_range.is_some()
         || !choose.mode_additional_mana_costs.is_empty()
         || choose.mode_point_costs.iter().any(|cost| *cost != 1)
@@ -3174,6 +3174,17 @@ pub(in crate::compiled_text) fn describe_declined_may_mill_then_damage(
 }
 
 pub(super) fn describe_pay_mana_cost(pay_mana: &crate::effects::PayManaEffect) -> String {
+    if let Some(object) = pay_mana.mana_cost_of.as_deref() {
+        let owner = match object.base() {
+            ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => "that spell's",
+            _ => "its",
+        };
+        return if pay_mana.cost.pips().is_empty() {
+            format!("{owner} mana cost")
+        } else {
+            format!("{} plus {owner} mana cost", pay_mana.cost.to_oracle())
+        };
+    }
     let cost = pay_mana.cost.to_oracle();
     if pay_mana.independent_x_choice && cost == "{X}"
         && pay_mana.x_value.is_none() && pay_mana.x_maximum.is_none()
@@ -6549,6 +6560,7 @@ pub(crate) fn describe_add_mana_choice_mode(
         return None;
     }
     let mut options = Vec::with_capacity(choose_mode.modes.len());
+    let mut groups: Vec<&[crate::mana::ManaSymbol]> = Vec::with_capacity(choose_mode.modes.len());
     for mode in &choose_mode.modes {
         let [effect] = mode.effects.as_slice() else {
             return None;
@@ -6557,6 +6569,7 @@ pub(crate) fn describe_add_mana_choice_mode(
         if add.player != PlayerFilter::You || add.mana.is_empty() {
             return None;
         }
+        groups.push(add.mana.as_slice());
         options.push(
             add.mana
                 .iter()
@@ -6565,7 +6578,51 @@ pub(crate) fn describe_add_mana_choice_mode(
                 .collect::<String>(),
         );
     }
+    if let Some(per_color) = every_two_color_pair_mana_groups(&groups) {
+        let amount = ironsmith_core::cardinal_word(per_color as u32)
+            .unwrap_or_else(|| per_color.to_string());
+        return Some(format!(
+            "Add {amount} mana of any one color and {amount} mana of any other color"
+        ));
+    }
     Some(format!("Add {}", join_with_or(&options)))
+}
+
+/// The ten outputs "N of one color plus N of a different color" spell
+/// "Add N mana of any one color and N mana of any other color".
+fn every_two_color_pair_mana_groups(groups: &[&[crate::mana::ManaSymbol]]) -> Option<usize> {
+    use crate::mana::ManaSymbol;
+    const COLORS: [ManaSymbol; 5] = [
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+    ];
+    if groups.len() != 10 {
+        return None;
+    }
+    let per_color = groups.first()?.len() / 2;
+    if per_color == 0 {
+        return None;
+    }
+    let mut seen = Vec::with_capacity(10);
+    for group in groups {
+        if group.len() != per_color * 2 {
+            return None;
+        }
+        let counts = COLORS.map(|color| group.iter().filter(|symbol| **symbol == color).count());
+        if counts.iter().sum::<usize>() != group.len()
+            || counts.iter().filter(|count| **count == per_color).count() != 2
+        {
+            return None;
+        }
+        if seen.contains(&counts) {
+            return None;
+        }
+        seen.push(counts);
+    }
+    Some(per_color)
 }
 
 pub(crate) fn describe_put_counter_choice_mode(

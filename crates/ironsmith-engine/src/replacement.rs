@@ -59,6 +59,9 @@ pub struct ReplacementEffect {
     /// Optional effects are expanded into an explicit no-op CR 616 choice
     /// carrying the declined effect's stable application key.
     pub optional: bool,
+    /// The replacement's controller chooses whether to apply it after the
+    /// affected player has selected its place in replacement ordering.
+    pub optional_by_controller: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -242,6 +245,7 @@ pub enum ReplacementAction {
     /// Enter with additional counters
     EnterWithCounters {
         counter_type: CounterType,
+        counter_kinds_from: Option<ChooseSpec>,
         count: Value,
         /// Selects `count` when true and `otherwise_count` when false. The
         /// condition is evaluated with the entering object as its source.
@@ -338,6 +342,11 @@ pub enum ReplacementAction {
 
     /// Add an additional effect
     Additionally(Vec<Effect>),
+
+    /// Heal all damage already marked on the damage event's recipient, then
+    /// let that same damage event happen ("instead that damage is dealt, but
+    /// all other damage already dealt to him is healed").
+    HealRecipientThenProceed,
 
     /// Explicitly decline one optional replacement for this event.
     DeclineOptional(ReplacementEffectKey),
@@ -485,6 +494,11 @@ pub enum EventModification {
     /// "half that damage, rounded down" (Ghosts of the Innocent): halve the
     /// proposed amount. Appended to preserve the existing schema.
     Halve { round_up: bool },
+
+    /// "instead all but one of those counters are removed" (Deification): a
+    /// counter removal is reduced so one counter of its kind remains on its
+    /// target. Other events are unchanged. Appended to preserve the schema.
+    LeaveOneCounter,
 }
 
 /// Where to redirect an effect.
@@ -1275,6 +1289,7 @@ impl ReplacementEffect {
             static_ability_instance: None,
             ability_origin: None,
             optional: false,
+            optional_by_controller: false,
         }
     }
 
@@ -1296,6 +1311,7 @@ impl ReplacementEffect {
             static_ability_instance: None,
             ability_origin: None,
             optional: false,
+            optional_by_controller: false,
         }
     }
 
@@ -1313,6 +1329,11 @@ impl ReplacementEffect {
 
     pub fn optional(mut self) -> Self {
         self.optional = true;
+        self
+    }
+
+    pub fn with_controller_option(mut self, optional: bool) -> Self {
+        self.optional_by_controller = optional;
         self
     }
 
@@ -1349,6 +1370,7 @@ impl ReplacementEffect {
             static_ability_instance: self.static_ability_instance,
             ability_origin: self.ability_origin.clone(),
             optional: false,
+            optional_by_controller: false,
         })
     }
 
@@ -1394,6 +1416,7 @@ impl ReplacementEffect {
             controller,
             ThisWouldEnterBattlefieldMatcher,
             ReplacementAction::EnterWithCounters {
+                counter_kinds_from: None,
                 counter_type,
                 count,
                 count_condition: None,

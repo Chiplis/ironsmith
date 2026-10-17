@@ -252,6 +252,14 @@ pub(super) fn commit_object_counter_placement_with_limit_outputs(
             let actual = game
                 .counter_count(object, resolved.counter_type)
                 .saturating_sub(before);
+            // "a land that a mire counter was put onto with this artifact":
+            // a lasting per-source record that survives the source leaving.
+            if actual > 0
+                && let Some(source) = resolved.cause.source
+                && let Some(source) = game.counter_history_source_identity(source, ctx)
+            {
+                game.record_counter_source_history(source, object, resolved.counter_type, false);
+            }
             let count = i64::from(actual);
             let observation = game.alloc_child_event_provenance(
                 event.provenance(),

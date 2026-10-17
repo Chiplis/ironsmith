@@ -112,7 +112,8 @@ fn commit_return_all(
                     BattlefieldController::You => {
                         BattlefieldEntryOptions::specific(ctx.controller, effect.tapped)
                     }
-                };
+                }
+                .with_entry_attachment_filter(effect.aura_attachment_filter.clone());
                 let Some(object) = game.object(object_id) else {
                     continue;
                 };

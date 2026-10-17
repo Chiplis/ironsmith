@@ -84,6 +84,8 @@ pub enum EntersWithCounterKnownForEachKind {
     ColorsOfManaSpent,
     ControlledCreaturesDiedThisTurn,
     KickCount,
+    /// "for each mana spent to cast it" (Verazol, the Split Current).
+    ManaSpent,
     LoyaltyCountersOnPlaneswalkersYouControl,
     MagicGamesLost,
 }
@@ -479,11 +481,14 @@ fn parse_enters_with_counter_choice_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<EntersWithCounterChoice> {
     primitives::phrase(&["your", "choice", "of"]).parse_next(input)?;
-    let counter_types = separated(
-        2..,
-        parse_counter_choice_type,
-        primitives::comma_or_separator,
-    )
+    let counter_types = alt((
+        separated(
+            2..,
+            parse_counter_choice_type,
+            primitives::comma_or_separator,
+        ),
+        parse_shared_head_counter_choice_types,
+    ))
     .parse_next(input)?;
     opt((primitives::kw("on"), primitives::kw("it"))).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -491,6 +496,56 @@ fn parse_enters_with_counter_choice_lexed<'a>(
         counter_types,
         count: Value::Fixed(1),
     })
+}
+
+/// "your choice of a +1/+1, first strike, or vigilance counter" (Denry Klin):
+/// the counter kinds share one trailing "counter" noun.
+fn parse_shared_head_counter_choice_types<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<Vec<CounterType>> {
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let descriptor = repeat_till(1.., any.void(), peek(counter_noun))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    counter_noun.parse_next(input)?;
+    // Every word must name a counter kind exactly ("first strike" and
+    // "double strike" are the two-word kinds); separators are commas and
+    // "or". Comma-stripped surfaces ("a +1/+1 first strike or vigilance")
+    // still split word by word.
+    let fail = || primitives::backtrack_err("shared-head counter choice", "known counter kinds");
+    let mut words: Vec<&str> = Vec::new();
+    for token in descriptor {
+        if token.is_comma() {
+            continue;
+        }
+        words.extend(crate::lexer::parser_token_word_refs(std::slice::from_ref(token)));
+    }
+    let mut counter_types = Vec::new();
+    let mut index = 0usize;
+    while index < words.len() {
+        let word = words[index];
+        if word == "or" {
+            index += 1;
+            continue;
+        }
+        if matches!(word, "first" | "double") && words.get(index + 1) == Some(&"strike") {
+            counter_types.push(if word == "first" {
+                CounterType::FirstStrike
+            } else {
+                CounterType::DoubleStrike
+            });
+            index += 2;
+            continue;
+        }
+        let counter_type = filters::parse_counter_type_word(word).ok_or_else(fail)?;
+        counter_types.push(counter_type);
+        index += 1;
+    }
+    if counter_types.len() < 2 {
+        return Err(fail());
+    }
+    Ok(counter_types)
 }
 
 fn parse_counter_choice_type<'a>(input: &mut LexStream<'a>) -> WResult<CounterType> {
@@ -555,6 +610,12 @@ fn parse_enters_with_counter_known_for_each_tail_lexed<'a>(
             primitives::sentence_end(),
         )
             .value(EntersWithCounterKnownForEachKind::ColorsOfManaSpent),
+        (
+            primitives::phrase(&["for", "each", "mana", "spent", "to", "cast"]),
+            alt((primitives::kw("it").void(), primitives::phrase(&["this", "spell"]))),
+            primitives::sentence_end(),
+        )
+            .value(EntersWithCounterKnownForEachKind::ManaSpent),
         (
             primitives::phrase(&["for", "each"]),
             alt((primitives::kw("creature"), primitives::kw("creatures"))),

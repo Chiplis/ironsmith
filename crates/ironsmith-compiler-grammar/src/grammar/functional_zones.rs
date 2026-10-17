@@ -89,6 +89,10 @@ const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
         &["there", "is", "this", "card", "in", "your", "library"],
         Zone::Library,
     ),
+    // "As long as Torrent of Lava is on the stack, ..." (CR 113.6): a
+    // spell's static ability that functions while it is a spell.
+    (&["this", "is", "on", "the", "stack"], Zone::Stack),
+    (&["this", "spell", "is", "on", "the", "stack"], Zone::Stack),
     (&["this", "card", "is", "in", "exile"], Zone::Exile),
     (&["there", "is", "this", "card", "in", "exile"], Zone::Exile),
     (

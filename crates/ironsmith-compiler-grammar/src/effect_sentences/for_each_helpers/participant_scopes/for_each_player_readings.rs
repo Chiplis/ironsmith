@@ -269,16 +269,20 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                     )));
                 }
                 let branch_effects = parse_maybe_effects(effect_tokens, true, false)?;
+                // The relative clause restricts which players act; it is not
+                // an optional branch. A trailing-if gate keeps the acting
+                // players' results (the lands they sacrificed) as the
+                // antecedent of a following "each player who sacrificed a
+                // Plains this way" (Desolation).
                 return Ok(Some(wrap_players(
                     &iteration_filter,
-                    vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
                         predicate: PredicateAst::Player(
                             PlayerPredicateAst::PlayerTappedLandForManaThisTurn {
                                 player: PlayerAst::That,
                             },
                         ),
-                        if_true: branch_effects,
-                        if_false: Vec::new(),
+                        effects: branch_effects,
                     })],
                 )));
             }
@@ -314,6 +318,59 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         "missing effect after 'each player who ... this way' (clause: '{}')",
                         clause_text
                     )));
+                }
+                // "Each player who discarded a card with the greatest mana
+                // value among cards discarded this way loses life equal to
+                // that mana value." (Scythe Specter): the scope is every card
+                // the preceding discard tagged, and "that mana value" is the
+                // same greatest mana value.
+                if let Some(filter_tokens) = tagged_filter_tokens {
+                    let filter_words = crate::lexer::parser_token_word_refs(filter_tokens);
+                    let effect_words = crate::lexer::parser_token_word_refs(effect_tokens);
+                    const EXTREMUM: &[&str] = &[
+                        "with", "the", "greatest", "mana", "value", "among", "cards", "discarded",
+                    ];
+                    if filter_words.len() > EXTREMUM.len()
+                        && filter_words.ends_with(EXTREMUM)
+                        && matches!(filter_words[0], "a" | "an")
+                        && filter_words[1..filter_words.len() - EXTREMUM.len()] == ["card"]
+                        && let Some(that_idx) = effect_tokens.windows(3).position(|window| {
+                            window[0].is_word("that")
+                                && window[1].is_word("mana")
+                                && window[2].is_word("value")
+                        })
+                        && effect_words.windows(3).filter(|window| *window == ["that", "mana", "value"]).count() == 1
+                    {
+                        let discarded = crate::tag::CompilerReferenceTag::It;
+                        let greatest = crate::effect::Value::GreatestManaValue(
+                            crate::filter::ObjectFilter::tagged(discarded.key()),
+                        );
+                        let mut card = crate::filter::ObjectFilter::default();
+                        card.set_explicit_card_noun(true);
+                        card.mana_value =
+                            Some(crate::filter::Comparison::EqualExpr(Box::new(greatest.clone())));
+                        let mut rewritten = effect_tokens[..that_idx].to_vec();
+                        rewritten.push(crate::lexer::OwnedLexToken::synthetic_word("x"));
+                        rewritten.extend_from_slice(&effect_tokens[that_idx + 3..]);
+                        let mut effects = parse_effect_chain_inner(&rewritten)?;
+                        crate::effect_sentences::dispatch_entry::replace_unbound_x_in_effects_anywhere(
+                            &mut effects,
+                            &greatest,
+                            clause_text,
+                        )?;
+                        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
+                            effects,
+                            predicate: Some(PredicateAst::Player(
+                                PlayerPredicateAst::PlayerTaggedObjectMatches {
+                                    player: PlayerAst::That,
+                                    tag: discarded.bind(),
+                                    filter: card,
+                                    mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+                                },
+                            )),
+                            result_predicate: IfResultPredicate::Did,
+                        })));
+                    }
                 }
                 let mut result_clause = result_tokens.to_vec();
                 if let Some(subject) = result_clause.first_mut() {

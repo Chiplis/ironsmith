@@ -79,6 +79,7 @@ fn available_modifiers(
                     };
                     let spec = static_ability.die_roll_result_adjustment_spec()?;
                     if spec.reroll != reroll
+                        || spec.exchange_with_source_base_pt
                         || !spec.player.matches_player(player, &filter_context)
                         || (spec.once_each_turn
                             && game
@@ -89,6 +90,9 @@ fn available_modifiers(
                                     static_ability.instance_id(),
                                 ))
                         || (!spec.reroll && !game.can_pay_life(player, spec.life_cost))
+                        || spec.source_counter_cost.is_some_and(|counter_type| {
+                            game.counter_count(*source, counter_type) == 0
+                        })
                     {
                         return None;
                     }
@@ -333,10 +337,19 @@ fn apply_numerical_modifiers(
             return Ok(false);
         }
         let modifier = remaining.remove(index);
-        let description = format!(
-            "Die result {}: pay {} life to increase or decrease it by {}",
-            roll.result, modifier.spec.life_cost, modifier.spec.amount
-        );
+        let description = if let Some(counter_type) = modifier.spec.source_counter_cost {
+            format!(
+                "Die result {}: remove a {} counter to increase or decrease it by {}",
+                roll.result,
+                counter_type.description(),
+                modifier.spec.amount
+            )
+        } else {
+            format!(
+                "Die result {}: pay {} life to increase or decrease it by {}",
+                roll.result, modifier.spec.life_cost, modifier.spec.amount
+            )
+        };
         let should_apply = ask_may_choice(
             game,
             &mut ctx.decision_maker,
@@ -367,6 +380,41 @@ fn apply_numerical_modifiers(
         if ctx.decision_maker.awaiting_choice() {
             return Ok(false);
         }
+        if let Some(counter_type) = modifier.spec.source_counter_cost {
+            // "you may remove a <kind> counter from this creature. If you do,
+            // ...": the removal is the payment, observed like any removal.
+            if game.counter_count(modifier.source, counter_type) == 0 {
+                continue;
+            }
+            let removal = crate::effects::RemoveCountersEffect::new(
+                counter_type,
+                1,
+                ChooseSpec::SpecificObject(modifier.source),
+            );
+            let binding = (
+                modifier.source,
+                crate::snapshot::ObjectSnapshot::from_object_id(game, modifier.source),
+            );
+            let mut payment = crate::effects::composition::execute_with_source::with_source_binding(
+                ctx,
+                &binding,
+                |ctx| removal.execute_child_with_outputs(game, ctx),
+            )?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(false);
+            }
+            if payment.outcome.count_or_zero() == 0 {
+                continue;
+            }
+            crate::effects::runtime::capture_triggers_before_added_program(
+                game,
+                ctx,
+                None,
+                payment.outcome.events.iter_mut(),
+            )?;
+            payment.synchronize_observations();
+            payments.push(payment);
+        }
         if modifier.spec.life_cost > 0 {
             let payment =
                 game.pay_life_with_context_and_outputs(player, modifier.spec.life_cost, ctx)?;
@@ -391,6 +439,172 @@ fn apply_numerical_modifiers(
             i128::from(roll.result) - i128::from(modifier.spec.amount)
         })?;
         mark_used(game, &modifier);
+    }
+    Ok(true)
+}
+
+/// Sources that may swap one retained result of this roll with their own
+/// base power or base toughness (Vedalken Squirrel-Whacker).
+fn available_exchanges(
+    game: &GameState,
+    player: PlayerId,
+    sides: u32,
+) -> Result<Vec<AvailableDieRollModifier>, ExecutionError> {
+    let checked = game
+        .continuous_query_snapshot()
+        .map_err(ExecutionError::ContinuousDiscovery)?;
+    let game = &checked;
+    Ok(game
+        .battlefield
+        .iter()
+        .flat_map(|source| {
+            let Some(object) = game
+                .object(*source)
+                .filter(|_| !game.is_phased_out(*source))
+            else {
+                return Vec::new();
+            };
+            let controller = game.controller_of(object);
+            let filter_context = game.filter_context_for(controller, Some(*source));
+            game.current_abilities(*source)
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|ability| {
+                    let crate::ability::AbilityKind::Static(static_ability) = ability.kind else {
+                        return None;
+                    };
+                    let spec = static_ability.die_roll_result_adjustment_spec()?;
+                    if !spec.exchange_with_source_base_pt
+                        || spec.sides.is_some_and(|required| required != sides)
+                        || !spec.player.matches_player(player, &filter_context)
+                    {
+                        return None;
+                    }
+                    Some(AvailableDieRollModifier {
+                        source: *source,
+                        ability: static_ability.instance_id(),
+                        display: static_ability.display(),
+                        spec,
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect())
+}
+
+/// "you may exchange one result with this creature's base power or base
+/// toughness": the chosen die takes the old base value and the creature's
+/// base characteristic becomes that die's result (CR 613.4b).
+fn apply_exchange_modifiers(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: PlayerId,
+    sides: u32,
+    rolls: &mut [ResolvedDieRoll],
+    payments: &mut Vec<CompletedEffectOutputs>,
+) -> Result<bool, ExecutionError> {
+    for modifier in available_exchanges(game, player, sides)? {
+        if rolls.is_empty() || !game.battlefield.contains(&modifier.source) {
+            continue;
+        }
+        let should_apply = ask_may_choice(
+            game,
+            &mut ctx.decision_maker,
+            player,
+            modifier.source,
+            format!(
+                "{} (rolled {})",
+                modifier.display,
+                rolls
+                    .iter()
+                    .map(|roll| roll.result.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            FallbackStrategy::Decline,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        if !should_apply {
+            continue;
+        }
+        let index = if rolls.len() == 1 {
+            0
+        } else {
+            let options = rolls
+                .iter()
+                .enumerate()
+                .map(|(index, roll)| (format!("Die {} (result {})", index + 1, roll.result), index))
+                .collect::<Vec<_>>();
+            let Some(index) =
+                ask_choose_one(game, &mut ctx.decision_maker, player, modifier.source, &options)
+            else {
+                return Ok(false);
+            };
+            index
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        let options = [
+            ("Exchange with base power".to_string(), true),
+            ("Exchange with base toughness".to_string(), false),
+        ];
+        let Some(power) =
+            ask_choose_one(game, &mut ctx.decision_maker, player, modifier.source, &options)
+        else {
+            return Ok(false);
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        let Some(chars) = game.calculated_characteristics(modifier.source) else {
+            continue;
+        };
+        let Some(base) = (if power { chars.base_power } else { chars.base_toughness }) else {
+            continue;
+        };
+        let Some(roll) = rolls.get_mut(index) else {
+            continue;
+        };
+        let result = i32::try_from(roll.result).map_err(|_| ExecutionError::ResourceLimitExceeded {
+            resource: "exchanged die result",
+            requested: u128::from(roll.result),
+            maximum: i32::MAX as u128,
+        })?;
+        let value = crate::effect::Value::Fixed(result);
+        let modification = if power {
+            crate::continuous::Modification::SetPower {
+                value,
+                sublayer: crate::continuous::PtSublayer::Setting,
+            }
+        } else {
+            crate::continuous::Modification::SetToughness {
+                value,
+                sublayer: crate::continuous::PtSublayer::Setting,
+            }
+        };
+        let exchange = crate::effects::ApplyContinuousEffect::with_spec(
+            ChooseSpec::SpecificObject(modifier.source),
+            modification,
+            crate::effect::Until::Forever,
+        );
+        let binding = (
+            modifier.source,
+            crate::snapshot::ObjectSnapshot::from_object_id(game, modifier.source),
+        );
+        let outputs = crate::effects::composition::execute_with_source::with_source_binding(
+            ctx,
+            &binding,
+            |ctx| exchange.execute_child_with_outputs(game, ctx),
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        payments.push(outputs);
+        // CR 107.1b: a negative base value gives the die a result of zero.
+        roll.result = u32::try_from(base.max(0)).unwrap_or(0);
     }
     Ok(true)
 }
@@ -436,6 +650,9 @@ pub(crate) fn roll_dice_with_authored_modifier(
         if !apply_numerical_modifiers(game, ctx, player, roll, &mut payments, authored_modifier)? {
             return Ok(None);
         }
+    }
+    if !apply_exchange_modifiers(game, ctx, player, sides, &mut rolls, &mut payments)? {
+        return Ok(None);
     }
     Ok(Some(DieRollTransaction { rolls, payments }))
 }

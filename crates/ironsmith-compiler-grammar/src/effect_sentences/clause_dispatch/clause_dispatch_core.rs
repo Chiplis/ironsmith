@@ -30,6 +30,43 @@ fn parse_each_player_with_life_clause(
         ["that", "player", "with", qualifier @ ..] => (false, qualifier),
         _ => return Ok(None),
     };
+    // "Each player with fewer cards in hand than the player with the most
+    // cards in hand draws cards equal to the difference" (Tales of the
+    // Ancestors): a comparison against the greatest hand size, whose operands
+    // are the antecedent of "the difference".
+    const FEWER_THAN_MOST_CARDS: &[&str] = &[
+        "fewer", "cards", "in", "hand", "than", "the", "player", "with", "the", "most", "cards",
+        "in", "hand",
+    ];
+    if qualifier.starts_with(FEWER_THAN_MOST_CARDS) {
+        let rest_word = 3 + FEWER_THAN_MOST_CARDS.len();
+        let Some(&rest_start) = word_positions.get(rest_word) else {
+            return Ok(None);
+        };
+        let mut rebuilt = vec![
+            OwnedLexToken::synthetic_word("that"),
+            OwnedLexToken::synthetic_word("player"),
+        ];
+        rebuilt.extend_from_slice(&tokens[rest_start..]);
+        let parsed = parse_effect_clause_unstacked(&rebuilt)?;
+        let predicate = crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::CardsInHand(crate::target::PlayerFilter::IteratedPlayer),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: crate::effect::Value::MaxCardsInHand(crate::target::PlayerFilter::Any),
+        };
+        let gated = vec![EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: vec![parsed],
+                if_false: Vec::new(),
+            },
+        )];
+        return Ok(Some(if iterates {
+            EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: gated })
+        } else {
+            gated.into_iter().next().expect("one gated effect")
+        }));
+    }
     let (operator, amount, used) = match qualifier {
         ["exactly", amount, "life", ..] => {
             (crate::effect::ValueComparisonOperator::Equal, *amount, 3)
@@ -84,6 +121,69 @@ fn parse_each_player_with_life_clause(
     }))
 }
 
+/// "reduce that opponent's speed by 1" / "reduce your speed by N"
+/// (Spikeshell Harrier): a player's speed decreases (CR 702.179). The floor
+/// is 0 unless a following "can't reduce ... below N" sentence raises it.
+fn parse_reduce_speed_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
+    let (player, amount_word) = match words.as_slice() {
+        ["reduce", "your", "speed", "by", amount] => (PlayerAst::You, *amount),
+        [
+            "reduce",
+            "that",
+            "opponent's" | "opponents" | "player's" | "players",
+            "speed",
+            "by",
+            amount,
+        ] => (PlayerAst::ThatPlayerOrTargetController, *amount),
+        ["reduce", "their", "speed", "by", amount] => (PlayerAst::That, *amount),
+        _ => return None,
+    };
+    let amount = crate::util::parse_number_word_u32(amount_word)
+        .or_else(|| crate::util::decimal_count(amount_word))?;
+    Some(EffectAst::subject_verb_reduce_speed(
+        player,
+        crate::effect::Value::Fixed(i32::try_from(amount).ok()?),
+        0,
+    ))
+}
+
+/// "[+2]" / "[−1]" as an instruction inside a resolving loyalty ability
+/// (Comet, Stellar Pup's die rows): the printed loyalty symbol adds or removes
+/// that many loyalty counters on the source (CR 606.4 symbols used as text).
+fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use crate::lexer::TokenKind;
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let [open, sign, amount, close] = tokens else {
+        return None;
+    };
+    if open.kind != TokenKind::LBracket
+        || close.kind != TokenKind::RBracket
+        || amount.kind != TokenKind::Number
+    {
+        return None;
+    }
+    let amount = amount.parser_text().parse::<i32>().ok().filter(|amount| *amount > 0)?;
+    let source = crate::cards::builders::TargetAst::Source(None);
+    match sign.kind {
+        TokenKind::Plus => Some(EffectAst::subject_verb_put_counters(
+            crate::object::CounterType::Loyalty,
+            crate::effect::Value::Fixed(amount),
+            source,
+            None,
+            false,
+        )),
+        TokenKind::Dash => Some(EffectAst::subject_verb_remove_up_to_any_counters(
+            crate::effect::Value::Fixed(amount),
+            source,
+            Some(crate::object::CounterType::Loyalty),
+            false,
+        )),
+        _ => None,
+    }
+}
+
 pub(super) fn parse_effect_clause_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
@@ -92,6 +192,34 @@ pub(super) fn parse_effect_clause_unstacked(
     }
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
+    }
+    if let Some(effect) = parse_reduce_speed_clause(tokens) {
+        return Ok(effect);
+    }
+    if let Some(effect) = parse_inline_loyalty_symbol_clause(tokens) {
+        return Ok(effect);
+    }
+    // "choose a letter" (_____ _____ Rocketship): a named option among the
+    // 26 letters, remembered on the source.
+    if matches!(
+        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
+        ["choose", "a", "letter"] | ["you", "choose", "a", "letter"]
+    ) {
+        return Ok(EffectAst::subject_verb_choose_named_option(
+            PlayerAst::You,
+            ('A'..='Z').map(|letter| letter.to_string()).collect(),
+        ));
+    }
+    // "claim the prize!" (Attractions): the claim keyword action; the
+    // document splices the card's "Prize —" instructions after it.
+    if matches!(
+        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
+        ["claim", "the", "prize"] | ["you", "claim", "the", "prize"]
+    ) {
+        return Ok(EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::ClaimAttractionPrize,
+            1,
+        ));
     }
     let stripped_instead = super::super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
@@ -184,6 +312,55 @@ pub(super) fn parse_effect_clause_unstacked(
         && let Ok(effect) = parse_become_clause(&subject, &animation)
     {
         return Ok(effect);
+    }
+    // "it's goaded" / "it's goaded for as long as they control it" (Vislor
+    // Turlough): the passive form of goading the referenced creature; the
+    // control-bounded duration names the player who controls it as it is
+    // goaded (CR 701.15, 611.2b).
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        let tail = match words.as_slice() {
+            ["it's" | "its", "goaded", tail @ ..] | ["it", "is", "goaded", tail @ ..] => Some(tail),
+            // "that creature is also goaded" (Hot Pursuit): the same passive
+            // goad of the referenced creature; "also" adds to its other state.
+            ["that", "creature", "is", "goaded", tail @ ..]
+            | ["that", "creature", "is", "also", "goaded", tail @ ..]
+            | ["it", "is", "also", "goaded", tail @ ..] => Some(tail),
+            // "They're goaded for the rest of the game." (Dack Fayden,
+            // Helping Hand): the plural referent, goaded until the game ends.
+            ["they're" | "theyre", "goaded", tail @ ..] | ["they", "are", "goaded", tail @ ..]
+                if matches!(tail, [] | ["for", "the", "rest", "of", "the" | "this", "game"]) =>
+            {
+                Some(tail)
+            }
+            _ => None,
+        };
+        if let Some(tail) = tail {
+            let it = crate::cards::builders::TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                None,
+            );
+            match tail {
+                [] => return Ok(EffectAst::subject_verb_goad(it)),
+                ["for", "the", "rest", "of", "the" | "this", "game"] => {
+                    return Ok(EffectAst::subject_verb_goad_for(it, Until::Forever));
+                }
+                ["for", "as", "long", "as", "they" | "that" | "its", .., "control" | "controls", "it"] => {
+                    use ironsmith_core::{
+                        ContinuousDurationObject as Object, ContinuousDurationPlayer as Player,
+                        ContinuousDurationPredicate as Predicate,
+                    };
+                    return Ok(EffectAst::subject_verb_goad_for(
+                        it,
+                        Until::ForAsLongAs(Predicate::ObjectControlledBy {
+                            object: Object::AffectedObject,
+                            player: Player::ControllerOf(Object::AffectedObject),
+                        }),
+                    ));
+                }
+                _ => {}
+            }
+        }
     }
     let (verb, _) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);

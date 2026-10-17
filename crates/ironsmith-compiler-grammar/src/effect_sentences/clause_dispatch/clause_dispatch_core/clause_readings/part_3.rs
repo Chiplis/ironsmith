@@ -548,6 +548,18 @@ pub(super) fn read_you_choose_player(
     input: &Clause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
+    // "secretly choose an opponent" (Stalking Leonin): the engine keeps no
+    // hidden player choices, so the choice reads as an ordinary one that a
+    // later "Reveal the player you chose" discloses.
+    let tokens = match tokens.split_first() {
+        Some((first, rest))
+            if first.is_word("secretly")
+                && rest.first().is_some_and(|token| token.is_word("choose")) =>
+        {
+            rest
+        }
+        _ => tokens,
+    };
     let restriction_duration_shape = if find_negation_span(tokens).is_some() {
         effect_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
     } else {
@@ -625,6 +637,9 @@ pub(super) fn read_target_player_choose_objects_with_count(
             false,
         ),
     };
+    if let Some(effects) = choose_one_object_of_each_color(tokens) {
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
     if let Some((chooser, choose_filter, choose_count, count_value)) =
         parse_target_player_choose_objects_clause_with_count_value(tokens)?
     {
@@ -691,6 +706,54 @@ fn choose_land_of_each_basic_land_type(
         crate::tag::CompilerReferenceTag::Rest.bind(),
     ));
     Some(effects)
+}
+
+/// "That player chooses one card of each color from it" (Noxious Vapors):
+/// one choice per color, each of a card not already chosen for an earlier
+/// color, all joining one chosen set. A color no candidate has chooses
+/// nothing (the resolving choice does as much as possible). The set uses a
+/// minted tag, not the implicit `it`, because successive choices under the
+/// implicit tag replace rather than accumulate.
+fn choose_one_object_of_each_color(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let index = tokens.windows(3).position(|window| {
+        window[0].is_word("of") && window[1].is_word("each") && window[2].is_word("color")
+    })?;
+    if tokens
+        .get(index + 3)
+        .is_some_and(|token| token.is_word("pair") || token.is_word("among"))
+    {
+        return None;
+    }
+    let stripped = tokens[..index]
+        .iter()
+        .chain(tokens[index + 3..].iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let Ok(Some((chooser, base, count, None))) =
+        parse_target_player_choose_objects_clause_with_count_value(&stripped)
+    else {
+        return None;
+    };
+    if !count.is_single() || base.colors.is_some() {
+        return None;
+    }
+    let chosen = crate::util::helper_tag_for_tokens(tokens, "chosen");
+    Some(
+        crate::color::Color::ALL
+            .iter()
+            .map(|color| {
+                let mut filter = base.clone().not_tagged(chosen.key.clone());
+                filter.colors = Some(crate::color::ColorSet::from_color(*color));
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: chooser,
+                    tag: chosen.clone(),
+                })
+            })
+            .collect(),
+    )
 }
 pub(super) fn read_you_choose_objects_with_count(
     input: &Clause<'_>,

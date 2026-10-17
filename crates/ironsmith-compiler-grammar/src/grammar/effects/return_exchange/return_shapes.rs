@@ -34,6 +34,14 @@ pub enum ReturnTimingShape {
     NextEndStep(PlayerFilter),
     NextUpkeep(PlayerAst),
     EndOfCombat,
+    /// "at the beginning of the declare attackers step on your next turn"
+    /// (Meandering Towershell): the first declare attackers step of that
+    /// player's next turn (CR 508).
+    NextDeclareAttackersStep(PlayerFilter),
+    /// "at the beginning of that player's next declare attackers step"
+    /// (Noctis, Heir Apparent): the next declare attackers step of that
+    /// player's turns, this turn's when it is still ahead.
+    UpcomingDeclareAttackersStep(PlayerFilter),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +62,11 @@ pub struct ReturnDestinationShape {
     pub excluded_card_types: Vec<crate::types::CardType>,
     /// Counters the returned object enters with, as authored after `with`.
     pub entry_counter_tokens: Option<Vec<OwnedLexToken>>,
+    /// "... to the battlefield as a non-Aura enchantment" (Takklemaggot): the
+    /// returned Aura enters without its Aura subtype, so it neither chooses
+    /// something to enchant (CR 303.4f) nor is put into the graveyard
+    /// unattached (CR 704.5m).
+    pub as_non_aura: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -251,6 +264,43 @@ fn parse_return_timing_lexed<'a>(input: &mut LexStream<'a>) -> WResult<ReturnTim
     primitives::kw("beginning").parse_next(input)?;
     primitives::kw("of").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
+    let mut declare_attackers_probe = input.clone();
+    if primitives::phrase(&["declare", "attackers", "step", "on"])
+        .parse_next(&mut declare_attackers_probe)
+        .is_ok()
+        && let Ok(player) = alt((
+            primitives::kw("your").value(PlayerFilter::You),
+            (primitives::kw("that"), alt((primitives::kw("players"), primitives::kw("player's"))))
+                .value(PlayerFilter::IteratedPlayer),
+        ))
+        .parse_next(&mut declare_attackers_probe)
+        && primitives::phrase(&["next", "turn"])
+            .parse_next(&mut declare_attackers_probe)
+            .is_ok()
+        && primitives::sentence_end()
+            .parse_next(&mut declare_attackers_probe)
+            .is_ok()
+    {
+        *input = declare_attackers_probe;
+        return Ok(ReturnTimingShape::NextDeclareAttackersStep(player));
+    }
+    let mut upcoming_declare_attackers_probe = input.clone();
+    if let Ok(player) = alt((
+        primitives::kw("your").value(PlayerFilter::You),
+        (primitives::kw("that"), alt((primitives::kw("players"), primitives::kw("player's"))))
+            .value(PlayerFilter::IteratedPlayer),
+    ))
+    .parse_next(&mut upcoming_declare_attackers_probe)
+        && primitives::phrase(&["next", "declare", "attackers", "step"])
+            .parse_next(&mut upcoming_declare_attackers_probe)
+            .is_ok()
+        && primitives::sentence_end()
+            .parse_next(&mut upcoming_declare_attackers_probe)
+            .is_ok()
+    {
+        *input = upcoming_declare_attackers_probe;
+        return Ok(ReturnTimingShape::UpcomingDeclareAttackersStep(player));
+    }
     let participant = opt(alt((
         primitives::kw("your").value((PlayerFilter::You, PlayerAst::You)),
         (primitives::kw("that"), alt((primitives::kw("players"), primitives::kw("player's"))))
@@ -406,6 +456,19 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
     );
     let transformed = marker_anywhere(tokens, primitives::kw("transformed"));
     let converted = marker_anywhere(tokens, primitives::kw("converted"));
+    let as_non_aura = marker_anywhere(
+        destination_head,
+        (
+            primitives::kw("as"),
+            primitives::kw("a"),
+            alt((
+                primitives::kw("non-aura").void(),
+                primitives::kw("nonaura").void(),
+                (primitives::kw("non"), primitives::kw("aura")).void(),
+            )),
+            primitives::kw("enchantment"),
+        ),
+    );
     let controller = if marker_anywhere(
         destination_head,
         primitives::phrase(&["under", "your", "control"]),
@@ -464,6 +527,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         excluded_subtypes,
         excluded_card_types,
         entry_counter_tokens,
+        as_non_aura,
     })
 }
 

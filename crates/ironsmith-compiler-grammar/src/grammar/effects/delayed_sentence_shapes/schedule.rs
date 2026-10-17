@@ -95,6 +95,9 @@ fn delayed_schedule_header<'a>(
     alt((
         semantic_phrase(&["next", "main", "phase", "this", "turn"])
             .value((DelayedScheduleStep::MainPhaseThisTurn, PlayerAst::Any, false)),
+        // "at the beginning of your next main phase this turn" (Pygmy Hippo).
+        semantic_phrase(&["your", "next", "main", "phase", "this", "turn"])
+            .value((DelayedScheduleStep::MainPhaseThisTurn, PlayerAst::You, false)),
         (
             semantic_phrase(&["end", "step", "of"]),
             delayed_schedule_player,
@@ -140,14 +143,16 @@ pub fn parse_delayed_schedule_sentence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedScheduleSentenceShape<'_>> {
     let tokens = trimmed(tokens);
-    let ((step, player, start_next_turn), after_comma) = primitives::parse_prefix(
+    let Some(((step, player, start_next_turn), after_comma)) = primitives::parse_prefix(
         tokens,
         (
             alt((delayed_untap_schedule_header, delayed_schedule_header)),
             primitives::comma(),
         )
             .map(|(header, _)| header),
-    )?;
+    ) else {
+        return parse_trailing_main_phase_schedule_shape(tokens);
+    };
     let effect_tokens = trimmed(after_comma);
     (!effect_tokens.is_empty()).then_some(DelayedScheduleSentenceShape {
         step,
@@ -157,10 +162,52 @@ pub fn parse_delayed_schedule_sentence_shape(
     })
 }
 
+/// "add {R} at the beginning of your next main phase this turn" (Conduit of
+/// Storms): a trailing main-phase delay wrapping the whole preceding effect.
+/// Only main-phase steps read trailing; other trailing step delays ("at the
+/// beginning of the next end step") keep their dedicated object-action owners.
+fn parse_trailing_main_phase_schedule_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DelayedScheduleSentenceShape<'_>> {
+    (1..tokens.len()).find_map(|index| {
+        if !tokens[index].is_word("at") {
+            return None;
+        }
+        let ((step, player, start_next_turn), rest) =
+            primitives::parse_prefix(&tokens[index..], delayed_schedule_header)?;
+        if !trimmed(rest).is_empty()
+            || !matches!(
+                step,
+                DelayedScheduleStep::MainPhaseThisTurn
+                    | DelayedScheduleStep::MainPhase
+                    | DelayedScheduleStep::FirstMainPhase
+            )
+        {
+            return None;
+        }
+        let effect_tokens = trimmed(&tokens[..index]);
+        (!effect_tokens.is_empty()).then_some(DelayedScheduleSentenceShape {
+            step,
+            player,
+            start_next_turn,
+            effect_tokens,
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lexer::{LexedClause, lex_line};
+
+    #[test]
+    fn parses_trailing_main_phase_delay() {
+        let trailing = tokens("Add {R} at the beginning of your next main phase this turn.");
+        let trailing = parse_delayed_schedule_sentence_shape(&trailing).unwrap();
+        assert_eq!(trailing.step, DelayedScheduleStep::MainPhaseThisTurn);
+        assert_eq!(trailing.player, PlayerAst::You);
+        assert_eq!(LexedClause::new(trailing.effect_tokens).word_refs().first(), Some(&"add"));
+    }
 
     fn tokens(text: &str) -> Vec<OwnedLexToken> {
         lex_line(text, 0).unwrap()
@@ -212,6 +259,11 @@ mod tests {
         let this_turn = parse_delayed_schedule_sentence_shape(&this_turn).unwrap();
         assert_eq!(this_turn.step, DelayedScheduleStep::MainPhaseThisTurn);
         assert_eq!(this_turn.player, PlayerAst::Any);
+        let your_this_turn =
+            tokens("At the beginning of your next main phase this turn, add {C}.");
+        let your_this_turn = parse_delayed_schedule_sentence_shape(&your_this_turn).unwrap();
+        assert_eq!(your_this_turn.step, DelayedScheduleStep::MainPhaseThisTurn);
+        assert_eq!(your_this_turn.player, PlayerAst::You);
         assert_eq!(
             LexedClause::new(main_phase.effect_tokens).word_refs(),
             ["add", "c"]

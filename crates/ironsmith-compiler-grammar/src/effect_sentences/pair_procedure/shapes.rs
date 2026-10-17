@@ -494,6 +494,7 @@ pub(super) fn starting_each_player_optional_repeat(
             }],
             continue_effect_index: 0,
             continue_predicate: IfResultPredicate::Did,
+            max_iterations: None,
         },
     )]))
 }
@@ -522,6 +523,7 @@ pub(super) fn each_player_pay_life_tokens(
             }],
             continue_effect_index: 0,
             continue_predicate: IfResultPredicate::Did,
+            max_iterations: None,
         }),
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb(

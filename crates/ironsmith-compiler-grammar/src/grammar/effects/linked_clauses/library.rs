@@ -273,6 +273,9 @@ fn looked_partition_library_reference(input: &mut LexStream<'_>) -> WResult<()> 
 fn looked_partition_library_destination(
     input: &mut LexStream<'_>,
 ) -> WResult<LookedPartitionDestination> {
+    // "put up to two of them back on top of your library" (Rowan's Grim
+    // Search): "back" restates that the cards came from that library.
+    opt(primitives::kw("back")).parse_next(input)?;
     primitives::kw("on").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     let top = alt((
@@ -283,7 +286,12 @@ fn looked_partition_library_destination(
     // "Put the rest on the bottom in a random order." (Loot, Exuberant
     // Explorer) leaves the library implicit.
     opt((primitives::kw("of"), looked_partition_library_reference)).parse_next(input)?;
-    let order = looked_partition_order.parse_next(input)?;
+    // "and the other back on top of your library" (Scion of Halaster): with
+    // no authored order, the player putting the cards there chooses it
+    // (CR 401.4); a single remaining card has no order at all.
+    let order = opt(looked_partition_order)
+        .map(|order| order.unwrap_or(LibraryBottomOrderAst::ChooserChooses))
+        .parse_next(input)?;
     Ok(if top {
         LookedPartitionDestination::LibraryTop(order)
     } else {
@@ -348,8 +356,24 @@ fn looked_partition_destination(input: &mut LexStream<'_>) -> WResult<LookedPart
 
 fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartitionShape> {
     primitives::kw("put").parse_next(input)?;
-    let selected_count = looked_partition_count.parse_next(input)?;
-    let selected_destination = looked_partition_destination.parse_next(input)?;
+    // "Put one back and the rest into that player's graveyard" (Dimir
+    // Charm): a bare "back" returns the selected cards to the top of the
+    // library they were looked at from.
+    let (selected_count, selected_destination) = alt((
+        (
+            leaf::parse_leaf_choice_count_prefix_lexed,
+            primitives::kw("back"),
+            winnow::combinator::peek(primitives::kw("and")),
+        )
+            .map(|(count, _, _)| {
+                (
+                    count,
+                    LookedPartitionDestination::LibraryTop(LibraryBottomOrderAst::ChooserChooses),
+                )
+            }),
+        (looked_partition_count, looked_partition_destination),
+    ))
+    .parse_next(input)?;
     primitives::kw("and").parse_next(input)?;
     opt(primitives::kw("the")).parse_next(input)?;
     alt((primitives::kw("rest"), primitives::kw("other")))
@@ -374,7 +398,17 @@ fn looked_card_partition(input: &mut LexStream<'_>) -> WResult<LookedCardPartiti
             LookedPartitionDestination::Graveyard
         )
     );
-    if !(selected_then_library_top || selected_hand_then_graveyard) {
+    // "Put up to two of them back on top of your library in any order and
+    // the rest into your graveyard" (Rowan's Grim Search).
+    let selected_top_then_graveyard = matches!(
+        (selected_destination, remainder_destination),
+        (
+            LookedPartitionDestination::LibraryTop(_),
+            LookedPartitionDestination::Graveyard
+        )
+    );
+    if !(selected_then_library_top || selected_hand_then_graveyard || selected_top_then_graveyard)
+    {
         return Err(primitives::backtrack_err(
             "looked-card partition",
             "supported destinations for a selected subset and its exact remainder",

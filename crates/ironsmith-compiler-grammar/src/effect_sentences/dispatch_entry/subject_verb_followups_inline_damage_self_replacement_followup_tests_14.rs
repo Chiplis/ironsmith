@@ -124,8 +124,19 @@ fn cast_time_control_cannot_be_substituted_with_current_control() {
         "This spell deals X damage to target creature. If you controlled a modified creature as you cast this spell, it deals X plus 2 damage instead.",
         0,
     ).unwrap();
-    let error = parse_effect_sentences_lexed(&tokens).unwrap_err();
-    assert!(error.to_string().contains("retained cast-time control evidence"), "{error}");
+    // The condition reads the cast-time snapshot, never current control.
+    let parsed = parse_effect_sentences_lexed(&tokens).unwrap();
+    let [EffectAst::SelfReplacement { predicate, .. }] = parsed.as_slice() else {
+        panic!("expected bound amount replacement: {parsed:#?}");
+    };
+    let PredicateAst::ValueComparison { left: Value::Count(filter), .. } = predicate else {
+        panic!("expected cast-time count comparison: {predicate:#?}");
+    };
+    assert!(
+        filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str()
+            == crate::tag::CompilerReferenceTag::CastModifiedCreatures.as_str()),
+        "{filter:#?}"
+    );
 }
 
 #[test]

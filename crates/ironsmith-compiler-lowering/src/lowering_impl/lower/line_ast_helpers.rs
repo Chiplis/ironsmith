@@ -53,20 +53,48 @@ fn bind_this_ability_cost_reductions(
             _ => false,
         }
     }
-    fn bind(ability: &mut crate::static_abilities::StaticAbility, index: usize) -> bool {
+    fn bind(
+        ability: &mut crate::static_abilities::StaticAbility,
+        index: usize,
+        printed_mana: Option<&crate::mana::ManaCost>,
+    ) -> bool {
         match &mut ability.payload {
-            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { condition: Some(condition), .. } => bind_condition(condition, index),
+            ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
+                condition: Some(condition),
+                replacement_mana_cost,
+                reduction_mana,
+                ..
+            } => {
+                let bound = bind_condition(condition, index);
+                // "This ability costs {1}{U} less": remove those exact symbols
+                // from this ability's printed mana cost (CR 118.7) when the
+                // result is unique (no hybrid or X choice remains).
+                if bound
+                    && replacement_mana_cost.is_none()
+                    && let Some(reduction) = reduction_mana.as_ref()
+                    && let Some(printed) = printed_mana.filter(|printed| !printed.has_x())
+                    && let [reduced] = printed.reduced_by_mana_cost_options(reduction).as_slice()
+                {
+                    *replacement_mana_cost = Some(reduced.clone());
+                    *reduction_mana = None;
+                }
+                bound
+            }
             ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { ability_condition: Some(condition), .. } => bind_condition(condition, index),
-            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => bind(ability, index),
+            ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => bind(ability, index, printed_mana),
             _ => false,
         }
     }
     let zones = builder.abilities[activated_index].functional_zones.clone();
+    let printed_mana = match &builder.abilities[activated_index].kind {
+        crate::ability::AbilityKind::Activated(activated) => activated.mana_cost.mana_cost().cloned(),
+        _ => None,
+    };
     for ability in builder.abilities.iter_mut().skip(abilities_before) {
         let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind else {
             continue;
         };
-        if bind(static_ability, activated_index) {
+        if bind(static_ability, activated_index, printed_mana.as_ref()) {
             // A reduction printed with a graveyard activation functions there
             // as part of determining that ability's cost, not only in play.
             ability.functional_zones = zones.clone();
@@ -255,6 +283,7 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
             | crate::static_abilities::StaticAbilityId::CantBeCountered
             | crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
             | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum
+            | crate::static_abilities::StaticAbilityId::ThisSpellXMinimum
             | crate::static_abilities::StaticAbilityId::ThisSpellCostReduction
             | crate::static_abilities::StaticAbilityId::ThisSpellCostReductionManaCost
             | crate::static_abilities::StaticAbilityId::CostIncreasePerAdditionalTarget
@@ -267,7 +296,8 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
         ironsmith_core::StaticAbilityPayload::CostIncreaseManaCost(increase)
             if increase.filter.source
     ) || match &static_ability.payload {
-        ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_) => true,
+        ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
+        | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_) => true,
         ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
             ability.id == Some(crate::static_abilities::StaticAbilityId::Flash)
                 || uses_spell_only_functional_zones(ability)

@@ -219,14 +219,27 @@ export function createPriorityStops({
       if (window) { window = null; publish(); }
     },
     armWindow(id) {
-      if (!window || window.id !== id || window.startedAt !== null) return;
+      if (!window || window.id !== id || window.startedAt !== null || window.pausedAt != null) return;
       window = { ...window, startedAt: now() };
+      publish();
+    },
+    pauseWindow(id) {
+      if (!window || window.id !== id || window.pausedAt != null) return;
+      window = { ...window, pausedAt: now() };
+      publish();
+    },
+    resumeWindow(id) {
+      if (!window || window.id !== id || window.pausedAt == null) return;
+      window = { ...window,
+        startedAt: window.startedAt === null ? null : window.startedAt + now() - window.pausedAt,
+        pausedAt: null,
+      };
       publish();
     },
     expire(id, state) {
       observe(state);
       if (!window || window.id !== id || !isLocalPriority(state)
-        || window.startedAt === null || now() < window.startedAt + window.duration) return false;
+        || window.pausedAt != null || window.startedAt === null || now() < window.startedAt + window.duration) return false;
       if (window.kind === 'stack-resolve') {
         if (state.viewed_cards && !state.viewed_cards.inspector_only && !state.viewed_cards.inspectorOnly) return false;
         if (resolveMode === 'safe') {

@@ -7,7 +7,7 @@
 //! This owner never compares runtime costs/abilities through rendered equality.
 
 use super::text_change_predicates::{
-    rewrite_anthem_count_words, rewrite_condition_words, rewrite_filter_words,
+    rewrite_anthem_count_words, rewrite_choose_spec_words, rewrite_condition_words, rewrite_filter_words,
     rewrite_player_filter_words, rewrite_value_words,
 };
 use super::text_change_programs::{
@@ -115,6 +115,9 @@ pub(crate) fn rewrite_static_model_words(
 ) -> Result<CompiledStaticAbility, Error> {
     let mut rewritten = model.clone();
     match &mut rewritten.payload {
+        P::DevotionIncrease { .. } => {}
+        P::MorphCostIncrease { .. } => {}
+        P::OpponentDiscardThisToBattlefieldWithCounters { .. } => {}
         P::None | P::SelfSubjectSurface { .. } => {
             if !wordless_leaf(model.id) { return Err(hold(model)); }
         }
@@ -138,6 +141,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::SetName { filter, .. } | P::AddSupertypes { filter, .. }
         | P::RemoveSupertypes { filter, .. } | P::AddChosenCreatureType { filter, .. }
         | P::AddChosenBasicLandType { filter, .. } | P::AddChosenColor { filter, .. }
+        | P::SourceHasAbilityStickerAbilitiesOf { filter, .. }
         | P::SetChosenColor { filter, .. } | P::SetBasePowerToughness { filter, .. }
         | P::SetBasePower { filter, .. } | P::SetBaseToughness { filter, .. }
         | P::AddCardTypes { filter, .. }
@@ -248,6 +252,10 @@ pub(crate) fn rewrite_static_model_words(
             *filter = rewrite_filter_words(filter, change)?;
             abilities_words(abilities, change)?;
         }
+        P::SourceHasFullTextOfTopGraveyardCard { filter, abilities, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+            abilities_words(abilities, change)?;
+        }
         P::PreventAllDamageToSelfFromSourcesMatching(spec) => {
             spec.source_filter = rewrite_filter_words(&spec.source_filter, change)?;
         }
@@ -284,6 +292,9 @@ pub(crate) fn rewrite_static_model_words(
         P::UntapStepLimit { player, filter, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
             *filter = rewrite_filter_words(filter, change)?;
+        }
+        P::UntapStepChosenCardTypeOnly { player, .. } => {
+            *player = rewrite_player_filter_words(player, change)?;
         }
         P::PlayerProtectionFrom { player, source_filter, .. }
         | P::RedirectDamageToSourceController { target_player_filter: player, source_filter, .. } => {
@@ -452,8 +463,11 @@ pub(crate) fn rewrite_static_model_words(
             *condition = rewrite_condition_words(condition, change)?;
             effects_words(replacement_effects, change)?;
         }
-        P::DrawReplacementWithEffects { drawer, replacement_effects, .. } => {
+        P::DrawReplacementWithEffects { drawer, replacement_effects, cycling_source, .. } => {
             *drawer = rewrite_player_filter_words(drawer, change)?;
+            if let Some(cycling_source) = cycling_source {
+                *cycling_source = rewrite_filter_words(cycling_source, change)?;
+            }
             effects_words(replacement_effects, change)?;
         }
         P::LoseGameReplacement { replacement_effects, .. } => effects_words(replacement_effects, change)?,
@@ -469,7 +483,9 @@ pub(crate) fn rewrite_static_model_words(
         P::ManaSpendPermission { permission, .. } => {
             // This symbol selector also encodes prose such as "black mana";
             // no field distinguishes that word from an authored mana symbol.
-            if permission.any_color_mana_symbol.is_some() { return Err(hold(model)); }
+            if permission.any_color_mana_symbol.is_some() || permission.mana_symbol_as.is_some() {
+                return Err(hold(model));
+            }
             permission.player = rewrite_player_filter_words(&permission.player, change)?;
             optional_filter(&mut permission.mana_source_filter, change)?;
             match &mut permission.scope {
@@ -478,6 +494,7 @@ pub(crate) fn rewrite_static_model_words(
                     *filter = rewrite_filter_words(filter, change)?;
                 }
                 ironsmith_core::ManaSpendScope::AllCosts
+                | ironsmith_core::ManaSpendScope::OneSpellCast
                 | ironsmith_core::ManaSpendScope::CastingSpellsWithStableIds(_) => {}
             }
         }
@@ -516,17 +533,20 @@ pub(crate) fn rewrite_static_model_words(
         P::EntersWithCountersValue { count, .. } | P::EntersWithCounterChoice { count, .. } => {
             *count = rewrite_value_words(count, change)?;
         }
-        P::EntersWithCountersAndSubtypesForFilter { filter, count, count_condition, otherwise_count, subtypes, .. } => {
+        P::EntersWithCountersAndSubtypesForFilter { filter, count, counter_kinds_from, count_condition, otherwise_count, subtypes, .. } => {
             if count_condition.is_some() != otherwise_count.is_some() { return Err(hold(model)); }
             *filter = rewrite_filter_words(filter, change)?;
             *count = rewrite_value_words(count, change)?;
+            if let Some(source) = counter_kinds_from { *source = rewrite_choose_spec_words(source, change)?; }
             optional_condition(count_condition, change)?;
             optional_value(otherwise_count, change)?;
             subtype_words(subtypes, change);
         }
         P::PreventMatchingDamage(spec) => {
             damage_filters(&mut spec.source_filter, &mut spec.target_player_filter, &mut spec.target_object_filter, change)?;
-            if let ironsmith_core::StaticDamagePreventionAmount::Amount(value) = &mut spec.amount {
+            if let ironsmith_core::StaticDamagePreventionAmount::Amount(value)
+            | ironsmith_core::StaticDamagePreventionAmount::SharedPerSource(value) = &mut spec.amount
+            {
                 *value = rewrite_value_words(value, change)?;
             }
         }
@@ -562,6 +582,7 @@ pub(crate) fn rewrite_static_model_words(
         // rules, chosen types and actual mana symbols remain untouched.
         P::CountersRemainAcrossZoneChanges { .. }
         | P::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn { .. }
+        | P::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn { .. }
         | P::AttachedChosenLandwalkGrant(_) | P::Dredge(_) | P::CounterLimit { .. }
         | P::CanBlockAdditionalCreatureEachCombat(_) | P::CanBlockAsThoughNoShadow
         | P::CanAttackPlayersWhoAttackedControllerLastTurnAsThoughNoDefender
@@ -575,6 +596,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::CanBlockAsThoughNoLandwalk
         | P::MaxCreaturesCanBlockEachCombat(_) | P::ChooseBasicLandTypeAsEnters(_)
         | P::ChooseLandTypeAsEnters(_) | P::EnchantedLandIsChosenType(_)
+        | P::AttachedIsCopyOfChosenObject(_)
         | P::SourceLandIsChosenType(_) | P::SoulbondSharedPowerToughness { .. }
         | P::CostIncreasePerTargetBeyondFirst(_) | P::CostIncreaseManaCostPerTargetBeyondFirst(_)
         | P::AdditionalLifeCostPerTarget(_) | P::CommanderTaxLifeSubstitution { .. }
@@ -585,11 +607,12 @@ pub(crate) fn rewrite_static_model_words(
         | P::RevealFirstCardYouDrawEachTurn { .. } | P::ConditionalSpellKeyword(_)
         | P::DrawExtraCardsReplacement { .. } | P::PayLifeOrEnterTapped(_)
         | P::Bloodthirst(_) | P::Tribute(_) | P::PreventDamageToSelfPutCountersInstead { .. }
+        | P::HealDamageBeforeDamageToSelf { .. }
         | P::CantAttackYouUnlessControllerPaysPerAttacker(_)
         | P::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(_)
         | P::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
         | P::NativeAlternativeCastFromZone { .. } | P::IntrinsicStartingCounters(_)
-        | P::ForetellSpecialActionModifier { .. } => {}
+        | P::ForetellSpecialActionModifier { .. } | P::FlashIfCastChoice(_) => {}
         // These variants encode literal qualities or executable prices in an
         // enum name/string without enough authored-word role information.
         P::OpponentsMustTargetFlagbearers | P::FirstEquipCostAlternative(_)
@@ -597,6 +620,7 @@ pub(crate) fn rewrite_static_model_words(
         // A generic instead-replacement's event selectors are not yet
         // rewritten; hold rather than change only part of its words.
         | P::EventReplacementWithEffects { .. }
+        | P::MaySkipDrawStepWithFollowup { .. }
         | P::EchoCostAlternative { .. }
         | P::EventAmountReplacement { .. } => return Err(hold(model)),
     }
@@ -627,6 +651,8 @@ fn wordless_leaf(id: Option<StaticAbilityId>) -> bool {
         | StaticAbilityId::Storied | StaticAbilityId::SplitSecond | StaticAbilityId::Rebound
         | StaticAbilityId::Cascade | StaticAbilityId::ReadAhead | StaticAbilityId::Unleash
         | StaticAbilityId::Delve | StaticAbilityId::Convoke | StaticAbilityId::Improvise
+        // "color words" / "the chosen color word" name the family, not a word.
+        | StaticAbilityId::AllColorWordsBecomeChosenColor
     ))
 }
 
@@ -635,9 +661,13 @@ fn activation_cost_condition_words(condition: &mut ironsmith_core::ActivatedAbil
 {
     use ironsmith_core::ActivatedAbilityCostCondition as C;
     match condition {
-        C::TargetsExactly { filter, .. } => *filter = rewrite_filter_words(filter, change)?,
+        C::TargetsExactly { filter, .. }
+        | C::FirstActivationOfMatchingSourceThisTurn { filter }
+        | C::FirstTargetingActivationDuringYourTurn { filter } => {
+            *filter = rewrite_filter_words(filter, change)?
+        }
         C::EquipAbility { targeting } => optional_filter(targeting, change)?,
-        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::LoyaltyAbility
+        C::ThisAbility { .. } | C::Keyword(_) | C::NonManaAbility | C::ManaAbility | C::LoyaltyAbility
         | C::FirstKeywordAbilityThisTurn { .. } => {}
         C::Activator(player) => *player = rewrite_player_filter_words(player, change)?,
         C::All(conditions) => {
@@ -661,6 +691,11 @@ fn spell_cost_condition_words(condition: &mut ThisSpellCostCondition, change: Te
         C::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype)
         | C::YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(subtype) => {
             change.replace_subtype_word(subtype);
+        }
+        C::All(conditions) => {
+            for condition in conditions {
+                spell_cost_condition_words(condition, change)?;
+            }
         }
         C::Always | C::YourTurn | C::NotYourTurn | C::YouLifeTotalOrLess(_)
         | C::OpponentHasNoCardsInHand | C::OpponentControlsLandsOrMore(_)
@@ -716,14 +751,20 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
     use ironsmith_core::Restriction as R;
     match restriction {
         R::AdditionalLandPlays(player, _) | R::NoMaximumHandSize(player) | R::GainLife(player)
+        | R::ReduceMaximumHandSize(player, _)
         | R::DrawFromBottom(player) | R::ActivateAbilities(player)
         | R::SearchLibraries(player) | R::SearchOwnLibraryFromOwnEffects(player)
         | R::CastSpellsOnlyAsSorcery(player) | R::ActivateNonManaAbilities(player)
+        | R::ActivateNonManaNonLoyaltyAbilities(player)
+        | R::DamageAsThoughInfect(player)
         | R::DrawCards(player) | R::DrawExtraCards(player) | R::PoisonCounters(player)
+        | R::GetCounters(player)
+        | R::RadiationGainsLife(player)
         | R::LoseLife(player) | R::DamageCauseLifeLoss(player) | R::DamageReduceLifeBelowOne(player)
         | R::ChangeLifeTotal(player) | R::LoseGame(player) | R::LoseGameForZeroLife(player)
         | R::WinGame(player) | R::BecomeMonarch(player) | R::BeTargetedPlayer(player)
-        | R::VentureMoreThanOnceEachTurn(player) | R::BlockWithMoreThan { player, .. } => {
+        | R::VentureMoreThanOnceEachTurn(player) | R::BlockWithMoreThan { player, .. }
+        | R::DamageReduceLifeBelow { player, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         R::CastSpellsMatching(player, filter) | R::CastMoreThanOneSpellEachTurn(player, filter)
@@ -746,31 +787,43 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         }
         R::ActivateAbilitiesOf(filter) | R::ActivateTapAbilitiesOf(filter)
         | R::ActivateNonManaAbilitiesOf(filter) | R::Attack(filter) | R::AttackAlone(filter)
+        | R::AttackOnlyAlone(filter)
+        | R::AttackOnlyNearestOpponentInChosenDirection { attackers: filter }
         | R::Block(filter) | R::MustBeBlocked(filter) | R::BlockAlone(filter) | R::Untap(filter)
         | R::BeBlocked(filter) | R::BeDestroyed(filter) | R::BeRegenerated(filter)
         | R::BeSacrificed(filter) | R::HaveCountersPlaced(filter) | R::HaveCounterTypePlaced(filter, _)
+        | R::HaveCounterTypeRemoved(filter, _)
         | R::BeTargeted(filter) | R::BeCountered(filter) | R::Transform(filter) | R::TurnFaceUp(filter)
         | R::PhaseOut(filter) | R::PhaseIn(filter) | R::AttackOrBlock(filter)
         | R::AttackOrBlockAlone(filter) | R::EnterBattlefield(filter)
         | R::PreventDamageFrom { sources: filter, .. } | R::ActivateLoyaltyAbilitiesOf(filter)
+        | R::PreventDamageTo { recipients: filter, .. }
         | R::MustAttack(filter) | R::BecomeSuspected(filter) | R::BecomeUntapped(filter)
         | R::AttackBlockOrCrew(filter)
         | R::MaximumBlockers { filter, .. }
+        | R::MustBeBlockedByAtLeast { attacker: filter, .. }
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }
         | R::MustBeBlockedBy { blockers, attacker }
-        | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
-        | R::AttackPermanents { attackers: blockers, permanents: attacker } => {
+        | R::BeCounteredFrom(blockers, attacker) | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
+        | R::BeTargetedByRequirementsLimitedTo(blockers, attacker)
+        | R::AttackPermanents { attackers: blockers, permanents: attacker }
+        | R::MustAttackPermanents { attackers: blockers, permanents: attacker } => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
         }
-        R::BeSacrificedByCause { filter, cause } => {
+        R::BeSacrificedByCause { filter, cause } | R::BeExiledByCause { filter, cause } => {
             *filter = rewrite_filter_words(filter, change)?;
             optional_filter(&mut cause.source_filter, change)?;
             // Cause controller is a closed relation, not a PlayerFilter.
         }
+        R::DiscardByCause { player, cause } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            optional_filter(&mut cause.source_filter, change)?;
+        }
         R::AttackTax(rule) => rule.attackers = rewrite_filter_words(&rule.attackers, change)?,
-        R::PreventDamage | R::PreventCombatDamage | R::AttackYouUnlessControllerPaysPerAttacker(_, _) => {}
+        R::PreventDamage | R::PreventCombatDamage | R::AllDamageAsThoughWither
+        | R::AttackYouUnlessControllerPaysPerAttacker(_, _) => {}
     }
     Ok(())
 }
@@ -799,6 +852,9 @@ fn grantable_words(
             D::FlashbackFromCardManaCost { additional_costs } => {
                 *additional_costs = additional_costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
             }
+            D::ZoneCastFromCardManaCost { additional_costs, .. } => {
+                *additional_costs = additional_costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
+            }
             D::GraveyardCastFromCardManaCost { additional_costs, condition, .. } => {
                 *additional_costs = additional_costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
                 if let Some(condition) = condition { spell_cost_condition_words(condition, change)?; }
@@ -808,7 +864,8 @@ fn grantable_words(
             D::RetraceFromCardManaCost | D::BlitzFromCardManaCost | D::EmergeFromCardManaCost
             | D::MiracleFromCardManaCostReducedBy { .. } | D::EscapeFromCardManaCost { .. }
             | D::ManaValueAsGenericFromHand | D::LifeEqualManaValueFromHand { .. }
-            | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost => {}
+            | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost
+            | D::ForetellFromCardManaCostReducedBy { .. } => {}
         },
         G::AlternativeCast(method) => match method {
             A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost }
@@ -1028,9 +1085,9 @@ mod tests {
     fn landwalk_and_cost_condition_words_change_but_runtime_selected_types_do_not() {
         let mut filter = ObjectFilter::default();
         filter.chosen_creature_type = true;
-        let original = model(P::AddChosenCreatureType { filter, display: "chosen Elf is not an authored literal".into() });
+        let original = model(P::AddChosenCreatureType { filter, display: "chosen Elf is not an authored literal".into(), replace_existing: false });
         let changed = rewrite_static_model_words(&original, TextChange::creature_type(Subtype::Elf, Subtype::Vampire).unwrap()).unwrap();
-        let P::AddChosenCreatureType { filter, display } = changed.payload else { unreachable!() };
+        let P::AddChosenCreatureType { filter, display, .. } = changed.payload else { unreachable!() };
         assert!(filter.chosen_creature_type);
         assert_eq!(display, "chosen Elf is not an authored literal");
         let original = model(P::BlockingAsThoughNoLandwalk(ironsmith_core::static_ability_model::BlockingAsThoughNoLandwalkSpec {
@@ -1064,6 +1121,7 @@ mod tests {
             }),
             model(P::EntersWithCountersAndSubtypesForFilter {
                 filter: black(), counter: ironsmith_core::CounterType::PlusOnePlusOne,
+                counter_kinds_from: None,
                 count: Value::Fixed(1), count_condition: Some(Condition::YouControl(black())),
                 otherwise_count: None, subtypes: vec![Subtype::Elf],
             }),

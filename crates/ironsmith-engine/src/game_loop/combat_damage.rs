@@ -955,7 +955,10 @@ fn plan_unblocked_player_damage(
         let combat_stat = if toughness_sources.applies_to(attacker_id, controller) {
             characteristics.toughness.or_else(|| attacker.toughness())
         } else {
-            characteristics.power.or_else(|| attacker.power())
+            characteristics
+                .power
+                .or_else(|| attacker.power())
+                .map(|power| combat_power_as_though_positive(game, attacker_id, power))
         };
         let Some(combat_stat) = combat_stat.filter(|stat| *stat > 0) else {
             continue;
@@ -1151,7 +1154,38 @@ pub(super) fn combat_damage_stat_for_creature(
     } else {
         game.calculated_power(creature.id)
             .or_else(|| creature.power())
+            .map(|power| combat_power_as_though_positive(game, creature.id, power))
     }
+}
+
+/// "If this creature's power is negative, it assigns combat damage as though
+/// its power were positive" (Loot, the Anomaly): the creature's keyword
+/// marker makes a negative power assign its absolute value.
+pub(crate) const ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER: &str =
+    "this creature assigns combat damage as though its power were positive";
+
+pub(super) fn combat_power_as_though_positive(game: &GameState, creature: ObjectId, power: i32) -> i32 {
+    if power >= 0 {
+        return power;
+    }
+    let abilities = game.current_abilities(creature).unwrap_or_else(|| {
+        game.object(creature)
+            .map(|object| object.abilities_vec())
+            .unwrap_or_default()
+    });
+    let positive = abilities.iter().any(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability)
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker =>
+        {
+            static_ability
+                .display()
+                .to_ascii_lowercase()
+                .trim_end_matches('.')
+                == ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER
+        }
+        _ => false,
+    });
+    if positive { power.saturating_neg() } else { power }
 }
 
 /// Retain the resolved life event and any replacement payload notifications.
@@ -1646,6 +1680,11 @@ pub struct CombatDamageDivision {
     /// damage to what it's attacking (CR 510.1c; never split between that and
     /// its blockers).
     pub unblocked_alternative: Option<Target>,
+    /// "If this creature is unblocked, you may have it assign its combat
+    /// damage to a creature defending player controls." (Cunning Giant): the
+    /// creatures an unblocked attacker may instead assign all of its combat
+    /// damage to (one of them, never split).
+    pub unblocked_creature_alternatives: Vec<ObjectId>,
 }
 
 impl CombatDamageDivision {
@@ -1658,7 +1697,22 @@ impl CombatDamageDivision {
             .map(Target::Object)
             .chain(self.excess_target)
             .chain(self.separate_unblocked_alternative())
+            .chain(self.separate_creature_alternatives().map(Target::Object))
             .collect()
+    }
+
+    /// The creatures an unblocked attacker may assign all its damage to
+    /// instead, when they aren't already recipients.
+    fn separate_creature_alternatives(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.unblocked_creature_alternatives
+            .iter()
+            .copied()
+            .filter(|creature| {
+                !self.creatures.contains(creature)
+                    && self.planeswalker != Some(*creature)
+                    && self.excess_target != Some(Target::Object(*creature))
+                    && self.unblocked_alternative != Some(Target::Object(*creature))
+            })
     }
 
     /// The "as though it weren't blocked" recipient, when it isn't already a
@@ -1860,6 +1914,23 @@ impl CombatDamageDivision {
         if self.is_all_unblocked_alternative(&targets, &amounts) {
             return Ok(targets.into_iter().zip(amounts).collect());
         }
+        // Cunning Giant: all of the damage goes to one creature the defending
+        // player controls, or none of it does.
+        let alternative_creatures = self.separate_creature_alternatives().collect::<Vec<_>>();
+        if targets.iter().zip(&amounts).any(|(target, amount)| {
+            *amount > 0
+                && matches!(target, Target::Object(object) if alternative_creatures.contains(object))
+        }) {
+            let recipients = amounts.iter().filter(|amount| **amount > 0).count();
+            if recipients == 1 {
+                return Ok(targets.into_iter().zip(amounts).collect());
+            }
+            return Err((
+                CombatDamageAssignmentErrorKind::IllegalRecipient,
+                "combat damage assigned to a creature defending player controls can't be split"
+                    .to_string(),
+            ));
+        }
         if let Some(alternative) = self.separate_unblocked_alternative()
             && let Some(index) = targets.iter().position(|target| *target == alternative)
             && amounts[index] > 0
@@ -1920,7 +1991,13 @@ fn attacker_damage_division(
     let trample = over_planeswalkers
         || game.object_has_static_ability_id(attacker_id, StaticAbilityId::Trample);
     let deathtouch = game.object_has_static_ability_id(attacker_id, StaticAbilityId::Deathtouch);
-    let blocked = is_blocked(combat, attacker_id);
+    // CR 510.1c: a creature that must assign its combat damage as though it
+    // weren't blocked assigns it all to what it's attacking.
+    let blocked = is_blocked(combat, attacker_id)
+        && !game.object_has_static_ability_id(
+            attacker_id,
+            StaticAbilityId::AssignsDamageAsUnblocked,
+        );
     let creatures = if blocked {
         combat
             .blockers
@@ -1933,6 +2010,28 @@ fn attacker_damage_division(
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    // Cunning Giant: an unblocked attacker may assign all its combat damage to
+    // one creature the defending player controls.
+    let unblocked_creature_alternatives = if !is_blocked(combat, attacker_id)
+        && game.object_has_static_ability_id(
+            attacker_id,
+            StaticAbilityId::MayAssignUnblockedDamageToDefendingCreature,
+        )
+        && let Some(defender) =
+            crate::combat_state::defending_player_for_attack_target(game, &attacker_info.target)
+    {
+        game.battlefield
+            .iter()
+            .copied()
+            .filter(|id| {
+                *id != attacker_id
+                    && game.controller_of_id(*id) == Some(defender)
+                    && game.object_has_card_type(*id, crate::types::CardType::Creature)
+            })
+            .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
@@ -1953,6 +2052,7 @@ fn attacker_damage_division(
                 excess_target: None,
                 deathtouch,
                 unblocked_alternative,
+                unblocked_creature_alternatives,
             },
         );
     }
@@ -1963,7 +2063,11 @@ fn attacker_damage_division(
     } else {
         (None, trample_excess_target(game, &attacker_info.target))
     };
-    if creatures.is_empty() && planeswalker.is_none() && excess_target.is_none() {
+    if creatures.is_empty()
+        && planeswalker.is_none()
+        && excess_target.is_none()
+        && unblocked_creature_alternatives.is_empty()
+    {
         return None;
     }
     Some(CombatDamageDivision {
@@ -1972,6 +2076,7 @@ fn attacker_damage_division(
         excess_target,
         deathtouch,
         unblocked_alternative,
+        unblocked_creature_alternatives,
     })
 }
 
@@ -2105,6 +2210,7 @@ fn combat_damage_assigners(
                     crate::static_abilities::StaticAbilityId::Deathtouch,
                 ),
                 unblocked_alternative: None,
+                unblocked_creature_alternatives: Vec::new(),
             },
         });
     }

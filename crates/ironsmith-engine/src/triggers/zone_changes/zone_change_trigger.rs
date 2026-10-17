@@ -2629,6 +2629,7 @@ mod tests {
             )),
             source_filter: Some(source_filter),
             controller_filter: Some(controller),
+            ability_kind: None,
         }
     }
 

@@ -229,9 +229,19 @@ fn filter_targets_with_restriction(
             (NewTargetRestriction::Player(player_filter), Target::Player(pid)) => {
                 player_filter.matches_player(*pid, &filter_ctx)
             }
-            (NewTargetRestriction::Object(object_filter), Target::Object(obj_id)) => game
+            (NewTargetRestriction::Object(object_filter), Target::Object(obj_id))
+            | (
+                NewTargetRestriction::PlayerOrObject {
+                    object: object_filter,
+                    ..
+                },
+                Target::Object(obj_id),
+            ) => game
                 .object(*obj_id)
                 .is_some_and(|obj| object_filter.matches(obj, &filter_ctx, game)),
+            (NewTargetRestriction::PlayerOrObject { player, .. }, Target::Player(pid)) => {
+                player.matches_player(*pid, &filter_ctx)
+            }
             _ => false,
         })
         .collect()
@@ -438,7 +448,9 @@ impl EffectExecutor for RetargetStackObjectEffect {
                             .iter()
                             .copied()
                             .filter(|t| {
-                                (keep_unchanged && existing_targets.contains(t))
+                                (keep_unchanged
+                                    && !self.random_targets
+                                    && existing_targets.contains(t))
                                     || restricted.contains(t)
                             })
                             .collect();
@@ -478,10 +490,25 @@ impl EffectExecutor for RetargetStackObjectEffect {
 
                     let targets_ctx =
                         TargetsContext::new(chooser_id, object_id, source_name, adjusted.clone());
-                    let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(EffectOutcome::count(0));
-                    }
+                    let proposed = if self.random_targets {
+                        // CR 115.7: "at random" replaces the chooser; each
+                        // slot keeps its number of targets.
+                        let mut proposal = Vec::new();
+                        for (req, slot) in adjusted.iter().zip(slots.iter()) {
+                            let existing = entry.targets.get(slot.range.clone()).unwrap_or(&[]);
+                            let mut pool = req.legal_targets.clone();
+                            game.shuffle_slice(&mut pool);
+                            let wanted = existing.len().max(req.min_targets).min(pool.len());
+                            proposal.extend(pool.into_iter().take(wanted));
+                        }
+                        proposal
+                    } else {
+                        let proposed = ctx.decision_maker.decide_targets(game, &targets_ctx);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        proposed
+                    };
                     let Some(new_targets) = normalize_targets_for_requirements(&adjusted, proposed)
                     else {
                         continue;
@@ -596,6 +623,31 @@ impl EffectExecutor for RetargetStackObjectEffect {
             }
         }
 
+        if self.doesnt_trigger_same_named_sources {
+            // "Changing targets this way doesn't trigger abilities of
+            // permanents named <this card>" (Psychic Battle).
+            let name = game
+                .object(ctx.source)
+                .map(|object| object.name.to_string())
+                .or_else(|| {
+                    ctx.source_snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.name.to_string())
+                });
+            let provenance = ctx.provenance;
+            events = events
+                .into_iter()
+                .map(|event| {
+                    let retagged = event.downcast::<BecomesTargetedEvent>().map(|targeted| {
+                        targeted.clone().with_untriggered_source_name(name.clone())
+                    });
+                    match retagged {
+                        Some(targeted) => TriggerEvent::new_with_provenance(targeted, provenance),
+                        None => event,
+                    }
+                })
+                .collect();
+        }
         Ok(EffectOutcome::count(changed).with_events(events))
     }
 

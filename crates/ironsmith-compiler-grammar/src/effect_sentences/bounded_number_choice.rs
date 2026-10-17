@@ -23,6 +23,29 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,CardTe
     if min>max{return Err(CardTextError::ParseError("numeric choice minimum exceeds maximum".into()))}
     Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser,PlayerAst::You,SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber{min,max:Some(max),source_owned:false}))))
 }
+/// "Target opponent chooses a number." (Choice of Damnations): another player
+/// makes the unbounded numeric choice; later "that much"/"that many" read it.
+pub(super) fn parse_player_chooses_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
+    let chooser = match words.as_slice() {
+        ["target", "opponent", "chooses", "a", "number"] => PlayerAst::TargetOpponent,
+        ["target", "player", "chooses", "a", "number"] => PlayerAst::Target,
+        ["that", "player", "chooses", "a", "number"] => PlayerAst::That,
+        _ => return Ok(None),
+    };
+    Ok(Some(vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::Chooser,
+        chooser,
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber {
+            min: 0,
+            max: None,
+            source_owned: false,
+        }),
+    )]))
+}
 /// A coordinated choice sentence exports two independent result producers.
 pub(super) fn parse_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let complete = if tokens.last().is_some_and(|token| token.kind == crate::lexer::TokenKind::Period) {
@@ -33,6 +56,22 @@ pub(super) fn parse_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
         if let Some(number) = parse(&complete[..complete.len() - 3])? {
             return Ok(Some(vec![number, EffectAst::subject_verb(SubjectVerbRoleAst::Chooser,
                 PlayerAst::You, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor))]));
+        }
+        return Ok(None);
+    }
+    // "Choose a nonland card name and a number greater than 0" (Mindblaze):
+    // the caster makes two independent choices, each its own result producer.
+    if complete.first().is_some_and(|token| token.is_word("choose"))
+        && let Some(and_idx) = complete.windows(3).position(|window| {
+            window[0].is_word("and") && window[1].is_word("a") && window[2].is_word("number")
+        })
+        && and_idx > 1
+        && let Some(name) = super::clause_primitives::parse_choose_card_name_clause(&complete[..and_idx])?
+    {
+        let mut number_tokens = vec![complete[0].clone()];
+        number_tokens.extend_from_slice(&complete[and_idx + 1..]);
+        if let Some(number) = parse(&number_tokens)? {
+            return Ok(Some(vec![name, number]));
         }
         return Ok(None);
     }

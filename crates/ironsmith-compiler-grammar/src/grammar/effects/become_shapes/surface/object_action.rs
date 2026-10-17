@@ -244,6 +244,20 @@ pub fn parse_become_copy_exception_shape(
                 });
             }
         }
+        // "it has flying and this ability" (Likeness Looter): the copy gains
+        // the listed abilities and keeps the ability that made it a copy.
+        if let Some((_, head)) =
+            primitives::strip_lexed_suffix_phrases(ability_tokens, &[&["and", "this", "ability"]])
+        {
+            let head = trim_lexed_commas(head);
+            if !head.is_empty() {
+                return Some(BecomeCopyExceptionShape {
+                    preserve_source_abilities: true,
+                    granted_ability_tokens: Some(head.to_vec()),
+                    ..Default::default()
+                });
+            }
+        }
         if !ability_tokens.is_empty() {
             return Some(BecomeCopyExceptionShape {
                 granted_ability_tokens: Some(ability_tokens.to_vec()),
@@ -422,6 +436,8 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
         Some(BecomeExactKind::Saddled)
     } else if permission_shapes::exact_words(&words, &["plotted"]) {
         Some(BecomeExactKind::Plotted)
+    } else if permission_shapes::exact_words(&words, &["foretold"]) {
+        Some(BecomeExactKind::Foretold)
     } else if permission_shapes::exact_words(&words, &["prepared"]) {
         Some(BecomeExactKind::Prepared)
     } else if permission_shapes::exact_words(&words, &["unprepared"]) {

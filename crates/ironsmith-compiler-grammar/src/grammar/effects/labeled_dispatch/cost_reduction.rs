@@ -45,9 +45,20 @@ pub fn parse_matching_spell_cost_reduction_shape(
         || common::present(&words, &["spells", "they", "cast"]);
     let has_chosen_name = common::present(&words, &["with", "chosen", "name"])
         || common::present(&words, &["with", "the", "chosen", "name"]);
+    // "Noncreature spells your opponents cast cost {2} more to cast until
+    // your next turn" (Elspeth Conquers Death): the opponents' spells.
+    let has_opponents_cast = !has_you_cast
+        && !has_that_player_casts
+        && (common::present(&words, &["your", "opponents", "cast"])
+            || common::present(&words, &["spells", "opponents", "cast"]));
     let has_this_turn_duration = common::present(&words, &["this", "turn"]);
+    let has_trailing_until_your_next_turn_duration = !common::prefix(
+        &words,
+        &["until", "your", "next", "turn"],
+    ) && words.ends_with(&["to", "cast", "until", "your", "next", "turn"]);
     let has_until_your_next_turn_duration =
-        common::prefix(&words, &["until", "your", "next", "turn"]);
+        common::prefix(&words, &["until", "your", "next", "turn"])
+            || has_trailing_until_your_next_turn_duration;
 
     let after_to_cast = primitives::parse_prefix(
         crate::util::trim_edge_punctuation_tokens(after_less),
@@ -56,14 +67,16 @@ pub fn parse_matching_spell_cost_reduction_shape(
     .map(|(_, rest)| rest);
     if cost_token_idx <= spell_token_idx
         || less_token_idx <= cost_token_idx
-        || (!has_you_cast && !has_that_player_casts && !has_chosen_name)
+        || (!has_you_cast && !has_that_player_casts && !has_chosen_name && !has_opponents_cast)
         || (!has_this_turn_duration && !has_until_your_next_turn_duration)
         || after_to_cast.is_none()
     {
         return None;
     }
 
-    let subject_start_token_idx = if has_until_your_next_turn_duration {
+    let subject_start_token_idx = if has_until_your_next_turn_duration
+        && !has_trailing_until_your_next_turn_duration
+    {
         let (_, rest) = primitives::parse_prefix(
             tokens,
             primitives::phrase(&["until", "your", "next", "turn"]).void(),
@@ -101,6 +114,9 @@ pub fn parse_matching_spell_cost_reduction_shape(
     } else if has_that_player_casts {
         filter.cast_by = Some(PlayerFilter::IteratedPlayer);
         PlayerAst::That
+    } else if has_opponents_cast {
+        filter.cast_by = Some(PlayerFilter::Opponent);
+        PlayerAst::Opponent
     } else {
         PlayerAst::Any
     };

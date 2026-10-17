@@ -108,6 +108,12 @@ pub enum StaticAbilityId {
     MustBlock,
     CantAttack,
     CantAttackItsOwner,
+    /// "This creature can't attack a player it has already attacked this
+    /// turn." (Port Razer)
+    CantAttackPlayerAlreadyAttackedThisTurn,
+    /// "can't be destroyed by lethal damage unless lethal damage dealt by a
+    /// single source is marked on it" (Ogre Enforcer; CR 704.5g).
+    LethalDamageMustBeFromSingleSource,
     CantAttackUnlessControllerCastCreatureSpellThisTurn,
     CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
     CantAttackUnlessCondition,
@@ -207,6 +213,9 @@ pub enum StaticAbilityId {
     ChooseNamedOptionAsEnters,
     ChoosePowerToughnessAsEntersOrTurnsFaceUp,
     BoastTwiceEachTurn,
+    /// "You may activate the loyalty abilities of planeswalkers you control
+    /// twice each turn rather than only once." (Oath of Teferi)
+    LoyaltyAbilitiesTwiceEachTurn,
     FirstEquipCostAlternative,
     EquipAbilitiesAnyTime,
     LoyaltyAbilitiesAnyTime,
@@ -287,6 +296,10 @@ pub enum StaticAbilityId {
     CastThisCardFromLibraryWhileSearching,
     EffectDiscardToLibraryReplacement,
     OpponentEffectDiscardThisToBattlefieldReplacement,
+    /// "If a spell or ability an opponent controls causes you to discard a
+    /// card, you may reveal that card and put it on top of your library
+    /// instead of putting it anywhere else." (Nephalia Academy)
+    OpponentEffectDiscardToLibraryReplacement,
     DrawReplacementExileTopFaceDown,
     DrawReplacementExileTopAndPlay,
     DrawReplacementRevealTopMatchingToHandRestBottom,
@@ -422,6 +435,110 @@ pub enum StaticAbilityId {
     ConditionalAttackRequirement,
     /// Generic amount-modifying replacement; appended for wire compatibility.
     EventAmountReplacement,
+    /// "If an opponent would face a villainous choice, they face that choice
+    /// an additional time." (The Valeyard); appended for wire compatibility.
+    OpponentsFaceVillainousChoiceAdditionalTime,
+    /// "A player losing unspent mana causes that player to lose that much
+    /// life." (Yurlok of Scorch Thrash); appended for wire compatibility.
+    LoseLifeForUnspentMana,
+    /// "Each player chooses artifact, creature, or land during their untap
+    /// step. That player can untap only permanents of the chosen type this
+    /// step." (Storage Matrix); appended for wire compatibility.
+    UntapStepChosenCardTypeOnly,
+    /// "You may activate the loyalty abilities of Urza twice each turn rather
+    /// than only once." (Urza, Planeswalker; CR 606.3); appended for wire
+    /// compatibility.
+    SourceLoyaltyAbilitiesTwiceEachTurn,
+    /// "Each power-up ability of permanents you control can be activated an
+    /// additional time." (Wonder Man, Hollywood Hero); appended for wire
+    /// compatibility.
+    PowerUpAbilitiesAdditionalTime,
+    /// "Each opponent must attack you or a planeswalker you control with at
+    /// least one creature each combat if able." (Trove of Temptation;
+    /// CR 508.1d); appended for wire compatibility.
+    OpponentsAttackYouWithAtLeastOneCreature,
+    /// "Can't be blocked unless all creatures defending player controls block
+    /// it." (Tromokratis); appended for wire compatibility.
+    CantBeBlockedUnlessAllDefendingCreaturesBlock,
+    /// "Enchanted creature is a copy of the chosen creature." (Metamorphic
+    /// Alteration); appended for wire compatibility.
+    AttachedIsCopyOfChosenObject,
+    /// "If you would begin your turn while this artifact is tapped, you may
+    /// skip that turn instead. If you do, untap this artifact." (Time Vault;
+    /// CR 614.10): offered to the controller before their turn begins;
+    /// appended for wire compatibility.
+    MaySkipTurnWhileSourceTappedThenUntap,
+    /// "Each opponent must attack with at least one creature each combat if
+    /// able." (Seeker of Slaanesh; CR 508.1d): a requirement on the whole
+    /// attack declaration, obeyed by any attack; appended for wire
+    /// compatibility.
+    OpponentsAttackWithAtLeastOneCreature,
+    /// "assign their combat damage this turn as though they weren't blocked"
+    /// (Outmaneuver): a mandatory unblocked assignment (CR 510.1c); appended
+    /// for wire compatibility.
+    AssignsDamageAsUnblocked,
+    /// "Equipped creature has all abilities of ability stickers on this
+    /// Equipment." (Pin Collection); appended for wire compatibility.
+    AttachedHasSourceAbilityStickerAbilities,
+    /// Adds to devotion for each queried color or combination, once per query.
+    DevotionIncrease,
+    /// "As this Equipment becomes attached to a creature, choose a creature
+    /// card name and a creature type." (Psychic Paper); appended for wire
+    /// compatibility.
+    ChooseCreatureCardNameAndTypeAsBecomesAttached,
+    /// "its name and creature type are the last chosen name and creature
+    /// type" (Psychic Paper): the attached object's name and creature types
+    /// become the source's last choices (layers 3 and 4); appended for wire
+    /// compatibility.
+    AttachedHasSourceChosenNameAndCreatureType,
+    /// "If damage would be dealt to this creature, instead that damage is
+    /// dealt, but all other damage already dealt to it is healed." (Wolverine,
+    /// Fierce Fighter); appended for wire compatibility.
+    HealDamageBeforeDamageToSelf,
+    /// "Equipped creature ... has all names of nonlegendary creature cards in
+    /// addition to its name." (Spy Kit): every name check of the attached
+    /// object also matches each nonlegendary creature card name; appended for
+    /// wire compatibility.
+    AttachedHasAllNonlegendaryCreatureCardNames,
+    /// "The monarch controls enchanted creature." (Fealty to the Realm;
+    /// CR 613.1b, 724): the current monarch controls the permanent this
+    /// source is attached to; appended for wire compatibility.
+    MonarchControlsAttachedPermanent,
+    /// "All instances of color words in the text of spells and permanents are
+    /// changed to the chosen color word." (Swirl the Mists; CR 612.2): layer-3
+    /// substitution of every other color word by the source's chosen color;
+    /// appended for wire compatibility.
+    AllColorWordsBecomeChosenColor,
+    /// "If this creature is unblocked, you may have it assign its combat
+    /// damage to a creature defending player controls." (Cunning Giant): an
+    /// unblocked attacker may assign all its combat damage to one creature
+    /// the defending player controls instead; appended for wire
+    /// compatibility.
+    MayAssignUnblockedDamageToDefendingCreature,
+    /// "This creature has all abilities of ability stickers on other
+    /// permanents you own and cards in your graveyard." (Clandestine
+    /// Chameleon): the source gains the abilities of the ability stickers on
+    /// every object matching a filter; appended for wire compatibility.
+    SourceHasAbilityStickerAbilitiesOf,
+    /// "As long as the top card of your graveyard is a creature card, this
+    /// creature has the full text of that card and has the text ..."
+    /// (Volrath's Shapeshifter): a self-sustaining layer-1 full-text
+    /// overwrite; appended for wire compatibility.
+    SourceHasFullTextOfTopGraveyardCard,
+    /// "If you would begin your draw step, you may skip that step instead.
+    /// If you do, <effects>." (Fasting; CR 614.10): offered to the
+    /// controller as their draw step would begin; appended for wire
+    /// compatibility.
+    MaySkipDrawStepWithFollowup,
+    /// "That player may sacrifice a permanent of their choice for that
+    /// player to ignore this effect until end of turn." (Damping Engine): a
+    /// special action for the player this source's restriction names;
+    /// appended for wire compatibility.
+    PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
+    /// "You may discard this card any time you could cast an instant."
+    /// (Circling Vultures): a special action from its owner's hand that does
+    /// not use the stack (CR 116.2); appended for wire compatibility.
+    MayDiscardSourceAnyTimeYouCouldCastInstant,
 }
 
 impl StaticAbilityId {
@@ -526,11 +643,14 @@ impl StaticAbilityId {
             | ConditionalAttackRequirement
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
+            | PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
             | EnlistAttack
             | MustBlock
             | CantAttack
             | CantAttackItsOwner
+            | CantAttackPlayerAlreadyAttackedThisTurn
+            | LethalDamageMustBeFromSingleSource
             | CantAttackUnlessControllerCastCreatureSpellThisTurn
             | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
             | CantAttackUnlessCondition
@@ -541,6 +661,8 @@ impl StaticAbilityId {
             | AttackCost
             | CantBlock
             | MayAssignDamageAsUnblocked
+            | AssignsDamageAsUnblocked
+            | MayAssignUnblockedDamageToDefendingCreature
             | YouAssignCombatDamageOfCreaturesAttackingYou
             | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
@@ -554,6 +676,14 @@ impl StaticAbilityId {
             | SetBasePowerToughnessForFilter
             | SourceCharacteristicsOfLastExiledCreatureCard
             | EquipmentGrant
+            | AttachedHasSourceAbilityStickerAbilities
+            | SourceHasAbilityStickerAbilitiesOf
+            | SourceHasFullTextOfTopGraveyardCard
+            | AttachedHasSourceChosenNameAndCreatureType
+            | AttachedHasAllNonlegendaryCreatureCardNames
+            | MonarchControlsAttachedPermanent
+            | AllColorWordsBecomeChosenColor
+            | DevotionIncrease
             | CharacteristicDefiningPT
             | AddCardTypes
             | RemoveCardTypes
@@ -621,6 +751,7 @@ impl StaticAbilityId {
             | CantPayLifeOrSacrificeNonlandForCastOrActivate
             | ChooseColorAsEnters
             | ChooseColorAsBecomesAttached
+            | ChooseCreatureCardNameAndTypeAsBecomesAttached
             | ChoosePlayerAsEnters
             | NoteLifeTotalAsEnters
             | DiscardHandAsEnters
@@ -631,6 +762,15 @@ impl StaticAbilityId {
             | ChooseNamedOptionAsEnters
             | ChoosePowerToughnessAsEntersOrTurnsFaceUp
             | BoastTwiceEachTurn
+            | LoyaltyAbilitiesTwiceEachTurn
+            | SourceLoyaltyAbilitiesTwiceEachTurn
+            | PowerUpAbilitiesAdditionalTime
+            | OpponentsAttackYouWithAtLeastOneCreature
+            | CantBeBlockedUnlessAllDefendingCreaturesBlock
+            | MaySkipTurnWhileSourceTappedThenUntap
+            | MaySkipDrawStepWithFollowup
+            | MayDiscardSourceAnyTimeYouCouldCastInstant
+            | OpponentsAttackWithAtLeastOneCreature
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
             | LoyaltyAbilitiesAnyTime
@@ -638,8 +778,11 @@ impl StaticAbilityId {
             | ExhaustAbilitiesAsThoughUnactivatedThisTurn
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
+            | OpponentsFaceVillainousChoiceAdditionalTime
+            | LoseLifeForUnspentMana
             | Enchant
             | EnchantedLandIsChosenType
+            | AttachedIsCopyOfChosenObject
             | SourceLandIsChosenType
             | AddChosenCreatureType
             | AddChosenBasicLandType
@@ -662,6 +805,7 @@ impl StaticAbilityId {
             | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter
             | PreventDamageToSelfPutCountersInstead
+            | HealDamageBeforeDamageToSelf
             | PreventConstrainedDamageToSelfPutCountersInstead
             | DamagePreventionWithFollowUp
             | ReplaceDamageWithCountersInstead
@@ -670,6 +814,7 @@ impl StaticAbilityId {
             | DoesntUntap
             | UntapDuringEachOtherPlayersUntapStep
             | UntapStepLimit
+            | UntapStepChosenCardTypeOnly
             | SearchLimitedToTopCards
             | PreventAllDamageToYou
             | PlayerProtectionFrom
@@ -714,6 +859,7 @@ impl StaticAbilityId {
             | CastThisCardFromLibraryWhileSearching
             | EffectDiscardToLibraryReplacement
             | OpponentEffectDiscardThisToBattlefieldReplacement
+            | OpponentEffectDiscardToLibraryReplacement
             | DrawReplacementExileTopFaceDown
             | DrawReplacementExileTopAndPlay
             | DrawReplacementRevealTopMatchingToHandRestBottom
@@ -946,6 +1092,7 @@ impl StaticAbilityId {
                 | MustBlock
                 | CantAttack
                 | CantAttackItsOwner
+                | CantAttackPlayerAlreadyAttackedThisTurn
                 | CantAttackUnlessControllerCastCreatureSpellThisTurn
                 | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
                 | CantAttackUnlessCondition
@@ -956,6 +1103,8 @@ impl StaticAbilityId {
                 | AttackCost
                 | CantBlock
                 | MayAssignDamageAsUnblocked
+                | AssignsDamageAsUnblocked
+                | MayAssignUnblockedDamageToDefendingCreature
                 | YouAssignCombatDamageOfCreaturesAttackingYou
                 | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness
@@ -979,8 +1128,13 @@ impl StaticAbilityId {
                 | RemoveAllAbilitiesExceptManaForFilter
                 | SetBasePowerToughnessForFilter
                 | EquipmentGrant
+                | AttachedHasSourceAbilityStickerAbilities
+                | SourceHasAbilityStickerAbilitiesOf
+                | AttachedHasSourceChosenNameAndCreatureType
                 | GrantObjectAbilityForFilter
                 | ControlAttachedPermanent
+                | MonarchControlsAttachedPermanent
+                | AllColorWordsBecomeChosenColor
                 | CharacteristicDefiningPT
                 | LivingMetal
                 | AddCardTypes

@@ -50,38 +50,58 @@ impl EffectExecutor for VillainousChoiceEffect {
                     &self.player,
                     ctx,
                 )?;
-                let mode_options = self
-                    .modes
+                // CR 701.56b-style repetition: "they face that choice an
+                // additional time" (The Valeyard) adds one full choice per
+                // such ability controlled by an opponent of the chooser.
+                let additional = game
+                    .battlefield
                     .iter()
-                    .enumerate()
-                    .map(|(idx, mode)| ModeOption::new(idx, mode.source_text.clone()))
-                    .collect();
-                let spec = ModesSpec::single(ctx.source, mode_options);
-                let selected = make_decision(
-                    game,
-                    &mut ctx.decision_maker,
-                    chooser,
-                    Some(ctx.source),
-                    spec,
-                );
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| game.are_opponents(game.controller_of(obj), chooser))
+                    .flat_map(|obj| {
+                        game.calculated_characteristics_arc(obj.id)
+                            .map(|calc| calc.static_abilities.to_vec())
+                            .unwrap_or_default()
+                    })
+                    .map(|ability| ability.additional_villainous_choices_for_opponents())
+                    .fold(0u32, u32::saturating_add);
+                let mut outcomes = Vec::new();
+                for _ in 0..=additional {
+                    let mode_options = self
+                        .modes
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, mode)| ModeOption::new(idx, mode.source_text.clone()))
+                        .collect();
+                    let spec = ModesSpec::single(ctx.source, mode_options);
+                    let selected = make_decision(
+                        game,
+                        &mut ctx.decision_maker,
+                        chooser,
+                        Some(ctx.source),
+                        spec,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(CompletedEffectOutputs::aggregate_only(
+                            EffectOutcome::count(0),
+                        ));
+                    }
+
+                    let selected_idx = selected.first().copied().ok_or_else(|| {
+                        ExecutionError::Impossible("No villainous mode selected".to_string())
+                    })?;
+                    let mode = self.modes.get(selected_idx).ok_or_else(|| {
+                        ExecutionError::Impossible(
+                            "Selected villainous mode is not legal".to_string(),
+                        )
+                    })?;
+
+                    outcomes.extend(super::sequence::execute_ordered_children_with_outputs(
+                        game,
+                        ctx,
+                        &mode.effects,
+                    )?);
                 }
-
-                let selected_idx = selected.first().copied().ok_or_else(|| {
-                    ExecutionError::Impossible("No villainous mode selected".to_string())
-                })?;
-                let mode = self.modes.get(selected_idx).ok_or_else(|| {
-                    ExecutionError::Impossible("Selected villainous mode is not legal".to_string())
-                })?;
-
-                let outcomes = super::sequence::execute_ordered_children_with_outputs(
-                    game,
-                    ctx,
-                    &mode.effects,
-                )?;
 
                 Ok(CompletedEffectOutputs::from_children(
                     outcomes,

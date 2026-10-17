@@ -6,6 +6,29 @@ use winnow::token::any;
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::primitives;
 
+#[derive(Debug, Clone, Copy)]
+pub struct EntersWithSourceCounterKindsShape<'a> {
+    pub source_tokens: &'a [OwnedLexToken],
+    pub filter_tokens: &'a [OwnedLexToken],
+}
+
+pub fn parse_enters_with_source_counter_kinds_tokens(tokens: &[OwnedLexToken]) -> Option<EntersWithSourceCounterKindsShape<'_>> {
+    fn parse<'a>(input: &mut LexStream<'a>) -> WResult<EntersWithSourceCounterKindsShape<'a>> {
+        primitives::phrase(&["for", "each", "kind", "of", "counter", "on"]).parse_next(input)?;
+        let source_tokens = repeat_till(1.., any.void(), peek((primitives::comma(), primitives::kw("each"))))
+            .map(|((), _)| ()).take().parse_next(input)?;
+        primitives::comma().parse_next(input)?;
+        let filter_tokens = repeat_till(1.., any.void(), peek(alt((primitives::kw("enters"), primitives::kw("enter")))))
+            .map(|((), _)| ()).take().parse_next(input)?;
+        alt((primitives::kw("enters"), primitives::kw("enter"))).parse_next(input)?;
+        primitives::phrase(&["with", "a", "counter", "of", "that", "kind", "on"]).parse_next(input)?;
+        alt((primitives::kw("it"), primitives::kw("them"))).parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        Ok(EntersWithSourceCounterKindsShape { source_tokens, filter_tokens })
+    }
+    primitives::probe_all(tokens, parse, "entry counters from source kinds")
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EtbEntryFilterSpec<'a> {
     pub filter_tokens: &'a [OwnedLexToken],
@@ -273,6 +296,24 @@ fn contains_with_additional_counter(tokens: &[OwnedLexToken]) -> bool {
 mod tests {
     use super::super::super::super::lexer::{lex_line, render_token_slice};
     use super::*;
+
+    #[test]
+    fn source_counter_kind_entry_preserves_internal_commas_and_bounds_the_clause() {
+        for source in ["this creature", "Example, Counter Keeper"] {
+            let text = format!("For each kind of counter on {source}, each other Dinosaur you control enters with a counter of that kind on it.");
+            let tokens = lex_line(&text, 0).unwrap();
+            let parsed = parse_enters_with_source_counter_kinds_tokens(&tokens).unwrap();
+            assert_eq!(render_token_slice(parsed.source_tokens), source);
+            assert_eq!(render_token_slice(parsed.filter_tokens), "each other Dinosaur you control");
+        }
+        for text in [
+            "For each kind of counter on this creature, draw a card.",
+            "For each kind of counter on this creature, each other Dinosaur you control enters with a counter of that kind on it, then draw a card.",
+            "Each other Dinosaur you control enters with a counter of that kind on it.",
+        ] {
+            assert!(parse_enters_with_source_counter_kinds_tokens(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
+    }
 
     #[test]
     fn entry_subject_does_not_consume_preceding_instructions_or_dice_branches() {

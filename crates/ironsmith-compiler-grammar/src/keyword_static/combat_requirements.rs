@@ -70,6 +70,83 @@ fn source_requirements(requirement: CombatRequirement) -> Vec<StaticAbilityAst> 
     abilities.into_iter().map(StaticAbilityAst::Static).collect()
 }
 
+/// "This creature must be blocked by exactly one creature if able." (Nacatl
+/// War-Pride): it must be blocked if able and can't be blocked by more than
+/// one creature.
+pub fn parse_source_must_be_blocked_by_exactly_one_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let tail: &[&str] = &["must", "be", "blocked", "by", "exactly", "one", "creature", "if", "able"];
+    let Some(subject) = words.strip_suffix(tail) else {
+        return Ok(None);
+    };
+    if !matches!(subject, ["this", "creature"] | ["this"] | ["it"]) {
+        return Ok(None);
+    }
+    Ok(Some(vec![
+        StaticAbilityAst::Static(StaticAbility::restriction(
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
+            "this creature must be blocked by exactly one creature if able".to_string(),
+        )),
+        StaticAbilityAst::Static(StaticAbility::cant_be_blocked_by_more_than(1)),
+    ]))
+}
+
+/// "Gorm must be blocked if able, and Gorm must be blocked by two or more
+/// creatures if able." (Gorm the Great): two blocking requirements on the
+/// source (CR 509.1c). The first is obeyed by any block; the second only by
+/// at least that many blockers. A lone "must be blocked by two or more
+/// creatures if able" is the second requirement alone.
+pub fn parse_source_must_be_blocked_by_at_least_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let is_self = |subject: &[&str]| matches!(subject, ["this", "creature"] | ["this"] | ["it"]);
+    let at_least = |clause: &[&str]| -> Option<usize> {
+        let tail = clause.strip_prefix(&["must", "be", "blocked", "by"][..])?;
+        let [count, "or", "more", "creatures", "if", "able"] = tail else {
+            return None;
+        };
+        let minimum = crate::util::parse_number_word_u32(count)? as usize;
+        (minimum >= 2).then_some(minimum)
+    };
+    let split = |clause: &[&str]| -> Option<usize> {
+        (1..clause.len()).find(|&index| clause[index] == "must")
+    };
+    let mut abilities = Vec::new();
+    let second = if let Some(and) = words.iter().position(|word| *word == "and") {
+        let first = &words[..and];
+        let Some(must) = split(first) else {
+            return Ok(None);
+        };
+        if !is_self(&first[..must]) || first[must..] != ["must", "be", "blocked", "if", "able"] {
+            return Ok(None);
+        }
+        abilities.push(StaticAbilityAst::Static(StaticAbility::restriction(
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
+            "this creature must be blocked if able".to_string(),
+        )));
+        &words[and + 1..]
+    } else {
+        &words[..]
+    };
+    let Some(must) = split(second) else {
+        return Ok(None);
+    };
+    if !is_self(&second[..must]) {
+        return Ok(None);
+    }
+    let Some(minimum) = at_least(&second[must..]) else {
+        return Ok(None);
+    };
+    abilities.push(StaticAbilityAst::Static(StaticAbility::restriction(
+        crate::effect::Restriction::must_be_blocked_by_at_least(ObjectFilter::source(), minimum),
+        format!("this creature must be blocked by {minimum} or more creatures if able"),
+    )));
+    Ok(Some(abilities))
+}
+
 pub fn parse_combat_requirement_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {

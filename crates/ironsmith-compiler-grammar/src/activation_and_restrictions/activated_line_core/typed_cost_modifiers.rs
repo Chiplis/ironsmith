@@ -48,7 +48,24 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         return Ok(None);
     };
     let amount_tokens = &first[cost_index + 1..];
-    let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
+    // "This ability costs {1}{U} less to activate ..." (Flying Drone): a
+    // reduction naming colored symbols removes those exact symbols from the
+    // ability's own printed cost (CR 118.7); lowering folds it into that cost.
+    let colored_reduction = this_ability
+        .then(|| parse_cost_modifier_mana_cost(amount_tokens))
+        .flatten()
+        .filter(|(cost, _)| {
+            !cost.has_x()
+                && cost.pips().iter().any(|pip| {
+                    pip.iter()
+                        .any(|symbol| !matches!(symbol, crate::mana::ManaSymbol::Generic(_)))
+                })
+        });
+    let Some((amount, used)) = colored_reduction
+        .as_ref()
+        .map(|(_, used)| (Value::Fixed(0), *used))
+        .or_else(|| parse_cost_modifier_amount(amount_tokens))
+    else {
         return Ok(None);
     };
     let remainder = &amount_tokens[used..];
@@ -62,6 +79,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         return Ok(None);
     }
     let tail = crate::util::trim_edge_punctuation_tokens(&remainder[3..]);
+    if colored_reduction.is_some()
+        && (direction == "more"
+            || tail
+                .first()
+                .is_some_and(|token| token.is_any_word(&["where", "for"])))
+    {
+        return Err(unsupported(tokens, "colored amount"));
+    }
     // This extension owns dynamic surcharges printed on their own activation.
     // Cross-source/general activation taxes retain their established reader.
     if direction == "more" && !this_ability {
@@ -185,10 +210,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     );
     if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
         multiplier: slot,
+        reduction_mana,
         ..
     } = &mut ability.payload
     {
         *slot = multiplier;
+        *reduction_mana = colored_reduction.map(|(cost, _)| cost);
     }
     if let Some(condition) = target_condition {
         ability = ability.with_activated_ability_cost_condition(condition);

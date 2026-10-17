@@ -37,4 +37,6 @@ pub enum TurnEventPredicateAst {
     ThisAbilityResolvedThisTurnExactly(u32),
     YouAttackedWithTotalPowerAtLeastThisCombat(u32),
     ThisAbilityActivatedThisTurnAtLeast(u32),
+    /// "a player was dealt N or more combat damage this turn"
+    AnyPlayerWasDealtCombatDamageThisTurnOrMore(u32),
 }

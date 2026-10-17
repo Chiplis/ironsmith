@@ -27,9 +27,24 @@ pub enum RandomActionAst {
         surface: Option<DieSurface>,
         /// "... and ignore the lower roll" instead of choosing one result.
         ignore_lower: bool,
+        /// "roll a die twice ... the first result ... the second result":
+        /// nothing is chosen; the rolls keep their order.
+        in_order: bool,
     },
     /// "Choose 1, 2, or 3 at random": the result is the chosen number.
     ChooseNumberAtRandom {
         choices: Vec<u32>,
+    },
+    /// "Roll X d6" / "roll two six-sided dice" whose results are read back
+    /// as "the total of those results" (CR 706.2): one simultaneous roll of
+    /// `count` dice; the result is their sum.
+    RollDiceTotal {
+        count: Value,
+        sides: u32,
+        surface: Option<DieSurface>,
+        /// "roll a d20 for each player being attacked and ignore all but the
+        /// highest roll" (Iron Mastiff): the result is the highest roll, not
+        /// the total.
+        highest_only: bool,
     },
 }

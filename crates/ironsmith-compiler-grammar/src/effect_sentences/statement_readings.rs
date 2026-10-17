@@ -84,6 +84,18 @@ const STATEMENT_READINGS: &[Reading] = &[
         read: |input| input.outcome(Ok(read_control_votes_this_turn(input))),
     },
     Reading {
+        id: RuleId::new("unblock-sole-blocked-attackers"),
+        head: HeadDiscriminator::Words(&["creatures"]),
+        admits: |_| true,
+        read: |input| input.outcome(Ok(read_unblock_sole_blocked_attackers(input))),
+    },
+    Reading {
+        id: RuleId::new("block-attacker-of-choice"),
+        head: HeadDiscriminator::Words(&["you", "have"]),
+        admits: |_| true,
+        read: |input| input.outcome(read_block_attacker_of_choice(input)),
+    },
+    Reading {
         id: RuleId::new("trailing-local-action-replacement"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -94,6 +106,16 @@ const STATEMENT_READINGS: &[Reading] = &[
         head: HeadDiscriminator::Words(&["choose"]),
         admits: |_| true,
         read: |input| input.outcome(super::bounded_number_choice::parse_sentence(input.sentence)),
+    },
+    Reading {
+        id: RuleId::new("player-chooses-number"),
+        head: HeadDiscriminator::Words(&["target", "that"]),
+        admits: |_| true,
+        read: |input| {
+            input.outcome(super::bounded_number_choice::parse_player_chooses_sentence(
+                input.sentence,
+            ))
+        },
     },
     Reading {
         id: RuleId::new("owner-subject-shuffle"),
@@ -109,6 +131,12 @@ const STATEMENT_READINGS: &[Reading] = &[
             !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence).is_some())
         },
         read: |input| input.outcome(read_conditional_inline_looked_card_partition(input)),
+    },
+    Reading {
+        id: RuleId::new("damage-to-controller-of-last-damage-source"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_damage_to_controller_of_last_damage_source(input)),
     },
     Reading {
         id: RuleId::new("choose-target-prelude"),
@@ -188,9 +216,12 @@ const STATEMENT_READINGS: &[Reading] = &[
         admits: |input| {
             let sentence = input.sentence;
             !(effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(sentence).is_some())
+                // "Otherwise, it gains first strike" (Stolen Vitality) is the
+                // else-arm of the preceding conditional; the sentence
+                // followup planner owns it.
                 && !(sentence
                     .first()
-                    .is_some_and(|token| token.is_any_word(&["if", "unless"])))
+                    .is_some_and(|token| token.is_any_word(&["if", "unless", "otherwise"])))
         },
         read: |input| input.outcome(read_simple_gain_ability(input)),
     },
@@ -479,6 +510,86 @@ fn read_choose_target_prelude(
     }
     Ok(None)
 }
+/// "<this> deals 4 damage to the controller of the last red instant or
+/// sorcery spell that dealt damage to you this turn." (Suffocation): capture
+/// the most recent matching damage source as it was when it dealt the
+/// damage, then damage its controller at that time.
+fn read_damage_to_controller_of_last_damage_source(
+    input: &Statement<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let words = crate::lexer::token_word_refs(sentence);
+    if words.len() != sentence.len() {
+        return Ok(None);
+    }
+    let Some(verb) = words
+        .iter()
+        .position(|word| matches!(*word, "deals" | "deal"))
+    else {
+        return Ok(None);
+    };
+    if verb == 0 || !crate::util::is_source_reference_words(&words[..verb]) {
+        return Ok(None);
+    }
+    let [
+        amount,
+        "damage",
+        "to",
+        "the",
+        "controller",
+        "of",
+        "the",
+        "last",
+        source @ ..,
+        "that",
+        "dealt",
+        "damage",
+        "to",
+        "you",
+        "this",
+        "turn",
+    ] = &words[verb + 1..]
+    else {
+        return Ok(None);
+    };
+    if source.is_empty() {
+        return Ok(None);
+    }
+    let Some(amount) = amount
+        .parse::<i32>()
+        .ok()
+        .or_else(|| crate::util::parse_number_word_i32(amount))
+    else {
+        return Ok(None);
+    };
+    let source_start = verb + 1 + 8;
+    let source_tokens = &sentence[source_start..source_start + source.len()];
+    let sources = crate::object_filters::parse_object_filter(source_tokens, false)?;
+    let tag = crate::util::helper_tag_for_tokens(sentence, "last_damage_source");
+    let capture = ironsmith_core::TagLastDamageSourceEffect::new(
+        ironsmith_core::DamageHistoryQuery {
+            sources: ironsmith_core::DamageHistorySources::Matching(sources),
+            recipients: ironsmith_core::DamageHistoryRecipients::Players(
+                crate::target::PlayerFilter::You,
+            ),
+            combat: None,
+            reduction: ironsmith_core::DamageHistoryReduction::Total,
+        },
+        tag.key.clone(),
+    );
+    Ok(Some(vec![
+        EffectAst::TagLastDamageSource(capture),
+        EffectAst::subject_verb_damage(
+            crate::effect::Value::Fixed(amount),
+            crate::cards::builders::TargetAst::Player(
+                crate::target::PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(
+                    tag.key.clone(),
+                )),
+                None,
+            ),
+        ),
+    ]))
+}
 fn read_deal_damage_equal_to_power(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -611,6 +722,49 @@ fn read_trailing_if_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst
     }
     Ok(None)
 }
+/// "Return target creature you control and all Auras you control attached to
+/// it to their owner's hand" (Orzhov Charm): the Auras must be read while
+/// still attached, so this is "Return all Auras you control attached to
+/// target creature you control to their owner's hand. Return that creature to
+/// their owner's hand." — both instructions of one resolution.
+fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    if sentence.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let words = crate::lexer::token_word_refs(sentence);
+    if words.first() != Some(&"return") || words.get(1) != Some(&"target") {
+        return None;
+    }
+    let and_all = words.windows(2).position(|pair| pair == ["and", "all"])?;
+    let attached = words
+        .windows(4)
+        .position(|window| window == ["attached", "to", "it", "to"])?;
+    if attached <= and_all + 2 {
+        return None;
+    }
+    let target = &sentence[1..and_all];
+    let collection = &sentence[and_all + 1..attached];
+    let destination = &sentence[attached + 4..];
+    let noun = target.get(1)?.as_word()?.to_string();
+    if destination.is_empty() || target.len() < 2 {
+        return None;
+    }
+    let mut rewritten = vec![sentence[0].clone()];
+    rewritten.extend_from_slice(collection);
+    rewritten.extend(crate::lexer::synthetic_word_tokens(["attached", "to"]));
+    rewritten.extend_from_slice(target);
+    rewritten.push(crate::lexer::OwnedLexToken::word("to", crate::cards::TextSpan::synthetic()));
+    rewritten.extend_from_slice(destination);
+    rewritten.push(crate::lexer::OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
+    rewritten.extend(crate::lexer::synthetic_word_tokens(["return", "that"]));
+    rewritten.push(crate::lexer::OwnedLexToken::word(noun, crate::cards::TextSpan::synthetic()));
+    rewritten.push(crate::lexer::OwnedLexToken::word("to", crate::cards::TextSpan::synthetic()));
+    rewritten.extend_from_slice(destination);
+    rewritten.push(crate::lexer::OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
+    Some(rewritten)
+}
+
 /// "return from <zone> to the battlefield <target>" → "return <target> from
 /// <zone> to the battlefield".
 fn reorder_fronted_return_zones(sentence: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
@@ -710,6 +864,11 @@ fn read_complete_simple_subject_verb(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    // A turn-long lockout-and-permission bundle on the referenced player owns
+    // its comma list before the generic restriction reader splits it.
+    if let Some(effects) = super::referenced_player_turn_lockout::parse(sentence)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) =
         super::subject_verb_primitives::parse_sentence_you_and_player_each_sacrifice(
             SubjectVerbPrimitiveClause::new(sentence),
@@ -876,6 +1035,9 @@ fn read_return_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, C
     // destination; read it in the ordinary target-first order.
     if let Some(reordered) = reorder_fronted_return_zones(input.sentence) {
         return crate::clause_support::parse_effect_sentences_lexed(&reordered).map(Some);
+    }
+    if let Some(rewritten) = split_return_with_attached_auras(input.sentence) {
+        return crate::clause_support::parse_effect_sentences_lexed(&rewritten).map(Some);
     }
 
     if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
@@ -1051,6 +1213,11 @@ fn read_tap(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextErr
 fn read_cant_effect(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
     let is_document = input.is_document;
+    if let Some(effects) =
+        super::chain_carry::parse_duration_goaded_and_restricted_sentence(sentence)?
+    {
+        return Ok(Some(effects));
+    }
     if is_document
         && !sentence
             .first()
@@ -1149,6 +1316,24 @@ fn read_leading_result_prefix(
     let Some(prefix) = split_leading_result_prefix_lexed(input.sentence) else {
         return Ok(None);
     };
+    // "When you sacrifice an Aura this way, for each other attacking
+    // creature you control, create a token that's a copy of that Aura
+    // attached to that creature": a looped consequence with an outer
+    // antecedent.
+    if let Some(effects) =
+        super::for_each_helpers::parse_result_consequence_for_each_object(prefix.trailing_tokens)?
+    {
+        return Ok(Some(vec![EffectAst::Conditionals(match prefix.kind {
+            LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects,
+            },
+            LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects,
+            },
+        })]));
+    }
     // "If you do, it gets +3/+0 and gains first strike and deathtouch until
     // end of turn": a pump coordinated with an ability list shares one
     // subject and one duration. Read it with the shared get-then-gain owner,
@@ -1237,6 +1422,25 @@ fn read_leading_result_prefix(
     {
         return super::dispatch_inner::parse_effect_sentence_inner_lexed(input.sentence).map(Some);
     }
+    // "When you do, return target Equipment card ... to the battlefield,
+    // then attach it to that token" (Ratonhnhaké꞉ton): an ordered action
+    // chain is the consequence. The single-verb shortcut below would read
+    // only the first action and drop the rest.
+    if super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(prefix.trailing_tokens) {
+        let effects = super::parse_effect_chain_lexed(prefix.trailing_tokens)?;
+        if !effects.is_empty() {
+            return Ok(Some(vec![EffectAst::Conditionals(match prefix.kind {
+                LeadingResultPrefixKind::If => ConditionalEffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects,
+                },
+                LeadingResultPrefixKind::When => ConditionalEffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects,
+                },
+            })]));
+        }
+    }
     if let Some(effect) =
         super::clause_pattern_helpers::parse_verb_first_clause(prefix.trailing_tokens)?
     {
@@ -1305,6 +1509,110 @@ fn read_destroy_single_segment(
         return Ok(Some(vec![effect]));
     }
     Ok(None)
+}
+
+/// "Creatures it was blocking that had become blocked by only this creature
+/// this combat become unblocked." (Ydwen Efreet).
+fn read_unblock_sole_blocked_attackers(input: &Statement<'_>) -> Option<Vec<EffectAst>> {
+    parse_unblock_sole_blocked_attackers_sentence(input.sentence)
+}
+
+pub(super) fn parse_unblock_sole_blocked_attackers_sentence(
+    sentence: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let words = crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        sentence,
+    ))
+    .into_iter()
+    .filter(|word| !matches!(*word, "," | "."))
+    .collect::<Vec<_>>();
+    let rest = words.strip_prefix(&[
+        "creatures", "it", "was", "blocking", "that", "had", "become", "blocked", "by", "only",
+    ][..])?;
+    // "only this creature" is the source (Ydwen Efreet); "only that
+    // creature" is the creature the sentence's "it" names (False Orders).
+    let (source, rest) = match rest {
+        ["this", rest @ ..] => (true, rest),
+        ["that", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let rest = match rest {
+        ["creature" | "permanent", rest @ ..] => rest,
+        rest if source => rest,
+        _ => return None,
+    };
+    let rest = rest
+        .strip_prefix(&["this", "combat"][..])
+        .unwrap_or(rest);
+    (rest == ["become", "unblocked"]).then(|| {
+        if source {
+            vec![EffectAst::UnblockSoleBlockedAttackers(
+                ironsmith_core::UnblockSoleBlockedAttackersEffect::new(
+                    crate::target::ChooseSpec::Source,
+                ),
+            )]
+        } else {
+            vec![EffectAst::UnblockSoleBlockedAttackersOf {
+                blocker: crate::cards::builders::TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    None,
+                ),
+            }]
+        }
+    })
+}
+
+/// "You may have it block an attacking creature of your choice." (False
+/// Orders): a referenced creature starts blocking a chosen attacker.
+fn read_block_attacker_of_choice(input: &Statement<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_block_attacker_of_choice_sentence(input.sentence)
+}
+
+pub(super) fn parse_block_attacker_of_choice_sentence(
+    sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        sentence,
+    ))
+    .into_iter()
+    .filter(|word| !matches!(*word, "," | "."))
+    .collect::<Vec<_>>();
+    let (optional, rest) = match words.strip_prefix(&["you", "may", "have"][..]) {
+        Some(rest) => (true, rest),
+        None => match words.strip_prefix(&["have"][..]) {
+            Some(rest) => (false, rest),
+            None => return Ok(None),
+        },
+    };
+    let (blocker, rest) = match rest {
+        ["it", rest @ ..] | ["that", "creature", rest @ ..] => (
+            crate::cards::builders::TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                None,
+            ),
+            rest,
+        ),
+        _ => return Ok(None),
+    };
+    let Some(rest) = rest.strip_prefix(&["block"][..]) else {
+        return Ok(None);
+    };
+    let Some(filter_words) = rest.strip_suffix(&["of", "your", "choice"][..]) else {
+        return Ok(None);
+    };
+    if !filter_words.contains(&"attacking") {
+        return Ok(None);
+    }
+    let filter_tokens = crate::lexer::synthetic_word_tokens(filter_words.iter().copied());
+    let Ok(mut attackers) = crate::object_filters::parse_object_filter(&filter_tokens, false) else {
+        return Ok(None);
+    };
+    attackers.attacking = true;
+    Ok(Some(vec![EffectAst::BlockAttackerOfChoice {
+        blocker,
+        attackers,
+        optional,
+    }]))
 }
 
 /// "You choose how each player votes this turn." (Illusion of Choice).

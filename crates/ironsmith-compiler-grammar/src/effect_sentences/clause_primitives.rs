@@ -148,12 +148,126 @@ pub fn parse_copy_targets_clause(
     )))
 }
 
+/// One conjunct of a retarget's trailing condition about the referenced
+/// stack object: "it's controlled by <player>" or "it targets <you | an
+/// object | you or an object>". The object is any spell or ability.
+fn retarget_condition_conjunct_filter(
+    tokens: &[OwnedLexToken],
+    filter: &mut ObjectFilter,
+) -> Result<bool, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.as_slice();
+    if let ["its" | "it's", "controlled", "by", player @ ..]
+    | ["it", "s" | "is", "controlled", "by", player @ ..] = words
+    {
+        let controller = match player {
+            ["the", "chosen", "player"] | ["chosen", "player"] => PlayerFilter::ChosenPlayer,
+            ["you"] => PlayerFilter::You,
+            ["an", "opponent"] | ["opponent"] => PlayerFilter::Opponent,
+            _ => return Ok(false),
+        };
+        if filter.controller.is_some() {
+            return Ok(false);
+        }
+        filter.controller = Some(controller);
+        return Ok(true);
+    }
+    let ["it", "targets", rest @ ..] = words else {
+        return Ok(false);
+    };
+    if filter.targets_player.is_some() || filter.targets_object.is_some() {
+        return Ok(false);
+    }
+    // Word and token positions agree after "it targets" for these all-word
+    // phrases; locate the object phrase by its token start.
+    let view = TokenWordView::new(tokens);
+    let starts = view.token_start_indices();
+    let object_tokens = |word_index: usize| starts.get(word_index).map(|start| &tokens[*start..]);
+    match rest {
+        ["you"] => {
+            filter.targets_player = Some(PlayerFilter::You);
+        }
+        ["you", "or", _, ..] => {
+            let Some(object_tokens) = object_tokens(4) else {
+                return Ok(false);
+            };
+            let object = parse_object_filter(object_tokens, false)?;
+            filter.targets_player = Some(PlayerFilter::You);
+            filter.targets_object = Some(Box::new(object));
+            filter.targets_any_of = true;
+        }
+        [_, ..] => {
+            let Some(object_tokens) = object_tokens(2) else {
+                return Ok(false);
+            };
+            let object = parse_object_filter(object_tokens, false)?;
+            filter.targets_object = Some(Box::new(object));
+        }
+        [] => return Ok(false),
+    }
+    Ok(true)
+}
+
+/// "Choose new targets for target spell or ability if it's controlled by
+/// the chosen player and if it targets you or a permanent you control."
+/// (Emissary of Grudges): the trailing condition is checked on resolution
+/// against the targeted stack object; every conjunct must be kept.
+fn parse_choose_new_targets_with_trailing_if(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+        return Ok(None);
+    };
+    if if_idx == 0 {
+        return Ok(None);
+    }
+    let condition = crate::util::trim_edge_punctuation_tokens(&tokens[if_idx + 1..]);
+    let mut conjuncts: Vec<&[OwnedLexToken]> = Vec::new();
+    let mut start = 0;
+    for index in 0..condition.len() {
+        if condition[index].is_word("and")
+            && condition.get(index + 1).is_some_and(|token| token.is_word("if"))
+        {
+            conjuncts.push(&condition[start..index]);
+            start = index + 2;
+        }
+    }
+    conjuncts.push(&condition[start..]);
+    if conjuncts.iter().any(|conjunct| conjunct.is_empty()) {
+        return Ok(None);
+    }
+    let mut filter = ObjectFilter::spell_or_ability();
+    for conjunct in &conjuncts {
+        if !retarget_condition_conjunct_filter(conjunct, &mut filter)? {
+            return Ok(None);
+        }
+    }
+    let Some(effect) = parse_choose_new_targets_clause(&tokens[..if_idx])? else {
+        return Ok(None);
+    };
+    Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+        predicate: crate::cards::builders::PredicateAst::ItMatches(filter),
+        effects: vec![effect],
+    })))
+}
+
 pub fn parse_choose_new_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
+    if tokens.iter().any(|token| token.is_word("if")) {
+        if let Some(effect) = parse_choose_new_targets_with_trailing_if(tokens)? {
+            return Ok(Some(effect));
+        }
+        // A trailing condition this reader cannot type must not be dropped
+        // by the target split below.
+        return Err(CardTextError::ParseError(format!(
+            "unsupported choose-new-targets trailing condition (clause: '{}')",
+            LexedClause::new(tokens).text()
+        )));
+    }
     let plural_copy_reference = crate::word_primitives::sequence_occurs(
         &crate::lexer::token_word_refs(tokens),
         &["copies"],
@@ -226,6 +340,40 @@ pub fn parse_change_target_clause(
         return Ok(None);
     }
 
+    // "change the target to enchanted creature if able" (Captured by the
+    // Consulate): inside a cast trigger, "the target" is the triggering
+    // spell's single target, changed to the named object when it is legal.
+    {
+        let trimmed = crate::util::trim_edge_punctuation(tokens);
+        let words = crate::lexer::token_word_refs(&trimmed);
+        if words.starts_with(&["change", "the", "target", "to"]) && words.len() > 4 {
+            let view = TokenWordView::new(&trimmed);
+            let starts = view.token_start_indices();
+            let end_word = if words.ends_with(&["if", "able"]) {
+                words.len() - 2
+            } else {
+                words.len()
+            };
+            if end_word > 4
+                && let (Some(&start), Some(end)) = (
+                    starts.get(4),
+                    starts.get(end_word).copied().or(Some(trimmed.len())),
+                )
+            {
+                let fixed = parse_target_phrase(&trimmed[start..end])?;
+                return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+                    PlayerAst::Implicit,
+                    TargetAst::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind(),
+                        span_from_tokens(tokens),
+                    ),
+                    RetargetModeAst::OneToFixed { target: fixed },
+                    true,
+                )));
+            }
+        }
+    }
+
     if let Some((main_tokens, unless_tokens)) = split_change_target_unless_clause_lexed(tokens) {
         let Some(inner) = parse_change_target_clause_inner(main_tokens)? else {
             return Ok(None);
@@ -258,6 +406,40 @@ pub fn parse_change_target_clause_inner(
 
     let tail_tokens = split.target_tokens;
     let any_targets = tokens.get(1).is_some_and(|token| token.is_word("any"));
+
+    // "change the target of that spell to enchanted creature if able":
+    // a non-source destination is a fixed new target; an anaphoric
+    // "that spell|ability" / "it" names the referenced stack object.
+    if let Some(fixed_tokens) = split.fixed_target_tokens.as_ref() {
+        let fixed = parse_target_phrase(fixed_tokens)?;
+        let tail_words = crate::lexer::token_word_refs(&tail_tokens);
+        let anaphoric = matches!(
+            tail_words.as_slice(),
+            ["it"]
+                | ["that", "spell"]
+                | ["that", "ability"]
+                | ["that", "spell", "or", "ability"]
+                | ["that", "object"]
+        );
+        let target = if anaphoric {
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                span_from_tokens(tokens),
+            )
+        } else {
+            let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
+            for constraint in clause_shapes::parse_retarget_constraint_shapes(&tail_tokens) {
+                filter = apply_retarget_constraint(filter, constraint);
+            }
+            TargetAst::Object(filter, span_from_tokens(tokens), None)
+        };
+        return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
+            PlayerAst::Implicit,
+            target,
+            RetargetModeAst::OneToFixed { target: fixed },
+            !any_targets,
+        )));
+    }
     let mut filter = if any_targets {
         // Preserve the complete announced spell filter, including subtypes.
         match parse_target_phrase(&tail_tokens)? {
@@ -522,7 +704,9 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         ),
         specific_primitive!(
             "blocking-capacity-clause",
-            &["it", "they", "target", "this", "can"],
+            // "That creature can block up to two additional creatures this
+            // turn" (Yare) names the earlier target anaphorically.
+            &["it", "they", "target", "this", "can", "that"],
             parse_blocking_capacity_this_turn_clause,
         ),
         specific_primitive!(
@@ -559,6 +743,16 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             "reselect-attack-target-clause",
             &["reselect"],
             parse_reselect_attack_target_clause,
+        ),
+        specific_primitive!(
+            "until-player-next-end-step-play-permission",
+            &["until"],
+            parse_until_player_next_end_step_play_permission,
+        ),
+        specific_primitive!(
+            "reselect-targets-at-random-clause",
+            &["reselect"],
+            parse_reselect_targets_at_random_clause,
         ),
         specific_primitive!(
             "attack-player-if-able-clause",
@@ -922,6 +1116,104 @@ pub fn parse_time_travel_clause(
 /// attacking" (Portal Mage) / "reselect which player this creature is
 /// attacking" (Capricopian): the creature stays attacking; its controller
 /// chooses anew among what it could attack (CR 508.1b).
+/// "Until that player's next end step, they may play that card [without
+/// paying its mana cost]" (Casey & Raph): a play permission for the named
+/// player lasting until that player's own next end step.
+pub fn parse_until_player_next_end_step_play_permission(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let trimmed = crate::util::trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
+    let rest = match words.as_slice() {
+        ["until", "that", "player's" | "players", "next", "end", "step", rest @ ..]
+        | ["until", "their", "next", "end", "step", rest @ ..] => rest,
+        _ => return Ok(None),
+    };
+    let rest = match rest {
+        ["they" | "he" | "she", "may", rest @ ..] => rest,
+        ["that", "player", "may", rest @ ..] => rest,
+        _ => return Ok(None),
+    };
+    let (allow_land, rest) = match rest {
+        ["play", rest @ ..] => (true, rest),
+        ["cast", rest @ ..] => (false, rest),
+        _ => return Ok(None),
+    };
+    let rest = match rest {
+        ["that", "card", rest @ ..] | ["it", rest @ ..] | ["those", "cards", rest @ ..]
+        | ["them", rest @ ..] => rest,
+        _ => return Ok(None),
+    };
+    let without_paying_mana_cost = match rest {
+        [] => false,
+        ["without", "paying", "its" | "their", "mana", "cost" | "costs"] => true,
+        _ => return Ok(None),
+    };
+    Ok(Some(EffectAst::GrantPlayTaggedUntilPlayerNextEndStep {
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
+        player: PlayerAst::That,
+        allow_land,
+        without_paying_mana_cost,
+    }))
+}
+
+/// "reselect the targets at random for the spell and the copy" (Chef's
+/// Kiss), "reselect its target at random" (Grip of Chaos): each named stack
+/// object's targets are refilled at random from their legal targets.
+pub fn parse_reselect_targets_at_random_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let trimmed = crate::util::trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
+    let reference = |words: &[&str]| -> Option<crate::tag::TagRef> {
+        match words {
+            ["the", "spell"] | ["that", "spell"] | ["it"] | ["the", "spell", "or", "ability"]
+            | ["that", "spell", "or", "ability"] | ["that", "ability"] => {
+                Some(crate::tag::CompilerReferenceTag::It.bind())
+            }
+            ["the", "copy"] | ["that", "copy"] | ["the", "copies"] => {
+                Some(crate::tag::CompilerReferenceTag::CopiedStackObject.bind())
+            }
+            _ => None,
+        }
+    };
+    let objects: Vec<crate::tag::TagRef> = match words.as_slice() {
+        ["reselect", "its" | "the", "target" | "targets", "at", "random"] => {
+            vec![crate::tag::CompilerReferenceTag::It.bind()]
+        }
+        ["reselect", "the", "target" | "targets", "at", "random", "for", rest @ ..] => {
+            let mut objects = Vec::new();
+            for part in rest.split(|word| *word == "and") {
+                let Some(tag) = reference(part) else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported random-retarget object (clause: '{}')",
+                        words.join(" ")
+                    )));
+                };
+                objects.push(tag);
+            }
+            objects
+        }
+        _ => return Ok(None),
+    };
+    let mut effects: Vec<EffectAst> = objects
+        .into_iter()
+        .map(|tag| {
+            EffectAst::subject_verb_retarget_stack_object(
+                PlayerAst::Implicit,
+                TargetAst::Tagged(tag, span_from_tokens(tokens)),
+                RetargetModeAst::AllAtRandom,
+                false,
+            )
+        })
+        .collect();
+    Ok(Some(if effects.len() == 1 {
+        effects.pop().expect("one effect")
+    } else {
+        EffectAst::Sequence { effects }
+    }))
+}
+
 pub fn parse_reselect_attack_target_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1355,9 +1647,93 @@ pub fn parse_must_block_if_able_clause(
     }
 }
 
+/// "until the end of defending player's next turn, that player gets two rad
+/// counters whenever they cast a spell" (Nuka-Nuke Launcher): a delayed
+/// trigger authored with a trailing "whenever" clause whose actor is the
+/// duration's player. The registration resolves that player once
+/// (`ScheduleDelayedTriggerEffect::duration_player`), lasts until the end of
+/// that player's next turn, and watches that player's actions through the
+/// delayed duration player tag.
+fn parse_named_player_turn_end_trailing_trigger_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    let player = match crate::lexer::parser_token_word_refs(&tokens[..comma]).as_slice() {
+        ["until", "the", "end", "of", "defending", "players", "next", "turn"] => {
+            PlayerFilter::Defending
+        }
+        ["until", "the", "end", "of", "that", "players", "next", "turn"] => {
+            PlayerFilter::IteratedPlayer
+        }
+        _ => return Ok(None),
+    };
+    let rest = crate::lexer::trim_lexed_commas(&tokens[comma + 1..]);
+    let Some(whenever) = rest.iter().position(|token| token.is_word("whenever")) else {
+        return Ok(None);
+    };
+    // Only "<effect> whenever they <verb> ...": the trailing actor is the
+    // duration's player.
+    if whenever == 0
+        || !rest.get(whenever + 1).is_some_and(|token| token.is_word("they"))
+    {
+        return Ok(None);
+    }
+    let Some(verb) = rest.get(whenever + 2).and_then(OwnedLexToken::as_word) else {
+        return Ok(None);
+    };
+    let span = rest[whenever].span;
+    let mut line = vec![
+        OwnedLexToken::word("whenever".to_string(), span),
+        OwnedLexToken::word("a".to_string(), span),
+        OwnedLexToken::word("player".to_string(), span),
+        OwnedLexToken::word(format!("{verb}s"), span),
+    ];
+    line.extend_from_slice(&rest[whenever + 3..]);
+    line.push(OwnedLexToken::comma(span));
+    line.extend_from_slice(&rest[..whenever]);
+    let LineAst::Triggered { mut trigger, effects, max_triggers_per_turn: None } =
+        parse_triggered_line_lexed(&line)?
+    else {
+        return Ok(None);
+    };
+    fn bind_actor(trigger: &mut crate::model::ast::TriggerSpec) -> bool {
+        use crate::model::ast::TriggerSpec;
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => bind_actor(trigger),
+            TriggerSpec::SpellCast { caster, .. } => {
+                *caster = PlayerFilter::TaggedPlayer(
+                    ironsmith_core::DELAYED_DURATION_PLAYER_TAG.into(),
+                );
+                true
+            }
+            _ => false,
+        }
+    }
+    if !bind_actor(&mut trigger) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing trigger actor for a named player's turn duration (clause: '{}')",
+            render_token_slice(tokens)
+        )));
+    }
+    Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects,
+        one_shot: false,
+        duration: crate::effect::Until::PlayersNextTurnEnd { player },
+        either_of_watched_objects: false,
+        while_any_tagged_object_in_zone: None,
+    })))
+}
+
 pub fn parse_until_duration_triggered_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_named_player_turn_end_trailing_trigger_clause(tokens)? {
+        return Ok(Some(effect));
+    }
     fn combat_source_filter_mut(
         trigger: &mut crate::model::ast::TriggerSpec,
     ) -> Option<&mut ObjectFilter> {
@@ -1690,6 +2066,60 @@ pub fn parse_anaphoric_object_deals_damage_clause(
         } else {
             source.clone()
         };
+    // "it deals 1 damage to each of up to one target creature, up to one
+    // target player, and/or up to one target planeswalker" (Volatile
+    // Arsonist): one simultaneous damage instruction with an independent
+    // target per listed member.
+    if let Some((amount, used)) = crate::util::parse_value(body_tokens)
+        && let Some(rest) = body_tokens.get(used..)
+        && crate::lexer::token_word_refs(rest).starts_with(&["damage", "to", "each", "of"])
+    {
+        let member_tokens = &rest[4..];
+        let mut members: Vec<&[OwnedLexToken]> = Vec::new();
+        let mut start = 0usize;
+        for (index, token) in member_tokens.iter().enumerate() {
+            let separator = token.is_comma()
+                || token.is_word("and")
+                || token.is_word("or")
+                || token.is_word("and/or")
+                || token.slice.eq_ignore_ascii_case("and/or");
+            if separator {
+                if index > start {
+                    members.push(&member_tokens[start..index]);
+                }
+                start = index + 1;
+            }
+        }
+        if start < member_tokens.len() {
+            members.push(&member_tokens[start..]);
+        }
+        let members = members
+            .into_iter()
+            .map(crate::util::trim_edge_punctuation_tokens)
+            .filter(|member| !member.is_empty())
+            .collect::<Vec<_>>();
+        let all_targets = members.len() >= 2
+            && members.iter().all(|member| {
+                let words = crate::lexer::token_word_refs(member);
+                words.first() == Some(&"target")
+                    || words.starts_with(&["up", "to", "one", "target"])
+            });
+        if all_targets {
+            let mut effects = Vec::with_capacity(members.len());
+            for member in members {
+                effects.push(EffectAst::subject_verb_damage_with_source(
+                    source.clone(),
+                    amount.clone(),
+                    parse_target_phrase(member)?,
+                ));
+            }
+            return Ok(Some(EffectAst::Coordinated {
+                effects,
+                leading_duration: false,
+                result_conjunction: false,
+            }));
+        }
+    }
     let parsed = super::verb_handlers::parse_deal_damage(body_tokens)?;
     // "it deals N damage to each opponent": the per-player fan-out keeps the
     // authored damage source (CR 120.3, 609.7) for each iterated player.
@@ -1761,6 +2191,12 @@ pub fn parse_anaphoric_object_deals_damage_clause(
 pub fn parse_deal_damage_equal_to_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "that creature's controller may have it deal damage equal to its
+    // power ..." (Pandemonium): the leading optional actor owns the clause;
+    // the may reading parses the causative action itself.
+    if crate::grammar::effects::clause_dispatch_shapes::parse_leading_may_shape(tokens).is_some() {
+        return Ok(None);
+    }
     let Some(shape) = clause_shapes::parse_power_damage_shape(tokens)? else {
         return Ok(None);
     };
@@ -2618,5 +3054,22 @@ mod change_any_targets_tests {
         for required in ["May", "RetargetStackObject", "Arcane", "Stack", "All", "require_change: false"] {
             assert!(debug.contains(required), "missing {required}: {debug}");
         }
+    }
+
+    // p40: the non-"this" destination after "to" must become the fixed new
+    // target instead of being dropped, and "that spell" stays anaphoric.
+    #[test]
+    fn change_target_of_that_spell_to_named_object_keeps_destination() {
+        let tokens = crate::lexer::lex_line(
+            "Change the target of that spell to enchanted creature if able.",
+            0,
+        )
+        .unwrap();
+        let effect = super::parse_change_target_clause(&tokens).unwrap().unwrap();
+        let debug = format!("{effect:?}");
+        for required in ["RetargetStackObject", "OneToFixed", "Tagged", "enchanted"] {
+            assert!(debug.contains(required), "missing {required}: {debug}");
+        }
+        assert!(!debug.contains("mode: All"), "{debug}");
     }
 }

@@ -56,6 +56,9 @@ pub enum VillainousChoicePlayerIteration {
     /// "that player faces a villainous choice" (Damocles Base): the player
     /// the enclosing trigger already names faces one choice.
     ThatPlayer,
+    /// "defending player faces a villainous choice" (Midnight Crusader
+    /// Shuttle): the attack trigger's defending player faces one choice.
+    DefendingPlayer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,6 +265,9 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
         primitives::phrase(&["that", "player"])
             .take()
             .map(|tokens| (VillainousChoicePlayerIteration::ThatPlayer, tokens, None)),
+        (opt(primitives::kw("the")), primitives::phrase(&["defending", "player"]))
+            .take()
+            .map(|tokens| (VillainousChoicePlayerIteration::DefendingPlayer, tokens, None)),
     ))
     .parse_next(input)?;
     primitives::phrase(&["faces", "a", "villainous", "choice"]).parse_next(input)?;

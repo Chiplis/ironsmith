@@ -176,6 +176,38 @@ fn parse_turn_history_intervening_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
+    // "a creature or planeswalker an opponent controlled was dealt excess
+    // damage this turn" (Rith, Liberated Primeval): CR 120.10 history read
+    // from each damaged permanent's damage-time last-known information.
+    if words.len() > 7
+        && words.ends_with(&["was", "dealt", "excess", "damage", "this", "turn"])
+        && matches!(words.first(), Some(&"a" | &"an"))
+        && let Some(subject) = clause.between_word_range(0, words.len() - 6)
+    {
+        let subject_tokens = subject.tokens();
+        let present_tense: Vec<OwnedLexToken> = subject_tokens
+            .iter()
+            .map(|token| {
+                if token.is_word("controlled") {
+                    OwnedLexToken::word("controls".to_string(), TextSpan::synthetic())
+                } else {
+                    token.clone()
+                }
+            })
+            .collect();
+        if let Ok(filter) = parse_object_filter_lexed(subject_tokens, false)
+            .or_else(|_| parse_object_filter_lexed(&present_tense, false))
+            && filter != ObjectFilter::default()
+        {
+            return Ok(Some(PredicateAst::ValueComparison {
+                left: Value::TurnHistoryCount(
+                    ironsmith_core::TurnHistoryCount::DealtExcessDamage(filter),
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            }));
+        }
+    }
     if let Some(played) = words.iter().position(|word| *word == "played")
         && words[played..]
             == ["played", "a", "land", "or", "cast", "a", "spell", "this", "turn",
@@ -348,6 +380,51 @@ fn parse_turn_history_intervening_predicate(
             )),
         ))));
     }
+    // "If it entered from your library [or was cast from your library]"
+    // (Fblthp, the Lost): the triggering entry's origin zone, or the zone
+    // the entering permanent was cast from as a spell (CR 603.6a).
+    if let ["it", "entered", "from", "your", entered_zone, rest @ ..] = words.as_slice()
+        && let Some(entered_zone) = crate::util::parse_zone_word(entered_zone)
+    {
+        let entered = PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::TriggeringObjectEnteredFromZone(entered_zone),
+        );
+        match rest {
+            [] => return Ok(Some(entered)),
+            ["or", "was", "cast", "from", "your", cast_zone] => {
+                if let Some(cast_zone) = crate::util::parse_zone_word(cast_zone) {
+                    return Ok(Some(PredicateAst::Or(
+                        Box::new(entered),
+                        Box::new(PredicateAst::TurnHistory(
+                            TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(cast_zone),
+                        )),
+                    )));
+                }
+            }
+            _ => {}
+        }
+    }
+    // "When you sacrifice this creature while casting a spell with emerge"
+    // (Foul Emissary): the sacrifice paid that spell's emerge cost.
+    if matches!(
+        words.as_slice(),
+        ["casting", "a" | "an", "spell", "with", "emerge"] | ["casting", "spell", "with", "emerge"]
+    ) {
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::TriggeringSacrificePaidEmergeCost,
+        )));
+    }
+    // "If all cards revealed this way are creature cards" (Game Preserve):
+    // no card revealed this way lacks the named card type.
+    if let ["all", "cards", "revealed", "this", "way", "are", type_word, "cards"] =
+        words.as_slice()
+        && let Some(card_type) = crate::util::parse_card_type(type_word)
+    {
+        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            ObjectFilter::default().without_type(card_type),
+        )))));
+    }
     // "destroy that creature if it attacked this turn" (Berserk)
     if surface::exact_words(&words, &["it", "attacked", "this", "turn"]) {
         let mut filter = ObjectFilter::default();
@@ -380,6 +457,37 @@ fn parse_turn_history_intervening_predicate(
             ObjectFilter::default()
                 .with_alternative_cast(ironsmith_core::AlternativeCastKind::Madness),
         )));
+    }
+    // "At the beginning of the next end step, if you haven't cast it, return
+    // it to its owner's hand." (Psychic Theft, Planeswalker's Mischief): the
+    // exiled card was not cast. A cast card is a new object the delayed
+    // trigger cannot find (CR 400.7, 603.7c).
+    if matches!(
+        words.as_slice(),
+        ["you", "havent" | "haven't" | "didnt" | "didn't", "cast", "it"]
+            | ["you", "have" | "did", "not", "cast", "it"]
+            | ["you", "havent" | "haven't" | "didnt" | "didn't", "cast", "the" | "that", "card"]
+            | ["you", "havent" | "haven't" | "didnt" | "didn't", "cast", "card"]
+            | ["you", "have" | "did", "not", "cast", "the" | "that", "card"]
+    ) {
+        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TaggedWasCast(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )))));
+    }
+    // "At the beginning of your next upkeep, if you haven't played it, put it
+    // into its owner's graveyard." (Grinning Totem): a played land, like a
+    // cast spell, is a new object the delayed trigger cannot find (CR 400.7),
+    // so only the cast half needs testing.
+    if matches!(
+        words.as_slice(),
+        ["you", "havent" | "haven't" | "didnt" | "didn't", "played", "it"]
+            | ["you", "havent" | "haven't" | "didnt" | "didn't", "play", "it"]
+            | ["you", "have" | "did", "not", "played" | "play", "it"]
+            | ["you", "havent" | "haven't" | "didnt" | "didn't", "played" | "play", "that", "card"]
+    ) {
+        return Ok(Some(PredicateAst::Not(Box::new(PredicateAst::TaggedWasCast(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        )))));
     }
     if surface::exact_words(&words, &["it", "wasnt", "cast"])
         || surface::exact_words(&words, &["it", "was", "not", "cast"])
@@ -456,10 +564,75 @@ fn parse_turn_history_intervening_predicate(
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn,
         )));
     }
+    // "if they didn't attack you that turn" (Faramir, Prince of Ithilien):
+    // read at that player's own end step, so "that turn" is the current turn
+    // and "they" is its active player.
+    if let ["they" | "that", rest @ ..] = words.as_slice() {
+        let rest = rest.strip_prefix(&["player"][..]).unwrap_or(rest);
+        let attacked = match rest {
+            ["attacked", "you", "that", "turn"] => Some(true),
+            ["didnt" | "didn't", "attack", "you", "that", "turn"]
+            | ["did", "not", "attack", "you", "that", "turn"] => Some(false),
+            _ => None,
+        };
+        if let Some(attacked) = attacked {
+            let predicate = PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::ActivePlayerAttackedControllerThisTurn,
+            );
+            return Ok(Some(if attacked {
+                predicate
+            } else {
+                PredicateAst::Not(Box::new(predicate))
+            }));
+        }
+    }
+    // "they were attacked this turn by an Assassin you controlled" (Ramses,
+    // Assassin Lord): the triggering player was attacked by a matching
+    // creature, judged as it attacked.
+    for prefix in [
+        &["they", "were", "attacked", "this", "turn", "by"][..],
+        &["that", "player", "was", "attacked", "this", "turn", "by"][..],
+    ] {
+        if words.len() > prefix.len()
+            && crate::word_primitives::parse_sequence_prefix(&words, prefix)
+            && let Some(filter_clause) = clause.between_word_range(prefix.len(), words.len())
+        {
+            let subject_tokens = filter_clause.tokens();
+            let present_tense: Vec<OwnedLexToken> = subject_tokens
+                .iter()
+                .map(|token| {
+                    if token.is_word("controlled") {
+                        OwnedLexToken::word("control".to_string(), TextSpan::synthetic())
+                    } else {
+                        token.clone()
+                    }
+                })
+                .collect();
+            let attackers = parse_object_filter_lexed(subject_tokens, false)
+                .or_else(|_| parse_object_filter_lexed(&present_tense, false))?;
+            return Ok(Some(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::TriggeringPlayerWasAttackedThisTurnBy { attackers },
+            )));
+        }
+    }
     if surface::exact_words(&words, &["an", "opponent", "lost", "life", "last", "turn"]) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::PlayerLostLifeLastTurn(PlayerAst::Opponent),
         )));
+    }
+    for (subject, player) in [
+        (&["an", "opponent", "was"][..], PlayerAst::Opponent),
+        (&["a", "player", "was"][..], PlayerAst::Any),
+        (&["you", "were"][..], PlayerAst::You),
+    ] {
+        if words.len() == subject.len() + 5
+            && words.starts_with(subject)
+            && words[subject.len()..] == ["dealt", "noncombat", "damage", "last", "turn"]
+        {
+            return Ok(Some(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerWasDealtNoncombatDamageLastTurn(player),
+            )));
+        }
     }
     if surface::exact_words(&words, &["you", "lost", "life", "last", "turn"]) {
         return Ok(Some(PredicateAst::TurnHistory(
@@ -976,6 +1149,10 @@ pub(super) fn parse_first_combat_phase_predicate_shape(
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let phase = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
+    // "if it's the first end step of the turn" (Y'shtola Rhul).
+    if surface::exact(phase, &["first", "end", "step"]) {
+        return Some(PredicateAst::FirstEndStepOfTurn);
+    }
     if !is_first_combat_phase_clause(phase) {
         return None;
     }
@@ -1000,7 +1177,9 @@ pub(super) fn parse_cast_this_spell_during_main_phase_shape(
     ];
     let matched = WinnowSequence::new(&atoms).parse_full(clause)?;
     let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
-    if !surface::exact(object, &["this", "spell"]) {
+    // "if you cast it during your main phase" (Sentinel's Mark): on the
+    // source's own enters trigger, `it` is the permanent spell that resolved.
+    if !surface::exact_any(object, &[&["this", "spell"], &["it"]]) {
         return None;
     }
     let phase = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
@@ -1194,6 +1373,12 @@ pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Op
 pub(super) fn parse_player_cards_in_hand_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    // "you have seven or more land cards in your hand" (Sasaya, Orochi
+    // Ascendant): a typed hand count compares the matching cards you own in
+    // your hand, not the whole hand size.
+    if let Some(predicate) = parse_typed_cards_in_your_hand_predicate(tokens) {
+        return Some(predicate);
+    }
     // Detect "... at the beginning of this turn" suffix and/or past-tense "had",
     // both of which select the at-turn-start variants. We rewrite the past-tense
     // verb to present in place (preserving real spans) so the shared captured
@@ -1284,6 +1469,42 @@ pub(super) fn parse_player_cards_in_hand_predicate(
     }
 }
 
+fn parse_typed_cards_in_your_hand_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let [
+        "you",
+        "have",
+        count,
+        "or",
+        bound @ ("more" | "fewer"),
+        card_type,
+        "cards" | "card",
+        "in",
+        rest @ ..,
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    if !matches!(rest, ["your", "hand"] | ["hand"]) {
+        return None;
+    }
+    let count = crate::util::parse_number_word_u32(count)
+        .or_else(|| count.parse::<u32>().ok())?;
+    let card_type = crate::util::parse_card_type(card_type)?;
+    let mut filter = ObjectFilter::default().with_type(card_type);
+    filter.zone = Some(crate::zone::Zone::Hand);
+    filter.owner = Some(PlayerFilter::You);
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: if *bound == "more" {
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+        } else {
+            crate::effect::ValueComparisonOperator::LessThanOrEqual
+        },
+        right: Value::Fixed(i32::try_from(count).ok()?),
+    })
+}
+
 pub(super) fn cards_in_hand_or_more(
     player: PlayerAst,
     count: u32,
@@ -1354,6 +1575,11 @@ pub(super) fn parse_player_life_relation_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let relation = crate::grammar::conditions::parse_player_life_relation_condition(tokens)?;
+    if let Some(predicate) =
+        crate::grammar::conditions::target_or_controller_life_relation_predicate(&relation)
+    {
+        return Some(predicate);
+    }
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
         crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => Some(
@@ -1486,6 +1712,23 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
 }
 
 pub(super) fn parse_turn_timing_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    // "it's an opponent's turn" (Discordant Spirit): the active player is one
+    // of your opponents, which is exactly "it's not your turn" (a teammate's
+    // turn is also your turn in team formats).
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        let rest = match words.as_slice() {
+            ["it's" | "its", rest @ ..] => rest,
+            ["it", "is" | "s", rest @ ..] => rest,
+            rest => rest,
+        };
+        if matches!(
+            rest,
+            ["an", "opponents" | "opponent's", "turn"] | ["opponents" | "opponent's", "turn"]
+        ) {
+            return Some(PredicateAst::Not(Box::new(PredicateAst::YourTurn)));
+        }
+    }
     let clause = LexedClause::new(tokens);
     let subject = [WinnowSequence::subject(
         "subject",
@@ -1742,6 +1985,45 @@ pub(super) fn parse_value_reference_comparison_predicate(
             operator,
             right: Value::PendingComparisonRight,
         });
+    }
+    // "the total mana value of the cards exiled this way is 13 or less"
+    // (Dance with Calamity): the sum over the preceding instruction's result.
+    if let ["total", "mana" | "power" | "toughness", rest @ ..] = words {
+        let characteristic = words[1];
+        let rest = rest.strip_prefix(&["value"]).unwrap_or(rest);
+        let rest = rest.strip_prefix(&["of"]);
+        let rest = rest.map(|rest| rest.strip_prefix(&["the"]).unwrap_or(rest));
+        if let Some(
+            [
+                "cards" | "permanents" | "creatures",
+                _participle,
+                "this",
+                "way",
+                "is",
+                amount,
+                "or",
+                direction @ ("less" | "greater" | "more"),
+            ],
+        ) = rest
+            && (characteristic != "mana" || words.get(2) == Some(&"value"))
+            && let Ok(amount) = amount.parse::<i32>()
+        {
+            let filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+            let left = match characteristic {
+                "mana" => Value::TotalManaValue(filter),
+                "power" => Value::TotalPower(filter),
+                _ => Value::TotalToughness(filter),
+            };
+            return Some(PredicateAst::ValueComparison {
+                left,
+                operator: if *direction == "less" {
+                    crate::effect::ValueComparisonOperator::LessThanOrEqual
+                } else {
+                    crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                },
+                right: Value::Fixed(amount),
+            });
+        }
     }
     if words.first() == Some(&"sacrificed") && words.len() >= 6 {
         let kind = words[1].trim_end_matches("'s").trim_end_matches('s');
@@ -2252,6 +2534,18 @@ pub(super) fn parse_opponent_dealt_damage_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "a player was dealt 6 or more combat damage this turn" (Sidequest:
+    // Play Blitzball): some single player's combat damage total.
+    if let ["a", "player", "was" | "has", rest @ ..] = words.as_slice() {
+        let rest = rest.strip_prefix(&["been"][..]).unwrap_or(rest);
+        if let ["dealt", amount, "or", "more", "combat", "damage", "this", "turn"] = rest
+            && let Some(count) = crate::util::parse_number_word_u32(amount)
+        {
+            return Some(PredicateAst::TurnEvents(
+                TurnEventPredicateAst::AnyPlayerWasDealtCombatDamageThisTurnOrMore(count),
+            ));
+        }
+    }
     let rest = crate::word_primitives::strip_any_prefix(
         &words,
         &[
@@ -2521,6 +2815,11 @@ pub(super) fn is_source_attacked_or_blocked_subject_clause(clause: LexedClause<'
             &["this"],
             &["it"],
         ],
+    ) || matches!(
+        // "if this Vehicle attacked or blocked this combat" (Daredevil
+        // Dragster): any "this <permanent type>" self reference.
+        crate::util::source_reference_surface_for_words(&clause.word_refs()),
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(_))
     )
 }
 
@@ -2867,6 +3166,7 @@ pub(super) fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
 pub(super) fn parse_spell_lifecycle_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_you_cast_source_from_shape(tokens)
         .or_else(|| parse_you_cast_source_shape(tokens))
+        .or_else(|| parse_target_was_cast_for_named_cost_shape(tokens))
         .or_else(|| parse_tagged_was_cast_shape(tokens))
         .or_else(|| parse_this_spell_was_cast_from_shape(tokens))
         .or_else(|| parse_this_spell_was_foretold_shape(tokens))
@@ -2926,7 +3226,8 @@ pub(super) fn is_cast_action_clause(clause: LexedClause<'_>) -> bool {
 
 pub(super) fn is_source_spell_object_clause(clause: LexedClause<'_>) -> bool {
     let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
-    surface::exact_any(clause, &[&["it"], &["this", "spell"]])
+    // "if you cast him" (Uldaros Theorix): a gendered pronoun for the source.
+    surface::exact_any(clause, &[&["it"], &["him"], &["her"], &["this", "spell"]])
 }
 
 pub(super) fn is_tagged_cast_subject_clause(clause: LexedClause<'_>) -> bool {
@@ -3274,25 +3575,43 @@ pub(super) fn parse_this_spell_was_bargained_shape(
     Some(PredicateAst::ThisSpellPaidLabel("Bargain".into()))
 }
 
-/// "if this spell was cast using teamwork" (We Say Thee Nay!).
+/// "if this spell was cast using teamwork" (We Say Thee Nay!), "If Scarlet
+/// Spider was cast using web-slinging" / "if they were cast using
+/// web-slinging" (Spiders-Man): the source's own cast receipt records the
+/// optional or alternative cost by name. A named alternative cost is later
+/// linked to the card's exact casting method by lowering.
 fn parse_this_spell_was_cast_using_teamwork_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
-    let negated = match words.as_slice() {
-        ["this", "spell", "was", "cast", "using", "teamwork"] => false,
-        [
-            "this",
-            "spell",
-            "wasnt" | "wasn't",
-            "cast",
-            "using",
-            "teamwork",
-        ]
-        | ["this", "spell", "was", "not", "cast", "using", "teamwork"] => true,
+    let rest = match words.as_slice() {
+        ["this", "spell" | "creature" | "permanent", rest @ ..] => rest,
+        ["this" | "it" | "they" | "he" | "she", rest @ ..] => rest,
         _ => return None,
     };
-    let predicate = PredicateAst::ThisSpellPaidLabel("Teamwork".into());
+    let (negated, keyword) = match rest {
+        ["was" | "were", "cast", "using", keyword] => (false, *keyword),
+        ["wasnt" | "wasn't" | "werent" | "weren't", "cast", "using", keyword]
+        | ["was" | "were", "not", "cast", "using", keyword] => (true, *keyword),
+        _ => return None,
+    };
+    let label = match keyword {
+        "teamwork" => "Teamwork",
+        "web-slinging" => "Web-slinging",
+        "sneak" => "Sneak",
+        "freerunning" => "Freerunning",
+        "prowl" => "Prowl",
+        "surge" => "Surge",
+        "spectacle" => "Spectacle",
+        "dash" => "Dash",
+        "blitz" => "Blitz",
+        "evoke" => "Evoke",
+        "madness" => "Madness",
+        "emerge" => "Emerge",
+        "impending" => "Impending",
+        _ => return None,
+    };
+    let predicate = PredicateAst::ThisSpellPaidLabel(label.into());
     Some(if negated {
         PredicateAst::Not(Box::new(predicate))
     } else {
@@ -3338,6 +3657,23 @@ pub(super) fn parse_named_spell_label_action_shape(
 }
 
 pub(super) fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    // "If you revealed a Dragon card or chose a Dragon as you cast this
+    // spell" (Dragon's Fire): beholding spelled out, the same paid label.
+    let words = crate::lexer::token_word_refs(tokens);
+    if let [
+        "you", "revealed", "a" | "an", revealed, "card", "or", "chose", "a" | "an", chosen,
+        "as", "you", "cast", "this", "spell",
+    ] = words.as_slice()
+        && revealed == chosen
+        && let Some(subtype) = parse_subtype_word(revealed)
+    {
+        return Some(PredicateAst::ThisSpellPaidLabel(
+            crate::cost::OptionalCostRef::with_discriminator(
+                crate::cost::OptionalCostKind::Behold,
+                subtype.to_string(),
+            ),
+        ));
+    }
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["was", "beheld"], &["beheld"]];
     let atoms = [
@@ -3358,6 +3694,37 @@ pub(super) fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option
             subtype.to_string(),
         ),
     ))
+}
+
+/// "If that creature was cast for its warp cost" (Full Bore): the referenced
+/// target's own cast receipt records the named alternative cost.
+fn parse_target_was_cast_for_named_cost_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let rest = match words.as_slice() {
+        ["that", "creature" | "permanent" | "spell", rest @ ..] => rest,
+        _ => return None,
+    };
+    let keyword = match rest {
+        ["was", "cast", "for", "its", keyword, "cost"] => *keyword,
+        ["was", "cast", "using", keyword] => *keyword,
+        _ => return None,
+    };
+    let label = match keyword {
+        "warp" => "Warp",
+        "dash" => "Dash",
+        "blitz" => "Blitz",
+        "evoke" => "Evoke",
+        "prowl" => "Prowl",
+        "surge" => "Surge",
+        "spectacle" => "Spectacle",
+        "madness" => "Madness",
+        "emerge" => "Emerge",
+        "sneak" => "Sneak",
+        "freerunning" => "Freerunning",
+        "web-slinging" => "Web-slinging",
+        _ => return None,
+    };
+    Some(PredicateAst::TargetPaidLabel(label.into()))
 }
 
 pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3745,6 +4112,21 @@ pub(super) fn parse_additional_cost_object_state_predicate(
         }));
     }
 
+    // "If the modified creature was sacrificed" (Lethal Throwdown): the
+    // descriptor before the paid object's noun reads as "the sacrificed
+    // creature was modified".
+    if let [the, descriptor @ .., noun, was, action] = tokens
+        && the.is_word("the")
+        && !descriptor.is_empty()
+        && was.is_word("was")
+        && (action.is_word("sacrificed") || action.is_word("exiled"))
+        && (token_word_is(noun, PERMANENT_WORD)
+            || parse_card_type(noun.parser_text()).is_some_and(is_permanent_type))
+    {
+        let mut rewritten = vec![the.clone(), action.clone(), noun.clone(), was.clone()];
+        rewritten.extend_from_slice(descriptor);
+        return parse_additional_cost_object_state_predicate(&rewritten);
+    }
     let optional_article = [WinnowSequence::any_word(&["a", "an", "the"])];
     let atoms = [
         WinnowSequence::optional(&optional_article),
@@ -3793,6 +4175,8 @@ pub(super) fn parse_additional_cost_object_state_predicate(
     }
     let mut filter = if descriptor.word_refs().as_slice() == ["suspected"] {
         ObjectFilter::default().suspected()
+    } else if descriptor.word_refs().as_slice() == ["modified"] {
+        ObjectFilter::default().modified()
     } else {
         match parse_object_filter(descriptor.tokens(), false) {
             Ok(filter) => filter,
@@ -5491,9 +5875,30 @@ pub(super) fn parse_object_on_battlefield_predicate(
     }
 
     let object_clause = relation.subject_clause;
-    let object_tokens = object_clause.tokens();
+    let mut object_tokens = object_clause.tokens();
     if object_tokens.is_empty() {
         return Ok(None);
+    }
+    // "ten or more lands are on the battlefield" (Limited Resources): a
+    // counted threshold over every matching permanent, not mere existence.
+    let mut threshold = None;
+    {
+        let leading = crate::lexer::token_word_refs(object_tokens);
+        if let [amount, "or", bound @ ("more" | "fewer" | "less"), ..] = leading.as_slice()
+            && let Some(count) = crate::util::parse_number_word_u32(amount)
+            && let Some(rest_start) = LexedClause::new(object_tokens)
+                .words()
+                .map_word_or_end_to_token_boundary(3)
+            && rest_start < object_tokens.len()
+        {
+            let operator = if *bound == "more" {
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+            } else {
+                crate::effect::ValueComparisonOperator::LessThanOrEqual
+            };
+            threshold = Some((operator, count as i32));
+            object_tokens = &object_tokens[rest_start..];
+        }
     }
     let mut filter = parse_object_filter(object_tokens, false)?;
     if filter.name.is_some()
@@ -5503,6 +5908,13 @@ pub(super) fn parse_object_on_battlefield_predicate(
     }
     filter.zone = Some(Zone::Battlefield);
 
+    if let Some((operator, count)) = threshold {
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator,
+            right: Value::Fixed(count),
+        }));
+    }
     Ok(Some(PredicateAst::ValueComparison {
         left: Value::Count(filter),
         operator: crate::effect::ValueComparisonOperator::GreaterThan,
@@ -5939,8 +6351,736 @@ fn parse_you_control_shared_creature_type_count_predicate(
     })
 }
 
+/// "<A> has <quality> and <B> doesn't": And(A has quality, Not(B has quality)).
+fn parse_has_and_other_doesnt_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(last) = tokens.iter().rposition(|token| token.as_word().is_some()) else {
+        return Ok(None);
+    };
+    let negation_len = if tokens[last].is_word("doesn't") || tokens[last].is_word("doesnt") {
+        1
+    } else if last >= 1 && tokens[last].is_word("not") && tokens[last - 1].is_word("does") {
+        2
+    } else {
+        return Ok(None);
+    };
+    let Some(and_index) = tokens[..last].iter().rposition(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let left = &tokens[..and_index];
+    let Some(has_index) = left.iter().position(|token| token.is_word("has")) else {
+        return Ok(None);
+    };
+    let subject_end = last + 1 - negation_len;
+    if and_index + 1 >= subject_end {
+        return Ok(None);
+    }
+    let other_subject = &tokens[and_index + 1..subject_end];
+    if has_index == 0
+        || has_index + 1 >= left.len()
+        || other_subject.is_empty()
+        || left.iter().any(|token| token.is_word("and") || token.is_comma())
+        || other_subject.iter().any(|token| token.is_word("has"))
+    {
+        return Ok(None);
+    }
+    let mut other = other_subject.to_vec();
+    other.extend_from_slice(&left[has_index..]);
+    let (Ok(first), Ok(second)) = (parse_predicate(left), parse_predicate(&other)) else {
+        return Ok(None);
+    };
+    Ok(Some(PredicateAst::And(
+        Box::new(first),
+        Box::new(PredicateAst::Not(Box::new(second))),
+    )))
+}
+
+/// "If that library contains exactly the chosen number of cards with the
+/// chosen name" (Mindblaze) / "your library contains N or more <cards>": a
+/// count of the matching cards in one player's library. "that library" /
+/// "their library" names the current player antecedent (bound by reference
+/// resolution, e.g. the target player whose library was just revealed).
+fn parse_library_contains_count_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let mut rest = crate::util::trim_edge_punctuation_tokens(tokens);
+    if rest.first().is_some_and(|token| token.is_word("if")) {
+        rest = &rest[1..];
+    }
+    let owner = match rest {
+        [possessive, library, contains, ..]
+            if library.is_word("library") && contains.is_any_word(&["contains", "contain"]) =>
+        {
+            if possessive.is_any_word(&["that", "their"]) {
+                PlayerFilter::IteratedPlayer
+            } else if possessive.is_word("your") {
+                PlayerFilter::You
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    rest = &rest[3..];
+    let exactly = rest.first().is_some_and(|token| token.is_word("exactly"));
+    if exactly {
+        rest = &rest[1..];
+    }
+    let chosen_number_len = match rest {
+        [the, chosen, number, of, ..]
+            if the.is_word("the") && chosen.is_word("chosen") && number.is_word("number")
+                && of.is_word("of") => Some(4),
+        [chosen, number, of, ..]
+            if chosen.is_word("chosen") && number.is_word("number") && of.is_word("of") => Some(3),
+        _ => None,
+    };
+    let (amount, operator) = if let Some(used) = chosen_number_len {
+        if !exactly {
+            return None;
+        }
+        rest = &rest[used..];
+        (
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::ChosenNumber),
+            ),
+            ValueComparisonOperator::Equal,
+        )
+    } else {
+        let (count, used) = crate::util::parse_number(rest)?;
+        rest = &rest[used..];
+        let operator = match rest {
+            [or, more, ..] if !exactly && or.is_word("or") && more.is_word("more") => {
+                rest = &rest[2..];
+                ValueComparisonOperator::GreaterThanOrEqual
+            }
+            [or, fewer, ..] if !exactly && or.is_word("or") && fewer.is_any_word(&["fewer", "less"]) => {
+                rest = &rest[2..];
+                ValueComparisonOperator::LessThanOrEqual
+            }
+            _ if exactly => ValueComparisonOperator::Equal,
+            _ => return None,
+        };
+        (Value::Fixed(count as i32), operator)
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let mut filter = crate::grammar::primitives::probe_shape(
+        crate::object_filters::parse_object_filter_lexed(rest, false),
+    )?;
+    filter.zone = Some(crate::zone::Zone::Library);
+    filter.owner = Some(owner);
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator,
+        right: amount,
+    })
+}
+
+/// "If a Rat is attacking" (Charging Hooligan) / "if an Elf is tapped": an
+/// indefinite subject in a present combat/tap state asks whether any
+/// battlefield permanent matching the noun is in that state (any controller).
+fn parse_indefinite_object_combat_state_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let starts = view.token_start_indices();
+    let offset = usize::from(words.first() == Some(&"if"));
+    let words_rest = &words[offset..];
+    let [article, subject @ .., "is", state] = words_rest else {
+        return None;
+    };
+    if !matches!(*article, "a" | "an") || subject.is_empty() {
+        return None;
+    }
+    if subject
+        .iter()
+        .any(|word| matches!(*word, "it" | "that" | "this" | "those" | "you" | "player"))
+    {
+        return None;
+    }
+    let subject_start = *starts.get(offset + 1)?;
+    let subject_end = *starts.get(offset + 1 + subject.len())?;
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+        &tokens[subject_start..subject_end],
+        false,
+    ))?;
+    if object_filter_has_state(&filter)
+        || filter.zone.as_ref().is_some_and(|zone| *zone != Zone::Battlefield)
+    {
+        return None;
+    }
+    match *state {
+        "attacking" => filter.attacking = true,
+        "blocking" => filter.blocking = true,
+        "tapped" => filter.tapped = true,
+        "untapped" => filter.untapped = true,
+        _ => return None,
+    }
+    filter.zone = Some(Zone::Battlefield);
+    Some(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+        player: PlayerAst::Any,
+        filter,
+    }))
+}
+
 pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    if let Some(predicate) = parse_library_contains_count_predicate(tokens) {
+        return Ok(predicate);
+    }
     let monarch_words = non_article_token_word_refs(tokens);
+    if let Some(predicate) = parse_indefinite_object_combat_state_predicate(tokens) {
+        return Ok(predicate);
+    }
+    // "if it has a single target" (Captured by the Consulate): the
+    // referenced spell or ability has exactly one target.
+    if matches!(
+        monarch_words.strip_prefix(&["if"]).unwrap_or(monarch_words.as_slice()),
+        ["it" | "that", "has", "single", "target"]
+            | ["that", "spell" | "ability", "has", "single", "target"]
+    ) {
+        return Ok(PredicateAst::ItMatches(
+            ObjectFilter::default().target_count_exact(1),
+        ));
+    }
+    // "the revealed card is the chosen type" (Celestial Reunion): the card
+    // the preceding search revealed is "it"; "is the chosen type" is the
+    // same test as "is of the chosen type".
+    if matches!(
+        monarch_words.strip_prefix(&["if"]).unwrap_or(monarch_words.as_slice()),
+        ["revealed" | "that", "card", "is", "chosen", "type"]
+            | ["it", "is", "chosen", "type"]
+    ) && let Ok(rewritten) = crate::lexer::lex_line("it is of the chosen type", 0)
+    {
+        return parse_predicate(&rewritten);
+    }
+    // "this spell's additional cost was paid and the revealed card is the
+    // chosen type": a conjunction whose right side is that chosen-type test.
+    if let Some(and_idx) = tokens.iter().rposition(|token| token.is_word("and"))
+        && and_idx > 0
+        && matches!(
+            non_article_token_word_refs(&tokens[and_idx + 1..]).as_slice(),
+            ["revealed" | "that", "card", "is", "chosen", "type"]
+        )
+    {
+        let left = parse_predicate(&tokens[..and_idx])?;
+        let right = parse_predicate(&tokens[and_idx + 1..])?;
+        return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
+    }
+    // "if you guessed correctly for a card named Spire Phantasm": the draft
+    // recorded at least one correct guess for that card name's instruction.
+    if let ["you", "guessed", "correctly", "for", "card" | "cards", "named", name @ ..] =
+        monarch_words.strip_prefix(&["if"]).unwrap_or(monarch_words.as_slice())
+        && !name.is_empty()
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::DraftCorrectGuessCount {
+                card_name: name.join(" "),
+            },
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        });
+    }
+    // "If that creature has haste and Super-Adaptoid doesn't, ..." (Super-
+    // Adaptoid): the elided second clause repeats the first clause's "has"
+    // phrase about another subject, negated.
+    if let Some(predicate) = parse_has_and_other_doesnt_predicate(tokens)? {
+        return Ok(predicate);
+    }
+    // "If the last card exiled isn't a land card, repeat this process"
+    // (Rally the Horde): after a run of single-card exiles, "the last card
+    // exiled" is the card the latest exile instruction moved, which is the
+    // same back-reference "it" names after that instruction.
+    if matches!(
+        monarch_words.as_slice(),
+        ["if", "last", "card", "exiled", _, ..] | ["last", "card", "exiled", _, ..]
+    ) && let Some(exiled_idx) = tokens.iter().position(|token| token.is_word("exiled"))
+        && exiled_idx + 1 < tokens.len()
+    {
+        let mut rewritten = tokens[exiled_idx..].to_vec();
+        if rewritten[0].replace_word("it") {
+            return parse_predicate(&rewritten);
+        }
+    }
+    // "If exactly three colors of mana were spent to activate this ability"
+    // (Paragon of Modernity) / "two or more colors of mana were spent to
+    // activate this ability": distinct colors in this activation's payment.
+    {
+        let words = match monarch_words.as_slice() {
+            ["if", rest @ ..] => rest,
+            all => all,
+        };
+        let (exactly, amount_word, rest) = match words {
+            ["exactly", amount, rest @ ..] => (true, Some(*amount), rest),
+            [amount, "or", "more", rest @ ..] => (false, Some(*amount), rest),
+            _ => (false, None, &[][..]),
+        };
+        if let Some(amount_word) = amount_word
+            && matches!(
+                rest,
+                ["colors", "of", "mana", "were", "spent", "to", "activate", "this", "ability"]
+            )
+            && let Some(amount) = crate::util::parse_number_word_u32(amount_word)
+        {
+            return Ok(PredicateAst::ColorsOfManaSpentToActivateThisAbility { amount, exactly });
+        }
+    }
+    // "If that opponent's speed is greater than each other player's speed"
+    // (Spikeshell Harrier): that player's speed exceeds the highest speed
+    // among every other player. "that opponent" is the controller of the
+    // object the ability targeted.
+    if let [
+        "that",
+        "opponent's" | "opponents" | "player's" | "players",
+        "speed",
+        "is",
+        "greater",
+        "than",
+        "each",
+        "other",
+        "player's" | "players",
+        "speed",
+    ] = monarch_words.as_slice()
+    {
+        let that_player = PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target);
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::Speed(that_player.clone()),
+            operator: ValueComparisonOperator::GreaterThan,
+            right: Value::MaxSpeed(PlayerFilter::Excluding {
+                base: Box::new(PlayerFilter::Any),
+                excluded: Box::new(that_player),
+            }),
+        });
+    }
+    // "if any of those creatures have power or toughness equal to the chosen
+    // number" (Squall, Gunblade Duelist): at least one member of the attacking
+    // group the trigger captured matches the source's chosen number.
+    if let [
+        "any",
+        "of",
+        "those",
+        "creatures",
+        "have" | "has",
+        "power",
+        "or",
+        "toughness",
+        "equal",
+        "to",
+        "chosen",
+        "number",
+    ] = monarch_words.as_slice()
+    {
+        let chosen = || {
+            crate::filter::Comparison::EqualExpr(Box::new(Value::SourceChosenNumber {
+                if_unset: None,
+                pair: None,
+            }))
+        };
+        let group = || {
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::AttackingGroup.bind())
+        };
+        let mut by_power = group();
+        by_power.power = Some(chosen());
+        let mut by_toughness = group();
+        by_toughness.toughness = Some(chosen());
+        let mut either = ObjectFilter::default();
+        either.any_of = vec![by_power, by_toughness];
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::Count(either),
+            operator: ValueComparisonOperator::GreaterThan,
+            right: Value::Fixed(0),
+        });
+    }
+    // "If you reveal three cards with different names, ..." (Signal the
+    // Clans): the cards the preceding search revealed have that many
+    // distinct names.
+    if let ["you", "reveal", count, "cards", "with", "different", "names"] =
+        monarch_words.as_slice()
+        && let Some(count) = crate::util::parse_number_word_u32(count)
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::DistinctNames(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+    // "If the exiled card is a snow land, ..." (Storm Elemental): the card
+    // the instruction or cost exiled, read like "if it's a snow land".
+    if matches!(monarch_words.as_slice(), ["exiled", "card", "is", _, ..])
+        && let Some(is_idx) = tokens.iter().position(|token| token.is_word("is"))
+        && let Some(mut filter) = crate::grammar::primitives::probe_shape(
+            crate::object_filters::parse_object_filter_lexed(&tokens[is_idx + 1..], false),
+        )
+    {
+        // The exiled card is no longer on the battlefield; its type line is
+        // read where it is ("that card is a snow land").
+        if filter.zone == Some(crate::zone::Zone::Battlefield) {
+            filter.zone = None;
+        }
+        filter.set_demonstrative_antecedent_surface(Some(
+            ironsmith_core::DemonstrativeAntecedentSurface::Card,
+        ));
+        return Ok(PredicateAst::ItMatches(filter));
+    }
+    // "if it's controlled by the chosen player" (Stalking Leonin): the
+    // referenced object's controller is the named player.
+    if let ["its" | "it's", "controlled", "by", player @ ..]
+    | ["it", "s" | "is", "controlled", "by", player @ ..] = monarch_words.as_slice()
+        && let Some(controller) = match player {
+            ["chosen", "player"] => Some(PlayerFilter::ChosenPlayer),
+            ["you"] => Some(PlayerFilter::You),
+            ["opponent"] | ["an", "opponent"] => Some(PlayerFilter::Opponent),
+            _ => None,
+        }
+    {
+        let mut filter = ObjectFilter::default();
+        filter.controller = Some(controller);
+        return Ok(PredicateAst::ItMatches(filter));
+    }
+    // "If that player is you" compares a previously referenced player (a
+    // target, the damaged player, ...) with this ability's controller.
+    if let ["that", "player", "is", "you"] | ["they", "are", "you"] | ["you", "are", "that", "player"] =
+        monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::Player(PlayerPredicateAst::PlayerIsYou {
+            player: PlayerAst::That,
+        }));
+    }
+    // "If the player is your opponent [and has four or more cards in hand]"
+    // (Fevered Visions): the referenced player is an opponent, optionally
+    // conjoined with a second clause about the same player.
+    if let ["player", "is", rest @ ..]
+    | ["that", "player", "is", rest @ ..]
+    | ["they", "are", rest @ ..] = monarch_words.as_slice()
+    {
+        if let ["your" | "an", "opponent", tail @ ..] | ["opponent", tail @ ..] = rest {
+            let opponent = PredicateAst::Player(PlayerPredicateAst::PlayerIsOpponent {
+                player: PlayerAst::That,
+            });
+            if tail.is_empty() {
+                return Ok(opponent);
+            }
+            if tail.first() == Some(&"and")
+                && tail.len() > 1
+                && let Some(and_idx) = tokens.iter().position(|token| token.is_word("and"))
+            {
+                let mut conjunct = crate::lexer::synthetic_word_tokens(["that", "player"]);
+                conjunct.extend_from_slice(&tokens[and_idx + 1..]);
+                let second = parse_predicate(&conjunct)?;
+                return Ok(PredicateAst::And(Box::new(opponent), Box::new(second)));
+            }
+        }
+    }
+    // "If no cards are in that graveyard, ..." (after "Exile target card from
+    // an opponent's graveyard"): "that graveyard" is the graveyard the target
+    // card was in, i.e. its owner's (CR 404.2). The owner reads through the
+    // target snapshot once the card has left the graveyard.
+    if let ["no", "cards", "are", "in", "that", "graveyard"]
+    | ["there", "are", "no", "cards", "in", "that", "graveyard"]
+    | ["that", "graveyard", "is", "empty"]
+    | ["that", "graveyard", "has", "no", "cards", "in", "it"] = match monarch_words.as_slice() {
+        ["if", rest @ ..] => rest,
+        all => all,
+    } {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::CardsInGraveyard(PlayerFilter::OwnerOf(
+                crate::filter::ObjectRef::Target,
+            )),
+            operator: ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        });
+    }
+    // A named cast is historical even if that earlier spell was countered.
+    // "Another" excludes the exact resolving spell, not all casts of its name.
+    if let Some(named) = tokens.iter().position(|token| token.is_word("named")) {
+        let prefix = crate::lexer::parser_token_word_refs(&tokens[..named]);
+        let excluding_source = match prefix.as_slice() {
+            ["youve" | "you've", "cast", "another", "spell"]
+            | ["you", "have", "cast", "another", "spell"] => Some(true),
+            ["youve" | "you've", "cast", "a", "spell"]
+            | ["you", "have", "cast", "a", "spell"] => Some(false),
+            _ => None,
+        };
+        if let Some(excluding_source) = excluding_source
+            && tokens.len() >= named + 4
+            && crate::lexer::parser_token_word_refs(&tokens[tokens.len() - 2..]) == ["this", "game"]
+        {
+            let name_tokens = &tokens[named + 1..tokens.len() - 2];
+            let words = crate::lexer::parser_token_word_refs(name_tokens);
+            let name = if matches!(words.as_slice(), ["this"] | ["this", "spell"] | ["this", "card"]) {
+                None
+            } else { Some(crate::lexer::render_token_slice(name_tokens).trim().to_string()) };
+            if name.as_ref().is_none_or(|name| !name.is_empty()) {
+                return Ok(PredicateAst::Bound(Box::new(crate::ConditionExpr::YouCastSpellNamedThisGameAtLeast {
+                    name, count: 1, excluding_source,
+                })));
+            }
+        }
+    }
+    // "If you've cycled a card named Yidaro, Wandering Monster four or more
+    // times this game" (a per-game named cycling count).
+    if let Some(named_idx) = tokens.iter().position(|token| token.is_word("named"))
+        && let Some(cycled_idx) = tokens.iter().position(|token| token.is_word("cycled"))
+        && cycled_idx < named_idx
+        && monarch_words.first().is_some_and(|word| word.starts_with("you"))
+        && monarch_words.ends_with(&["or", "more", "times", "this", "game"])
+        && tokens.len() > named_idx + 6
+    {
+        let count_idx = tokens.len() - 6;
+        let count_word = tokens[count_idx].parser_text();
+        if let Some(count) = crate::util::parse_number_word_u32(count_word)
+            .or_else(|| count_word.parse::<u32>().ok())
+        {
+            let name_tokens = &tokens[named_idx + 1..count_idx];
+            let name_words = crate::lexer::parser_token_word_refs(name_tokens);
+            let name = if name_words == ["this"] || name_words == ["this", "card"] {
+                None
+            } else {
+                Some(crate::lexer::render_token_slice(name_tokens).trim().to_string())
+            };
+            if name.as_ref().is_none_or(|name| !name.is_empty()) {
+                return Ok(PredicateAst::Bound(Box::new(
+                    crate::ConditionExpr::YouCycledCardNamedThisGameAtLeast { name, count },
+                )));
+            }
+        }
+    }
+    // "If that Equipment was attached to a creature, ..." (Unforge): the
+    // referenced object's last-known attachment host matches the filter.
+    if let ["that", _, "was", "attached", "to", ..] | ["it", "was", "attached", "to", ..] =
+        monarch_words.as_slice()
+        && let Some(to_idx) = tokens.iter().position(|token| token.is_word("to"))
+        && let Some(host_tokens) = tokens.get(to_idx + 1..)
+        && !host_tokens.is_empty()
+        && let Some(host) = crate::grammar::primitives::probe_shape(
+            crate::object_filters::parse_object_filter(host_tokens, false),
+        )
+    {
+        let mut host = host;
+        host.zone = None;
+        let filter = ObjectFilter {
+            attached_to_object: Some(Box::new(host)),
+            ..Default::default()
+        };
+        return Ok(PredicateAst::ItMatchedLastKnown(filter));
+    }
+    // "if it wasn't sacrificed" (Urza's Miter): the departed permanent's
+    // removal was (or was not) a sacrifice.
+    if let ["it", "wasnt" | "wasn't", "sacrificed"] | ["it", "was", "not", "sacrificed"] =
+        monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectWasSacrificed,
+        ))));
+    }
+    // "if you removed two or more loyalty counters to activate it" (Way of
+    // the Mind Sculptor): the triggering activation's loyalty cost.
+    if let ["you", "removed", amount, "or", "more", "loyalty", "counters", "to", "activate", "it"] =
+        monarch_words.as_slice()
+        && let Some(minimum) = crate::util::parse_number_word_u32(amount)
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: crate::effect::Value::EventValue(
+                crate::effect::EventValueSpec::LoyaltyCountersRemovedToActivate,
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(minimum as i32),
+        });
+    }
+    // "if that creature was dealt excess damage this turn, you get X {E},
+    // where X is that excess damage" (Overclocked Electromancer): the
+    // triggering damage to that creature exceeded lethal (CR 120.10).
+    if let ["that", "creature" | "permanent", "was", "dealt", "excess", "damage", "this", "turn"] =
+        monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::ExcessDamage),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(1),
+        });
+    }
+    // "if life was paid to activate it" (Verrak, Warped Sengir): the
+    // triggering activation's life payment.
+    if let ["life", "was", "paid", "to", "activate", "it"] = monarch_words.as_slice() {
+        return Ok(PredicateAst::ValueComparison {
+            left: crate::effect::Value::EventValue(
+                crate::effect::EventValueSpec::LifePaidToActivate,
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(1),
+        });
+    }
+    // "If it's an art sticker" (Wee Champion): the kind of sticker the
+    // triggering sticker action placed.
+    if let ["it" | "it's" | "its", rest @ ..] = monarch_words.as_slice() {
+        let rest = match rest {
+            ["is", rest @ ..] => rest,
+            rest => rest,
+        };
+        let rest = match rest {
+            ["a" | "an", rest @ ..] => rest,
+            rest => rest,
+        };
+        let action = match rest {
+            ["art", "sticker"] => Some(crate::events::KeywordActionKind::ArtSticker),
+            ["ability", "sticker"] => Some(crate::events::KeywordActionKind::AbilitySticker),
+            ["name", "sticker"] => Some(crate::events::KeywordActionKind::NameSticker),
+            ["power", "and", "toughness", "sticker"] => {
+                Some(crate::events::KeywordActionKind::PowerToughnessSticker)
+            }
+            _ => None,
+        };
+        if let Some(action) = action {
+            return Ok(PredicateAst::Triggering(
+                TriggeringPredicateAst::TriggeringKeywordActionIs(action),
+            ));
+        }
+    }
+    if let ["it", "was", "sacrificed"] = monarch_words.as_slice() {
+        return Ok(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectWasSacrificed,
+        ));
+    }
+    // "if it isn't being declared as an attacker" (Verity Circle): the
+    // triggering tap is not the CR 508.1f attack-declaration tap.
+    if let ["it", "isnt" | "isn't", "being", "declared", "as", "attacker"]
+    | ["it", "is", "not", "being", "declared", "as", "attacker"] = monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::Triggering(
+            TriggeringPredicateAst::TriggeringObjectTappedForAttack,
+        ))));
+    }
+    // "if Tolsimir attacked this combat" (the card name reads as `this`):
+    // the source's own attack declaration in the current combat.
+    if let ["this", "attacked", "this", "combat"]
+    | ["this", "creature" | "permanent", "attacked", "this", "combat"] = monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisCombat));
+    }
+    // "if Kytheon and at least two other creatures attacked this combat"
+    // (Kytheon, Hero of Akros; checked at end of combat, CR 506.4: the
+    // attackers are still attacking creatures until combat ends).
+    if let ["this", "and", "at", "least", count, "other", "creatures", "attacked", "this", "combat"]
+    | ["this", "creature", "and", "at", "least", count, "other", "creatures", "attacked", "this", "combat"] =
+        monarch_words.as_slice()
+        && let Some(count) = crate::util::parse_number_word_u32(count)
+    {
+        let mut others = ObjectFilter::creature();
+        others.zone = Some(Zone::Battlefield);
+        others.attacking = true;
+        others.other = true;
+        return Ok(PredicateAst::And(
+            Box::new(PredicateAst::Source(SourcePredicateAst::SourceAttackedThisCombat)),
+            Box::new(PredicateAst::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(others),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(count as i32),
+                display: None,
+            }),
+        ));
+    }
+    // "if none of those creatures attacked you" (Firemane Commando, after an
+    // attack-declaration trigger): only the active player attacks, so the
+    // declared attackers are exactly the creatures attacking in this combat;
+    // none of them attacks you as a player (not your planeswalkers).
+    if let ["none", "of", "those" | "them", ..] = monarch_words.as_slice()
+        && matches!(
+            monarch_words.as_slice(),
+            ["none", "of", "those", "creatures", "attacked", "you"]
+                | ["none", "of", "them", "attacked", "you"]
+        )
+    {
+        let mut filter = ObjectFilter::creature();
+        filter.attacking = true;
+        filter.zone = Some(Zone::Battlefield);
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::You);
+        filter.attacking_player_only = true;
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerControls {
+                player: PlayerAst::Any,
+                filter,
+            },
+        ))));
+    }
+    // "if no other creatures are attacking that player" (Jin Sakai, after
+    // "Whenever a creature you control attacks a player"): no creature other
+    // than the triggering attacker is attacking the attacked player directly.
+    if let ["no", "other", "creatures", "are", "attacking", "that", "player"] =
+        monarch_words.as_slice()
+    {
+        let mut filter = ObjectFilter::creature();
+        filter.attacking = true;
+        filter.zone = Some(Zone::Battlefield);
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Defending);
+        filter.attacking_player_only = true;
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+                relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+        return Ok(PredicateAst::Not(Box::new(PredicateAst::Player(
+            PlayerPredicateAst::PlayerControls {
+                player: PlayerAst::Any,
+                filter,
+            },
+        ))));
+    }
+    // "if a Pirate and a Vehicle attacked this combat" (Fearless
+    // Swashbuckler, after "Whenever you attack"): each conjunct names one of
+    // your creatures declared as an attacker in this combat (CR 508.1).
+    if let [.., "and", _, "attacked", "this", "combat"] = monarch_words.as_slice()
+        && tokens.len() > 3
+        && crate::lexer::token_word_refs(&tokens[tokens.len() - 3..])
+            == ["attacked", "this", "combat"]
+    {
+        let subject = &tokens[..tokens.len() - 3];
+        let subject = if token_slice_first_is(subject, "if") {
+            &subject[1..]
+        } else {
+            subject
+        };
+        if let Some(and_idx) = subject.iter().position(|token| token.is_word("and"))
+            && and_idx > 0
+            && and_idx + 1 < subject.len()
+        {
+            let mut conjuncts = Vec::new();
+            for part in [&subject[..and_idx], &subject[and_idx + 1..]] {
+                let Ok(mut filter) = parse_object_filter(part, false) else {
+                    break;
+                };
+                filter.attacking = true;
+                filter.zone = Some(Zone::Battlefield);
+                conjuncts.push(PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter,
+                }));
+            }
+            if conjuncts.len() == 2
+                && let Some(second) = conjuncts.pop()
+                && let Some(first) = conjuncts.pop()
+            {
+                return Ok(PredicateAst::And(Box::new(first), Box::new(second)));
+            }
+        }
+    }
+    // "If its mana cost contains {X}, ..." (The First Tyrannic War): the
+    // referenced object's printed mana cost includes an {X} symbol.
+    if let ["its" | "it's" | "that" | "the", .., "mana", "cost", "contains", "x"] =
+        monarch_words.as_slice()
+        && monarch_words.len() <= 6
+    {
+        let filter = ObjectFilter {
+            has_x_in_cost: true,
+            ..Default::default()
+        };
+        return Ok(PredicateAst::ItMatches(filter));
+    }
     if let Some(subject) = monarch_words.strip_suffix(&["monarch", "as", "turn", "began"]) {
         let player = match subject {
             ["you", "were"] => Some(PlayerAst::You),
@@ -5987,6 +7127,23 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     }
     if let Some(predicate) = source_damage_history::parse(predicate_tokens) {
         return Ok(predicate);
+    }
+    // "If an opponent protects it" (Portent Tracker): the referenced battle's
+    // current protector (CR 310.8).
+    {
+        let words = crate::lexer::token_word_refs(predicate_tokens);
+        let protector = match words.as_slice() {
+            ["an" | "any", "opponent", "protects", "it"] | ["opponent", "protects", "it"] => {
+                Some(crate::target::PlayerFilter::Opponent)
+            }
+            ["you", "protect", "it"] => Some(crate::target::PlayerFilter::You),
+            _ => None,
+        };
+        if let Some(protector) = protector {
+            return Ok(PredicateAst::ItMatches(
+                crate::target::ObjectFilter::default().protected_by(protector),
+            ));
+        }
     }
     if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {
         return Ok(predicate);

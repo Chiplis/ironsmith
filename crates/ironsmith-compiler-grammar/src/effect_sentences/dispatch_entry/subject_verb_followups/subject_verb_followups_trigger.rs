@@ -232,6 +232,9 @@ pub(super) fn post_rule_delayed_trigger_result_followup(
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDrawStep { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextMainPhase { effects, .. })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextFirstMainPhase { effects, .. })
+        | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextDeclareAttackersStep {
+            effects, ..
+        })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilEndOfCombat { effects }),
     ) = state.effects.last_mut()
     else {

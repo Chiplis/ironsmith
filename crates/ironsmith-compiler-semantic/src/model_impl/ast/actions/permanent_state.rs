@@ -77,5 +77,11 @@ pub enum PermanentStateActionAst {
         players_only: bool,
         /// "are now attacking that player": the fixed new attacked player.
         attacked_player: Option<PlayerAst>,
+        /// "it's attacking that player": a creature not in combat becomes
+        /// attacking (CR 506.3d).
+        enters_combat: bool,
+        /// "is attacking a player or planeswalker <player> is attacking":
+        /// the choice is among what that player's attackers attack.
+        among_attacked_by: Option<PlayerAst>,
     },
 }

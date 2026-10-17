@@ -16,7 +16,11 @@ impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut registration = crate::effects::restrictions::ResolvedRestrictions::new(
             vec![Restriction::lose_unspent_mana(self.player.clone(), self.color)],
-            Until::EndOfTurn,
+            if self.until_end_of_combat {
+                Until::EndOfCombat
+            } else {
+                Until::EndOfTurn
+            },
         );
         registration.iterated_player = ctx.iteration.iterated_player;
         registration.register(game, ctx);

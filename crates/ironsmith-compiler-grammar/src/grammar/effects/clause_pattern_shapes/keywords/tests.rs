@@ -9,6 +9,7 @@ fn parses_phase_all_shape() {
         Some(KeywordMechanicShape::Phase {
             direction: PhaseDirectionShape::In,
             subject: PhaseSubjectShape::All(_),
+            ..
         })
     ));
 }

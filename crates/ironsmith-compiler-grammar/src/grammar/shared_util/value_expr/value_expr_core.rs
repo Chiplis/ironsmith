@@ -94,6 +94,18 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     }) {
         return Some((Value::ManaSpentToCastThisSpell, offset + 8));
     }
+    // "where X is the amount of mana spent to cast her" (Toph, Greatest
+    // Earthbender): a gendered pronoun names the legendary source itself.
+    if permission_shapes::starts_at_words(
+        words,
+        offset,
+        &["amount", "of", "mana", "spent", "to", "cast"],
+    ) && words
+        .get(offset + 6)
+        .is_some_and(|word| matches!(*word, "her" | "him"))
+    {
+        return Some((Value::ManaSpentToCastThisSpell, offset + 7));
+    }
     if let Some(devotion) = parse_devotion_value_words(words) {
         return Some(devotion);
     }
@@ -167,6 +179,12 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some((rounded_half(base, Rounding::Down), used));
     }
 
+    // "where X is that excess damage" (Overclocked Electromancer): the
+    // excess in the triggering damage event (CR 120.10).
+    if let Some(used) = prefix_len(words, &[&["that", "excess", "damage"]]) {
+        return Some((Value::EventValue(EventValueSpec::ExcessDamage), used));
+    }
+
     if let Some((_, used)) = DAMAGE_EVENT_AMOUNT_PREFIXES
         .iter()
         .find(|(expected, _)| permission_shapes::prefix_words(words, expected))
@@ -180,7 +198,14 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
 
     if let Some(used) = prefix_len(
         words,
-        &[&["the", "result"], &["that", "result"], &["result"]],
+        &[
+            &["the", "total", "of", "those", "results"],
+            &["the", "total", "of", "the", "results"],
+            &["the", "first", "result"],
+            &["the", "result"],
+            &["that", "result"],
+            &["result"],
+        ],
     ) {
         return Some((
             Value::EventValue(EventValueSpec::Amount)
@@ -301,6 +326,18 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     ) {
         return Some((Value::EventValue(EventValueSpec::Amount), used));
     }
+    // "the amount of mana this creature produced" (Tyvar the Bellicose): the
+    // triggering mana ability's produced amount.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["the", "amount", "of", "mana", "this", "creature", "produced"],
+            &["the", "amount", "of", "mana", "this", "permanent", "produced"],
+            &["the", "amount", "of", "mana", "it", "produced"],
+        ],
+    ) {
+        return Some((Value::EventValue(EventValueSpec::Amount), used));
+    }
     // The object an additional cost chose or revealed ("the revealed card's
     // power", "the power of the creature you chose or the card you
     // revealed"); it resolves through the spell's additional-cost export.
@@ -344,7 +381,9 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             used,
         ));
     }
-    if permission_shapes::prefix_words(words, &["the", "other", "result"]) {
+    if permission_shapes::prefix_words(words, &["the", "other", "result"])
+        || permission_shapes::prefix_words(words, &["the", "second", "result"])
+    {
         return Some((
             Value::PendingEffectMetric {
                 source: ironsmith_core::EffectMetricSource::Outcome,
@@ -769,6 +808,22 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 (crate::tag::CompilerReferenceTag::PublicRevealed.bind()).into(),
             )))
             .with_surface_hint(ValueSurfaceHint::RevealedCardReference),
+            used,
+        ));
+    }
+    // "the power of that card or creature" (Dragon's Fire): the object
+    // beheld as the spell was cast, a revealed card or a chosen creature.
+    if let Some(used) = prefix_len(
+        words,
+        &[
+            &["the", "power", "of", "that", "card", "or", "creature"],
+            &["power", "of", "that", "card", "or", "creature"],
+        ],
+    ) {
+        return Some((
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(
+                (crate::tag::CompilerReferenceTag::BeheldCost0.bind()).into(),
+            ))),
             used,
         ));
     }

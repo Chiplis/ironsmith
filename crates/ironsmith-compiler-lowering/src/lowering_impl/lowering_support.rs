@@ -230,6 +230,7 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
                     amount: count,
                 })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount: count, .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled {
                     amount: count, ..
                 })
@@ -247,6 +248,8 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     amount: count,
                     ..
                 })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount: count, .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount: count, .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity {
                     amount: count,
                 })
@@ -266,6 +269,9 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                 })
                 | SubjectVerbActionAst::TurnStructure(
                     TurnStructureActionAst::AdditionalLandPlays { count, .. },
+                )
+                | SubjectVerbActionAst::TurnStructure(
+                    TurnStructureActionAst::AdditionalSteps { count, .. },
                 )
                 | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
                     amount: Some(count),
@@ -2504,6 +2510,8 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     count_value,
                     as_aura,
                     top_only,
+                    as_non_aura: false,
+                    tapped_if: None,
                     ..
                 }) if tagged_target_key(target).is_some_and(|target_tag| {
                     target_tag.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
@@ -2521,6 +2529,7 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                             face_down: false,
                             controller: *controller,
                             verb_surface: ironsmith_core::MoveToZoneVerbSurface::Return,
+                            aura_attachment_filter: None,
                         },
                     ))
                 }
@@ -3277,11 +3286,33 @@ pub fn stage_statement_effects_for_lowering(
     effects: &[EffectAst],
     imports: impl Into<ReferenceImports>,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
+    stage_statement_effects_with_followup_for_lowering(effects, imports, &[])
+}
+
+/// [`stage_statement_effects_for_lowering`] with the next source statement
+/// visible. When that followup reads an action-typed prior-effect metric
+/// ("permanents destroyed this way") that only this statement's terminal
+/// effect can supply, the terminal effect also exports its result ID. This
+/// only adds an export: statements without such a followup allocate exactly
+/// the IDs they did before.
+pub fn stage_statement_effects_with_followup_for_lowering(
+    effects: &[EffectAst],
+    imports: impl Into<ReferenceImports>,
+    followup: &[EffectAst],
+) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let normalized = normalize_effects_ast(effects);
-    let force_export_last_memory_effect_id = normalized
-        .last()
-        .is_some_and(statement_terminal_needs_participant_result_export)
+    let followup_needs_terminal_result = !followup.is_empty()
+        && normalized.last().is_some_and(|producer| {
+            super::reference_resolution::statement_terminal_supplies_followup_metric(
+                producer,
+                &normalize_effects_ast(followup),
+            )
+        });
+    let force_export_last_memory_effect_id = followup_needs_terminal_result
+        || normalized
+            .last()
+            .is_some_and(statement_terminal_needs_participant_result_export)
         || normalized
             .iter()
             .enumerate()
@@ -3988,6 +4019,16 @@ pub fn stage_owned_triggered_effects_for_lowering(
             &mut body_effects,
             predicate,
         );
+        if !trigger_supports_event_value(&trigger, &EventValueSpec::Amount) {
+            crate::condition_antecedent::bind_triggering_had_counters_that_many_in_effects(
+                &mut body_effects,
+                predicate,
+            );
+            crate::condition_antecedent::bind_activation_life_that_much_in_effects(
+                &mut body_effects,
+                predicate,
+            );
+        }
     }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
         resolve_phase_step_it_targets_to_source(&mut body_effects);
@@ -4602,6 +4643,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         | KeywordAction::MobilizeValue { .. }
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
+        | KeywordAction::UnearthTotalCost(_)
         | KeywordAction::Encore(_)
         | KeywordAction::Eternalize(_)
         | KeywordAction::Ninjutsu(_)
@@ -4712,7 +4754,7 @@ pub fn runtime_static_ability_for_keyword_action(action: KeywordAction) -> Optio
         )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
-        KeywordAction::Annihilator(_) => None,
+        KeywordAction::Annihilator(_) | KeywordAction::AnnihilatorValue(_) => None,
         KeywordAction::Dredge(amount) => Some(StaticAbility::dredge(amount)),
         KeywordAction::StaticMarker(name) => Some(StaticAbility::keyword_marker(name)),
         KeywordAction::StaticMarkerText(text) => Some(StaticAbility::keyword_marker(text)),
@@ -5578,6 +5620,23 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             let lowered = lower_parsed_ability(ability)?;
             Ok(StaticAbility::soulbond_shared_object_ability(lowered))
         }
+        StaticAbilityAst::SourceHasFullTextOfTopGraveyardCard {
+            filter,
+            abilities,
+            ability_labels,
+            display,
+        } => {
+            let mut lowered = Vec::with_capacity(abilities.len());
+            for ability in abilities {
+                lowered.push(lower_parsed_ability(ability)?);
+            }
+            Ok(StaticAbility::source_has_full_text_of_top_graveyard_card(
+                filter,
+                lowered,
+                ability_labels,
+                display,
+            ))
+        }
         StaticAbilityAst::AttachmentRestriction { filter, .. } => {
             Ok(StaticAbility::enchant(filter))
         }
@@ -5628,6 +5687,7 @@ pub(crate) fn lower_compiler_static_ability_core(
             replacement_effects,
             optional,
             display,
+            except_first_of_draw_step,
         } => {
             let mut replacement_effects = replacement_effects;
             crate::effect_ast_normalization::normalize_effects_ast_in_place(
@@ -5652,6 +5712,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         replacement_effects,
                         optional,
                         display,
+                        except_first_of_draw_step,
                     },
             })
         }
@@ -5660,6 +5721,7 @@ pub(crate) fn lower_compiler_static_ability_core(
             except_first_of_draw_step,
             replacement_effects,
             display,
+            cycling_source,
         } => {
             // The replacement sentences form one resolution program: "they
             // draw a card and reveal it. If it's a creature card, that player
@@ -5676,12 +5738,22 @@ pub(crate) fn lower_compiler_static_ability_core(
             // independently of the replacement ability's controller ("you").
             ctx.iterated_player = true;
             ctx.last_player_filter = Some(PlayerFilter::IteratedPlayer);
-            let (replacement_effects, choices) =
+            let (mut replacement_effects, choices) =
                 crate::compile_support::compile_effects(&replacement_effects, &mut ctx)?;
             if !choices.is_empty() {
                 return Err(CardTextError::InvariantViolation(
                     "draw replacement cannot announce targets".into(),
                 ));
+            }
+            if cycling_source.is_some() {
+                // "the cycled card" is the source of the cycling ability whose
+                // draw is replaced; the replaced draw event carries it.
+                replacement_effects.insert(
+                    0,
+                    Effect::tag_triggering_source(
+                        crate::tag::CompilerReferenceTag::TriggeringSource.as_str(),
+                    ),
+                );
             }
             Ok(StaticAbility {
                 id,
@@ -5692,6 +5764,7 @@ pub(crate) fn lower_compiler_static_ability_core(
                         except_first_of_draw_step,
                         replacement_effects,
                         display,
+                        cycling_source,
                     },
             })
         }
@@ -6619,7 +6692,14 @@ fn validate_effect_for_iterated_player(
                 )?;
             }
         }
-        return validate_effects_for_iterated_player(&schedule_delayed.effects, false, context);
+        // A player bound while scheduling remains "that player" for the
+        // delayed ability: registration captures it under the `__it__` player
+        // tag, which `IteratedPlayer` resolves through when no loop binds it.
+        return validate_effects_for_iterated_player(
+            &schedule_delayed.effects,
+            iterated_player_bound,
+            context,
+        );
     }
     if let Some(schedule_when_leaves) =
         effect.downcast_ref::<crate::effects::ScheduleEffectsWhenTaggedLeavesEffect>()

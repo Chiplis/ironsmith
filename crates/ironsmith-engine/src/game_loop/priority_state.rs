@@ -215,6 +215,9 @@ pub struct PendingCast {
     /// A resolving effect may broaden which mana can pay the cast's colored
     /// or colorless requirements without creating a lasting permission.
     pub effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    /// A resolving instruction's payment lock: only mana abilities of lands
+    /// the caster controls may be activated while paying for this cast.
+    pub effect_land_mana_abilities_only: bool,
     /// True when this cast was initiated by a resolving effect. Such a cast
     /// receives timing permission from that effect and must not grant priority
     /// until the parent spell or ability finishes resolving.
@@ -332,6 +335,7 @@ impl PendingCast {
             cost_resource_mana_reduction: None,
             cost_resource_is_tap: false,
             effect_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
+            effect_land_mana_abilities_only: false,
             effect_driven: false,
             optional_costs_paid,
             required_optional_cost_indices: Vec::new(),

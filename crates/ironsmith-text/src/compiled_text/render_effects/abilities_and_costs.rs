@@ -2766,6 +2766,9 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::AnyTimeByOpponents => {
                 "Only your opponents may activate this ability".to_string()
             }
+            ActivationTiming::AnyTimeBySourceOwner => {
+                "Only this creature's owner may activate this ability".to_string()
+            }
             ActivationTiming::SorcerySpeedByOpponents => {
                 "Only your opponents may activate this ability and only as a sorcery".to_string()
             }
@@ -2783,6 +2786,9 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             }
             ActivationTiming::DuringAnyUpkeep => {
                 "Activate only during any upkeep step".to_string()
+            }
+            ActivationTiming::AnyTimeByGrantingPlayer(_) => {
+                "Only you may activate this ability".to_string()
             }
             timing => format!(
                 "Activate only {}",
@@ -3217,6 +3223,17 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
 
     if let Some(line) = optional_additional_source_line(cost) {
         return line;
+    }
+    if cost.kind == OptionalCostKind::FlashTiming && cost.cost.has_non_mana_costs() {
+        let payment = cost
+            .cost
+            .as_all()
+            .map(describe_cost_list)
+            .unwrap_or_else(|| describe_total_cost_payment(&cost.cost));
+        return format!(
+            "You may cast this spell as though it had flash if you {} as an additional cost to cast it",
+            lowercase_first(&payment)
+        );
     }
     if cost.kind == OptionalCostKind::FlashTiming {
         let amount = cost

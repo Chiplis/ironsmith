@@ -71,6 +71,9 @@ pub enum ChainVerbKind {
     Suspect,
     End,
     Note,
+    /// Only "activate(s) a mana ability of each ..." (Drain Power, Pygmy
+    /// Hippo); other uses of "activate" are restrictions, not actions.
+    Activate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

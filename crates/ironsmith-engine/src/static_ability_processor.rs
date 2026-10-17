@@ -2797,8 +2797,10 @@ fn controller_bound_grant_prefix_preserves_control_dependency_order() {
 #[test]
 fn typed_text_domain_failure_is_checked_without_a_power_toughness_effect() {
     use crate::{card::CardBuilder, ids::{CardId, PlayerId}, types::CardType};
+    // Unmodeled executors are held only when their image can hold the word.
     #[derive(Debug, Clone)]
-    struct UnmodeledWords;
+    #[allow(dead_code)]
+    struct UnmodeledWords(&'static str);
     impl crate::effects::EffectExecutor for UnmodeledWords {
         fn execute(&self, _: &mut GameState, _: &mut crate::effects::ExecutionContext)
             -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
@@ -2810,7 +2812,7 @@ fn typed_text_domain_failure_is_checked_without_a_power_toughness_effect() {
         .card_types(vec![CardType::Creature]).build();
     let id = game.create_object_from_card(&card, controller, Zone::Battlefield);
     game.object_mut(id).unwrap().abilities = std::sync::Arc::new(vec![crate::ability::Ability::activated(
-        crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords)])]);
+        crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords("red words"))])]);
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::from_resolution(
         id, controller, vec![id], Modification::RewriteText(
             ironsmith_core::TextChange::color(crate::color::Color::Red, crate::color::Color::Blue).unwrap())));

@@ -23,6 +23,9 @@ pub struct PermanentTappedEvent {
     /// Recipient before the action; active "you tap an untapped creature"
     /// clauses qualify this state, while passive clauses use `snapshot`.
     pub before_snapshot: Option<ObjectSnapshot>,
+    /// The tap is the CR 508.1f tap of a creature being declared as an
+    /// attacker ("if it isn't being declared as an attacker", Verity Circle).
+    pub attack_declaration: bool,
 }
 
 impl PermanentTappedEvent {
@@ -34,6 +37,7 @@ impl PermanentTappedEvent {
             snapshot: None,
             actor: None,
             before_snapshot: None,
+            attack_declaration: false,
         }
     }
 
@@ -48,6 +52,7 @@ impl PermanentTappedEvent {
             }),
             actor,
             before_snapshot: None,
+            attack_declaration: false,
         }
     }
 

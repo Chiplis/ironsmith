@@ -421,8 +421,12 @@ fn read_leading_result_prefix(
     // the result wrapper instead of flattening its actions
     // through the generic chain splitter.
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        let trailing_effects =
-            if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
+        let trailing_effects = if let Some(effects) =
+            crate::effect_sentences::for_each_helpers::parse_result_consequence_for_each_object(
+                prefix.trailing_tokens,
+            )? {
+            effects
+        } else if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
                 vec![copy_effect]
             } else if let Some(effects) =
                 // "When you do, target creature gets +3/+0 and gains first
@@ -788,6 +792,8 @@ fn read_cast_from_among_free(
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                     alternative_payment: None,
+                    caster_land_mana_abilities_only: false,
+                    control_caster_while_spell_resolves: false,
                 }),
             }),
         ]));
@@ -829,6 +835,8 @@ fn read_cast_hand_free(
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                     alternative_payment: None,
+                    caster_land_mana_abilities_only: false,
+                    control_caster_while_spell_resolves: false,
                 }),
             }),
         ]));

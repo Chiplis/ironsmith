@@ -21,6 +21,8 @@ pub struct PreventAllDamageToTargetEffect {
     /// Effects to run using the amount this shield actually prevented.
     pub follow_up_effects: Vec<Effect>,
     pub source_color_of_your_choice: bool,
+    /// The controller chooses one damage source as this resolves.
+    pub source_of_your_choice: bool,
 }
 
 impl PreventAllDamageToTargetEffect {
@@ -32,6 +34,7 @@ impl PreventAllDamageToTargetEffect {
             damage_filter: DamageFilter::all(),
             follow_up_effects: Vec::new(),
             source_color_of_your_choice: false,
+            source_of_your_choice: false,
         }
     }
 
@@ -129,6 +132,15 @@ impl PreventAllDamageToTargetEffect {
             };
             filter.from_colors = Some(vec![color]);
         }
+        if self.source_of_your_choice {
+            use super::prevention_helpers::{SourceChoiceSelection, choose_source_of_your_choice};
+            match choose_source_of_your_choice(game, ctx) {
+                SourceChoiceSelection::Chosen(source) => filter.from_specific_source = Some(source),
+                SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
+                SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
+            }
+        }
+        let duration = crate::effects::helpers::freeze_duration_player(game, &self.duration, ctx)?;
         for protected in objects
             .into_iter()
             .map(crate::prevention::PreventionTarget::Permanent)
@@ -143,7 +155,7 @@ impl PreventAllDamageToTargetEffect {
                 ctx,
                 protected,
                 None,
-                self.duration.clone(),
+                duration.clone(),
                 filter.clone(),
                 self.follow_up_effects.clone(),
                 ctx.targets.clone(),

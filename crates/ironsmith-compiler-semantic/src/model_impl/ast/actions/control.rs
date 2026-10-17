@@ -34,5 +34,8 @@ pub enum ControlActionAst {
     ControlPlayer {
         player: PlayerFilter,
         duration: ControlDurationAst,
+        /// An explicit controlling player other than the subject ("the
+        /// other target player controls them", Cruel Entertainment).
+        controller: Option<PlayerFilter>,
     },
 }

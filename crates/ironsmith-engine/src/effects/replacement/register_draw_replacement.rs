@@ -107,12 +107,24 @@ impl EffectExecutor for RegisterDrawReplacementEffect {
                 })
                 .or_else(|| ctx.source_snapshot.clone()),
         };
-        let replacement = ReplacementEffect::with_matcher(
-            ctx.source,
-            ctx.controller,
-            WouldDrawCardMatcher::new(player),
-            ReplacementAction::Instead(vec![Effect::new(program)]),
-        );
+        // "The next time you would lose the game this turn" replaces the
+        // controller's game loss (CR 104.3, 614.1); the matcher compares the
+        // losing player with the registration's controller.
+        let replacement = if self.lose_game {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                crate::events::other::WouldLoseGameMatcher,
+                ReplacementAction::Instead(vec![Effect::new(program)]),
+            )
+        } else {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                WouldDrawCardMatcher::new(player),
+                ReplacementAction::Instead(vec![Effect::new(program)]),
+            )
+        };
         ApplyReplacementEffect {
             effect: replacement,
             mode: self.mode,

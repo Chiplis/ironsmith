@@ -68,6 +68,98 @@ impl StaticAbilityKind for ControlAttachedPermanent {
     }
 }
 
+/// "All instances of color words in the text of spells and permanents are
+/// changed to the chosen color word." (Swirl the Mists): one layer-3 word
+/// substitution from every other color word to the source's chosen color,
+/// applied to each spell and each permanent (CR 612.2, 613.1c). Objects whose
+/// text holds no such word are unaffected; the text-change owner decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AllColorWordsBecomeChosenColor;
+
+impl StaticAbilityKind for AllColorWordsBecomeChosenColor {
+    fn canonical_model(&self) -> Option<crate::static_abilities::CompiledStaticAbility> {
+        Some(crate::static_abilities::CompiledStaticAbility::all_color_words_become_chosen_color())
+    }
+
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AllColorWordsBecomeChosenColor
+    }
+
+    fn display(&self) -> String {
+        "All instances of color words in the text of spells and permanents are changed to the chosen color word."
+            .to_string()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen) = game.chosen_color(source) else {
+            return Vec::new();
+        };
+        let mut effects = Vec::new();
+        for from in crate::color::Color::ALL {
+            let Ok(change) = ironsmith_core::TextChange::color(from, chosen) else {
+                continue;
+            };
+            for domain in [ObjectFilter::spell(), ObjectFilter::permanent()] {
+                effects.push(
+                    ContinuousEffect::new(
+                        source,
+                        controller,
+                        EffectTarget::Filter(domain),
+                        Modification::RewriteText(change),
+                    )
+                    .with_source_type(EffectSourceType::StaticAbility),
+                );
+            }
+        }
+        effects
+    }
+}
+
+/// "The monarch controls enchanted creature." (Fealty to the Realm): the
+/// current monarch controls the attached permanent (CR 613.1b). With no
+/// monarch, no control-changing effect applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MonarchControlsAttachedPermanent;
+
+impl StaticAbilityKind for MonarchControlsAttachedPermanent {
+    fn canonical_model(&self) -> Option<crate::static_abilities::CompiledStaticAbility> {
+        Some(crate::static_abilities::CompiledStaticAbility::monarch_controls_attached_permanent())
+    }
+
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MonarchControlsAttachedPermanent
+    }
+
+    fn display(&self) -> String {
+        "The monarch controls enchanted creature.".to_string()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(monarch) = game.monarch else {
+            return Vec::new();
+        };
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::ChangeController(monarch),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// "Enchanted land is the chosen type."
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnchantedLandIsChosenType {
@@ -105,6 +197,58 @@ impl StaticAbilityKind for EnchantedLandIsChosenType {
                 controller,
                 EffectTarget::AttachedTo(source),
                 Modification::SetSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "Enchanted creature is a copy of the chosen creature." (Metamorphic
+/// Alteration): a layer-1 copy effect on the attached object, using the
+/// copiable values of the object chosen as this source entered (CR 707.2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AttachedIsCopyOfChosenObject {
+    pub display: String,
+}
+
+impl AttachedIsCopyOfChosenObject {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for AttachedIsCopyOfChosenObject {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AttachedIsCopyOfChosenObject
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen) = game.chosen_object(source) else {
+            return Vec::new();
+        };
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::AttachedTo(source),
+                Modification::CopyOf {
+                    retain_original_name: false,
+                    target_id: chosen.object_id,
+                    copiable_values: Box::new(chosen.copiable_values.clone()),
+                    preserve_source_abilities: false,
+                    name_override: None,
+                    name_override_surface: None,
+                    add_supertypes: Vec::new(),
+                },
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
@@ -159,11 +303,18 @@ impl StaticAbilityKind for SourceLandIsChosenType {
 pub struct AddChosenCreatureTypeForFilter {
     pub filter: ObjectFilter,
     pub display: String,
+    /// The chosen type replaces the objects' creature types (CR 205.1a).
+    pub replace_existing: bool,
 }
 
 impl AddChosenCreatureTypeForFilter {
     pub fn new(filter: ObjectFilter, display: String) -> Self {
-        Self { filter, display }
+        Self { filter, display, replace_existing: false }
+    }
+
+    pub fn replacing_existing(mut self) -> Self {
+        self.replace_existing = true;
+        self
     }
 }
 
@@ -193,7 +344,11 @@ impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
                 source,
                 controller,
                 effect_target_for_filter(source, &self.filter),
-                Modification::AddSubtypes(vec![chosen_type]),
+                if self.replace_existing {
+                    Modification::SetSubtypes(vec![chosen_type])
+                } else {
+                    Modification::AddSubtypes(vec![chosen_type])
+                },
             )
             .with_source_type(EffectSourceType::StaticAbility),
         ]
@@ -873,6 +1028,19 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             format!("{subject} {verb} {rendered_ability}")
         };
         if let Some(condition) = &self.condition {
+            // "This creature escapes with "<ability>"" (Skyway Robber): a
+            // self grant gated on the permanent having escaped.
+            if self.filter.source
+                && !renders_unblockable_restriction
+                && matches!(condition, crate::ConditionExpr::ThisSpellEscaped)
+            {
+                let escaped_subject = if subject == "this source" {
+                    "this creature".to_string()
+                } else {
+                    subject.clone()
+                };
+                return format!("{escaped_subject} escapes with {rendered_ability}");
+            }
             if self.filter.controller.is_none()
                 && grant_subject_is_plural(&subject)
                 && let crate::ConditionExpr::CountComparison {

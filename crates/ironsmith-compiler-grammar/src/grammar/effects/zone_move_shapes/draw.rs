@@ -261,6 +261,19 @@ pub fn parse_draw_head_shape(
             tokens.len().saturating_sub(rest.len()),
             false,
         )
+    } else if let Some(((), count_tokens)) = primitives::parse_prefix(
+        tokens,
+        (primitives::phrase(&["a", "number", "of"]), card_noun).void(),
+    ) {
+        // "draw a number of cards equal to <amount>" (Wheel of Potential)
+        // is "draw cards equal to <amount>".
+        (
+            DrawHeadCountShape::CardPrefixed {
+                count_tokens: trimmed(count_tokens),
+            },
+            tokens.len(),
+            true,
+        )
     } else if let Some(((), count_tokens)) = primitives::parse_prefix(tokens, card_noun) {
         (
             DrawHeadCountShape::CardPrefixed {
@@ -504,6 +517,13 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
     // as "for each creature card put into their graveyard this way". Other
     // prior-action counts (notably "destroyed this way") deliberately retain
     // the effect-metric path below, which counts the producer's actual outcome.
+    // "the amount of {E} paid this way" (Wheel of Potential): the energy
+    // counters an earlier payment removed. The typed removed-energy query
+    // binds that payment even across a per-player loop whose own instructions
+    // (an exiled hand) produce other results.
+    if let Some(value) = energy_paid_this_way_value(tokens) {
+        return Some(value);
+    }
     let words = primitives::TokenWordView::new(tokens).to_word_refs();
     let counter_words = crate::word_primitives::strip_any_prefix(
         &words,
@@ -613,6 +633,43 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
         );
     }
     Some(metric)
+}
+
+/// The amount of energy an earlier "pay any amount of {E}" removed, as the
+/// typed removed-energy-counters result of that payment (CR 107.14).
+pub fn energy_paid_this_way_metric() -> Value {
+    Value::PendingPriorEffectMetric(
+        ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::Outcome,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Removed)
+        .with_counter_type(Some(crate::object::CounterType::Energy)),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::EnergyPaidThisWay)
+}
+
+/// "[the] amount of {E} paid this way".
+pub fn energy_paid_this_way_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trimmed(tokens);
+    let names_energy = tokens.iter().any(|token| {
+        token
+            .mana_group_inner()
+            .is_some_and(|inner| inner.eq_ignore_ascii_case("e"))
+            || token.as_word().is_some_and(|word| word.eq_ignore_ascii_case("e"))
+    });
+    if !names_energy {
+        return None;
+    }
+    let words: Vec<&str> = crate::lexer::token_word_refs(tokens)
+        .into_iter()
+        .filter(|word| !word.eq_ignore_ascii_case("e"))
+        .collect();
+    matches!(
+        words.as_slice(),
+        ["the", "amount", "of", "paid", "this", "way"] | ["amount", "of", "paid", "this", "way"]
+    )
+    .then(energy_paid_this_way_metric)
 }
 
 pub fn parse_draw_equal_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {

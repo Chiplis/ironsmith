@@ -100,6 +100,37 @@ fn compose_put_filtered_looked_cards_to_zone(
     ]
 }
 
+/// "put all Dwarf and Vehicle cards from among them into your hand" (Depala,
+/// Pilot Exemplar): every looked-at card matching the filter moves, with no
+/// choice; the rest stay where they are for a following "the rest"
+/// instruction.
+fn compose_put_all_filtered_looked_cards_to_zone(
+    mut filter: ObjectFilter,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+    chosen_zone: Zone,
+) -> Vec<EffectAst> {
+    filter.zone = Some(Zone::Library);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    vec![
+        EffectAst::SnapshotLastObjectTag {
+            into: crate::tag::TagRef::of(looked_tag),
+        },
+        EffectAst::subject_verb_tag_matching_objects(
+            filter,
+            vec![Zone::Library],
+            crate::tag::TagRef::of(chosen_tag.clone()),
+        ),
+        EffectAst::MoveTaggedGroupToZone {
+            tag: crate::tag::TagRef::of(chosen_tag),
+            zone: chosen_zone,
+        },
+    ]
+}
+
 /// A numeric quantity whose rounding clause follows the life noun.
 fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !tokens.first()?.is_word("half") { return None; }
@@ -129,6 +160,35 @@ pub fn parse_lose_life(
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { amount }),
         ));
     }
+    // "you lose all but 1 life" (Soulgorger Orgg): note the life total first
+    // so a linked ability can read what was lost ("the life you lost when it
+    // entered" is the noted total minus the life kept), then lose the excess.
+    if matches!(player, PlayerAst::You | PlayerAst::Implicit)
+        && let ["all", "but", kept, "life"] = crate::lexer::token_word_refs(tokens).as_slice()
+        && let Some(kept) =
+            crate::util::parse_number_word_u32(kept).or_else(|| crate::util::decimal_count(kept))
+        && let Ok(kept) = i32::try_from(kept)
+    {
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                subject_verb_player_resource_effect(
+                    SubjectVerbRoleAst::Actor,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal),
+                ),
+                subject_verb_player_resource_effect(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife {
+                        amount: Value::Add(
+                            Box::new(Value::LifeTotal(PlayerFilter::You)),
+                            Box::new(Value::Fixed(-kept)),
+                        ),
+                    }),
+                ),
+            ],
+        });
+    }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
@@ -154,6 +214,18 @@ pub fn parse_lose_life(
     }
     if life_shape.exact == Some(cca_shapes::ExactLifeSurface::LoseGame) {
         return Ok(EffectAst::subject_verb_lose_game(player));
+    }
+    // "That player loses the game if they own three or more exiled cards
+    // with hit counters on them" (Etrata, the Silencer): a resolution-time
+    // check gating the loss.
+    if clause_words.starts_with(&["the", "game", "if"])
+        && let Some(predicate) = parse_trailing_if_predicate_lexed(&tokens[2..])
+    {
+        return Ok(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: vec![EffectAst::subject_verb_lose_game(player)],
+            if_false: Vec::new(),
+        }));
     }
 
     if let Some(amount) = parse_half_life_value(tokens, player) {
@@ -240,6 +312,24 @@ pub fn parse_gain_life(
         ));
     }
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
+    // "you gain life equal to the life you lost when it entered" (Soulgorger
+    // Orgg): its entering "lose all but 1 life" noted the pre-loss total on
+    // this source, so the loss is that noted total minus the 1 life kept.
+    if matches!(
+        crate::lexer::token_word_refs(tokens).as_slice(),
+        ["life", "equal", "to", "the", "life", "you", "lost", "when", "it" | "this", "entered"]
+    ) {
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife {
+                amount: Value::Add(
+                    Box::new(Value::LastNotedLifeTotal),
+                    Box::new(Value::Fixed(-1)),
+                ),
+            }),
+        ));
+    }
 
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
         if life_shape.remap_its_source_stat {
@@ -380,6 +470,10 @@ pub fn parse_gain_control(
         .map_or(shape.target_tokens, |choice| {
             choice.object_tokens.as_slice()
         });
+    // "unless you sacrifice a land" (Custody Battle): a trailing unless that
+    // is not a state predicate is a punisher cost/action alternative, built
+    // by the shared unless-cost reader once the control effect exists.
+    let mut unless_action_idx = None;
     let (target_ast, trailing_predicate, is_unless) =
         if let Some(spec) = split_trailing_if_clause_lexed(target_tokens) {
             (
@@ -394,6 +488,18 @@ pub fn parse_gain_control(
                 parse_target_phrase(spec.leading_tokens)?,
                 Some(spec.predicate),
                 true,
+            )
+        } else if let Some(unless_idx) = crate::slice_primitives::select_position(
+            target_tokens,
+            |token| token.is_word("unless"),
+        ) && unless_idx > 0
+            && opponent_choice.is_none()
+        {
+            unless_action_idx = Some(unless_idx);
+            (
+                parse_target_phrase(&trim_commas(&target_tokens[..unless_idx]))?,
+                None,
+                false,
             )
         } else if crate::lexer::contains_token_word(target_tokens, "unless") {
             return Err(invalid_conditional_error());
@@ -466,7 +572,14 @@ pub fn parse_gain_control(
         };
     }
 
-    let effect = if let Some(predicate) = trailing_predicate {
+    let effect = if let Some(unless_idx) = unless_action_idx {
+        crate::effect_sentences::subject_verb_primitives::try_build_unless(
+            vec![base_effect],
+            crate::effect_sentences::SubjectVerbPrimitiveClause::new(target_tokens),
+            unless_idx,
+        )?
+        .ok_or_else(invalid_conditional_error)?
+    } else if let Some(predicate) = trailing_predicate {
         if is_unless {
             EffectAst::Conditionals(ConditionalEffectAst::TrailingUnless {
                 predicate,

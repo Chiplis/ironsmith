@@ -101,6 +101,15 @@ fn generic_mana_amount_from_symbol(symbol: ManaSymbol) -> Option<i32> {
 
 pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "counter that ability" after "... causes a triggered ability to
+    // trigger" (Strict Proctor): the triggered ability the event names, found
+    // through its source and trigger identity.
+    if words == ["that", "ability"] {
+        return Ok(TargetAst::Tagged(
+            crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
+            span_from_tokens(tokens),
+        ));
+    }
     if crate::word_primitives::parse_sequence_complete(
         &words,
         &[
@@ -129,6 +138,24 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
     }
     if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
         return Ok(target);
+    }
+    // The complete typed counter-ability grammar also reads a controller or
+    // source tail after a coordinated term ("activated or triggered ability
+    // you don't control", Nimble Obstructionist). Without it the generic
+    // target grammar splits the "or" union and reads "activated" alone.
+    if let Some(shape) =
+        crate::grammar::effects::clause_pattern_shapes::parse_counter_ability_target_tokens(tokens)
+    {
+        let target = TargetAst::Object(
+            shape.target_filter,
+            if shape.explicit_target {
+                span_from_tokens(tokens)
+            } else {
+                None
+            },
+            None,
+        );
+        return Ok(wrap_target_count(target, shape.target_count));
     }
 
     let words = TokenWordView::new(tokens).word_refs();
@@ -674,6 +701,46 @@ pub fn parse_reveal(
             ],
         });
     }
+    // "Target player reveals their library" (Mindblaze): the subject player's
+    // whole library is revealed as one stable tagged set. A player target is
+    // declared first, so it stays the antecedent of later "that player" /
+    // "that library" references; "their" binds to that antecedent.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[&["their", "library"], &["his", "or", "her", "library"]],
+    ) {
+        let (declared, owner) = match player {
+            PlayerAst::Target => (Some(PlayerFilter::target_player()), PlayerFilter::IteratedPlayer),
+            PlayerAst::TargetOpponent => {
+                (Some(PlayerFilter::target_opponent()), PlayerFilter::IteratedPlayer)
+            }
+            PlayerAst::That => (None, PlayerFilter::IteratedPlayer),
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported reveal-library subject (clause: '{}')",
+                    words.join(" ")
+                )));
+            }
+        };
+        let tag = crate::tag::CompilerReferenceTag::RevealedLibrary.bind();
+        let filter = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .owned_by(owner);
+        let mut effects = Vec::new();
+        if let Some(declared) = declared {
+            effects.push(EffectAst::subject_verb_explicit_target_only(TargetAst::Player(
+                declared,
+                crate::util::span_from_tokens(tokens),
+            )));
+        }
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            filter,
+            vec![Zone::Library],
+            tag.clone(),
+        ));
+        effects.push(EffectAst::subject_verb_reveal_tagged(tag));
+        return Ok(EffectAst::Sequence { effects });
+    }
     // A standalone anaphoric reveal names the cards identified by the earlier
     // instruction, including a type-qualified reference such as "the Aura card".
     if counter_grammar::parse_reveal_reference(tokens).is_some() {
@@ -944,6 +1011,9 @@ pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
         {
             return Ok(Some(value));
         }
+        if let Some(value) = parse_possessive_target_stat_difference_value(value_tokens) {
+            return Ok(Some(value));
+        }
         if let Some(value) = parse_possessive_target_stat_value(value_tokens) {
             return Ok(Some(value));
         }
@@ -1005,6 +1075,37 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken]) -> Option<Value>
     Some(constructor(Box::new(spec)))
 }
 
+/// "the difference between that creature's power and its toughness" (Jaws of
+/// Defeat): the absolute difference of two stats; a trailing "its" names the
+/// object the first operand already bound, not the source.
+fn parse_possessive_target_stat_difference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["the", "difference", "between"]) || words.len() != tokens.len() {
+        return None;
+    }
+    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    if and_idx <= 3 || and_idx + 1 >= tokens.len() {
+        return None;
+    }
+    let left = parse_possessive_target_stat_value(&tokens[3..and_idx])?;
+    let left_spec = match &left {
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+            spec.clone()
+        }
+        _ => return None,
+    };
+    let right = match &words[and_idx + 1..] {
+        ["its", "power"] => Value::PowerOf(left_spec),
+        ["its", "toughness"] => Value::ToughnessOf(left_spec),
+        ["its", "mana", "value"] => Value::ManaValueOf(left_spec),
+        _ => parse_possessive_target_stat_value(&tokens[and_idx + 1..])?,
+    };
+    Some(
+        Value::absolute_difference(left, right)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+    )
+}
+
 fn parse_life_total_as_turn_began_value(words: &[&str]) -> Option<Value> {
     counter_grammar::parse_life_total_as_turn_began_words(words)
 }
@@ -1062,6 +1163,23 @@ pub fn parse_life_amount_from_trailing(
             Box::new(base_amount.clone()),
             Box::new(addend),
         )));
+    }
+
+    // "1 life for each {S} spent to cast this spell" (Search for Glory): the
+    // mana group is invisible to word views, so read the payment count from
+    // the lexed tail before the word-based for-each readers.
+    if let Some(value) =
+        crate::grammar::shared_util::value_semantics::parse_mana_symbol_spent_to_cast_value(trailing)
+        && let Some(multiplier) = match base_amount {
+            Value::Fixed(value) => Some(*value),
+            Value::X => Some(1),
+            _ => None,
+        }
+    {
+        return Ok(Some(
+            scale_value_multiplier(value, multiplier)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        ));
     }
 
     // Prefer the generic tagged-count representation for prior-action
@@ -1232,7 +1350,16 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::SourceOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
             ironsmith_core::SOURCE_OBJECT_TAG,
         ))),
-        PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
+        // "its owner loses half their life" (Personal Incarnation): the
+        // referenced object's owner/controller; reference resolution binds
+        // `it` to the clause's object antecedent.
+        PlayerAst::ItsOwner => Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+        ))),
+        PlayerAst::ItsController => Some(PlayerFilter::ControllerOf(
+            crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+        )),
+        PlayerAst::Enchanted => None,
     }
 }
 

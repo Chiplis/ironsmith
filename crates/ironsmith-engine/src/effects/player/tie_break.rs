@@ -9,7 +9,9 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::player_filter_matches_game;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
-pub use ironsmith_core::{KeepGreatestManaValuePlayersEffect, TagPlayersEffect};
+pub use ironsmith_core::{
+    KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, TagPlayersEffect,
+};
 
 /// In-game players in APNAP order (CR 101.4).
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
@@ -77,6 +79,53 @@ impl EffectExecutor for KeepGreatestManaValuePlayersEffect {
         ctx.set_tagged_players(self.players_tag.clone(), kept);
         ctx.clear_object_tag(self.objects_tag.as_str());
         Ok(EffectOutcome::count(count as i32))
+    }
+}
+
+impl EffectExecutor for RollDieKeepHighestPlayersEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let contenders = ctx
+            .tagged_players
+            .get(&self.players_tag)
+            .cloned()
+            .unwrap_or_default();
+        let order = players_in_turn_order(game);
+        let mut events = Vec::new();
+        let mut results = Vec::new();
+        for player in order.into_iter().filter(|player| contenders.contains(player)) {
+            let roll = crate::effects::RollDieEffect::new(
+                crate::target::PlayerFilter::Specific(player),
+                self.sides,
+            );
+            let outcome = roll.execute_child(game, ctx)?;
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0).with_events(events));
+            }
+            let result = outcome.as_count();
+            events.extend(outcome.events);
+            if let Some(result) = result {
+                results.push((player, result));
+            }
+        }
+        let highest = results.iter().map(|(_, result)| *result).max();
+        let filter_ctx = ctx.filter_context(game);
+        let kept = results
+            .into_iter()
+            .filter(|(_, result)| Some(*result) == highest)
+            .map(|(player, _)| player)
+            .filter(|player| player_filter_matches_game(&self.keep, *player, game, &filter_ctx))
+            .collect::<Vec<_>>();
+        let count = kept.len();
+        ctx.set_tagged_players(self.players_tag.clone(), kept);
+        Ok(EffectOutcome::count(count as i32).with_events(events))
     }
 }
 

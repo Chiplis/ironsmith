@@ -3639,6 +3639,26 @@ fn describe_triggered_creature_entry_replacement_grant(
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    // "If it doesn't have \"...,\" it gains that ability" (Musician): render
+    // the plain grant, then restate its quoted ability as the presence gate.
+    if effect.grant_only_if_absent {
+        let mut plain = effect.clone();
+        plain.grant_only_if_absent = false;
+        let text = describe_apply_continuous_effect(&plain)?;
+        let (subject, verb, quoted) = [" gains \"", " gain \""]
+            .iter()
+            .find_map(|verb| {
+                text.split_once(verb)
+                    .map(|(subject, quoted)| (subject, verb.trim_end_matches('"'), quoted))
+            })?;
+        let quoted = quoted.strip_suffix('"')?;
+        let quoted = quoted.trim_end_matches('.');
+        let subject = lowercase_first(subject.trim());
+        let negation = if verb.trim() == "gains" { "doesn't" } else { "don't" };
+        return Some(format!(
+            "If {subject} {negation} have \"{quoted},\" {subject}{verb}that ability"
+        ));
+    }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()
         && effect.runtime_modifications.is_empty()
@@ -4935,7 +4955,15 @@ pub(crate) fn describe_until(until: &Until) -> String {
         Until::YourNextUntapStep => "during your next untap step".to_string(),
         Until::UntilControllersNextUntapStep { .. } => "until its controller's next untap step".to_string(),
         Until::PlayersNextUntapStep { .. } => "during that player's next untap step".to_string(),
+        Until::PlayersNextTurn { .. } => "until that player's next turn".to_string(),
+        Until::PlayersNextTurnEnd { player } => format!(
+            "until the end of {} next turn",
+            crate::triggers::describe_player_filter_possessive(player)
+        ),
         Until::EndOfCombat => "until end of combat".to_string(),
+        Until::AnyPlayerCastsCreatureSpell { .. } => {
+            "until a player casts a creature spell".to_string()
+        }
         // The authored "for as long as this ... remains on the battlefield"
         // lowers to `ForAsLongAs(ObjectOnBattlefield(Source))`; this variant
         // is the "until this ... leaves the battlefield" surface.
@@ -5049,6 +5077,9 @@ fn describe_continuous_duration_predicate(
         ),
         Predicate::ObjectIsEnchanted(object) => {
             format!("{} is enchanted", describe_duration_object(object))
+        }
+        Predicate::ObjectFaceUp(object) => {
+            format!("{} is face up", describe_duration_object(object))
         }
         Predicate::PlayerIsMonarch(player) => match player {
             ironsmith_core::ContinuousDurationPlayer::EffectController => {
@@ -5485,6 +5516,31 @@ fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
     it_only.then(|| "It".to_string())
 }
 
+/// "Triggered abilities you control can't cause you to sacrifice creature
+/// tokens you control" and its exile counterpart.
+fn describe_ability_kind_cause_protection(
+    filter: &crate::target::ObjectFilter,
+    cause: &ironsmith_core::CauseFilter,
+    action: &str,
+) -> String {
+    let abilities = match cause.ability_kind {
+        Some(ironsmith_core::CauseAbilityKindFilter::Activated) => "Activated abilities",
+        Some(ironsmith_core::CauseAbilityKindFilter::ModularTrigger) => {
+            "Modular triggered abilities"
+        }
+        Some(ironsmith_core::CauseAbilityKindFilter::Triggered) | None => "Triggered abilities",
+    };
+    let controller = match cause.controller_filter {
+        Some(ironsmith_core::ControllerFilter::You) => " you control",
+        Some(ironsmith_core::ControllerFilter::Opponent) => " your opponents control",
+        _ => "",
+    };
+    format!(
+        "{abilities}{controller} can't cause you to {action} {}",
+        filter.description()
+    )
+}
+
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
         crate::effect::Restriction::CastOrActivatePayments { player, pay_life, sacrifice } => {
@@ -5548,6 +5604,11 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             };
             format!("{subject} {verb} no maximum hand size")
         }
+        crate::effect::Restriction::ReduceMaximumHandSize(filter, amount) => {
+            let owner = describe_possessive_player_filter(filter);
+            let amount = small_number_word(*amount).unwrap_or_else(|| amount.to_string());
+            format!("{owner} maximum hand size is reduced by {amount}")
+        }
         crate::effect::Restriction::GainLife(filter) => {
             format!("{} can't gain life", describe_player_set_filter(filter))
         }
@@ -5602,6 +5663,21 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::ActivateNonManaAbilities(filter) => {
             format!(
                 "{} can't activate non-mana abilities",
+                describe_player_set_filter(filter)
+            )
+        }
+        crate::effect::Restriction::DamageAsThoughInfect(filter) => {
+            let player = describe_player_set_filter(filter);
+            let object = if player.eq_ignore_ascii_case("you") {
+                "you".to_string()
+            } else {
+                player
+            };
+            format!("All damage is dealt to {object} as though its source had infect")
+        }
+        crate::effect::Restriction::ActivateNonManaNonLoyaltyAbilities(filter) => {
+            format!(
+                "{} can't activate abilities that aren't mana abilities or loyalty abilities",
                 describe_player_set_filter(filter)
             )
         }
@@ -5692,6 +5768,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::GetCounters(filter) => {
+            format!("{} can't get counters", describe_player_set_filter(filter))
+        }
+        crate::effect::Restriction::RadiationGainsLife(filter) => match filter {
+            PlayerFilter::You => "You gain life rather than lose life from radiation".to_string(),
+            _ => format!(
+                "{} gain life rather than lose life from radiation",
+                describe_player_set_filter(filter)
+            ),
+        },
         crate::effect::Restriction::LoseLife(filter) => {
             format!("{} can't lose life", describe_player_set_filter(filter))
         }
@@ -5713,6 +5799,15 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             };
             format!(
                 "damage that would reduce {subject} life total to less than 1 reduces {pronoun} to 1 instead"
+            )
+        }
+        crate::effect::Restriction::DamageReduceLifeBelow { player, floor } => {
+            let subject = match player {
+                PlayerFilter::You => "your".to_string(),
+                _ => describe_possessive_player_filter(player),
+            };
+            format!(
+                "damage that would reduce {subject} life total to less than {floor} reduces it to {floor} instead"
             )
         }
         crate::effect::Restriction::ChangeLifeTotal(PlayerFilter::You) => {
@@ -5772,9 +5867,26 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             };
             format!("{kind} that would be dealt by {source} can't be prevented")
         }
+        crate::effect::Restriction::PreventDamageTo {
+            recipients,
+            or_redirected,
+        } => {
+            let recipient = describe_prior_effect_tagged_filter_surface(recipients)
+                .unwrap_or_else(|| recipients.description());
+            if *or_redirected {
+                format!(
+                    "damage that would be dealt to {recipient} can't be prevented or dealt instead to another permanent or player"
+                )
+            } else {
+                format!("damage that would be dealt to {recipient} can't be prevented")
+            }
+        }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::PreventCombatDamage => {
             "combat damage can't be prevented".to_string()
+        }
+        crate::effect::Restriction::AllDamageAsThoughWither => {
+            "All damage is dealt as though its source had wither".to_string()
         }
         crate::effect::Restriction::Attack(filter) => {
             let subject =
@@ -5874,6 +5986,12 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
         }
+        crate::effect::Restriction::AttackOnlyAlone(filter) => {
+            format!("{} can only attack alone", filter.description())
+        }
+        crate::effect::Restriction::AttackOnlyNearestOpponentInChosenDirection { .. } => {
+            "Each player may attack only the nearest opponent in the last chosen direction and planeswalkers controlled by that opponent".to_string()
+        }
         crate::effect::Restriction::Block(filter) => {
             let subject =
                 restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
@@ -5967,12 +6085,25 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 .unwrap_or_else(|| attackers.description());
             format!("{subject} attacks {} if able", describe_player_filter(player))
         }
+        crate::effect::Restriction::MustAttackPermanents {
+            attackers,
+            permanents,
+        } => format!(
+            "{} attack {} if able",
+            pluralize_relative_object_phrase(&attackers.description()),
+            permanents.description()
+        ),
         crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
             format!("{} must be blocked by a {} if able", attacker.description(), blockers.description())
         }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }
+        crate::effect::Restriction::MustBeBlockedByAtLeast { attacker, minimum } => format!(
+            "{} must be blocked by {} or more creatures if able",
+            attacker.description(),
+            ironsmith_core::cardinal_word(*minimum as u32).unwrap_or_else(|| minimum.to_string())
+        ),
         crate::effect::Restriction::BlockAlone(filter) => {
             format!("{} can't block alone", filter.description())
         }
@@ -6012,6 +6143,27 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 })
                 .unwrap_or_else(|| filter.description());
             format!("{subject} can't be regenerated")
+        }
+        crate::effect::Restriction::DiscardByCause { player, cause } => {
+            if *player == crate::target::PlayerFilter::You
+                && cause.controller_filter == Some(ironsmith_core::ControllerFilter::Opponent)
+            {
+                "Spells and abilities your opponents control can't cause you to discard cards"
+                    .to_string()
+            } else {
+                format!(
+                    "{} can't be caused to discard cards by causes matching {cause:?}",
+                    describe_player_set_filter(player)
+                )
+            }
+        }
+        crate::effect::Restriction::BeSacrificedByCause { filter, cause }
+            if cause.ability_kind.is_some() =>
+        {
+            describe_ability_kind_cause_protection(filter, cause, "sacrifice")
+        }
+        crate::effect::Restriction::BeExiledByCause { filter, cause } => {
+            describe_ability_kind_cause_protection(filter, cause, "exile")
         }
         crate::effect::Restriction::BeSacrificedByCause { filter, cause } => {
             let opponent_effects_and_payments = cause.source_filter.is_none()
@@ -6063,6 +6215,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::HaveCounterTypePlaced(filter, counter_type) => {
             format!(
                 "{} counters can't be put on {}",
+                counter_type.description(),
+                filter.description()
+            )
+        }
+        crate::effect::Restriction::HaveCounterTypeRemoved(filter, counter_type) => {
+            format!(
+                "{} counters can't be removed from {}",
                 counter_type.description(),
                 filter.description()
             )
@@ -6121,6 +6280,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 source_description
             )
         }
+        crate::effect::Restriction::BeTargetedByRequirementsLimitedTo(filter, requirement_scope) => {
+            // "can't be the target of spells or abilities that can target only Walls"
+            let mut scope = requirement_scope.clone();
+            scope.zone = None;
+            let scope = pluralize_noun_phrase(strip_leading_article(&scope.description()));
+            format!(
+                "{} can't be the target of spells or abilities that can target only {scope}",
+                filter.description()
+            )
+        }
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
@@ -6141,6 +6310,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(player),
                 source_description
             )
+        }
+        crate::effect::Restriction::BeCounteredFrom(filter, sources) => {
+            let sources = describe_spell_targeting_source_filter(sources).unwrap_or_else(|| sources.description());
+            format!("{} can't be countered by {}", filter.description(), sources)
         }
         crate::effect::Restriction::BeCountered(filter) => {
             format!("{} can't be countered", filter.description())
@@ -6470,6 +6643,7 @@ fn describe_prior_result_active_action(action: crate::effect::PriorEffectAction)
         crate::effect::PriorEffectAction::Searched => "search for",
         crate::effect::PriorEffectAction::Shuffled => "shuffle",
         crate::effect::PriorEffectAction::Tapped => "tap",
+        crate::effect::PriorEffectAction::ManaLost => "lose",
     }
 }
 
@@ -6798,6 +6972,9 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
                 crate::ObjectCharacteristic::Name => "have the same name".to_string(),
                 crate::ObjectCharacteristic::Color => "share a color".to_string(),
                 crate::ObjectCharacteristic::CardType => "share a card type".to_string(),
+                crate::ObjectCharacteristic::AllCardTypes => {
+                    "share all their card types".to_string()
+                }
                 crate::ObjectCharacteristic::PermanentType => "share a permanent type".to_string(),
                 crate::ObjectCharacteristic::ManaValue => "have the same mana value".to_string(),
                 crate::ObjectCharacteristic::Subtype(family) => format!("share a {} type", match family {

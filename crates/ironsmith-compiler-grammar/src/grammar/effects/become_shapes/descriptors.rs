@@ -229,7 +229,12 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
             return None;
         }
     }
-    if saw_subtype && !card_types.contains(&CardType::Creature) {
+    // A creature subtype implies the creature type; a "Vehicle artifact"
+    // (Captain Rex Nebula) names a noncreature subtype and stays noncreature.
+    if saw_subtype
+        && !card_types.contains(&CardType::Creature)
+        && (card_types.is_empty() || creature_subtypes_only(&subtypes))
+    {
         card_types.insert(0, CardType::Creature);
     }
     if card_types.is_empty() && !saw_subtype {

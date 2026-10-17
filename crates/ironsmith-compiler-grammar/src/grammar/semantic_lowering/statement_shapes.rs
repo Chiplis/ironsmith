@@ -23,6 +23,10 @@ use super::{
 pub struct DieRollAdjustmentSpec {
     pub life_cost: u32,
     pub adjustment: u32,
+    /// "you may remove a <kind> counter from this creature" instead of life.
+    pub source_counter_cost: Option<CounterType>,
+    /// "Do this only once each turn."
+    pub once_each_turn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -130,20 +134,33 @@ pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieR
         || !every_phrase_is_present(
             &words,
             &[
-                &["you", "may", "pay"],
                 &["if", "you", "do"],
                 &["increase", "or", "decrease", "the", "result", "by"],
-                &["do", "this", "only", "once", "each", "turn"],
             ],
         )
     {
         return None;
     }
-
-    let life_cost = phrase_location(&words, &["pay"])
-        .and_then(|idx| words.get(idx + 1))
-        .and_then(|word| fixed_leaf_number(&[*word]))
-        .unwrap_or(1);
+    let once_each_turn = phrase_is_present(&words, &["do", "this", "only", "once", "each", "turn"]);
+    let (life_cost, source_counter_cost) = if phrase_is_present(&words, &["you", "may", "pay"]) {
+        let life_cost = phrase_location(&words, &["pay"])
+            .and_then(|idx| words.get(idx + 1))
+            .and_then(|word| fixed_leaf_number(&[*word]))
+            .unwrap_or(1);
+        (life_cost, None)
+    } else {
+        // "you may remove a <kind> counter from this creature."
+        let remove = phrase_location(&words, &["you", "may", "remove", "a"])?;
+        let counter_idx = remove + 5;
+        if words.get(counter_idx) != Some(&"counter")
+            || !matches!(words.get(counter_idx + 1..counter_idx + 3), Some(["from", "this"]))
+        {
+            return None;
+        }
+        let kind = words.get(remove + 4)?;
+        let counter = crate::grammar::filters::parse_counter_type_words(&[*kind, "counter"])?;
+        (0, Some(counter))
+    };
     let adjustment = phrase_location(&words, &["by"])
         .and_then(|idx| words.get(idx + 1))
         .and_then(|word| fixed_leaf_number(&[*word]))
@@ -151,6 +168,8 @@ pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieR
     Some(DieRollAdjustmentSpec {
         life_cost,
         adjustment,
+        source_counter_cost,
+        once_each_turn,
     })
 }
 
@@ -695,6 +714,8 @@ mod tests {
             Some(DieRollAdjustmentSpec {
                 life_cost: 2,
                 adjustment: 3,
+                source_counter_cost: None,
+                once_each_turn: true,
             })
         );
         let effect = lex_line("Target creature gets +2/+2 until end of turn.", 0).unwrap();

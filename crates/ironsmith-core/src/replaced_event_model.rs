@@ -25,7 +25,15 @@ pub enum ReplacedEventSpec {
         combat_only: bool,
     },
     /// "If an opponent would gain life": a matching player's life gain.
-    LifeGain { player: PlayerFilter },
+    /// `from_own_spell_or_ability`: "If a spell or ability would cause its
+    /// controller to gain life" (Rain of Gore) — only a gain that is the
+    /// effect of a spell or ability controlled by the gaining player, never
+    /// lifelink.
+    LifeGain {
+        player: PlayerFilter,
+        #[cfg_attr(feature = "serde", serde(default))]
+        from_own_spell_or_ability: bool,
+    },
     /// "If you would lose life": a matching player's life loss.
     LifeLoss { player: PlayerFilter },
     /// "If enchanted land would be destroyed": destruction of a matching
@@ -58,4 +66,9 @@ pub enum ReplacedEventSpec {
         object: ObjectFilter,
         during_controllers_untap_step: bool,
     },
+    /// "If your life total would be reduced to 0 or less" (Enduring Angel):
+    /// a matching player's life loss (from damage, an effect, a payment or a
+    /// set life total, CR 119.3, 119.5) that would leave that player's life
+    /// total at 0 or less. Appended to preserve published variant ordinals.
+    LifeReducedToZeroOrLess { player: PlayerFilter },
 }

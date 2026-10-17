@@ -91,8 +91,9 @@ use block_parsing::{
 };
 use line_dispatch::{LineDispatchResult, dispatch_standard_line};
 use line_recognition::{
-    recognize_level_item, recognize_modal_mode, recognize_saga_chapter_line, recognize_static_line,
-    recognize_triggered_line, strict_unsupported_triggered_line_error,
+    parse_tiered_mode_prefix_tokens, recognize_level_item, recognize_modal_mode,
+    recognize_saga_chapter_line, recognize_static_line, recognize_triggered_line,
+    strict_unsupported_triggered_line_error, strip_modal_bullet_prefix_tokens,
 };
 use statement_recognition::{
     extend_activated_line_with_result_followups, extend_statement_line_with_result_followups,
@@ -660,11 +661,24 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     let has_statement_family =
         crate::grammar::structure::classify_statement_line_family_lexed(tokens).is_some();
     let starts_with_clash_action = tokens.first().is_some_and(|token| token.is_word("clash"));
+    // "For each creature target player controls, create a token that's a
+    // copy of that creature, except it has haste ..." (Face Yourself): an
+    // iterated creation, never an anthem over the iterated objects even
+    // though its copy exception names a granted keyword.
+    let for_each_create = tokens.len() > 3
+        && tokens[0].is_word("for")
+        && tokens[1].is_word("each")
+        && tokens
+            .iter()
+            .position(|token| token.is_comma())
+            .and_then(|comma| tokens.get(comma + 1))
+            .is_some_and(|token| token.is_word("create"));
     is_nonpermanent_spell
         && (document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
             || is_effect_redirect
             || has_statement_family
-            || starts_with_clash_action)
+            || starts_with_clash_action
+            || for_each_create)
 }
 
 fn looks_like_leading_conditional_self_replacement(tokens: &[OwnedLexToken]) -> bool {
@@ -686,6 +700,22 @@ fn parse_labeled_conditional_replacement_sentence_split(
                 | line_family_grammar::StatementStaticPreference::DiscardOrRedirectReplacement
         )
     ) && let Ok(Some(static_line)) = recognize_static_line(line)
+    {
+        return Ok(Some(LineDispatchResult::single(
+            RecognizedLine::Static(static_line),
+            idx + 1,
+        )));
+    }
+
+    // "If <event> would happen, instead <program>. Then if ..., <fallback>."
+    // (Enduring Angel): the generic instead-replacement reader owns a
+    // multi-sentence program whose later sentence observes the first one.
+    if split_lexed_sentences(&line.tokens).len() > 1
+        && matches!(
+            super::keyword_static::parse_if_event_would_happen_instead_line(&line.tokens),
+            Ok(Some(_))
+        )
+        && let Ok(Some(static_line)) = recognize_static_line(line)
     {
         return Ok(Some(LineDispatchResult::single(
             RecognizedLine::Static(static_line),
@@ -1140,7 +1170,15 @@ fn preflight_invalid_payment_keyword_lines(lines: &[&[OwnedLexToken]]) -> Option
             let (keyword, cost_start, is_echo) =
                 if document_grammar::parse_cumulative_upkeep_surface(segment).is_some() {
                     ("cumulative upkeep", 2, false)
-                } else if segment.first().is_some_and(|token| token.is_word("echo")) {
+                } else if segment.first().is_some_and(|token| token.is_word("echo"))
+                    // "Echo of the First Murder — When ..." (Drach'Nyen): a
+                    // flavor-word label that merely starts with "Echo"; the
+                    // keyword's own dash form is "Echo—<cost>".
+                    && !segment
+                        .iter()
+                        .skip(2)
+                        .any(|token| token.kind == TokenKind::EmDash)
+                {
                     ("echo", 1, true)
                 } else {
                     continue;
@@ -1477,6 +1515,9 @@ fn replace_named_source_alias_tokens(
                     &pieces, word_idx, end_word,
                 )
                 || source_alias_occurrence_is_created_token_name_lexed(
+                    &pieces, word_idx, end_word,
+                )
+                || source_alias_occurrence_names_created_token_lexed(
                     &pieces, word_idx, end_word,
                 )
                 || source_alias_occurrence_is_meld_result_name_lexed(&pieces, word_idx)
@@ -2195,6 +2236,42 @@ fn source_alias_occurrence_is_created_token_name_lexed(
             .any(|piece| matches!(piece.text, "token" | "tokens"))
 }
 
+/// "create Stangg Twin, a legendary 3/4 ... token. ... attached to Stangg
+/// Twin": a later mention of a token name created earlier in the text that
+/// begins with the source alias names that token, not the source.
+fn source_alias_occurrence_names_created_token_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let alias_len = end_word.saturating_sub(start_word);
+    if alias_len == 0 {
+        return false;
+    }
+    (0..start_word).any(|creation| {
+        if creation + alias_len > start_word
+            || !(0..alias_len)
+                .all(|offset| pieces[creation + offset].text == pieces[start_word + offset].text)
+            || !source_alias_occurrence_is_created_token_name_lexed(
+                pieces,
+                creation,
+                creation + alias_len,
+            )
+        {
+            return false;
+        }
+        let clause = pieces[creation].clause;
+        let name_len = pieces[creation..]
+            .iter()
+            .take_while(|piece| piece.clause == clause)
+            .count();
+        name_len > alias_len
+            && start_word + name_len <= pieces.len()
+            && (0..name_len)
+                .all(|offset| pieces[creation + offset].text == pieces[start_word + offset].text)
+    })
+}
+
 fn normalize_named_source_enter_agreement(text: &str, subject: &str) -> String {
     let singular = format!("{subject} enter");
     let plural = format!("{subject} enters");
@@ -2738,7 +2815,12 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
                 )
                 .is_some()
                 || document_grammar::parse_next_cast_trigger_surface(sentence_tokens).is_some()
-                || is_delayed_state_transition_followup_sentence(sentence_tokens);
+                || is_delayed_state_transition_followup_sentence(sentence_tokens)
+                // CR 603.12: "When you discard a card this way, ..." names an
+                // event of the preceding instructions, so it is a reflexive
+                // trigger of this ability (Talion's Messenger), never a
+                // sibling ability of the permanent.
+                || is_reflexive_this_way_followup_sentence(sentence_tokens);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -2766,6 +2848,12 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
     }
 
     chunks
+}
+
+fn is_reflexive_this_way_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    tokens.first().is_some_and(|token| token.is_word("when"))
+        && grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+            .is_some_and(|(before, _after)| grammar::has_phrase(before, &["this", "way"]))
 }
 
 fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
@@ -3713,9 +3801,24 @@ fn rewrite_cleave_bracket_document(
 
         let mut depth = 0usize;
         let mut tokens = Vec::with_capacity(line.tokens.len());
-        for token in &line.tokens {
+        for (index, token) in line.tokens.iter().enumerate() {
             match token.kind {
                 TokenKind::LBracket => {
+                    // "deals X damage ... [X is the number of creatures you
+                    // control.]" (Lantern Flare): kept as text, the bracketed
+                    // sentence defines the preceding sentence's X.
+                    if !remove_bracketed_text
+                        && depth == 0
+                        && tokens
+                            .last()
+                            .is_some_and(|last: &OwnedLexToken| last.kind == TokenKind::Period)
+                        && line.tokens.get(index + 1).is_some_and(|next| next.is_word("x"))
+                        && line.tokens.get(index + 2).is_some_and(|next| next.is_word("is"))
+                    {
+                        tokens.pop();
+                        tokens.push(OwnedLexToken::synthetic_comma());
+                        tokens.push(OwnedLexToken::synthetic_word("where"));
+                    }
                     depth += 1;
                 }
                 TokenKind::RBracket => {
@@ -4567,6 +4670,93 @@ fn try_push_sticker_sheet_ticket_marker_result(
     Some(dispatch.next_idx)
 }
 
+/// "Spell mastery — If <condition>, you may cast up to two <spells> from among
+/// the revealed cards instead of one." (Talent of the Telepath): the labeled
+/// line restates the preceding statement's single collection cast with a
+/// larger count. Under the condition the statement's collection cast chooses
+/// up to that many (keeping its filter and price); otherwise the original
+/// count applies. Both branches read the same revealed collection.
+fn try_merge_collection_cast_count_instead_of_one(
+    lines: &mut [RecognizedLine],
+    line: &PreprocessedLine,
+) -> bool {
+    use crate::cards::builders::{ConditionalEffectAst, EffectAst, ForEachEffectAst, ObjectChoiceEffectAst};
+    let Some((_, _, body)) = split_label_prefix_lexed(&line.tokens) else {
+        return false;
+    };
+    let body = crate::util::trim_edge_punctuation_tokens(body);
+    let words = token_word_refs(body);
+    if words.first() != Some(&"if") || !words.ends_with(&["instead", "of", "one"]) {
+        return false;
+    }
+    let Some(comma) = body.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return false;
+    };
+    let restated_words = token_word_refs(&body[comma + 1..]);
+    let ["you", "may", "cast", "up", "to", count, ..] = restated_words.as_slice() else {
+        return false;
+    };
+    let Some(count) = crate::util::parse_number_word_u32(count).filter(|count| *count > 1) else {
+        return false;
+    };
+    if !crate::word_primitives::sequence_occurs(&restated_words, &["from", "among", "the", "revealed", "cards"])
+        && !crate::word_primitives::sequence_occurs(&restated_words, &["from", "among", "the", "cards", "revealed", "this", "way"])
+    {
+        return false;
+    }
+    let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(&body[1..comma]) else {
+        return false;
+    };
+    let Some(RecognizedLine::Statement(previous)) = lines.last_mut() else {
+        return false;
+    };
+    let Ok(mut effects) = parse_effect_sentences_lexed(&previous.parse_tokens) else {
+        return false;
+    };
+    fn is_single_collection_cast(effect: &EffectAst) -> bool {
+        let EffectAst::Sequence { effects } = effect else { return false };
+        matches!(effects.as_slice(), [
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count, count_value: None, .. }),
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. }),
+        ] if *count == crate::effect::ChoiceCount::up_to(1))
+    }
+    fn replace_one(effects: &mut Vec<EffectAst>, found: &mut usize, replace: &mut dyn FnMut(EffectAst) -> EffectAst) {
+        for effect in effects.iter_mut() {
+            if is_single_collection_cast(effect) {
+                *found += 1;
+                if *found == 1 {
+                    let original = std::mem::replace(effect, EffectAst::Sequence { effects: Vec::new() });
+                    *effect = replace(original);
+                }
+            } else if let EffectAst::Sequence { effects } = effect {
+                replace_one(effects, found, replace);
+            }
+        }
+    }
+    let mut found = 0usize;
+    replace_one(&mut effects, &mut found, &mut |original| {
+        let mut restated = original.clone();
+        if let EffectAst::Sequence { effects } = &mut restated
+            && let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count: choice, .. })) = effects.first_mut()
+        {
+            *choice = crate::effect::ChoiceCount::up_to(count as usize);
+        }
+        EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: predicate.clone(),
+            if_true: vec![restated],
+            if_false: vec![original],
+        })
+    });
+    if found != 1 {
+        return false;
+    }
+    previous.parsed_effects = Some(effects);
+    previous.text = format!("{} {}", previous.text.trim(), line.info.raw_line.trim());
+    previous.info.raw_line = format!("{}\n{}", previous.info.raw_line.trim(), line.info.raw_line.trim());
+    previous.info.source_tokens.extend(line.info.source_tokens.iter().cloned());
+    true
+}
+
 fn try_push_labeled_line_dispatch(
     line_context: ParseContextView<'_>,
     preprocessed: &PreprocessedDocument,
@@ -4579,6 +4769,10 @@ fn try_push_labeled_line_dispatch(
         && split_label_prefix_lexed(&line.tokens).is_none()
     {
         return Ok(None);
+    }
+    if try_merge_collection_cast_count_instead_of_one(lines, line) {
+        parse_trace::event("joined labeled collection-cast count restatement to preceding statement");
+        return Ok(Some(idx + 1));
     }
     let Some(mut dispatch) =
         try_parse_labeled_line_dispatch(preprocessed, idx, line, allow_unsupported)?
@@ -4638,7 +4832,10 @@ fn try_push_complete_typed_static_line(
         // resolution steps that sentence dispatch must keep.
         return Ok(false);
     }
-    let Some(parsed) = crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)?
+    // This is only a fast path: a subject it cannot read ("Enchanted creature
+    // can't attack or block and has \"...\"", Hold for Ransom) belongs to the
+    // full static-line dispatch, which owns restriction-and-grant bundles.
+    let Ok(Some(parsed)) = crate::keyword_static::parse_filter_has_granted_ability_line(&line.tokens)
     else {
         return Ok(false);
     };
@@ -8968,13 +9165,8 @@ mod tests {
         );
 
         assert!(diagnose_known_unsupported_rewrite_line(&landwalk.tokens).is_none());
-        let aura_copy_error = diagnose_known_unsupported_rewrite_line(&aura_copy.tokens)
-            .expect("expected aura-copy diagnostic");
-
-        assert_eq!(
-            aura_copy_error.to_string(),
-            "unsupported aura-copy attachment fanout clause"
-        );
+        // Attached token copies are supported (CreateTokenCopy.attached_to).
+        assert!(diagnose_known_unsupported_rewrite_line(&aura_copy.tokens).is_none());
     }
 
     #[test]

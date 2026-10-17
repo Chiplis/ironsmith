@@ -744,7 +744,9 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
                 | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+                | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { .. })
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
                 | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
@@ -764,12 +766,13 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
                 | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
                 | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -779,6 +782,7 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
@@ -786,6 +790,8 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -793,6 +799,9 @@ pub(super) fn subject_verb_player_action_player_mut(
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                    ..
+                })
+                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
                     ..
                 })
                 | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
@@ -842,7 +851,9 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::Mana(ManaActionAst::PayMana { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
                 | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+                | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
                 | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
+                | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { .. })
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
                 | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
@@ -862,12 +873,13 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
                 | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
                 | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+                | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleGraveyardIntoLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
                 | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+                | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -877,6 +889,7 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
                 | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })
@@ -884,6 +897,8 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield { .. })
@@ -891,6 +906,9 @@ pub(super) fn subject_verb_player_action_player(effect: &EffectAst) -> Option<Pl
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { .. })
                 | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                    ..
+                })
+                | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
                     ..
                 })
                 | SubjectVerbActionAst::Game(GameActionAst::ExtraTurnAfterTurn { .. })
@@ -1042,6 +1060,28 @@ pub(super) fn maybe_apply_carried_player_with_clause_facts(
                     | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToHand { .. }),
             })
         );
+    // "Each player sacrifices a creature. Roll a d20 ..." (Danse Macabre): an
+    // imperative roll is performed by the spell's controller, never by each
+    // player of an earlier sentence.
+    if !facts.explicitly_conjugated_player_action
+        && matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    player: PlayerAst::Implicit,
+                    ..
+                },
+                action: SubjectVerbActionAst::Random(
+                    crate::cards::builders::RandomActionAst::RollDie { .. }
+                        | crate::cards::builders::RandomActionAst::RollDiceChooseResult { .. }
+                        | crate::cards::builders::RandomActionAst::RollDiceTotal { .. }
+                ),
+            })
+        )
+        && !matches!(carried_context, CarryContext::Player(_))
+    {
+        return;
+    }
     if facts.head == chain_grammar::CarryClauseHead::Choose
         && normalize_imperative_choose_player(effect)
     {
@@ -1384,6 +1424,16 @@ pub(super) fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst
                 )),
                 alt((
                     (word_eq("the"), player_word(), word_eq("may")).value(PlayerAst::That),
+                    // "Then the spell's controller may choose new targets for
+                    // it" (Sudden Substitution): the definite article names
+                    // the same referenced object as "that spell's".
+                    (
+                        word_eq("the"),
+                        controller_or_owner_subject_word(),
+                        word_eq("controller"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::ItsController),
                     (word_eq("defending"), word_eq("player"), word_eq("may"))
                         .value(PlayerAst::Defending),
                     alt((

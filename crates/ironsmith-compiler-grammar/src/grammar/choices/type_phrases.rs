@@ -92,6 +92,12 @@ pub fn parse_choice_color_phrase_words(
     {
         return Ok(None);
     }
+    // "choose a color word" (Swirl the Mists): choosing a color word is
+    // choosing that color (CR 105.1, 612.2).
+    let mut word_probe = input;
+    if primitives::word_slice_exact("word").parse_next(&mut word_probe).is_ok() {
+        input = word_probe;
+    }
 
     let mut excluded = None;
     let mut exclusion_probe = input;

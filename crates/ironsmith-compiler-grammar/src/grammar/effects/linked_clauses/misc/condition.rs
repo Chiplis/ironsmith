@@ -10,6 +10,7 @@ pub fn is_graveyard_cast_replacement_sentence(replacement: &[OwnedLexToken]) -> 
             THAT_SPELL_A_GRAVEYARD_REPLACEMENT,
             CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT,
             CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
+            CAST_FROM_YOUR_GRAVEYARD_THIS_WAY_REPLACEMENT,
         ],
     )
 }
@@ -40,9 +41,21 @@ pub fn parse_graveyard_cast_permission_shape(
     } else {
         (cast, false)
     };
+    // "You may cast target instant or sorcery card from your graveyard this
+    // turn" (Mavinda, Students' Advocate): a permission lasting the turn,
+    // not a cast during resolution.
+    let (cast, until_end_of_turn, trailing_this_turn) = match (
+        until_end_of_turn,
+        primitives::strip_lexed_suffix_phrase(cast, &["this", "turn"]),
+    ) {
+        (false, Some(rest)) => (rest, true, true),
+        _ => (cast, until_end_of_turn, false),
+    };
     if !starts_sequence(cast, CAST_PREFIX)
         || !contains_sequence_phrase(cast, CAST_FROM_GRAVEYARD)
-        || !(contains_sequence_word(cast, "instant") || contains_sequence_word(cast, "sorcery"))
+        || !(contains_sequence_word(cast, "instant")
+            || contains_sequence_word(cast, "sorcery")
+            || contains_sequence_phrase(cast, OF_THE_OTHER_TYPE))
         || !(contains_sequence_word(cast, "card") || contains_sequence_word(cast, "spell"))
     {
         return None;
@@ -70,6 +83,7 @@ pub fn parse_graveyard_cast_permission_shape(
         crate::grammar::primitives::probe_shape(additional_cast_mana_cost(cast))?;
     Some(GraveyardCastReplacementShape {
         until_end_of_turn,
+        trailing_this_turn,
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),
         includes_artifact: contains_sequence_word(cast, "artifact"),
         artifact_first: crate::slice_primitives::select_position(cast, |token| {

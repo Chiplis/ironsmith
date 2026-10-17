@@ -15,10 +15,14 @@ impl EffectExecutor for ControlPlayerEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let target_player = resolve_player_filter(game, &self.player, ctx)?;
+        let controller = match &self.controller {
+            Some(controller) => resolve_player_filter(game, controller, ctx)?,
+            None => ctx.controller,
+        };
         let source = game.object(ctx.source).map(|obj| obj.stable_id);
 
         game.add_player_control(
-            ctx.controller,
+            controller,
             target_player,
             self.start,
             self.duration,

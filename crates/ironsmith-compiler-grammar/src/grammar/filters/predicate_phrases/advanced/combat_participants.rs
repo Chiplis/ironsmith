@@ -17,6 +17,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
             Combat::AnyAttackedPlayerIsPoisoned,
         ["its" | "it's", "attacking", "the", "player", "with", "the", "most", "life", "or", "tied", "for", "most", "life"] =>
             Combat::TriggeringCreatureAttacksMostLifePlayer,
+        ["that", "player", "has", "another", "opponent", "who" | "that", "isnt" | "isn't", "being", "attacked"]
+        | ["that", "player", "has", "another", "opponent", "who" | "that", "is", "not", "being", "attacked"] =>
+            Combat::AttackingPlayerHasUnattackedOtherOpponent,
         _ => return None,
     };
     Some(PredicateAst::Triggering(TriggeringPredicateAst::CombatParticipant(condition)))

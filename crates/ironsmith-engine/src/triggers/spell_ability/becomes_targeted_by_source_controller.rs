@@ -175,6 +175,14 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
             PlayerFilter::Opponent => "an opponent controls",
             _ => "a player controls",
         };
+        if self.once_per_stack_object
+            && self.player_filter == PlayerFilter::Any
+            && self.source_controller == PlayerFilter::Any
+            && self.object_filter == ObjectFilter::default()
+            && self.source_kind == ironsmith_core::filter_model::StackObjectKind::SpellOrAbility
+        {
+            return "Whenever a player chooses one or more targets".to_string();
+        }
         if self.once_per_stack_object {
             let object = self.object_filter.description();
             let object = object

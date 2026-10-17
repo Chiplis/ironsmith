@@ -1316,6 +1316,7 @@ mod tests {
                         ])),
                         source_filter: None,
                         controller_filter: Some(ControllerFilter::Opponent),
+                        ability_kind: None,
                     },
                 };
                 game.object_mut(protection).unwrap().abilities =

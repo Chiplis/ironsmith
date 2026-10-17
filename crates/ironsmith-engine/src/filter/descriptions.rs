@@ -336,7 +336,7 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::OpponentOf(_)
@@ -446,7 +446,7 @@ pub fn describe_player_filter(filter: &PlayerFilter) -> String {
             )
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => filter.description(),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             filter.description()
         }
         PlayerFilter::OpponentOf(base) => {
@@ -711,6 +711,19 @@ fn object_has_ability_marker_in_view(
     if marker.trim().eq_ignore_ascii_case("kicked") {
         return object.optional_costs_paid.was_kicked();
     }
+    // "a modal spell" (CR 700.2): its spell text offers modes.
+    if marker.trim().eq_ignore_ascii_case("modal") {
+        return object
+            .spell_effect
+            .as_deref()
+            .is_some_and(program_offers_modes);
+    }
+    // "a spell using teamwork": its Teamwork optional cost was paid.
+    if marker.trim().eq_ignore_ascii_case("teamwork") {
+        return object.optional_costs_paid.was_paid_label(crate::cost::OptionalCostRef::new(
+            crate::cost::OptionalCostKind::Teamwork,
+        ));
+    }
     // Kicker and its multikicker variant (CR 702.33) are kicker abilities.
     if marker.trim().eq_ignore_ascii_case("kicker") {
         return object.optional_costs.iter().any(|cost| {
@@ -960,6 +973,14 @@ pub(super) fn snapshot_has_static_ability_id(
     snapshot.has_static_ability_id(ability_id)
 }
 
+/// A modal spell's text offers a mode choice (CR 700.2).
+fn program_offers_modes(program: &crate::resolution::ResolutionProgram) -> bool {
+    program
+        .all_effects()
+        .into_iter()
+        .any(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>().is_some())
+}
+
 pub(super) fn snapshot_has_ability_marker(
     snapshot: &crate::snapshot::ObjectSnapshot,
     marker: &str,
@@ -969,6 +990,15 @@ pub(super) fn snapshot_has_ability_marker(
     let normalized_marker = marker.trim().to_ascii_lowercase();
     if normalized_marker == "kicked" {
         return snapshot.optional_costs_paid.was_kicked();
+    }
+    if normalized_marker == "modal" {
+        return matches!(&snapshot.copiable_values.spell_effect,
+            crate::snapshot::SpellProgramState::Present(program) if program_offers_modes(program));
+    }
+    if normalized_marker == "teamwork" {
+        return snapshot.optional_costs_paid.was_paid_label(crate::cost::OptionalCostRef::new(
+            crate::cost::OptionalCostKind::Teamwork,
+        ));
     }
     if aura_attachment_has_ability_marker(snapshot.aura_attach_filter.as_ref(), marker) {
         return true;

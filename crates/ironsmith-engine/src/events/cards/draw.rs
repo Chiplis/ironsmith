@@ -24,6 +24,19 @@ pub struct DrawEvent {
     /// step this turn ("except the first one you draw in each of your draw
     /// steps").
     pub first_of_draw_step: bool,
+    /// The resolving activated ability whose instruction proposed this draw,
+    /// when a draw replacement needs to know its cause ("if a cycling ability
+    /// of another nonland card would cause you to draw a card").
+    pub cause_ability: Option<DrawCauseAbility>,
+}
+
+/// The activated ability that caused a draw (CR 614.1a cause-scoped draw
+/// replacements): its source as last known when it resolved, and its keyword.
+#[derive(Debug, Clone)]
+pub struct DrawCauseAbility {
+    pub source: ObjectId,
+    pub keyword: Option<ironsmith_core::ActivatedAbilityKeyword>,
+    pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
 }
 
 impl DrawEvent {
@@ -35,7 +48,14 @@ impl DrawEvent {
             is_first_this_turn,
             first_of_instruction: true,
             first_of_draw_step: false,
+            cause_ability: None,
         }
+    }
+
+    /// Record the activated ability whose resolution proposed this draw.
+    pub fn with_cause_ability(mut self, cause_ability: Option<DrawCauseAbility>) -> Self {
+        self.cause_ability = cause_ability;
+        self
     }
 
     /// Mark whether this event is the first card of the player's draw step.

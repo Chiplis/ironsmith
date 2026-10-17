@@ -31,7 +31,8 @@ fn leading_duration(input: &mut Stream<'_>) -> PResult<ironsmith_core::Replaceme
     Ok(mode)
 }
 
-/// "that creature" / "it": the object the instruction already names.
+/// "that creature" / "that source" / "it": the object the instruction
+/// already names.
 fn is_referenced_source(tokens: &[OwnedLexToken]) -> bool {
     primitives::probe_all(
         tokens,
@@ -39,7 +40,11 @@ fn is_referenced_source(tokens: &[OwnedLexToken]) -> bool {
             primitives::kw("it").void(),
             (
                 primitives::kw("that"),
-                alt((primitives::kw("creature"), primitives::kw("permanent"))),
+                alt((
+                    primitives::kw("creature"),
+                    primitives::kw("permanent"),
+                    primitives::kw("source"),
+                )),
             )
                 .void(),
         )),
@@ -105,7 +110,11 @@ fn parse_next_time(
             primitives::kw("it").void(),
             (
                 primitives::kw("that"),
-                alt((primitives::kw("creature"), primitives::kw("permanent"))),
+                alt((
+                    primitives::kw("creature"),
+                    primitives::kw("permanent"),
+                    primitives::kw("source"),
+                )),
             )
                 .void(),
         ))

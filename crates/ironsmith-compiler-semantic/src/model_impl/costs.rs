@@ -502,6 +502,10 @@ impl CompilerOptionalCost {
         Self::typed(crate::cost::OptionalCostKind::Teamwork, "Teamwork", cost)
     }
 
+    pub fn flash_timing(cost: ironsmith_core::TotalCost<CompilerCost>) -> Self {
+        Self::typed(crate::cost::OptionalCostKind::FlashTiming, "Flash", cost)
+    }
+
     pub fn repeatable(mut self) -> Self {
         self.repeatable = true;
         self
@@ -543,6 +547,37 @@ pub fn cost_has_announced_x(cost: &ironsmith_core::TotalCost<CompilerCost>) -> b
             branches.iter().any(cost_has_announced_x)
         }
     }
+}
+
+/// Whether a cost effect is a die roll whose completed result the activation
+/// retains ("{6}, Roll a d8: ...").
+pub fn is_activation_result_cost_effect(effect: &crate::model::ast::EffectAst) -> bool {
+    matches!(
+        effect,
+        crate::model::ast::EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
+            action: crate::model::ast::SubjectVerbActionAst::Random(
+                crate::model::ast::RandomActionAst::RollDie { .. }
+            ),
+            ..
+        })
+    )
+}
+
+/// The activation's unique die-roll payment, read by "where X is the result".
+/// Ambiguous branches or several rolls publish no producer.
+pub fn unique_activation_result_cost(
+    cost: &ironsmith_core::TotalCost<CompilerCost>,
+) -> Option<ironsmith_core::EffectId> {
+    let components = cost.as_all()?;
+    let mut rolls = components.iter().filter(|component| {
+        matches!(component, CompilerCost::ValidatedEffect(effect) | CompilerCost::Effect(effect)
+            if is_activation_result_cost_effect(effect))
+    });
+    rolls.next()?;
+    rolls
+        .next()
+        .is_none()
+        .then_some(ironsmith_core::EffectId::ACTIVATION_RESULT_COST)
 }
 
 /// Ambiguous branches and opaque effects cannot identify one counter payment.

@@ -48,6 +48,8 @@ pub struct PreventDamageEffect {
     pub source_of_your_choice: bool,
     /// Protect the controller and permanents they control with one shared shield.
     pub protect_you_and_permanents_you_control: bool,
+    /// Share the finite shield across all recipients.
+    pub protect_all: bool,
     /// Divide `amount` among the targets as announced (CR 601.2d); each
     /// target gets its own shield of its share (CR 615.7).
     pub divided: bool,
@@ -64,6 +66,7 @@ impl PreventDamageEffect {
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
             protect_you_and_permanents_you_control: false,
+            protect_all: false,
             divided: false,
         }
     }
@@ -115,6 +118,41 @@ impl EffectExecutor for PreventDamageEffect {
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
         let mut damage_filter = self.damage_filter.clone();
 
+        if let Some(from_source) = damage_filter.from_source.as_ref()
+            && from_source.source
+        {
+            let mut rest = from_source.clone();
+            rest.source = false;
+            if rest == crate::target::ObjectFilter::default() {
+                damage_filter.from_specific_source = Some(ctx.source);
+                damage_filter.from_source = None;
+            }
+        }
+
+        // "... by <that object>" (Torrent of Lava's granted ability names the
+        // spell that granted it): a tagged source reference is bound to its
+        // exact object as the shield is created, since the tag isn't
+        // available when damage is later dealt.
+        if let Some(from_source) = damage_filter.from_source.as_ref()
+            && let [reference] = from_source.tagged_constraints.as_slice()
+            && reference.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        {
+            let mut rest = from_source.clone();
+            rest.tagged_constraints.clear();
+            if rest == crate::target::ObjectFilter::default() {
+                let Some(source) = ctx
+                    .get_tagged_all(&reference.tag)
+                    .and_then(|snapshots| snapshots.first())
+                    .map(|snapshot| snapshot.object_id)
+                else {
+                    // The named source no longer exists to deal damage.
+                    return Ok(EffectOutcome::count(0));
+                };
+                damage_filter.from_specific_source = Some(source);
+                damage_filter.from_source = None;
+            }
+        }
+
         if self.source_of_your_choice {
             match choose_source_of_your_choice(game, ctx) {
                 SourceChoiceSelection::Chosen(source) => {
@@ -125,7 +163,9 @@ impl EffectExecutor for PreventDamageEffect {
             }
         }
 
-        let protected = if self.protect_you_and_permanents_you_control {
+        let protected = if self.protect_all {
+            crate::prevention::PreventionTarget::All
+        } else if self.protect_you_and_permanents_you_control {
             crate::prevention::PreventionTarget::YouAndPermanentsYouControl
         } else {
             resolve_prevention_target_from_spec(game, &self.target, ctx)?

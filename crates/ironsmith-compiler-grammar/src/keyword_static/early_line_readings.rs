@@ -247,7 +247,137 @@ const READINGS: &[Reading] = &[
         admits: |_| true,
         read: |input| input.outcome(read_legend_rule_doesnt_apply_line(input)),
     },
+    Reading {
+        id: RuleId::new("attack-state-xy-attached-anthem-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_attack_state_xy_attached_anthem_line(input)),
+    },
 ];
+
+/// "Enchanted creature gets -X/-Y. If that creature is attacking, X is the
+/// number of snow lands defending player controls. Otherwise, X is the number
+/// of snow lands its controller controls. Y is equal to X or to enchanted
+/// creature's toughness minus 1, whichever is smaller." (Snowblind)
+///
+/// Two attack-state-gated layer-7c modifications of the enchanted creature.
+/// Y reads the creature's toughness as layered before this effect applies, so
+/// the reduction never takes it below 1.
+fn read_attack_state_xy_attached_anthem_line(
+    input: &EarlyLine<'_>,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    fn sentences(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+        tokens
+            .split(|token| token.as_word().is_none() && token.slice == ".")
+            .filter(|sentence| !sentence.is_empty())
+            .collect()
+    }
+    fn squeeze(tokens: &[OwnedLexToken], keep: &[char]) -> String {
+        crate::lexer::render_token_slice(tokens)
+            .to_ascii_lowercase()
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric() || keep.contains(ch))
+            .collect()
+    }
+    /// "the number of <noun> <player> controls(s)".
+    fn controlled_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+        let view = crate::lexer::TokenWordView::new(tokens);
+        let words = view.to_word_refs();
+        if !words.starts_with(&["the", "number", "of"]) {
+            return None;
+        }
+        let (tail, controller) = if words.ends_with(&["defending", "player", "controls"]) {
+            (3, PlayerFilter::Defending)
+        } else if words.ends_with(&["its", "controller", "controls"]) {
+            (
+                3,
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(
+                    crate::tag::TagKey::from("enchanted"),
+                )),
+            )
+        } else if words.ends_with(&["you", "control"]) {
+            (2, PlayerFilter::You)
+        } else {
+            return None;
+        };
+        let noun_end = words.len().checked_sub(tail)?;
+        if noun_end <= 3 {
+            return None;
+        }
+        let range = view.token_span_for_words(3, noun_end)?;
+        let mut filter = crate::object_filters::parse_object_filter(&tokens[range], false).ok()?;
+        if filter.zone.is_none() {
+            filter.zone = Some(crate::zone::Zone::Battlefield);
+        }
+        filter.controller = Some(controller);
+        Some(Value::Count(filter))
+    }
+    fn x_definition<'a>(sentence: &'a [OwnedLexToken], prefix: &[&str]) -> Option<&'a [OwnedLexToken]> {
+        let view = crate::lexer::TokenWordView::new(sentence);
+        let words = view.to_word_refs();
+        if words.len() <= prefix.len() || !words.starts_with(prefix) {
+            return None;
+        }
+        let range = view.token_span_for_words(prefix.len(), words.len())?;
+        Some(&sentence[range])
+    }
+
+    let parts = sentences(input.tokens);
+    let [gets, attacking, otherwise, y_rule] = parts.as_slice() else {
+        return Ok(None);
+    };
+    if squeeze(gets, &['-', '/']) != "enchantedcreaturegets-x/-y"
+        || squeeze(y_rule, &[])
+            != "yisequaltoxortoenchantedcreaturestoughnessminus1whicheverissmaller"
+    {
+        return Ok(None);
+    }
+    let Some(attacking_x) = x_definition(
+        attacking,
+        &["if", "that", "creature", "is", "attacking", "x", "is"],
+    )
+    .and_then(controlled_count) else {
+        return Ok(None);
+    };
+    let Some(otherwise_x) =
+        x_definition(otherwise, &["otherwise", "x", "is"]).and_then(controlled_count)
+    else {
+        return Ok(None);
+    };
+    let subject_view = crate::lexer::TokenWordView::new(gets);
+    let Some(subject_range) = subject_view.token_span_for_words(0, 2) else {
+        return Ok(None);
+    };
+    let subject = crate::object_filters::parse_object_filter(&gets[subject_range], false)?;
+    let mut attacking_filter = ObjectFilter::default();
+    attacking_filter.attacking = true;
+    let is_attacking = PredicateAst::AttachedToSourceMatches(attacking_filter);
+    let ability = |x: Value, condition: PredicateAst| -> StaticAbilityAst {
+        // Y = min(X, toughness - 1), with the toughness the creature has
+        // before this modification applies (CR 613.4c).
+        let y = Value::Min(
+            Box::new(x.clone()),
+            Box::new(Value::Add(
+                Box::new(Value::ToughnessOf(Box::new(ChooseSpec::Iterated))),
+                Box::new(Value::Fixed(-1)),
+            )),
+        );
+        build_anthem_static_ability(&ParsedAnthemClause {
+            subject: AnthemSubjectAst::Filter(subject.clone()),
+            power: AnthemValue::Dynamic(Value::Scaled(Box::new(x), -1)),
+            toughness: AnthemValue::Dynamic(Value::Scaled(Box::new(y), -1)),
+            condition: Some(condition),
+            set_quantifier_surface: None,
+            count_uses_where_x: true,
+            additional_surface: false,
+        })
+        .into()
+    };
+    Ok(Some(vec![
+        ability(attacking_x, is_attacking.clone()),
+        ability(otherwise_x, PredicateAst::Not(Box::new(is_attacking))),
+    ]))
+}
 
 /// The input's reading, if a rule has one. Every admitted reading runs.
 pub(super) fn read(input: &EarlyLine<'_>) -> ParseOutcome<RuleMatch<Vec<StaticAbilityAst>>> {
@@ -438,12 +568,72 @@ pub(crate) fn read_aggregate_x_maximum(
         return None;
     }
     let range = words.token_span_for_words(5, refs.len())?;
+    // "X can't be greater than the number of snow lands you control."
+    // (Winter's Chill) bounds X by a live count instead of an aggregate.
     let value = crate::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
-        &tokens[range],
-    )?
+        &tokens[range.clone()],
+    )
+    .or_else(|| {
+        crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+            &tokens[range],
+        )
+    })?
     .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
     let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
     Some(StaticAbility::this_spell_x_maximum(value, display).into())
+}
+
+/// "X is the number of artifact and/or creature cards in an opponent's
+/// graveyard as you cast this spell." (Spoils of War): the spell defines X,
+/// so its controller doesn't choose it (CR 107.3c). The value is fixed as the
+/// spell is cast (CR 601.2b), which is exactly an X bounded above and below by
+/// that value. A count over "an opponent's" cards depends on which opponent
+/// the caster names, so the bounds are that count's smallest and greatest
+/// value among the opponents.
+pub(crate) fn read_defined_x(
+    tokens: &[crate::cards::builders::OwnedLexToken],
+) -> Option<Vec<StaticAbilityAst>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::TokenWordView::new(tokens);
+    let refs = words.to_word_refs();
+    const AS_YOU_CAST: &[&str] = &["as", "you", "cast", "this", "spell"];
+    if !matches!(refs.get(..3), Some(["x", "is", "the"]))
+        || refs.len() <= 2 + AS_YOU_CAST.len()
+        || !refs.ends_with(AS_YOU_CAST)
+    {
+        return None;
+    }
+    let range = words.token_span_for_words(2, refs.len() - AS_YOU_CAST.len())?;
+    let value = crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
+        &tokens[range],
+    )?
+    .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    let (maximum, minimum) = match value.unhinted() {
+        Value::Count(filter)
+            if filter.controller.is_none()
+                && matches!(filter.owner, Some(PlayerFilter::Opponent)) =>
+        {
+            (
+                Value::GreatestCount(filter.clone()),
+                Value::LeastCount(filter.clone()),
+            )
+        }
+        Value::Count(filter)
+            if filter.owner.is_none()
+                && matches!(filter.controller, Some(PlayerFilter::Opponent)) =>
+        {
+            (
+                Value::GreatestCount(filter.clone()),
+                Value::LeastCount(filter.clone()),
+            )
+        }
+        _ => (value.clone(), value.clone()),
+    };
+    let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
+    Some(vec![
+        StaticAbility::this_spell_x_maximum(maximum, display.clone()).into(),
+        StaticAbility::this_spell_x_minimum(minimum, display).into(),
+    ])
 }
 
 fn read_early_static_marker(
@@ -452,6 +642,9 @@ fn read_early_static_marker(
     let tokens = input.tokens;
     if let Some(ability) = read_aggregate_x_maximum(tokens) {
         return Ok(Some(vec![ability]));
+    }
+    if let Some(abilities) = read_defined_x(tokens) {
+        return Ok(Some(abilities));
     }
     if let Some(marker) = keyword_static_lines::parse_early_static_marker_tokens(tokens) {
         let ability = match marker {

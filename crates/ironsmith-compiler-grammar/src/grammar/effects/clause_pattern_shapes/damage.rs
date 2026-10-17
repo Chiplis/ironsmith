@@ -40,6 +40,8 @@ pub enum DamageTargetShape<'a> {
     /// "you and/or creatures you control": the controller plus every
     /// matching permanent (no target is chosen).
     YouAndPermanents(ObjectFilter),
+    /// "to one or more players" / "to a player": any player, no target.
+    AnyPlayer,
     Target(&'a [OwnedLexToken]),
 }
 #[derive(Debug, Clone)]
@@ -69,6 +71,7 @@ pub struct ScopedAllDamageRedirectionShape {
     pub destination: Vec<OwnedLexToken>,
     pub combat_only: bool,
     pub mode: ironsmith_core::ReplacementApplyMode,
+    pub optional_by_controller: bool,
 }
 #[derive(Debug, Clone)]
 pub enum RedirectNextDamageShape<'a> {
@@ -401,6 +404,21 @@ fn classify_damage_target(tokens: &[OwnedLexToken]) -> DamageTargetShape<'_> {
         DamageTargetShape::You
     } else if let Some(filter) = parse_you_and_permanents_filter_tokens(tokens) {
         DamageTargetShape::YouAndPermanents(filter)
+    } else if primitives::parse_all(
+        tokens,
+        (
+            alt((
+                primitives::phrase(&["one", "or", "more", "players"]),
+                primitives::phrase(&["a", "player"]),
+            )),
+            winnow::combinator::eof,
+        )
+            .void(),
+        "any player damage target",
+    )
+    .is_ok()
+    {
+        DamageTargetShape::AnyPlayer
     } else {
         DamageTargetShape::Target(tokens)
     }
@@ -491,6 +509,34 @@ pub fn parse_prevent_next_damage_tokens(
     )
 }
 
+/// "prevent the next 2 damage" with its recipient and duration elided: the
+/// replacement half of "If it's a green creature, prevent the next 2 damage
+/// instead" (Elvish Healer) restates only the amount of the preceding
+/// finite shield. Returns the amount tokens and whether it is combat-only.
+pub fn parse_prevent_next_damage_elided_recipient_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], bool)> {
+    crate::grammar::primitives::probe_all(
+        tokens,
+        parse_prevent_next_damage_elided_recipient_lexed,
+        "prevent next damage elided recipient",
+    )
+}
+
+fn parse_prevent_next_damage_elided_recipient_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(&'a [OwnedLexToken], bool)> {
+    primitives::kw("prevent").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::kw("next").parse_next(input)?;
+    let amount_tokens = any.void().take().parse_next(input)?;
+    let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
+    primitives::kw("damage").parse_next(input)?;
+    opt(primitives::kw("instead")).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok((amount_tokens, combat_only))
+}
+
 fn reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     primitives::phrase(&[
         "prevent",
@@ -507,6 +553,23 @@ fn reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
     tokens_before(input, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
     Ok(true)
+}
+
+/// "instead that source deals that much damage to you and this spell deals
+/// that much damage to that source's controller" (Eye for an Eye).
+fn redeal_and_reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&[
+        "instead", "that", "source", "deals", "that", "much", "damage", "to", "you", "and",
+    ])
+    .parse_next(input)?;
+    tokens_before(
+        input,
+        primitives::phrase(&["deals", "that", "much", "damage", "to", "that"]),
+    )?;
+    primitives::phrase(&["deals", "that", "much", "damage", "to", "that"]).parse_next(input)?;
+    tokens_before(input, primitives::sentence_end())?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(())
 }
 
 fn simple_prevent_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
@@ -546,11 +609,30 @@ fn parse_prevent_next_time_damage_lexed<'a>(
     let combat_only = opt(primitives::kw("combat")).parse_next(input)?.is_some();
     primitives::kw("damage").parse_next(input)?;
     opt(primitives::kw("to")).parse_next(input)?;
-    let target_tokens = tokens_before(input, primitives::phrase(&["this", "turn"]))?;
-    primitives::phrase(&["this", "turn"]).parse_next(input)?;
+    // "this combat" (Ria Ivor) bounds a combat-damage shield to the
+    // combat it is created in; it is otherwise the same one-shot shield.
+    let target_tokens = tokens_before(
+        input,
+        alt((
+            primitives::phrase(&["this", "turn"]),
+            primitives::phrase(&["this", "combat"]),
+        )),
+    )?;
+    let this_combat = alt((
+        primitives::phrase(&["this", "turn"]).value(false),
+        primitives::phrase(&["this", "combat"]).value(true),
+    ))
+    .parse_next(input)?;
+    if this_combat && !combat_only {
+        return Err(winnow::error::ErrMode::Backtrack(
+            winnow::error::ContextError::new(),
+        ));
+    }
     opt(primitives::comma()).parse_next(input)?;
     let (reflect_damage_to_source_controller, portion) = alt((
         reflect_tail.map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
+        redeal_and_reflect_tail
+            .map(|()| (true, ironsmith_core::NextTimeDamagePreventionPortion::ReflectOnly)),
         simple_prevent_tail
             .map(|reflect| (reflect, ironsmith_core::NextTimeDamagePreventionPortion::All)),
         half_prevent_tail.map(|portion| (false, portion)),
@@ -691,6 +773,40 @@ fn parse_all_to_target_by_choice<'a>(
     Ok(RedirectNextDamageShape::AllToTargetByChosenSource {
         target_tokens,
         destination,
+    })
+}
+
+/// "All damage that would be dealt this turn to target creature you control
+/// by a source of your choice is dealt to another target creature instead."
+/// (Kor Chant): the duration leads, and the destination is a second target.
+pub(super) fn parse_all_this_turn_to_target_by_choice<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<RedirectNextDamageShape<'a>> {
+    primitives::phrase(&[
+        "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
+    ])
+    .parse_next(input)?;
+    let target_tokens = one_or_more_tokens_before(input, primitives::kw("by").void())?;
+    primitives::kw("by").parse_next(input)?;
+    let source_tokens =
+        one_or_more_tokens_before(input, primitives::phrase(&["is", "dealt", "to"]))?;
+    if !has_source_of_your_choice(source_tokens) {
+        return Err(winnow::error::ErrMode::Backtrack(
+            winnow::error::ContextError::new(),
+        ));
+    }
+    primitives::phrase(&["is", "dealt", "to"]).parse_next(input)?;
+    let destination_tokens = one_or_more_tokens_before(input, primitives::kw("instead").void())?;
+    if !destination_tokens.iter().any(|token| token.is_word("target")) {
+        return Err(winnow::error::ErrMode::Backtrack(
+            winnow::error::ContextError::new(),
+        ));
+    }
+    primitives::kw("instead").parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(RedirectNextDamageShape::AllToTargetByChosenSource {
+        target_tokens,
+        destination: RedirectDamageDestinationShape::Target(destination_tokens),
     })
 }
 

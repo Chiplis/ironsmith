@@ -683,7 +683,15 @@ fn lower_materialization_costs(
             }
             MaterializationCost::Behold { subtype, count } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                costs.push(Cost::validated_effect(Effect::behold(*subtype, *count)));
+                // The beheld object stays available to the spell or ability
+                // ("the power of that card or creature", Dragon's Fire) under
+                // the same cost tag the behold-and-exile cost uses.
+                costs.push(Cost::validated_effect(
+                    Effect::behold(*subtype, *count).tag(
+                        ironsmith_compiler_semantic::tag::CompilerReferenceTag::BeheldCost0
+                            .as_str(),
+                    ),
+                ));
             }
             MaterializationCost::Blight { count, x } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
@@ -1267,6 +1275,20 @@ pub fn materialize_compiler_activation_total_cost(cost: &ironsmith_core::TotalCo
     -> Result<TotalCost, CardTextError>
 {
     let lowered = materialize_compiler_core_total_cost(cost)?;
+    if let Some(result_id) = crate::model::costs::unique_activation_result_cost(cost) {
+        // The paid die roll retains its outcome for the resolving ability.
+        let components = lowered.as_all().ok_or_else(|| CardTextError::InvariantViolation("die-roll producer lost ordinary cost branch".into()))?;
+        let mut count = 0;
+        let components = components.iter().map(|component| match component {
+            Cost::Effect(effect) if effect.downcast_ref::<crate::effects::RollDieEffect>().is_some() => {
+                count += 1;
+                Cost::validated_effect(Effect::with_id(result_id.0, effect.clone()))
+            }
+            _ => component.clone(),
+        }).collect();
+        if count != 1 { return Err(CardTextError::InvariantViolation("die-roll producer must materialize exactly once".into())); }
+        return Ok(TotalCost::from_costs(components));
+    }
     let Some(producer) = crate::model::costs::unique_counter_removal_cost(cost) else { return Ok(lowered); };
     let components = lowered.as_all().ok_or_else(|| CardTextError::InvariantViolation("counter producer lost ordinary cost branch".into()))?;
     let mut count = 0;

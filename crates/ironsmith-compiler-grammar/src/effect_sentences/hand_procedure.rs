@@ -27,6 +27,9 @@ enum Shown {
     /// "Look at that player's hand." — whose hand, as the look names them.
     Looked(PlayerFilter),
     Selected(crate::tag::TagKey),
+    /// "Target player reveals their hand and the top card of their library."
+    /// (Psychotic Episode): one revealed pool across two zones.
+    RevealedWithLibraryTop(PlayerAst),
 }
 
 pub(super) struct HandGroup {
@@ -73,6 +76,73 @@ fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
     };
     matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent)
         .then(|| (effect.clone(), Shown::Revealed(*player)))
+}
+
+/// "Target player reveals their hand and the top card of their library."
+/// The top card is revealed first so that both reveals feed the one
+/// "revealed this way" pool (the hand reveal adds to it; a library reveal
+/// starts it); both reveals are simultaneous for the game. The player is
+/// targeted by the first instruction and named by "that player" after.
+fn revealed_hand_and_library_top(sentence: &SentenceInput) -> Option<(Vec<EffectAst>, PlayerAst)> {
+    let words = crate::lexer::token_word_refs(sentence.lowered());
+    let words = match words.last() {
+        Some(&".") => &words[..words.len() - 1],
+        _ => &words[..],
+    };
+    let player = match words {
+        ["target", "player", "reveals", "their", "hand", "and", "the", "top", "card", "of", "their", "library"] => {
+            PlayerAst::Target
+        }
+        ["target", "opponent", "reveals", "their", "hand", "and", "the", "top", "card", "of", "their", "library"] => {
+            PlayerAst::TargetOpponent
+        }
+        _ => return None,
+    };
+    Some((
+        vec![
+            EffectAst::subject_verb_reveal_top_cards(
+                player,
+                Value::Fixed(1),
+                crate::tag::CompilerReferenceTag::RevealedThisWay.bind(),
+            ),
+            EffectAst::subject_verb_reveal_hand(PlayerAst::That),
+        ],
+        player,
+    ))
+}
+
+/// "You choose a card revealed this way." over a hand-and-library-top pool:
+/// the choice is among exactly the revealed cards, wherever they are.
+fn choose_revealed_across_hand_and_library(
+    sentence: &SentenceInput,
+    revealer: PlayerAst,
+) -> Option<EffectAst> {
+    let words = crate::lexer::token_word_refs(sentence.lowered());
+    let words = match words.last() {
+        Some(&".") => &words[..words.len() - 1],
+        _ => &words[..],
+    };
+    if words != ["you", "choose", "a", "card", "revealed", "this", "way"] {
+        return None;
+    }
+    let mut filter =
+        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::RevealedThisWay.bind());
+    filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(match revealer {
+        PlayerAst::TargetOpponent => PlayerFilter::Opponent,
+        _ => PlayerFilter::Any,
+    })));
+    Some(EffectAst::ObjectChoices(
+        ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: crate::tag::CompilerReferenceTag::It.bind(),
+            zones: vec![Zone::Hand, Zone::Library],
+            search_mode: None,
+            optional_search_zones: false,
+        },
+    ))
 }
 
 /// "You choose a nonland card from it or a card from their graveyard."
@@ -415,10 +485,110 @@ fn put_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Option<
     Some(effects.remove(0))
 }
 
+/// "That player exiles a card from it, then you exile a card from it. Repeat
+/// this process until all cards in that hand have been exiled. That player
+/// returns the cards they exiled this way to their hand and puts the rest
+/// into their graveyard." (Struggle for Sanity)
+///
+/// The two players alternate single exiles from the revealed hand until it
+/// is empty. Each player's picks accumulate under their own choice key, so
+/// the closing statement partitions the exiled cards by who exiled them.
+/// Each round exiles only the pick still in that hand; a round in which the
+/// second player exiles nothing ends the process (the hand is empty).
+fn alternating_hand_exile(
+    sentences: &[SentenceInput],
+    first: usize,
+    revealer: PlayerAst,
+) -> Option<Vec<EffectAst>> {
+    fn words(sentence: &SentenceInput) -> Vec<&str> {
+        let words = crate::lexer::token_word_refs(sentence.lowered());
+        match words.last() {
+            Some(&".") => words[..words.len() - 1].to_vec(),
+            _ => words,
+        }
+    }
+    let alternation = sentences.get(first)?;
+    let repeat = sentences.get(first + 1)?;
+    let partition = sentences.get(first + 2)?;
+    if words(alternation)
+        != [
+            "that", "player", "exiles", "a", "card", "from", "it", "then", "you", "exile", "a",
+            "card", "from", "it",
+        ]
+        || words(repeat)
+            != [
+                "repeat", "this", "process", "until", "all", "cards", "in", "that", "hand",
+                "have", "been", "exiled",
+            ]
+        || words(partition)
+            != [
+                "that", "player", "returns", "the", "cards", "they", "exiled", "this", "way",
+                "to", "their", "hand", "and", "puts", "the", "rest", "into", "their",
+                "graveyard",
+            ]
+    {
+        return None;
+    }
+    let owner = PlayerFilter::AliasedTarget(Box::new(match revealer {
+        PlayerAst::TargetOpponent => PlayerFilter::Opponent,
+        _ => PlayerFilter::Any,
+    }));
+    let first_picks = helper_tag_for_tokens(alternation.lowered(), "alternating_exile_first");
+    let second_picks = helper_tag_for_tokens(alternation.lowered(), "alternating_exile_second");
+    let picked = |tag: &crate::tag::TagRef, zone: Zone| {
+        let mut filter = ObjectFilter::default().in_zone(zone).owned_by(owner.clone());
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: tag.clone().into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        filter
+    };
+    let pick = |player: PlayerAst, tag: &crate::tag::TagRef| {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner.clone()),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: tag.clone(),
+        })
+    };
+    let round = vec![
+        pick(PlayerAst::That, &first_picks),
+        EffectAst::subject_verb_exile_all(picked(&first_picks, Zone::Hand), false),
+        pick(PlayerAst::You, &second_picks),
+        EffectAst::subject_verb_exile_all(picked(&second_picks, Zone::Hand), false),
+    ];
+    let move_picks = |tag: &crate::tag::TagRef, zone: Zone| {
+        EffectAst::subject_verb_move_all_to_zone(
+            TargetAst::Object(picked(tag, Zone::Exile), None, None),
+            zone,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
+    };
+    Some(vec![
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::RepeatProcess {
+            effects: round,
+            continue_effect_index: 3,
+            continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+            max_iterations: None,
+        }),
+        move_picks(&first_picks, Zone::Hand)
+            .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return),
+        move_picks(&second_picks, Zone::Graveyard)
+            .with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put),
+    ])
+}
+
 /// The statement a sentence makes over the shown hand, if any.
 fn statement(shown: &Shown, sentence: &SentenceInput) -> Option<EffectAst> {
     match shown {
         Shown::Selected(tag) => cast_from_selected_hand(tag, sentence),
+        Shown::RevealedWithLibraryTop(revealer) => {
+            choose_revealed_across_hand_and_library(sentence, *revealer)
+        }
         Shown::Looked(owner) => exile_from_shown_hand(sentence, owner.clone())
             .or_else(|| put_from_shown_hand(sentence, owner.clone()))
             .or_else(|| may_cast_spell_from_among(sentence)),
@@ -483,9 +653,39 @@ pub(super) fn open(
             }));
         }
     }
+    if let Some((effects, revealer)) = revealed_hand_and_library_top(sentence) {
+        let shown = Shown::RevealedWithLibraryTop(revealer);
+        if statement(&shown, next).is_none() {
+            return Ok(None);
+        }
+        return Ok(Some(HandGroup {
+            effects,
+            shown,
+            closed: false,
+            first_sentence: sentence_idx,
+            consumed: 1,
+        }));
+    }
     let Some((effect, shown)) = shown_hand(sentence) else {
         return Ok(None);
     };
+    let revealer = match &shown {
+        Shown::Revealed(revealer) => Some(*revealer),
+        _ => None,
+    };
+    if let Some(revealer) = revealer
+        && let Some(alternation) = alternating_hand_exile(sentences, sentence_idx + 1, revealer)
+    {
+        let mut effects = vec![effect];
+        effects.extend(alternation);
+        return Ok(Some(HandGroup {
+            effects,
+            shown,
+            closed: true,
+            first_sentence: sentence_idx,
+            consumed: 4,
+        }));
+    }
     if statement(&shown, next).is_none() {
         return Ok(None);
     }

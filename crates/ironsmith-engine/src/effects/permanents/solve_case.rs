@@ -76,7 +76,23 @@ impl EffectExecutor for SolveCaseEffect {
             }
 
             let changed = game.solve_case(ctx.source);
-            Ok(EffectOutcome::count(i32::from(changed)))
+            let outcome = EffectOutcome::count(i32::from(changed));
+            if !changed {
+                return Ok(outcome);
+            }
+            // CR 719.4: "Whenever you solve a Case" triggers on the Case
+            // becoming solved.
+            crate::effects::composition::complete_keyword_action_with_result(
+                game,
+                ctx,
+                outcome,
+                crate::events::KeywordActionEvent::new(
+                    crate::events::KeywordActionKind::SolveCase,
+                    ctx.controller,
+                    ctx.source,
+                    1,
+                ),
+            )
         })
     }
 }

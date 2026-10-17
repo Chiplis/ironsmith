@@ -27,6 +27,9 @@ pub enum PlayerActivationRestrictionTailFact {
     CastSpellsMatching(ObjectFilter),
     CastSpells,
     ActivateNonManaAbilities,
+    /// "activate abilities that aren't mana abilities or loyalty abilities"
+    /// (Overwhelming Splendor).
+    ActivateNonManaNonLoyaltyAbilities,
     ActivateAbilitiesOf {
         filter: ObjectFilter,
         non_mana_only: bool,
@@ -35,6 +38,11 @@ pub enum PlayerActivationRestrictionTailFact {
     BlockWithMoreThan(usize),
     /// "venture into the dungeon more than once each turn" (Keen-Eared Sentry).
     VentureMoreThanOnceEachTurn,
+    /// "get counters" (Suncleanser: "that player can't get counters").
+    GetCounters,
+    /// "activate abilities" with no qualifier: every activated ability,
+    /// mana abilities included (CR 602.1, CR 605.3).
+    ActivateAbilities,
 }
 
 pub fn parse_cant_cast_restriction_fact_words(words: &[&str]) -> Option<CantCastRestrictionFact> {
@@ -359,6 +367,15 @@ pub fn parse_cast_restriction_tail_filter_words(words: &[&str]) -> Option<Object
     if tail.is_empty() {
         return None;
     }
+    // "cast artifact, creature, or enchantment spells" (Damping Engine): a
+    // disjunction of card types, each its own spell kind.
+    if tail.len() > 2
+        && tail.iter().any(|word| *word == "or")
+        && !tail.iter().any(|word| *word == "and")
+        && let Some(filter) = parse_card_type_list_filter_words(tail, None)
+    {
+        return Some(filter);
+    }
     let parsed = parse_activation_cast_limit_qualifier_words(tail)?;
     (parsed.consumed == tail.len()).then_some(parsed.filter)
 }
@@ -399,6 +416,9 @@ pub fn parse_player_activation_restriction_tail_words(
         &["venture", "into", "the", "dungeon", "more", "than", "once", "each", "turn"],
     ) {
         return Some(PlayerActivationRestrictionTailFact::VentureMoreThanOnceEachTurn);
+    }
+    if exact(words, &["get", "counters"]) {
+        return Some(PlayerActivationRestrictionTailFact::GetCounters);
     }
     if let Some(rest) = prefix_remainder(words, &["block", "with", "more", "than"])
         && let [count, noun] = rest
@@ -447,6 +467,21 @@ pub fn parse_player_activation_restriction_tail_words(
         ],
     ) {
         return Some(PlayerActivationRestrictionTailFact::ActivateNonManaAbilities);
+    }
+    if exact_any(
+        words,
+        &[
+            &[
+                "activate", "abilities", "that", "arent", "mana", "abilities", "or", "loyalty",
+                "abilities",
+            ],
+            &[
+                "activate", "abilities", "that", "aren't", "mana", "abilities", "or", "loyalty",
+                "abilities",
+            ],
+        ],
+    ) {
+        return Some(PlayerActivationRestrictionTailFact::ActivateNonManaNonLoyaltyAbilities);
     }
     let owner_words = prefix_remainder(words, &["activate", "abilities", "of"])?;
     let non_mana_only = suffix(words, &["unless", "theyre", "mana", "abilities"]);
@@ -537,6 +572,17 @@ fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) 
     None
 }
 
+/// "lands with the chosen name can't be played" (Conjurer's Ban): the passive
+/// land-play prohibition reads its subject exactly like "play <lands>".
+pub fn parse_land_subject_cant_be_played_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let subject = super::clause_facts::suffix_remainder(words, &["cant", "be", "played"])?;
+    if !matches!(subject.first().copied(), Some("lands" | "land" | "nonbasic")) {
+        return None;
+    }
+    let play: Vec<&str> = std::iter::once("play").chain(subject.iter().copied()).collect();
+    parse_land_play_restriction_tail_words(&play)
+}
+
 pub fn parse_land_play_restriction_tail_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut input = prefix_remainder(words, &["play"])?;
     let mut filter = ObjectFilter::default().with_type(crate::types::CardType::Land);
@@ -555,6 +601,30 @@ pub fn parse_land_play_restriction_tail_words(words: &[&str]) -> Option<ObjectFi
     parse_shared_name_restriction_tail(input, filter)
 }
 
+/// "with a name originally printed in the <set> expansion": the set's name,
+/// title-cased (matched case-insensitively against first printings).
+fn original_printing_set_qualifier(words: &[&str]) -> Option<String> {
+    let rest = prefix_remainder(words, &["with", "a", "name", "originally", "printed", "in"])?;
+    let rest = prefix_remainder(rest, &["the"]).unwrap_or(rest);
+    let (last, set_words) = rest.split_last()?;
+    if *last != "expansion" || set_words.is_empty() {
+        return None;
+    }
+    Some(
+        set_words
+            .iter()
+            .map(|word| {
+                let mut chars = word.chars();
+                chars
+                    .next()
+                    .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
+}
+
 /// Own the entire two-action clause. In the shared-origin form the final
 /// origin applies to both actions; an unrecognized second action fails closed.
 pub fn parse_compound_player_action_restriction_words(words: &[&str]) -> Option<Vec<PlayerActivationRestrictionTailFact>> {
@@ -568,6 +638,31 @@ pub fn parse_compound_player_action_restriction_words(words: &[&str]) -> Option<
         lands.owner = owner.clone(); spells.owner = owner;
         return Some(vec![PlayerActivationRestrictionTailFact::PlayLandsMatching(lands),
             PlayerActivationRestrictionTailFact::CastSpellsMatching(spells)]);
+    }
+    // "can't cast spells or play lands with a name originally printed in the
+    // Arabian Nights expansion" (City in a Bottle): the qualifier is shared by
+    // both actions.
+    if let Some(qualifier) = prefix_remainder(words, &["cast", "spells", "or", "play", "lands"])
+        && let Some(set_name) = original_printing_set_qualifier(qualifier)
+    {
+        let mut spells = ObjectFilter::default();
+        spells.name_originally_printed_in_set = Some(set_name.clone());
+        let mut lands = ObjectFilter::default().with_type(crate::types::CardType::Land);
+        lands.name_originally_printed_in_set = Some(set_name);
+        return Some(vec![
+            PlayerActivationRestrictionTailFact::CastSpellsMatching(spells),
+            PlayerActivationRestrictionTailFact::PlayLandsMatching(lands),
+        ]);
+    }
+    // "can't cast spells or activate abilities" (Sen Triplets): both
+    // unqualified player actions.
+    if words == ["cast", "spells", "or", "activate", "abilities"]
+        || words == ["cast", "spells", "or", "activate", "abilities", "this", "turn"]
+    {
+        return Some(vec![
+            PlayerActivationRestrictionTailFact::CastSpells,
+            PlayerActivationRestrictionTailFact::ActivateAbilities,
+        ]);
     }
     let split = words.windows(2).position(|pair| pair == ["or", "activate"])?;
     let first = parse_player_activation_restriction_tail_words(&words[..split])?;

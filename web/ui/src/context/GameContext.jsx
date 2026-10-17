@@ -890,6 +890,8 @@ export function GameProvider({ children }) {
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
   const cyclePriorityStop = useCallback(key => priorityStops.cycleStop(key, stateRef.current), [priorityStops, stateRef]);
   const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
+  const pausePostActionPriority = useCallback(id => priorityStops.pauseWindow(id), [priorityStops]);
+  const resumePostActionPriority = useCallback(id => priorityStops.resumeWindow(id), [priorityStops]);
   useEffect(() => subscribeState(priorityStops.observe), [subscribeState, priorityStops]);
   useEffect(() => { priorityStops.reset(); }, [game, priorityStops]);
   const [surrenderRequested, setSurrenderRequested] = useState(false);
@@ -2411,7 +2413,7 @@ export function GameProvider({ children }) {
   // normal local pass, and revalidate authoritative state after any input/sync.
   useEffect(() => {
     const window = priorityStopsState.window;
-    if (!window || !autoResolveEnabled) return;
+    if (!window || !autoResolveEnabled || window.pausedAt != null) return;
     // Start the two seconds once the authoritative priority snapshot is drawn.
     if (window.startedAt === null) {
       if (state === stateRef.current && isSnapshotRendered() && priorityStops.windowFor(state)) priorityStops.armWindow(window.id);
@@ -3279,7 +3281,7 @@ export function GameProvider({ children }) {
       priorityStops: priorityStopsState.stops,
       postActionPriorityWindow: autoResolveEnabled && priorityStops.windowFor(state) ? priorityStopsState.window : null,
       cyclePriorityStop,
-      holdPostActionPriority,
+      holdPostActionPriority, pausePostActionPriority, resumePostActionPriority,
       fixedStartingBoard,
       setFixedStartingBoard,
       uiFont,
@@ -3344,7 +3346,7 @@ export function GameProvider({ children }) {
       setStatus,
       runWasmInteraction,
       dispatch, dispatchInBackground, cancelBackgroundDispatch, cancelDecision, refresh, changeGoldfishPlayer, autoPassEnabled, autoResolveEnabled, autoResolveMode, setAutoResolveMode, setAutoResolveEnabled, holdRule, uiFont,
-      priorityStopsState, cyclePriorityStop, holdPostActionPriority,
+      priorityStopsState, cyclePriorityStop, holdPostActionPriority, pausePostActionPriority, resumePostActionPriority,
       playerAccentOverrides, setPlayerAccentOverride, inspectorDebug, fixedStartingBoard,
       activeEffectOrderingState, moveEffectOrderingItem,
       semanticThreshold, setSemanticThreshold, cardsMeetingThreshold,

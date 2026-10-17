@@ -11,12 +11,99 @@ use crate::target::ChooseSpec;
 pub struct PutStickerEffect {
     pub target: ChooseSpec,
     pub action: KeywordActionKind,
+    /// "an ability sticker with ticket cost X or less".
+    pub max_ticket_cost: Option<crate::effect::Value>,
+    /// "without paying that sticker's ticket cost".
+    pub without_paying_ticket_cost: bool,
 }
 
 impl PutStickerEffect {
     pub fn new(target: ChooseSpec, action: KeywordActionKind) -> Self {
-        Self { target, action }
+        Self {
+            target,
+            action,
+            max_ticket_cost: None,
+            without_paying_ticket_cost: false,
+        }
     }
+
+    pub fn with_ticket_terms(
+        mut self,
+        max_ticket_cost: Option<crate::effect::Value>,
+        without_paying_ticket_cost: bool,
+    ) -> Self {
+        self.max_ticket_cost = max_ticket_cost;
+        self.without_paying_ticket_cost = without_paying_ticket_cost;
+        self
+    }
+}
+
+/// Minimal sticker-sheet model: choose one of the player's accessible ability
+/// stickers whose ticket cost fits the cap, pay its ticket cost in ticket
+/// counters unless waived, and put it on the object. `None` means no sheet
+/// sticker was placed (the caller falls back to an untyped sticker marker,
+/// or fails when the sheets have stickers but none can be afforded).
+fn place_sheet_ability_sticker(
+    effect: &PutStickerEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    object_id: crate::ids::ObjectId,
+) -> Result<Option<crate::effect::EffectOutcome>, ExecutionError> {
+    use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
+    let sheets = game.available_ability_stickers(ctx.controller);
+    if sheets.is_empty() {
+        return Ok(None);
+    }
+    let cap = match &effect.max_ticket_cost {
+        Some(value) => Some(crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?),
+        None => None,
+    };
+    let ticket = crate::object::CounterType::Named("ticket".into());
+    let tickets = game
+        .player(ctx.controller)
+        .map_or(0, |player| player.counter_count(ticket.clone()));
+    let options = sheets
+        .iter()
+        .filter(|entry| cap.is_none_or(|cap| entry.ticket_cost <= cap))
+        .filter(|entry| effect.without_paying_ticket_cost || entry.ticket_cost <= tickets)
+        .map(|entry| (entry.id, format!("{} ({} tickets)", entry.text, entry.ticket_cost)))
+        .collect::<Vec<_>>();
+    if options.is_empty() {
+        return Ok(Some(EffectOutcome::impossible()));
+    }
+    let Some(sticker_id) = select_typed_option(
+        game,
+        ctx,
+        ctx.controller,
+        "Choose an ability sticker",
+        &options,
+        SingleChoicePolicy::First,
+    )?
+    else {
+        return Ok(Some(EffectOutcome::impossible()));
+    };
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(Some(EffectOutcome::count(0)));
+    }
+    let cost = sheets
+        .iter()
+        .find(|entry| entry.id == sticker_id)
+        .map_or(0, |entry| entry.ticket_cost);
+    if !effect.without_paying_ticket_cost && cost > 0 {
+        let payment = crate::effects::RemoveCountersEffect::new(
+            ticket,
+            cost as i32,
+            ChooseSpec::SpecificPlayer(ctx.controller),
+        )
+        .execute_child(game, ctx)?;
+        if payment.count_or_zero() < i64::from(cost) {
+            return Ok(Some(EffectOutcome::impossible()));
+        }
+    }
+    if game.apply_ability_sticker(object_id, sticker_id).is_none() {
+        return Ok(Some(EffectOutcome::impossible()));
+    }
+    Ok(Some(EffectOutcome::with_objects(vec![object_id])))
 }
 
 impl EffectExecutor for PutStickerEffect {
@@ -119,6 +206,13 @@ impl EffectExecutor for PutStickerEffect {
                     sticker_id: sticker_id,
                     name,
                 })
+            } else if self.action == KeywordActionKind::AbilitySticker
+                && let Some(placed) = place_sheet_ability_sticker(self, game, ctx, object_id)?
+            {
+                if placed.objects().is_none() || ctx.decision_maker.awaiting_choice() {
+                    return Ok(placed);
+                }
+                None
             } else {
                 game.put_sticker_on_object(object_id, self.action);
                 None

@@ -21,7 +21,10 @@ mod condition_shapes;
 mod continuing_shapes;
 mod count_shapes;
 
-pub use battlefield_population::{BattlefieldPopulationCondition, parse_battlefield_population_condition};
+pub use battlefield_population::{
+    BattlefieldPopulationCondition, parse_battlefield_population_condition,
+    parse_chosen_color_most_common_predicate,
+};
 pub use addition_shapes::{
     TypeColorScope, parse_anthem_and_addition_shape, parse_type_color_addition_shape,
     parse_where_x_y_bindings_shape,

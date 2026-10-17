@@ -671,6 +671,24 @@ pub fn parse_attached_conditional_anthem_otherwise_base_and_restriction_line(
         return Ok(None);
     };
 
+    if let Some((_, tail)) = crate::grammar::primitives::parse_prefix(second, (
+        crate::grammar::primitives::kw("otherwise"),
+        winnow::combinator::opt(crate::grammar::primitives::comma()),
+        crate::grammar::primitives::kw("it"),
+    )) {
+        let mut restriction_tokens = subject_tokens.to_vec();
+        restriction_tokens.extend_from_slice(tail);
+        if let Some(mut restriction) = parse_attached_cant_attack_or_block_line(&restriction_tokens)?
+            && let StaticAbilityAst::AttachedStaticAbilityGrant { condition: branch_condition, .. } = &mut restriction
+        {
+            *branch_condition = Some(PredicateAst::Not(Box::new(condition)));
+            return Ok(Some(vec![
+                StaticAbilityAst::Static(true_ability),
+                restriction,
+            ]));
+        }
+    }
+
     let Some(otherwise) =
         crate::grammar::static_line_support::parse_otherwise_ability_clause(second)
     else {
@@ -1869,6 +1887,21 @@ pub fn parse_attached_tap_abilities_cant_be_activated_line(
     }))
 }
 
+/// "The monarch controls enchanted creature." (Fealty to the Realm): control
+/// of the attached permanent follows the monarch designation (CR 724).
+pub fn parse_monarch_controls_attached_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::lexer::token_word_refs(tokens);
+    if !matches!(
+        words.as_slice(),
+        ["the", "monarch", "controls", "enchanted", "creature" | "permanent"]
+    ) {
+        return Ok(None);
+    }
+    Ok(Some(StaticAbility::monarch_controls_attached_permanent()))
+}
+
 pub fn parse_you_control_attached_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -1889,6 +1922,33 @@ pub fn parse_you_control_attached_creature_line(
 fn parse_attached_gets_and_negated_restriction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // "gets -1/-1, and its activated abilities can't be activated": the
+    // activation ban names the attached host itself (an Aura's effect, not an
+    // ability granted to the host, so it survives the host losing abilities).
+    if let Some((subject, get_token, and_token)) =
+        attached_grammar::parse_attached_gets_and_activation_restriction_tokens(tokens)
+    {
+        let clause = parse_anthem_clause(tokens, get_token, and_token)?;
+        if clause.condition.is_some() {
+            return Ok(None);
+        }
+        let host_tag = if subject.is_equipped() {
+            crate::tag::CompilerReferenceTag::Equipped
+        } else {
+            crate::tag::CompilerReferenceTag::Enchanted
+        };
+        let host = ObjectFilter::permanent_card().in_zone(Zone::Battlefield).match_tagged(
+            host_tag.bind(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Ok(Some(vec![
+            build_anthem_static_ability(&clause).into(),
+            StaticAbilityAst::Static(StaticAbility::restriction(
+                crate::effect::Restriction::activate_abilities_of(host),
+                format!("{}'s activated abilities can't be activated", subject.display()),
+            )),
+        ]));
+    }
     let Some(parsed) = attached_grammar::parse_attached_gets_and_negated_restriction_tokens(tokens)
     else {
         return Ok(None);

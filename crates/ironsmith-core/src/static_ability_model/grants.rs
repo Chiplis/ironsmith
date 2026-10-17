@@ -955,6 +955,24 @@ pub enum ActivatedAbilityCostCondition {
         keyword: crate::ActivatedAbilityKeyword,
         during_your_turn: bool,
     },
+    /// The priced activation is a mana ability ("Mana abilities of this land
+    /// cost an additional 1 life to activate", Thran Portal). Appended for
+    /// artifact compatibility.
+    ManaAbility,
+    /// The priced activation is the first activated ability of a source
+    /// matching `filter` its activator activates this turn ("The first
+    /// activated ability of an artifact you activate each turn costs {2} less
+    /// to activate", Tezzeret, Betrayer of Flesh). Appended for artifact
+    /// compatibility.
+    FirstActivationOfMatchingSourceThisTurn { filter: ObjectFilter },
+    /// The priced activation is the first activated ability its activator
+    /// activates during their own turn that targets an object matching
+    /// `filter` ("The first activated ability you activate during your turn
+    /// that targets a creature you control costs {2} less to activate",
+    /// Professor Hojo). Earlier activations are read from the turn's
+    /// activation events and their recorded targets. Appended for artifact
+    /// compatibility.
+    FirstTargetingActivationDuringYourTurn { filter: ObjectFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

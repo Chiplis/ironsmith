@@ -115,7 +115,7 @@ pub fn parse_semantic_document(
         .transpose()?
         .map(|items| ParsedCleaveBranch { items });
 
-    let items = parse_rewrite_items(items, &symbols)?;
+    let items = splice_attraction_prize_programs(parse_rewrite_items(items, &symbols)?);
     let symbols = symbols.into_inner();
     let mut reference_resolution =
         crate::model::canonical_references::resolve_parsed_items_references(&items, &symbols);
@@ -147,4 +147,88 @@ pub fn parse_semantic_document(
         cleave_branch,
         allow_unsupported,
     })
+}
+
+/// An Attraction's "Prize — <instructions>" line is not an ability of its
+/// own: "claim the prize" means following those instructions (Pick-a-Beeble).
+/// Each claim instruction (which also performs the claim keyword action that
+/// "whenever you claim the prize of an Attraction" observes) is followed by
+/// the prize line's program, and the prize line is consumed.
+fn splice_attraction_prize_programs(mut items: Vec<ParsedCardItem>) -> Vec<ParsedCardItem> {
+    use crate::cards::builders::EffectAst;
+    use crate::model::ast::{KeywordActionAst, SubjectVerbActionAst};
+    fn is_claim(effect: &EffectAst) -> bool {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
+                        action: crate::events::KeywordActionKind::ClaimAttractionPrize,
+                        ..
+                    })
+                )
+        )
+    }
+    fn splice(effects: &mut Vec<EffectAst>, prize: &[EffectAst], spliced: &mut usize) {
+        let mut idx = 0;
+        while idx < effects.len() {
+            if is_claim(&effects[idx]) {
+                for (offset, effect) in prize.iter().enumerate() {
+                    effects.insert(idx + 1 + offset, effect.clone());
+                }
+                *spliced += 1;
+                idx += 1 + prize.len();
+                continue;
+            }
+            crate::model::visit::for_each_nested_effect_vec_mut(&mut effects[idx], true, |nested| {
+                splice(nested, prize, spliced)
+            });
+            idx += 1;
+        }
+    }
+    let is_prize_line = |item: &ParsedCardItem| {
+        matches!(item, ParsedCardItem::Line(line)
+            if matches!(
+                &line.semantic_facts.statement.presentation_label,
+                Some(crate::ability::PresentationLabel::AbilityWord(word))
+                    if word.eq_ignore_ascii_case("prize")
+            ) && matches!(line.chunks.as_slice(), [LineAst::Statement { .. }]))
+    };
+    let Some(prize_idx) = items.iter().position(is_prize_line) else {
+        return items;
+    };
+    let prize = match &items[prize_idx] {
+        ParsedCardItem::Line(line) => match line.chunks.as_slice() {
+            [LineAst::Statement { effects }] => effects.clone(),
+            _ => return items,
+        },
+        _ => return items,
+    };
+    let mut spliced = 0usize;
+    for (idx, item) in items.iter_mut().enumerate() {
+        if idx == prize_idx {
+            continue;
+        }
+        let ParsedCardItem::Line(line) = item else {
+            continue;
+        };
+        for chunk in &mut line.chunks {
+            match chunk {
+                LineAst::Statement { effects } | LineAst::Triggered { effects, .. } => {
+                    splice(effects, &prize, &mut spliced)
+                }
+                LineAst::Ability(ability) => {
+                    if let Some(effects) = ability.effects_ast.as_mut() {
+                        splice(effects, &prize, &mut spliced);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if spliced > 0 {
+        items.remove(prize_idx);
+    }
+    items
 }

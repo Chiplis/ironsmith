@@ -18,6 +18,10 @@ pub enum TargetPlayerChoiceActor {
     Voter,
     /// "defending player chooses ..." (Crashing Boars, Drana)
     DefendingPlayer,
+    /// "its controller chooses ..." / "that creature's controller chooses
+    /// ..." (Takklemaggot): the controller of the object antecedent, read
+    /// through last-known information when that object has left.
+    ObjectController,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +30,8 @@ pub enum PossessiveObjectChoiceActor {
     SubjectPlayer,
     ObjectController,
     Opponent,
+    /// "target creature of defending player's choice" (Erithizon).
+    DefendingPlayer,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -129,6 +135,14 @@ pub fn parse_possessive_object_choice_tokens(
             &["of", "an", "opponents", "choice"][..],
             PossessiveObjectChoiceActor::Opponent,
         ),
+        (
+            &["of", "defending", "player's", "choice"][..],
+            PossessiveObjectChoiceActor::DefendingPlayer,
+        ),
+        (
+            &["of", "defending", "players", "choice"][..],
+            PossessiveObjectChoiceActor::DefendingPlayer,
+        ),
     ] {
         let Some((first, _, rest)) =
             primitives::find_prefix(tokens, || primitives::phrase(phrase).void())
@@ -182,6 +196,23 @@ fn parse_target_player_choice_head(input: &mut LexStream<'_>) -> WResult<TargetP
         (primitives::kw("the"), primitives::kw("voter")).value(TargetPlayerChoiceActor::Voter),
         (primitives::kw("defending"), primitives::kw("player"))
             .value(TargetPlayerChoiceActor::DefendingPlayer),
+        (primitives::kw("its"), primitives::kw("controller"))
+            .value(TargetPlayerChoiceActor::ObjectController),
+        (
+            primitives::kw("that"),
+            alt((
+                primitives::kw("creature's"),
+                primitives::kw("creatures"),
+                primitives::kw("permanent's"),
+                primitives::kw("permanents"),
+            )),
+            primitives::kw("controller"),
+        )
+            .value(TargetPlayerChoiceActor::ObjectController),
+        // "Choose an opponent. They choose a creature they control, then you
+        // choose ..." (Tunnel of Love): the pronoun is the chosen player.
+        (primitives::kw("they"), winnow::combinator::peek(primitives::kw("choose")))
+            .value(TargetPlayerChoiceActor::ThatPlayer),
     ))
     .parse_next(input)?;
     alt((primitives::kw("choose"), primitives::kw("chooses"))).parse_next(input)?;

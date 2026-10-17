@@ -37,6 +37,11 @@ pub(super) fn read_any_player_or_opponent_may(
             false,
         ),
     };
+    if let Some(offer) =
+        crate::effect_sentences::chain_carry::parse_any_other_player_may_pay_lexed(tokens)?
+    {
+        return Ok(Some(offer));
+    }
     if let Some(player) =
         super::super::super::super::chain_carry::parse_leading_player_may_lexed(tokens)
         && matches!(player, PlayerAst::Any | PlayerAst::Opponent)

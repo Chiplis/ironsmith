@@ -108,6 +108,8 @@ pub enum CharacteristicActionAst {
         target: TargetAst,
         duration: Until,
         excluded_subtypes: Vec<Subtype>,
+        /// "in addition to its other types": keep the other creature types.
+        in_addition_to_other_types: bool,
     },
     BecomeColorChoice {
         target: TargetAst,
@@ -139,4 +141,10 @@ pub enum CharacteristicActionAst {
         amount: Value,
     },
     BecomeMonarch,
+    /// "reduce that opponent's speed by 1. This effect can't reduce their
+    /// speed below 1." (Spikeshell Harrier).
+    ReduceSpeed {
+        amount: Value,
+        minimum: u8,
+    },
 }

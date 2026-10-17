@@ -238,6 +238,8 @@ impl ManaProduction<'_> {
             | Self::ChooseColors { player, .. }
             | Self::ChosenColor { player, .. }
             | Self::CommanderIdentity { player, .. }
+            | Self::DraftChosenColors { player, .. }
+            | Self::DeckChosenColors { player, .. }
             | Self::ColorsAmong { player, .. }
             | Self::LandProducedTypes { player, .. }
             | Self::NotedType { player, .. }
@@ -301,6 +303,52 @@ impl ManaProduction<'_> {
                             .collect(),
                         count,
                         same_type: true,
+                        distinct: false,
+                    }
+                }
+            }
+            Self::DraftChosenColors {
+                amount: value,
+                card_name,
+                ..
+            } => {
+                // "any color chosen as you drafted ...": "you" is the
+                // ability's controller, not the mana's recipient.
+                let count = amount(value)?;
+                let drafted = game.draft_chosen_colors(ctx.controller, card_name);
+                let available: Vec<_> = Color::ALL
+                    .into_iter()
+                    .filter(|color| drafted.contains(*color))
+                    .map(ManaSymbol::from_color)
+                    .collect();
+                if available.is_empty() {
+                    Exact(vec![])
+                } else {
+                    Choice {
+                        available,
+                        count,
+                        same_type: false,
+                        distinct: false,
+                    }
+                }
+            }
+            Self::DeckChosenColors { amount: value, .. } => {
+                // "either of the circled colors": the colors recorded for
+                // this card (by stable identity) as its owner built the deck.
+                let count = amount(value)?;
+                let circled = game.deck_construction_chosen_colors(ctx.source);
+                let available: Vec<_> = Color::ALL
+                    .into_iter()
+                    .filter(|color| circled.contains(*color))
+                    .map(ManaSymbol::from_color)
+                    .collect();
+                if available.is_empty() {
+                    Exact(vec![])
+                } else {
+                    Choice {
+                        available,
+                        count,
+                        same_type: false,
                         distinct: false,
                     }
                 }

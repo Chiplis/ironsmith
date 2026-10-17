@@ -10,14 +10,21 @@ use crate::target::PlayerFilter;
 
 pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    if !tokens.first().is_some_and(|token| token.is_word("target")) {
-        return Ok(None);
-    }
     let Some(attacks) = tokens.iter().position(|token| token.is_word("attacks")) else {
         return Ok(None);
     };
     let tail = &tokens[attacks + 1..];
     let tail_words = crate::lexer::parser_token_word_refs(tail);
+    // "that creature attacks during its controller's next combat phase if
+    // able" (Sizzling Soloist): a back-reference to the creature an earlier
+    // instruction targeted.
+    let back_reference = matches!(
+        crate::lexer::parser_token_word_refs(&tokens[..attacks]).as_slice(),
+        ["that", "creature"] | ["it"]
+    );
+    if !tokens.first().is_some_and(|token| token.is_word("target")) && !back_reference {
+        return Ok(None);
+    }
     // "target creature an opponent controls attacks during its controller's
     // next combat phase if able" (Trench Behemoth): no player is named; the
     // requirement waits for that creature's controller's next combat.
@@ -27,7 +34,9 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     ) && attacks > 0
     {
         let target = crate::util::parse_target_phrase(&tokens[..attacks])?;
-        if !matches!(target, TargetAst::Object(..)) {
+        if !matches!(target, TargetAst::Object(..))
+            && !(back_reference && matches!(target, TargetAst::Tagged(..)))
+        {
             return Ok(None);
         }
         return Ok(Some(EffectAst::subject_verb(
@@ -43,7 +52,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     let Some(player_words) = tail_words.strip_suffix(&["this", "turn", "if", "able"][..]) else {
         return Ok(None);
     };
-    if player_words.is_empty() || attacks == 0 {
+    if player_words.is_empty() || attacks == 0 || back_reference {
         return Ok(None);
     }
     let player_tokens = &tail[..tail.len() - 4];

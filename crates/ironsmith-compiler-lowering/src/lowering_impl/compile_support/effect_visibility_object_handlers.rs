@@ -198,7 +198,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     .map(as_followup_player_alias);
             }
             validate_card_selection_filter(&resolved_filter, None)?;
-            let cross_zone_choices = choice_zones_including_hand(&resolved_filter);
+            let cross_zone_choices = choice_zones_including_hand(&resolved_filter)
+                .or_else(|| permanent_or_spell_choice_zones(&resolved_filter));
             if let Some(zones) = &cross_zone_choices {
                 strip_choice_zones_from_filter(&mut resolved_filter, zones);
             }

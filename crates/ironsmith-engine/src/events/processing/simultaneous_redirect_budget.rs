@@ -12,6 +12,20 @@ pub(super) fn needed(game: &GameState) -> bool {
     // CR 615.7 + 616.1f: a redirection can move simultaneous damage onto a
     // finite shield's protected recipient, so allocate against live proposals.
     finite_redirect || (finite_prevention_shield(game) && damage_redirect(game))
+        || shared_source_prevention(game)
+}
+
+/// A static prevention whose budget is shared by all of one source's
+/// simultaneous recipients must see those events together.
+fn shared_source_prevention(game: &GameState) -> bool {
+    game.effect_store.replacement_effects.effects().iter().any(|effect| {
+        matches!(
+            effect.replacement,
+            ReplacementAction::PreventDamageByRule(
+                ironsmith_core::StaticDamagePreventionAmount::SharedPerSource(_)
+            )
+        )
+    })
 }
 
 fn finite_prevention_shield(game: &GameState) -> bool {
@@ -39,6 +53,8 @@ struct Proposal {
 enum BudgetKey {
     Redirect(ReplacementEffectId),
     Prevention(crate::prevention::PreventionShieldId),
+    /// One shared static budget per damage source (Cover of Winter).
+    SharedPerSource(ReplacementEffectId, crate::ids::ObjectId),
 }
 
 struct Candidate {
@@ -72,6 +88,16 @@ fn finite_budget(
             let remaining = game.effect_store.prevention_effects.shields().iter()
                 .find(|shield| shield.id == *shield_id)?.amount_remaining?;
             Some((BudgetKey::Prevention(*shield_id), remaining))
+        }
+        ReplacementAction::PreventDamageByRule(
+            ironsmith_core::StaticDamagePreventionAmount::SharedPerSource(amount),
+        ) => {
+            let damage = crate::events::downcast_event::<DamageEvent>(event.inner())?;
+            if damage.is_unpreventable {
+                return None;
+            }
+            let budget = application::resolve_static_prevention_amount(game, effect, amount).ok()?;
+            (budget > 0).then_some((BudgetKey::SharedPerSource(effect.id, damage.source), budget))
         }
         _ => None,
     }
@@ -228,7 +254,7 @@ fn allocate(
                 .unwrap_or_else(|| "the replacement".into());
             let kind = match key {
                 BudgetKey::Redirect(_) => "redirected",
-                BudgetKey::Prevention(_) => "prevented",
+                BudgetKey::Prevention(_) | BudgetKey::SharedPerSource(..) => "prevented",
             };
             let spec = crate::decisions::NumberSpec::range(
                 effect.source, minimum, maximum,
@@ -367,10 +393,15 @@ pub(super) fn process(
                         mark_applied_replacement_choice(&mut proposal.state, original_effect);
                         continue;
                     }
-                    match &mut effect.replacement {
-                        ReplacementAction::RedirectDamageAmount { amount, .. } => *amount = quota,
-                        ReplacementAction::PreventWithShield { max_amount, .. } => *max_amount = Some(quota),
-                        _ => unreachable!("only finite damage replacements have quotas"),
+                    if matches!(effect.replacement, ReplacementAction::PreventDamageByRule(_)) {
+                        // This source's share of the static budget.
+                        effect.replacement = ReplacementAction::PreventDamageAmount(quota);
+                    } else {
+                        match &mut effect.replacement {
+                            ReplacementAction::RedirectDamageAmount { amount, .. } => *amount = quota,
+                            ReplacementAction::PreventWithShield { max_amount, .. } => *max_amount = Some(quota),
+                            _ => unreachable!("only finite damage replacements have quotas"),
+                        }
                     }
                 }
                 let original_index = proposal.original;

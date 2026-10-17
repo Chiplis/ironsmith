@@ -6,7 +6,7 @@ use std::any::Any;
 use crate::effect::SetQuantifierSurface;
 use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType,
-    ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
+    ChoiceCount, ChooseSpec, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
     DerivedAlternativeCast, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
     ObjectFilter, PlayerFilter, PresentationLabel, ProtectionFrom, ResolutionProgram, Restriction,
     SourceReferenceSurface, StaticAbilityId, Subtype, SubtypeFamily, Supertype, TotalCost,
@@ -23,6 +23,19 @@ type LevelAbilityModel<T, E, C, Cond, ICond = Condition> =
     crate::LevelAbility<StaticAbility<T, E, C, Cond, ICond>>;
 type GrantSpecModel<T, E, C, Cond, ICond = Condition> =
     GrantSpec<StaticAbility<T, E, C, Cond, ICond>, E, C, Cond>;
+
+/// A casting decision that the "as though it had flash" permission depends
+/// on (CR 601.2b-c): X and optional costs are committed during casting, so the
+/// permission lets casting begin and the completed proposal must satisfy it.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum FlashCastChoice {
+    /// "if X is N or less" (Silver Scrutiny).
+    XAtMost(u32),
+    /// "if it's cast using teamwork" (Quantum Reduction): the named optional
+    /// cost was paid for this cast.
+    OptionalCostPaid(crate::cost_model::OptionalCostRef),
+}
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -78,6 +91,12 @@ pub enum StaticDamagePreventionAmount {
     Amount(Value),
     /// Prevent the portion above this amount, not a damage-setting replacement.
     AllBut(u32),
+    /// Prevent this much of the damage one source would deal to every
+    /// matching recipient at once: one budget per source, divided among its
+    /// simultaneous recipients by the affected player ("If a creature would
+    /// deal combat damage to you and/or one or more creatures you control,
+    /// prevent X of that damage", Cover of Winter). Appended for stable ordinals.
+    SharedPerSource(Value),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -90,6 +109,8 @@ pub struct PreventMatchingDamageSpec {
     pub noncombat_only: bool,
     pub maximum_damage: Option<u32>,
     pub amount: StaticDamagePreventionAmount,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub optional_by_controller: bool,
     pub display: String,
 }
 
@@ -246,6 +267,24 @@ pub enum PregameActionKind {
     MulliganExileHandDrawSameCount,
     ChooseColor,
     RevealFromOpeningHand(PregameRevealFromOpeningHandSpec),
+    /// "Before you shuffle your deck to start the game, you may reveal this
+    /// card from your deck and exile three or more creature cards you
+    /// drafted that aren't in your deck." (Volatile Chimera): the exiled
+    /// cards are recorded as exiled with cards of this card's name.
+    ExileDraftedCardsBeforeShuffle(PregameExileDraftedCardsSpec),
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct PregameExileDraftedCardsSpec {
+    /// Card types every exiled drafted card must have (any of them).
+    pub card_types: Vec<CardType>,
+    /// The fewest drafted cards the action exiles ("three or more").
+    pub minimum: u32,
+    /// The most drafted cards the action exiles ("a creature card you
+    /// drafted", Caller of the Untamed: exactly one); `None` is unbounded.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub maximum: Option<u32>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -840,6 +879,14 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         max: u32,
         display: String,
     },
+    /// "each player chooses artifact, creature, or land during their untap
+    /// step. That player can untap only permanents of the chosen type this
+    /// step." (Storage Matrix, CR 502.3).
+    UntapStepChosenCardTypeOnly {
+        player: PlayerFilter,
+        card_types: Vec<CardType>,
+        display: String,
+    },
     /// "If an opponent would search a library, that player searches the top
     /// four cards of that library instead." (Aven Mindcensor)
     SearchLimitedToTopCards {
@@ -903,6 +950,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     Enchant(crate::AuraAttachmentFilter),
     /// Cast timing permission requiring at least one matching chosen object target.
     FlashIfTargetsMatching(ObjectFilter),
+    /// Cast timing permission requiring a casting decision (X, optional cost).
+    FlashIfCastChoice(FlashCastChoice),
     EnchantedLandIsChosenType(String),
     /// "This land is the chosen type." (Multiversal Passage): the source land's
     /// subtypes become the basic land type chosen as it entered.
@@ -910,8 +959,19 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     AddChosenCreatureType {
         filter: ObjectFilter,
         display: String,
+        /// "Creatures you control are the chosen type" (Conspiracy): the
+        /// chosen type replaces their creature types instead of being added
+        /// (CR 205.1a).
+        #[cfg_attr(feature = "serde", serde(default))]
+        replace_existing: bool,
     },
     AddChosenBasicLandType {
+        filter: ObjectFilter,
+        display: String,
+    },
+    /// The source has the abilities of the ability stickers on every object
+    /// matching `filter` (Clandestine Chameleon).
+    SourceHasAbilityStickerAbilitiesOf {
         filter: ObjectFilter,
         display: String,
     },
@@ -1070,6 +1130,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         #[cfg_attr(feature = "serde", serde(default))]
         multiplier: Option<Value>,
         minimum_total_mana: Option<u32>,
+        /// "This ability costs {1}{U} less": the exact mana symbols removed
+        /// from the bound ability's printed mana cost (CR 118.7). Lowering
+        /// folds it into `replacement_mana_cost` once the ability is known.
+        #[cfg_attr(feature = "serde", serde(default))]
+        reduction_mana: Option<ManaCost>,
     },
     ActivatedAbilityCostIncrease {
         filter: ObjectFilter,
@@ -1131,6 +1196,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     ChoosePowerToughnessAsEntersOrTurnsFaceUp {
         options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
         display: String,
+        /// "As this creature enters, flip a coin. If the coin comes up heads,
+        /// it enters as ...; if tails, ..." (Molten Sentry): no player
+        /// chooses; the game's deterministic RNG picks one option uniformly.
+        #[cfg_attr(feature = "serde", serde(default))]
+        at_random: bool,
     },
     EnterAsCopyAsEnters {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond>,
@@ -1281,6 +1351,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         player_filter: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
         additional: i64,
+        /// The cause the placement must come from ("if a modular triggered
+        /// ability would put ..."); `None` for every cause.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        cause: Option<crate::CauseFilter>,
         display: String,
     },
     PlayerCounterPerTurnLimitReplacement {
@@ -1328,6 +1402,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         replacement_effects: Vec<E>,
         optional: bool,
         display: String,
+        /// "... except the first card you draw during each of your draw
+        /// steps" (Reed Richards): that draw is never replaced.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+        except_first_of_draw_step: bool,
     },
     /// "If you would draw one or more cards, you draw that many cards plus
     /// one instead." (Quantum Riddler). Applies once per draw instruction.
@@ -1352,6 +1430,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         except_first_of_draw_step: bool,
         replacement_effects: Vec<E>,
         display: String,
+        /// "If a cycling ability of <filter> would cause you to draw a card"
+        /// (Unpredictable Cyclone): only draws proposed by a resolving
+        /// cycling ability whose source matches are replaced.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        cycling_source: Option<ObjectFilter>,
     },
     DrawExtraCardsReplacement {
         extra: u32,
@@ -1409,6 +1492,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         not_cast: bool,
         destination: Zone,
         display: String,
+        /// With `not_cast`: a cast object also qualifies when no mana was
+        /// spent to cast it ("if it wasn't cast or no mana was spent to cast
+        /// it", Primeval Spawn).
+        #[cfg_attr(feature = "serde", serde(default))]
+        or_no_mana_spent: bool,
     },
     /// "If a land is tapped for two or more mana, it produces {C} instead of
     /// any other type and amount." (Damping Sphere). Mana a matching source is
@@ -1453,6 +1541,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     PreventDamageToSelfPutCountersInstead {
         counter_type: CounterType,
+        display: String,
+    },
+    /// "If damage would be dealt to this creature, instead that damage is
+    /// dealt, but all other damage already dealt to it is healed."
+    HealDamageBeforeDamageToSelf {
         display: String,
     },
     PreventConstrainedDamageToSelfPutCountersInstead {
@@ -1508,12 +1601,22 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     EntersWithCounterChoice {
         counter_types: Vec<CounterType>,
         count: Value,
+        /// "escapes with your choice of ..." (Tizerus Charger): the choice
+        /// applies only when this entry condition holds.
+        #[cfg_attr(feature = "serde", serde(default = "Option::default"))]
+        condition: Option<ICond>,
+        #[cfg_attr(feature = "serde", serde(default))]
+        display: String,
     },
     EntersTappedForFilter(ObjectFilter),
     EntersUntappedForFilter(ObjectFilter),
     EntersWithCountersAndSubtypesForFilter {
         filter: ObjectFilter,
         counter: CounterType,
+        /// When present, use each distinct positive counter kind on these
+        /// objects instead of the fixed counter kind.
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+        counter_kinds_from: Option<ChooseSpec>,
         count: Value,
         /// When present, `count` applies if this condition is true for the
         /// entering object and `otherwise_count` applies if it is false.
@@ -1574,7 +1677,20 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     },
     /// Changes the hand-to-exile action, not the later spell's foretell cost.
     /// Appended to preserve published payload discriminants.
-    ForetellSpecialActionModifier { generic_reduction: u32, any_players_turn: bool },
+    ForetellSpecialActionModifier {
+        generic_reduction: u32,
+        any_players_turn: bool,
+        /// The reduction applies only to the controller's first foretell
+        /// special action each turn ("The first card you foretell each turn
+        /// costs {0} to foretell", Ranar the Ever-Watchful).
+        #[cfg_attr(feature = "serde", serde(default))]
+        first_each_turn: bool,
+        /// The reduction changes the plot special action (CR 702.170a)
+        /// instead of the foretell one ("Plotting cards from your hand costs
+        /// {2} less", Doc Aurlock). Older payloads mean foretell.
+        #[cfg_attr(feature = "serde", serde(default))]
+        plot: bool,
+    },
     ExtraCoinIgnoreOne { player: PlayerFilter },
     FirstCoinBatchHeadsWin { player: PlayerFilter },
     /// Appended to preserve all previously published payload variant ordinals.
@@ -1647,6 +1763,58 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         trigger: ObjectFilter,
         required: ObjectFilter,
     },
+    /// "Enchanted creature is a copy of the chosen creature." (Metamorphic
+    /// Alteration): a layer-1 copy effect (CR 707.2, 613.2a) on the object
+    /// this source is attached to, using the copiable values of the object
+    /// chosen as this source entered. Appended to preserve published payload
+    /// variant ordinals.
+    AttachedIsCopyOfChosenObject(String),
+    /// Adds once to each color or color-combination devotion query.
+    DevotionIncrease { amount: u32 },
+    /// "If a spell or ability an opponent controls causes you to discard this
+    /// card, put it onto the battlefield with two +1/+1 counters on it
+    /// instead of putting it into your graveyard." (Dodecapod): the discard
+    /// replacement of `OpponentEffectDiscardThisToBattlefieldReplacement`
+    /// with entry counters. Appended to preserve published payload ordinals.
+    OpponentDiscardThisToBattlefieldWithCounters { counter_type: CounterType, count: u32 },
+    /// "All morph costs cost {2} more." (Exiled Doomsayer): every player's
+    /// turn-face-up special action (CR 116.2b) paid with a morph or
+    /// megamorph cost (CR 702.37) costs `generic_increase` more. Casting a
+    /// spell face down is unaffected. Appended to preserve published payload
+    /// ordinals.
+    MorphCostIncrease { generic_increase: u32 },
+    /// "As long as the top card of your graveyard is a creature card, this
+    /// creature has the full text of that card and has the text "{2}:
+    /// Discard a card."" (Volrath's Shapeshifter): while the top card of the
+    /// controller's graveyard matches `filter`, a layer-1 effect (CR 613.2a)
+    /// gives this permanent that card's full text, i.e. its copiable values
+    /// (CR 707.2), plus `abilities` (labelled by `ability_labels`). The
+    /// overwrite replaces this very static ability in the permanent's text
+    /// but the effect keeps applying while the condition holds. Appended to
+    /// preserve published payload variant ordinals.
+    SourceHasFullTextOfTopGraveyardCard {
+        filter: ObjectFilter,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
+        ability_labels: Vec<String>,
+        display: String,
+    },
+    /// "If you would begin your draw step, you may skip that step instead.
+    /// If you do, you gain 2 life." (Fasting; CR 614.10): before the
+    /// controller's draw step begins they may skip it; accepting runs
+    /// `if_you_do` with this permanent as its source. Appended to preserve
+    /// published payload variant ordinals.
+    MaySkipDrawStepWithFollowup {
+        if_you_do: Vec<E>,
+        display: String,
+    },
+    /// A priority special action for the player `player` names (evaluated
+    /// for this source): sacrificing a permanent of their choice causes that
+    /// player to ignore this source's static restrictions until end of turn
+    /// (Damping Engine). Appended to preserve published payload ordinals.
+    PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+        player: PlayerFilter,
+        display: String,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1659,6 +1827,21 @@ pub struct DieRollResultAdjustment {
     pub reroll: bool,
     pub once_each_turn: bool,
     pub display: String,
+    /// "you may remove a <kind> counter from this creature" (Xenosquirrels):
+    /// the adjustment is paid by removing one such counter from the source
+    /// instead of paying life.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub source_counter_cost: Option<CounterType>,
+    /// "If you would roll one or more six-sided dice, instead roll them and
+    /// you may exchange one result with this creature's base power or base
+    /// toughness" (Vedalken Squirrel-Whacker): instead of +/- arithmetic, one
+    /// retained result of each qualifying roll may be swapped with the
+    /// source's base power or base toughness.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub exchange_with_source_base_pt: bool,
+    /// Only rolls of dice with this many sides qualify.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub sides: Option<u32>,
 }
 
 impl<T, E, C, Cond, ICond> StaticAbility<T, E, C, Cond, ICond>
@@ -1855,6 +2038,22 @@ where
                 }
                 DerivedAlternativeCast::MadnessFromCardManaCost => {
                     DerivedAlternativeCast::MadnessFromCardManaCost
+                }
+                DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
+                    DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
+                }
+                DerivedAlternativeCast::ZoneCastFromCardManaCost {
+                    zone,
+                    additional_costs,
+                } => {
+                    let mut mapped = Vec::with_capacity(additional_costs.len());
+                    for cost in additional_costs {
+                        mapped.push(map_cost(cost)?);
+                    }
+                    DerivedAlternativeCast::ZoneCastFromCardManaCost {
+                        zone,
+                        additional_costs: mapped,
+                    }
                 }
                 DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
                     DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
@@ -2433,6 +2632,15 @@ where
                 max,
                 display,
             },
+            StaticAbilityPayload::UntapStepChosenCardTypeOnly {
+                player,
+                card_types,
+                display,
+            } => StaticAbilityPayload::UntapStepChosenCardTypeOnly {
+                player,
+                card_types,
+                display,
+            },
             StaticAbilityPayload::SearchLimitedToTopCards {
                 searcher,
                 count,
@@ -2521,14 +2729,27 @@ where
             }
             StaticAbilityPayload::Enchant(filter) => StaticAbilityPayload::Enchant(filter),
             StaticAbilityPayload::FlashIfTargetsMatching(filter) => StaticAbilityPayload::FlashIfTargetsMatching(filter),
+            StaticAbilityPayload::FlashIfCastChoice(choice) => StaticAbilityPayload::FlashIfCastChoice(choice),
             StaticAbilityPayload::EnchantedLandIsChosenType(display) => {
                 StaticAbilityPayload::EnchantedLandIsChosenType(display)
             }
             StaticAbilityPayload::SourceLandIsChosenType(display) => {
                 StaticAbilityPayload::SourceLandIsChosenType(display)
             }
-            StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
-                StaticAbilityPayload::AddChosenCreatureType { filter, display }
+            StaticAbilityPayload::AttachedIsCopyOfChosenObject(display) => {
+                StaticAbilityPayload::AttachedIsCopyOfChosenObject(display)
+            }
+            StaticAbilityPayload::AddChosenCreatureType {
+                filter,
+                display,
+                replace_existing,
+            } => StaticAbilityPayload::AddChosenCreatureType {
+                filter,
+                display,
+                replace_existing,
+            },
+            StaticAbilityPayload::SourceHasAbilityStickerAbilitiesOf { filter, display } => {
+                StaticAbilityPayload::SourceHasAbilityStickerAbilitiesOf { filter, display }
             }
             StaticAbilityPayload::AddChosenBasicLandType { filter, display } => {
                 StaticAbilityPayload::AddChosenBasicLandType { filter, display }
@@ -2551,6 +2772,51 @@ where
             StaticAbilityPayload::IncreaseMaximumHandSize { player, by } => {
                 StaticAbilityPayload::IncreaseMaximumHandSize { player, by }
             }
+            StaticAbilityPayload::DevotionIncrease { amount } => {
+                StaticAbilityPayload::DevotionIncrease { amount }
+            }
+            StaticAbilityPayload::MorphCostIncrease { generic_increase } => {
+                StaticAbilityPayload::MorphCostIncrease { generic_increase }
+            }
+            StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
+                counter_type,
+                count,
+            } => StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
+                counter_type,
+                count,
+            },
+            StaticAbilityPayload::SourceHasFullTextOfTopGraveyardCard {
+                filter,
+                abilities,
+                ability_labels,
+                display,
+            } => StaticAbilityPayload::SourceHasFullTextOfTopGraveyardCard {
+                filter,
+                abilities: abilities
+                    .into_iter()
+                    .map(|ability| {
+                        map_ability(ability, map_trigger, map_effect, map_cost, map_intervening)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                ability_labels,
+                display,
+            },
+            StaticAbilityPayload::MaySkipDrawStepWithFollowup { if_you_do, display } => {
+                StaticAbilityPayload::MaySkipDrawStepWithFollowup {
+                    if_you_do: if_you_do
+                        .into_iter()
+                        .map(&mut *map_effect)
+                        .collect::<Result<Vec<_>, _>>()?,
+                    display,
+                }
+            }
+            StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+                player,
+                display,
+            } => StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+                player,
+                display,
+            },
             StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
                 player,
                 min_card_types,
@@ -2756,6 +3022,7 @@ where
                 per_basic_land_types_among,
                 multiplier,
                 minimum_total_mana,
+                reduction_mana,
             } => StaticAbilityPayload::ActivatedAbilityCostReduction {
                 filter,
                 reduction,
@@ -2766,6 +3033,7 @@ where
                 per_basic_land_types_among,
                 multiplier,
                 minimum_total_mana,
+                reduction_mana,
             },
             StaticAbilityPayload::ActivatedAbilityCostIncrease {
                 filter,
@@ -2847,7 +3115,9 @@ where
             StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
+                at_random,
             } => StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                at_random,
                 options: options
                     .into_iter()
                     .map(|option| {
@@ -3120,12 +3390,14 @@ where
                 player_filter,
                 counter_type,
                 additional,
+                cause,
                 display,
             } => StaticAbilityPayload::AddCountersPlacementReplacement {
                 filter,
                 player_filter,
                 counter_type,
                 additional,
+                cause,
                 display,
             },
             StaticAbilityPayload::PlayerCounterPerTurnLimitReplacement {
@@ -3209,6 +3481,7 @@ where
                 except_first_of_draw_step,
                 replacement_effects,
                 display,
+                cycling_source,
             } => StaticAbilityPayload::DrawReplacementWithEffects {
                 drawer,
                 except_first_of_draw_step,
@@ -3217,6 +3490,7 @@ where
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
                 display,
+                cycling_source,
             },
             StaticAbilityPayload::RedirectDrawReplacement {
                 drawer,
@@ -3232,6 +3506,7 @@ where
                 replacement_effects,
                 optional,
                 display,
+                except_first_of_draw_step,
             } => StaticAbilityPayload::ConditionalDrawReplacement {
                 condition: map_intervening(condition)?,
                 replacement_effects: replacement_effects
@@ -3240,6 +3515,7 @@ where
                     .collect::<Result<Vec<_>, _>>()?,
                 optional,
                 display,
+                except_first_of_draw_step,
             },
             StaticAbilityPayload::LoseGameReplacement {
                 replacement_effects,
@@ -3300,11 +3576,13 @@ where
                 not_cast,
                 destination,
                 display,
+                or_no_mana_spent,
             } => StaticAbilityPayload::RedirectWouldEnter {
                 filter,
                 not_cast,
                 destination,
                 display,
+                or_no_mana_spent,
             },
             StaticAbilityPayload::ManaProductionMultiplierReplacement {
                 source_filter,
@@ -3381,6 +3659,9 @@ where
                 counter_type,
                 display,
             },
+            StaticAbilityPayload::HealDamageBeforeDamageToSelf { display } => {
+                StaticAbilityPayload::HealDamageBeforeDamageToSelf { display }
+            }
             StaticAbilityPayload::PreventConstrainedDamageToSelfPutCountersInstead {
                 counter_type,
                 display,
@@ -3440,9 +3721,17 @@ where
                     map_intervening,
                 )?))
             }
-            StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn } => {
-                StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn }
-            }
+            StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                any_players_turn,
+                first_each_turn,
+                plot,
+            } => StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                any_players_turn,
+                first_each_turn,
+                plot,
+            },
             StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method } => {
                 StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method }
             }
@@ -3477,9 +3766,13 @@ where
             StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                condition,
+                display,
             } => StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                condition: condition.map(|condition| map_intervening(condition)).transpose()?,
+                display,
             },
             StaticAbilityPayload::EntersUnderChosenControl(players) => StaticAbilityPayload::EntersUnderChosenControl(players),
             StaticAbilityPayload::EntersTappedForFilter(filter) => {
@@ -3491,6 +3784,7 @@ where
             StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
                 filter,
                 counter,
+                counter_kinds_from,
                 count,
                 count_condition,
                 otherwise_count,
@@ -3498,6 +3792,7 @@ where
             } => StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
                 filter,
                 counter,
+                counter_kinds_from,
                 count,
                 count_condition,
                 otherwise_count,
@@ -3683,7 +3978,44 @@ impl<
         Self {
             id: Some(StaticAbilityId::ForetellSpecialActionModifier),
             label: format!("Foretelling cards from your hand costs {{{generic_reduction}}} less{timing}."),
-            payload: StaticAbilityPayload::ForetellSpecialActionModifier { generic_reduction, any_players_turn },
+            payload: StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                any_players_turn,
+                first_each_turn: false,
+                plot: false,
+            },
+        }
+    }
+
+    /// "Plotting cards from your hand costs {N} less." The plot special
+    /// action's cost (the card's plot cost, CR 702.170a) is reduced by N
+    /// generic mana for the source's controller.
+    pub fn plot_special_action_modifier(generic_reduction: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: format!("Plotting cards from your hand costs {{{generic_reduction}}} less."),
+            payload: StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction,
+                any_players_turn: false,
+                first_each_turn: false,
+                plot: true,
+            },
+        }
+    }
+
+    /// "The first card you foretell each turn costs {0} to foretell." The
+    /// foretell special action costs {2} (CR 702.143a), so the first action
+    /// each turn is reduced by that whole amount.
+    pub fn foretell_first_each_turn_free() -> Self {
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: "The first card you foretell each turn costs {0} to foretell.".to_string(),
+            payload: StaticAbilityPayload::ForetellSpecialActionModifier {
+                generic_reduction: 2,
+                any_players_turn: false,
+                first_each_turn: true,
+                plot: false,
+            },
         }
     }
 
@@ -3718,6 +4050,20 @@ impl<
                 filter.description()
             ),
             payload: StaticAbilityPayload::FlashIfTargetsMatching(filter),
+        }
+    }
+
+    pub fn flash_if_cast_choice(choice: FlashCastChoice) -> Self {
+        let condition = match &choice {
+            FlashCastChoice::XAtMost(max) => format!("X is {max} or less"),
+            FlashCastChoice::OptionalCostPaid(cost) => {
+                format!("it's cast using {}", cost.display_label().to_ascii_lowercase())
+            }
+        };
+        Self {
+            id: Some(StaticAbilityId::Flash),
+            label: format!("You may cast this spell as though it had flash if {condition}"),
+            payload: StaticAbilityPayload::FlashIfCastChoice(choice),
         }
     }
 
@@ -3806,6 +4152,64 @@ impl<
                 reroll: false,
                 once_each_turn,
                 display,
+                source_counter_cost: None,
+                exchange_with_source_base_pt: false,
+                sides: None,
+            }),
+        }
+    }
+
+    /// "After you roll a die, you may remove a <kind> counter from this
+    /// creature. If you do, increase or decrease the result by N."
+    pub fn die_roll_result_adjustment_removing_source_counter(
+        player: PlayerFilter,
+        counter_type: CounterType,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost: 0,
+                mana_cost: None,
+                amount,
+                reroll: false,
+                once_each_turn,
+                display,
+                source_counter_cost: Some(counter_type),
+                exchange_with_source_base_pt: false,
+                sides: None,
+            }),
+        }
+    }
+
+    /// "If you would roll one or more <N>-sided dice, instead roll them and
+    /// you may exchange one result with this creature's base power or base
+    /// toughness."
+    pub fn die_roll_result_exchange_with_source_base_pt(
+        player: PlayerFilter,
+        sides: Option<u32>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost: 0,
+                mana_cost: None,
+                amount: 0,
+                reroll: false,
+                once_each_turn: false,
+                display,
+                source_counter_cost: None,
+                exchange_with_source_base_pt: true,
+                sides,
             }),
         }
     }
@@ -3828,6 +4232,9 @@ impl<
                 reroll: true,
                 once_each_turn,
                 display,
+                source_counter_cost: None,
+                exchange_with_source_base_pt: false,
+                sides: None,
             }),
         }
     }
@@ -4186,6 +4593,23 @@ impl<
     /// A typed, source-scoped special-action permission. It is intentionally
     /// separate from an activated ability because taking the action does not
     /// use the stack.
+    /// "That player may sacrifice a permanent of their choice for that player
+    /// to ignore this effect until end of turn." (Damping Engine)
+    pub fn player_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
+        player: PlayerFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+                player,
+                display,
+            },
+        }
+    }
+
     pub fn any_player_may_pay_mana_to_ignore_source_effect_until_end_of_turn(
         cost: ManaCost,
         display: impl Into<String>,
@@ -4294,6 +4718,27 @@ impl<
             payload: StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
                 filter,
                 retained_subtypes,
+            },
+        }
+    }
+
+    /// "As long as the top card of your graveyard is a creature card, this
+    /// creature has the full text of that card and has the text ..."
+    /// (Volrath's Shapeshifter).
+    pub fn source_has_full_text_of_top_graveyard_card(
+        filter: ObjectFilter,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>,
+        ability_labels: Vec<String>,
+        display: String,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SourceHasFullTextOfTopGraveyardCard),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SourceHasFullTextOfTopGraveyardCard {
+                filter,
+                abilities,
+                ability_labels,
+                display,
             },
         }
     }
@@ -5081,6 +5526,20 @@ impl<
             },
         }
     }
+    pub fn lethal_damage_must_be_from_single_source() -> Self {
+        Self {
+            id: Some(StaticAbilityId::LethalDamageMustBeFromSingleSource),
+            label: "lethal damage must be from a single source".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn cant_attack_player_already_attacked_this_turn() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantAttackPlayerAlreadyAttackedThisTurn),
+            label: "cant attack a player it has already attacked this turn".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn cant_attack_its_owner() -> Self {
         Self {
             id: Some(StaticAbilityId::CantAttackItsOwner),
@@ -5106,6 +5565,7 @@ impl<
                 per_basic_land_types_among: None,
                 multiplier: None,
                 minimum_total_mana,
+                reduction_mana: None,
             },
         }
     }
@@ -5128,6 +5588,7 @@ impl<
                 per_basic_land_types_among: None,
                 multiplier: None,
                 minimum_total_mana,
+                reduction_mana: None,
             },
         }
     }
@@ -5179,6 +5640,7 @@ impl<
                 per_basic_land_types_among: None,
                 multiplier: None,
                 minimum_total_mana,
+                reduction_mana: None,
             },
         }
     }
@@ -5201,6 +5663,7 @@ impl<
                 per_basic_land_types_among: None,
                 multiplier: None,
                 minimum_total_mana,
+                reduction_mana: None,
             },
         }
     }
@@ -5223,6 +5686,7 @@ impl<
                 per_basic_land_types_among: Some(lands_filter),
                 multiplier: None,
                 minimum_total_mana,
+                reduction_mana: None,
             },
         }
     }
@@ -5244,6 +5708,7 @@ impl<
                 per_basic_land_types_among: None,
                 multiplier: None,
                 minimum_total_mana: None,
+                reduction_mana: None,
             },
         }
     }
@@ -5397,6 +5862,22 @@ impl<
             },
         }
     }
+    pub fn untap_step_chosen_card_type_only(
+        player: PlayerFilter,
+        card_types: Vec<CardType>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::UntapStepChosenCardTypeOnly),
+            label: display.clone(),
+            payload: StaticAbilityPayload::UntapStepChosenCardTypeOnly {
+                player,
+                card_types,
+                display,
+            },
+        }
+    }
     pub fn untap_during_each_other_players_untap_step(
         filter: ObjectFilter,
         display: impl Into<String>,
@@ -5450,6 +5931,23 @@ impl<
             payload: StaticAbilityPayload::IncreaseMaximumHandSize { player, by },
         }
     }
+    /// "All morph costs cost {N} more." (Exiled Doomsayer). Turning a
+    /// permanent face up is a special action (CR 116.2b), so this shares the
+    /// special-action-modifier id with the foretell/plot modifiers.
+    pub fn morph_cost_increase(generic_increase: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: format!("All morph costs cost {{{generic_increase}}} more."),
+            payload: StaticAbilityPayload::MorphCostIncrease { generic_increase },
+        }
+    }
+    pub fn devotion_increase(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::DevotionIncrease),
+            label: format!("Your devotion to each color and each combination of colors is increased by {amount}."),
+            payload: StaticAbilityPayload::DevotionIncrease { amount },
+        }
+    }
     pub fn set_maximum_hand_size(player: PlayerFilter, amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::SetMaximumHandSize),
@@ -5488,6 +5986,12 @@ impl<
     pub fn boast_twice_each_turn() -> Self {
         Self::identified(StaticAbilityId::BoastTwiceEachTurn, "boast twice each turn")
     }
+    pub fn loyalty_abilities_twice_each_turn() -> Self {
+        Self::identified(
+            StaticAbilityId::LoyaltyAbilitiesTwiceEachTurn,
+            "loyalty abilities twice each turn",
+        )
+    }
     pub fn first_equip_cost_alternative(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -5512,6 +6016,70 @@ impl<
         Self::identified(
             StaticAbilityId::VoteAdditionalTimeWhileVoting,
             "vote additional time while voting",
+        )
+    }
+    pub fn may_discard_source_any_time_you_could_cast_instant() -> Self {
+        Self::identified(
+            StaticAbilityId::MayDiscardSourceAnyTimeYouCouldCastInstant,
+            "you may discard this card any time you could cast an instant",
+        )
+    }
+    pub fn source_loyalty_abilities_twice_each_turn() -> Self {
+        Self::identified(
+            StaticAbilityId::SourceLoyaltyAbilitiesTwiceEachTurn,
+            "this permanent's loyalty abilities twice each turn",
+        )
+    }
+    pub fn power_up_abilities_additional_time() -> Self {
+        Self::identified(
+            StaticAbilityId::PowerUpAbilitiesAdditionalTime,
+            "power-up abilities of permanents you control an additional time",
+        )
+    }
+    /// "If you would begin your draw step, you may skip that step instead.
+    /// If you do, <effects>." (Fasting; CR 614.10)
+    pub fn may_skip_draw_step_with_followup(if_you_do: Vec<E>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::MaySkipDrawStepWithFollowup),
+            label: display.clone(),
+            payload: StaticAbilityPayload::MaySkipDrawStepWithFollowup { if_you_do, display },
+        }
+    }
+    pub fn may_skip_turn_while_source_tapped_then_untap() -> Self {
+        Self::identified(
+            StaticAbilityId::MaySkipTurnWhileSourceTappedThenUntap,
+            "if you would begin your turn while this artifact is tapped, you may skip that turn instead. if you do, untap this artifact",
+        )
+    }
+    pub fn cant_be_blocked_unless_all_defending_creatures_block() -> Self {
+        Self::identified(
+            StaticAbilityId::CantBeBlockedUnlessAllDefendingCreaturesBlock,
+            "can't be blocked unless all creatures defending player controls block it",
+        )
+    }
+    pub fn opponents_attack_with_at_least_one_creature() -> Self {
+        Self::identified(
+            StaticAbilityId::OpponentsAttackWithAtLeastOneCreature,
+            "each opponent must attack with at least one creature each combat if able",
+        )
+    }
+    pub fn opponents_attack_you_with_at_least_one_creature() -> Self {
+        Self::identified(
+            StaticAbilityId::OpponentsAttackYouWithAtLeastOneCreature,
+            "each opponent must attack you or a planeswalker you control with at least one creature each combat if able",
+        )
+    }
+    pub fn lose_life_for_unspent_mana() -> Self {
+        Self::identified(
+            StaticAbilityId::LoseLifeForUnspentMana,
+            "a player losing unspent mana causes that player to lose that much life",
+        )
+    }
+    pub fn opponents_face_villainous_choice_additional_time() -> Self {
+        Self::identified(
+            StaticAbilityId::OpponentsFaceVillainousChoiceAdditionalTime,
+            "opponents face villainous choices an additional time",
         )
     }
     pub fn vote_additional_vote_while_voting() -> Self {
@@ -5837,6 +6405,17 @@ impl<
             },
         }
     }
+    /// "If damage would be dealt to this creature, instead that damage is
+    /// dealt, but all other damage already dealt to it is healed."
+    pub fn heal_damage_before_damage_to_self(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::HealDamageBeforeDamageToSelf),
+            label: display.clone(),
+            payload: StaticAbilityPayload::HealDamageBeforeDamageToSelf { display },
+        }
+    }
+
     pub fn damage_prevention_with_follow_up(
         source_filter: ObjectFilter,
         target_filter: ObjectFilter,
@@ -6015,6 +6594,15 @@ impl<
         }
     }
 
+    pub fn attached_is_copy_of_chosen_object(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AttachedIsCopyOfChosenObject),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AttachedIsCopyOfChosenObject(display),
+        }
+    }
+
     pub fn enchanted_land_is_chosen_type(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -6028,7 +6616,25 @@ impl<
         Self {
             id: Some(StaticAbilityId::AddChosenCreatureType),
             label: display.clone(),
-            payload: StaticAbilityPayload::AddChosenCreatureType { filter, display },
+            payload: StaticAbilityPayload::AddChosenCreatureType {
+                filter,
+                display,
+                replace_existing: false,
+            },
+        }
+    }
+    /// "<objects> are the chosen type": their creature types become exactly
+    /// the creature type chosen for the source.
+    pub fn set_chosen_creature_type(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddChosenCreatureType),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddChosenCreatureType {
+                filter,
+                display,
+                replace_existing: true,
+            },
         }
     }
     pub fn add_chosen_basic_land_type(filter: ObjectFilter, display: impl Into<String>) -> Self {
@@ -6114,6 +6720,26 @@ impl<
             payload: StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
+                at_random: false,
+            },
+        }
+    }
+
+    /// "As this creature enters, flip a coin. If the coin comes up heads,
+    /// this creature enters as a 5/2 creature with haste. If it comes up
+    /// tails, ... a 2/5 creature with defender." (Molten Sentry).
+    pub fn power_toughness_options_at_random_as_enters(
+        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+                at_random: true,
             },
         }
     }
@@ -6307,6 +6933,26 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseColorAsBecomesAttached),
             label: display.into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "As this Equipment becomes attached to a creature, choose a creature
+    /// card name and a creature type." (Psychic Paper)
+    pub fn choose_creature_card_name_and_type_as_becomes_attached(
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached),
+            label: display.into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "Equipped creature's name and creature type are the last chosen name
+    /// and creature type." (Psychic Paper)
+    pub fn attached_has_source_chosen_name_and_creature_type() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AttachedHasSourceChosenNameAndCreatureType),
+            label: "Equipped creature's name and creature type are the last chosen name and creature type".into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -6658,11 +7304,14 @@ impl<
     }
     pub fn legend_rule_doesnt_apply_to_controller_matching(filter: ObjectFilter) -> Self {
         let noun = if filter.token {
-            "tokens"
+            "tokens".to_string()
+        } else if let ([], [subtype]) = (filter.card_types.as_slice(), filter.subtypes.as_slice()) {
+            // "doesn't apply to Spiders you control" (Spider-Verse).
+            format!("{subtype}s")
         } else if filter.card_types == [CardType::Creature] {
-            "creatures"
+            "creatures".to_string()
         } else {
-            "permanents"
+            "permanents".to_string()
         };
         Self {
             id: Some(StaticAbilityId::LegendRuleDoesntApplyToController),
@@ -6797,10 +7446,77 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn assigns_damage_as_unblocked() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AssignsDamageAsUnblocked),
+            label: "assigns damage as unblocked".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "This creature has all abilities of ability stickers on <objects>."
+    /// (Clandestine Chameleon)
+    pub fn source_has_ability_sticker_abilities_of(
+        filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SourceHasAbilityStickerAbilitiesOf),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SourceHasAbilityStickerAbilitiesOf { filter, display },
+        }
+    }
+    /// "Equipped creature has all abilities of ability stickers on this
+    /// Equipment." (Pin Collection)
+    pub fn attached_has_source_ability_sticker_abilities() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AttachedHasSourceAbilityStickerAbilities),
+            label: "equipped creature has all abilities of ability stickers on this Equipment"
+                .into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "The monarch controls enchanted creature." (Fealty to the Realm)
+    pub fn monarch_controls_attached_permanent() -> Self {
+        Self {
+            id: Some(StaticAbilityId::MonarchControlsAttachedPermanent),
+            label: "the monarch controls enchanted creature".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "All instances of color words in the text of spells and permanents
+    /// are changed to the chosen color word." (Swirl the Mists)
+    pub fn all_color_words_become_chosen_color() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AllColorWordsBecomeChosenColor),
+            label: "all instances of color words in the text of spells and permanents are changed to the chosen color word"
+                .into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "Equipped creature has all names of nonlegendary creature cards in
+    /// addition to its name." (Spy Kit)
+    pub fn attached_has_all_nonlegendary_creature_card_names() -> Self {
+        Self {
+            id: Some(StaticAbilityId::AttachedHasAllNonlegendaryCreatureCardNames),
+            label: "equipped creature has all names of nonlegendary creature cards in addition to its name"
+                .into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn may_assign_damage_as_unblocked() -> Self {
         Self {
             id: Some(StaticAbilityId::MayAssignDamageAsUnblocked),
             label: "may assign damage as unblocked".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    /// "If this creature is unblocked, you may have it assign its combat
+    /// damage to a creature defending player controls." (Cunning Giant)
+    pub fn may_assign_unblocked_damage_to_defending_creature() -> Self {
+        Self {
+            id: Some(StaticAbilityId::MayAssignUnblockedDamageToDefendingCreature),
+            label: "may assign unblocked damage to a creature defending player controls".into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -6991,11 +7707,31 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn opponent_effect_discard_to_library_replacement() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentEffectDiscardToLibraryReplacement),
+            label: "If a spell or ability an opponent controls causes you to discard a card, you may reveal that card and put it on top of your library instead of putting it anywhere else".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
         Self {
             id: Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement),
             label: "opponent effect discard this to battlefield replacement".into(),
             payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn opponent_effect_discard_this_to_battlefield_with_counters_replacement(
+        counter_type: CounterType,
+        count: u32,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement),
+            label: "opponent effect discard this to battlefield replacement".into(),
+            payload: StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
+                counter_type,
+                count,
+            },
         }
     }
     pub fn draw_replacement_exile_top_face_down() -> Self {
@@ -7101,8 +7837,22 @@ impl<
                 replacement_effects,
                 optional,
                 display,
+                except_first_of_draw_step: false,
             },
         }
+    }
+
+    /// The conditional draw replacement never replaces the first card drawn
+    /// during each of the controller's draw steps.
+    pub fn with_draw_step_first_draw_exception(mut self) -> Self {
+        if let StaticAbilityPayload::ConditionalDrawReplacement {
+            except_first_of_draw_step,
+            ..
+        } = &mut self.payload
+        {
+            *except_first_of_draw_step = true;
+        }
+        self
     }
 
     pub fn lose_game_replacement(
@@ -7460,6 +8210,28 @@ impl<
                 except_first_of_draw_step,
                 replacement_effects,
                 display,
+                cycling_source: None,
+            },
+        }
+    }
+    /// "If a cycling ability of <filter> would cause you to draw a card,
+    /// instead <effects>." (Unpredictable Cyclone)
+    pub fn draw_replacement_with_effects_for_cycling_source(
+        drawer: PlayerFilter,
+        cycling_source: ObjectFilter,
+        replacement_effects: Vec<E>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementWithEffects),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DrawReplacementWithEffects {
+                drawer,
+                except_first_of_draw_step: false,
+                replacement_effects,
+                display,
+                cycling_source: Some(cycling_source),
             },
         }
     }
@@ -7742,6 +8514,7 @@ impl<
                 player_filter: None,
                 counter_type,
                 additional,
+                cause: None,
                 display,
             },
         }
@@ -7765,9 +8538,21 @@ impl<
                 player_filter: Some(player_filter),
                 counter_type,
                 additional,
+                cause: None,
                 display,
             },
         }
+    }
+
+    /// Limit a counter-placement addition to placements from a matching
+    /// cause ("If a modular triggered ability would put ..." — Zabaz).
+    pub fn with_counter_placement_cause(mut self, required: crate::CauseFilter) -> Self {
+        if let StaticAbilityPayload::AddCountersPlacementReplacement { cause, .. } =
+            &mut self.payload
+        {
+            *cause = Some(required);
+        }
+        self
     }
 
     pub fn double_player_counters_replacement(
@@ -7951,6 +8736,28 @@ impl<
                 not_cast,
                 destination,
                 display,
+                or_no_mana_spent: false,
+            },
+        }
+    }
+
+    /// "If this creature would enter and it wasn't cast or no mana was spent
+    /// to cast it, exile it instead." (Primeval Spawn)
+    pub fn redirect_would_enter_unless_paid_cast(
+        filter: ObjectFilter,
+        destination: Zone,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RedirectWouldEnterReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RedirectWouldEnter {
+                filter,
+                not_cast: true,
+                destination,
+                display,
+                or_no_mana_spent: true,
             },
         }
     }
@@ -8189,6 +8996,27 @@ impl<
             payload: StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                condition: None,
+                display: String::new(),
+            },
+        }
+    }
+
+    pub fn enters_with_counter_choice_if_condition(
+        counter_types: Vec<CounterType>,
+        count: Value,
+        condition: ICond,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EnterWithCounters),
+            label: "enters with counter choice".to_string(),
+            payload: StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+                condition: Some(condition),
+                display,
             },
         }
     }
@@ -8244,6 +9072,18 @@ impl<
             "enters tapped unless two or more opponents",
         )
     }
+    pub fn enters_with_counter_kinds_for_filter(
+        filter: ObjectFilter, counter_source: ChooseSpec, count: Value,
+    ) -> Self {
+        let mut ability = Self::enters_with_counters_and_subtypes_for_filter(
+            filter, CounterType::PlusOnePlusOne, count, Vec::new(),
+        );
+        if let StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter { counter_kinds_from, .. } = &mut ability.payload {
+            *counter_kinds_from = Some(counter_source);
+        }
+        ability
+    }
+
     pub fn enters_with_counters_and_subtypes_for_filter(
         filter: ObjectFilter,
         counter: CounterType,
@@ -8256,6 +9096,7 @@ impl<
             payload: StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
                 filter,
                 counter,
+                counter_kinds_from: None,
                 count,
                 count_condition: None,
                 otherwise_count: None,
@@ -8278,6 +9119,7 @@ impl<
             payload: StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
                 filter,
                 counter,
+                counter_kinds_from: None,
                 count,
                 count_condition: Some(count_condition),
                 otherwise_count: Some(otherwise_count),
@@ -8339,3 +9181,25 @@ pub fn one_chosen_color() -> u32 {
 
 #[cfg(feature = "serde")]
 fn static_implied_words_are_false(value: &bool) -> bool { !*value }
+
+#[cfg(all(test, feature = "serde"))]
+mod entry_counter_choice_serde_tests {
+    #[derive(Debug, serde::Serialize, serde::Deserialize)]
+    enum ConditionWithoutDefault { Allowed }
+
+    #[test]
+    fn entry_counter_choice_missing_condition_needs_no_default_condition_bound() {
+        type Payload = super::StaticAbilityPayload<(), (), (), (), ConditionWithoutDefault>;
+        let payload = Payload::EntersWithCounterChoice {
+            counter_types: vec![crate::CounterType::Flying],
+            count: crate::Value::Fixed(1),
+            condition: None,
+            display: String::new(),
+        };
+        let mut encoded = serde_json::to_value(payload).unwrap();
+        encoded["EntersWithCounterChoice"].as_object_mut().unwrap().remove("condition");
+        let restored: Payload = serde_json::from_value(encoded).unwrap();
+        let Payload::EntersWithCounterChoice { condition, .. } = restored else { panic!("counter choice"); };
+        assert!(condition.is_none());
+    }
+}

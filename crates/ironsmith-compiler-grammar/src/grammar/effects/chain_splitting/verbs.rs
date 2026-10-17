@@ -34,11 +34,27 @@ pub fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
         let Ok(word) = parsed else {
             break;
         };
-        if duration_end_at(words, word_index, word) || counter_noun_at(words, word_index, word) {
+        // "cards in exile" names the zone, not the exile action.
+        let exile_zone_noun = word == "exile" && parse_word_at(words, word_index.saturating_sub(1), "in")
+            && word_index > 0;
+        if duration_end_at(words, word_index, word)
+            || counter_noun_at(words, word_index, word)
+            || exile_zone_noun
+        {
             continue;
         }
         if let Some(kind) = parse_chain_verb_word(word) {
             return Some(ChainVerbMatch { kind, word_index });
+        }
+        if matches!(word, "activate" | "activates")
+            && words
+                .get(word_index + 1..)
+                .is_some_and(|rest| rest.starts_with(&["a", "mana", "ability", "of", "each"]))
+        {
+            return Some(ChainVerbMatch {
+                kind: ChainVerbKind::Activate,
+                word_index,
+            });
         }
     }
     None

@@ -44,9 +44,12 @@ pub fn parse_conditional_attack_requirement_line(
     }) else {
         return Ok(None);
     };
+    // "... attack if able" (a plural group) or "... attacks if able" (the
+    // source itself: "this creature also attacks if able", Ekundu Cyclops).
     let Some((required_tokens, ())) = primitives::split_lexed_once_before_suffix(rest, 1, || {
         (
-            primitives::phrase(&["attack", "if", "able"]),
+            alt((primitives::kw("attack"), primitives::kw("attacks"))),
+            primitives::phrase(&["if", "able"]),
             primitives::sentence_end(),
         )
             .void()
@@ -68,6 +71,22 @@ pub fn parse_conditional_attack_requirement_line(
         };
         filter
     };
+    // "this creature also attacks if able": the requirement binds the
+    // source alone.
+    let required_words = token_word_refs(required_tokens);
+    let source_words = match required_words.split_last() {
+        Some((&"also", head)) => head,
+        _ => required_words.as_slice(),
+    };
+    if !source_words.is_empty() && crate::util::is_source_reference_words(source_words) {
+        let mut required = ObjectFilter::source();
+        required.zone = Some(crate::zone::Zone::Battlefield);
+        return Ok(Some(
+            crate::model::CompilerStaticAbilityCore::conditional_attack_requirement(
+                trigger, required,
+            ),
+        ));
+    }
     let Some(((), required_body)) =
         primitives::parse_prefix(required_tokens, primitives::kw("all").void())
     else {

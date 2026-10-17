@@ -170,6 +170,174 @@ pub(super) fn read_revealed_group_ordered_choice(
     ]))
 }
 
+/// How each color slot of a per-color choice relates to the chosen card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ColorSlotRelation {
+    /// "of that color": the card has (at least) that color.
+    OfThatColor,
+    /// "that's exactly those colors": the card is exactly the slot's colors.
+    ExactlyThoseColors,
+}
+
+struct ColorSlotGroupChoice<'a> {
+    pairs: bool,
+    relation: ColorSlotRelation,
+    filter_tokens: &'a [OwnedLexToken],
+}
+
+fn color_slot_relation<'a>(
+    input: &mut LexStream<'a>,
+) -> winnow::error::ModalResult<ColorSlotRelation> {
+    alt((
+        (
+            alt((
+                primitives::kw("that's").void(),
+                primitives::kw("thats").void(),
+                primitives::phrase(&["that", "is"]),
+            )),
+            primitives::phrase(&["exactly", "those", "colors"]),
+        )
+            .value(ColorSlotRelation::ExactlyThoseColors),
+        primitives::phrase(&["of", "that", "color"]).value(ColorSlotRelation::OfThatColor),
+    ))
+    .parse_next(input)
+}
+
+/// "For each color pair, choose a card that's exactly those colors from among
+/// them." / "For each color, choose a card of that color from among them."
+fn color_slot_group_choice<'a>(
+    input: &mut LexStream<'a>,
+) -> winnow::error::ModalResult<ColorSlotGroupChoice<'a>> {
+    primitives::phrase(&["for", "each", "color"]).parse_next(input)?;
+    let pairs = opt(primitives::kw("pair")).parse_next(input)?.is_some();
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::kw("choose").parse_next(input)?;
+    alt((primitives::kw("a"), primitives::kw("an"), primitives::kw("one"))).parse_next(input)?;
+    let filter_tokens = repeat_till(1.., any.void(), peek(color_slot_relation))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    let relation = color_slot_relation.parse_next(input)?;
+    primitives::phrase(&["from", "among", "them"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ColorSlotGroupChoice {
+        pairs,
+        relation,
+        filter_tokens,
+    })
+}
+
+/// "Reveal the top ten cards of your library. For each color pair, choose a
+/// card that's exactly those colors from among them. Put the chosen cards
+/// into your hand and the rest on the bottom of your library in a random
+/// order." (Niv-Mizzet Reborn)
+///
+/// One choice per color (or per two-color pair, CR 105.1 / 105.4), each of a
+/// card not chosen for an earlier slot; a slot no revealed card fits chooses
+/// nothing. Every choice joins one chosen set, which the disposition sentence
+/// moves to hand while the rest of the revealed group goes to the bottom.
+pub(super) fn read_revealed_group_color_slot_choice(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(view), Some(choice), Some(disposition)) = (
+        sentences.get(sentence_idx),
+        sentences.get(sentence_idx + 1),
+        sentences.get(sentence_idx + 2),
+    ) else {
+        return Ok(None);
+    };
+    let Some((player, count, true)) = super::parse_top_cards_view_sentence(view.lowered()) else {
+        return Ok(None);
+    };
+    let Some(shape) = primitives::probe_all(
+        trim_lexed_commas(choice.lowered()),
+        color_slot_group_choice,
+        "color-slot-group-choice",
+    ) else {
+        return Ok(None);
+    };
+    let slots: Vec<(crate::color::ColorSet, bool)> = match (shape.pairs, shape.relation) {
+        (true, ColorSlotRelation::ExactlyThoseColors) => {
+            let mut slots = Vec::new();
+            for (index, first) in crate::color::Color::ALL.iter().enumerate() {
+                for second in &crate::color::Color::ALL[index + 1..] {
+                    slots.push((
+                        crate::color::ColorSet::from_color(*first)
+                            .union(crate::color::ColorSet::from_color(*second)),
+                        true,
+                    ));
+                }
+            }
+            slots
+        }
+        (false, ColorSlotRelation::OfThatColor) => crate::color::Color::ALL
+            .iter()
+            .map(|color| (crate::color::ColorSet::from_color(*color), false))
+            .collect(),
+        _ => return Ok(None),
+    };
+    let Some(disposition) = crate::grammar::effects::sequence_quad_shapes::parse_chosen_cards_hand_remainder_shape(
+        disposition.lowered(),
+    ) else {
+        return Ok(None);
+    };
+    let Some(mut base) = super::parse_looked_card_choice_filter(shape.filter_tokens) else {
+        return Ok(None);
+    };
+
+    let revealed_tag = helper_tag_for_tokens(view.lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(choice.lowered(), "chosen");
+    base.zone = Some(Zone::Library);
+    base.tagged_constraints.push(TaggedObjectConstraint {
+        tag: revealed_tag.key.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    // Each slot picks a different card: one already chosen for an earlier
+    // slot is out.
+    base.tagged_constraints.push(TaggedObjectConstraint {
+        tag: chosen_tag.key.clone(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+
+    let mut effects = vec![EffectAst::subject_verb_reveal_top_cards(
+        player,
+        count,
+        crate::tag::TagRef::of(revealed_tag.clone()),
+    )];
+    for (colors, exact) in slots {
+        let mut filter = base.clone();
+        if exact {
+            filter.required_colors = Some(colors);
+            filter.exactly_two_colors = Some(true);
+        } else {
+            filter.colors = Some(colors);
+        }
+        effects.push(EffectAst::ObjectChoices(
+            ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                filter,
+                count: ChoiceCount::exactly(1),
+                player,
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+                zone: Zone::Library,
+            },
+        ));
+    }
+    effects.push(EffectAst::MoveTaggedGroupToZone {
+        tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        zone: Zone::Hand,
+    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            crate::tag::TagRef::of(revealed_tag),
+            Some(crate::tag::TagRef::of(chosen_tag)),
+            disposition.order,
+            player,
+        ),
+    );
+    Ok(Some(effects))
+}
+
 /// "Starting with you, each player chooses one of the exiled cards and puts
 /// it onto the battlefield [tapped] under their control."
 fn round_robin_pick(input: &mut LexStream<'_>) -> winnow::error::ModalResult<bool> {
@@ -301,6 +469,7 @@ pub(super) fn read_round_robin_exiled_pool(
             ],
             continue_effect_index: 1,
             continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+            max_iterations: None,
         }),
     ]))
 }

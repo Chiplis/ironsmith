@@ -58,6 +58,10 @@ pub enum SourcePredicateAst {
     SourceDevouredCreaturesOrMore(u32),
     /// "at the beginning of its controller's end step"
     SourceControllersEndStep,
+    /// "whenever ~ becomes untapped during your untap step"
+    SourceControllersUntapStep,
+    /// "if this creature started the turn untapped"
+    SourceStartedTurnUntapped,
     /// "as long as this creature is attacking"
     SourceIsAttacking,
     /// "as long as this permanent is untapped"
@@ -69,4 +73,10 @@ pub enum SourcePredicateAst {
     SourceIsPrepared,
     /// "it has dealt damage" since it entered (negated by "hasn't ... yet").
     SourceHasDealtDamageSinceEntered,
+    /// "it has dealt combat damage" since it entered (negated by "hasn't ...
+    /// yet", Ruric Thar).
+    SourceHasDealtCombatDamageSinceEntered,
+    /// "if Tolsimir attacked this combat": this exact object was declared as
+    /// an attacker in the current combat.
+    SourceAttackedThisCombat,
 }

@@ -323,7 +323,14 @@ pub fn parse_activated_devotion_value_tokens(
         .ok_or(ActivatedDevotionParseError::MissingColor)?;
     let color = Color::from_name(color_word)
         .ok_or_else(|| ActivatedDevotionParseError::UnsupportedColor(color_word.to_string()))?;
-    Ok(Some(Value::Devotion { player, color }))
+    let mut colors = crate::color::ColorSet::from(color);
+    let mut end = 1;
+    while color_words.get(end) == Some(&"and") {
+        let Some(color) = color_words.get(end + 1).and_then(|word| Color::from_name(word)) else { break; };
+        colors = colors.with(color);
+        end += 2;
+    }
+    Ok(Some(Value::devotion_to_colors(player, colors)))
 }
 
 fn words_are_exact(words: &[&str], expected: &'static [&'static str]) -> bool {

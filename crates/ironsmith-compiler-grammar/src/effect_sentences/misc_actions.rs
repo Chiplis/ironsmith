@@ -277,6 +277,41 @@ pub fn parse_roll(
     ) {
         return Ok(EffectAst::subject_verb_roll_to_visit_attractions(player));
     }
+    // "Roll the planar die." (CR 901.9): the Planechase die, not a numbered
+    // die named by the clause.
+    if matches!(
+        crate::lexer::token_word_refs(tokens).as_slice(),
+        ["the", "planar", "die"]
+    ) {
+        return Ok(EffectAst::subject_verb_roll_planar_die(player));
+    }
+    // "You may roll again." (Delina, Wild Mage): another performance of the
+    // roll and its result table, i.e. repeating the process. Normalization
+    // binds the marker to the roll that owns the result row.
+    if matches!(
+        crate::lexer::token_word_refs(tokens).as_slice(),
+        ["again"]
+    ) && matches!(player, PlayerAst::Implicit | PlayerAst::You)
+    {
+        return Ok(EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::RepeatThisProcess,
+        ));
+    }
+    // "roll X d6" / "roll two six-sided dice": several dice rolled at once,
+    // whose results are read back as their total (CR 706.2).
+    if let Some((count, used)) = parse_value(tokens)
+        && used < tokens.len()
+        && !matches!(count, Value::Fixed(1))
+        && let Some(dice) = misc_action_shapes::parse_roll_die_prefix_tokens(&tokens[used..])
+        && dice.consumed == tokens.len() - used
+    {
+        return Ok(EffectAst::subject_verb_roll_dice_total_with_surface(
+            player,
+            count,
+            dice.sides,
+            dice.surface,
+        ));
+    }
     let Some(shape) = misc_action_shapes::parse_roll_die_prefix_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported roll clause (clause: '{}')",
@@ -284,8 +319,43 @@ pub fn parse_roll(
         )));
     };
     let tail = &tokens[shape.consumed..];
+    // "roll a six-sided die twice" (Vedalken Squirrel-Whacker): two rolls
+    // read back as "the first result" and "the second result".
+    if crate::lexer::token_word_refs(tail).as_slice() == ["twice"] {
+        return Ok(EffectAst::subject_verb_roll_die_repeatedly_in_order_with_surface(
+            player,
+            2,
+            shape.sides,
+            shape.surface,
+        ));
+    }
     if let Some(effect) = parse_roll_plus_dice_per_mana_spent(player, &shape, tail)? {
         return Ok(effect);
+    }
+    // "roll a d20 for each player being attacked and ignore all but the
+    // highest roll" (Iron Mastiff): one die per defending player, keeping
+    // only the highest result.
+    if let [
+        "for",
+        "each",
+        "player" | "opponent",
+        "being",
+        "attacked",
+        "and",
+        "ignore",
+        "all",
+        "but",
+        "the",
+        "highest",
+        "roll",
+    ] = crate::lexer::token_word_refs(tail).as_slice()
+    {
+        return Ok(EffectAst::subject_verb_roll_dice_highest_with_surface(
+            player,
+            Value::PlayersBeingAttacked,
+            shape.sides,
+            shape.surface,
+        ));
     }
     let result_modifier = if tail.is_empty() {
         None
@@ -493,6 +563,9 @@ pub fn parse_get(
     }
 
     let clause_words = crate::lexer::token_word_refs(tokens);
+    if let Some(effect) = parse_get_additional_steps(tokens, subject) {
+        return Ok(effect);
+    }
     if let Some(alternative) = parse_fixed_pt_alternative_shape(tokens) {
         let branch_tokens = |modifier: &OwnedLexToken| {
             let mut tokens = Vec::with_capacity(1 + alternative.trailing_tokens.len());
@@ -586,6 +659,35 @@ pub fn parse_get(
             if let Some(count) = rounded {
                 return Ok(EffectAst::subject_verb_rad_counters(player, count));
             }
+        }
+        // "that player gets two rad counters if they don't have any rad
+        // counters. Otherwise, proliferate." (Vexing Radgull): the trailing
+        // condition tests the recipient's own rad counters; a following
+        // "Otherwise" sentence fills the false branch.
+        let tail_words = crate::lexer::parser_token_word_refs(tail);
+        let no_rad_counters_holder = match tail_words.as_slice() {
+            ["if", "they", "dont" | "don't", "have", "any", "rad", "counters"]
+            | ["if", "that", "player", "doesnt" | "doesn't", "have", "any", "rad", "counters"] => {
+                Some(player)
+            }
+            ["if", "you", "dont" | "don't", "have", "any", "rad", "counters"] => Some(PlayerAst::You),
+            _ => None,
+        };
+        if count_is_complete && let Some(holder) = no_rad_counters_holder {
+            let count = parse_named_player_counter_count(&tokens[..rad_idx + 2], &clause_words)?;
+            return Ok(EffectAst::Conditionals(
+                crate::cards::builders::ConditionalEffectAst::Conditional {
+                    predicate: crate::cards::builders::PredicateAst::Not(Box::new(crate::cards::builders::PredicateAst::Player(
+                        crate::cards::builders::PlayerPredicateAst::PlayerHasCountersOrMore {
+                            player: holder,
+                            counter_type: crate::object::CounterType::Rad,
+                            count: 1,
+                        },
+                    ))),
+                    if_true: vec![EffectAst::subject_verb_rad_counters(player, count)],
+                    if_false: Vec::new(),
+                },
+            ));
         }
         let tail_is_for_each =
             tail.is_empty() || grammar::match_word_prefix(tail, &["for", "each"]).is_some();
@@ -733,6 +835,109 @@ pub fn parse_get(
         "unsupported get clause (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+/// "<player> get(s) an additional upkeep step after this step" / "you get
+/// that many additional upkeep steps after this phase" (CR 500.10a).
+pub(crate) fn parse_additional_step_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<(
+    Value,
+    crate::effects::AdditionalStepKind,
+    crate::effects::AdditionalStepAnchor,
+)> {
+    use crate::effects::{AdditionalStepAnchor, AdditionalStepKind};
+    let tokens = match tokens.last() {
+        Some(last) if last.kind == TokenKind::Period => &tokens[..tokens.len() - 1],
+        _ => tokens,
+    };
+    let additional = tokens.iter().position(|token| token.is_word("additional"))?;
+    if additional == 0 || tokens.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let tail = crate::lexer::token_word_refs(&tokens[additional + 1..]);
+    let (step, anchor) = match tail.as_slice() {
+        [step, "step" | "steps", "after", "this", anchor] => (*step, *anchor),
+        _ => return None,
+    };
+    let step = match step {
+        "untap" => AdditionalStepKind::Untap,
+        "upkeep" => AdditionalStepKind::Upkeep,
+        "draw" => AdditionalStepKind::Draw,
+        "end" => AdditionalStepKind::End,
+        _ => return None,
+    };
+    let anchor = match anchor {
+        "step" => AdditionalStepAnchor::AfterThisStep,
+        "phase" => AdditionalStepAnchor::AfterThisPhase,
+        _ => return None,
+    };
+    let count_tokens = &tokens[..additional];
+    let count = if count_tokens.len() == 1
+        && count_tokens[0].as_word().is_some_and(|word| matches!(word, "a" | "an"))
+    {
+        Value::Fixed(1)
+    } else {
+        let (value, used) = parse_value(count_tokens)?;
+        if used != count_tokens.len() {
+            return None;
+        }
+        value
+    };
+    Some((count, step, anchor))
+}
+
+/// "There is an additional end step after this step" (Y'shtola Rhul) and
+/// "there is an additional beginning phase after this phase" (Sphinx of the
+/// Second Sun): impersonal CR 500.10 additions.
+pub(crate) fn parse_there_is_additional_step_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let rest = match tokens {
+        [there, is, rest @ ..] if there.is_word("there") && is.is_any_word(&["is", "are"]) => rest,
+        [theres, rest @ ..] if theres.is_any_word(&["there's", "theres"]) => rest,
+        _ => return None,
+    };
+    let words = crate::lexer::token_word_refs(rest);
+    if matches!(
+        words.as_slice(),
+        ["an", "additional", "beginning", "phase", "after", "this", "phase"]
+    ) {
+        return Some(EffectAst::subject_verb_additional_phases(vec![
+            crate::effects::AdditionalPhase::Beginning,
+        ]));
+    }
+    let (count, step, anchor) = parse_additional_step_tail(rest)?;
+    Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
+            step,
+            count,
+            anchor,
+            player_gets: false,
+        }),
+    ))
+}
+
+fn parse_get_additional_steps(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let Some(SubjectAst::Player(player)) = subject else {
+        return None;
+    };
+    let (count, step, anchor) = parse_additional_step_tail(tokens)?;
+    Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        player,
+        SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
+            step,
+            count,
+            anchor,
+            player_gets: true,
+        }),
+    ))
 }
 
 fn constrain_untap_filter_to_battlefield(filter: &mut ObjectFilter) {

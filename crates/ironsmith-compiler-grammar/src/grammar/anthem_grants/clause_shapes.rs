@@ -42,6 +42,11 @@ pub enum AnthemTailShape<'a> {
     AsLongAs {
         condition_tokens: &'a [OwnedLexToken],
     },
+    /// "unless <condition>": the modification applies only while the
+    /// condition is false (Heroic Defiance).
+    Unless {
+        condition_tokens: &'a [OwnedLexToken],
+    },
 }
 
 pub fn parse_prefix_condition_shape(
@@ -117,6 +122,12 @@ pub fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailShape<'_>>
     }
     if primitives::parse_prefix(tokens, primitives::phrase(&["where", "x", "is"])).is_some() {
         return Some(AnthemTailShape::WhereX(tokens));
+    }
+    if let Some((_, condition_tokens)) =
+        primitives::parse_prefix(tokens, primitives::kw("unless"))
+    {
+        return (!condition_tokens.is_empty())
+            .then_some(AnthemTailShape::Unless { condition_tokens });
     }
     let (_, condition_tokens) =
         primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"]))?;

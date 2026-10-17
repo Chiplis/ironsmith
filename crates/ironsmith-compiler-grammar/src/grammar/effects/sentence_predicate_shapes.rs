@@ -108,6 +108,10 @@ pub enum WhereXValueShape {
         metric: WhereXMetricShape,
     },
     TapCostPower,
+    /// The station keyword's own amount (CR 702.184a): the tapped creature's
+    /// contribution, which a "stations ... using its toughness" grant
+    /// redirects. Only the station keyword lowering spells this.
+    StationTapCostContribution,
     CommanderCastCount,
     CardTypesInYourGraveyard,
     SacrificeCostManaValue {
@@ -983,6 +987,21 @@ enum ReferenceSurface {
     ThisCreature,
     ThatSpell,
     ThatCreature,
+}
+
+/// The station keyword lowering's synthetic amount, "where X is the stationing
+/// power of the creature tapped this way" (no Oracle text says "stationing").
+pub(crate) const STATION_CONTRIBUTION_WHERE_X_WORDS: &[&str] = &[
+    "where", "x", "is", "the", "stationing", "power", "of", "the", "creature", "tapped", "this",
+    "way",
+];
+
+fn parse_station_contribution_where_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<WhereXValueShape> {
+    primitives::phrase(STATION_CONTRIBUTION_WHERE_X_WORDS).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(WhereXValueShape::StationTapCostContribution)
 }
 
 fn parse_tap_cost_power_where_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WhereXValueShape> {

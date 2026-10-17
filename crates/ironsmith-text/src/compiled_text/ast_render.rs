@@ -720,6 +720,7 @@ fn describe_prior_exile_until_next_turn_permission_program(
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
+        || permission.during_turns_cast_another_spell
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.max_plays.is_some()
@@ -9527,6 +9528,7 @@ fn describe_cross_segment_destroy_then_grant_blocked_by_that_creature_window(
         || !grant.lock_filter_at_resolution
         || grant.resolve_set_pt_values_at_resolution
         || grant.require_creature_target
+        || grant.grant_only_if_absent
     {
         return None;
     }
@@ -13883,6 +13885,7 @@ fn describe_cross_segment_filtered_exile_cast_then_has_ability_window(
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
+        || grant.during_turns_cast_another_spell
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -14013,6 +14016,7 @@ fn describe_cross_segment_filtered_exile_cast_window(
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
+        || grant.during_turns_cast_another_spell
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -14433,6 +14437,7 @@ fn describe_cross_segment_treasure_look_exile_permission_window(
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
+        || grant.during_turns_cast_another_spell
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -17715,6 +17720,7 @@ fn describe_exile_top_treasure_conditional_cast_fallback_program(
         || grant.filter.is_some()
         || grant.during_turns_counter_put_on_source.is_some()
         || grant.during_turns_attacked_with.is_some()
+        || grant.during_turns_cast_another_spell
         || grant.spell_cost_increase.is_some()
         || grant.lands_enter_tapped
         || grant.cast_pool_is_plural
@@ -18582,6 +18588,7 @@ fn describe_prevent_next_damage_then_delayed_target_counters_program(
         || !prevention.follow_up_effects.is_empty()
         || prevention.source_of_your_choice
         || prevention.protect_you_and_permanents_you_control
+        || prevention.protect_all
     {
         return None;
     }
@@ -20660,6 +20667,7 @@ fn describe_you_life_change_exile_then_play_program(
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
+        || permission.during_turns_cast_another_spell
         || permission.spell_cost_increase.is_some()
         || permission.lands_enter_tapped
         || permission.cast_pool_is_plural
@@ -29484,7 +29492,7 @@ fn describe_inline_spell_attack_or_block_damage_choice(
         || modal.mode_point_costs != [1, 1]
         || modal.disallow_previously_chosen_modes
         || modal.disallow_previously_chosen_modes_this_turn
-        || modal.distinct_player_targets_per_mode
+        || modal.distinct_player_targets_per_mode || modal.optional_choice
         || modal.conditional_mode_range.is_some()
         || modal.presentation_label.is_some()
         || modal.modes.len() != 2
@@ -31507,6 +31515,7 @@ fn describe_structural_play_from_with_mana_permission_pair(
         if permission.player != PlayerFilter::You
             || *mana_filter != grant.filter
             || permission.any_color_mana_symbol.is_some()
+            || permission.mana_symbol_as.is_some()
             || permission.other_mana_only_as_colorless
         {
             return None;
@@ -32765,6 +32774,15 @@ pub(super) fn describe_alternative_cast_line(
                 }
                 return line;
             }
+            if parts.is_empty() && method.grants_instant_timing() {
+                let line = "You may cast this spell without paying its mana cost and as though it had flash".to_string();
+                return match cast_condition.and_then(|condition| {
+                    crate::static_abilities::describe_this_spell_cost_condition(condition)
+                }) {
+                    Some(condition_text) => format!("If {condition_text}, {}", lowercase_first(&line)),
+                    None => line,
+                };
+            }
             let clause = if parts.is_empty() {
                 "cast this spell without paying its mana cost".to_string()
             } else {
@@ -32875,7 +32893,9 @@ pub(super) fn describe_alternative_cast_line(
         AlternativeCastingMethod::Escape {
             cost, exile_count, additional_cost,
         } => {
-            if *exile_count == 0 && !additional_cost.is_free() {
+            if (*exile_count == 0 || additional_cost.as_all().is_some_and(|costs| costs.len() > 1))
+                && !additional_cost.is_free()
+            {
                 let extra = capitalize_first(&describe_alternative_costs(additional_cost.costs()));
                 return match cost {
                     Some(cost) => format!("Escape—{}, {extra}", cost.to_oracle()),
@@ -35591,6 +35611,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            // "X is ... as you cast this spell" defines X as a matching pair of
+            // bounds; the minimum repeats the sentence its maximum renders.
+            if ability_idx > 0
+                && is_defined_x_minimum_half(&def.abilities[ability_idx - 1], ability)
+            {
+                ability_idx += 1;
+                continue;
+            }
             // Miracle's linked hand trigger is part of the "Miracle {cost}"
             // keyword line rendered from the alternative casting method.
             if is_miracle_linked_trigger(def, ability) {
@@ -37087,6 +37115,34 @@ fn describe_source_line_must_attack_or_block_group(
     .then(|| format!("{} attacks or blocks each combat if able", capitalize_first(subject)))
 }
 
+/// Independent permission budgets compiled from one authored sentence (one
+/// play permission per permanent type) each carry that sentence as their
+/// captured surface. The printed line is that single sentence.
+fn describe_source_line_shared_permission_surface_group(abilities: &[Ability]) -> Option<String> {
+    if abilities.len() < 2 {
+        return None;
+    }
+    let mut shared: Option<&str> = None;
+    for ability in abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::Grants(spec) = &model.payload else {
+            return None;
+        };
+        if !spec.cast_this_way_grants.is_empty() {
+            return None;
+        }
+        let surface = spec.filtered_zone_surface.as_deref()?;
+        if shared.is_some_and(|shared| shared != surface) {
+            return None;
+        }
+        shared = Some(surface);
+    }
+    shared.map(str::to_string)
+}
+
 fn describe_source_line_free_cast_and_flash_group(abilities: &[Ability]) -> Option<String> {
     let [first, second] = abilities else {
         return None;
@@ -38105,6 +38161,7 @@ fn describe_source_line_static_group(
         .or_else(|| describe_source_line_anthem_untap_restriction_group(members))
         .or_else(|| describe_source_line_anthem_goad_group(members))
         .or_else(|| describe_source_line_free_cast_and_flash_group(members))
+        .or_else(|| describe_source_line_shared_permission_surface_group(members))
         .or_else(|| describe_source_line_must_attack_or_block_group(members, subject))
         .or_else(|| describe_source_line_turn_partitioned_source_base_pt_group(members, subject))
         .or_else(|| describe_source_line_attack_partitioned_characteristic_pt_group(members, subject))
@@ -43165,7 +43222,8 @@ fn describe_structural_station_keyword(ability: &Ability) -> Option<&'static str
     {
         return None;
     }
-    let Value::PowerOf(source) = put.amount.unhinted() else {
+    let (Value::PowerOf(source) | Value::StationContributionOf(source)) = put.amount.unhinted()
+    else {
         return None;
     };
     match source.unhinted() {
@@ -43361,6 +43419,31 @@ fn ability_precedes_spell_resolution(ability: &Ability) -> bool {
                     | crate::static_abilities::StaticAbilityId::DraftRuleText
                     | crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
             )
+    )
+}
+
+fn is_defined_x_minimum_half(previous: &Ability, ability: &Ability) -> bool {
+    let (AbilityKind::Static(previous), AbilityKind::Static(current)) =
+        (&previous.kind, &ability.kind)
+    else {
+        return false;
+    };
+    let (Some(previous), Some(current)) = (previous.compiled_model(), current.compiled_model())
+    else {
+        return false;
+    };
+    matches!(
+        (&previous.payload, &current.payload),
+        (
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum {
+                display: maximum_display,
+                ..
+            },
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum {
+                display: minimum_display,
+                ..
+            },
+        ) if maximum_display == minimum_display
     )
 }
 

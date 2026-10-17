@@ -208,6 +208,35 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
         }
     }
 
+    // "for each creature put into your graveyard from the battlefield this
+    // turn" (Urborg Justice): your permanents that went from the battlefield
+    // to your graveyard, judged by their last-known information.
+    for suffix in [
+        &[
+            "put", "into", "your", "graveyard", "from", "the", "battlefield", "this", "turn",
+        ][..],
+        &[
+            "that", "was", "put", "into", "your", "graveyard", "from", "the", "battlefield",
+            "this", "turn",
+        ][..],
+        &[
+            "that", "were", "put", "into", "your", "graveyard", "from", "the", "battlefield",
+            "this", "turn",
+        ][..],
+    ] {
+        if let Some(end) = suffix_start(&words, suffix)
+            && end > 0
+        {
+            let mut filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
+            filter.owner = Some(PlayerFilter::You);
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+                filter,
+                from: Some(crate::zone::Zone::Battlefield),
+                to: Some(crate::zone::Zone::Graveyard),
+            }));
+        }
+    }
+
     for suffix in [
         &[
             "that",

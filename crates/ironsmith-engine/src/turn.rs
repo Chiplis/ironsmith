@@ -972,6 +972,7 @@ fn apply_untap_step_limits(
     use crate::filter::ObjectFilterExt as _;
 
     let mut limits = Vec::new();
+    let mut chosen_type_rules = Vec::new();
     for &source_id in &game.battlefield {
         if game.is_phased_out(source_id) {
             continue;
@@ -980,6 +981,11 @@ fn apply_untap_step_limits(
             continue;
         };
         for static_ability in &chars.static_abilities {
+            if let Some((player, card_types)) = static_ability.untap_step_chosen_card_types_spec()
+                && static_ability.is_active(game, source_id)
+            {
+                chosen_type_rules.push((source_id, player.clone(), card_types.to_vec()));
+            }
             let Some((player, filter, max)) = static_ability.untap_step_limit_spec() else {
                 continue;
             };
@@ -987,6 +993,66 @@ fn apply_untap_step_limits(
                 continue;
             }
             limits.push((source_id, player.clone(), filter.clone(), max));
+        }
+    }
+
+    // "That player can untap only permanents of the chosen type this step"
+    // (Storage Matrix): the untapping player chooses one of the offered card
+    // types; their other permanents stay tapped (CR 502.3).
+    for (source_id, player_filter, card_types) in chosen_type_rules {
+        if card_types.is_empty() {
+            continue;
+        }
+        let source_controller = game
+            .current_controller(source_id)
+            .unwrap_or(game.turn.active_player);
+        let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
+        for &player in active_players {
+            if !crate::filter::player_filter_matches_game(&player_filter, player, game, &filter_ctx)
+            {
+                continue;
+            }
+            let options = card_types
+                .iter()
+                .enumerate()
+                .map(|(index, card_type)| {
+                    crate::decisions::context::SelectableOption::new(
+                        index,
+                        format!("{card_type:?}"),
+                    )
+                })
+                .collect();
+            let ctx = crate::decisions::context::SelectOptionsContext::new(
+                player,
+                Some(source_id),
+                "Choose the card type of permanents you untap this step",
+                options,
+                1,
+                1,
+            );
+            let selected = decision_maker.decide_options(game, &ctx);
+            if decision_maker.awaiting_choice() {
+                return should_untap;
+            }
+            let chosen = selected
+                .first()
+                .and_then(|index| card_types.get(*index))
+                .copied()
+                .unwrap_or(card_types[0]);
+            let blocked: Vec<_> = permanents
+                .iter()
+                .copied()
+                .filter(|id| should_untap.contains(id))
+                .filter(|id| game.current_controller(*id) == Some(player))
+                .filter(|id| {
+                    !game
+                        .current_characteristics(*id)
+                        .is_some_and(|chars| chars.card_types.contains(&chosen))
+                })
+                .collect();
+            for id in blocked {
+                should_untap.remove(&id);
+            }
         }
     }
 
@@ -1120,6 +1186,7 @@ fn static_ability_may_affect_untap(
 
     static_ability.affects_untap()
         || static_ability.untap_step_limit_spec().is_some()
+        || static_ability.untap_step_chosen_card_types_spec().is_some()
         || static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
         || static_ability
             .untap_during_each_other_players_untap_step_filter()

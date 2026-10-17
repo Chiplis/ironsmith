@@ -95,7 +95,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         Slith=>"Slith", Sliver=>"Sliver", Slug=>"Slug", Snake=>"Snake", Soldier=>"Soldier", Sorcerer=>"Sorcerer",
         Spellshaper=>"Spellshaper", Sphinx=>"Sphinx", Specter=>"Specter", Spider=>"Spider", Spike=>"Spike",
         Splinter=>"Splinter", Spirit=>"Spirit", Sponge=>"Sponge", Squid=>"Squid", Squirrel=>"Squirrel",
-        Starfish=>"Starfish", Surrakar=>"Surrakar", Survivor=>"Survivor", Thopter=>"Thopter", Thrull=>"Thrull",
+        Starfish=>"Starfish", Surrakar=>"Surrakar", Survivor=>"Survivor", Tetravite=>"Tetravite", Thopter=>"Thopter", Thrull=>"Thrull",
         Tiefling=>"Tiefling", Tentacle=>"Tentacle", Toy=>"Toy", Treefolk=>"Treefolk", Triskelavite=>"Triskelavite",
         Trilobite=>"Trilobite", Troll=>"Troll", Turtle=>"Turtle", Tyranid=>"Tyranid", Unicorn=>"Unicorn",
         Utrom=>"Utrom", Vampire=>"Vampire", Vedalken=>"Vedalken", Viashino=>"Viashino", Villain=>"Villain",

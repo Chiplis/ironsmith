@@ -66,6 +66,42 @@ fn parse_activate_only_sentence_details_lexed(
     })
 }
 
+/// "You can't activate this ability during combat." (Djinn of Infinite
+/// Deceits): the negation of an activation window. The window is read with
+/// the ordinary "Activate only <window>" timing grammar and kept as a negated
+/// activation condition, leaving the ability's own timing untouched.
+fn parse_cant_activate_this_ability_window_lexed(
+    tokens: &[OwnedLexToken],
+    current_timing: &ActivationTiming,
+) -> Option<ActivateOnlySentenceDetails> {
+    let word_positions = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.as_word().map(|word| (index, word)))
+        .collect::<Vec<_>>();
+    let words = word_positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    let head_matches = matches!(
+        words.get(..5),
+        Some(["you", "can't" | "cant" | "cannot", "activate", "this", "ability"])
+    );
+    if !head_matches || words.len() <= 5 {
+        return None;
+    }
+    let tail_start = word_positions[5].0;
+    let mut synthetic = crate::lexer::synthetic_word_tokens(["activate", "only"]);
+    synthetic.extend_from_slice(&tokens[tail_start..]);
+    let window = ability_grammar::parse_activate_only_timing_lexed(&synthetic)?;
+    if matches!(window, ActivationTiming::AnyTime | ActivationTiming::OncePerTurn) {
+        return None;
+    }
+    Some(ActivateOnlySentenceDetails {
+        timing: *current_timing,
+        condition: Some(PredicateAst::Not(Box::new(PredicateAst::ActivationTiming(window)))),
+        normalized_restriction: Some(joined_activation_clause_text(tokens)),
+        once_per_turn_after_other_restrictions: false,
+    })
+}
+
 fn strip_once_per_turn_condition_redundancy(
     condition: PredicateAst,
     timing: &ActivationTiming,
@@ -110,6 +146,10 @@ fn parse_activated_sentence_modifier_lexed(
     current_timing: &ActivationTiming,
 ) -> Option<ActivatedSentenceModifier> {
     if let Some(parsed) = parse_activate_only_sentence_details_lexed(tokens, current_timing) {
+        return Some(ActivatedSentenceModifier::ActivateOnly(parsed));
+    }
+
+    if let Some(parsed) = parse_cant_activate_this_ability_window_lexed(tokens, current_timing) {
         return Some(ActivatedSentenceModifier::ActivateOnly(parsed));
     }
 
@@ -246,6 +286,7 @@ pub fn normalize_activate_only_restriction(
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
             | ActivationTiming::AnyTimeByEnchantedCreatureController
             | ActivationTiming::AnyTimeByOpponents
+            | ActivationTiming::AnyTimeBySourceOwner
             | ActivationTiming::SorcerySpeedByOpponents
             | ActivationTiming::DeclareAttackersStepByAttackedPlayer
     ) {

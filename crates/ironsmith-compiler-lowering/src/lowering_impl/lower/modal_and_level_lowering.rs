@@ -78,6 +78,7 @@ pub fn try_merge_modal_into_remove_mode(
             presentation_label: choose_mode.presentation_label.clone(),
             endure: choose_mode.endure,
             cast_chooser: choose_mode.cast_chooser.clone(),
+            optional_choice: choose_mode.optional_choice,
         },
     ));
     true
@@ -122,6 +123,7 @@ pub fn lower_parsed_modal(
         common_suffix_effects_ast,
         modal_gate,
         cast_chooser,
+        optional_choice,
     } = header;
     let header_source = info
         .provenance
@@ -132,6 +134,14 @@ pub fn lower_parsed_modal(
     if cast_chooser.is_some() && (trigger.is_some() || activated.is_some()) {
         return Err(CardTextError::ParseError(format!(
             "another player choosing an ability's modes is not supported: '{header_source}'"
+        )));
+    }
+    // Only a triggered ability's mode choice offers the "choose none" answer
+    // (the trigger-stacking mode prompt); spells and activations choose
+    // their modes through the casting/activation transaction.
+    if optional_choice && trigger.is_none() {
+        return Err(CardTextError::ParseError(format!(
+            "optional mode choice outside a triggered ability is not supported: '{header_source}'"
         )));
     }
     let common_suffix_effect_count = common_suffix_effects_ast.len();
@@ -236,6 +246,16 @@ pub fn lower_parsed_modal(
         .map(|max| {
             if matches!(max, crate::effect::Value::X) {
                 x_replacement.clone().unwrap_or(max)
+            } else if modal_gate.as_ref().is_some_and(|gate| gate.reflexive)
+                && matches!(
+                    max.unhinted(),
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )
+            {
+                // "When you pay this cost one or more times, choose up to
+                // that many" (Tranquil Frillback): "that many" is the gating
+                // instruction's result, bound below as the reflexive gate.
+                crate::effect::Value::EffectValue(crate::effect::EffectId(1_000_000_000))
             } else {
                 max
             }
@@ -333,6 +353,9 @@ pub fn lower_parsed_modal(
         }
         if let Some(chooser) = cast_chooser.clone() {
             choose_mode = choose_mode.with_cast_chooser(chooser);
+        }
+        if optional_choice {
+            choose_mode = choose_mode.with_optional_choice();
         }
         crate::effect::Effect::new(choose_mode)
     };

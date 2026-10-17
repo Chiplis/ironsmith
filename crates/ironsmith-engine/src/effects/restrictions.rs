@@ -161,12 +161,17 @@ fn bind_restriction_target_players(
         &mut resolved,
         crate::effects::player_reference_binding::PlayerReferenceFields::ControllerOwner,
         &mut |reference| {
-            if matches!(
+            // "each creature they control attacks the other chosen player"
+            // (The Brothers' War): inside a player loop the iterated player is
+            // the one this resolution named; the rule outlives the loop.
+            if (matches!(
                 reference,
                 crate::target::PlayerFilter::Target(_)
                     | crate::target::PlayerFilter::AliasedTarget(_)
-            ) && let Ok(id) =
-                crate::effects::helpers::resolve_player_filter(game, reference, ctx)
+            ) || (matches!(reference, crate::target::PlayerFilter::IteratedPlayer)
+                && ctx.iteration.iterated_player.is_some()))
+                && let Ok(id) =
+                    crate::effects::helpers::resolve_player_filter(game, reference, ctx)
             {
                 *reference = crate::target::PlayerFilter::Specific(id);
             }
@@ -318,6 +323,52 @@ fn filter_has_not_tagged_constraint(filter: &ObjectFilter) -> bool {
     })
 }
 
+/// A resolution-time player reference (a target, iterated, tagged or chosen
+/// player) frozen to the player it named; group and controller-relative
+/// filters stay live.
+fn bind_named_restriction_player(
+    player: &crate::target::PlayerFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> crate::target::PlayerFilter {
+    match player {
+        crate::target::PlayerFilter::Target(_)
+        | crate::target::PlayerFilter::AliasedTarget(_)
+        | crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
+        | crate::target::PlayerFilter::IteratedPlayer
+        | crate::target::PlayerFilter::TaggedPlayer(_)
+        | crate::target::PlayerFilter::ChosenPlayer => {
+            crate::effects::helpers::resolve_player_filter(game, player, ctx)
+                .map(crate::target::PlayerFilter::Specific)
+                .unwrap_or_else(|_| player.clone())
+        }
+        player => player.clone(),
+    }
+}
+
+/// A `{chosen name}` filter naming exactly one name recorded on the resolving
+/// source binds that literal name; several names keep the dynamic marker so
+/// the restriction tracker can expand one prohibition per name.
+fn bind_single_chosen_name(
+    filter: &crate::target::ObjectFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> crate::target::ObjectFilter {
+    if filter.name.as_deref() != Some("{chosen name}") {
+        return filter.clone();
+    }
+    let Some(names) = game.chosen_named_option(ctx.source) else {
+        return filter.clone();
+    };
+    let names: Vec<&str> = names.lines().map(str::trim).filter(|name| !name.is_empty()).collect();
+    let [name] = names.as_slice() else {
+        return filter.clone();
+    };
+    let mut bound = filter.clone();
+    bound.name = Some((*name).to_string());
+    bound
+}
+
 fn normalize_restriction_for_resolution(
     restriction: &Restriction,
     ctx: &ExecutionContext,
@@ -343,6 +394,10 @@ fn normalize_restriction_for_resolution(
         }
         Restriction::BeBlocked(filter) => Restriction::be_blocked(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+        ),
+        Restriction::BeCounteredFrom(filter, sources) => Restriction::be_countered_from(
+            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+            collapse_tagged_filter_to_specific_objects(sources, ctx, game),
         ),
         Restriction::BeCountered(filter) => Restriction::be_countered(
             collapse_tagged_filter_to_specific_objects(filter, ctx, game),
@@ -390,6 +445,20 @@ fn normalize_restriction_for_resolution(
                     .unwrap_or_else(|_| player.clone())
             },
         ),
+        // "Creatures that player controls attack Gideon Jura if able": the
+        // targeted controller is bound now; the attackers stay live and the
+        // required permanents are the ones this resolution named.
+        Restriction::MustAttackPermanents {
+            attackers,
+            permanents,
+        } => Restriction::must_attack_permanents(
+            collapse_tagged_filter_to_specific_objects(
+                &bind_restriction_target_players(attackers, ctx, game),
+                ctx,
+                game,
+            ),
+            collapse_tagged_filter_to_specific_objects(permanents, ctx, game),
+        ),
         Restriction::MustBeBlockedBy { attacker, blockers } => Restriction::MustBeBlockedBy {
             attacker: collapse_filter_to_current_matching_objects(attacker, ctx, game),
             blockers: bind_restriction_target_players(blockers, ctx, game),
@@ -397,6 +466,12 @@ fn normalize_restriction_for_resolution(
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::MustBeBlockedByAtLeast { attacker, minimum } => {
+            Restriction::must_be_blocked_by_at_least(
+                collapse_filter_to_current_matching_objects(attacker, ctx, game),
+                *minimum,
+            )
+        }
         Restriction::Attack(filter) if filter_has_not_tagged_constraint(filter) => {
             Restriction::attack(bind_restriction_target_players(filter, ctx, game))
         }
@@ -404,9 +479,28 @@ fn normalize_restriction_for_resolution(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+            // An iterated, tagged, or targeted player ("can't attack those
+            // players or planeswalkers they control", Chaos Dragon) is the
+            // one this resolution named.
             Restriction::attack_player_or_planeswalkers_controlled_by(
                 collapse_filter_to_current_matching_objects(attackers, ctx, game),
-                player.clone(),
+                bind_named_restriction_player(player, ctx, game),
+            )
+        }
+        // "You can't attack that player this turn" (Call for Aid): the
+        // protected player is the one this resolution named; the attackers
+        // stay a live "creatures you control" set.
+        Restriction::AttackPlayer { attackers, player }
+            if !matches!(
+                player,
+                crate::target::PlayerFilter::You
+                    | crate::target::PlayerFilter::Any
+                    | crate::target::PlayerFilter::Opponent
+            ) =>
+        {
+            Restriction::attack_player(
+                bind_restriction_target_players(attackers, ctx, game),
+                bind_named_restriction_player(player, ctx, game),
             )
         }
         Restriction::Block(filter) if filter_has_not_tagged_constraint(filter) => {
@@ -439,6 +533,15 @@ fn normalize_restriction_for_resolution(
                 ),
             )
         }
+        // "Until that player's next turn, ... their life total can't change"
+        // (Teferi's Reproach): a named player keeps the player this
+        // resolution announced after the target slots are gone.
+        Restriction::ChangeLifeTotal(player) => {
+            Restriction::ChangeLifeTotal(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::BeTargetedPlayer(player) => {
+            Restriction::BeTargetedPlayer(bind_named_restriction_player(player, ctx, game))
+        }
         // CR 107.3, 611.2a: War Tax's {X} is the value announced for this
         // activation; it is fixed when the effect begins, not re-read later.
         Restriction::AttackTax(rule) => {
@@ -452,6 +555,18 @@ fn normalize_restriction_for_resolution(
             rule.attackers = bind_restriction_target_players(&rule.attackers, ctx, game);
             Restriction::AttackTax(rule)
         }
+        // "Choose a card name. Until your next turn, spells with the chosen
+        // name can't be cast and lands with the chosen name can't be played"
+        // (Conjurer's Ban): the resolving spell's name choice is fixed now;
+        // the spell itself leaves the stack before the restriction ends.
+        Restriction::CastSpellsMatching(player, spells) => Restriction::CastSpellsMatching(
+            player.clone(),
+            bind_single_chosen_name(spells, ctx, game),
+        ),
+        Restriction::PlayLandsMatching(player, lands) => Restriction::PlayLandsMatching(
+            player.clone(),
+            bind_single_chosen_name(lands, ctx, game),
+        ),
         _ => restriction.clone(),
     }
 }
@@ -643,12 +758,11 @@ impl EffectExecutor for CantEffect {
                 return Ok(EffectOutcome::count(0));
             }
             Until::ForAsLongAs(predicate)
-        } else if let Until::PlayersNextUntapStep { player } = &self.duration {
-            Until::PlayersNextUntapStep {
-                player: crate::target::PlayerFilter::Specific(
-                    crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
-                ),
-            }
+        } else if matches!(
+            &self.duration,
+            Until::PlayersNextUntapStep { .. } | Until::PlayersNextTurn { .. }
+        ) {
+            crate::effects::helpers::freeze_duration_player(game, &self.duration, ctx)?
         } else {
             self.duration.clone()
         };
@@ -691,9 +805,45 @@ impl EffectExecutor for CantEffect {
                 player => player,
             };
             Restriction::PlayLandsMatching(player, filter)
+        } else if let Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            mut attackers,
+            player,
+        } = restriction
+        {
+            // "That player can't attack you ... during their next turn": the
+            // restricted attackers' controller is a resolution-time referent
+            // (an iterated, targeted, or event player) that must stay fixed
+            // after this context is gone.
+            if let Some(
+                controller @ (crate::target::PlayerFilter::Target(_)
+                | crate::target::PlayerFilter::AliasedTarget(_)
+                | crate::target::PlayerFilter::IteratedPlayer
+                | crate::target::PlayerFilter::TaggedPlayer(_)
+                | crate::target::PlayerFilter::ChosenPlayer
+                | crate::target::PlayerFilter::DamagedPlayer),
+            ) = attackers.controller.clone()
+            {
+                attackers.controller = Some(crate::target::PlayerFilter::Specific(
+                    crate::effects::helpers::resolve_player_filter(game, &controller, ctx)?,
+                ));
+            }
+            Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
         } else {
             restriction
         };
+        if self.start == RestrictionStart::CreatedExtraTurn {
+            // No created turn means there is no referent for "that turn".
+            if let Some(slot) = ctx.created_extra_turn_index {
+                game.add_restriction_effect_with_start_and_tagged_objects(
+                    restriction, duration, ctx.source, ctx.controller,
+                    ctx.iteration.iterated_player, None, ctx.tagged_objects.clone(),
+                );
+                let pending = game.effect_store.restriction_effects.last_mut().unwrap();
+                pending.bound_extra_turn_index = Some(slot);
+                pending.expires_end_of_turn = u32::MAX;
+            }
+            return Ok(EffectOutcome::resolved());
+        }
         if self.start == RestrictionStart::LastAddedCombatPhase {
             // A missing phase cannot turn a phase-bound restriction into an
             // immediate restriction on an unrelated combat.
@@ -717,7 +867,8 @@ impl EffectExecutor for CantEffect {
             return Ok(EffectOutcome::resolved());
         }
         let starts_next_turn_of = match &self.start {
-            RestrictionStart::Immediate | RestrictionStart::LastAddedCombatPhase => None,
+            RestrictionStart::Immediate | RestrictionStart::LastAddedCombatPhase
+                | RestrictionStart::CreatedExtraTurn => None,
             RestrictionStart::NextTurn(player) => Some(
                 crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
             ),

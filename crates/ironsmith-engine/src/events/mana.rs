@@ -21,6 +21,8 @@ pub enum ManaProductionProvenance {
     #[default]
     Unknown,
     TappedSourceForMana,
+    /// Produced by a mana ability whose cost doesn't tap its source.
+    ManaAbility,
 }
 
 /// A pure rewrite of one pending production event. Applying this instruction

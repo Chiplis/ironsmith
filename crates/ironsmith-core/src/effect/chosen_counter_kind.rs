@@ -47,3 +47,33 @@ impl PutCounterOfKindChosenFromEffect {
         self
     }
 }
+
+/// "Choose a kind of counter at random that this creature doesn't have on
+/// it from among flying, first strike, ..., and +1/+1. Put a counter of
+/// that kind on this creature." (Crystalline Giant)
+///
+/// One kind is chosen uniformly at random among `kinds` (restricted to the
+/// kinds the recipient has no counter of when `only_absent_kinds`), then one
+/// counter of that kind is put on the recipient. With no eligible kind,
+/// nothing happens.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct PutCounterOfRandomKindEffect {
+    /// The fixed list of kinds the random choice is made from.
+    pub kinds: Vec<CounterType>,
+    /// The object that receives the counter.
+    pub recipient: ChooseSpec,
+    /// "that <recipient> doesn't have on it": kinds already on the
+    /// recipient are not eligible.
+    pub only_absent_kinds: bool,
+}
+
+impl PutCounterOfRandomKindEffect {
+    pub fn new(kinds: Vec<CounterType>, recipient: ChooseSpec, only_absent_kinds: bool) -> Self {
+        Self {
+            kinds,
+            recipient,
+            only_absent_kinds,
+        }
+    }
+}

@@ -39,6 +39,9 @@ pub struct GrantPlayTaggedEffect {
     /// Additional mana cost imposed on nonland cards cast through this exact
     /// tagged play permission.
     pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    /// When present, `spell_cost_increase` applies only if none of the cast
+    /// spell's chosen targets matches this filter.
+    pub spell_cost_increase_unless_targets: Option<ObjectFilter>,
     /// Mana reduction for spells cast through this exact permission.
     pub spell_cost_reduction: Option<crate::mana::ManaCost>,
     /// Whether a land played through this exact tagged permission enters
@@ -55,6 +58,12 @@ pub struct GrantPlayTaggedEffect {
     /// When present, the persistent grant is active only during turns in
     /// which its player attacked with enough matching creatures.
     pub during_turns_attacked_with: Option<ironsmith_core::effect::AttackedWithTurnCondition>,
+    /// When true, the persistent grant is active only while its player has
+    /// already cast another spell this turn.
+    pub during_turns_cast_another_spell: bool,
+    /// Generic reduction per opponent for spells cast through this
+    /// permission ("That spell has undaunted", CR 702.125a).
+    pub spell_cost_reduction_per_opponent: u32,
 }
 
 impl GrantPlayTaggedEffect {
@@ -81,13 +90,26 @@ impl GrantPlayTaggedEffect {
             spell_filter: None,
             during_turns_counter_put_on_source: None,
             spell_cost_increase: None,
+            spell_cost_increase_unless_targets: None,
             spell_cost_reduction: None,
             lands_enter_tapped: false,
             cast_pool_is_plural: false,
             max_plays: None,
             alternative_cost: None,
             during_turns_attacked_with: None,
+            during_turns_cast_another_spell: false,
+            spell_cost_reduction_per_opponent: 0,
         }
+    }
+
+    pub fn with_spell_cost_reduction_per_opponent(mut self, amount: u32) -> Self {
+        self.spell_cost_reduction_per_opponent = amount;
+        self
+    }
+
+    pub fn during_turns_cast_another_spell(mut self) -> Self {
+        self.during_turns_cast_another_spell = true;
+        self
     }
 
     pub fn during_turns_attacked_with(
@@ -201,6 +223,11 @@ impl GrantPlayTaggedEffect {
         self
     }
 
+    pub fn with_spell_cost_increase_unless_targets(mut self, filter: ObjectFilter) -> Self {
+        self.spell_cost_increase_unless_targets = Some(filter);
+        self
+    }
+
     pub fn with_lands_enter_tapped(mut self, enabled: bool) -> Self {
         self.lands_enter_tapped = enabled;
         self
@@ -231,10 +258,12 @@ impl GrantPlayTaggedEffect {
             GrantPlayTaggedDuration::UntilYourNextTurnStart => {
                 Self::next_turn_number_for_player(game, player).saturating_sub(1)
             }
-            GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+            GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            | GrantPlayTaggedDuration::DuringYourNextTurn => {
                 Self::next_turn_number_for_player(game, player)
             }
-            GrantPlayTaggedDuration::UntilYourNextEndStep => {
+            GrantPlayTaggedDuration::UntilYourNextEndStep
+            | GrantPlayTaggedDuration::UntilPlayerNextEndStep => {
                 // Play permissions use `GrantSource::EffectUntilPlayerNextEndStep`,
                 // which tracks the real end-step boundary. This turn number
                 // only bounds the companion mana-spend permission: through
@@ -277,7 +306,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         if self.duration == GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield {
             if self.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
                 || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
-                || self.during_turns_attacked_with.is_some()
+                || self.during_turns_attacked_with.is_some() || self.during_turns_cast_another_spell
             { return Err(ExecutionError::IncompleteEvidence("unsupported extra source-lifetime permission scope".into())); }
             if !game.object(ctx.source).is_some_and(|source| source.zone == crate::zone::Zone::Battlefield)
                 || game.is_phased_out(ctx.source)
@@ -285,7 +314,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         }
         if self.permission_bound_mana && (self.mana_spend_mode.is_normal()
             || self.alternative_cost.is_some() || self.while_on_top_of_library || self.during_turns_counter_put_on_source.is_some()
-            || self.during_turns_attacked_with.is_some()
+            || self.during_turns_attacked_with.is_some() || self.during_turns_cast_another_spell
             || matches!(self.duration, GrantPlayTaggedDuration::UntilSourceExilesAnother
                 | GrantPlayTaggedDuration::ForAsLongAsYouControlSource | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
         { return Err(ExecutionError::IncompleteEvidence("unsupported marked tagged-permission scope".into())); }
@@ -395,7 +424,15 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let object_zone = object.zone;
             let object_owner = object.owner;
             let player_id = fixed_player_id.unwrap_or(object_owner);
-            let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
+            // "Until your next end step, each player may play ..." (Rocco,
+            // Street Chef): the lifetime is the effect controller's next end
+            // step, even for permissions granted to other players.
+            let duration_player = if self.duration == GrantPlayTaggedDuration::UntilYourNextEndStep {
+                ctx.controller
+            } else {
+                player_id
+            };
+            let expires_end_of_turn = self.expires_end_of_turn(game, duration_player);
 
             if !self.permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
                 mana_permission_stable_ids
@@ -417,6 +454,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     player: player_id,
                     filter: condition.filter.clone(),
                     minimum: condition.minimum,
+                }
+            } else if self.during_turns_cast_another_spell {
+                // "As long as you've cast another spell this turn": the
+                // player is fixed now; the cast history is read each turn.
+                GrantSource::EffectDuringTurnsCastAnotherSpell {
+                    source_id: ctx.source,
+                    player: player_id,
                 }
             } else if self.while_on_top_of_library {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
@@ -446,8 +490,14 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 )
             } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
-            } else if self.duration == GrantPlayTaggedDuration::UntilYourNextEndStep {
-                GrantSource::until_player_next_end_step(ctx.source, player_id, game)
+            } else if self.duration == GrantPlayTaggedDuration::DuringYourNextTurn {
+                GrantSource::during_player_next_turn(ctx.source, player_id, expires_end_of_turn)
+            } else if matches!(
+                self.duration,
+                GrantPlayTaggedDuration::UntilYourNextEndStep
+                    | GrantPlayTaggedDuration::UntilPlayerNextEndStep
+            ) {
+                GrantSource::until_player_next_end_step(ctx.source, duration_player, game)
             } else {
                 GrantSource::Effect {
                     source_id: ctx.source,
@@ -456,7 +506,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             };
             let constraints = PlayFromConstraints {
                 spell_cost_increase: self.spell_cost_increase.clone(),
+                spell_cost_increase_unless_targets: self.spell_cost_increase_unless_targets.clone(),
                 spell_cost_reduction: self.spell_cost_reduction.clone(),
+                spell_cost_reduction_per_opponent: self.spell_cost_reduction_per_opponent,
                 lands_enter_tapped: self.lands_enter_tapped,
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
                 cast_mana_spend_mode: if self.permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
@@ -510,7 +562,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     && !self.permission_bound_mana
                     && !matches!(self.duration, GrantPlayTaggedDuration::ForAsLongAsExiled | GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield))
                     || self.during_turns_counter_put_on_source.is_some()
-                    || self.during_turns_attacked_with.is_some())
+                    || self.during_turns_attacked_with.is_some()
+                    || self.during_turns_cast_another_spell)
                 .then_some(object_stable_id);
                 game.effect_store
                     .grant_registry

@@ -105,6 +105,29 @@ pub fn parse_voted_against_you_effects_shape(
     (!effect_tokens.is_empty()).then_some(VotedAgainstYouEffectsShape { effect_tokens })
 }
 
+/// "each opponent who voted for a choice you voted for <effects>" (Erestor
+/// of the Council): the opponents grouped with you by a finished vote.
+pub fn parse_voted_with_you_effects_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<VotedAgainstYouEffectsShape<'_>> {
+    let (_, rest) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::phrase(&["each", "opponent", "who", "voted", "for", "a", "choice"]),
+            primitives::phrase(&["that", "players", "who", "voted", "for", "a", "choice"]),
+        ))
+        .void(),
+    )?;
+    let (_, effect_tokens) = primitives::parse_prefix(
+        rest,
+        primitives::phrase(&["you", "voted", "for"]).void(),
+    )?;
+    let effect_tokens = crate::lexer::trim_lexed_commas(effect_tokens);
+    // "... you voted for may scry 2" is owned by the you-and-each-opponent
+    // reader, which also includes you.
+    (!effect_tokens.is_empty()).then_some(VotedAgainstYouEffectsShape { effect_tokens })
+}
+
 fn vote_word<'a>(input: &mut LexStream<'a>) -> ModalResult<()> {
     alt((primitives::kw("vote"), primitives::kw("votes")))
         .void()

@@ -96,6 +96,8 @@ pub struct ModalSpec {
     /// The players one of whom chooses the modes while the spell is cast,
     /// rather than its caster ("An opponent chooses one —", CR 700.2).
     pub cast_chooser: Option<crate::target::PlayerFilter>,
+    /// "You may choose N" (CR 700.2): choosing no modes is also legal.
+    pub optional_choice: bool,
 }
 
 /// The supported runtime extension categories for effects.

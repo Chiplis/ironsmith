@@ -193,6 +193,30 @@ fn parse_body(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextErr
             }),
         )));
     }
+    // "create that many 1/1 ... tokens" (Ria Ivor): one token per point of
+    // damage prevented by this shield.
+    if tokens.first().is_some_and(|token| token.is_word("create"))
+        && tokens.get(1).is_some_and(|token| token.is_word("that"))
+        && tokens.get(2).is_some_and(|token| token.is_word("many"))
+    {
+        let mut effects = crate::clause_support::parse_effect_sentences_lexed(tokens)?;
+        if let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Tokens(
+                        crate::cards::builders::TokenActionAst::CreateTokenWithMods {
+                            count, ..
+                        },
+                    ),
+                ..
+            }),
+        ] = effects.as_mut_slice()
+        {
+            *count = prevented_amount();
+            return Ok(effects.pop());
+        }
+        return Ok(None);
+    }
     // "each <sources> deal(s) damage equal to its power to that creature"
     if let Some(effect) = parse_each_source_power_damage(tokens)? {
         return Ok(Some(effect));

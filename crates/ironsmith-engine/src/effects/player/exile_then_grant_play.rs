@@ -18,6 +18,8 @@ pub struct ExileThenGrantPlayEffect {
     pub player: PlayerFilter,
     pub duration: GrantDuration,
     pub available_starting_next_turn: bool,
+    /// The exile is warp's delayed trigger: its arrivals become warped cards.
+    pub marks_warped: bool,
 }
 
 impl ExileThenGrantPlayEffect {
@@ -27,7 +29,14 @@ impl ExileThenGrantPlayEffect {
             player,
             duration,
             available_starting_next_turn: false,
+            marks_warped: false,
         }
+    }
+
+    /// Warp's own end-step exile (CR 702.185a): the exiled card is warped.
+    pub fn warped(mut self) -> Self {
+        self.marks_warped = true;
+        self
     }
 
     pub fn starting_next_turn(mut self) -> Self {
@@ -107,6 +116,11 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
                                     .is_some_and(|card| card.zone == Zone::Exile)
                             })
                             .collect::<Vec<_>>();
+                        if self.marks_warped {
+                            for id in &exiled_ids {
+                                game.set_warped(*id);
+                            }
+                        }
 
                         // Execute the permission child inside original-movement completion:
                         // replacement-added programs must already see this permission.

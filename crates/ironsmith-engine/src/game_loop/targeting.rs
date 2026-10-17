@@ -3297,6 +3297,18 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
         PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
             base: Box::new(specialize_iterated_player_filter(base, player)),
         },
+        PlayerFilter::MostLifeTiedAmong { base } => PlayerFilter::MostLifeTiedAmong {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+        },
+        PlayerFilter::QuantityGreaterThanPlayer {
+            base,
+            other,
+            quantity,
+        } => PlayerFilter::QuantityGreaterThanPlayer {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+            other: Box::new(specialize_iterated_player_filter(other, player)),
+            quantity: *quantity,
+        },
         PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => {
             PlayerFilter::WasDealtDamageBySourceThisGame {
                 base: Box::new(specialize_iterated_player_filter(base, player)),
@@ -3330,6 +3342,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
         PlayerFilter::OwnsMatchingObject { filter } => PlayerFilter::OwnsMatchingObject {
+            filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
+        },
+        PlayerFilter::ControlsMatchingObject { filter } => PlayerFilter::ControlsMatchingObject {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
         },
         PlayerFilter::ControlsFewestTied { filter } => PlayerFilter::ControlsFewestTied {
@@ -4339,7 +4354,7 @@ pub fn player_matches_filter_with_combat(
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             let filter_ctx = game.filter_context_for(controller, None);
             crate::filter::player_filter_matches_game(filter, player_id, game, &filter_ctx)
         }
@@ -4710,6 +4725,11 @@ pub(super) fn choose_spec_with_recorded_players_from_event(
         event.and_then(|event| event.downcast::<crate::events::MonarchChangedEvent>())
     {
         spec = specialize_iterated_player_choose_spec(&spec, change.monarch);
+    } else if let Some(player) = event.and_then(|event| event.trigger_player()) {
+        // "At the beginning of each player's upkeep, that player chooses
+        // target player who ... is their opponent" (Oath of Mages): a target
+        // filter's "that player" is the triggering event's player.
+        spec = specialize_iterated_player_choose_spec(&spec, player);
     }
     spec
 }
@@ -4843,12 +4863,17 @@ fn specialize_target_player_relation(
         {
             *filter = PlayerFilter::Specific(player);
         }
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
+            specialize_target_player_relation(base, player, relation);
+            specialize_target_player_relation(other, player, relation);
+        }
         PlayerFilter::Target(inner)
         | PlayerFilter::AliasedTarget(inner)
         | PlayerFilter::WasDealtDamageBySourceThisGame { base: inner, .. }
         | PlayerFilter::LostLifeThisTurn { base: inner }
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
         | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::MostLifeTiedAmong { base: inner }
         | PlayerFilter::OpponentOf(inner)
         | PlayerFilter::PlayerToLeftOf(inner)
         | PlayerFilter::MaxSpeed { base: inner, .. } => {

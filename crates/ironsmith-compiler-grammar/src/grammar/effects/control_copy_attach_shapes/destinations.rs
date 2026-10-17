@@ -121,6 +121,9 @@ pub struct OntoBattlefieldDestinationShape {
     /// "blocking that creature": the blocked attacker's reference tokens
     /// (CR 509.4).
     pub blocking_tokens: Option<Vec<OwnedLexToken>>,
+    /// "onto the battlefield transformed" (Startled Awake): a double-faced
+    /// card enters with its back face up (CR 712.14).
+    pub transformed: bool,
 }
 
 fn article(input: &mut crate::lexer::LexStream<'_>) -> winnow::error::ModalResult<()> {

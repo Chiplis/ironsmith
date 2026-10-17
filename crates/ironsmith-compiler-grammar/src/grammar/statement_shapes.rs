@@ -71,6 +71,46 @@ fn complete_coin_modifier(tokens: &[OwnedLexToken], expected: &[&str], comma_aft
     word == expected.len()
 }
 
+/// "If you would roll one or more six-sided dice, instead roll them and you
+/// may exchange one result with this creature's base power or base
+/// toughness." (Vedalken Squirrel-Whacker). Returns the die size the
+/// replacement watches (`None` for any die).
+pub fn parse_die_roll_exchange_with_source_base_pt(tokens: &[OwnedLexToken]) -> Option<Option<u32>> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = words.strip_suffix(&["."]).unwrap_or(words.as_slice());
+    let ["if", "you", "would", "roll", "one", "or", "more", rest @ ..] = words else {
+        return None;
+    };
+    let (sides, rest) = match rest {
+        ["dice", rest @ ..] => (None, rest),
+        [size, "dice", rest @ ..] => {
+            let sides = size
+                .strip_suffix("-sided")
+                .and_then(crate::util::parse_number_word_u32)
+                .or_else(|| {
+                    size.strip_prefix('d').and_then(|digits| digits.parse::<u32>().ok())
+                })?;
+            (Some(sides), rest)
+        }
+        [size, "sided", "dice", rest @ ..] => {
+            (Some(crate::util::parse_number_word_u32(size)?), rest)
+        }
+        _ => return None,
+    };
+    let rest = rest.strip_prefix(&[","]).unwrap_or(rest);
+    matches!(
+        rest,
+        [
+            "instead", "roll", "them", "and", "you", "may", "exchange", "one", "result", "with",
+            "this", _, "base", "power", "or", "base", "toughness"
+        ] | [
+            "instead", "roll", "them", "and", "you", "may", "exchange", "one", "result", "with",
+            "this", _, "s", "base", "power", "or", "base", "toughness"
+        ]
+    )
+    .then_some(sides)
+}
+
 pub fn is_extra_coin_ignore_one(tokens: &[OwnedLexToken]) -> bool {
     complete_coin_modifier(tokens, &[
         "if", "you", "would", "flip", "a", "coin", "instead", "flip", "two", "coins", "and", "ignore", "one",
@@ -96,6 +136,19 @@ pub fn parse_die_roll_adjustment_tokens(
         )
         && surface_has_sequence(tokens, &["do", "this", "only", "once", "each", "turn"]))
     .then_some(DieRollAdjustmentShape)
+    .or_else(|| {
+        // "After you roll a die, you may remove a +1/+1 counter from this
+        // creature. If you do, increase or decrease the result by 1."
+        (surface_starts_with(tokens, &["after", "you", "roll", "a", "die"])
+            && surface_has_sequence(tokens, &["you", "may", "remove", "a"])
+            && surface_has_sequence(tokens, &["counter", "from", "this"])
+            && surface_has_sequence(tokens, &["if", "you", "do"])
+            && surface_has_sequence(
+                tokens,
+                &["increase", "or", "decrease", "the", "result", "by"],
+            ))
+        .then_some(DieRollAdjustmentShape)
+    })
 }
 
 pub fn parse_any_player_no_one_does_sentences(

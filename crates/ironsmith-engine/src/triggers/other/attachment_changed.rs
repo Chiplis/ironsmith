@@ -31,11 +31,29 @@ impl TriggerMatcher for AttachmentChangedTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.participants(event)
             .is_some_and(|(attachment, recipient)| {
-                self.attachment
+                if !self
+                    .attachment
                     .matches_snapshot(attachment, &ctx.filter_ctx, ctx.game)
-                    && self
+                {
+                    return false;
+                }
+                // "a nonland permanent ... with mana value less than or equal
+                // to that Aura's mana value" (Eriette): the recipient filter
+                // compares against the matched attachment participant.
+                if self.recipient.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG
+                }) {
+                    let mut filter_ctx = ctx.filter_ctx.clone();
+                    filter_ctx.tagged_objects.insert(
+                        crate::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG),
+                        vec![attachment.clone()],
+                    );
+                    return self
                         .recipient
-                        .matches_snapshot(recipient, &ctx.filter_ctx, ctx.game)
+                        .matches_snapshot(recipient, &filter_ctx, ctx.game);
+                }
+                self.recipient
+                    .matches_snapshot(recipient, &ctx.filter_ctx, ctx.game)
             })
     }
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {

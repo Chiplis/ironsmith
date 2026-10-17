@@ -83,7 +83,8 @@ use crate::ids::{ObjectId, PlayerId};
 pub use ironsmith_core::{
     IntrinsicStartingCounter, CompanionDeckCardFacts, CompanionDeckCondition, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EscalateSpec, GraveyardCountMetric, PregameActionKind,
-    PregameBeginOnBattlefieldSpec, PregameRevealFromOpeningHandSpec, SpliceQuality, SpliceSpec,
+    PregameBeginOnBattlefieldSpec, PregameExileDraftedCardsSpec, PregameRevealFromOpeningHandSpec,
+    SpliceQuality, SpliceSpec,
 };
 
 /// Combat-object kind against which a defending player's per-attacker tax is
@@ -913,6 +914,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "As this becomes attached to a creature, choose a creature card name
+    /// and a creature type" (Psychic Paper).
+    fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
+        false
+    }
+
     /// Returns info for "as this enters, choose a player" abilities.
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         None
@@ -1124,6 +1131,10 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     /// is reduced by (CR 702.27).
     /// Generic reduction and timing permission for the Foretell special action.
     fn foretell_special_action_modifier(&self) -> Option<(u32, bool)> { None }
+    /// The modifier applies only to its controller's first foretell each turn.
+    fn foretell_special_action_first_each_turn(&self) -> bool { false }
+    /// Generic reduction for the Plot special action (CR 702.170a).
+    fn plot_special_action_reduction(&self) -> Option<u32> { None }
 
     fn buyback_cost_reduction_amount(&self) -> Option<u32> {
         None
@@ -1251,6 +1262,14 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// "can untap only permanents of the chosen type this step" (Storage
+    /// Matrix): the affected players and the card types offered.
+    fn untap_step_chosen_card_types(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &[crate::types::CardType])> {
+        None
+    }
+
     /// "If an opponent would search a library, that player searches the top N
     /// cards of that library instead": the affected searchers (relative to the
     /// source controller) and N.
@@ -1270,6 +1289,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns the number of optional additional votes this ability grants while voting.
     fn optional_additional_votes_while_voting(&self) -> u32 {
+        0
+    }
+
+    /// Additional times each opponent of this ability's controller faces a
+    /// villainous choice (The Valeyard).
+    fn additional_villainous_choices_for_opponents(&self) -> u32 {
         0
     }
 
@@ -1485,6 +1510,8 @@ impl PowerToughnessChoiceOption {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
     pub options: Vec<PowerToughnessChoiceOption>,
+    /// The option is picked at random (a coin flip) rather than chosen.
+    pub at_random: bool,
 }
 
 /// Spec for "you may have this enter as a copy ..." abilities.
@@ -1576,6 +1603,12 @@ pub struct DieRollResultAdjustmentSpec {
     pub amount: u32,
     pub reroll: bool,
     pub once_each_turn: bool,
+    /// Paid by removing one counter of this kind from the source instead of life.
+    pub source_counter_cost: Option<crate::object::CounterType>,
+    /// Swap one result with the source's base power or base toughness.
+    pub exchange_with_source_base_pt: bool,
+    /// Only rolls of dice with this many sides qualify.
+    pub sides: Option<u32>,
 }
 
 // Implement Clone for Box<dyn StaticAbilityKind>
@@ -1712,6 +1745,10 @@ impl StaticAbility {
 
     pub fn color_choice_as_becomes_attached(&self) -> Option<ChooseColorAsBecomesAttachedSpec> {
         self.0.color_choice_as_becomes_attached()
+    }
+
+    pub fn creature_card_name_and_type_choice_as_becomes_attached(&self) -> bool {
+        self.0.creature_card_name_and_type_choice_as_becomes_attached()
     }
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
@@ -2490,6 +2527,14 @@ impl StaticAbility {
         self.0.foretell_special_action_modifier()
     }
 
+    pub fn foretell_special_action_first_each_turn(&self) -> bool {
+        self.0.foretell_special_action_first_each_turn()
+    }
+
+    pub fn plot_special_action_reduction(&self) -> Option<u32> {
+        self.0.plot_special_action_reduction()
+    }
+
     pub fn buyback_cost_reduction_amount(&self) -> Option<u32> {
         self.0.buyback_cost_reduction_amount()
     }
@@ -2538,6 +2583,12 @@ impl StaticAbility {
         self.0.untap_step_limit()
     }
 
+    pub fn untap_step_chosen_card_types_spec(
+        &self,
+    ) -> Option<(&crate::target::PlayerFilter, &[crate::types::CardType])> {
+        self.0.untap_step_chosen_card_types()
+    }
+
     pub fn search_top_card_limit_spec(&self) -> Option<(&crate::target::PlayerFilter, u32)> {
         self.0.search_top_card_limit()
     }
@@ -2552,6 +2603,10 @@ impl StaticAbility {
 
     pub fn optional_additional_votes_while_voting(&self) -> u32 {
         self.0.optional_additional_votes_while_voting()
+    }
+
+    pub fn additional_villainous_choices_for_opponents(&self) -> u32 {
+        self.0.additional_villainous_choices_for_opponents()
     }
 
     pub fn is_changeling(&self) -> bool {
@@ -2814,6 +2869,14 @@ impl StaticAbility {
 
     pub fn cant_attack_its_owner() -> Self {
         Self::new(CantAttackItsOwner)
+    }
+
+    pub fn lethal_damage_must_be_from_single_source() -> Self {
+        Self::new(LethalDamageMustBeFromSingleSource)
+    }
+
+    pub fn cant_attack_player_already_attacked_this_turn() -> Self {
+        Self::new(CantAttackPlayerAlreadyAttackedThisTurn)
     }
 
     pub fn cant_attack_unless_controller_cast_creature_spell_this_turn() -> Self {
@@ -3149,6 +3212,10 @@ impl StaticAbility {
         Self::new(BoastTwiceEachTurn)
     }
 
+    pub fn loyalty_abilities_twice_each_turn() -> Self {
+        Self::new(LoyaltyAbilitiesTwiceEachTurn)
+    }
+
     pub fn first_equip_cost_alternative(display_text: impl Into<String>) -> Self {
         Self::new(FirstEquipCostAlternative::new(display_text))
     }
@@ -3167,6 +3234,42 @@ impl StaticAbility {
 
     pub fn vote_additional_vote_while_voting() -> Self {
         Self::new(VoteAdditionalVoteWhileVoting)
+    }
+
+    pub fn opponents_face_villainous_choice_additional_time() -> Self {
+        Self::new(OpponentsFaceVillainousChoiceAdditionalTime)
+    }
+
+    pub fn lose_life_for_unspent_mana() -> Self {
+        Self::new(LoseLifeForUnspentMana)
+    }
+
+    pub fn source_loyalty_abilities_twice_each_turn() -> Self {
+        Self::new(SourceLoyaltyAbilitiesTwiceEachTurn)
+    }
+
+    pub fn may_discard_source_any_time_you_could_cast_instant() -> Self {
+        Self::new(MayDiscardSourceAnyTimeYouCouldCastInstant)
+    }
+
+    pub fn power_up_abilities_additional_time() -> Self {
+        Self::new(PowerUpAbilitiesAdditionalTime)
+    }
+
+    pub fn opponents_attack_you_with_at_least_one_creature() -> Self {
+        Self::new(OpponentsAttackYouWithAtLeastOneCreature)
+    }
+
+    pub fn opponents_attack_with_at_least_one_creature() -> Self {
+        Self::new(OpponentsAttackWithAtLeastOneCreature)
+    }
+
+    pub fn cant_be_blocked_unless_all_defending_creatures_block() -> Self {
+        Self::new(CantBeBlockedUnlessAllDefendingCreaturesBlock)
+    }
+
+    pub fn may_skip_turn_while_source_tapped_then_untap() -> Self {
+        Self::new(MaySkipTurnWhileSourceTappedThenUntap)
     }
 
     pub fn may_choose_not_to_untap_during_untap_step(subject: impl Into<String>) -> Self {
@@ -3242,6 +3345,18 @@ impl StaticAbility {
             counter_types,
             count,
         ))
+    }
+
+    pub fn enters_with_counter_choice_if_condition(
+        counter_types: Vec<crate::object::CounterType>,
+        count: crate::effect::Value,
+        condition: crate::effect::Condition,
+        condition_display: String,
+    ) -> Self {
+        Self::new(
+            crate::static_abilities::misc::EntersWithCounterChoice::new(counter_types, count)
+                .with_condition(condition, condition_display),
+        )
     }
 
     pub fn enters_with_counters_if_condition(
@@ -3517,6 +3632,23 @@ impl StaticAbility {
         ))
     }
 
+    /// "As long as the top card of your graveyard is a creature card, this
+    /// creature has the full text of that card and has the text ..."
+    /// (Volrath's Shapeshifter).
+    pub fn source_has_full_text_of_top_graveyard_card(
+        filter: crate::target::ObjectFilter,
+        abilities: Vec<crate::ability::Ability>,
+        ability_labels: Vec<String>,
+        display: String,
+    ) -> Self {
+        Self::new(SourceHasFullTextOfTopGraveyardCard::new(
+            filter,
+            abilities,
+            ability_labels,
+            display,
+        ))
+    }
+
     pub fn make_colorless(filter: crate::target::ObjectFilter) -> Self {
         Self::new(MakeColorlessForFilter::new(filter))
     }
@@ -3609,6 +3741,37 @@ impl StaticAbility {
 
     pub fn may_assign_damage_as_unblocked() -> Self {
         Self::new(MayAssignDamageAsUnblocked)
+    }
+
+    pub fn assigns_damage_as_unblocked() -> Self {
+        Self::new(AssignsDamageAsUnblocked)
+    }
+
+    pub fn may_assign_unblocked_damage_to_defending_creature() -> Self {
+        Self::new(MayAssignUnblockedDamageToDefendingCreature)
+    }
+
+    pub fn attached_has_source_ability_sticker_abilities() -> Self {
+        Self::new(AttachedHasSourceAbilityStickerAbilities)
+    }
+
+    pub fn source_has_ability_sticker_abilities_of(
+        filter: crate::target::ObjectFilter,
+        display: String,
+    ) -> Self {
+        Self::new(SourceHasAbilityStickerAbilitiesOf { filter, display })
+    }
+
+    pub fn attached_has_all_nonlegendary_creature_card_names() -> Self {
+        Self::new(AttachedHasAllNonlegendaryCreatureCardNames)
+    }
+
+    pub fn monarch_controls_attached_permanent() -> Self {
+        Self::new(MonarchControlsAttachedPermanent)
+    }
+
+    pub fn all_color_words_become_chosen_color() -> Self {
+        Self::new(AllColorWordsBecomeChosenColor)
     }
 
     pub fn you_assign_combat_damage_of_creatures_attacking_you() -> Self {
@@ -3739,6 +3902,10 @@ impl StaticAbility {
             counter_type,
             display,
         ))
+    }
+
+    pub fn heal_damage_before_damage_to_self(display: impl Into<String>) -> Self {
+        Self::new(HealDamageBeforeDamageToSelf::new(display))
     }
 
     pub fn prevent_constrained_damage_to_self_put_counters_instead(
@@ -4001,6 +4168,14 @@ impl StaticAbility {
         Self::new(ChooseColorAsBecomesAttached::new(display))
     }
 
+    pub fn choose_creature_card_name_and_type_as_becomes_attached(display: String) -> Self {
+        Self::new(ChooseCreatureCardNameAndTypeAsBecomesAttached { display })
+    }
+
+    pub fn attached_has_source_chosen_name_and_creature_type() -> Self {
+        Self::new(AttachedHasSourceChosenNameAndCreatureType)
+    }
+
     pub fn choose_player_as_enters(display: String) -> Self {
         Self::choose_player_as_enters_matching(crate::target::PlayerFilter::Any, display)
     }
@@ -4110,8 +4285,16 @@ impl StaticAbility {
         Self::new(EnchantedLandIsChosenType::new(display))
     }
 
+    pub fn attached_is_copy_of_chosen_object(display: String) -> Self {
+        Self::new(AttachedIsCopyOfChosenObject::new(display))
+    }
+
     pub fn source_land_is_chosen_type(display: String) -> Self {
         Self::new(SourceLandIsChosenType::new(display))
+    }
+
+    pub fn set_chosen_creature_type(filter: crate::target::ObjectFilter, display: String) -> Self {
+        Self::new(AddChosenCreatureTypeForFilter::new(filter, display).replacing_existing())
     }
 
     pub fn add_chosen_creature_type(filter: crate::target::ObjectFilter, display: String) -> Self {
@@ -4358,12 +4541,32 @@ impl StaticAbility {
         replacement_effects: Vec<crate::effect::Effect>,
         display: String,
     ) -> Self {
-        Self::new(DrawReplacementWithEffects::new(
+        Self::draw_replacement_with_effects_and_cycling_source(
             drawer,
             except_first_of_draw_step,
             replacement_effects,
             display,
-        ))
+            None,
+        )
+    }
+
+    /// As [`Self::draw_replacement_with_effects`], optionally scoped to draws
+    /// a resolving cycling ability of a matching source proposes.
+    pub fn draw_replacement_with_effects_and_cycling_source(
+        drawer: crate::target::PlayerFilter,
+        except_first_of_draw_step: bool,
+        replacement_effects: Vec<crate::effect::Effect>,
+        display: String,
+        cycling_source: Option<crate::target::ObjectFilter>,
+    ) -> Self {
+        let mut replacement = DrawReplacementWithEffects::new(
+            drawer,
+            except_first_of_draw_step,
+            replacement_effects,
+            display,
+        );
+        replacement.cycling_source = cycling_source;
+        Self::new(replacement)
     }
 
     pub fn prevent_matching_damage_with_follow_up(
@@ -4460,6 +4663,21 @@ impl StaticAbility {
         ))
     }
 
+    /// "If a modular triggered ability would put one or more +1/+1 counters
+    /// on a creature you control, that many plus one ... instead." (Zabaz)
+    pub fn add_caused_counters_placement_replacement(
+        filter: crate::target::ObjectFilter,
+        counter_type: Option<crate::object::CounterType>,
+        additional: impl Into<i64>,
+        cause: crate::events::cause::CauseFilter,
+        display: String,
+    ) -> Self {
+        Self::new(
+            AddCountersPlacementReplacement::new(filter, counter_type, additional, display)
+                .with_cause(cause),
+        )
+    }
+
     /// "If you would get one or more counters, you get that many plus one ..."
     pub fn add_player_counters_placement_replacement(
         player_filter: crate::target::PlayerFilter,
@@ -4538,7 +4756,20 @@ impl StaticAbility {
     }
 
     pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
-        Self::new(OpponentEffectDiscardThisToBattlefieldReplacement)
+        Self::new(OpponentEffectDiscardThisToBattlefieldReplacement::default())
+    }
+
+    pub fn opponent_effect_discard_this_to_battlefield_with_counters_replacement(
+        counter_type: crate::object::CounterType,
+        count: u32,
+    ) -> Self {
+        Self::new(OpponentEffectDiscardThisToBattlefieldReplacement {
+            entry_counters: vec![(counter_type, count)],
+        })
+    }
+
+    pub fn opponent_effect_discard_to_library_replacement() -> Self {
+        Self::new(OpponentEffectDiscardToLibraryReplacement)
     }
 
     pub fn duplicate_matching_triggered_abilities(
@@ -4611,6 +4842,21 @@ impl StaticAbility {
             optional,
             display,
         ))
+    }
+
+    /// A conditional draw replacement that, when `except_first_of_draw_step`
+    /// is set, never replaces the first card drawn in a draw step.
+    pub fn conditional_draw_replacement_with_draw_step_exception(
+        condition: crate::effect::Condition,
+        replacement_effects: Vec<crate::effect::Effect>,
+        optional: bool,
+        except_first_of_draw_step: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let mut replacement =
+            ConditionalDrawReplacement::new(condition, replacement_effects, optional, display);
+        replacement.except_first_of_draw_step = except_first_of_draw_step;
+        Self::new(replacement)
     }
 
     pub fn lose_game_replacement(
@@ -4845,6 +5091,18 @@ impl StaticAbility {
         })
     }
 
+    pub fn untap_step_chosen_card_type_only(
+        player: crate::target::PlayerFilter,
+        card_types: Vec<crate::types::CardType>,
+        display: String,
+    ) -> Self {
+        Self::new(misc::UntapStepChosenCardTypeOnly {
+            player,
+            card_types,
+            display,
+        })
+    }
+
     pub fn player_protection_from(
         player: crate::target::PlayerFilter,
         source_filter: crate::target::ObjectFilter,
@@ -5070,6 +5328,30 @@ impl StaticAbility {
             once_each_turn,
             display,
         ))
+    }
+
+    pub fn die_roll_result_exchange_with_source_base_pt(
+        player: crate::target::PlayerFilter,
+        sides: Option<u32>,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            DieRollResultAdjustment::new(player, 0, 0, false, display)
+                .with_exchange_with_source_base_pt(sides),
+        )
+    }
+
+    pub fn die_roll_result_adjustment_removing_source_counter(
+        player: crate::target::PlayerFilter,
+        counter_type: crate::object::CounterType,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            DieRollResultAdjustment::new(player, 0, amount, once_each_turn, display)
+                .with_source_counter_cost(counter_type),
+        )
     }
 
     pub fn die_roll_reroll(

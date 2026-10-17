@@ -54,6 +54,15 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                 }
                 None => None,
             };
+            let among_player = match &self.among_attacked_by {
+                Some(filter) => {
+                    match crate::effects::helpers::resolve_player_filter(game, filter, ctx) {
+                        Ok(player) => Some(player),
+                        Err(_) => return Ok(EffectOutcome::count(0)),
+                    }
+                }
+                None => None,
+            };
             let mut changed = 0;
             for creature in creatures {
                 let Some(current) = game.combat.as_ref().and_then(|combat| {
@@ -63,7 +72,89 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                         .find(|info| info.creature == creature)
                         .map(|info| info.target.clone())
                 }) else {
-                    // Only a creature still attacking has an attack to redirect.
+                    // "<it> is attacking a player or planeswalker that
+                    // opponent is attacking": the effect's controller chooses
+                    // among what that player's other attackers attack, and the
+                    // creature enters combat attacking it (CR 506.3d).
+                    if self.enters_combat
+                        && let Some(attacking_player) = among_player
+                    {
+                        if !super::enter_attacking::can_enter_attacking(game, creature) {
+                            continue;
+                        }
+                        let Some(controller) =
+                            game.object(creature).map(|object| game.controller_of(object))
+                        else {
+                            continue;
+                        };
+                        let legal = super::enter_attacking::enters_attacking_targets(game, controller);
+                        let mut targets: Vec<AttackTarget> = Vec::new();
+                        if let Some(combat) = game.combat.as_ref() {
+                            for info in &combat.attackers {
+                                if info.creature == creature
+                                    || matches!(info.target, AttackTarget::Nothing { .. })
+                                    || !game.object(info.creature).is_some_and(|object| {
+                                        game.controller_of(object) == attacking_player
+                                    })
+                                    || !legal.contains(&info.target)
+                                    || targets.contains(&info.target)
+                                {
+                                    continue;
+                                }
+                                targets.push(info.target.clone());
+                            }
+                        }
+                        if targets.is_empty() {
+                            continue;
+                        }
+                        let chosen = if targets.len() == 1 {
+                            targets[0].clone()
+                        } else {
+                            let options = targets
+                                .iter()
+                                .enumerate()
+                                .map(|(index, target)| {
+                                    crate::decisions::DisplayOption::new(
+                                        index,
+                                        describe_attack_target(game, target),
+                                    )
+                                })
+                                .collect();
+                            let source = ctx.source;
+                            let chooser = ctx.controller;
+                            let selected = crate::decisions::make_decision(
+                                game,
+                                &mut *ctx.decision_maker,
+                                chooser,
+                                Some(source),
+                                crate::decisions::ChoiceSpec::single(source, options),
+                            );
+                            if ctx.decision_maker.awaiting_choice() {
+                                return Ok(EffectOutcome::count(0));
+                            }
+                            let index = selected.into_iter().next().unwrap_or(0);
+                            targets.get(index).cloned().unwrap_or_else(|| targets[0].clone())
+                        };
+                        game.add_entering_attacker(creature, chosen);
+                        changed += 1;
+                        continue;
+                    }
+                    // "it's attacking that player" puts a creature that isn't
+                    // attacking into combat attacking that player (CR 506.3d);
+                    // it was never declared, so no attack triggers fire.
+                    if self.enters_combat
+                        && let Some(player) = fixed_player
+                        && super::enter_attacking::can_enter_attacking(game, creature)
+                        && let Some(controller) =
+                            game.object(creature).map(|object| game.controller_of(object))
+                        && super::enter_attacking::enters_attacking_targets(game, controller)
+                            .contains(&AttackTarget::Player(player))
+                    {
+                        game.add_entering_attacker(creature, AttackTarget::Player(player));
+                        changed += 1;
+                    }
+                    // Otherwise only a creature still attacking has an attack
+                    // to redirect.
                     continue;
                 };
                 let Some(controller) = game.object(creature).map(|object| game.controller_of(object))

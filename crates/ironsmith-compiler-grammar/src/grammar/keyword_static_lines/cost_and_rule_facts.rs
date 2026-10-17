@@ -229,7 +229,15 @@ pub fn parse_legend_rule_doesnt_apply_tokens(
             .is_some()
         && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some())
     .then(|| {
+        // "creature tokens you control" (The Master, Multiplied) is a typed
+        // object scope, read by the controller-scope object reader.
         if primitives::find_prefix(tokens, || {
+            primitives::phrase(&["creature", "tokens", "you", "control"]).void()
+        })
+        .is_some()
+        {
+            LegendRuleScopeShape::Controller
+        } else if primitives::find_prefix(tokens, || {
             primitives::phrase(&["creatures", "you", "control"]).void()
         })
         .is_some()
@@ -266,6 +274,36 @@ pub fn parse_all_cards_spells_permanents_colorless_tokens(tokens: &[OwnedLexToke
             &["permanents"],
             &["are"],
             &["colorless"],
+        ],
+    )
+}
+
+/// "All instances of color words in the text of spells and permanents are
+/// changed to the chosen color word." (CR 612.2)
+pub fn parse_all_color_words_changed_to_chosen_color_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    crate::word_primitives::parse_choice_sequence_complete(
+        &words,
+        &[
+            &["all"],
+            &["instances"],
+            &["of"],
+            &["color"],
+            &["words"],
+            &["in"],
+            &["the"],
+            &["text"],
+            &["of"],
+            &["spells"],
+            &["and"],
+            &["permanents"],
+            &["are"],
+            &["changed"],
+            &["to"],
+            &["the"],
+            &["chosen"],
+            &["color"],
+            &["word"],
         ],
     )
 }

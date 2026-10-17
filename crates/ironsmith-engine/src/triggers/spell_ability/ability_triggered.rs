@@ -13,6 +13,8 @@ pub struct AbilityTriggeredTrigger {
     pub source_filter: Option<ObjectFilter>,
     pub caused_by_source_entering: bool,
     pub caused_by_source_attacking: bool,
+    /// Any permanent entering the battlefield caused the ability to trigger.
+    pub caused_by_permanent_entering: bool,
 }
 
 impl AbilityTriggeredTrigger {
@@ -30,7 +32,13 @@ impl AbilityTriggeredTrigger {
             source_filter,
             caused_by_source_entering,
             caused_by_source_attacking: false,
+            caused_by_permanent_entering: false,
         }
+    }
+
+    pub fn with_caused_by_permanent_entering(mut self, caused_by_permanent_entering: bool) -> Self {
+        self.caused_by_permanent_entering = caused_by_permanent_entering;
+        self
     }
 
     pub fn with_caused_by_source_attacking(mut self, caused_by_source_attacking: bool) -> Self {
@@ -76,6 +84,15 @@ impl TriggerMatcher for AbilityTriggeredTrigger {
         {
             return false;
         }
+        // A permanent entering the battlefield caused it (CR 603.6a).
+        if self.caused_by_permanent_entering
+            && !event
+                .zone_change_cause
+                .as_ref()
+                .is_some_and(|cause| cause.to == crate::zone::Zone::Battlefield)
+        {
+            return false;
+        }
         // The source's own attack declaration (CR 508.1m, 508.3a) caused it.
         if self.caused_by_source_attacking
             && !(event.cause_kind == Some(EventKind::CreatureAttacked)
@@ -91,6 +108,9 @@ impl TriggerMatcher for AbilityTriggeredTrigger {
     }
 
     fn display(&self) -> String {
+        if self.caused_by_permanent_entering {
+            return "Whenever a permanent entering causes a triggered ability to trigger".to_string();
+        }
         if self.caused_by_source_attacking {
             let controller = self
                 .source_filter

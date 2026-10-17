@@ -166,12 +166,15 @@ impl EffectExecutor for ChooseCardNameEffect {
         // The resolution tag names this choice only. Persistent source names
         // may include other choices made by its abilities, but must not leak
         // into a later resolution's singular chosen-name comparison.
-        let snapshots = vec![synthetic_chosen_name_snapshot(
-            ctx.source,
-            chooser,
-            canonical_name,
-        )];
-        ctx.set_tagged_objects(self.tag.clone(), snapshots);
+        let mut snapshot = synthetic_chosen_name_snapshot(ctx.source, chooser, canonical_name);
+        if ctx.iterated_player.is_some() {
+            // "Each player chooses a card name": every chooser's name must
+            // survive the per-player tag merge, which keys snapshots by stable
+            // identity. A fresh synthetic identity keeps each choice distinct
+            // (its controller remains the chooser).
+            snapshot.stable_id = StableId::from(game.new_object_id());
+        }
+        ctx.set_tagged_objects(self.tag.clone(), vec![snapshot]);
         Ok(EffectOutcome::count(1))
     }
 }

@@ -816,6 +816,11 @@ pub struct TurnRunner {
     pending_distribution: Option<Vec<(crate::game_state::Target, u32)>>,
     /// Pending yes/no response for runner-driven boolean decisions.
     pending_boolean: Option<bool>,
+    /// CR 614.10 turn-begin skip offer (player, source) awaiting its answer.
+    pending_turn_begin_skip: Option<(PlayerId, ObjectId)>,
+    /// CR 614.10 draw-step skip offer (player, source, "if you do" program)
+    /// awaiting its answer (Fasting).
+    pending_draw_step_skip: Option<(PlayerId, ObjectId, Vec<crate::effect::Effect>)>,
     /// Pending CR 616 choice among draw replacement effects.
     pending_draw_replacement: Option<PendingDrawReplacementChoice>,
     /// Pending first-draw reveal decisions that pause the draw step.
@@ -883,6 +888,8 @@ impl TurnRunner {
             pending_discard: None,
             pending_distribution: None,
             pending_boolean: None,
+            pending_turn_begin_skip: None,
+            pending_draw_step_skip: None,
             pending_draw_replacement: None,
             pending_draw_reveal: None,
             pending_draw_replacement_effects: None,
@@ -1170,6 +1177,8 @@ impl TurnRunner {
                 for player in game.turn_players() {
                     game.mark_upkeep_began(player);
                 }
+                game.turn_store.upkeep_steps_started_this_turn =
+                    game.turn_store.upkeep_steps_started_this_turn.saturating_add(1);
                 game.reset_priority_for_new_window();
                 try_drain_pending_trigger_events(game, tq)?;
                 generate_and_queue_step_triggers(game, tq);
@@ -1197,16 +1206,40 @@ impl TurnRunner {
                 game.turn.step = Some(Step::Draw);
                 game.refresh_continuous_state()
                     .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+                let draw_not_started = self.remaining_draw_players.is_empty()
+                    && self.pending_draw_replacement.is_none()
+                    && self.pending_draw_replacement_effects.is_none()
+                    && self.pending_draw_reveal.is_none()
+                    && self.pending_commander_choice.is_none();
+                // CR 614.10: "If you would begin your draw step, you may skip
+                // that step instead" (Fasting) is offered before the step
+                // begins; an accepted skip passes the step exactly like the
+                // mandatory skip below.
+                if draw_not_started {
+                    match self.offer_draw_step_skips(game, tq)? {
+                        DrawStepSkipOffer::Prompt(prompt) => {
+                            return Ok(TurnAction::Decision(prompt));
+                        }
+                        DrawStepSkipOffer::Skipped => {
+                            game.turn_store.draw_step_skip_declined.clear();
+                            game.reset_priority_for_new_window();
+                            self.state = finish_step_and_phase(
+                                game,
+                                Step::Draw,
+                                Phase::Beginning,
+                                TurnScheduleDestination::Phase(Phase::FirstMain),
+                            );
+                            return Ok(TurnAction::Continue);
+                        }
+                        DrawStepSkipOffer::None => {}
+                    }
+                }
                 // CR 614.10 / 500.11: "Skip your draw step" (Necropotence)
                 // proceeds past the whole step as though it didn't exist: no
                 // turn-based draw, no "beginning of draw step" triggers and no
                 // priority window. Anything waiting for the draw step waits
                 // for the next one that actually happens (CR 614.10a).
-                if self.remaining_draw_players.is_empty()
-                    && self.pending_draw_replacement.is_none()
-                    && self.pending_draw_replacement_effects.is_none()
-                    && self.pending_draw_reveal.is_none()
-                    && self.pending_commander_choice.is_none()
+                if draw_not_started
                     && game
                         .turn_players()
                         .iter()
@@ -1244,6 +1277,7 @@ impl TurnRunner {
                 if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
+                game.turn_store.draw_step_skip_declined.clear();
                 self.state = finish_step_and_phase(
                     game,
                     Step::Draw,
@@ -1590,6 +1624,11 @@ impl TurnRunner {
                     record_declared_attacking_bands(&mut self.combat, bands);
                 }
                 crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
+                // CR 508.2: "at the beginning of the declare attackers step"
+                // abilities trigger once the declaration turn-based action is
+                // complete, alongside attack triggers.
+                game.combat = Some(self.combat.clone());
+                generate_and_queue_step_triggers(game, tq);
                 // The caller's priority loop puts these triggers on the stack
                 // with its interactive decision maker. Stacking here with the
                 // default chooser silently selects modes, targets, and order.
@@ -2033,6 +2072,8 @@ impl TurnRunner {
             TurnState::EndStep => {
                 game.turn.phase = Phase::Ending;
                 game.turn.step = Some(Step::End);
+                game.turn_store.end_steps_started_this_turn =
+                    game.turn_store.end_steps_started_this_turn.saturating_add(1);
                 game.reset_priority_for_new_window();
                 generate_and_queue_step_triggers(game, tq);
 
@@ -2166,7 +2207,119 @@ impl TurnRunner {
 
             TurnState::CleanupRecursiveDiscard => self.advance_cleanup_discard_recursive(game),
 
-            TurnState::Complete => Ok(TurnAction::TurnComplete),
+            TurnState::Complete => {
+                if let Some(prompt) = self.offer_turn_begin_skips(game, tq)? {
+                    return Ok(TurnAction::Decision(prompt));
+                }
+                Ok(TurnAction::TurnComplete)
+            }
+        }
+    }
+
+    /// CR 614.10 (Time Vault): before the next turn begins, offer each
+    /// turn-begin skip replacement to the player who would begin that turn.
+    /// Accepting records a skip of that turn and untaps the source, and the
+    /// offers move on to whoever would begin the following turn; a declined
+    /// source is not offered again at this boundary.
+    fn offer_turn_begin_skips(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+    ) -> Result<Option<DecisionContext>, GameLoopError> {
+        loop {
+            if let Some((player, source)) = self.pending_turn_begin_skip {
+                let Some(accepted) = self.pending_boolean.take() else {
+                    return Ok(Some(turn_begin_skip_prompt(game, player, source)));
+                };
+                self.pending_turn_begin_skip = None;
+                if accepted && game.object(source).is_some() {
+                    game.turn_store.skip_next_turn.insert(player);
+                    let was_tapped = game.is_tapped(source);
+                    game.untap(source);
+                    if was_tapped && !game.is_tapped(source) {
+                        let event =
+                            crate::events::PermanentUntappedEvent::capture(game, source, Some(player));
+                        let provenance = crate::provenance::ProvNodeId::default();
+                        game.queue_trigger_event(
+                            provenance,
+                            crate::triggers::TriggerEvent::new(event, provenance),
+                        );
+                        crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
+                    }
+                } else {
+                    game.turn_store.turn_begin_skip_declined.push(source);
+                }
+                continue;
+            }
+            let Some(player) = game.upcoming_turn_player() else {
+                return Ok(None);
+            };
+            let Some(source) = game.turn_begin_skip_offer(player) else {
+                return Ok(None);
+            };
+            self.pending_turn_begin_skip = Some((player, source));
+            self.pending_boolean = None;
+            return Ok(Some(turn_begin_skip_prompt(game, player, source)));
+        }
+    }
+
+    /// CR 614.10 (Fasting): as the draw step would begin, offer each
+    /// draw-step skip replacement to the players taking the turn. Accepting
+    /// runs that replacement's "if you do" program with its permanent as the
+    /// source and skips the whole step; a declined source is not offered
+    /// again at this draw step.
+    fn offer_draw_step_skips(
+        &mut self,
+        game: &mut GameState,
+        tq: &mut TriggerQueue,
+    ) -> Result<DrawStepSkipOffer, GameLoopError> {
+        loop {
+            if let Some((player, source, effects)) = self.pending_draw_step_skip.clone() {
+                let Some(accepted) = self.pending_boolean.take() else {
+                    return Ok(DrawStepSkipOffer::Prompt(draw_step_skip_prompt(
+                        game, player, source,
+                    )));
+                };
+                self.pending_draw_step_skip = None;
+                if !accepted {
+                    game.turn_store.draw_step_skip_declined.push(source);
+                    continue;
+                }
+                let mut hypothetical = game.clone();
+                let mut dm = QueuedAttackCostDecisionMaker::new(Vec::new());
+                let mut events = Vec::new();
+                {
+                    let mut ctx = crate::effects::ExecutionContext::new(source, player, &mut dm);
+                    for effect in &effects {
+                        let outcome =
+                            crate::effects::execute_effect(&mut hypothetical, effect, &mut ctx)
+                                .map_err(GameLoopError::ExecutionFailed)?;
+                        events.extend(outcome.events);
+                    }
+                }
+                if dm.pending_prompt.is_some() {
+                    return Err(GameLoopError::ResolutionFailed(
+                        "draw-step skip follow-up program cannot ask for a choice".into(),
+                    ));
+                }
+                *game = hypothetical;
+                let provenance = crate::provenance::ProvNodeId::default();
+                for event in events {
+                    game.queue_trigger_event(provenance, event);
+                }
+                crate::game_loop::try_drain_pending_trigger_events(game, tq)?;
+                return Ok(DrawStepSkipOffer::Skipped);
+            }
+            let players = game.turn_players();
+            let Some((player, source, effects)) = players.iter().copied().find_map(|player| {
+                game.draw_step_skip_offer(player)
+                    .map(|(source, effects)| (player, source, effects))
+            }) else {
+                return Ok(DrawStepSkipOffer::None);
+            };
+            self.pending_draw_step_skip = Some((player, source, effects));
+            self.pending_boolean = None;
+            return Ok(DrawStepSkipOffer::Prompt(draw_step_skip_prompt(game, player, source)));
         }
     }
 
@@ -3571,6 +3724,32 @@ impl TurnRunner {
             return Ok(RunnerProgress::NeedsDecision(ctx));
         }
     }
+}
+
+/// Where the CR 614.10 draw-step skip offers left the draw step.
+enum DrawStepSkipOffer {
+    /// No (further) offer applies; the step begins normally.
+    None,
+    /// A player must answer an offer.
+    Prompt(DecisionContext),
+    /// An offer was accepted and its program ran; the step is skipped.
+    Skipped,
+}
+
+fn draw_step_skip_prompt(game: &GameState, player: PlayerId, source: ObjectId) -> DecisionContext {
+    let mut context = BooleanContext::new(player, Some(source), "skip your draw step");
+    if let Some(object) = game.object(source) {
+        context = context.with_source_name(object.name.to_string());
+    }
+    DecisionContext::Boolean(context)
+}
+
+fn turn_begin_skip_prompt(game: &GameState, player: PlayerId, source: ObjectId) -> DecisionContext {
+    let mut context = BooleanContext::new(player, Some(source), "skip your next turn and untap it");
+    if let Some(object) = game.object(source) {
+        context = context.with_source_name(object.name.to_string());
+    }
+    DecisionContext::Boolean(context)
 }
 
 impl Default for TurnRunner {

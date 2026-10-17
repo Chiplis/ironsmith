@@ -15,6 +15,10 @@ pub struct LifeGainEvent {
     pub amount: u32,
     /// The spell, ability source, or damage source that caused the life gain.
     pub source: Option<ObjectId>,
+    /// The controller of the spell or ability whose effect causes this gain.
+    /// `None` for gains that are not a spell or ability's effect, such as
+    /// lifelink (CR 702.15b): the damage, not an effect, causes that gain.
+    pub effect_controller: Option<PlayerId>,
 }
 
 impl LifeGainEvent {
@@ -24,7 +28,16 @@ impl LifeGainEvent {
             player,
             amount,
             source: None,
+            effect_controller: None,
         }
+    }
+
+    /// Mark this gain as the effect of a spell or ability that `controller`
+    /// controls ("If a spell or ability would cause its controller to gain
+    /// life").
+    pub fn with_effect_controller(mut self, controller: PlayerId) -> Self {
+        self.effect_controller = Some(controller);
+        self
     }
 
     /// Retain the object whose effect or lifelink caused this life gain.

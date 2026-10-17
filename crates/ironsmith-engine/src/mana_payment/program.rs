@@ -37,6 +37,20 @@ pub enum ManaProduction<'a> {
         amount: &'a Value,
         player: &'a PlayerFilter,
     },
+    /// Mana of any one of the colors the ability's controller chose while
+    /// drafting cards named `card_name`. Fixed for the whole game.
+    DraftChosenColors {
+        amount: &'a Value,
+        card_name: &'a str,
+        player: &'a PlayerFilter,
+    },
+    /// Mana of any one of the colors recorded for the source card as its
+    /// owner built their deck ("either of the circled colors"). Fixed for
+    /// the whole game.
+    DeckChosenColors {
+        amount: &'a Value,
+        player: &'a PlayerFilter,
+    },
     ColorsAmong {
         filter: &'a crate::target::ObjectFilter,
         choose_one: bool,
@@ -77,6 +91,8 @@ impl ManaProduction<'_> {
             | Self::ChooseColors { amount: Value::Fixed(_), player, .. }
             | Self::ChosenColor { amount: Value::Fixed(_), player, .. }
             | Self::CommanderIdentity { amount: Value::Fixed(_), player, .. }
+            | Self::DraftChosenColors { amount: Value::Fixed(_), player, .. }
+            | Self::DeckChosenColors { amount: Value::Fixed(_), player }
             | Self::NotedType { amount: Value::Fixed(_), player, .. } => player,
             Self::LandProducedTypes {
                 amount: Value::Fixed(_), player, filter,
@@ -95,6 +111,8 @@ impl ManaProduction<'_> {
             Self::Fixed { .. } | Self::ImprintedColors => None,
             Self::Repeated { amount, .. } | Self::ChooseColors { amount, .. }
             | Self::ChosenColor { amount, .. } | Self::CommanderIdentity { amount, .. }
+            | Self::DraftChosenColors { amount, .. }
+            | Self::DeckChosenColors { amount, .. }
             | Self::NotedType { amount, .. } => Some(amount),
             _ => return None,
         };
@@ -118,6 +136,8 @@ impl ManaProduction<'_> {
         let amount = match self {
             Self::ChosenColor { amount, .. }
             | Self::CommanderIdentity { amount, .. }
+            | Self::DraftChosenColors { amount, .. }
+            | Self::DeckChosenColors { amount, .. }
             | Self::NotedType { amount, .. } => Some(amount),
             Self::ImprintedColors => None,
             _ => return None,

@@ -177,6 +177,16 @@ impl ZoneMovementInstruction for ExileTopOfLibraryEffect {
             })
             .collect();
         let effect = self.clone();
+        // "<player> exiles the top card of their library": the library owner
+        // performs the exile; otherwise the instruction's controller does.
+        let exiler = if matches!(
+            self.surface,
+            Some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor)
+        ) {
+            player_id
+        } else {
+            ctx.controller
+        };
         Ok(SelectedZoneMovement::moves(
             moves,
             move |game, ctx, receipts, _pending_start| {
@@ -191,6 +201,7 @@ impl ZoneMovementInstruction for ExileTopOfLibraryEffect {
                             game.add_linked_exile_pair_member(owner.clone(), id);
                         }
                         game.add_exiled_with_source_link(ctx.source, id);
+                        game.record_source_exiler(id, exiler);
                         if effect.face_down {
                             game.set_face_down(id);
                         }

@@ -172,6 +172,85 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     false
 }
 
+/// Whether `name` is the name of a nonlegendary creature card (Spy Kit). The
+/// card catalog decides; a name the catalog doesn't carry falls back to the
+/// physical cards in this game.
+pub(crate) fn is_nonlegendary_creature_card_name(name: &str, game: &GameState) -> bool {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CATALOG: OnceLock<Mutex<HashMap<String, Option<bool>>>> = OnceLock::new();
+    if name_is_nameless(name) {
+        return false;
+    }
+    let key = normalize_name_for_match(name);
+    let cache = CATALOG.get_or_init(|| Mutex::new(HashMap::new()));
+    let cached = cache.lock().ok().and_then(|cache| cache.get(&key).copied());
+    let catalog = match cached {
+        Some(known) => known,
+        None => {
+            let mut registry = crate::cards::CardRegistry::new();
+            registry.ensure_cards_loaded([name]);
+            let known = registry.get(name).map(|definition| {
+                definition.card.card_types.contains(&CardType::Creature)
+                    && !definition.card.supertypes.contains(&Supertype::Legendary)
+            });
+            if let Ok(mut cache) = cache.lock() {
+                cache.insert(key, known);
+            }
+            known
+        }
+    };
+    catalog.unwrap_or_else(|| {
+        game.objects_map().values().any(|object| {
+            matches!(object.kind, ObjectKind::Card)
+                && names_match(&object.name, name)
+                && object.card_types.contains(&CardType::Creature)
+                && !object.supertypes.contains(&Supertype::Legendary)
+        })
+    })
+}
+
+/// Whether one of `attachments` (still attached on the battlefield) gives its
+/// host every nonlegendary creature card name in addition to its own (Spy
+/// Kit). The names come from that source's static ability, not the host's.
+pub(crate) fn attachments_grant_all_nonlegendary_creature_card_names(
+    attachments: &[ObjectId],
+    game: &GameState,
+) -> bool {
+    attachments.iter().any(|id| {
+        game.object(*id).is_some_and(|attachment| {
+            attachment.zone == Zone::Battlefield
+                && attachment.abilities.iter().any(|ability| {
+                    matches!(&ability.kind, AbilityKind::Static(rule)
+                        if rule.id() == StaticAbilityId::AttachedHasAllNonlegendaryCreatureCardNames)
+                })
+        })
+    })
+}
+
+/// `names_share`, also counting the names an attached Spy Kit adds to either
+/// object.
+fn names_share_with_attachments(
+    left: (&str, Option<&str>, &[ObjectId]),
+    right: (&str, Option<&str>, &[ObjectId]),
+    game: &GameState,
+) -> bool {
+    if names_share(left.0, left.1, right.0, right.1) {
+        return true;
+    }
+    let left_all = attachments_grant_all_nonlegendary_creature_card_names(left.2, game);
+    let right_all = attachments_grant_all_nonlegendary_creature_card_names(right.2, game);
+    (left_all && right_all)
+        || (left_all
+            && std::iter::once(right.0)
+                .chain(right.1)
+                .any(|name| is_nonlegendary_creature_card_name(name, game)))
+        || (right_all
+            && std::iter::once(left.0)
+                .chain(left.1)
+                .any(|name| is_nonlegendary_creature_card_name(name, game)))
+}
+
 /// Whether two objects share a name, each given as its primary name plus the
 /// other half's name when it's a split card outside the stack and battlefield
 /// (CR 709.4a: such a card has both names).
@@ -858,6 +937,19 @@ fn subject_has_name<S: TailMatchSubject>(subject: &S, name: &str) -> bool {
             .is_some_and(|other| names_match(other, name))
 }
 
+/// `subject_has_name`, also counting the names an attached Spy Kit adds.
+fn subject_has_name_in_game<S: TailMatchSubject>(
+    subject: &S,
+    name: &str,
+    game: &GameState,
+) -> bool {
+    subject_has_name(subject, name)
+        || (attachments_grant_all_nonlegendary_creature_card_names(
+            subject.subject_attachments(),
+            game,
+        ) && is_nonlegendary_creature_card_name(name, game))
+}
+
 fn object_matches_subtype(object: &Object, subtype: Subtype, game: &GameState) -> bool {
     object.zone_subtypes().contains(&subtype)
         || (subtype == Subtype::Adventure
@@ -1115,6 +1207,15 @@ fn subject_shares_characteristic_with_object(
     game: &GameState,
 ) -> bool {
     match characteristic {
+        ObjectCharacteristic::AllCardTypes => checked_relation_characteristics(game, object.id)
+            .ok()
+            .flatten()
+            .is_some_and(|chars| {
+                ObjectCharacteristic::card_type_sets_match(
+                    subject.subject_card_types(),
+                    chars.card_types.as_slice(),
+                )
+            }),
         ObjectCharacteristic::CardType | ObjectCharacteristic::PermanentType => {
             checked_relation_characteristics(game, object.id)
                 .ok()
@@ -1178,6 +1279,7 @@ fn characteristic_relation_matches_subject(
             characteristic,
             ObjectCharacteristic::CardType
                 | ObjectCharacteristic::PermanentType
+                | ObjectCharacteristic::AllCardTypes
                 | ObjectCharacteristic::Name
         )
     });
@@ -1460,22 +1562,28 @@ fn tagged_constraint_matches_subject(
             .iter()
             .any(|snapshot| snapshot.stable_id == subject.subject_stable_id()),
         TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots.iter().any(|snapshot| {
-            names_share(
-                &snapshot.name,
-                snapshot.split_other_half_name(),
-                subject.subject_name(),
-                subject.subject_alternate_name(),
+            names_share_with_attachments(
+                (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
+                (
+                    subject.subject_name(),
+                    subject.subject_alternate_name(),
+                    subject.subject_attachments(),
+                ),
+                game,
             )
         }),
         // CR 201.2c: a nameless object never has a different name.
         TaggedOpbjectRelation::DifferentNameFromTagged => {
             !name_is_nameless(subject.subject_name())
                 && tagged_snapshots.iter().all(|snapshot| {
-                    !names_share(
-                        &snapshot.name,
-                        snapshot.split_other_half_name(),
-                        subject.subject_name(),
-                        subject.subject_alternate_name(),
+                    !names_share_with_attachments(
+                        (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
+                        (
+                            subject.subject_name(),
+                            subject.subject_alternate_name(),
+                            subject.subject_attachments(),
+                        ),
+                        game,
                     )
                 })
         }
@@ -1512,6 +1620,33 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::WasAttachedToTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.attachments.contains(&subject.subject_object_id())),
+        TaggedOpbjectRelation::SameNameAsTaggedChosenByOwner => tagged_snapshots
+            .iter()
+            .filter(|snapshot| snapshot.controller == subject.subject_owner())
+            .any(|snapshot| {
+                names_share_with_attachments(
+                    (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
+                    (
+                        subject.subject_name(),
+                        subject.subject_alternate_name(),
+                        subject.subject_attachments(),
+                    ),
+                    game,
+                )
+            }),
+        TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
+            !tagged_snapshots.is_empty()
+                && !tagged_snapshots.iter().any(|snapshot| {
+                    subject
+                        .subject_card_types()
+                        .iter()
+                        .any(|card_type| snapshot.card_types.contains(card_type))
+                })
+        }
+        TaggedOpbjectRelation::WasHostOfTaggedObject => tagged_snapshots.iter().any(|snapshot| {
+            snapshot.attached_to.and_then(|target| target.object_id())
+                == Some(subject.subject_object_id())
+        }),
         TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
             game.turn_store.turn_history.projected_records().any(|record| {
                 let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() else { return false; };
@@ -2588,6 +2723,11 @@ fn resolve_filter_comparison_rhs_value(
                 .map(|pool| pool.total_wide() as i64)
                 .sum(),
         ),
+        Value::DevotionToColors { player, colors } => Some(
+            game.players.iter()
+                .filter(|candidate| candidate.is_in_game() && player.matches_player(candidate.id, ctx))
+                .map(|candidate| game.devotion_to_colors(candidate.id, *colors) as i64).sum(),
+        ),
         Value::Devotion { player, color } => Some(
             game.players
                 .iter()
@@ -3000,7 +3140,7 @@ impl PlayerFilterExt for PlayerFilter {
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
             PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => false,
-            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => false,
+            PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
             PlayerFilter::OpponentOf(_)
             | PlayerFilter::PlayerToLeftOf(_)
             | PlayerFilter::MaxSpeed { .. } => false,
@@ -3082,6 +3222,10 @@ pub(crate) fn player_turn_history_matches(
             .creatures_attacked_by_player_this_turn
             .get(&player)
             .is_some_and(|creatures| !creatures.is_empty()),
+        ironsmith_core::PlayerTurnHistoryFilter::WasDealtDamage => game
+            .turn_store
+            .turn_history
+            .player_was_dealt_damage_this_turn(player),
     }
 }
 
@@ -3236,6 +3380,52 @@ pub(crate) fn player_filter_matches_game(
             let your_life = game.player(you).map(|p| p.life).unwrap_or(0);
             candidate_life > your_life
         }
+        PlayerFilter::MostLifeTiedAmong { base } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            let Some(candidate_life) = game
+                .player(player)
+                .filter(|candidate| candidate.is_in_game())
+                .map(|candidate| candidate.life)
+            else {
+                return false;
+            };
+            game.players
+                .iter()
+                .filter(|other| other.is_in_game() && other.id != player)
+                .filter(|other| player_filter_matches_game(base, other.id, game, ctx))
+                .all(|other| other.life <= candidate_life)
+        }
+        PlayerFilter::QuantityGreaterThanPlayer {
+            base,
+            other,
+            quantity,
+        } => {
+            if !player_filter_matches_game(base, player, game, ctx) {
+                return false;
+            }
+            let quantity_of = |id: PlayerId| {
+                game.player(id).map(|p| match quantity {
+                    ironsmith_core::PlayerQuantity::Life => i64::from(p.life),
+                    ironsmith_core::PlayerQuantity::CardsInHand => p.hand.len() as i64,
+                })
+            };
+            let Some(candidate_quantity) = quantity_of(player) else {
+                return false;
+            };
+            let compared = game
+                .players
+                .iter()
+                .filter(|p| p.is_in_game())
+                .filter(|p| player_filter_matches_game(other, p.id, game, ctx))
+                .map(|p| p.id)
+                .collect::<Vec<_>>();
+            !compared.is_empty()
+                && compared
+                    .iter()
+                    .all(|id| quantity_of(*id).is_some_and(|q| candidate_quantity > q))
+        }
         PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: reference_filter,
             filter: object_filter,
@@ -3280,6 +3470,19 @@ pub(crate) fn player_filter_matches_game(
             game.zone_ids(filter.zone.unwrap_or(crate::Zone::Battlefield))
                 .filter_map(|id| game.object(id))
                 .any(|object| object.owner == player && filter.matches(object, &object_ctx, game))
+        }
+        PlayerFilter::ControlsMatchingObject { filter } => {
+            if ctx.players_in_range.as_ref().is_some_and(|players| !players.contains(&player)) {
+                return false;
+            }
+            let mut object_ctx = ctx.clone();
+            object_ctx.iterated_player = Some(player);
+            game.zone_ids(filter.zone.unwrap_or(crate::Zone::Battlefield))
+                .filter_map(|id| game.object(id))
+                .any(|object| {
+                    game.controller_of(object) == player
+                        && filter.matches(object, &object_ctx, game)
+                })
         }
         PlayerFilter::ControlsFewestTied {
             filter: object_filter,
@@ -3616,15 +3819,15 @@ impl ObjectFilterExt for ObjectFilter {
                 let Some(chosen_name) = game.chosen_named_option(source) else {
                     return false;
                 };
-                if !subject_has_name(subject, chosen_name) {
+                if !subject_has_name_in_game(subject, chosen_name, game) {
                     return false;
                 }
-            } else if !subject_has_name(subject, required_name) {
+            } else if !subject_has_name_in_game(subject, required_name, game) {
                 return false;
             }
         }
         if let Some(excluded_name) = &self.excluded_name
-            && subject_has_name(subject, excluded_name)
+            && subject_has_name_in_game(subject, excluded_name, game)
         {
             return false;
         }
@@ -3877,6 +4080,32 @@ impl ObjectFilterExt for ObjectFilter {
                         constraint.relation,
                         game,
                     ) {
+                        return false;
+                    }
+                    continue;
+                }
+                // "cards they exiled with this enchantment" (Shared Fate):
+                // linked to the filter's source and exiled by its "you". A
+                // per-beneficiary permission binds "you" to that player.
+                let this_turn = constraint.tag.as_str() == crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG;
+                if (this_turn || constraint.tag.as_str() == crate::tag::SOURCE_EXILED_BY_YOU_TAG)
+                    && matches!(
+                        constraint.relation,
+                        TaggedOpbjectRelation::IsTaggedObject
+                            | TaggedOpbjectRelation::IsNotTaggedObject
+                    )
+                {
+                    let subject_id = subject.subject_object_id();
+                    let exiled_by_you = ctx.source.zip(ctx.you).is_some_and(|(source, you)| {
+                        if this_turn {
+                            game.exiled_with_source_by_player_this_turn(source, subject_id, you)
+                        } else {
+                            game.exiled_with_source_by_player(source, subject_id, you)
+                        }
+                    });
+                    if exiled_by_you
+                        != (constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+                    {
                         return false;
                     }
                     continue;
@@ -4509,6 +4738,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.transformed {
             parts.push("transformed".to_string());
         }
+        if self.prepared {
+            parts.push("prepared".to_string());
+        }
         if self.goaded {
             parts.push("goaded".to_string());
         }
@@ -4570,7 +4802,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 // "target creature one of their opponents controls": the
@@ -4721,7 +4953,8 @@ impl ObjectFilterExt for ObjectFilter {
         let owner_conveyed_by_zone = matches!(
             self.zone,
             Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
-        ) && !self.foretold;
+        ) && !self.foretold
+            && !self.warped;
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
             owner_suffix = Some(match owner {
                 PlayerFilter::You => "you own".to_string(),
@@ -4749,7 +4982,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -4820,6 +5053,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.foretold {
             parts.push("foretold".to_string());
+        }
+        if self.warped {
+            parts.push("warped".to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();
@@ -4905,8 +5141,14 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(card_name) = &self.creature_types_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("of a type you noted for cards named {card_name}"));
         }
+        if let Some(sector) = self.sector {
+            post_noun_qualifiers.push(sector.description());
+        }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));
+        }
+        if let Some(card_name) = &self.exiled_with_cards_named {
+            post_noun_qualifiers.push(format!("you exiled with cards named {card_name}"));
         }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
@@ -5019,6 +5261,13 @@ impl ObjectFilterExt for ObjectFilter {
                         crate::tag::EXILED_BY_YOU_TAG => {
                             post_noun_qualifiers.push("you exiled".to_string());
                         }
+                        crate::tag::SOURCE_EXILED_BY_YOU_TAG => {
+                            post_noun_qualifiers.push("you exiled with this permanent".to_string());
+                        }
+                        crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG => {
+                            post_noun_qualifiers
+                                .push("you exiled with this permanent this turn".to_string());
+                        }
                         _ => {}
                     }
                 }
@@ -5116,6 +5365,15 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 TaggedOpbjectRelation::WasAttachedToTaggedObject => {
                     post_noun_qualifiers.push("that was attached to it".to_string());
+                }
+                TaggedOpbjectRelation::WasHostOfTaggedObject => {
+                    post_noun_qualifiers.push("it was attached to".to_string());
+                }
+                TaggedOpbjectRelation::SameNameAsTaggedChosenByOwner => {
+                    post_noun_qualifiers.push("with the name its owner chose".to_string());
+                }
+                TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
+                    post_noun_qualifiers.push("of the other type".to_string());
                 }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
@@ -6240,6 +6498,11 @@ impl ObjectFilterExt for ObjectFilter {
 
         if let Some(constraint) = &self.counters_put_on_this_turn {
             parts.push(describe_counters_put_on_this_turn_constraint(constraint));
+        }
+        if let Some(constraint) = &self.counter_source_history {
+            parts.push(ironsmith_core::filter_model::describe_counter_source_history_constraint(
+                constraint,
+            ));
         }
 
         if self.was_dealt_damage_this_turn {

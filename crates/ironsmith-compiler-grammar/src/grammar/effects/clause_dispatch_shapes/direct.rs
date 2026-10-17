@@ -9,30 +9,39 @@ use winnow::token::any;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NextTurnCantShape<'a> {
     pub restriction_tokens: &'a [OwnedLexToken],
+    /// "during its controller's next turn" (Wall of Dust): the turn belongs
+    /// to the controller of the restricted object rather than "that player".
+    pub its_controller: bool,
 }
 
-fn next_turn_cant<'a>(input: &mut LexStream<'a>) -> WResult<NextTurnCantShape<'a>> {
-    let restriction_tokens = repeat_till(
-        1..,
-        any.void(),
-        peek(alt((
+fn next_turn_cant_tail<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+    alt((
+        alt((
             primitives::phrase(&["during", "that", "players", "next", "turn"]),
             primitives::phrase(&["during", "that", "player's", "next", "turn"]),
             primitives::phrase(&["during", "that", "player", "s", "next", "turn"]),
-        ))),
-    )
-    .map(|((), _)| ())
-    .take()
-    .parse_next(input)?;
-    alt((
-        primitives::phrase(&["during", "that", "players", "next", "turn"]),
-        primitives::phrase(&["during", "that", "player's", "next", "turn"]),
-        primitives::phrase(&["during", "that", "player", "s", "next", "turn"]),
+        ))
+        .value(false),
+        alt((
+            primitives::phrase(&["during", "its", "controllers", "next", "turn"]),
+            primitives::phrase(&["during", "its", "controller's", "next", "turn"]),
+            primitives::phrase(&["during", "its", "controller", "s", "next", "turn"]),
+        ))
+        .value(true),
     ))
-    .parse_next(input)?;
+    .parse_next(input)
+}
+
+fn next_turn_cant<'a>(input: &mut LexStream<'a>) -> WResult<NextTurnCantShape<'a>> {
+    let restriction_tokens = repeat_till(1.., any.void(), peek(next_turn_cant_tail))
+        .map(|((), _)| ())
+        .take()
+        .parse_next(input)?;
+    let its_controller = next_turn_cant_tail.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(NextTurnCantShape {
         restriction_tokens: trim_lexed_commas(restriction_tokens),
+        its_controller,
     })
 }
 
@@ -303,7 +312,14 @@ pub fn parse_turn_target_face_up_shape(
         .is_none()
         && primitives::probe_all(
             target_tokens,
-            primitives::any_phrase(&[&["that", "creature"], &["that", "permanent"]]),
+            // "Turn this creature face up." inside an ability granted to
+            // face-down creatures (Etrata, Deadly Fugitive) names the source.
+            primitives::any_phrase(&[
+                &["that", "creature"],
+                &["that", "permanent"],
+                &["this", "creature"],
+                &["this", "permanent"],
+            ]),
             "face-up object reference",
         )
         .is_none()

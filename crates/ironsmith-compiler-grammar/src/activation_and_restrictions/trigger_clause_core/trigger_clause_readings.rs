@@ -134,6 +134,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_repeated_intro_attack_union(input)),
     },
     Reading {
+        id: RuleId::new("shared-subject-dies-or-deals-damage"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_shared_subject_dies_or_deals_damage(input)),
+    },
+    Reading {
         id: RuleId::new("trigger-union"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -200,6 +206,35 @@ pub(super) fn read(input: &TriggerClause<'_>) -> ParseOutcome<RuleMatch<TriggerS
     outcome
 }
 
+/// "Whenever this creature or another nontoken Spirit you control dies or
+/// deals combat damage to a player" (Millicent, Restless Revenant): both
+/// verbs share the whole (possibly compound) subject, so each arm is the
+/// subject followed by one verb phrase.
+fn read_shared_subject_dies_or_deals_damage(
+    input: &TriggerClause<'_>,
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    let tokens = input.tokens;
+    let Some(dies_idx) = tokens.iter().position(|token| token.is_word("dies")) else {
+        return Ok(None);
+    };
+    if dies_idx == 0
+        || !tokens.get(dies_idx + 1).is_some_and(|token| token.is_word("or"))
+        || !tokens.get(dies_idx + 2).is_some_and(|token| token.is_word("deals"))
+    {
+        return Ok(None);
+    }
+    let left_tokens = &tokens[..=dies_idx];
+    let mut right_tokens = tokens[..dies_idx].to_vec();
+    right_tokens.extend_from_slice(&tokens[dies_idx + 2..]);
+    let (Ok(left), Ok(right)) = (
+        parse_trigger_clause_lexed(left_tokens),
+        parse_trigger_clause_lexed(&right_tokens),
+    ) else {
+        return Ok(None);
+    };
+    Ok(Some(TriggerSpec::Either(Box::new(left), Box::new(right))))
+}
+
 fn read_simple_beginning_of_combat(
     input: &TriggerClause<'_>,
 ) -> Result<Option<TriggerSpec>, CardTextError> {
@@ -226,6 +261,23 @@ fn read_while_qualified_event(
     input: &TriggerClause<'_>,
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = input.tokens;
+    // "Whenever you choose to put one or more cards on the bottom of your
+    // library while scrying" (The Temporal Anchor): `while scrying` names the
+    // scry action itself (CR 701.22a), whose bottom choice is its own event.
+    if matches!(
+        crate::lexer::token_word_refs(&trim_edge_punctuation(tokens)).as_slice(),
+        [
+            "you", "choose", "to", "put", "one", "or", "more", "cards", "on", "the", "bottom",
+            "of", "your", "library", "while", "scrying",
+        ]
+    ) {
+        return Ok(Some(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ScryToBottom,
+            player: crate::cards::builders::PlayerFilter::You,
+            source_filter: None,
+            during_your_turn: false,
+        }));
+    }
     // `... while <condition>` qualifies the event itself. Preserve it as
     // a typed matcher wrapper before union parsing or the broad attack/
     // cast routes can accept only the event prefix and silently discard

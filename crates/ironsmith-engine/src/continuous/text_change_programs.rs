@@ -47,7 +47,10 @@ pub fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Result<Ab
         AbilityKind::Triggered(ability) => *ability = rewrite_triggered_ability_words(ability, change)?,
         AbilityKind::Activated(ability) => {
             // Legacy executable restrictions have no typed word provenance.
-            if !ability.additional_restrictions.is_empty() { return Err(Error::ActivatedAbility); }
+            // A restriction without the source word is left as authored.
+            if ability.additional_restrictions.iter().any(|restriction|
+                super::text_changes::structural_image_may_hold_source_word(restriction, change))
+            { return Err(Error::ActivatedAbility); }
             ability.mana_cost = rewrite_total_cost_words(&ability.mana_cost, change)?;
             ability.effects = rewrite_program_words(&ability.effects, change)?;
             ability.choices = rewrite_choices(&ability.choices, change)?;
@@ -86,6 +89,34 @@ fn rewrite_effects(effects: &[Effect], change: TextChange) -> Result<Vec<Effect>
     effects.iter().map(|effect| effect.with_text_change(change)).collect()
 }
 
+fn rewrite_static_list(abilities: &[crate::static_abilities::StaticAbility], change: TextChange)
+    -> Result<Vec<crate::static_abilities::StaticAbility>, Error>
+{
+    abilities.iter().map(|ability| ability.with_text_change(change)).collect()
+}
+
+/// An unchanged static definition is returned as the same immutable owner.
+fn same_static_identities(left: &[crate::static_abilities::StaticAbility],
+    right: &[crate::static_abilities::StaticAbility]) -> bool
+{
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| std::sync::Arc::ptr_eq(&left.0, &right.0))
+}
+
+/// "damage red sources would deal": the source predicate and its authored
+/// color list are words; specific/resolved sources are captured identities.
+fn rewrite_damage_filter_words(filter: &crate::prevention::DamageFilter, change: TextChange)
+    -> Result<crate::prevention::DamageFilter, Error>
+{
+    let mut rewritten = filter.clone();
+    rewritten.from_source = filter.from_source.as_ref()
+        .map(|source| rewrite_filter_words(source, change)).transpose()?;
+    if let Some(colors) = &mut rewritten.from_colors {
+        for color in colors.iter_mut() { change.replace_color_word(color); }
+    }
+    Ok(rewritten)
+}
+
 fn rewrite_choices(choices: &[crate::target::ChooseSpec], change: TextChange)
     -> Result<Vec<crate::target::ChooseSpec>, Error>
 {
@@ -112,7 +143,11 @@ fn same_total_cost_identity(left: &TotalCost, right: &TotalCost) -> bool {
 pub(crate) fn rewrite_cost_words(cost: &Cost, change: TextChange) -> Result<Cost, Error> {
     let Some(model) = cost.compiled_model() else {
         // Unmodeled payers may carry extra payment behavior beyond their
-        // exposed effect. A partial view is not a complete cost definition.
+        // exposed effect. A partial view is not a complete cost definition,
+        // unless its complete payer image proves the source word absent.
+        if !super::text_changes::structural_image_may_hold_source_word(&format!("{cost:?}"), change) {
+            return Ok(cost.clone());
+        }
         return Err(Error::Cost);
     };
     let mut rewritten = model.clone();
@@ -340,7 +375,10 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
     });
     target_only!(DestroyEffect, spec);
     target_only!(DestroyNoRegenerationEffect, spec);
-    target_only!(ExileEffect, spec);
+    visit!(ExileEffect, model, {
+        model.spec = rewrite_choose_spec_words(&model.spec, change)?;
+        model.actor = model.actor.as_ref().map(|player| rewrite_player_filter_words(player, change)).transpose()?;
+    });
     visit!(CopySpellEffect, model, {
         model.target = rewrite_choose_spec_words(&model.target, change)?;
         model.count = rewrite_value_words(&model.count, change)?;
@@ -458,6 +496,10 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         }
     });
     visit!(AddManaOfColorsAmongEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+    });
+    visit!(AddManaEqualToManaCostEffect, model, {
         model.filter = rewrite_filter_words(&model.filter, change)?;
         model.player = rewrite_player_filter_words(&model.player, change)?;
     });
@@ -583,6 +625,135 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.player = rewrite_player_filter_words(&model.player, change)?;
         model.payment = rewrite_effects(&model.payment, change)?;
         model.failure = rewrite_effects(&model.failure, change)?;
+    });
+
+    // Complete owners for further color-bearing instructions ("white
+    // creatures get +1/+1", "search for a green card", "prevent all damage
+    // red sources would deal"). Every field of each payload is visited.
+    let until = super::text_change_modifications::rewrite_until_words;
+    visit!(ModifyPowerToughnessAllEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.power = rewrite_value_words(&model.power, change)?;
+        model.toughness = rewrite_value_words(&model.toughness, change)?;
+        model.duration = until(&model.duration, change)?;
+    });
+    visit!(ModifyPowerToughnessEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.power = rewrite_value_words(&model.power, change)?;
+        model.toughness = rewrite_value_words(&model.toughness, change)?;
+        model.duration = until(&model.duration, change)?;
+    });
+    visit!(ModifyPowerToughnessForEachEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.duration = until(&model.duration, change)?;
+    });
+    // Granted statics compare by rendered text; use executor identity.
+    if let Some(original) = effect.downcast_ref::<GrantAbilitiesAllEffect>() {
+        let mut model = original.clone();
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.abilities = rewrite_static_list(&original.abilities, change)?;
+        model.duration = until(&model.duration, change)?;
+        let changed = model.filter != original.filter || model.duration != original.duration
+            || !same_static_identities(&model.abilities, &original.abilities);
+        return Ok(changed.then(|| Effect::new(model)));
+    }
+    if let Some(original) = effect.downcast_ref::<GrantAbilitiesTargetEffect>() {
+        let mut model = original.clone();
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.abilities = rewrite_static_list(&original.abilities, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.activated_from = model.activated_from.as_ref()
+            .map(|spec| rewrite_choose_spec_words(spec, change)).transpose()?;
+        let changed = model.target != original.target || model.duration != original.duration
+            || model.activated_from != original.activated_from
+            || !same_static_identities(&model.abilities, &original.abilities);
+        return Ok(changed.then(|| Effect::new(model)));
+    }
+    visit!(SearchLibraryEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.library_position_from_top = model.library_position_from_top.as_ref()
+            .map(|value| rewrite_value_words(value, change)).transpose()?;
+    });
+    visit!(ReturnFromGraveyardToHandEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        for player in [&mut model.actor_surface, &mut model.graveyard_player_surface,
+            &mut model.destination_player_surface]
+        {
+            *player = player.as_ref().map(|player| rewrite_player_filter_words(player, change)).transpose()?;
+        }
+    });
+    visit!(ReturnFromGraveyardToBattlefieldEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        if let Some(aura) = &mut model.as_aura {
+            aura.attachment_filter = rewrite_filter_words(&aura.attachment_filter, change)?;
+        }
+        for counters in &mut model.enters_with_counters {
+            counters.amount = rewrite_value_words(&counters.amount, change)?;
+            counters.condition = counters.condition.as_ref().map(|condition| rewrite_condition_words(condition, change)).transpose()?;
+            counters.object_filter = counters.object_filter.as_ref().map(|filter| rewrite_filter_words(filter, change)).transpose()?;
+        }
+    });
+    visit!(ReturnAllToBattlefieldEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.aura_attachment_filter = model.aura_attachment_filter.as_ref()
+            .map(|filter| rewrite_filter_words(filter, change)).transpose()?;
+    });
+    visit!(PutOntoBattlefieldEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.controller = rewrite_player_filter_words(&model.controller, change)?;
+        for counters in &mut model.enters_with_counters {
+            counters.amount = rewrite_value_words(&counters.amount, change)?;
+            counters.condition = counters.condition.as_ref().map(|condition| rewrite_condition_words(condition, change)).transpose()?;
+            counters.object_filter = counters.object_filter.as_ref().map(|filter| rewrite_filter_words(filter, change)).transpose()?;
+        }
+    });
+    visit!(DealDamageEachEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+    });
+    visit!(EachPlayerSacrificesEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.player_filter = rewrite_player_filter_words(&model.player_filter, change)?;
+    });
+    visit!(GainControlEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+    });
+    visit!(RegenerateEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
+        model.follow_up_player = model.follow_up_player.as_ref()
+            .map(|player| rewrite_player_filter_words(player, change)).transpose()?;
+    });
+    visit!(PreventDamageEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.damage_filter = rewrite_damage_filter_words(&model.damage_filter, change)?;
+        model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
+    });
+    visit!(PreventAllDamageEffect, model, {
+        match &mut model.target {
+            crate::prevention::PreventionTarget::PermanentsMatching(filter)
+            | crate::prevention::PreventionTarget::YouAndPermanentsMatching(filter) =>
+                *filter = rewrite_filter_words(filter, change)?,
+            crate::prevention::PreventionTarget::Player(_) | crate::prevention::PreventionTarget::Permanent(_)
+            | crate::prevention::PreventionTarget::Players | crate::prevention::PreventionTarget::You
+            | crate::prevention::PreventionTarget::YouAndPermanentsYouControl
+            | crate::prevention::PreventionTarget::All => {}
+        }
+        model.damage_filter = rewrite_damage_filter_words(&model.damage_filter, change)?;
+        model.source_target = model.source_target.as_ref()
+            .map(|spec| rewrite_choose_spec_words(spec, change)).transpose()?;
+        model.excluded_source_target = model.excluded_source_target.as_ref()
+            .map(|spec| rewrite_choose_spec_words(spec, change)).transpose()?;
+        model.until = until(&model.until, change)?;
+        model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
     });
 
     // These complete native payloads consist solely of non-word identities,
@@ -766,8 +937,10 @@ mod tests {
         assert_eq!(captured.with_text_change(change()).unwrap(), captured);
     }
 
+    // Unmodeled executors are held only when their image can hold the word.
     #[derive(Debug, Clone)]
-    struct UnknownNative;
+    #[allow(dead_code)]
+    struct UnknownNative(&'static str);
     impl EffectExecutor for UnknownNative {
         fn execute(&self, _: &mut crate::game_state::GameState, _: &mut ExecutionContext)
             -> Result<crate::effect::EffectOutcome, ExecutionError>
@@ -777,14 +950,14 @@ mod tests {
     #[test]
     fn unsupported_child_rejects_the_whole_definition_without_publishing_a_partial_program() {
         let first = word_effect();
-        let unknown = Effect::new(UnknownNative);
+        let unknown = Effect::new(UnknownNative("black words"));
         let program = ResolutionProgram::from_effects(vec![first.clone(), unknown.clone()]);
         assert!(matches!(rewrite_program_words(&program, change()), Err(Error::Effect)));
         assert_eq!(program.flattened_default_effects(), &[first.clone(), unknown]);
         assert_eq!(first.downcast_ref::<DrawCardsEffect>().unwrap().count, Value::Count(black()));
         let mut ability = Ability::activated(TotalCost::free(), vec![first]);
         let AbilityKind::Activated(model) = &mut ability.kind else { unreachable!() };
-        model.additional_restrictions.push("opaque legacy restriction".into());
+        model.additional_restrictions.push("opaque legacy black restriction".into());
         assert!(matches!(rewrite_ability_words(&ability, change()), Err(Error::ActivatedAbility)));
     }
 

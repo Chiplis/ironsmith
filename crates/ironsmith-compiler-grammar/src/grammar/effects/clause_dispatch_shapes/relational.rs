@@ -94,6 +94,11 @@ pub fn parse_copular_animation_shape(
         if copula == 0 {
             return None;
         }
+        // "it has flying and is an Angel ...": a subject never ends with a
+        // conjunction; that is a predicate pair, not a copular subject.
+        if tokens.get(copula - 1).is_some_and(|token| token.is_word("and")) {
+            return None;
+        }
         (tokens.get(..copula)?, animation_tokens)
     };
     // "Each of those lands is an 8/8 green Elemental creature for as long as

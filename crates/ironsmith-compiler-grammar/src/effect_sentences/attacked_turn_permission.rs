@@ -33,8 +33,82 @@ fn attacker_count(tokens: &[OwnedLexToken]) -> (u32, &[OwnedLexToken]) {
     (1, tokens)
 }
 
+/// For as long as it remains exiled, it has "You may cast this card from
+/// exile [as long as you've cast another spell this turn]." (Monk Class): the
+/// exiled card gains its own cast permission for as long as it remains exiled
+/// (CR 610.3). The quoted "you" is the card's owner, who is the player that
+/// just exiled it from their own library, so the permission belongs to the
+/// effect's controller. The optional turn-history gate makes the permission
+/// usable only once that player has cast another spell this turn: it is
+/// checked while proposing the cast, before this spell's own cast counts.
+fn parse_exiled_card_has_self_cast(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = token_word_refs(tokens);
+    let mut rest: &[&str] = &words;
+    let mut strip = |prefixes: &[&[&'static str]]| -> bool {
+        for prefix in prefixes {
+            if rest.len() >= prefix.len()
+                && rest.iter().zip(prefix.iter()).all(|(word, expected)| word == expected)
+            {
+                rest = &rest[prefix.len()..];
+                return true;
+            }
+        }
+        false
+    };
+    if !strip(&[
+        &["for", "as", "long", "as", "it", "remains", "exiled"],
+        &["for", "as", "long", "as", "that", "card", "remains", "exiled"],
+    ]) || !strip(&[&["it", "has"], &["that", "card", "has"]])
+        || !strip(&[&["you", "may"]])
+    {
+        return Ok(None);
+    }
+    let allow_land = if strip(&[&["play"]]) {
+        true
+    } else if strip(&[&["cast"]]) {
+        false
+    } else {
+        return Ok(None);
+    };
+    if !strip(&[&["this", "card", "from", "exile"]]) {
+        return Ok(None);
+    }
+    let cast_another_spell = strip(&[&[
+        "as", "long", "as", "you've", "cast", "another", "spell", "this", "turn",
+    ]]);
+    if !rest.is_empty() {
+        return Ok(None);
+    }
+    let tag: crate::host::TagKey = crate::tag::CompilerReferenceTag::It.bind().into();
+    let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+        crate::tag::TagRef::of(tag),
+        PlayerAst::You,
+        allow_land,
+        false,
+        ironsmith_core::value_model::ManaSpendMode::Normal,
+        None,
+    );
+    if cast_another_spell
+        && let EffectAst::SubjectVerb(subject) = &mut effect
+        && let crate::cards::builders::SubjectVerbActionAst::Grants(
+            crate::cards::builders::GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                during_turns_cast_another_spell,
+                ..
+            },
+        ) = &mut subject.action
+    {
+        *during_turns_cast_another_spell = true;
+    }
+    Ok(Some(effect))
+}
+
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if let Some(effect) = parse_exiled_card_has_self_cast(tokens)? {
+        return Ok(Some(effect));
+    }
     let Some(((), rest)) = primitives::parse_prefix(
         tokens,
         primitives::phrase(&["during", "any", "turn", "you", "attacked", "with"]),

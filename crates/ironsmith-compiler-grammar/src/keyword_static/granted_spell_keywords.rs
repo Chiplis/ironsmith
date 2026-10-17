@@ -91,13 +91,21 @@ pub fn parse_granted_spell_keyword_line(
     if verb_idx == 0 {
         return Ok(None);
     }
-    let Some(kind) = tokens
-        .get(verb_idx + 1)
-        .and_then(granted_spell_keyword_kind)
-    else {
-        return Ok(None);
+    // "Creature spells you cast have sticker kicker {1}." (Wicker Picker)
+    let sticker_kicker = tokens.get(verb_idx + 1).is_some_and(|token| token.is_word("sticker"))
+        && tokens.get(verb_idx + 2).is_some_and(|token| token.is_word("kicker"));
+    let (kind, keyword_len) = if sticker_kicker {
+        (ironsmith_core::GrantedSpellKeywordKind::StickerKicker, 2)
+    } else {
+        let Some(kind) = tokens
+            .get(verb_idx + 1)
+            .and_then(granted_spell_keyword_kind)
+        else {
+            return Ok(None);
+        };
+        (kind, 1)
     };
-    let mut tail = &tokens[verb_idx + 2..];
+    let mut tail = &tokens[verb_idx + 1 + keyword_len..];
     if tokens[verb_idx].is_any_word(&["gain", "gains"]) {
         let Some(stripped) = strip_as_you_cast_tail(tail) else {
             return Ok(None);

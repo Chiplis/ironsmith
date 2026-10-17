@@ -233,6 +233,13 @@ fn absorb_predicate_into_trigger(
                 other => (other, Some(PredicateAst::ItMatches(filter))),
             }
         }
+        // "Whenever your opponents are dealt combat damage, if any of that
+        // damage was dealt by a Warrior" (Mindblade Render): the qualifier
+        // names the damage sources, so the event becomes one batched trigger
+        // for matching sources (CR 603.2c).
+        PredicateAst::ItMatches(filter) if is_unfiltered_player_combat_damage_trigger(&trigger) => {
+            (with_combat_damage_source_filter(trigger, filter), None)
+        }
         PredicateAst::Not(inner)
             if matches!(
                 inner.as_ref(),
@@ -249,6 +256,40 @@ fn absorb_predicate_into_trigger(
             }
         }
         other => (trigger, Some(other)),
+    }
+}
+
+fn is_unfiltered_player_combat_damage_trigger(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => is_unfiltered_player_combat_damage_trigger(trigger),
+        TriggerSpec::DealsCombatDamageToPlayer { source, .. } => {
+            let mut source = source.clone();
+            source.zone = None;
+            source == ObjectFilter::default()
+        }
+        _ => false,
+    }
+}
+
+fn with_combat_damage_source_filter(trigger: TriggerSpec, filter: ObjectFilter) -> TriggerSpec {
+    match trigger {
+        TriggerSpec::WithIntro { intro, trigger } => TriggerSpec::WithIntro {
+            intro,
+            trigger: Box::new(with_combat_damage_source_filter(*trigger, filter)),
+        },
+        TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
+            let mut filter = filter;
+            if filter.zone.is_none() {
+                filter.zone = source.zone;
+            }
+            TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source: filter,
+                player,
+                each_damaged_player: false,
+                per_source_controller: false,
+            }
+        }
+        other => other,
     }
 }
 

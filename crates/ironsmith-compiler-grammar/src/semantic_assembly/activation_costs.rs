@@ -208,6 +208,12 @@ fn assemble_segment(segment: &ActivationCostSegmentCst) -> CompilerCost {
             }
         }
         ActivationCostSegmentCst::MoveChosenToZone { filter, destination } => CompilerCost::MoveChosenToZone { filter: filter.clone(), destination: *destination },
+        ActivationCostSegmentCst::RollDie { sides } => CompilerCost::ValidatedEffect(Box::new(
+            crate::cards::builders::EffectAst::subject_verb_roll_die(
+                crate::cards::builders::PlayerAst::You,
+                *sides,
+            ),
+        )),
         ActivationCostSegmentCst::MoveChosenToLibraryTop { filter } => {
             CompilerCost::MoveChosenToLibraryTop {
                 filter: filter.clone(),

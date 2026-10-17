@@ -219,6 +219,9 @@ pub fn ignore_source_effect_cost_display(
             cost,
             ..
         } => Some(cost.to_oracle()),
+        ironsmith_core::StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+            ..
+        } => Some("Sacrifice a permanent".to_string()),
         _ => None,
     }
 }
@@ -356,17 +359,91 @@ fn disguise_turn_face_up_cost_reductions(
     (generic_reduction, mana_cost_reduction)
 }
 
+/// Total generic increase from "All morph costs cost {N} more." statics
+/// (Exiled Doomsayer) on the battlefield, regardless of controller.
+fn morph_cost_increase(game: &GameState) -> u32 {
+    let mut total = 0u32;
+    for id in game.battlefield.iter().copied() {
+        if game.is_phased_out(id) {
+            continue;
+        }
+        let Some(characteristics) = game.current_characteristics(id) else {
+            continue;
+        };
+        for ability in characteristics.static_abilities.iter() {
+            if let Some(model) = ability.compiled_model()
+                && let ironsmith_core::StaticAbilityPayload::MorphCostIncrease { generic_increase } =
+                    &model.payload
+            {
+                total = total.saturating_add(*generic_increase);
+            }
+        }
+    }
+    total
+}
+
+/// Adds `increase` generic mana to a turn-face-up cost: to its mana
+/// component when it has one, otherwise as an extra mana component
+/// (a non-mana morph cost still costs {N} more).
+fn increase_total_cost_generic(
+    total_cost: &crate::cost::TotalCost,
+    increase: u32,
+) -> crate::cost::TotalCost {
+    match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            let mut applied = false;
+            let mut adjusted: Vec<crate::costs::Cost> = costs
+                .iter()
+                .map(|cost| match cost.mana_cost_ref() {
+                    Some(mana_cost) if !applied => {
+                        applied = true;
+                        crate::costs::Cost::mana(mana_cost.add_generic(increase))
+                    }
+                    _ => cost.clone(),
+                })
+                .collect();
+            if !applied {
+                adjusted.push(crate::costs::Cost::mana(
+                    crate::mana::ManaCost::from_symbols(Vec::new()).add_generic(increase),
+                ));
+            }
+            crate::cost::TotalCost::from_costs(adjusted)
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| increase_total_cost_generic(branch, increase))
+                .collect(),
+        ),
+    }
+}
+
 fn adjusted_turn_face_up_cost(
     game: &GameState,
     player: PlayerId,
     permanent_id: ObjectId,
     spec: &TurnFaceUpSpec,
 ) -> crate::cost::TotalCost {
+    let morph_increase = if matches!(
+        spec.method,
+        TurnFaceUpMethod::TurnFaceUpAbility | TurnFaceUpMethod::MegamorphAbility
+    ) {
+        morph_cost_increase(game)
+    } else {
+        0
+    };
+    let increased;
+    let base_cost = if morph_increase > 0 {
+        increased = increase_total_cost_generic(&spec.cost, morph_increase);
+        &increased
+    } else {
+        &spec.cost
+    };
     let adjusted = adjust_total_cost_mana_components_for_reason(
         game,
         player,
         permanent_id,
-        &spec.cost,
+        base_cost,
         spec.method.payment_reason(),
     );
     if !spec.disguise {
@@ -397,11 +474,73 @@ fn foretell_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost
         })
 }
 
+/// A foretell cost granted to a card in `player`'s hand ("Each nonland card
+/// in your hand without foretell has foretell. Its foretell cost is ...",
+/// Dream Devourer), when the card has none of its own.
+fn granted_hand_foretell_cost(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Option<crate::mana::ManaCost> {
+    game.effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(game, card_id, Zone::Hand, player)
+        .into_iter()
+        .find_map(|granted| match granted.method {
+            crate::alternative_cast::AlternativeCastingMethod::Foretell { cost } => Some(cost),
+            _ => None,
+        })
+}
+
 fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
     object
         .alternative_casts
         .iter()
         .find_map(|method| method.plot_cost().cloned())
+}
+
+/// The plot special action's cost (CR 702.170a): the card's plot cost,
+/// reduced by "Plotting cards from your hand costs {N} less" statics of
+/// permanents the plotting player controls.
+fn plot_special_action_cost(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Result<crate::mana::ManaCost, ActionError> {
+    let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    let cost = plot_cost(object).ok_or(ActionError::NoSuchAbility)?;
+    let checked =
+        game.continuous_query_snapshot()
+            .map_err(|error| ActionError::ExecutionFailure {
+                source: card_id,
+                error: crate::effects::ExecutionError::ContinuousDiscovery(error),
+            })?;
+    let mut reduction = 0u32;
+    for source in checked.battlefield.iter().copied() {
+        if checked.is_phased_out(source) {
+            continue;
+        }
+        let Some(object) = checked.object(source) else {
+            continue;
+        };
+        if checked.controller_of(object) != player {
+            continue;
+        }
+        let Some(abilities) = checked.current_abilities(source) else {
+            continue;
+        };
+        for ability in abilities {
+            if !ability.functions_in(&Zone::Battlefield) {
+                continue;
+            }
+            if let crate::ability::AbilityKind::Static(rule) = &ability.kind
+                && let Some(amount) = rule.plot_special_action_reduction()
+            {
+                reduction = reduction.saturating_add(amount);
+            }
+        }
+    }
+    Ok(cost.reduce_generic(reduction))
 }
 
 fn suspend_spec(
@@ -548,6 +687,10 @@ pub enum SpecialAction {
 
     /// Pay for and perform a repeatable effect granted through end of turn.
     PerformRepeatableManaPaymentAction { action_index: usize },
+
+    /// Discard a card from hand whose own static ability allows it "any time
+    /// you could cast an instant" (Circling Vultures; CR 116.2).
+    DiscardFromHand { card_id: ObjectId },
 }
 
 /// Errors that can occur when attempting to perform a special action.
@@ -740,6 +883,9 @@ pub fn can_perform_check(
         SpecialAction::PerformRepeatableManaPaymentAction { action_index } => {
             can_perform_repeatable_mana_payment_action(game, player, *action_index)
         }
+        SpecialAction::DiscardFromHand { card_id } => {
+            can_discard_from_hand_special_action(game, player, *card_id)
+        }
     }?;
     if let Some(payment) = action.payment_spec(game, player)? {
         check_special_action_payment(game, player, &payment)?;
@@ -928,6 +1074,9 @@ fn finish_special_action_with_mana_activation_outputs(
         SpecialAction::PerformRepeatableManaPaymentAction { action_index } => {
             perform_repeatable_mana_payment_action(game, player, action_index, decision_maker)
         }
+        SpecialAction::DiscardFromHand { card_id } => {
+            perform_discard_from_hand_special_action(game, player, card_id, decision_maker)
+        }
     }
     .map(|_| None)
 }
@@ -1112,6 +1261,67 @@ fn ignore_source_effect_mana_cost(
     Ok(cost.clone())
 }
 
+/// The player filter of an active "that player may sacrifice a permanent ...
+/// to ignore this effect until end of turn" permission (Damping Engine).
+fn sacrifice_to_ignore_source_effect_player(
+    game: &GameState,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> Result<crate::target::PlayerFilter, ActionError> {
+    let source = game.object(source_id).ok_or(ActionError::ObjectNotFound)?;
+    if source.zone != Zone::Battlefield {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: source.zone,
+        });
+    }
+    if game.is_phased_out(source_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
+    let ability = source
+        .abilities
+        .get(ability_index)
+        .ok_or(ActionError::NoSuchAbility)?;
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    if !ability.functions_in(&Zone::Battlefield)
+        || static_ability.id()
+            != crate::static_abilities::StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+        || !static_ability.is_active(game, source_id)
+    {
+        return Err(ActionError::NoSuchAbility);
+    }
+    let model = static_ability
+        .compiled_model()
+        .ok_or(ActionError::NoSuchAbility)?;
+    let ironsmith_core::StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
+        player,
+        ..
+    } = &model.payload
+    else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    Ok(player.clone())
+}
+
+/// The cost of an ignore-this-effect special action: the stated mana, or a
+/// permanent the acting player sacrifices.
+fn ignore_source_effect_total_cost(
+    game: &GameState,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> Result<crate::cost::TotalCost, ActionError> {
+    if sacrifice_to_ignore_source_effect_player(game, source_id, ability_index).is_ok() {
+        return Ok(ignore_attached_restriction_cost());
+    }
+    Ok(crate::cost::TotalCost::mana(ignore_source_effect_mana_cost(
+        game,
+        source_id,
+        ability_index,
+    )?))
+}
+
 fn can_ignore_source_effect(
     game: &GameState,
     player: PlayerId,
@@ -1123,6 +1333,16 @@ fn can_ignore_source_effect(
     }
     if game.player_ignores_source_static_effect_this_turn(source_id, player) {
         return Err(ActionError::InvalidTiming);
+    }
+    if let Ok(eligible) = sacrifice_to_ignore_source_effect_player(game, source_id, ability_index)
+    {
+        // Only the player the restriction names ("That player") may act.
+        let controller = game.controller_of_id(source_id).unwrap_or(player);
+        let filter_ctx = game.filter_context_for_combat(controller, Some(source_id), None, None);
+        if !crate::filter::player_filter_matches_game(&eligible, player, game, &filter_ctx) {
+            return Err(ActionError::InvalidTarget);
+        }
+        return Ok(());
     }
     ignore_source_effect_mana_cost(game, source_id, ability_index)?;
     Ok(())
@@ -1209,6 +1429,88 @@ fn perform_ignore_attached_restriction(
     game.player_ignores_attached_static_restrictions_until_end_of_turn(source_id, player);
     game.update_cant_effects();
     Ok(())
+}
+
+/// Whether this card's own text lets its owner discard it as a special action.
+pub(crate) fn has_discard_from_hand_special_action(game: &GameState, card_id: ObjectId) -> bool {
+    game.object(card_id).is_some_and(|object| {
+        object.abilities_vec().iter().any(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::MayDiscardSourceAnyTimeYouCouldCastInstant
+            )
+        })
+    })
+}
+
+fn can_discard_from_hand_special_action(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Result<(), ActionError> {
+    // "Any time you could cast an instant": whenever its owner has priority.
+    if !game.team_has_priority(player) {
+        return Err(ActionError::NotYourPriority);
+    }
+    let card = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
+    if card.zone != Zone::Hand {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Hand,
+            actual: card.zone,
+        });
+    }
+    if card.owner != player {
+        return Err(ActionError::InvalidTarget);
+    }
+    if !has_discard_from_hand_special_action(game, card_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
+    Ok(())
+}
+
+fn perform_discard_from_hand_special_action(
+    game: &mut GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
+    let effect = crate::effect::Effect::discard_source_as_cost();
+    let cause = EventCause::from_special_action(Some(card_id), player);
+    let mut ctx = ExecutionContext::new(card_id, player, decision_maker).with_cause(cause);
+    // The discard happens immediately, without the stack; its events trigger
+    // abilities that wait for the next priority (CR 116.2, 603.2).
+    crate::effects::with_per_event_trigger_matching(game, true, |game| {
+        let outcome = crate::effects::execute_effect(game, &effect, &mut ctx).map_err(|error| {
+            ActionError::ExecutionFailure {
+                source: card_id,
+                error,
+            }
+        })?;
+        let mut reported = Vec::new();
+        reported.extend(outcome.events);
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+        if crate::effects::match_triggers_at_instruction_boundary(
+            game,
+            &ctx,
+            None::<&crate::effect::Effect>,
+            reported.iter(),
+        )
+        .map_err(|error| ActionError::ExecutionFailure {
+            source: card_id,
+            error,
+        })? {
+            reported.clear();
+        }
+        crate::effects::retain_unmatched_outcome_events(game, &mut reported);
+        for event in reported {
+            game.queue_trigger_event(ctx.provenance, event);
+        }
+        Ok(())
+    })
 }
 
 fn companion_action_cost() -> ManaCost {
@@ -1432,7 +1734,9 @@ fn can_play_land(
         return Err(ActionError::LandPlayProhibited);
     }
     let permission_view = crate::derived_view::DerivedGameView::new(game);
-    let can_play_from_zone = object.zone == Zone::Hand
+    // Only your own hand is a natural land-play origin; another player's hand
+    // needs a permission (Sen Triplets) like any other zone.
+    let can_play_from_zone = (object.zone == Zone::Hand && object.owner == player)
         || (object.zone == Zone::Exile && game.adventure_exiled_player(card_id) == Some(player))
         || permission_view
             .granted_play_from_for_card(card_id, object.zone, player)
@@ -2305,6 +2609,8 @@ fn foretell_special_action_quote(
             }
             if let crate::ability::AbilityKind::Static(rule) = &ability.kind
                 && let Some((amount, timing)) = rule.foretell_special_action_modifier()
+                && !(rule.foretell_special_action_first_each_turn()
+                    && game.has_foretold_this_turn(player))
             {
                 reduction = reduction.saturating_add(amount);
                 any_turn |= timing;
@@ -2346,7 +2652,10 @@ fn can_foretell(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result
 
     // The explicit action is a public foretell claim. Peers holding only a
     // committed placeholder validate its keyword when the card is opened.
-    if foretell_cost(object).is_none() && !game.is_hidden_card_placeholder(card_id) {
+    if foretell_cost(object).is_none()
+        && !game.is_hidden_card_placeholder(card_id)
+        && granted_hand_foretell_cost(game, player, card_id).is_none()
+    {
         return Err(ActionError::NoSuchAbility);
     }
 
@@ -2359,6 +2668,14 @@ fn perform_foretell(
     player: PlayerId,
     card_id: ObjectId,
 ) -> Result<(), ActionError> {
+    // A granted foretell cost is fixed as the card is foretold: the card
+    // keeps it in exile even if the granting permanent leaves (CR 702.143).
+    let granted_cost = match game.object(card_id) {
+        Some(object) if foretell_cost(object).is_none() => {
+            granted_hand_foretell_cost(game, player, card_id)
+        }
+        _ => None,
+    };
     // Move to exile face-down
     let new_id = game
         .move_object(
@@ -2373,6 +2690,31 @@ fn perform_foretell(
     game.grant_face_down_exile_view(new_id, player);
     game.set_foretold(new_id);
     game.record_foretell_action(player);
+    if let Some(cost) = granted_cost
+        && let Some(object) = game.object_mut(new_id)
+    {
+        object
+            .alternative_casts
+            .push(crate::alternative_cast::AlternativeCastingMethod::Foretell { cost });
+    }
+
+    // "Whenever you foretell a card" (CR 702.143a): the special action is the
+    // keyword action that triggers.
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: new_id,
+            controller: player,
+        },
+    );
+    let event_provenance = game
+        .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
+    game.queue_trigger_event(
+        action_provenance,
+        TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(crate::events::KeywordActionKind::Foretell, player, new_id, 1),
+            event_provenance,
+        ),
+    );
 
     Ok(())
 }
@@ -2526,7 +2868,10 @@ fn can_activate_mana_ability_with_cost_checks(
     let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
         return Err(ActionError::NoSuchAbility);
     };
-    if game.controller_of(object) != player && !mana_ability.allows_any_player_to_activate() {
+    if game.controller_of(object) != player
+        && !mana_ability.allows_any_player_to_activate()
+        && !game.may_tap_uncontrolled_land_for_mana(player, permanent_id, mana_ability)
+    {
         return Err(ActionError::InvalidTarget);
     }
     if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
@@ -2716,7 +3061,10 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
     let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind else {
         return Err(ActionError::NoSuchAbility);
     };
-    if game.controller_of(object) != player && !mana_ability.allows_any_player_to_activate() {
+    if game.controller_of(object) != player
+        && !mana_ability.allows_any_player_to_activate()
+        && !game.may_tap_uncontrolled_land_for_mana(player, permanent_id, mana_ability)
+    {
         return Err(ActionError::InvalidTarget);
     }
     if !mana_ability.is_runtime_mana_ability(game, permanent_id, player) {
@@ -2868,7 +3216,7 @@ pub(crate) fn mana_production_provenance_for_activation_cost(
     if cost_taps_source(cost) {
         crate::events::mana::ManaProductionProvenance::TappedSourceForMana
     } else {
-        crate::events::mana::ManaProductionProvenance::Unknown
+        crate::events::mana::ManaProductionProvenance::ManaAbility
     }
 }
 
@@ -3152,7 +3500,16 @@ pub(crate) fn perform_mana_ability_with_payment_outputs(
                     error,
                 })?;
                 let mana = mana_ability.mana_output.clone().unwrap_or_default();
-                let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+                let mut mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
+                // Mana from a land tapped under "you may tap lands you don't
+                // control for mana" keeps that permission's restrictions.
+                if game.controller_of_id(permanent_id) != Some(player)
+                    && !mana_ability.allows_any_player_to_activate()
+                    && game.may_tap_uncontrolled_land_for_mana(player, permanent_id, mana_ability)
+                {
+                    mana_usage_restrictions
+                        .extend(game.uncontrolled_land_mana_restrictions(player));
+                }
                 let source_chosen_creature_type = game.chosen_creature_type(permanent_id);
                 let mut completion = CompletedManaActivation::default();
 
@@ -4894,8 +5251,11 @@ pub(crate) fn resolve_dynamic_mana_cost(
         .transpose()?
         .unwrap_or(1);
 
-    let expanded =
+    let mut expanded =
         expand_dynamic_mana_base(&base, x_value, multiplier).add_generic(additional_generic);
+    if dynamic_mana.generic_reduction > 0 {
+        expanded = expanded.reduce_generic(dynamic_mana.generic_reduction);
+    }
     let Some(condition) = dynamic_mana.source_mana_cost_reduction_condition.as_deref() else {
         return Ok(expanded);
     };
@@ -5846,6 +6206,7 @@ mod tests {
                                         ])),
                                         source_filter: None,
                                         controller_filter: Some(ControllerFilter::Opponent),
+                                        ability_kind: None,
                                     },
                                 },
                                 String::new(),

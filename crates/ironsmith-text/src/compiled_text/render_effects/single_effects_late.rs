@@ -671,7 +671,7 @@ fn describe_choose_card_type_reveal_partition(
         || !choice.mode_additional_mana_costs.is_empty()
         || choice.disallow_previously_chosen_modes
         || choice.disallow_previously_chosen_modes_this_turn
-        || choice.distinct_player_targets_per_mode
+        || choice.distinct_player_targets_per_mode || choice.optional_choice
         || choice.conditional_mode_range.is_some()
         || choice.modes.len() != expected_modes.len()
         || choice.mode_point_costs.iter().any(|cost| *cost != 1)
@@ -887,6 +887,7 @@ fn describe_may_single_hand_move_with_entry_grant(
         || grant.lock_filter_at_resolution
         || grant.resolve_set_pt_values_at_resolution
         || grant.require_creature_target
+        || grant.grant_only_if_absent
         || !apply_continuous_targets_tag(grant, moved_tag)
     {
         return None;
@@ -1095,6 +1096,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyTimeByOpponents => {
             Some("Only your opponents may activate this ability")
         }
+        ActivationTiming::AnyTimeBySourceOwner => {
+            Some("Only this creature's owner may activate this ability")
+        }
         ActivationTiming::SorcerySpeedByOpponents => {
             Some("Only your opponents may activate this ability and only as a sorcery")
         }
@@ -1130,6 +1134,9 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         }
         ActivationTiming::BeforeEndOfCombatStep => {
             Some("Activate only before the end of combat step")
+        }
+        ActivationTiming::AnyTimeByGrantingPlayer(_) => {
+            Some("Only you may activate this ability")
         }
     }
 }
@@ -1453,6 +1460,7 @@ pub(super) fn describe_mana_usage_restriction(
             enters_with_counters,
             granted_abilities,
             granted_keywords,
+            enters_with_counter_values,
         } => {
             let spell_text = describe_mana_usage_spell_filter_target_with_options(filter, false)?;
             let mut line = match condition {
@@ -1491,7 +1499,15 @@ pub(super) fn describe_mana_usage_restriction(
                     rendered
                 }
             }));
-            let has_prior_permanent_bonus = !enters_with_counters.is_empty();
+            for (counter_type, count) in enters_with_counter_values {
+                bonuses.push(format!(
+                    "it enters with a number of additional {} counters on it equal to {}",
+                    counter_type.description(),
+                    describe_value(count)
+                ));
+            }
+            let has_prior_permanent_bonus =
+                !enters_with_counters.is_empty() || !enters_with_counter_values.is_empty();
             for (ability, duration) in granted_abilities {
                 let rendered = match (ability, duration) {
                     (

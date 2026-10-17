@@ -100,6 +100,9 @@ pub struct RedirectWouldEnterSpec<'a> {
     pub filter_tokens: &'a [OwnedLexToken],
     pub not_cast: bool,
     pub destination: crate::zone::Zone,
+    /// "... and it wasn't cast or no mana was spent to cast it" (Primeval
+    /// Spawn).
+    pub or_no_mana_spent: bool,
 }
 
 pub fn parse_redirect_would_enter_tokens(
@@ -135,6 +138,12 @@ fn parse_redirect_would_enter_lexed<'a>(
     ))
     .map(|tail| tail.is_some())
     .parse_next(input)?;
+    let or_no_mana_spent = not_cast
+        && opt(primitives::phrase(&[
+            "or", "no", "mana", "was", "spent", "to", "cast", "it",
+        ]))
+        .map(|tail| tail.is_some())
+        .parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
     primitives::kw("exile").parse_next(input)?;
     alt((
@@ -149,6 +158,7 @@ fn parse_redirect_would_enter_lexed<'a>(
         filter_tokens: trim_lexed_commas(filter_tokens),
         not_cast,
         destination: crate::zone::Zone::Exile,
+        or_no_mana_spent,
     })
 }
 

@@ -222,6 +222,11 @@ pub fn parse_choice_object_clause_tokens(
     merge_from_among_pool(&mut words);
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
+        // The relative pronoun of "a creature that this Aura could enchant"
+        // belongs to the eligibility clause, not the noun phrase.
+        if words.len() > 1 && words.last().is_some_and(|word| word.as_str() == "that") {
+            words.pop();
+        }
         references.source_aura_can_enchant = true;
     }
     match &count_source {
@@ -312,6 +317,7 @@ pub fn parse_choice_player_clause_tokens(
     let filter = match base {
         ChoicePlayerBase::Opponent => alt((
             parse_opponent_controlled_count_tail_lexed,
+            parse_opponent_most_life_among_opponents_tail_lexed,
             eof.value(PlayerFilter::Opponent),
         ))
         .parse_next(&mut input)
@@ -650,6 +656,10 @@ fn parse_aura_eligibility_suffix(words: &[String]) -> bool {
         &["this", "aura", "could", "enchant"][..],
         &["that", "aura", "can", "enchant"][..],
         &["that", "aura", "could", "enchant"][..],
+        // "a creature that this card could enchant" (Takklemaggot): the
+        // Aura names itself as a card while it is in the graveyard.
+        &["this", "card", "can", "enchant"][..],
+        &["this", "card", "could", "enchant"][..],
     ]
     .into_iter()
     .any(|phrase| phrase_is_whole(tail, phrase))
@@ -689,6 +699,9 @@ fn parse_choice_player_ordinal_prefix_lexed(input: &mut LexStream<'_>) -> usize 
             ))
             .value(0usize),
             alt((primitives::kw("other"), primitives::kw("another"))).value(1usize),
+            primitives::kw("different").value(
+                ironsmith_compiler_semantic::model::ast::DISTINCT_FROM_EVERY_PRIOR_PLAYER_CHOICE,
+            ),
             primitives::kw("second").value(1usize),
             primitives::kw("third").value(2usize),
         ))
@@ -713,6 +726,8 @@ fn parse_choice_player_base_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Choi
         primitives::kw("player").value(ChoicePlayerBase::Player),
         alt((primitives::kw("opponent"), primitives::kw("opponents")))
             .value(ChoicePlayerBase::Opponent),
+        // "choose one of your opponents" (Goblin Festival) names one opponent.
+        primitives::phrase(&["one", "of", "your", "opponents"]).value(ChoicePlayerBase::Opponent),
     ))
     .parse_next(input)
 }
@@ -736,6 +751,39 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
         fewer: false,
         as_you_activate: false,
     })
+}
+
+/// "an opponent with the most life [or tied for most life] among your
+/// opponents" (The Master, Gallifrey's End; Galactus): every opponent tied
+/// for the highest life total among your opponents is eligible.
+fn parse_opponent_most_life_among_opponents_tail_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<PlayerFilter> {
+    primitives::kw("with").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    primitives::phrase(&["most", "life"]).parse_next(input)?;
+    opt(primitives::phrase(&["or", "tied", "for", "most", "life"])).parse_next(input)?;
+    primitives::phrase(&["among", "your", "opponents"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(PlayerFilter::MostLifeTiedAmong {
+        base: Box::new(PlayerFilter::Opponent),
+    })
+}
+
+/// The complete player phrase "an opponent with the most life among your
+/// opponents" outside a choice clause (Galactus's attack requirement).
+pub fn parse_opponent_with_most_life_among_opponents_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
+    primitives::probe_all(
+        tokens,
+        |input: &mut LexStream<'_>| -> WResult<PlayerFilter> {
+            alt((primitives::kw("an"), primitives::kw("a"))).parse_next(input)?;
+            primitives::kw("opponent").parse_next(input)?;
+            parse_opponent_most_life_among_opponents_tail_lexed(input)
+        },
+        "opponent-with-most-life-among-opponents",
+    )
 }
 
 fn controlled_count_card_type_lexed(input: &mut LexStream<'_>) -> WResult<CardType> {

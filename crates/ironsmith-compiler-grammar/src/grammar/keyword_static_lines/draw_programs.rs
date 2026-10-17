@@ -16,6 +16,26 @@ pub struct DrawReplacementProgram {
     pub optional: bool,
     pub skip: bool,
     pub body: Vec<OwnedLexToken>,
+    /// "If a cycling ability of <object> would cause you to draw a card":
+    /// the object phrase naming the cycling ability's source.
+    pub cycling_source: Option<Vec<OwnedLexToken>>,
+}
+/// "if a cycling ability of <object> would cause you to draw a card ,"
+fn cycling_cause_header(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, &[OwnedLexToken])> {
+    const PREFIX: [&str; 5] = ["if", "a", "cycling", "ability", "of"];
+    const TAIL: [&str; 7] = ["would", "cause", "you", "to", "draw", "a", "card"];
+    if tokens.len() < PREFIX.len() || !tokens.iter().zip(PREFIX).all(|(token, word)| token.is_word(word)) {
+        return None;
+    }
+    let rest = &tokens[PREFIX.len()..];
+    let at = (1..rest.len()).find(|&idx| {
+        rest.len() >= idx + TAIL.len()
+            && rest[idx..idx + TAIL.len()].iter().zip(TAIL).all(|(token, word)| token.is_word(word))
+    })?;
+    let source = rest[..at].to_vec();
+    let after = &rest[at + TAIL.len()..];
+    if !after.first()?.is_comma() { return None; }
+    Some((source, &after[1..]))
 }
 fn header(input: &mut LexStream<'_>) -> WResult<(DrawReplacementPlayer, bool, bool)> {
     primitives::kw("if").parse_next(input)?;
@@ -35,7 +55,13 @@ fn header(input: &mut LexStream<'_>) -> WResult<(DrawReplacementPlayer, bool, bo
     Ok((player, except_first, empty_library))
 }
 pub fn parse_draw_replacement_program(tokens: &[OwnedLexToken]) -> Option<DrawReplacementProgram> {
-    let ((player, except_first_of_draw_step, empty_library), mut body) = primitives::parse_prefix(tokens, header)?;
+    let ((player, except_first_of_draw_step, empty_library), mut body, cycling_source) =
+        if let Some((source, rest)) = cycling_cause_header(tokens) {
+            ((DrawReplacementPlayer::You, false, false), rest, Some(source))
+        } else {
+            let (header, body) = primitives::parse_prefix(tokens, header)?;
+            (header, body, None)
+        };
     let mut optional = if let Some(((), rest)) = primitives::parse_prefix(body, primitives::phrase(&["you", "may"])) {
         body = rest; true
     } else { false };
@@ -72,7 +98,7 @@ pub fn parse_draw_replacement_program(tokens: &[OwnedLexToken]) -> Option<DrawRe
     // consumes just this proposal under the ordinary replacement identity.
     if skip { body.clear(); }
     if body.is_empty() && !skip { return None; }
-    Some(DrawReplacementProgram { player, except_first_of_draw_step, empty_library, optional, skip, body })
+    Some(DrawReplacementProgram { player, except_first_of_draw_step, empty_library, optional, skip, body, cycling_source })
 }
 
 #[cfg(test)]

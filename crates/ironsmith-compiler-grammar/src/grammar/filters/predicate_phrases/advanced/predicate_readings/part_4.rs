@@ -989,6 +989,9 @@ pub(super) const READINGS: &[Reading] = &[
                 && !input.read_by("triggering-spell-ordinal-predicate")
                 && !input.read_by("triggering-object-source-stat-predicate")
                 && !input.read_by("value-reference-comparison-predicate")
+                // Temporal alternatives retain their event-history subject;
+                // the generic demonstrative disjunction must not rebind it.
+                && !input.read_by("turn-history-intervening-predicate")
         },
         read: |input| input.outcome(read_demonstrative_or_descriptor(input)),
     },
@@ -1230,6 +1233,7 @@ pub(super) const READINGS: &[Reading] = &[
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
                 // Readings ranked above this one that read the input read it.
+                && !input.read_by("turn-history-intervening-predicate")
                 && !input.read_by("same-name-as-filter-predicate")
                 && !input.read_by("phase-step-gate-predicate")
                 && !input.read_by("rule")

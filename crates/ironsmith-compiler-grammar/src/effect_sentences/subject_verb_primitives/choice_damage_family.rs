@@ -454,7 +454,12 @@ fn lower_selected_hand_reveal(
                 filter.colors = Some(color);
                 idx += 1;
             }
-            if !choice_shapes::is_card_noun_at(&descriptor_words, idx) {
+            // Only "[color] card(s)" may take this fallback: any further
+            // qualifier the object-filter grammar rejected would otherwise
+            // be silently dropped from the reveal choice.
+            if !choice_shapes::is_card_noun_at(&descriptor_words, idx)
+                || descriptor_words.len() != idx + 1
+            {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported reveal-hand clause (clause: '{}')",
                     clause_text

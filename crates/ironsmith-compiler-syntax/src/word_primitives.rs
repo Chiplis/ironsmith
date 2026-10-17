@@ -253,6 +253,33 @@ pub fn sequence_occurs(words: &[&str], expected: &[&str]) -> bool {
     parse_sequence_start(words, expected).is_some()
 }
 
+/// The current, symmetric combat-partner relation "blocking or blocked by"
+/// (CR 509.1h/506.4). Older Oracle text spells the same relation "blocking or
+/// being blocked by"; both readings describe one creature in combat with the
+/// named object, so callers share one recognizer. Returns the relation's
+/// first word index and its word length.
+pub const CURRENT_BLOCK_PARTNER_RELATIONS: &[&[&str]] = &[
+    &["blocking", "or", "blocked", "by"],
+    &["blocking", "or", "being", "blocked", "by"],
+];
+
+pub fn find_current_block_partner_relation(words: &[&str]) -> Option<(usize, usize)> {
+    (0..words.len()).find_map(|idx| {
+        CURRENT_BLOCK_PARTNER_RELATIONS
+            .iter()
+            .find(|relation| words[idx..].starts_with(relation))
+            .map(|relation| (idx, relation.len()))
+    })
+}
+
+/// Length of a current combat-partner relation starting exactly at `words[0]`.
+pub fn current_block_partner_relation_prefix_len(words: &[&str]) -> Option<usize> {
+    CURRENT_BLOCK_PARTNER_RELATIONS
+        .iter()
+        .find(|relation| words.starts_with(relation))
+        .map(|relation| relation.len())
+}
+
 pub fn sequence_or_empty_occurs(words: &[&str], expected: &[&str]) -> bool {
     expected.is_empty() || sequence_occurs(words, expected)
 }

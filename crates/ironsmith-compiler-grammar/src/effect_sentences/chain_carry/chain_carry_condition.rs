@@ -118,10 +118,89 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
     };
 
     let predicate = bind_trailing_it_predicate_to_explicit_effect_target(predicate, &base_effect);
+    // "[you may] return that card to the battlefield at the beginning of the
+    // next end step if Shirei is still on the battlefield": the condition
+    // (and the optional choice) belong to the delayed return, checked when it
+    // resolves, not when the delayed trigger is created.
+    let base_effect = match sink_trailing_if_into_delayed_timing(base_effect, &predicate) {
+        Ok(delayed) => return Ok(delayed),
+        Err(base_effect) => base_effect,
+    };
     Ok(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
         predicate,
         effects: vec![base_effect],
     }))
+}
+
+fn delayed_timing_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    use crate::cards::builders::DelayedEffectAst;
+    match effect {
+        EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep { effects, .. }
+            | DelayedEffectAst::DelayedUntilNextUpkeep { effects, .. }
+            | DelayedEffectAst::DelayedUntilEndOfCombat { effects },
+        ) => Some(effects),
+        _ => None,
+    }
+}
+
+fn is_delayed_timing(effect: &EffectAst) -> bool {
+    use crate::cards::builders::DelayedEffectAst;
+    matches!(
+        effect,
+        EffectAst::Delayed(
+            DelayedEffectAst::DelayedUntilNextEndStep { .. }
+                | DelayedEffectAst::DelayedUntilNextUpkeep { .. }
+                | DelayedEffectAst::DelayedUntilEndOfCombat { .. }
+        )
+    )
+}
+
+fn sink_trailing_if_into_delayed_timing(
+    mut effect: EffectAst,
+    predicate: &PredicateAst,
+) -> Result<EffectAst, EffectAst> {
+    use crate::cards::builders::PermissionEffectAst;
+    let wrap = |body: Vec<EffectAst>| {
+        vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+            predicate: predicate.clone(),
+            effects: body,
+        })]
+    };
+    if let Some(body) = delayed_timing_body_mut(&mut effect) {
+        let inner = std::mem::take(body);
+        *body = wrap(inner);
+        return Ok(effect);
+    }
+    let rebuild_may: fn(Vec<EffectAst>, &EffectAst) -> EffectAst = |inner, original| match original {
+        EffectAst::Permissions(PermissionEffectAst::MayByPlayer { player, .. }) => {
+            EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
+                player: player.clone(),
+                effects: inner,
+            })
+        }
+        _ => EffectAst::Permissions(PermissionEffectAst::May { effects: inner }),
+    };
+    let may_wraps_delayed = matches!(
+        &effect,
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) if effects.len() == 1 && is_delayed_timing(&effects[0])
+    );
+    if !may_wraps_delayed {
+        return Err(effect);
+    }
+    let may_effects = match &mut effect {
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) => std::mem::take(effects),
+        _ => unreachable!("checked: an optional delayed timing effect"),
+    };
+    let mut delayed = may_effects.into_iter().next().expect("one delayed effect");
+    let body = delayed_timing_body_mut(&mut delayed).expect("delayed timing body");
+    let inner = std::mem::take(body);
+    *body = wrap(vec![rebuild_may(inner, &effect)]);
+    Ok(delayed)
 }
 
 pub(super) fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {

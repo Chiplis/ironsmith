@@ -516,6 +516,17 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
             continue;
         }
 
+        // "the same number and kind of counters" (Captain Marvel, Bold
+        // Plagiarist) is one noun phrase, not two coordinated actions.
+        if candidate.operator == CoordinationOperatorAst::And
+            && candidate.start > 0
+            && tokens.get(candidate.start).is_some_and(|token| token.is_word("and"))
+            && tokens.get(candidate.end).is_some_and(|token| token.is_any_word(&["kind", "number"]))
+            && tokens[candidate.start - 1].is_any_word(&["number", "kind"])
+            && tokens.get(candidate.end + 1).is_some_and(|token| token.is_word("of"))
+        {
+            continue;
+        }
         // Coordinated locations qualify one selector; `in ... and in ...`
         // cannot be an omitted second executable verb.
         if candidate.operator == CoordinationOperatorAst::And
@@ -737,6 +748,25 @@ fn classify_boundary<'a>(
     RecognizedCoordinationBoundary,
     Option<TypedClauseHeadAst<'a>>,
 )> {
+    // "sacrifice any number of artifacts, enchantments, and/or tokens"
+    // (Lich-Knights' Conquest): "and/or" closes a serial noun list; it never
+    // joins two instructions.
+    if after
+        .first()
+        .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("and/or"))
+    {
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::And
+        && before.windows(2).any(|words| words[0].is_word("difference") && words[1].is_word("between"))
+        && before.last().is_some_and(|token| token.is_any_word(&["power", "toughness"]))
+        && after.first().is_some_and(|token| token.is_word("its"))
+        && after.get(1).is_some_and(|token| token.is_any_word(&["power", "toughness"]))
+    {
+        // The two stat operands belong to one arithmetic value. The right
+        // possessive is not an omitted action or a new instruction subject.
+        return None;
+    }
     if candidate.operator == CoordinationOperatorAst::And
         && before.last().and_then(OwnedLexToken::as_word).and_then(crate::util::parse_color).is_some()
         && after.first().is_some_and(|token| token.is_word("all"))
@@ -744,6 +774,74 @@ fn classify_boundary<'a>(
     {
         // Repeated quantifiers coordinate color-qualified subsets of one
         // object operand, not separate actions.
+        return None;
+    }
+    // "Each creature that isn't an Insect, Rat, Spider, or Squirrel gets
+    // -1/-1" (Swarmyard Massacre): a serial list of types inside a negated
+    // relative clause is one object selector, not omitted actions.
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::Or
+    ) {
+        let type_word = |token: &OwnedLexToken| {
+            token.as_word().is_some_and(|word| {
+                crate::util::parse_subtype_flexible(word).is_some()
+                    || crate::util::parse_card_type(word).is_some()
+            })
+        };
+        let after_head = if after.first().is_some_and(|token| token.is_word("or")) {
+            after.get(1)
+        } else {
+            after.first()
+        };
+        if before.last().is_some_and(type_word)
+            && after_head.is_some_and(type_word)
+            && before.iter().any(|token| {
+                token.is_any_word(&["isnt", "isn't", "arent", "aren't", "thats", "that's"])
+            })
+        {
+            return None;
+        }
+    }
+    // "shuffles their hand, graveyard, and all permanents they own into their
+    // library" (Sway of the Stars): a list of zones/card sets owned by one
+    // shuffle, not omitted shuffle actions.
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::And
+    ) && before
+        .last()
+        .is_some_and(|token| token.is_any_word(&["hand", "graveyard"]))
+        && before.iter().any(|token| token.is_any_word(&["shuffle", "shuffles"]))
+    {
+        let head = if after.first().is_some_and(|token| token.is_word("and")) {
+            &after[1..]
+        } else {
+            after
+        };
+        if head.first().is_some_and(|token| token.is_any_word(&["hand", "graveyard"]))
+            || (head.first().is_some_and(|token| token.is_word("all"))
+                && head.get(1).is_some_and(|token| token.is_word("permanents")))
+        {
+            return None;
+        }
+    }
+    // "Auras, Equipment, and modified creatures you control gain hexproof"
+    // (Silkguard): a member made only of type nouns is part of one subject
+    // list; it can never be a complete executable clause.
+    if matches!(
+        candidate.operator,
+        CoordinationOperatorAst::Comma | CoordinationOperatorAst::Or | CoordinationOperatorAst::And
+    ) && !before.is_empty()
+        && before.iter().all(|token| {
+            token.is_comma()
+                || token.as_word().is_some_and(|word| {
+                    word == "and"
+                        || crate::util::parse_subtype_flexible(word).is_some()
+                        || crate::util::parse_card_type(word).is_some()
+                })
+        })
+    {
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or
@@ -1038,6 +1136,14 @@ fn classify_boundary<'a>(
             // (Tidebinder Mage): a color disjunction is one object
             // qualifier; the second color has no action of its own, even
             // when a later sentence of the chain carries a verb.
+            return None;
+        }
+        if before.last().is_some_and(|token| token.kind == TokenKind::ManaGroup)
+            && after.first().is_some_and(|token| token.kind == TokenKind::ManaGroup)
+        {
+            // "add {R} or {G} for each Raccoon you control" (Muerra): a mana
+            // alternative is one add-mana operand; the trailing `for each`
+            // count does not make the second symbol its own action.
             return None;
         }
         if crate::word_primitives::sequence_occurs(&before_words, &["protection", "from"])

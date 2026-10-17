@@ -30,6 +30,9 @@ pub fn attachment_grant_name_is_operand(previous: Option<&str>, before_previous:
     if matches!(previous, Some("on" | "from")) && matches!(before_previous, Some("counter" | "counters")) { return true; }
     match previous {
         Some("sacrifice" | "tap" | "untap") => true,
+        // "... dealt to this creature by Torrent of Lava": the damage source
+        // a granted ability names is the grantor, never the holder.
+        Some("by") => !colon_follows,
         Some("return" | "exile" | "destroy" | "remove" | "fight" | "fights") => !colon_follows,
         _ => false,
     }

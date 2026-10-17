@@ -42,6 +42,7 @@ fn duration_from_leaf(duration: leaf::LeafDurationPhrase) -> Option<Until> {
         leaf::LeafDurationPhrase::YourNextUntapStep => Until::YourNextUntapStep,
         leaf::LeafDurationPhrase::UntilControllersNextUntapStep => return None,
         leaf::LeafDurationPhrase::PlayersNextUntapStep => return None,
+        leaf::LeafDurationPhrase::UntilThatPlayersNextTurn => return None,
         leaf::LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         leaf::LeafDurationPhrase::Forever => Until::Forever,
     })

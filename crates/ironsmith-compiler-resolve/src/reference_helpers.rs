@@ -329,8 +329,13 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
                 choices.push(choice);
             }
         }
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
+            push_target_player_filter_choices(base, choices);
+            push_target_player_filter_choices(other, choices);
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MostLifeTiedAmong { base }
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)
         | PlayerFilter::MaxSpeed { base, .. } => {
@@ -340,7 +345,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
             push_target_player_filter_choices(player, choices);
             append_object_filter_target_player_choices(filter, choices);
         }
-        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } => {
+        PlayerFilter::ControlsMost { filter } | PlayerFilter::ControlsFewestTied { filter } | PlayerFilter::OwnsMatchingObject { filter } | PlayerFilter::ControlsMatchingObject { filter } => {
             append_object_filter_target_player_choices(filter, choices);
         }
         PlayerFilter::Excluding { base, excluded } => {
@@ -664,6 +669,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
             TurnHistoryCount::MaxEnteredBattlefieldByController { filter, .. }
             | TurnHistoryCount::Died { filter, .. }
             | TurnHistoryCount::EnteredBattlefield(filter)
+            | TurnHistoryCount::DealtExcessDamage(filter)
             | TurnHistoryCount::MovedZones { filter, .. }
             | TurnHistoryCount::Sacrificed { filter, .. }
             | TurnHistoryCount::SacrificedCardTypes { filter, .. }
@@ -1573,12 +1579,25 @@ pub fn resolve_restriction_it_tag(
             sources: resolve_it_tag(sources, refs)?,
             combat_only: *combat_only,
         },
+        Restriction::PreventDamageTo {
+            recipients,
+            or_redirected,
+        } => Restriction::PreventDamageTo {
+            recipients: resolve_it_tag(recipients, refs)?,
+            or_redirected: *or_redirected,
+        },
         Restriction::AdditionalLandPlays(player, count) => Restriction::additional_land_plays(
             resolve_contextual_player_filter(player, refs)?,
             *count,
         ),
         Restriction::NoMaximumHandSize(player) => {
             Restriction::no_maximum_hand_size(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::ReduceMaximumHandSize(player, amount) => {
+            Restriction::reduce_maximum_hand_size(
+                resolve_contextual_player_filter(player, refs)?,
+                *amount,
+            )
         }
         Restriction::GainLife(player) => {
             Restriction::gain_life(resolve_contextual_player_filter(player, refs)?)
@@ -1605,6 +1624,14 @@ pub fn resolve_restriction_it_tag(
         Restriction::ActivateNonManaAbilities(player) => Restriction::activate_non_mana_abilities(
             resolve_contextual_player_filter(player, refs)?,
         ),
+        Restriction::DamageAsThoughInfect(player) => Restriction::damage_as_though_infect(
+            resolve_contextual_player_filter(player, refs)?,
+        ),
+        Restriction::ActivateNonManaNonLoyaltyAbilities(player) => {
+            Restriction::activate_non_mana_non_loyalty_abilities(
+                resolve_contextual_player_filter(player, refs)?,
+            )
+        }
         Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
             Restriction::CastMoreThanOneSpellEachTurn(
                 resolve_contextual_player_filter(player, refs)?,
@@ -1616,6 +1643,12 @@ pub fn resolve_restriction_it_tag(
         }
         Restriction::DrawExtraCards(player) => {
             Restriction::DrawExtraCards(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::GetCounters(player) => {
+            Restriction::GetCounters(resolve_contextual_player_filter(player, refs)?)
+        }
+        Restriction::RadiationGainsLife(player) => {
+            Restriction::RadiationGainsLife(resolve_contextual_player_filter(player, refs)?)
         }
         Restriction::LoseLife(player) => {
             Restriction::LoseLife(resolve_contextual_player_filter(player, refs)?)
@@ -1713,6 +1746,18 @@ pub fn resolve_restriction_it_tag(
                 cause,
             }
         }
+        Restriction::BeExiledByCause { filter, cause } => {
+            let mut cause = cause.clone();
+            cause.source_filter = cause
+                .source_filter
+                .as_ref()
+                .map(|source| resolve_it_tag(source, refs))
+                .transpose()?;
+            Restriction::BeExiledByCause {
+                filter: resolve_it_tag(filter, refs)?,
+                cause,
+            }
+        }
         Restriction::MaximumBlockers { filter, maximum } => Restriction::MaximumBlockers {
             filter: resolve_it_tag(filter, refs)?,
             maximum: *maximum,
@@ -1729,11 +1774,23 @@ pub fn resolve_restriction_it_tag(
         Restriction::HaveCounterTypePlaced(filter, counter_type) => {
             Restriction::have_counter_type_placed(resolve_it_tag(filter, refs)?, *counter_type)
         }
+        Restriction::HaveCounterTypeRemoved(filter, counter_type) => {
+            Restriction::have_counter_type_removed(resolve_it_tag(filter, refs)?, *counter_type)
+        }
         Restriction::BeTargeted(filter) => Restriction::be_targeted(resolve_it_tag(filter, refs)?),
+        Restriction::BeCounteredFrom(filter, sources) => Restriction::be_countered_from(
+            resolve_it_tag(filter, refs)?, resolve_it_tag(sources, refs)?,
+        ),
         Restriction::BeTargetedFrom(filter, source_filter) => Restriction::be_targeted_from(
             resolve_it_tag(filter, refs)?,
             resolve_it_tag(source_filter, refs)?,
         ),
+        Restriction::BeTargetedByRequirementsLimitedTo(filter, requirement_scope) => {
+            Restriction::be_targeted_by_requirements_limited_to(
+                resolve_it_tag(filter, refs)?,
+                requirement_scope.clone(),
+            )
+        }
         Restriction::BeTargetedPlayer(player) => {
             Restriction::BeTargetedPlayer(resolve_contextual_player_filter(player, refs)?)
         }
@@ -2268,10 +2325,22 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::LifeTotal(player) => Ok(Value::LifeTotal(resolve_contextual_player_filter(
             player, refs,
         )?)),
+        // "its owner loses half their life, rounded up" (Personal
+        // Incarnation): the halved life total belongs to the referenced
+        // object's owner, resolved like any other contextual life reader.
+        Value::HalfLifeTotalRoundedUp(player) => Ok(Value::HalfLifeTotalRoundedUp(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::HalfLifeTotalRoundedDown(player) => Ok(Value::HalfLifeTotalRoundedDown(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
         Value::StartingLifeTotal(player) => Ok(Value::StartingLifeTotal(
             resolve_contextual_player_filter(player, refs)?,
         )),
         Value::MaxCardsInHand(player) => Ok(Value::MaxCardsInHand(
+            resolve_contextual_player_filter(player, refs)?,
+        )),
+        Value::MaxSpeed(player) => Ok(Value::MaxSpeed(
             resolve_contextual_player_filter(player, refs)?,
         )),
         Value::LifeLostThisTurn(player) => Ok(Value::LifeLostThisTurn(
@@ -2406,6 +2475,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 },
                 TurnHistoryCount::EnteredBattlefield(filter) => {
                     TurnHistoryCount::EnteredBattlefield(resolve_it_tag(filter, refs)?)
+                }
+                TurnHistoryCount::DealtExcessDamage(filter) => {
+                    TurnHistoryCount::DealtExcessDamage(resolve_it_tag(filter, refs)?)
                 }
                 TurnHistoryCount::TurnedFaceUp(player) => {
                     TurnHistoryCount::TurnedFaceUp(resolve_contextual_player_filter(player, refs)?)
@@ -2577,6 +2649,10 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             };
             Ok(Value::TurnHistoryCount(query))
         }
+        Value::DevotionToColors { player, colors } => Ok(Value::DevotionToColors {
+            player: resolve_contextual_player_filter(player, refs)?,
+            colors: *colors,
+        }),
         Value::Devotion { player, color } => Ok(Value::Devotion {
             player: resolve_contextual_player_filter(player, refs)?,
             color: *color,
@@ -2590,6 +2666,9 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::BasePowerOf(spec) => Ok(Value::BasePowerOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::StationContributionOf(spec) => Ok(Value::StationContributionOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
@@ -2599,9 +2678,21 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::ChosenColorsOf(spec) => Ok(Value::ChosenColorsOf(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),
+        Value::NotedCreatureTypeCount(spec) => Ok(Value::NotedCreatureTypeCount(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
+        Value::TotalToxicValueOf(spec) => Ok(Value::TotalToxicValueOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
+        Value::TypeCountOf(spec) => Ok(Value::TypeCountOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::KicksPaidOf(spec) => Ok(Value::KicksPaidOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
+        Value::ModeSelectionsOf(spec) => Ok(Value::ModeSelectionsOf(Box::new(
+            resolve_choose_spec_it_tag(spec, refs)?,
+        ))),
         Value::ManaSpentToCast(spec) => Ok(Value::ManaSpentToCast(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),
@@ -2641,6 +2732,16 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             Ok(value.clone())
         }
         Value::PendingEffectMetric { source, metric } => {
+            // "return up to that many target permanents" (Cephalid
+            // Constable): with no earlier body instruction, a bare "that
+            // many" in a damage/life trigger is the triggering event amount.
+            if refs.known_last_effect_id().is_none()
+                && refs.allow_life_event_value
+                && *source == ironsmith_core::EffectMetricSource::Outcome
+                && *metric == ironsmith_core::EffectMetric::Count
+            {
+                return Ok(Value::EventValue(EventValueSpec::Amount));
+            }
             let id = refs.known_last_effect_id().ok_or_else(|| {
                 CardTextError::ParseError(
                     "pending effect metric requires a prior memory-producing effect".to_string(),

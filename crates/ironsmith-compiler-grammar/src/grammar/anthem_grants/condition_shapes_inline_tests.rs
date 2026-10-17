@@ -6,6 +6,22 @@ fn lex(text: &str) -> Vec<OwnedLexToken> {
 }
 
 #[test]
+fn existential_another_retains_source_exclusion_in_counted_phrase() {
+    for head in ["there is", "there's"] {
+        let tokens = lex(&format!("{head} another creature on the battlefield"));
+        let shape = parse_existential_condition_shape(&tokens).unwrap().unwrap();
+        assert_eq!(shape.comparison, crate::effect::Comparison::GreaterThanOrEqual(1));
+        let ExistentialConditionTail::Generic { filter_tokens } = shape.tail else { panic!("object filter"); };
+        assert!(filter_tokens[0].is_word("another"));
+        let condition = crate::keyword_static::parse_static_condition_clause(&tokens).unwrap();
+        let crate::cards::builders::PredicateAst::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter), ..
+        } = condition else { panic!("counted filter"); };
+        assert!(filter.other, "the compiled predicate must exclude its source");
+    }
+}
+
+#[test]
 fn classifies_fixed_condition_surfaces() {
     let not_cast = lex("You haven't cast a spell this turn.");
     assert_eq!(

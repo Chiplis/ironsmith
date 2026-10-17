@@ -26,9 +26,29 @@ pub(super) fn simple_gain(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
     })
     .is_some();
     !ability_words.is_empty()
-        && !common::present(ability_words, &["life"])
+        && !gains_life_outside_quotes(tokens)
         && (common::present_any(ability_words, SIMPLE_ABILITY_WORDS)
             || has_quoted_or_activated_ability)
+}
+
+/// Whether "life" follows the sentence's own gain/has/lose verb outside any
+/// quoted ability. A life amount inside a granted quote ("gains \"When this
+/// creature dies, you gain 1 life\"") belongs to the granted ability, not to
+/// the outer sentence, so it must not disqualify the ability grant.
+fn gains_life_outside_quotes(tokens: &[OwnedLexToken]) -> bool {
+    let mut quoted = false;
+    let mut unquoted_words = Vec::new();
+    for token in tokens {
+        if token.is_quote() {
+            quoted = !quoted;
+            continue;
+        }
+        if !quoted {
+            unquoted_words.extend(parser_token_word_refs(std::slice::from_ref(token)));
+        }
+    }
+    common::first_word_offset_any(&unquoted_words, GAIN_HAS_LOSE_WORDS)
+        .is_some_and(|gain_idx| common::present(&unquoted_words[gain_idx + 1..], &["life"]))
 }
 
 pub fn parse_ability_candidate_shape(tokens: &[OwnedLexToken]) -> AbilityCandidateShape {

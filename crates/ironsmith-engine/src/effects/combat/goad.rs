@@ -69,7 +69,25 @@ impl EffectExecutor for GoadEffect {
             {
                 snapshots.push(snapshot);
             }
-            game.add_goad_effect(object_id, ctx.controller, self.duration.clone(), ctx.source);
+            // "goaded for as long as they control it" (Vislor Turlough): a
+            // predicate duration names this creature and the player who
+            // controls it now (CR 611.2b).
+            let duration = match &self.duration {
+                Until::ForAsLongAs(predicate) => {
+                    match crate::effects::continuous::materialize_duration_predicate(
+                        predicate,
+                        &crate::continuous::EffectTarget::Specific(object_id),
+                        &None,
+                        game,
+                        ctx,
+                    ) {
+                        Some(predicate) => Until::ForAsLongAs(predicate),
+                        None => continue,
+                    }
+                }
+                other => other.clone(),
+            };
+            game.add_goad_effect(object_id, ctx.controller, duration, ctx.source);
             count += 1;
         }
         Ok(EffectOutcome::count(count)

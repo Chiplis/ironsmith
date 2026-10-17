@@ -3229,6 +3229,15 @@ pub fn parse_vote_affinity_subject_verb(
             effects,
         })]));
     }
+    if let Some(shape) = effect_grammar::parse_voted_with_you_effects_shape(tokens) {
+        let effect_tokens = trim_commas(shape.effect_tokens);
+        let effects = parse_effect_chain_lexed(&effect_tokens)?;
+        return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+            require_evidence: false,
+            tag: crate::tag::CompilerReferenceTag::VotedWithYou.bind(),
+            effects,
+        })]));
+    }
     parse_you_and_each_opponent_voted_with_you_sentence(tokens)
 }
 

@@ -239,6 +239,18 @@ fn read_copular_animation(
     input: &TopLevelSentence<'_>,
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
     let tokens = input.tokens;
+    // "It has flying and is an Angel in addition to its other types." /
+    // "It's a Skeleton in addition to its other types and has no abilities.":
+    // the ability predicate and the type addition are siblings; neither is
+    // part of the other's subject or descriptor.
+    if crate::effect_sentences::pronoun_pair_is_contracted(tokens)
+        && let Some(effects) = crate::effect_sentences::parse_pronoun_ability_and_type_pair(tokens)?
+    {
+        return Ok(Some((
+            "subject-verb verb=Become subject=explicit recognizer=copular-animation",
+            effects,
+        )));
+    }
     // Copular animation clauses such as "those permanents are 4/4 creatures
     // in addition to their other types" are effect-backed state changes. They
     // must reach the generic animation parser before the broad `are`/`get`

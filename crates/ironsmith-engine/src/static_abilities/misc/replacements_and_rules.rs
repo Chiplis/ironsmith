@@ -782,6 +782,8 @@ struct WouldPutCountersOrEnterWithCountersMatcher {
     actor: Option<PlayerFilter>,
     includes_permanents: bool,
     effect_only: bool,
+    /// The cause a placement must come from; entry counters never match.
+    cause_filter: Option<crate::events::cause::CauseFilter>,
 }
 
 impl WouldPutCountersOrEnterWithCountersMatcher {
@@ -824,6 +826,12 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 if self.effect_only && !put_counters.cause.cause_type.is_effect_like() {
                     return false;
                 }
+                if let Some(cause_filter) = &self.cause_filter {
+                    use crate::events::cause::CauseFilterRuntimeExt as _;
+                    if !cause_filter.matches(&put_counters.cause, ctx.game, self.controller) {
+                        return false;
+                    }
+                }
                 match put_counters.target {
                     crate::game_state::Target::Object(object) => {
                         (self.player_filter.is_none() || self.includes_permanents)
@@ -841,6 +849,9 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
             }
             EventKind::EnterBattlefield => {
                 if self.player_filter.is_some() && !self.includes_permanents {
+                    return false;
+                }
+                if self.cause_filter.is_some() {
                     return false;
                 }
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
@@ -913,6 +924,7 @@ impl StaticAbilityKind for DoubleCountersReplacement {
                 actor: self.actor.clone(),
                 includes_permanents: self.includes_permanents,
                 effect_only: self.effect_only,
+                cause_filter: None,
             },
             if self.halve {
                 ReplacementAction::HalveCounters {
@@ -937,6 +949,8 @@ pub struct AddCountersPlacementReplacement {
     pub additional: i64,
     pub actor: Option<PlayerFilter>,
     pub includes_permanents: bool,
+    /// The cause the placement must come from, when restricted.
+    pub cause: Option<crate::events::cause::CauseFilter>,
     pub display: String,
 }
 
@@ -954,8 +968,15 @@ impl AddCountersPlacementReplacement {
             additional: additional.into(),
             actor: None,
             includes_permanents: false,
+            cause: None,
             display,
         }
+    }
+
+    /// Only placements from a matching cause are increased.
+    pub fn with_cause(mut self, cause: crate::events::cause::CauseFilter) -> Self {
+        self.cause = Some(cause);
+        self
     }
 
     /// Counters a matching player would get instead of counters on permanents.
@@ -991,6 +1012,7 @@ impl StaticAbilityKind for AddCountersPlacementReplacement {
                 actor: self.actor.clone(),
                 includes_permanents: self.includes_permanents,
                 effect_only: false,
+                cause_filter: self.cause.clone(),
             },
             ReplacementAction::AddCountersToPlacement {
                 counter_type: self.counter_type,
@@ -1023,6 +1045,7 @@ pub(crate) fn counter_placement_addition_replacement(
             actor: Some(PlayerFilter::You),
             includes_permanents: false,
             effect_only: false,
+            cause_filter: None,
         },
         ReplacementAction::AddCountersToPlacement {
             counter_type,
@@ -1084,6 +1107,7 @@ impl StaticAbilityKind for PlayerCounterPerTurnLimitReplacement {
                 actor: None,
                 includes_permanents: false,
                 effect_only: false,
+                cause_filter: None,
             },
             ReplacementAction::SetPlayerCountersAndLockForTurn {
                 counter_type: self.counter_type,
@@ -2026,8 +2050,12 @@ impl StaticAbilityKind for DredgeAbility {
 ///
 /// "If a spell or ability an opponent controls causes you to discard this card,
 /// put it onto the battlefield instead of putting it into your graveyard."
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct OpponentEffectDiscardThisToBattlefieldReplacement;
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OpponentEffectDiscardThisToBattlefieldReplacement {
+    /// "... put it onto the battlefield with two +1/+1 counters on it
+    /// instead ..." (Dodecapod): counters the card enters with.
+    pub entry_counters: Vec<(crate::object::CounterType, u32)>,
+}
 
 impl StaticAbilityKind for OpponentEffectDiscardThisToBattlefieldReplacement {
     fn id(&self) -> StaticAbilityId {
@@ -2035,8 +2063,61 @@ impl StaticAbilityKind for OpponentEffectDiscardThisToBattlefieldReplacement {
     }
 
     fn display(&self) -> String {
-        "If a spell or ability an opponent controls causes you to discard this card, put it onto \
-         the battlefield instead of putting it into your graveyard"
+        let counters = self
+            .entry_counters
+            .iter()
+            .map(|(counter_type, count)| {
+                let noun = if *count == 1 { "counter" } else { "counters" };
+                format!("{count} {} {noun}", counter_type.description())
+            })
+            .collect::<Vec<_>>();
+        let with = if counters.is_empty() {
+            String::new()
+        } else {
+            format!(" with {} on it", counters.join(" and "))
+        };
+        format!(
+            "If a spell or ability an opponent controls causes you to discard this card, put it onto \
+             the battlefield{with} instead of putting it into your graveyard"
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        let action = if self.entry_counters.is_empty() {
+            ReplacementAction::ChangeDestination(Zone::Battlefield)
+        } else {
+            ReplacementAction::MoveToZoneWithCounters {
+                zone: Zone::Battlefield,
+                counters: self.entry_counters.clone(),
+            }
+        };
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDiscardMatcher::source_from_opponent_effect(),
+            action,
+        ))
+    }
+}
+
+/// "If a spell or ability an opponent controls causes you to discard a card,
+/// you may reveal that card and put it on top of your library instead of
+/// putting it anywhere else." (Nephalia Academy, CR 614.6)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpponentEffectDiscardToLibraryReplacement;
+
+impl StaticAbilityKind for OpponentEffectDiscardToLibraryReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentEffectDiscardToLibraryReplacement
+    }
+
+    fn display(&self) -> String {
+        "If a spell or ability an opponent controls causes you to discard a card, you may reveal \
+         that card and put it on top of your library instead of putting it anywhere else"
             .to_string()
     }
 
@@ -2048,8 +2129,12 @@ impl StaticAbilityKind for OpponentEffectDiscardThisToBattlefieldReplacement {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldDiscardMatcher::source_from_opponent_effect(),
-            ReplacementAction::ChangeDestination(Zone::Battlefield),
+            WouldDiscardMatcher::you_from_opponent_effect().with_destination(Zone::Graveyard),
+            ReplacementAction::InteractiveChooseDestination {
+                destinations: vec![Zone::Graveyard, Zone::Library],
+                description: "Reveal the discarded card and put it on top of your library instead?"
+                    .to_string(),
+            },
         ))
     }
 }
@@ -2162,6 +2247,8 @@ pub struct ConditionalDrawReplacement {
     pub replacement_effects: Vec<Effect>,
     pub optional: bool,
     pub display: String,
+    /// Never replace the first card drawn during a draw step (CR 504.1).
+    pub except_first_of_draw_step: bool,
 }
 
 impl ConditionalDrawReplacement {
@@ -2176,6 +2263,7 @@ impl ConditionalDrawReplacement {
             replacement_effects,
             optional,
             display: display.into(),
+            except_first_of_draw_step: false,
         }
     }
 }
@@ -2223,6 +2311,7 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
             ConditionalWouldDrawCardMatcher {
                 condition: self.condition.clone(),
                 display: self.display.clone(),
+                except_first_of_draw_step: self.except_first_of_draw_step,
             },
             ReplacementAction::Instead(self.replacement_effects.clone()),
         );
@@ -2288,12 +2377,19 @@ impl StaticAbilityKind for LoseGameReplacement {
 struct ConditionalWouldDrawCardMatcher {
     condition: Condition,
     display: String,
+    except_first_of_draw_step: bool,
 }
 
 impl ReplacementMatcher for ConditionalWouldDrawCardMatcher {
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         if !WouldDrawCardMatcher::you().matches_prepared_event(event, ctx) {
+            return false;
+        }
+        if self.except_first_of_draw_step
+            && crate::events::downcast_event::<crate::events::DrawEvent>(event)
+                .is_some_and(|draw| draw.first_of_draw_step)
+        {
             return false;
         }
 
@@ -2558,6 +2654,9 @@ pub struct DrawReplacementWithEffects {
     pub except_first_of_draw_step: bool,
     pub replacement_effects: Vec<Effect>,
     pub display: String,
+    /// "If a cycling ability of <filter> would cause you to draw a card":
+    /// only draws a resolving cycling ability of a matching source proposes.
+    pub cycling_source: Option<ObjectFilter>,
 }
 
 impl DrawReplacementWithEffects {
@@ -2572,6 +2671,7 @@ impl DrawReplacementWithEffects {
             except_first_of_draw_step,
             replacement_effects,
             display: display.into(),
+            cycling_source: None,
         }
     }
 }
@@ -2597,6 +2697,7 @@ impl StaticAbilityKind for DrawReplacementWithEffects {
                 drawer: self.drawer.clone(),
                 except_first_of_draw_step: self.except_first_of_draw_step,
                 display: self.display.clone(),
+                cycling_source: self.cycling_source.clone(),
             },
             ReplacementAction::Instead(self.replacement_effects.clone()),
         ))
@@ -2624,6 +2725,7 @@ impl StaticAbilityKind for RedirectDrawReplacement {
                 drawer: self.drawer.clone(),
                 except_first_of_draw_step: self.except_first_of_draw_step,
                 display: self.display.clone(),
+                cycling_source: None,
             },
             ReplacementAction::RedirectDrawToController,
         ))
@@ -2635,6 +2737,7 @@ struct WouldDrawByPlayerMatcher {
     drawer: PlayerFilter,
     except_first_of_draw_step: bool,
     display: String,
+    cycling_source: Option<ObjectFilter>,
 }
 
 impl ReplacementMatcher for WouldDrawByPlayerMatcher {
@@ -2646,7 +2749,28 @@ impl ReplacementMatcher for WouldDrawByPlayerMatcher {
         let Some(draw) = crate::events::downcast_event::<crate::events::DrawEvent>(event) else {
             return false;
         };
-        !(self.except_first_of_draw_step && draw.first_of_draw_step)
+        if self.except_first_of_draw_step && draw.first_of_draw_step {
+            return false;
+        }
+        let Some(cycling_source) = self.cycling_source.as_ref() else {
+            return true;
+        };
+        // "If a cycling ability of another nonland card would cause you to
+        // draw a card": the draw must come from a resolving cycling ability
+        // whose source (as last known) matches.
+        let Some(cause) = draw.cause_ability.as_ref() else {
+            return false;
+        };
+        if cause.keyword != Some(ironsmith_core::ActivatedAbilityKeyword::Cycling) {
+            return false;
+        }
+        match cause.source_snapshot.as_ref() {
+            Some(snapshot) => cycling_source.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game),
+            None => ctx
+                .game
+                .object(cause.source)
+                .is_some_and(|object| cycling_source.matches(object, &ctx.filter_ctx, ctx.game)),
+        }
     }
 
     fn display(&self) -> String {
@@ -3627,6 +3751,9 @@ pub struct RedirectWouldEnterReplacement {
     pub not_cast: bool,
     pub destination: Zone,
     pub display: String,
+    /// With `not_cast`: a cast object for which no mana was spent also
+    /// qualifies (Primeval Spawn).
+    pub or_no_mana_spent: bool,
 }
 
 impl RedirectWouldEnterReplacement {
@@ -3641,7 +3768,13 @@ impl RedirectWouldEnterReplacement {
             not_cast,
             destination,
             display: display.into(),
+            or_no_mana_spent: false,
         }
+    }
+
+    pub fn with_or_no_mana_spent(mut self, or_no_mana_spent: bool) -> Self {
+        self.or_no_mana_spent = or_no_mana_spent;
+        self
     }
 }
 
@@ -3667,6 +3800,7 @@ impl StaticAbilityKind for RedirectWouldEnterReplacement {
                     self.filter.clone(),
                 ),
                 not_cast: self.not_cast,
+                or_no_mana_spent: self.or_no_mana_spent,
             },
             ReplacementAction::ChangeDestination(self.destination),
         ))
@@ -3679,32 +3813,51 @@ impl StaticAbilityKind for RedirectWouldEnterReplacement {
 struct WouldEnterFromZoneMatcher {
     enter_matcher: crate::events::zones::matchers::WouldEnterBattlefieldMatcher,
     not_cast: bool,
+    or_no_mana_spent: bool,
 }
 
 impl WouldEnterFromZoneMatcher {
-    fn origin_allowed(&self, event: &dyn GameEventType) -> bool {
+    fn origin_allowed(
+        &self,
+        event: &dyn GameEventType,
+        game: &crate::game_state::GameState,
+    ) -> bool {
         if !self.not_cast {
             return true;
         }
-        let from = match event.event_kind() {
+        let entering = match event.event_kind() {
             EventKind::ZoneChange => {
                 crate::events::downcast_event::<crate::events::ZoneChangeEvent>(event)
-                    .map(|zone_change| zone_change.from)
+                    .map(|zone_change| (zone_change.from, zone_change.objects.first().copied()))
             }
             EventKind::EnterBattlefield => {
                 crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event)
-                    .map(|etb| etb.from)
+                    .map(|etb| (etb.from, Some(etb.object)))
             }
             _ => None,
         };
-        from.is_some_and(|from| from != Zone::Stack)
+        let Some((from, object)) = entering else {
+            return false;
+        };
+        if from != Zone::Stack {
+            return true;
+        }
+        // "or no mana was spent to cast it" (Primeval Spawn).
+        self.or_no_mana_spent
+            && object
+                .and_then(|object| game.object(object))
+                .is_some_and(|object| object.mana_spent_to_cast.total() == 0)
     }
 }
 
 impl ReplacementMatcher for WouldEnterFromZoneMatcher {
 
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
-        self.enter_matcher.matches_prepared_event(event, ctx) && self.origin_allowed(event)
+        self.enter_matcher.matches_prepared_event(event, ctx) && self.origin_allowed(event, ctx.game)
+    }
+
+    fn applies_from_entering_source(&self) -> bool {
+        self.enter_matcher.applies_from_entering_source()
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -4003,7 +4156,10 @@ impl StaticAbilityKind for PregameAction {
             crate::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount => {
                 self.text.clone()
             }
-            crate::static_abilities::PregameActionKind::ChooseColor => self.text.clone(),
+            crate::static_abilities::PregameActionKind::ChooseColor
+            | crate::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => {
+                self.text.clone()
+            }
             crate::static_abilities::PregameActionKind::RevealFromOpeningHand(spec) => {
                 render_reveal_from_opening_hand_pregame(*spec, &self.effects)
             }
@@ -4755,7 +4911,7 @@ impl StaticAbilityKind for PreventMatchingDamage {
                 maximum_damage: self.spec.maximum_damage,
             },
             ReplacementAction::PreventDamageByRule(self.spec.amount.clone()),
-        ))
+        ).with_controller_option(self.spec.optional_by_controller))
     }
 }
 

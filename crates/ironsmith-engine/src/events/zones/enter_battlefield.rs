@@ -706,6 +706,7 @@ mod entry_granted_occurrence_tests {
         game.effect_store.replacement_effects.add_resolution_effect(crate::replacement::ReplacementEffect::with_matcher(
             entrant, alice, crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
             crate::replacement::ReplacementAction::EnterWithCounters {
+                counter_kinds_from: None,
                 counter_type: CounterType::PlusOnePlusOne, count: crate::effect::Value::Fixed(0),
                 count_condition: None, otherwise_count: None, added_subtypes: Vec::new(), added_abilities: grants,
             },

@@ -36,6 +36,8 @@ fn token_reminder_sentence_head<'a>(
         alt((
             primitives::phrase(&["it", "has"]),
             primitives::phrase(&["they", "have"]),
+            // "They each have flying and ..." (Tetravus).
+            primitives::phrase(&["they", "each", "have"]),
         ))
         .value(TokenReminderSentenceKind::GrantedAbility),
         alt((

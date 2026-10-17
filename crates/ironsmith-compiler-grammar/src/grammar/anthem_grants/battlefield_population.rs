@@ -50,6 +50,75 @@ pub fn parse_battlefield_population_condition(tokens: &[OwnedLexToken]) -> Optio
     Some(BattlefieldPopulationCondition::CreatureHasCounter(filters::parse_counter_type_from_tokens(counter_tokens)?))
 }
 
+/// "the chosen color is the most common color among <filter> but isn't tied
+/// for most common" / "the chosen color isn't the most common color among
+/// <filter> or is tied for most common" (Call to Arms): the source's chosen
+/// color against every other color among the matching objects.
+pub fn parse_chosen_color_most_common_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::host::PredicateAst> {
+    use crate::host::PredicateAst;
+    let tokens = crate::util::trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&tokens);
+    let (negated, head_len) = match words.as_slice() {
+        ["the", "chosen", "color", "is", "the", "most", "common", "color", "among", ..] => (false, 9),
+        ["the", "chosen", "color", "isn't" | "isnt", "the", "most", "common", "color", "among", ..] => {
+            (true, 9)
+        }
+        ["the", "chosen", "color", "is", "not", "the", "most", "common", "color", "among", ..] => {
+            (true, 10)
+        }
+        _ => return None,
+    };
+    const STRICT_TAILS: &[&[&str]] = &[
+        &["but", "isn't", "tied", "for", "most", "common"],
+        &["but", "isnt", "tied", "for", "most", "common"],
+        &["and", "isn't", "tied", "for", "most", "common"],
+        &["and", "isnt", "tied", "for", "most", "common"],
+        &["but", "is", "not", "tied", "for", "most", "common"],
+    ];
+    const TIED_TAIL: &[&str] = &["or", "is", "tied", "for", "most", "common"];
+    // (tail length, the reading of the positive core).
+    let (tail_len, strict) = if let Some(tail) =
+        STRICT_TAILS.iter().find(|tail| words.ends_with(tail))
+    {
+        if negated {
+            return None;
+        }
+        (tail.len(), true)
+    } else if words.ends_with(TIED_TAIL) {
+        // positive: "is ... or is tied" (non-strict); negative: "isn't ... or
+        // is tied" = not strictly most common.
+        (TIED_TAIL.len(), !negated)
+    } else if negated {
+        // "isn't the most common color" (ties count as most common).
+        (0, false)
+    } else {
+        return None;
+    };
+    if words.len() <= head_len + tail_len {
+        return None;
+    }
+    let token_view = crate::lexer::TokenWordView::new(&tokens);
+    let starts = token_view.token_start_indices();
+    let filter_start = *starts.get(head_len)?;
+    let filter_end = starts.get(words.len() - tail_len).copied().unwrap_or(tokens.len());
+    let mut filter =
+        crate::object_filters::parse_object_filter_lexed(&tokens[filter_start..filter_end], false)
+            .ok()?;
+    if filter.zone.is_none() {
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+    }
+    let condition = PredicateAst::Bound(Box::new(
+        crate::ConditionExpr::SourceChosenColorMostCommonAmong { filter, strict },
+    ));
+    Some(if negated {
+        PredicateAst::Not(Box::new(condition))
+    } else {
+        condition
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

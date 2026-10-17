@@ -67,7 +67,8 @@ use super::lowering_support::{
     lower_static_abilities_ast, lower_static_ability_ast,
     runtime_static_ability_for_keyword_action, stage_additional_cost_effects_for_lowering,
     stage_effects_for_lowering, stage_effects_with_trigger_context_for_lowering,
-    stage_owned_triggered_effects_for_lowering, stage_statement_effects_for_lowering,
+    stage_owned_triggered_effects_for_lowering,
+    stage_statement_effects_with_followup_for_lowering,
     stage_triggered_effects_for_lowering, validate_iterated_player_bindings_in_lowered_effects,
 };
 use crate::model::reference_state::LoweredEffects;

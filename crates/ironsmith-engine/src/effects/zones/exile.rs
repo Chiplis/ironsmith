@@ -331,6 +331,12 @@ impl ZoneMovementInstruction for ExileEffect {
                 let mut memories = Vec::new();
                 let mut original_arrivals = Vec::new();
                 let mut moved_source = None;
+                // The named actor ("that player exiles ...") or the
+                // instruction's controller performs this exile.
+                let exiler = match &effect.actor {
+                    Some(actor) => crate::effects::helpers::resolve_player_filter(game, actor, ctx)?,
+                    None => ctx.controller,
+                };
                 for (id, change, snapshot) in &originals {
                     affected.extend(change.new_object_ids.iter().copied());
                     memories.push(snapshot.clone());
@@ -363,6 +369,7 @@ impl ZoneMovementInstruction for ExileEffect {
                             game.add_linked_exile_pair_member(owner.clone(), new_id);
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
+                        game.record_source_exiler(new_id, exiler);
                         if effect.remember_on_source {
                             game.imprint_card(ctx.source, new_id);
                         }

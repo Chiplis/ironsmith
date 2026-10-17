@@ -11299,6 +11299,7 @@ fn public_converted_entry_prompt_retains_zone_context_without_external_state() {
             alice,
             cause_matcher(),
             ReplacementAction::EnterWithCounters {
+                counter_kinds_from: None,
                 counter_type: crate::object::CounterType::PlusOnePlusOne,
                 count: Value::Fixed(1),
                 count_condition: None,

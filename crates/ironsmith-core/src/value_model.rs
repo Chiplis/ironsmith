@@ -81,6 +81,15 @@ pub enum EffectMetric {
     CoinTails,
     /// Number of retained authored flips, excluding ignored replacement coins.
     CoinFlipsTotal,
+    /// Counters the producer actually put (its added counter markers),
+    /// restricted to a prior-metric query's counter kind and to recipients
+    /// matching its object filter ("for each -1/-1 counter you put on a
+    /// creature this way"). Appended to preserve serialized ordinals.
+    CountersPut,
+    /// Number of different results among the producer's retained die rolls
+    /// ("Roll three six-sided dice. For each different result, ...",
+    /// Circuits Act). Appended to preserve serialized ordinals.
+    DistinctDieResults,
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -130,6 +139,10 @@ pub enum PriorEffectAction {
     Copied,
     /// A completed investigate action, independently of how many Clues it created.
     Investigated,
+    /// Unspent mana actually lost by a lose-all-unspent-mana instruction
+    /// ("the amount of mana that player lost this way", Pygmy Hippo).
+    /// Converted mana (CR 106.4) was not lost. Appended.
+    ManaLost,
 }
 
 /// A metric over the last-known-information memory emitted by one exact
@@ -615,6 +628,10 @@ pub enum TurnHistoryCount {
     /// played this way counts once whatever permission allowed the play.
     /// Appended to preserve existing serialized enum ordinals.
     LandsPlayed(PlayerFilter),
+    /// Permanents dealt excess damage this turn (CR 120.10) whose damage-time
+    /// last-known information matches the filter, one per damage event.
+    /// Appended to preserve existing serialized enum ordinals.
+    DealtExcessDamage(ObjectFilter),
 }
 
 impl TurnHistoryCount {
@@ -735,6 +752,11 @@ pub enum Value {
     SourceToughness,
     PowerOf(Box<ChooseSpec>),
     ToughnessOf(Box<ChooseSpec>),
+    /// The number a creature tapped to station a permanent contributes
+    /// (CR 702.184a): its power, or its toughness while it "stations
+    /// permanents using its toughness rather than its power" (Tapestry
+    /// Warden).
+    StationContributionOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
     /// Mana actually paid to cast the referenced object, using its last known information.
     ManaSpentToCast(Box<ChooseSpec>),
@@ -844,6 +866,10 @@ pub enum Value {
     /// Total mana spent to cast the spell whose cast event triggered the
     /// currently resolving ability.
     ManaSpentToCastTriggeringObject,
+    /// Distinct colors of mana spent to cast the spell whose cast event
+    /// triggered the currently resolving ability ("for each color of mana
+    /// spent to cast that spell").
+    ColorsOfManaSpentToCastTriggeringObject,
     ColorsOfManaSpentToCastThisSpell,
     EffectValue(EffectId),
     EffectValueOffset(EffectId, i32),
@@ -899,6 +925,12 @@ pub enum Value {
     DraftRemovedCardCount {
         card_name: String,
     },
+    /// "if you guessed correctly for a card named Spire Phantasm": how many
+    /// correct guesses the player made during the draft for the draft
+    /// instruction of cards with that name, read from the recorded draft.
+    DraftCorrectGuessCount {
+        card_name: String,
+    },
     LastNotedLifeTotal,
     PlayerCounters(PlayerFilter, CounterType),
     CountersOnSource(CounterType),
@@ -923,6 +955,10 @@ pub enum Value {
     /// that object's live cast metadata or departure LKI, never the resolving
     /// ability source's optional costs and never a new incarnation's costs.
     KicksPaidOf(Box<ChooseSpec>),
+    /// The number of times a mode was chosen for the exact referenced spell
+    /// (CR 700.2): "the number of times you chose a mode for that spell"
+    /// (Riku of Many Paths). Read from the spell's stack entry; 0 once gone.
+    ModeSelectionsOf(Box<ChooseSpec>),
     /// Current base power through layers 7a/7b of this exact referenced object,
     /// excluding P/T modifiers, counters, and switching; departure LKI if gone.
     BasePowerOf(Box<ChooseSpec>),
@@ -952,9 +988,67 @@ pub enum Value {
     /// Count retained snapshots exactly as captured, without substituting the
     /// object's current incarnation or projecting its current zone.
     TaggedSnapshotCount { tag: TagKey, filter: ObjectFilter },
+    /// The highest speed among matching players, 0 when none match ("greater
+    /// than each other player's speed", Spikeshell Harrier). Appended.
+    MaxSpeed(PlayerFilter),
+    /// Stickers of one kind (or of any kind) on the source object ("for each
+    /// name sticker on it", _____ _____ _____ Trespasser). Appended.
+    StickersOnSource {
+        action: crate::event_model::KeywordActionKind,
+        surface: Option<SourceReferenceSurface>,
+    },
+    /// Number of creature types noted for the referenced object ("for each
+    /// creature type noted for target permanent you control named Volo's
+    /// Journal"). Appended.
+    NotedCreatureTypeCount(Box<ChooseSpec>),
+    /// The highest (`true`) or lowest (`false`) number the players chose in
+    /// this resolution's per-player number choice ("each player secretly
+    /// chooses a number ... loses that much life", Menacing Ogre; "damage
+    /// equal to the highest number", Wheel of Misfortune). 0 when no number
+    /// was chosen. With `guess`, the guesses made at those numbers instead
+    /// ("lose life equal to the number they guessed", The Toymaker's Trap).
+    /// Appended.
+    PlayersChosenNumberExtreme {
+        highest: bool,
+        #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+        guess: bool,
+    },
+    /// Name stickers on the source whose name begins with the letter the
+    /// source's controller chose for it ("for each name sticker on it that
+    /// begins with the chosen letter", _____ _____ Rocketship). The letter is
+    /// the source's chosen named option. Appended.
+    NameStickersOnSourceStartingWithChosenLetter {
+        surface: Option<SourceReferenceSurface>,
+    },
+    /// Distinct spells and abilities that, this turn, caused one or more
+    /// players to guess or to group cards or permanents into a pile ("for
+    /// each spell or ability that caused one or more players to guess or to
+    /// group cards or permanents into a pile this turn", The Celestial
+    /// Toymaker). Read from the turn history's per-resolution record.
+    /// Appended.
+    SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn,
+    /// Devotion to a combination counts each colored pip once, even if two
+    /// alternatives in one hybrid pip belong to the combination.
+    DevotionToColors { player: PlayerFilter, colors: ColorSet },
+    /// The number of supertypes, card types, and subtypes the referenced
+    /// object has ("gets +1/+1 for each supertype, card type, and subtype it
+    /// has", Embiggen). Appended.
+    TypeCountOf(Box<ChooseSpec>),
+    /// The referenced object's total toxic value, the sum of the N of each
+    /// toxic ability it has (CR 702.164c): "draw cards equal to its total
+    /// toxic value" (Goliath Hatchery). Appended.
+    TotalToxicValueOf(Box<ChooseSpec>),
 }
 
 impl Value {
+    pub fn devotion_to_colors(player: PlayerFilter, colors: ColorSet) -> Self {
+        if colors.count() == 1 {
+            let color = Color::ALL.into_iter().find(|color| colors.contains(*color)).unwrap();
+            Self::Devotion { player, color }
+        } else {
+            Self::DevotionToColors { player, colors }
+        }
+    }
     pub fn fixed(n: i32) -> Self {
         Self::Fixed(n)
     }
@@ -1115,6 +1209,9 @@ pub enum Restriction {
     /// This lives in the restriction/rule family because resolving effects
     /// can establish it independently of a battlefield static ability.
     NoMaximumHandSize(PlayerFilter),
+    /// A lasting player rule from a resolving effect: "Your maximum hand
+    /// size is reduced by N for the rest of the game" (Inspired Idea).
+    ReduceMaximumHandSize(PlayerFilter, u32),
     GainLife(PlayerFilter),
     SearchLibraries(PlayerFilter),
     /// A player's own spells and abilities cannot make that player search their own library.
@@ -1122,6 +1219,13 @@ pub enum Restriction {
     CastSpellsMatching(PlayerFilter, ObjectFilter),
     CastSpellsOnlyAsSorcery(PlayerFilter),
     ActivateNonManaAbilities(PlayerFilter),
+    /// "can't activate abilities that aren't mana abilities or loyalty
+    /// abilities" (Overwhelming Splendor): like `ActivateNonManaAbilities`,
+    /// but loyalty abilities stay activatable.
+    ActivateNonManaNonLoyaltyAbilities(PlayerFilter),
+    /// "all damage is dealt to you as though its source had infect"
+    /// (Phyrexian Unlife): damage to the player becomes poison counters.
+    DamageAsThoughInfect(PlayerFilter),
     ActivateAbilitiesOf(ObjectFilter),
     ActivateTapAbilitiesOf(ObjectFilter),
     ActivateNonManaAbilitiesOf(ObjectFilter),
@@ -1187,11 +1291,23 @@ pub enum Restriction {
         filter: ObjectFilter,
         cause: crate::CauseFilter,
     },
+    /// Exile protection restricted to the initiating cause ("triggered
+    /// abilities you control can't cause you to exile creature tokens you
+    /// control"): the exiling event does nothing to a protected object.
+    BeExiledByCause {
+        filter: ObjectFilter,
+        cause: crate::CauseFilter,
+    },
     HaveCountersPlaced(ObjectFilter),
     /// "[objects] can't have [kind] counters put on them" (e.g. Melira).
     HaveCounterTypePlaced(ObjectFilter, crate::counter::CounterType),
     BeTargeted(ObjectFilter),
     BeTargetedFrom(ObjectFilter, ObjectFilter),
+    /// "[objects] can't be the target of spells or abilities that can target
+    /// only Walls" (Wall of Shadows): the first filter's objects can't be
+    /// chosen for a target requirement whose own filter can match only
+    /// objects of the second filter's (sub)types.
+    BeTargetedByRequirementsLimitedTo(ObjectFilter, ObjectFilter),
     BeTargetedPlayer(PlayerFilter),
     BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
@@ -1312,6 +1428,75 @@ pub enum Restriction {
         player: PlayerFilter,
         pay_life: bool,
         sacrifice: Option<ObjectFilter>,
+    },
+    /// Source-filtered prohibition on countering a spell. Appended for wire stability.
+    BeCounteredFrom(ObjectFilter, ObjectFilter),
+    /// "[players] can't get counters" (Solemnity, Suncleanser): no counter of
+    /// any kind can be put on a matching player (CR 122.1). Appended for wire
+    /// stability.
+    GetCounters(PlayerFilter),
+    /// "Spells and abilities your opponents control can't cause you to
+    /// discard cards" (Tamiyo, Collector of Tales): discards by a matching
+    /// cause don't happen for the matching players. Appended for wire stability.
+    DiscardByCause {
+        player: PlayerFilter,
+        cause: crate::CauseFilter,
+    },
+    /// "You gain life rather than lose life from radiation." (Strong, the
+    /// Brutish Thespian): radiation life loss (CR 728.1) becomes life gain
+    /// for the matching players. Appended for wire stability.
+    RadiationGainsLife(PlayerFilter),
+    /// "This creature can only attack alone" (Master of Cruelties, CR
+    /// 508.1c): a matching creature can't be declared as an attacker along
+    /// with any other creature. Appended for wire stability.
+    AttackOnlyAlone(ObjectFilter),
+    /// "Each player may attack only the nearest opponent in the [last] chosen
+    /// direction and planeswalkers controlled by that opponent" (Mystic
+    /// Barrier, Pramikon, Teyo; CR 803.1b-style limited range): the direction
+    /// is the restriction source's chosen "left"/"right" option. Matching
+    /// creatures can't attack any other opponent or their permanents.
+    /// Appended for wire stability.
+    AttackOnlyNearestOpponentInChosenDirection { attackers: ObjectFilter },
+    /// "Damage that would be dealt to [objects] can't be prevented [or dealt
+    /// instead to another permanent or player]" (Whippoorwill): recipient-
+    /// keyed counterpart of `PreventDamageFrom`. Prevention effects (CR 615)
+    /// can't apply to damage that would be dealt to a matching object, and
+    /// when `or_redirected` holds, redirection replacements (CR 614.9) can't
+    /// move that damage to another permanent or player either. Appended for
+    /// wire stability.
+    PreventDamageTo {
+        recipients: ObjectFilter,
+        or_redirected: bool,
+    },
+    /// "Stun counters can't be removed from permanents your opponents
+    /// control." (Fear of Sleep Paralysis): no effect, cost, or rule can
+    /// remove counters of this kind from a matching permanent (CR 122.1,
+    /// 122.1d). Appended for wire stability.
+    HaveCounterTypeRemoved(ObjectFilter, crate::counter::CounterType),
+    /// "All damage is dealt as though its source had wither." (Everlasting
+    /// Torment): damage to creatures is dealt as -1/-1 counters (CR 702.80).
+    /// Appended for wire stability.
+    AllDamageAsThoughWither,
+    /// "Damage that would reduce your life total to less than N reduces it to
+    /// N instead" (Elderscale Wurm, N = 7): the general life floor. The
+    /// damage is still dealt; only the life loss is capped so the total stays
+    /// at `floor` or higher (CR 614.1a). Appended for wire stability.
+    DamageReduceLifeBelow { player: PlayerFilter, floor: u32 },
+    /// "Creatures that player controls attack Gideon Jura if able" (Gideon
+    /// Jura): a requirement (CR 508.1d) to attack a matching planeswalker or
+    /// battle, counted only when the creature attacks one of them. Appended
+    /// for wire stability.
+    MustAttackPermanents {
+        attackers: ObjectFilter,
+        permanents: ObjectFilter,
+    },
+    /// "[attacker] must be blocked by two or more creatures if able" (Gorm
+    /// the Great): a blocking requirement (CR 509.1c) obeyed only when at
+    /// least `minimum` creatures block the matching attacker. Appended for
+    /// wire stability.
+    MustBeBlockedByAtLeast {
+        attacker: ObjectFilter,
+        minimum: usize,
     },
 }
 
@@ -1438,6 +1623,11 @@ pub struct ManaSpendPermission {
     pub mana_source_filter: Option<ObjectFilter>,
     pub any_color_mana_symbol: Option<ManaSymbol>,
     pub other_mana_only_as_colorless: bool,
+    /// "You may spend white mana as though it were red mana" (Sunglasses of
+    /// Urza): mana of the first symbol may pay pips of the second (CR 609.4b).
+    /// Appended for wire stability.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_symbol_as: Option<(ManaSymbol, ManaSymbol)>,
 }
 
 impl ManaSpendPermission {
@@ -1448,6 +1638,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1463,6 +1654,19 @@ impl ManaSpendPermission {
             mana_source_filter: None,
             any_color_mana_symbol: Some(symbol),
             other_mana_only_as_colorless: true,
+            mana_symbol_as: None,
+        }
+    }
+
+    pub fn mana_symbol_as(player: PlayerFilter, symbol: ManaSymbol, as_symbol: ManaSymbol) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::AllCosts,
+            mode: ManaSpendMode::Normal,
+            mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
+            mana_symbol_as: Some((symbol, as_symbol)),
         }
     }
 
@@ -1473,6 +1677,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1487,6 +1692,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1498,6 +1704,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyColor,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1513,6 +1720,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyColor,
             mana_source_filter: Some(mana_source_filter),
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1532,6 +1740,19 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyType,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
+            other_mana_only_as_colorless: false,
+        }
+    }
+
+    pub fn for_one_spell_cast(player: PlayerFilter, mode: ManaSpendMode) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::OneSpellCast,
+            mode,
+            mana_source_filter: None,
+            any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1543,6 +1764,7 @@ impl ManaSpendPermission {
             mode: ManaSpendMode::AnyType,
             mana_source_filter: None,
             any_color_mana_symbol: None,
+            mana_symbol_as: None,
             other_mana_only_as_colorless: false,
         }
     }
@@ -1555,6 +1777,11 @@ pub enum ManaSpendScope {
     ActivationCostsOf(ObjectFilter),
     CastingSpellsWithStableIds(Vec<StableId>),
     CastingSpellsMatching(ObjectFilter),
+    /// "For one spell this turn, you may spend mana as though ... to pay that
+    /// spell's mana cost" (North Star): applies to the permission
+    /// controller's spell casts and is used up by the first spell that player
+    /// finishes casting. Appended for wire stability.
+    OneSpellCast,
 }
 
 impl Restriction {
@@ -1564,6 +1791,10 @@ impl Restriction {
 
     pub fn no_maximum_hand_size(filter: PlayerFilter) -> Self {
         Self::NoMaximumHandSize(filter)
+    }
+
+    pub fn reduce_maximum_hand_size(filter: PlayerFilter, amount: u32) -> Self {
+        Self::ReduceMaximumHandSize(filter, amount)
     }
 
     pub fn gain_life(filter: PlayerFilter) -> Self {
@@ -1584,6 +1815,14 @@ impl Restriction {
 
     pub fn activate_non_mana_abilities(filter: PlayerFilter) -> Self {
         Self::ActivateNonManaAbilities(filter)
+    }
+
+    pub fn activate_non_mana_non_loyalty_abilities(filter: PlayerFilter) -> Self {
+        Self::ActivateNonManaNonLoyaltyAbilities(filter)
+    }
+
+    pub fn damage_as_though_infect(filter: PlayerFilter) -> Self {
+        Self::DamageAsThoughInfect(filter)
     }
 
     pub fn activate_abilities_of(filter: ObjectFilter) -> Self {
@@ -1657,6 +1896,14 @@ impl Restriction {
         Self::PoisonCounters(filter)
     }
 
+    pub fn get_counters(filter: PlayerFilter) -> Self {
+        Self::GetCounters(filter)
+    }
+
+    pub fn radiation_gains_life(filter: PlayerFilter) -> Self {
+        Self::RadiationGainsLife(filter)
+    }
+
     pub fn lose_life(filter: PlayerFilter) -> Self {
         Self::LoseLife(filter)
     }
@@ -1667,6 +1914,15 @@ impl Restriction {
 
     pub fn damage_reduce_life_below_one(filter: PlayerFilter) -> Self {
         Self::DamageReduceLifeBelowOne(filter)
+    }
+
+    /// The life floor at `floor`; a floor of 1 keeps the Worship form.
+    pub fn damage_reduce_life_below(player: PlayerFilter, floor: u32) -> Self {
+        if floor == 1 {
+            Self::DamageReduceLifeBelowOne(player)
+        } else {
+            Self::DamageReduceLifeBelow { player, floor }
+        }
     }
 
     pub fn change_life_total(filter: PlayerFilter) -> Self {
@@ -1687,6 +1943,10 @@ impl Restriction {
 
     pub fn prevent_damage() -> Self {
         Self::PreventDamage
+    }
+
+    pub fn all_damage_as_though_wither() -> Self {
+        Self::AllDamageAsThoughWither
     }
 
     pub fn attack(filter: ObjectFilter) -> Self {
@@ -1715,6 +1975,14 @@ impl Restriction {
         Self::AttackAlone(filter)
     }
 
+    pub fn attack_only_alone(filter: ObjectFilter) -> Self {
+        Self::AttackOnlyAlone(filter)
+    }
+
+    pub fn attack_only_nearest_opponent_in_chosen_direction(attackers: ObjectFilter) -> Self {
+        Self::AttackOnlyNearestOpponentInChosenDirection { attackers }
+    }
+
     pub fn block(filter: ObjectFilter) -> Self {
         Self::Block(filter)
     }
@@ -1739,8 +2007,19 @@ impl Restriction {
         Self::MustAttackPlayer { attackers, player }
     }
 
+    pub fn must_attack_permanents(attackers: ObjectFilter, permanents: ObjectFilter) -> Self {
+        Self::MustAttackPermanents {
+            attackers,
+            permanents,
+        }
+    }
+
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {
         Self::MustBeBlocked(filter)
+    }
+
+    pub fn must_be_blocked_by_at_least(attacker: ObjectFilter, minimum: usize) -> Self {
+        Self::MustBeBlockedByAtLeast { attacker, minimum }
     }
 
     pub fn block_alone(filter: ObjectFilter) -> Self {
@@ -1829,12 +2108,26 @@ impl Restriction {
         Self::HaveCounterTypePlaced(filter, counter_type)
     }
 
+    pub fn have_counter_type_removed(
+        filter: ObjectFilter,
+        counter_type: crate::counter::CounterType,
+    ) -> Self {
+        Self::HaveCounterTypeRemoved(filter, counter_type)
+    }
+
     pub fn be_targeted(filter: ObjectFilter) -> Self {
         Self::BeTargeted(filter)
     }
 
     pub fn be_targeted_from(filter: ObjectFilter, source_filter: ObjectFilter) -> Self {
         Self::BeTargetedFrom(filter, source_filter)
+    }
+
+    pub fn be_targeted_by_requirements_limited_to(
+        filter: ObjectFilter,
+        requirement_scope: ObjectFilter,
+    ) -> Self {
+        Self::BeTargetedByRequirementsLimitedTo(filter, requirement_scope)
     }
 
     pub fn be_targeted_player(filter: PlayerFilter) -> Self {
@@ -1847,6 +2140,10 @@ impl Restriction {
 
     pub fn player_hexproof_from(player: PlayerFilter, source_filter: ObjectFilter) -> Self {
         Self::PlayerHexproofFrom(player, source_filter)
+    }
+
+    pub fn be_countered_from(filter: ObjectFilter, source_filter: ObjectFilter) -> Self {
+        Self::BeCounteredFrom(filter, source_filter)
     }
 
     pub fn be_countered(filter: ObjectFilter) -> Self {
@@ -1969,6 +2266,9 @@ pub enum TurnHistoryCondition {
     PlayerVisitedAttractionThisTurn(PlayerFilter),
     TriggeringPlayerAttackedControllerLastTurn,
     PlayerLostLifeLastTurn(PlayerFilter),
+    /// "an opponent was dealt noncombat damage last turn" (Command the
+    /// Stage): the previous turn (CR 500.1), whoever its active player was.
+    PlayerWasDealtNoncombatDamageLastTurn(PlayerFilter),
     TriggeringPlayersTurn {
         definite_player: bool,
     },
@@ -1987,6 +2287,29 @@ pub enum TurnHistoryCondition {
         prohibited: ObjectFilter,
     },
     TriggeringAbilityIsManaAbility,
+    /// Append-only. "if they were attacked this turn by an Assassin you
+    /// controlled": the triggering event's player was attacked (directly,
+    /// CR 506.3) this turn by a creature matching `attackers` as it existed
+    /// when it attacked (Ramses, Assassin Lord).
+    TriggeringPlayerWasAttackedThisTurnBy {
+        attackers: ObjectFilter,
+    },
+    /// Append-only. "Whenever a basic land is tapped for mana of the chosen
+    /// color" (Gauntlet of Power): the triggering mana event produced mana of
+    /// the color chosen for this ability's source.
+    TriggeringManaIncludesSourceChosenColor,
+    /// Append-only. "if they didn't attack you that turn" (Faramir, Prince
+    /// of Ithilien, at that player's end step): a creature the active player
+    /// controlled was declared as an attacker against this condition's
+    /// controller during the current turn (CR 508.1).
+    ActivePlayerAttackedControllerThisTurn,
+    /// Append-only. "If it entered from your library" (Fblthp, the Lost):
+    /// the triggering battlefield entry moved the object from this zone.
+    TriggeringObjectEnteredFromZone(Zone),
+    /// Append-only. "When you sacrifice this creature while casting a spell
+    /// with emerge" (Foul Emissary): the triggering sacrifice paid the emerge
+    /// cost of the spell being cast (CR 702.119a).
+    TriggeringSacrificePaidEmergeCost,
 }
 
 /// Selects which captured representation of a tagged object is used when a
@@ -2242,6 +2565,10 @@ pub enum Condition {
     TargetIsAttacking,
     TargetIsBlocked,
     TargetWasKicked,
+    /// The first object target's recorded cast receipt includes this paid
+    /// optional/alternative cost ("if that creature was cast for its warp
+    /// cost"). Permanents keep the receipt of the spell they resolved from.
+    TargetPaidLabel(OptionalCostRef),
     ThisSpellWasKicked,
     ThisSpellPaidLabel(OptionalCostRef),
     YouHaveFullParty,
@@ -2265,6 +2592,15 @@ pub enum Condition {
     TargetManaValueLteColorsSpentToCastThisSpell,
     ItIsNight,
     FirstCombatPhaseOfTurn,
+    /// "if it's the first end step of the turn" (Y'shtola Rhul): the current
+    /// step is an end step and no earlier end step began this turn.
+    FirstEndStepOfTurn,
+    /// "the first upkeep each turn" (Paradox Haze): the current step is an
+    /// upkeep and no earlier upkeep began this turn.
+    FirstUpkeepStepOfTurn,
+    /// "it's the second main phase of the turn": a main phase that is the
+    /// turn's second (World at War's "after the second main phase").
+    SecondMainPhaseOfTurn,
     /// This condition's controller is the active player and the game is in
     /// either a precombat or postcombat main phase.
     SourceControllersMainPhase,
@@ -2272,6 +2608,12 @@ pub enum Condition {
     /// the combat phase.
     SourceControllersCombatPhase,
     SourceControllersEndStep,
+    /// "during your untap step": the source's controller is the active
+    /// player and the game is in an untap step.
+    SourceControllersUntapStep,
+    /// "if this creature started the turn untapped": the source was an
+    /// untapped permanent on the battlefield as the current turn began.
+    SourceStartedTurnUntapped,
     SourceIsTapped,
     SourceIsSaddled,
     SourceCrewedByExactly {
@@ -2284,6 +2626,10 @@ pub enum Condition {
     /// battlefield ("as long as it hasn't dealt damage yet", Karakyk
     /// Guardian). A new object (CR 400.7) starts with no damage history.
     SourceHasDealtDamageSinceEntered,
+    /// The source permanent has dealt combat damage since it last entered
+    /// the battlefield ("as long as they haven't dealt combat damage yet",
+    /// Ruric Thar).
+    SourceHasDealtCombatDamageSinceEntered,
     SourceIsHarnessed,
     /// "if this creature isn't prepared" (Paradox Shaper): the source bears
     /// the prepared designation.
@@ -2522,6 +2868,62 @@ pub enum Condition {
     MaxActivationsPerTurnCount(AnthemCountExpression),
     /// Trigger cap for this exact object incarnation and ability acquisition.
     MaxTriggersPerObject(u32),
+    /// "If that player is you": some player matching `player` is the
+    /// evaluating controller. Appended for wire stability.
+    PlayerIsYou {
+        player: PlayerFilter,
+    },
+    /// "if Tolsimir attacked this combat": the source was declared as an
+    /// attacker in the current combat phase. Appended for wire stability.
+    SourceAttackedThisCombat,
+    /// The triggering tap is the tap of a creature being declared as an
+    /// attacker (CR 508.1f). Appended for wire stability.
+    TriggeringObjectTappedForAttack,
+    /// The permanent whose departure triggered this ability was sacrificed.
+    /// Appended for wire stability.
+    TriggeringObjectWasSacrificed,
+    /// "If you've cycled a card named <name> N or more times this game".
+    /// `name: None` names this ability's source card. Appended for wire
+    /// stability.
+    YouCycledCardNamedThisGameAtLeast {
+        name: Option<String>,
+        count: u32,
+    },
+    /// "If exactly three colors of mana were spent to activate this ability"
+    /// (Paragon of Modernity): the number of distinct colors in the resolving
+    /// activation's payment is exactly `amount` (or at least `amount`).
+    /// Appended for wire stability.
+    ColorsOfManaSpentToActivateThisAbility { amount: u32, exactly: bool },
+    /// "If it's an art sticker" inside "Whenever you place a sticker"
+    /// (Wee Champion): the triggering keyword action is this action (an
+    /// umbrella `Sticker` matches every sticker kind). Appended for wire
+    /// stability.
+    TriggeringKeywordActionIs(crate::event_model::KeywordActionKind),
+    /// "if a player was dealt 6 or more combat damage this turn" (Sidequest:
+    /// Play Blitzball): some single player has been dealt at least `count`
+    /// combat damage this turn. Appended for wire stability.
+    AnyPlayerWasDealtCombatDamageThisTurnOrMore { count: u32 },
+    /// "This ability triggers only if C" (Quakebringer): `C` gates the
+    /// trigger when its event happens, but unlike an intervening "if" (CR
+    /// 603.4) it is not rechecked as the ability resolves. Evaluates `C`
+    /// except where trigger-time limits are ignored (resolution), where it is
+    /// true. Appended for wire stability.
+    TriggerEventOnly(Box<Condition>),
+    /// Named spell casts retained for the game, optionally excluding this
+    /// exact spell incarnation. Appended for serialized discriminant stability.
+    YouCastSpellNamedThisGameAtLeast {
+        name: Option<String>,
+        count: u32,
+        excluding_source: bool,
+    },
+    /// "the chosen color is the most common color among <filter> [but isn't
+    /// tied for most common]" (Call to Arms): the source's chosen color is
+    /// held by at least as many (`strict`: strictly more) matching objects as
+    /// each other color. Appended for serialized discriminant stability.
+    SourceChosenColorMostCommonAmong {
+        filter: ObjectFilter,
+        strict: bool,
+    },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2535,6 +2937,11 @@ pub enum CombatParticipantCondition {
     AttackingPlayerIsNotAttackingYou,
     AnyAttackedPlayerIsPoisoned,
     TriggeringCreatureAttacksMostLifePlayer,
+    /// "if that player has another opponent who isn't being attacked"
+    /// (Suppressor Skyguard): the declaring player has an opponent, other
+    /// than the attacked player, whom no creature in the completed
+    /// declaration attacks (directly or through a permanent they defend).
+    AttackingPlayerHasUnattackedOtherOpponent,
 }
 
 #[cfg(test)]

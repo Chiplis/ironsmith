@@ -86,6 +86,9 @@ fn classify_object_filter_grammar_domain(tokens: &[OwnedLexToken]) -> ObjectFilt
                 | "exiled"
                 | "discarded"
                 | "sacrificed"
+                // "the amassed Army" (Goblin Plate Mail) names the Army the
+                // preceding amass tagged.
+                | "amassed"
                 | "cast"
                 | "turn"
                 | "turns"
@@ -339,6 +342,13 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         // union before taking the shared-noun path.
         filter
     } else if !has_shared_terminal_noun
+        && let Some(filter) = parse_branch_scoped_object_filter_union_lexed(tokens, other)
+    {
+        // Independently qualified type/subtype arms must retain their own
+        // adjectives; a terminal "legendary enchantment" does not make the
+        // preceding God or Demigod arms legendary enchantments as well.
+        filter
+    } else if !has_shared_terminal_noun
         && let Some(filter) = parse_domain_union_object_filter_lexed(tokens, other)
     {
         filter
@@ -368,14 +378,19 @@ fn split_trailing_color_count_phrase_tokens(
     let words = view.word_refs();
     let starts = view.token_start_indices();
     for (link_idx, link) in words.iter().enumerate().skip(1) {
-        if !matches!(*link, "of" | "thats" | "that's" | "that") {
+        // "spells with exactly three colors" (Meeting of the Five): `with`
+        // links only an exact color count.
+        if !matches!(*link, "of" | "thats" | "that's" | "that" | "with") {
             continue;
         }
         let mut start = link_idx + 1;
-        if words.get(start).is_some_and(|word| matches!(*word, "is" | "are")) {
+        if *link != "with" && words.get(start).is_some_and(|word| matches!(*word, "is" | "are")) {
             start += 1;
         }
         let exact = words.get(start) == Some(&"exactly");
+        if *link == "with" && !exact {
+            continue;
+        }
         let parsed = if exact {
             words.get(start + 1).and_then(|word| {
                 parse_number_word_u32(word).or_else(|| crate::util::decimal_count(word))

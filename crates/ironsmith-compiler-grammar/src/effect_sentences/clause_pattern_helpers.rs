@@ -47,7 +47,41 @@ pub fn extract_subject_player(subject: Option<SubjectAst>) -> Option<PlayerAst> 
 pub fn parse_prevent_next_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_finite_prevention_from_source(tokens)? {
+        return Ok(Some(effect));
+    }
     let Some(shape) = clause_shapes::parse_prevent_next_damage_tokens(tokens) else {
+        // "prevent the next 2 damage [instead]": the recipient is the
+        // preceding shield's; the self-replacement rebinds this `it` to the
+        // default action's target (CR 614.1c restatement of the amount).
+        if let Some((amount_tokens, combat_only)) =
+            clause_shapes::parse_prevent_next_damage_elided_recipient_tokens(tokens)
+            && let Some((amount, used)) = parse_value(amount_tokens)
+            && used == amount_tokens.len()
+        {
+            let mut effect = EffectAst::subject_verb_prevent_damage_with_options(
+                amount,
+                TargetAst::Tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    span_from_tokens(tokens),
+                ),
+                Until::EndOfTurn,
+                false,
+                false,
+                Vec::new(),
+            );
+            if let EffectAst::SubjectVerb(subject) = &mut effect
+                && let SubjectVerbActionAst::DamagePrevention(
+                    DamagePreventionActionAst::PreventDamage {
+                        combat_only: shield_combat_only,
+                        ..
+                    },
+                ) = &mut subject.action
+            {
+                *shield_combat_only = combat_only;
+            }
+            return Ok(Some(effect));
+        }
         return Ok(None);
     };
     if let Some(binding) = crate::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens) {
@@ -99,6 +133,23 @@ pub fn parse_prevent_next_damage_clause(
     {
         return Ok(Some(effect));
     }
+    // "... dealt to this creature by Torrent of Lava this turn": a named
+    // existing object (here the spell granting this ability) is the only
+    // source whose damage the shield prevents.
+    let mut damage_source = None;
+    let mut recipient_tokens = shape.target_tokens;
+    if !divided_targets
+        && !shape.protects_you_and_permanents_you_control
+        && !shape.source_of_your_choice
+        && let Some(by) = shape.target_tokens.iter().rposition(|token| token.is_word("by"))
+        && by > 0
+        && by + 1 < shape.target_tokens.len()
+        && let Ok(source @ TargetAst::Tagged(..)) =
+            parse_target_phrase(&shape.target_tokens[by + 1..])
+    {
+        damage_source = Some(source);
+        recipient_tokens = &shape.target_tokens[..by];
+    }
     let target = if divided_targets {
         TargetAst::WithCount(
             Box::new(TargetAst::AnyTarget(span_from_tokens(shape.target_tokens))),
@@ -107,7 +158,7 @@ pub fn parse_prevent_next_damage_clause(
     } else if shape.protects_you_and_permanents_you_control {
         TargetAst::Player(PlayerFilter::You, span_from_tokens(shape.target_tokens))
     } else {
-        parse_target_phrase(shape.target_tokens)?
+        parse_target_phrase(recipient_tokens)?
     };
 
     let mut effect = EffectAst::subject_verb_prevent_damage_with_options(
@@ -122,11 +173,53 @@ pub fn parse_prevent_next_damage_clause(
         && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
             combat_only,
             divided,
+            source,
             ..
         }) = &mut subject.action
     {
         *combat_only = shape.combat_only;
         *divided = divided_targets;
+        *source = damage_source;
+    }
+    Ok(Some(effect))
+}
+
+/// A finite shield restricted by damage source, with no recipient restriction.
+fn parse_finite_prevention_from_source(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&tokens);
+    if !words.starts_with(&["prevent", "the", "next"])
+        || !words.ends_with(&["this", "turn"])
+    {
+        return Ok(None);
+    }
+    let Some(damage) = words.windows(6)
+        .position(|part| part == ["damage", "that", "would", "be", "dealt", "by"])
+    else { return Ok(None); };
+    let combat_only = damage > 3 && words[damage - 1] == "combat";
+    let amount_end = damage - usize::from(combat_only);
+    if amount_end <= 3 || damage + 6 >= words.len() - 2 {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(&tokens);
+    let starts = view.token_start_indices();
+    let amount_tokens = &tokens[starts[3]..starts[amount_end]];
+    let Some((amount, used)) = parse_value(amount_tokens) else { return Ok(None); };
+    if used != amount_tokens.len() { return Ok(None); }
+    let source = parse_target_phrase(&tokens[starts[damage + 6]..starts[words.len() - 2]])?;
+    let mut effect = EffectAst::subject_verb_prevent_damage(
+        amount, TargetAst::Source(None), Until::EndOfTurn,
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::PreventDamage {
+            protect_all, source: shield_source, combat_only: shield_combat_only, ..
+        }) = &mut subject.action
+    {
+        *protect_all = true;
+        *shield_source = Some(source);
+        *shield_combat_only = combat_only;
     }
     Ok(Some(effect))
 }
@@ -424,6 +517,11 @@ pub fn parse_copy_spell_clause(
     // create-led clauses to the token-creation parser rather than turning the
     // copied permanent into a spell on the stack.
     if matches!(find_verb(tokens), Some((Verb::Create, _))) {
+        return Ok(None);
+    }
+    // "reselect the targets at random for the spell and the copy": "copy" is
+    // the noun naming a retargeted object, not a copy action.
+    if tokens.first().is_some_and(|token| token.is_word("reselect")) {
         return Ok(None);
     }
     // Preserve the optionality and actor of clauses such as "that permanent's
@@ -1327,6 +1425,18 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
         )));
     }
 
+    // "counter the spell" (Ice Cave, Split Decision) never announces a new
+    // target: the definite article names the spell already in view (the
+    // triggering spell, or the spell targeted earlier), exactly like "that
+    // spell".
+    let words = crate::lexer::token_word_refs(tokens);
+    if matches!(words.as_slice(), ["the", "spell"]) && tokens.len() == 2 {
+        let mut anaphoric = tokens.to_vec();
+        anaphoric[0] = OwnedLexToken::word("that".to_string(), tokens[0].span());
+        let mut target = parse_target_phrase(&anaphoric)?;
+        preserve_stack_kind_on_copy_target(&mut target);
+        return Ok(target);
+    }
     let mut target = parse_target_phrase(tokens)?;
     preserve_stack_kind_on_copy_target(&mut target);
     Ok(target)
@@ -1745,12 +1855,6 @@ pub fn parse_prevent_all_damage_clause(
             let target = parse_prevention_target_phrase(target_tokens)?;
             match source {
                 clause_shapes::PreventAllDamageSourceShape::Choice => {
-                    if !matches!(target, TargetAst::Player(PlayerFilter::You, _)) {
-                        return Err(CardTextError::ParseError(format!(
-                            "unsupported prevent-all damage source choice target (clause: '{}')",
-                            clause_text
-                        )));
-                    }
                     Ok(Some(
                         EffectAst::subject_verb_prevent_all_damage_to_target_with_source_choice(
                             target,
@@ -1925,12 +2029,28 @@ pub fn parse_prevent_next_time_damage_sentence(
         clause_shapes::DamageTargetShape::YouAndPermanents(filter) => {
             PreventNextTimeDamageTargetAst::YouAndPermanents(filter)
         }
+        clause_shapes::DamageTargetShape::AnyPlayer => PreventNextTimeDamageTargetAst::AnyPlayer,
         clause_shapes::DamageTargetShape::Target(target_tokens) => {
             PreventNextTimeDamageTargetAst::Target(parse_target_phrase(target_tokens)?)
         }
     };
 
-    let effect = if shape.portion != ironsmith_core::NextTimeDamagePreventionPortion::All
+    let effect = if shape.portion == ironsmith_core::NextTimeDamagePreventionPortion::ReflectOnly
+        && shape.reflect_damage_to_source_controller
+        && !shape.combat_only
+    {
+        // Eye for an Eye: the reflection rider without prevention.
+        let mut effect =
+            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(source, target, true);
+        if let EffectAst::SubjectVerb(subject_verb) = &mut effect
+            && let SubjectVerbActionAst::DamagePrevention(
+                DamagePreventionActionAst::PreventNextTimeDamage { portion, .. },
+            ) = &mut subject_verb.action
+        {
+            *portion = ironsmith_core::NextTimeDamagePreventionPortion::ReflectOnly;
+        }
+        effect
+    } else if shape.portion != ironsmith_core::NextTimeDamagePreventionPortion::All
         || shape.combat_only
     {
         if shape.reflect_damage_to_source_controller {
@@ -1986,6 +2106,7 @@ pub fn parse_redirect_next_damage_sentence(
                 };
             let dynamic_set = !shape.recipient.iter().any(|token| token.is_word("target"))
                 && (recipient_words == ["you"]
+                    || recipient_words.first() == Some(&"any")
                     || recipient_words
                         .iter()
                         .any(|word| matches!(*word, "creatures" | "permanents")));
@@ -2017,6 +2138,7 @@ pub fn parse_redirect_next_damage_sentence(
                     combat_only: shape.combat_only,
                     destination,
                     mode: shape.mode,
+                    optional_by_controller: shape.optional_by_controller,
                     display: clause_text.to_string(),
                 },
             )
@@ -2055,11 +2177,26 @@ pub fn parse_redirect_next_damage_sentence(
                 clause_shapes::RedirectDamageDestinationShape::Controller => {
                     RedirectNextTimeDamageDestinationAst::Controller
                 }
-                clause_shapes::RedirectDamageDestinationShape::Target(_) => {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported redirected-all-damage destination (clause: '{}')",
-                        clause_text
-                    )));
+                clause_shapes::RedirectDamageDestinationShape::Target(destination_tokens) => {
+                    // "... is dealt to another target creature instead" (Kor
+                    // Chant): a second announced target receives it all turn.
+                    let destination_target = parse_target_phrase(destination_tokens)?;
+                    let mut effect = EffectAst::subject_verb_redirect_next_time_damage_to_target(
+                        PreventNextTimeDamageSourceAst::Choice,
+                        target,
+                        destination_target,
+                    );
+                    if let EffectAst::SubjectVerb(subject) = &mut effect
+                        && let SubjectVerbActionAst::DamagePrevention(
+                            DamagePreventionActionAst::RedirectNextTimeDamageToSource {
+                                all_this_turn,
+                                ..
+                            },
+                        ) = &mut subject.action
+                    {
+                        *all_this_turn = true;
+                    }
+                    return Ok(Some(vec![effect]));
                 }
                 clause_shapes::RedirectDamageDestinationShape::SourceController
                 | clause_shapes::RedirectDamageDestinationShape::DamageSource
@@ -2109,20 +2246,46 @@ pub fn parse_redirect_next_damage_sentence(
             } else {
                 Some(parse_target_phrase(target_tokens)?)
             };
+            // "that damage is dealt to target creature of an opponent's
+            // choice instead" (Nova Pentacle): an opponent announces that
+            // target (CR 115.4, 601.2c); the redirect reads the announced
+            // object through its tag.
+            let mut chosen_destination_prelude = None;
             let (destination, destination_target) = match destination {
                 clause_shapes::RedirectDamageDestinationShape::SourceObject => (RedirectNextTimeDamageDestinationAst::SourceObject, None),
                 clause_shapes::RedirectDamageDestinationShape::Controller => (RedirectNextTimeDamageDestinationAst::Controller, None),
                 clause_shapes::RedirectDamageDestinationShape::SourceController => (RedirectNextTimeDamageDestinationAst::SourceController, None),
                 clause_shapes::RedirectDamageDestinationShape::DamageSource => (RedirectNextTimeDamageDestinationAst::DamageSource, None),
                 clause_shapes::RedirectDamageDestinationShape::Target(tokens) => (RedirectNextTimeDamageDestinationAst::TargetObject, Some(parse_target_phrase(tokens)?)),
-                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(_) => {
-                    return Err(CardTextError::ParseError(format!("unsupported redirected-next-time damage destination (clause: '{}')", clause_text)));
+                clause_shapes::RedirectDamageDestinationShape::TargetOfChoice(tokens) => {
+                    let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
+                        .filter(|choice| choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent)
+                    else {
+                        return Err(CardTextError::ParseError(format!("unsupported redirected-next-time damage destination (clause: '{}')", clause_text)));
+                    };
+                    let chosen = parse_target_phrase(&choice.object_tokens)?;
+                    let tag = crate::util::helper_tag_for_tokens(tokens, "opponent_chosen_target");
+                    chosen_destination_prelude = Some(EffectAst::TagAffected {
+                        effect: Box::new(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            chosen,
+                            PlayerAst::Opponent,
+                        )),
+                        tag: crate::tag::TagRef::of(tag.clone()),
+                    });
+                    (
+                        RedirectNextTimeDamageDestinationAst::TargetObject,
+                        Some(TargetAst::Tagged(crate::tag::TagRef::of(tag), None)),
+                    )
                 }
             };
-            EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
+            let redirect = EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::Implicit,
                 SubjectVerbActionAst::DamagePrevention(DamagePreventionActionAst::RedirectNextTimeDamageToSource {
                     source, target, combat_only, destination, destination_target, all_this_turn: false,
-                }))
+                }));
+            match chosen_destination_prelude {
+                Some(prelude) => EffectAst::Sequence { effects: vec![prelude, redirect] },
+                None => redirect,
+            }
         }
         clause_shapes::RedirectNextDamageShape::NextAmount {
             amount_tokens,
@@ -2787,7 +2950,11 @@ pub fn parse_keyword_mechanic_clause(
             phase_out.zone.get_or_insert(Zone::Battlefield);
             EffectAst::subject_verb_phase_exchange(phase_in, phase_out)
         }
-        clause_shapes::KeywordMechanicShape::Phase { direction, subject } => match subject {
+        clause_shapes::KeywordMechanicShape::Phase {
+            direction,
+            subject,
+            until_source_leaves,
+        } => match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {
                 let mut filter = parse_object_filter(filter_tokens, false)?;
                 filter.zone.get_or_insert(Zone::Battlefield);
@@ -2795,9 +2962,13 @@ pub fn parse_keyword_mechanic_clause(
                     clause_shapes::PhaseDirectionShape::In => {
                         EffectAst::subject_verb_phase_in_all(filter)
                     }
-                    clause_shapes::PhaseDirectionShape::Out => {
-                        EffectAst::subject_verb_phase_out_all(filter)
-                    }
+                    clause_shapes::PhaseDirectionShape::Out => match until_source_leaves {
+                        Some(source) => EffectAst::subject_verb_phase_out_all_until_source_leaves(
+                            filter,
+                            phase_source_surface(source),
+                        ),
+                        None => EffectAst::subject_verb_phase_out_all(filter),
+                    },
                 }
             }
             clause_shapes::PhaseSubjectShape::Target(target_tokens) => {
@@ -2805,9 +2976,13 @@ pub fn parse_keyword_mechanic_clause(
                     clause_shapes::PhaseDirectionShape::In => {
                         EffectAst::subject_verb_phase_in(target)
                     }
-                    clause_shapes::PhaseDirectionShape::Out => {
-                        EffectAst::subject_verb_phase_out(target)
-                    }
+                    clause_shapes::PhaseDirectionShape::Out => match until_source_leaves {
+                        Some(source) => EffectAst::subject_verb_phase_out_until_source_leaves(
+                            target,
+                            phase_source_surface(source),
+                        ),
+                        None => EffectAst::subject_verb_phase_out(target),
+                    },
                 };
                 // "this creature and that creature phase out" (Dream
                 // Fighter): two conjoined object subjects each phase.
@@ -3017,6 +3192,12 @@ pub fn parse_keyword_mechanic_clause(
             PlayerAst::You,
             Value::EventValue(EventValueSpec::Amount),
         ),
+        clause_shapes::KeywordMechanicShape::DiscoverByThatPlayer { count_tokens } => {
+            EffectAst::subject_verb_discover(
+                PlayerAst::That,
+                parse_keyword_value_tokens(count_tokens, "discover", &clause_text)?,
+            )
+        }
         clause_shapes::KeywordMechanicShape::Discover { count_tokens } => {
             EffectAst::subject_verb_discover(
                 PlayerAst::You,
@@ -3136,4 +3317,12 @@ pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     };
     let target = parse_target_phrase(target_tokens)?;
     Ok(Some(EffectAst::subject_verb_connive(target, count)))
+}
+
+/// "until this enchantment leaves the battlefield": the printed source noun
+/// phrase. Runtime identity is the effect source.
+fn phase_source_surface(source: &[OwnedLexToken]) -> crate::target::SourceReferenceSurface {
+    crate::target::SourceReferenceSurface::ThisPermanentType(
+        crate::lexer::token_word_refs(source).join(" "),
+    )
 }

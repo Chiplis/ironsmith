@@ -987,6 +987,18 @@ impl CardDefinitionBuilder {
         })
     }
 
+    /// "Unearth—Pay eight {E}": unearth with a non-mana activation cost.
+    pub fn unearth_total_cost(self, total_cost: TotalCost) -> Self {
+        self.with_ability(
+            crate::ability::Ability::activated_with_timing(
+                total_cost,
+                vec![crate::effect::Effect::unearth()],
+                crate::ability::ActivationTiming::SorcerySpeed,
+            )
+            .in_zones(vec![crate::zone::Zone::Graveyard]),
+        )
+    }
+
     pub fn unearth(self, cost: ManaCost) -> Self {
         let total_cost = TotalCost::from_cost(crate::costs::Cost::mana(cost));
 
@@ -1000,9 +1012,22 @@ impl CardDefinitionBuilder {
         )
     }
 
+    /// A granted embalm whose cost is the mana cost of the card that has it
+    /// (CR 702.128a): the same graveyard ability, paying that card's own
+    /// colored mana cost.
+    pub fn embalm_from_source_cost(self) -> Self {
+        self.embalm_with_mana_payment(crate::costs::Cost::dynamic_mana(
+            ironsmith_core::DynamicManaCost::from_source_mana_cost(),
+        ))
+    }
+
     pub fn embalm(self, cost: ManaCost) -> Self {
+        self.embalm_with_mana_payment(crate::costs::Cost::mana(cost))
+    }
+
+    fn embalm_with_mana_payment(self, payment: crate::costs::Cost) -> Self {
         let total_cost = TotalCost::from_costs(vec![
-            crate::costs::Cost::mana(cost),
+            payment,
             crate::costs::Cost::exile_self(),
         ]);
         let create_embalmed_copy = crate::effect::Effect::new(
@@ -1540,11 +1565,34 @@ impl CardDefinitionBuilder {
     }
 
     pub fn echo(self, total_cost: TotalCost) -> Self {
+        self.echo_with_x_value(total_cost, None)
+    }
+
+    /// Echo whose printed X is defined by the card ("echo {X}, where X is
+    /// your life total"): the payment computes X when it is made.
+    pub fn echo_with_x_value(
+        self,
+        total_cost: TotalCost,
+        x_value: Option<crate::effect::Value>,
+    ) -> Self {
         // CR 702.30a: "At the beginning of your upkeep, if this permanent came
         // under your control since the beginning of your last upkeep, sacrifice
         // it unless you pay [cost]." The control check is a tracked game fact,
         // not a counter, so counter effects can't change it.
-        let payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+        let mut payment_effects = crate::costs::total_cost_to_payment_effects(&total_cost);
+        if let Some(x_value) = x_value {
+            for effect in &mut payment_effects {
+                let replacement = effect
+                    .downcast_ref::<crate::effects::PayManaEffect>()
+                    .filter(|pay| pay.cost.has_x())
+                    .map(|pay| {
+                        crate::effect::Effect::new(pay.clone().with_x_value(x_value.clone()))
+                    });
+                if let Some(replacement) = replacement {
+                    *effect = replacement;
+                }
+            }
+        }
 
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
@@ -2490,6 +2538,27 @@ impl CardDefinitionBuilder {
                     crate::effect::Effect::sacrifice_player(
                         crate::target::ObjectFilter::permanent(),
                         amount as i32,
+                        crate::target::PlayerFilter::Defending,
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
+    }
+
+    /// Annihilator with a defined dynamic amount, evaluated as the trigger
+    /// resolves (CR 702.86a).
+    pub fn annihilator_value(self, amount: Value) -> Self {
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::this_attacks(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::sacrifice_player(
+                        crate::target::ObjectFilter::permanent(),
+                        amount,
                         crate::target::PlayerFilter::Defending,
                     ),
                 ]),

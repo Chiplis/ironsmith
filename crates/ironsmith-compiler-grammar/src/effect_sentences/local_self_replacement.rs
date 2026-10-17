@@ -14,6 +14,25 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     let action = &tokens[..index];
     let words = crate::lexer::parser_token_word_refs(action);
     let counter = words.starts_with(&["counter", "that", "spell"]);
+    // "Counter that spell unless its controller pays {4} instead if this
+    // spell was cast using teamwork" (We Say Thee Nay!): a complete
+    // counter-unless-pays replacement of the preceding counter instruction.
+    let counter_unless = counter
+        && words.starts_with(&["counter", "that", "spell", "unless", "its", "controller", "pays"])
+        && tokens.iter().filter(|token| token.is_word("instead")).count() == 1
+        && tokens.get(index + 1).is_some_and(|token| token.is_word("if"));
+    if counter_unless {
+        let predicate =
+            crate::grammar::filters::parse_condition_predicate_lexed(&tokens[index + 2..])?;
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(action)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError("incomplete trailing local replacement".into()));
+        }
+        return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+            predicate,
+            effects,
+        })]));
+    }
     let sacrifice = words.starts_with(&["each", "player", "sacrifices", "all"])
         && words.ends_with(&["they", "control"]);
     if !counter && !sacrifice { return Ok(None); }

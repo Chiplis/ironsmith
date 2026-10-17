@@ -147,14 +147,13 @@ pub(super) fn parse_divided_damage_target(
         },
     )?;
     if shape.repeats_antecedent
-        && shape
-            .target_tokens
-            .first()
-            .is_some_and(|token| token.as_word() == Some("them"))
+        && (shape.target_tokens.first().is_some_and(|token| token.as_word() == Some("them"))
+            || (shape.target_tokens.first().is_some_and(|token| token.as_word() == Some("those"))
+                && shape.target_tokens.iter().any(|token| matches!(token.as_word(), Some("player" | "players")))))
     {
-        // A bare anaphor: the self-replacement rewrite substitutes the
-        // antecedent's whole target spec, so the same announced targets are
-        // divided again.
+        // A repeating anaphor imports the antecedent's whole target spec,
+        // including its player domain. The self-replacement rewrite retains
+        // the same announced targets and changes only the divided amount.
         return Ok(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.target_tokens),
@@ -215,8 +214,17 @@ pub(super) fn parse_divided_damage_with_amount(
         })?;
     match shape {
         combat_grammar::CombatDividedAmountShape::EvenlyEach { filter_tokens } => {
-            let filter = parse_damage_each_filter(filter_tokens)?;
-            Ok(EffectAst::subject_verb_damage_each(amount, filter))
+            // "X damage divided evenly, rounded down, among all creatures
+            // target opponent controls" (Dwarven Catapult): every matching
+            // object gets an equal share of X, not X each (CR 120.2).
+            let mut filter = parse_damage_each_filter(filter_tokens)?;
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            Ok(EffectAst::subject_verb_evenly_distributed_damage(
+                amount,
+                TargetAst::Object(filter, None, None),
+            ))
         }
         combat_grammar::CombatDividedAmountShape::Distributed {
             target_tokens,
@@ -234,10 +242,9 @@ pub(super) fn parse_divided_damage_with_amount(
     }
 }
 
-/// "deals N damage to <one recipient> for each <count>" (Black Market
-/// Tycoon, Lotleth Giant): the trailing count multiplies the amount dealt to
-/// that one recipient; it never multiplies the recipients. Returns the clause
-/// without the multiplier and the count.
+/// A trailing "for each" multiplies damage, not the recipient set.
+/// For an "each" recipient set, DealDamageEachEffect evaluates that amount
+/// separately in each recipient's frame before the simultaneous damage event.
 fn split_trailing_damage_for_each_multiplier(
     tokens: &[OwnedLexToken],
     used: usize,
@@ -251,9 +258,11 @@ fn split_trailing_damage_for_each_multiplier(
     let for_idx = (3..words.len().saturating_sub(1))
         .find(|&index| words[index] == "for" && words[index + 1] == "each")?;
     let recipient = &words[2..for_idx];
-    // Sets ("each creature"), divisions and conditional tails keep their own
-    // owners; only one plainly named recipient is scaled here.
-    if recipient.iter().any(|word| {
+    // One leading "each" denotes the recipient set. The damage kernel owns
+    // its local references ("that creature"); divisions, conditional tails,
+    // and additional set clauses retain their separate owners.
+    let recipient_tail = if recipient.first() == Some(&"each") { &recipient[1..] } else { recipient };
+    if recipient_tail.iter().any(|word| {
         matches!(
             *word,
             "each" | "unless" | "if" | "equal" | "where" | "and" | "or" | "divided" | "instead"
@@ -529,6 +538,35 @@ pub fn parse_deal_damage_with_amount(
         combat_grammar::CombatDamageTargetShape::General { target_tokens } => {
             let target = parse_target_phrase(target_tokens)?;
             Ok(EffectAst::subject_verb_damage(amount, target))
+        }
+    }
+}
+
+#[cfg(test)]
+mod trailing_damage_multiplier_tests {
+    use super::*;
+    #[test]
+    fn divided_damage_repeating_mixed_antecedent_keeps_the_whole_target_set() {
+        for text in ["divided as you choose among them", "divided as you choose among those permanents and/or players"] {
+            let tokens = crate::lexer::lex_line(text, 0).unwrap();
+            assert!(matches!(parse_divided_damage_target(&tokens).unwrap(), TargetAst::Tagged(tag, _) if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()), "{text}");
+        }
+    }
+
+    #[test]
+    fn recipient_sets_keep_local_count_separate_from_the_recipient_filter() {
+        let tokens = crate::lexer::lex_line("2 damage to each creature for each Aura attached to that creature", 0).unwrap();
+        let (head, amount) = split_trailing_damage_for_each_multiplier(&tokens, 1).unwrap();
+        assert_eq!(crate::lexer::render_token_slice(head), "2 damage to each creature");
+        let Value::Count(filter) = amount.unhinted() else { panic!("{amount:?}"); };
+        assert!(filter.subtypes.contains(&crate::types::Subtype::Aura));
+        assert!(!filter.card_types.contains(&crate::types::CardType::Creature));
+        assert!(filter.tagged_constraints.iter().any(|constraint| constraint.relation == crate::target::TaggedOpbjectRelation::AttachedToTaggedObject));
+        for text in [
+            "2 damage divided as you choose among any number of targets for each Aura attached to it",
+            "2 damage to each creature unless you pay for each Aura attached to it",
+        ] {
+            assert!(split_trailing_damage_for_each_multiplier(&crate::lexer::lex_line(text, 0).unwrap(), 1).is_none(), "{text}");
         }
     }
 }

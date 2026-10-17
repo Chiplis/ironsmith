@@ -2936,6 +2936,61 @@ impl StaticAbilityKind for CantAttackItsOwner {
     }
 }
 
+/// "This creature can't be destroyed by lethal damage unless lethal damage
+/// dealt by a single source is marked on it." (Ogre Enforcer); the state-based
+/// lethal-damage check consults the per-source marked damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LethalDamageMustBeFromSingleSource;
+
+impl StaticAbilityKind for LethalDamageMustBeFromSingleSource {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LethalDamageMustBeFromSingleSource
+    }
+
+    fn display(&self) -> String {
+        "This creature can't be destroyed by lethal damage unless lethal damage dealt by a single source is marked on it.".to_string()
+    }
+}
+
+/// "This creature can't attack a player it has already attacked this turn."
+/// (Port Razer): consults this turn's attack declarations of this object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantAttackPlayerAlreadyAttackedThisTurn;
+
+impl StaticAbilityKind for CantAttackPlayerAlreadyAttackedThisTurn {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantAttackPlayerAlreadyAttackedThisTurn
+    }
+
+    fn display(&self) -> String {
+        "This creature can't attack a player it has already attacked this turn.".to_string()
+    }
+
+    fn can_attack_specific_defender(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        _controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> Option<bool> {
+        let attacked_already = game
+            .turn_store
+            .turn_history
+            .projected_records()
+            .filter_map(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+            })
+            .any(|attack| {
+                attack.attacker == source
+                    && attack.target
+                        == crate::triggers::event::AttackEventTarget::Player(defending_player)
+            });
+        Some(!attacked_already)
+    }
+}
+
 /// Can't attack unless you've cast a creature spell this turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CantAttackUnlessControllerCastCreatureSpellThisTurn;
@@ -3059,6 +3114,21 @@ define_combat_ability!(
     MayAssignDamageAsUnblocked,
     MayAssignDamageAsUnblocked,
     "You may have this creature assign its combat damage as though it weren't blocked"
+);
+
+// Assigns combat damage as though it weren't blocked (Outmaneuver).
+define_combat_ability!(
+    AssignsDamageAsUnblocked,
+    AssignsDamageAsUnblocked,
+    "This creature assigns its combat damage as though it weren't blocked"
+);
+
+// "If this creature is unblocked, you may have it assign its combat damage to
+// a creature defending player controls." (Cunning Giant)
+define_combat_ability!(
+    MayAssignUnblockedDamageToDefendingCreature,
+    MayAssignUnblockedDamageToDefendingCreature,
+    "If this creature is unblocked, you may have it assign its combat damage to a creature defending player controls"
 );
 
 define_combat_ability!(

@@ -221,6 +221,8 @@ const CRAFT_EXILED_FROM_BATTLEFIELD_TRIGGER_PATTERN: ClauseShape<'static> = clau
 );
 const FINAL_CHAPTER_ABILITY_RESOLVES_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["the", "final", "chapter", "ability", "of"]; suffix & ["resolves"]);
+const FINAL_CHAPTER_ABILITY_TRIGGERS_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "final", "chapter", "ability", "of"]; suffix & ["triggers"]);
 const DAY_NIGHT_CHANGED_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["day", "becomes", "night", "or", "night", "becomes", "day"]);
 const ATTACKS_YOU_OR_PLANESWALKER_YOU_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -457,7 +459,11 @@ const ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             &["and", "is", "not", "blocked", "this", "combat"],
         ]
 );
-const ATTACKS_A_PLAYER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["a", "player"]);
+// "Whenever one or more Devils you control attack one or more players"
+// (Zurzoth): the plural tail restricts the matched group to player attacks.
+const ATTACKS_A_PLAYER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any & [&["a", "player"], &["one", "or", "more", "players"]]
+);
 const ATTACKS_YOU_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const ATTACKS_OPPONENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -1772,6 +1778,7 @@ pub(crate) fn parse_opponent_caused_put_into_your_graveyard_from_battlefield(
             cause_type: Some(crate::events::cause::CauseTypeFilter::EffectLike),
             source_filter: None,
             controller_filter: Some(crate::events::cause::ControllerFilter::ContextOpponent),
+            ability_kind: None,
         }),
     }))
 }
@@ -2098,7 +2105,9 @@ fn parse_moved_or_cast_origin_condition(
         &["if", "one", "or", "more", "of", "them", "entered"],
     ) {
         (OriginConditionSubjectSurface::It, words.get(7..)?)
-    } else if crate::word_primitives::parse_sequence_prefix(words, &["if", "it", "entered"]) {
+    } else if crate::word_primitives::parse_sequence_prefix(words, &["if", "it", "entered"])
+        || crate::word_primitives::parse_sequence_prefix(words, &["if", "they", "entered"])
+    {
         (OriginConditionSubjectSurface::It, words.get(3..)?)
     } else if words.get(..2) == Some(&["if", "that"][..])
         && matches!(
@@ -2115,6 +2124,24 @@ fn parse_moved_or_cast_origin_condition(
         return None;
     };
 
+    // "if they entered or were cast from a graveyard" (Twilight Diviner):
+    // both branches share one trailing origin.
+    if origin_words.first() == Some(&"or") {
+        let rest = origin_words.get(1..)?;
+        if rest.get(..2) != Some(&["was", "cast"][..]) && rest.get(..2) != Some(&["were", "cast"][..])
+        {
+            return None;
+        }
+        let origin = trigger_grammar::parse_enters_origin_clause_words(rest.get(2..)?)?;
+        return (!origin.excluded).then_some(
+            ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
+                zone: origin.zone,
+                zone_owner: origin.owner,
+                caster: None,
+                subject_surface,
+            },
+        );
+    }
     let separator = crate::word_primitives::parse_sequence_start(origin_words, &["or"])?;
     let moved_origin =
         trigger_grammar::parse_enters_origin_clause_words(origin_words.get(..separator)?)?;
@@ -2187,6 +2214,7 @@ fn try_parse_championed_with_this_trigger_lexed(
             cause_type: None,
             source_filter: Some(source),
             controller_filter: None,
+            ability_kind: None,
         }),
     }))
 }

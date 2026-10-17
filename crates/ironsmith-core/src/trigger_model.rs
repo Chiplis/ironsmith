@@ -284,6 +284,8 @@ pub enum TriggerKind {
     },
     ThisLeavesBattlefield,
     ThisPhasesOut,
+    /// "Whenever a mana ability of this creature resolves" (Tyvar).
+    SourceManaAbilityResolves,
     ThisMutates,
     LeavesBattlefield {
         filter: ObjectFilter,
@@ -453,6 +455,11 @@ pub enum TriggerKind {
         /// own attack declaration.
         #[cfg_attr(feature = "serde", serde(default))]
         caused_by_source_attacking: bool,
+        /// "Whenever a permanent entering causes a triggered ability to
+        /// trigger" (Strict Proctor): the ability's trigger event was any
+        /// permanent entering the battlefield (CR 603.6a).
+        #[cfg_attr(feature = "serde", serde(default))]
+        caused_by_permanent_entering: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -635,6 +642,16 @@ pub enum TriggerKind {
         surface: PostcombatMainPhaseSurface,
     },
     DayNightChanged,
+    /// "Whenever damage that would be dealt to you is prevented" (Selfless
+    /// Squire): any prevention of damage to a matching player (CR 615.13).
+    DamageToPlayerPrevented {
+        player: PlayerFilter,
+    },
+    /// "When damage is prevented this way" on a permanent whose own static
+    /// prevention did it (Phyrexian Vindicator).
+    DamagePreventedBySource {
+        source_filter: Option<ObjectFilter>,
+    },
     ThisEntersBattlefield,
     ThisTransforms {
         destination_name: Option<String>,
@@ -785,6 +802,10 @@ pub enum TriggerKind {
     /// Appended to preserve serialized variant ordinals.
     ZoneGated { trigger: Box<Trigger>, zones: Vec<Zone> },
     PermanentTappedToPayCost { filter: ObjectFilter, cost_kind: crate::OptionalCostKind },
+    /// "Whenever the final chapter ability of a Saga you control triggers"
+    /// (CR 714.2d): a chapter ability carrying the greatest chapter number of
+    /// a matching source triggers. Appended to preserve serialized ordinals.
+    FinalChapterAbilityTriggers { filter: ObjectFilter },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1233,6 +1254,12 @@ impl Trigger {
     pub fn this_phases_out() -> Self {
         Self::typed("When this phases out", TriggerKind::ThisPhasesOut)
     }
+    pub fn source_mana_ability_resolves() -> Self {
+        Self::typed(
+            "Whenever a mana ability of this creature resolves",
+            TriggerKind::SourceManaAbilityResolves,
+        )
+    }
     pub fn this_mutates() -> Self {
         Self::typed("this_mutates", TriggerKind::ThisMutates)
     }
@@ -1379,6 +1406,23 @@ impl Trigger {
             PlayerFilter::Opponent => "an opponent controls",
             _ => "a player controls",
         };
+        if once_per_stack_object
+            && player == PlayerFilter::Any
+            && controller == PlayerFilter::Any
+            && object == ObjectFilter::default()
+            && source_kind == crate::filter_model::StackObjectKind::SpellOrAbility
+        {
+            return Self::typed(
+                "Whenever a player chooses one or more targets".to_string(),
+                TriggerKind::PlayerOrObjectBecomesTargetedBySourceController {
+                    player,
+                    object,
+                    controller,
+                    source_kind,
+                    once_per_stack_object,
+                },
+            );
+        }
         let object_text = object.description();
         let object_text = if once_per_stack_object {
             object_text
@@ -1789,6 +1833,7 @@ impl Trigger {
                 source_filter,
                 caused_by_source_entering,
                 caused_by_source_attacking: false,
+                caused_by_permanent_entering: false,
             },
         )
     }
@@ -1800,6 +1845,19 @@ impl Trigger {
                 source_filter: Some(source_filter),
                 caused_by_source_entering: false,
                 caused_by_source_attacking: true,
+                caused_by_permanent_entering: false,
+            },
+        )
+    }
+    pub fn ability_triggered_by_permanent_entering() -> Self {
+        Self::typed(
+            "Whenever a permanent entering causes a triggered ability to trigger",
+            TriggerKind::AbilityTriggered {
+                another: false,
+                source_filter: None,
+                caused_by_source_entering: false,
+                caused_by_source_attacking: false,
+                caused_by_permanent_entering: true,
             },
         )
     }
@@ -2376,6 +2434,18 @@ impl Trigger {
     pub fn day_night_changed() -> Self {
         Self::typed("day_night_changed", TriggerKind::DayNightChanged)
     }
+    pub fn damage_prevented_by_source(source_filter: Option<ObjectFilter>) -> Self {
+        Self::typed(
+            "damage_prevented_by_source",
+            TriggerKind::DamagePreventedBySource { source_filter },
+        )
+    }
+    pub fn damage_to_player_prevented(player: PlayerFilter) -> Self {
+        Self::typed(
+            "damage_to_player_prevented",
+            TriggerKind::DamageToPlayerPrevented { player },
+        )
+    }
     pub fn this_enters_battlefield() -> Self {
         Self::typed(
             "this_enters_battlefield",
@@ -2550,6 +2620,12 @@ impl Trigger {
         Self::typed(
             "final_chapter_ability_resolved",
             TriggerKind::FinalChapterAbilityResolved { filter },
+        )
+    }
+    pub fn final_chapter_ability_triggers(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "final_chapter_ability_triggers",
+            TriggerKind::FinalChapterAbilityTriggers { filter },
         )
     }
     pub fn custom(id: impl Into<String>, label: String) -> Self {

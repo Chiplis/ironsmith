@@ -12,6 +12,32 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     {
         return Ok(None);
     }
+    // "It's goaded for the rest of the game and it gains "This creature can't
+    // be sacrificed."" (Jon Irenicus): a pronoun state clause coordinated
+    // with a grant to the same object; read each half on its own.
+    if typed_subject_tokens.is_none() {
+        let words = crate::lexer::token_word_refs(tokens);
+        let pronoun_state_head = matches!(
+            words.as_slice(),
+            ["it's" | "its", ..] | ["it", "is", ..]
+        );
+        if pronoun_state_head
+            && let Some(and_idx) = (2..tokens.len().saturating_sub(2)).find(|&idx| {
+                tokens[idx].is_word("and")
+                    && tokens[idx + 1].is_word("it")
+                    && tokens[idx + 2].is_any_word(&["gains", "gain"])
+            })
+            && !tokens[..and_idx].iter().any(|token| token.is_any_word(&["gains", "gain"]))
+        {
+            let mut effects = parse_effect_chain(&tokens[..and_idx])?;
+            if !effects.is_empty()
+                && let Some(grant) = parse_gain_ability_sentence(&tokens[and_idx + 1..])?
+            {
+                effects.extend(grant);
+                return Ok(Some(effects));
+            }
+        }
+    }
     let stripped_if_you_do = trim_commas(strip_leading_if_you_do_lexed(tokens));
     if stripped_if_you_do.len() < tokens.len() {
         return Ok(
@@ -400,12 +426,32 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     let get_idx = gain_shapes::find_get_verb(before_gain);
     let leading_become_subject_end_word_idx = gain_shapes::find_become_verb(before_gain)
         .map(|become_idx| subject_start_word_idx + become_idx);
+    // "gets +1/+0, becomes black, and gains shadow": the pump precedes the
+    // color change. The shared subject still ends at the first verb, and the
+    // pump modifier ends where the become clause starts.
+    let get_before_become_word_idx = match (get_idx, leading_become_subject_end_word_idx) {
+        (Some(gi), Some(become_word_idx)) if subject_start_word_idx + gi < become_word_idx => {
+            Some(subject_start_word_idx + gi)
+        }
+        _ => None,
+    };
     let leading_become_effect = if let Some(become_word_idx) = leading_become_subject_end_word_idx {
         let Some(become_token_idx) = word_view.map_word_or_end_to_token_boundary(become_word_idx)
         else {
             return Ok(None);
         };
-        let become_subject_tokens = trim_commas(&tokens[subject_start_token_idx..become_token_idx]);
+        let become_subject_end_token_idx = match get_before_become_word_idx {
+            Some(get_word_idx) => {
+                let Some(get_token_idx) = word_view.map_word_or_end_to_token_boundary(get_word_idx)
+                else {
+                    return Ok(None);
+                };
+                get_token_idx
+            }
+            None => become_token_idx,
+        };
+        let become_subject_tokens =
+            trim_commas(&tokens[subject_start_token_idx..become_subject_end_token_idx]);
         // A shared-subject type/color change ends before the sibling pump:
         // "becomes a Dragon, gets +5/+3, and gains flying". Each complete
         // child remains in the same duration/program, with one target owner.
@@ -455,8 +501,19 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         else {
             return Ok(None);
         };
+        let modifier_end_token_idx = match (get_before_become_word_idx, leading_become_subject_end_word_idx) {
+            (Some(_), Some(become_word_idx)) => {
+                let Some(become_token_idx) =
+                    word_view.map_word_or_end_to_token_boundary(become_word_idx)
+                else {
+                    return Ok(None);
+                };
+                become_token_idx
+            }
+            _ => gain_token_idx,
+        };
         let mut modifier_tokens =
-            trim_commas(&tokens[modifier_start_token_idx..gain_token_idx]).to_vec();
+            trim_commas(&tokens[modifier_start_token_idx..modifier_end_token_idx]).to_vec();
         while modifier_tokens.last().is_some_and(|token| {
             token
                 .as_word()
@@ -583,7 +640,8 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     }
 
     // Determine the real subject (before "get"/"gets" if pump is present)
-    let real_subject_end_word_idx = leading_become_subject_end_word_idx
+    let real_subject_end_word_idx = get_before_become_word_idx
+        .or(leading_become_subject_end_word_idx)
         .or(pump_effect
             .as_ref()
             .map(|(_, _, gi, _, _, _)| *gi)
@@ -863,6 +921,29 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
+    // "that player gains protection from everything" (Teferi's Reproach,
+    // after its "until that player's next turn" pronoun binding): the
+    // demonstrative names the player an earlier clause introduced.
+    if !losing
+        && real_subject_shape.demonstrative_player
+        && crate::word_primitives::parse_sequence_complete(&real_subject_words, &["that", "player"])
+    {
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            real_subject_tokens,
+            PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported player gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
     if !losing && real_subject_shape.player_you {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
@@ -896,6 +977,41 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         effects.append(&mut player_effects);
         effects.push(EffectAst::subject_verb_grant_abilities_all(
             permanent_filter,
+            abilities,
+            duration,
+        ));
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
+    // "You and target permanent you control each gain protection from the
+    // chosen player" (Guardian Archon): the player half and the one targeted
+    // permanent each receive the same grant.
+    if !losing
+        && let [you, and, rest @ ..] = real_subject_tokens
+        && you.is_word("you")
+        && and.is_word("and")
+        && rest.first().is_some_and(|token| token.is_word("target"))
+    {
+        let rest = match rest.split_last() {
+            Some((last, head)) if last.is_word("each") => head,
+            _ => rest,
+        };
+        let target = parse_target_phrase(rest)?;
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            real_subject_tokens,
+            PlayerFilter::You,
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported mixed player/target gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            target,
             abilities,
             duration,
         ));
@@ -1178,7 +1294,11 @@ fn you_and_controlled_permanents_subject(tokens: &[OwnedLexToken]) -> Option<Obj
     let [you, and, rest @ ..] = tokens else {
         return None;
     };
-    if !you.is_word("you") || !and.is_word("and") || rest.is_empty() {
+    if !you.is_word("you")
+        || !and.is_word("and")
+        || rest.is_empty()
+        || rest.iter().any(|token| token.is_word("target"))
+    {
         return None;
     }
     let filter = parse_object_filter_lexed(rest, false).ok()?;

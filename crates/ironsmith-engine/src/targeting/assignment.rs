@@ -544,6 +544,7 @@ mod tests {
                 metric: crate::effect::ChoiceAggregateMetric::ManaValue,
                 maximum: 6,
                 target_values: vec![(four, 4), (three, 3), (two, 2)],
+                one_per_card_type: None,
             }),
             min_targets: 0,
             max_targets: None,

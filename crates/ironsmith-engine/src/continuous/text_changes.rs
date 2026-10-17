@@ -43,6 +43,96 @@ impl std::fmt::Display for TextChangeDomainError {
 }
 impl std::error::Error for TextChangeDomainError {}
 
+/// Conservative occurrence evidence for a definition outside the typed word
+/// domain. `image` is the definition's complete structural (`Debug`) image;
+/// this is never a source of semantics, only of absence: an authored color
+/// word is always a typed `Color` (`Black`), a `ColorSet(<bits>)`, or an
+/// identifier/string carrying the word (`BlackOrGreen...`, `"black"`), and a
+/// subtype word is its typed variant name. Returning `false` proves the
+/// source word cannot occur, so the change leaves the definition as it is
+/// (CR 612.2). Mana symbols such as `Black` over-approximate to `true`,
+/// which keeps the strict typed owner in charge.
+pub(crate) fn structural_image_may_hold_source_word(image: &str, change: TextChange) -> bool {
+    let (name, color_bit) = match change.from() {
+        ironsmith_core::TextWord::Color(color) => {
+            // `ColorSet` bits follow `Color::ALL` order (WHITE = 1 << 0, ...).
+            let index = ironsmith_core::Color::ALL.iter().position(|candidate| *candidate == color)
+                .unwrap_or(0);
+            (format!("{color:?}"), Some(1u8 << index))
+        }
+        ironsmith_core::TextWord::BasicLandType(subtype)
+        | ironsmith_core::TextWord::CreatureType(subtype) => (format!("{subtype:?}"), None),
+    };
+    let needle = name.to_ascii_lowercase();
+    let multi_segment = name.chars().skip(1).any(|c| c.is_ascii_uppercase());
+    if multi_segment {
+        let squashed: String = image.chars().filter(|c| c.is_ascii_alphabetic())
+            .map(|c| c.to_ascii_lowercase()).collect();
+        if squashed.contains(&needle) { return true; }
+    }
+    let bytes = image.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if !bytes[index].is_ascii_alphabetic() { index += 1; continue; }
+        let start = index;
+        while index < bytes.len() && bytes[index].is_ascii_alphanumeric() { index += 1; }
+        let run = &image[start..index];
+        if run.eq_ignore_ascii_case(&needle) { return true; }
+        // CamelCase segments: `BlackOrGreenCreatureAlsoAttacks` holds `Black`,
+        // while `Redirect` or `Ordered` hold no `Red` segment.
+        let run_bytes = run.as_bytes();
+        let mut segment_start = 0;
+        for position in 1..=run_bytes.len() {
+            let boundary = position == run_bytes.len()
+                || (run_bytes[position].is_ascii_uppercase()
+                    && !run_bytes[position - 1].is_ascii_uppercase());
+            if boundary {
+                if run[segment_start..position].eq_ignore_ascii_case(&needle) { return true; }
+                segment_start = position;
+            }
+        }
+        if let Some(bit) = color_bit && run == "ColorSet" {
+            let rest = &image[index..];
+            let Some(rest) = rest.strip_prefix('(') else { return true; };
+            let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            match digits.parse::<u8>() {
+                Ok(bits) if bits & bit == 0 => {}
+                _ => return true,
+            }
+        }
+    }
+    false
+}
+
+/// Keep a definition unchanged when its typed owner is incomplete but its
+/// structural image proves the source word absent; otherwise keep the hold.
+fn unchanged_unless_word_present<T: Clone>(
+    original: &T,
+    image: impl FnOnce() -> String,
+    change: TextChange,
+    result: Result<T, TextChangeDomainError>,
+) -> Result<T, TextChangeDomainError> {
+    match result {
+        Err(error) => {
+            if structural_image_may_hold_source_word(&image(), change) { Err(error) }
+            else { Ok(original.clone()) }
+        }
+        ok => ok,
+    }
+}
+
+/// Complete structural image of an ability. Static abilities use their full
+/// compiled model where present: interpreter `Debug` output is a summary.
+fn ability_structural_image(ability: &Ability) -> String {
+    match &ability.kind {
+        AbilityKind::Static(static_ability) => match static_ability.compiled_model() {
+            Some(model) => format!("{model:?}"),
+            None => format!("{static_ability:?}"),
+        },
+        _ => format!("{ability:?}"),
+    }
+}
+
 /// Rewrite an authored predicate only when every nontrivial field is within
 /// this owner's admitted domain. The residual comparison is typed equality,
 /// not a test against display text or an assumption that unknown fields are
@@ -141,12 +231,16 @@ pub(crate) fn rewrite_static_model(
 }
 
 fn rewrite_ability(ability: &Ability, change: TextChange) -> Result<Ability, TextChangeDomainError> {
-    if let AbilityKind::Triggered(triggered) = &ability.kind
+    let result = if let AbilityKind::Triggered(triggered) = &ability.kind
         && triggered.trigger.acquired_identity(triggered.effects.retained_trigger_definition()).is_none()
     {
-        return Err(TextChangeDomainError::TriggeredAbility);
-    }
-    super::text_change_programs::rewrite_ability_words(ability, change)
+        Err(TextChangeDomainError::TriggeredAbility)
+    } else {
+        super::text_change_programs::rewrite_ability_words(ability, change)
+    };
+    // A held ability whose complete image has no source word is unaffected;
+    // its identity and acquisition stay exactly those of the original.
+    unchanged_unless_word_present(ability, || ability_structural_image(ability), change, result)
 }
 
 pub(crate) fn apply_text_change(
@@ -158,12 +252,14 @@ pub(crate) fn apply_text_change(
         // Artifact 7 and current native definitions carry authored abilities
         // only. Basic-land mana is supplied later by its own type-line origin.
         let attachment = chars.aura_attach_filter.as_ref()
-            .map(|filter| rewrite_attachment_words(filter, change)).transpose()?;
+            .map(|filter| unchanged_unless_word_present(filter, || format!("{filter:?}"), change,
+                rewrite_attachment_words(filter, change))).transpose()?;
         let program = match chars.spell_effect.as_ref() {
             crate::snapshot::SpellProgramState::Unavailable if object.zone == crate::zone::Zone::Stack =>
                 return Err(TextChangeDomainError::SpellProgram),
             crate::snapshot::SpellProgramState::Present(program) => crate::snapshot::SpellProgramState::Present(
-                super::text_change_programs::rewrite_program_words(program, change)?),
+                unchanged_unless_word_present(program, || format!("{program:?}"), change,
+                    super::text_change_programs::rewrite_program_words(program, change))?),
             other => other.clone(),
         };
         let mut abilities = chars.abilities.clone();
@@ -296,15 +392,17 @@ mod tests {
 
     #[test]
     fn held_program_domain_publishes_neither_partial_types_nor_partial_abilities() {
+        // Unmodeled executors are held only when their image can hold the word.
         #[derive(Debug, Clone)]
-        struct UnmodeledWords;
+        #[allow(dead_code)]
+        struct UnmodeledWords(&'static str);
         impl crate::effects::EffectExecutor for UnmodeledWords {
             fn execute(&self, _: &mut GameState, _: &mut crate::effects::ExecutionContext)
                 -> Result<crate::effect::EffectOutcome, crate::effects::ExecutionError>
             { Ok(crate::effect::EffectOutcome::resolved()) }
         }
         let (game, id) = body(vec![Ability::static_ability(StaticAbility::protection(ProtectionFrom::Color(ColorSet::RED))),
-            Ability::activated(crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords)])], vec![Subtype::Human]);
+            Ability::activated(crate::cost::TotalCost::free(), vec![crate::effect::Effect::new(UnmodeledWords("Human words"))])], vec![Subtype::Human]);
         let object = game.object(id).unwrap();
         let mut chars = super::super::initial_characteristics(object, game.turn.turn_number);
         apply_text_change(&mut chars, TextChange::creature_type(Subtype::Human, Subtype::Vampire).unwrap(), object);

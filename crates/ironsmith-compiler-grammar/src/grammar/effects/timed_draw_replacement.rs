@@ -11,21 +11,31 @@ pub struct TimedDrawReplacement<'a> {
     pub player: &'a [OwnedLexToken],
     pub one_shot: bool,
     pub body: Vec<OwnedLexToken>,
+    /// "The next time you would lose the game this turn, instead ..."
+    /// (Stunning Reversal): the replaced event is a game loss, not a draw.
+    pub lose_game: bool,
 }
-fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool)> {
+fn replaced_event<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+    alt((
+        primitives::phrase(&["would", "draw", "a", "card"]).value(false),
+        primitives::phrase(&["would", "lose", "the", "game"]).value(true),
+    ))
+    .parse_next(input)
+}
+fn header<'a>(input: &mut LexStream<'a>) -> WResult<(&'a [OwnedLexToken], bool, bool)> {
     let one_shot = alt((
         primitives::phrase(&["the", "next", "time"]).value(true),
         (primitives::phrase(&["until", "end", "of", "turn"]), primitives::comma(), primitives::kw("if")).value(false),
     )).parse_next(input)?;
-    let player = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::phrase(&["would", "draw", "a", "card"])))
+    let player = repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(replaced_event))
         .map(|((), _)| ()).take().parse_next(input)?;
-    primitives::phrase(&["would", "draw", "a", "card"]).parse_next(input)?;
+    let lose_game = replaced_event.parse_next(input)?;
     if one_shot { primitives::phrase(&["this", "turn"]).parse_next(input)?; }
     primitives::comma().parse_next(input)?;
-    Ok((player, one_shot))
+    Ok((player, one_shot, lose_game))
 }
 pub fn parse_timed_draw_replacement(tokens: &[OwnedLexToken]) -> Option<TimedDrawReplacement<'_>> {
-    let ((player, one_shot), body) = primitives::parse_prefix(tokens, header)?;
+    let ((player, one_shot, lose_game), body) = primitives::parse_prefix(tokens, header)?;
     let (leading, body) = if let Some((_, rest)) = primitives::parse_prefix(body, primitives::kw("instead")) {
         (true, rest)
     } else { (false, body) };
@@ -46,7 +56,7 @@ pub fn parse_timed_draw_replacement(tokens: &[OwnedLexToken]) -> Option<TimedDra
     }
     if body.is_empty() || primitives::parse_prefix(&body, primitives::phrase(&["you", "may"])).is_some()
         || primitives::parse_prefix(&body, primitives::phrase(&["they", "may"])).is_some() { return None; }
-    Some(TimedDrawReplacement { player, one_shot, body })
+    Some(TimedDrawReplacement { player, one_shot, body, lose_game })
 }
 
 #[cfg(test)]

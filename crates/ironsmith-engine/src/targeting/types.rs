@@ -12,9 +12,48 @@ pub struct ResolvedTargetAggregateConstraint {
     pub metric: ChoiceAggregateMetric,
     pub maximum: i32,
     pub target_values: Vec<(Target, i32)>,
+    /// "up to one target card of each card type": each selected target must
+    /// occupy a different card-type slot. Holds every legal target's slot
+    /// bitmask (bit = `CardType as u32`, restricted to the authored slot
+    /// types). Validated incrementally by bipartite matching, never by
+    /// enumerating the legal sets.
+    pub one_per_card_type: Option<Vec<(Target, u32)>>,
 }
 
 impl ResolvedTargetAggregateConstraint {
+    /// A target set restricted only by one-target-per-card-type slots.
+    pub fn one_per_card_type_only(slot_masks: Vec<(Target, u32)>) -> Self {
+        Self {
+            metric: ChoiceAggregateMetric::ManaValue,
+            maximum: i32::MAX,
+            target_values: Vec::new(),
+            one_per_card_type: Some(slot_masks),
+        }
+    }
+
+    fn slot_mask_for(&self, target: Target) -> u32 {
+        self.one_per_card_type
+            .as_ref()
+            .and_then(|masks| {
+                masks
+                    .iter()
+                    .find_map(|(candidate, mask)| (*candidate == target).then_some(*mask))
+            })
+            .unwrap_or(0)
+    }
+
+    /// Whether every selected target can occupy a distinct card-type slot.
+    pub fn card_type_slots_allow(&self, targets: &[Target]) -> bool {
+        if self.one_per_card_type.is_none() {
+            return true;
+        }
+        let masks = targets
+            .iter()
+            .map(|target| self.slot_mask_for(*target))
+            .collect::<Vec<_>>();
+        card_type_slot_matching_size(&masks) == masks.len()
+    }
+
     pub fn value_for(&self, target: Target) -> i32 {
         self.target_values
             .iter()
@@ -23,7 +62,8 @@ impl ResolvedTargetAggregateConstraint {
     }
 
     pub fn allows(&self, targets: &[Target]) -> bool {
-        aggregate_contributions(
+        self.card_type_slots_allow(targets)
+            && aggregate_contributions(
             self.metric,
             targets.iter().map(|target| self.value_for(*target)),
         ) <= self.maximum
@@ -32,6 +72,17 @@ impl ResolvedTargetAggregateConstraint {
     pub fn supports_minimum(&self, minimum: usize) -> bool {
         if minimum == 0 {
             return true;
+        }
+        if let Some(masks) = &self.one_per_card_type {
+            // Matchable target sets form a transversal matroid, so the
+            // maximum matching bounds every reachable selection size.
+            let masks = masks.iter().map(|(_, mask)| *mask).collect::<Vec<_>>();
+            if card_type_slot_matching_size(&masks) < minimum {
+                return false;
+            }
+            if self.target_values.is_empty() {
+                return true;
+            }
         }
         let mut values = self
             .target_values
@@ -54,6 +105,39 @@ impl ResolvedTargetAggregateConstraint {
         values.sort_unstable();
         values.len() >= minimum && values.into_iter().take(minimum).sum::<i32>() <= self.maximum
     }
+}
+
+/// Maximum number of entries that can each be assigned a distinct slot bit
+/// from their own mask (augmenting-path bipartite matching over at most 32
+/// card-type slots).
+pub fn card_type_slot_matching_size(masks: &[u32]) -> usize {
+    fn augment(masks: &[u32], entry: usize, visited: &mut u32, owner: &mut [Option<usize>; 32]) -> bool {
+        for slot in 0..32usize {
+            let bit = 1u32 << slot;
+            if masks[entry] & bit == 0 || *visited & bit != 0 {
+                continue;
+            }
+            *visited |= bit;
+            let free = match owner[slot] {
+                None => true,
+                Some(previous) => augment(masks, previous, visited, owner),
+            };
+            if free {
+                owner[slot] = Some(entry);
+                return true;
+            }
+        }
+        false
+    }
+    let mut owner = [None; 32];
+    let mut matched = 0;
+    for entry in 0..masks.len() {
+        let mut visited = 0u32;
+        if augment(masks, entry, &mut visited, &mut owner) {
+            matched += 1;
+        }
+    }
+    matched
 }
 
 /// Contributions are numeric for totals and a type bitset for set union.

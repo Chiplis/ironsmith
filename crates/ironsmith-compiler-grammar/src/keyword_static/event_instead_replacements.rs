@@ -28,6 +28,7 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         ReplacedEventSpec::DrawInstruction { .. } => &[],
         ReplacedEventSpec::SourceDestructionRegenerates => &[],
         ReplacedEventSpec::Untap { .. } => &[],
+        ReplacedEventSpec::LifeReducedToZeroOrLess { .. } => &[],
     }
 }
 
@@ -165,7 +166,30 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         // "If an opponent would gain life".
         ["gain", "life"] => Some(ReplacedEventSpec::LifeGain {
             player: player_subject(subject)?,
+            from_own_spell_or_ability: false,
         }),
+        // "If a spell or ability would cause its controller to gain life"
+        // (Rain of Gore): the gain must be that spell or ability's effect,
+        // gained by its own controller. "That player" is the gaining player.
+        ["cause", "its", "controller", "to", "gain", "life"]
+            if matches!(subject, ["a", "spell", "or", "ability"]) =>
+        {
+            Some(ReplacedEventSpec::LifeGain {
+                player: PlayerFilter::Any,
+                from_own_spell_or_ability: true,
+            })
+        }
+        // "If your life total would be reduced to 0 or less" (Enduring
+        // Angel, CR 119.3).
+        ["be", "reduced", "to", "0", "or", "less"] => {
+            let player = match subject {
+                ["your", "life", "total"] => PlayerFilter::You,
+                ["a", "player's" | "players", "life", "total"] => PlayerFilter::Any,
+                ["an", "opponent's" | "opponents", "life", "total"] => PlayerFilter::Opponent,
+                _ => return None,
+            };
+            Some(ReplacedEventSpec::LifeReducedToZeroOrLess { player })
+        }
         // "If you would lose life".
         ["lose", "life"] => Some(ReplacedEventSpec::LifeLoss {
             player: player_subject(subject)?,
@@ -200,8 +224,134 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 to: Some(Zone::Graveyard),
             })
         }
+        // "If a card would be put into enchanted player's graveyard from
+        // anywhere" (Wheel of Sun and Moon), "... into an opponent's
+        // graveyard": the graveyard's owner is the moving card's owner.
+        ["be", "put", "into", owner @ .., "graveyard", "from", "anywhere"]
+        | ["be", "put", "into", owner @ .., "graveyard"]
+            if !owner.is_empty() && !matches!(owner, ["a"]) =>
+        {
+            let owner = match owner {
+                ["your"] => PlayerFilter::You,
+                ["an", "opponent's" | "opponents"] => PlayerFilter::Opponent,
+                ["enchanted", "player's" | "players"] => PlayerFilter::TaggedPlayer(
+                    (crate::tag::CompilerReferenceTag::Enchanted.bind()).into(),
+                ),
+                _ => return None,
+            };
+            let mut object = object_subject(header, subject)?;
+            object.owner = Some(owner);
+            Some(ReplacedEventSpec::ZoneChange {
+                object,
+                from: None,
+                to: Some(Zone::Graveyard),
+            })
+        }
         _ => None,
     }
+}
+
+/// "instead that card is revealed and put on the bottom of that player's
+/// library" (Wheel of Sun and Moon): the passive zone-change payload, read as
+/// the active "reveal it and put it on the bottom of its owner's library".
+/// The replaced card is going to its owner's graveyard, so "that player" is
+/// that card's owner.
+fn rewrite_passive_zone_change_body(body: &mut Vec<OwnedLexToken>) {
+    let words: Vec<String> = words_of(body).iter().map(|word| word.to_string()).collect();
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let reference_len = match words.as_slice() {
+        ["that", "card", "is", ..] => 2,
+        ["it", "is", ..] => 1,
+        _ => return,
+    };
+    let after = &words[reference_len + 1..];
+    let (mut rewritten, rest_start) = match after {
+        ["revealed", "and", "put", ..] => (
+            vec!["reveal", "it", "and", "put", "it"],
+            reference_len + 1 + 3,
+        ),
+        ["put", ..] => (vec!["put", "it"], reference_len + 1 + 1),
+        _ => return,
+    };
+    let mut rest: Vec<&str> = words[rest_start..].to_vec();
+    if let Some(index) = rest
+        .windows(2)
+        .position(|pair| pair == ["that", "player's"] || pair == ["that", "players"])
+    {
+        rest.splice(index..index + 2, ["its", "owner's"]).for_each(drop);
+    }
+    rewritten.extend(rest);
+    let trailing_period = body.last().is_some_and(|token| token.is_period());
+    *body = crate::lexer::synthetic_word_tokens(rewritten.iter().copied());
+    if trailing_period {
+        body.push(OwnedLexToken::period(crate::diagnostics::TextSpan::synthetic()));
+    }
+}
+
+/// "<program>. Then if this creature didn't transform this way, <fallback>."
+/// (Enduring Angel): the fallback runs exactly when the program's own
+/// transform of the source did not happen, so the transform is lowered as the
+/// producer of an `IfEffectDidNotHappen` gate rather than read as a state
+/// predicate about the creature.
+fn parse_did_not_transform_this_way_program(
+    body: &[OwnedLexToken],
+) -> Option<Vec<crate::cards::builders::EffectAst>> {
+    use crate::cards::builders::{
+        ConditionalEffectAst, EffectAst, PermanentStateActionAst, SubjectVerbActionAst,
+        SubjectVerbEffectAst,
+    };
+    let period = body.iter().position(|token| token.is_period())?;
+    let second = crate::util::trim_edge_punctuation_tokens(&body[period + 1..]);
+    let comma = second.iter().position(|token| token.is_comma())?;
+    let predicate = words_of(&second[..comma]).join(" ").replace('\'', "");
+    let subject = predicate
+        .strip_prefix("then if ")
+        .or_else(|| predicate.strip_prefix("if "))?
+        .strip_suffix(" didnt transform this way")
+        .or_else(|| {
+            predicate
+                .strip_prefix("then if ")
+                .or_else(|| predicate.strip_prefix("if "))?
+                .strip_suffix(" did not transform this way")
+        })?;
+    let subject_words: Vec<&str> = subject.split(' ').collect();
+    if !(crate::util::is_source_reference_words(&subject_words) || subject_words == ["it"]) {
+        return None;
+    }
+    let fallback_tokens = crate::util::trim_edge_punctuation_tokens(&second[comma + 1..]);
+    if fallback_tokens.is_empty() {
+        return None;
+    }
+    let mut effects =
+        crate::clause_support::parse_effect_sentences_lexed(&body[..=period]).ok()?;
+    let otherwise = crate::clause_support::parse_effect_sentences_lexed(fallback_tokens).ok()?;
+    if otherwise.is_empty() {
+        return None;
+    }
+    let is_source_transform = |effect: &EffectAst| match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Transform { target, .. }),
+            ..
+        }) => match target {
+            crate::cards::builders::TargetAst::Source(_) => true,
+            crate::cards::builders::TargetAst::Object(filter, ..) => filter.source,
+            _ => false,
+        },
+        _ => false,
+    };
+    let index = effects.iter().position(is_source_transform)?;
+    if effects.iter().filter(|effect| is_source_transform(*effect)).count() != 1 {
+        return None;
+    }
+    let transform = effects.remove(index);
+    effects.insert(
+        index,
+        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
+            effect: Box::new(transform),
+            otherwise,
+        }),
+    );
+    Some(effects)
 }
 
 pub fn parse_if_event_would_happen_instead_line(
@@ -250,6 +400,9 @@ pub fn parse_if_event_would_happen_instead_line(
     }
     if trailing {
         body.remove(sentence_end - 1);
+    }
+    if leading && matches!(event, ReplacedEventSpec::ZoneChange { .. }) {
+        rewrite_passive_zone_change_body(&mut body);
     }
     // "If this permanent would be put into a graveyard, you may put it on top
     // of its owner's library instead." (Pulmonic Sliver's granted ability):
@@ -313,8 +466,13 @@ pub fn parse_if_event_would_happen_instead_line(
     }
     // A program this reader cannot read stays unclaimed rather than adding a
     // diagnostic to lines other readers own.
-    let Ok(effects) = crate::clause_support::parse_effect_sentences_lexed(body) else {
-        return Ok(None);
+    let effects = if let Some(effects) = parse_did_not_transform_this_way_program(body) {
+        effects
+    } else {
+        let Ok(effects) = crate::clause_support::parse_effect_sentences_lexed(body) else {
+            return Ok(None);
+        };
+        effects
     };
     if effects.is_empty() {
         return Ok(None);

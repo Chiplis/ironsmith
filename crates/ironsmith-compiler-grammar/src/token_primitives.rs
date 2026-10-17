@@ -40,6 +40,8 @@ fn until_from_leaf_duration(duration: LeafDurationPhrase) -> Option<Until> {
         LeafDurationPhrase::UntilControllersNextUntapStep => return None,
         // Only the complete Cant sentence owner may bind this player rule.
         LeafDurationPhrase::PlayersNextUntapStep => return None,
+        // Only a reader that also binds the referenced player owns this.
+        LeafDurationPhrase::UntilThatPlayersNextTurn => return None,
         LeafDurationPhrase::UntilNextEndStep => Until::NextEndStep,
         LeafDurationPhrase::Forever => Until::Forever,
     })
@@ -199,10 +201,16 @@ fn label_has_disallowed_period(tokens: &[OwnedLexToken]) -> bool {
         return true;
     };
 
+    // An all-capitals flavor label ("I. AM. TALKING!", The Eleventh Doctor)
+    // punctuates its words, not sentences.
+    let all_capitals = tokens.iter().filter(|token| token.kind == TokenKind::Word).all(|token| {
+        token.slice.chars().any(char::is_alphabetic)
+            && !token.slice.chars().any(char::is_lowercase)
+    });
     let mut idx = first_non_period;
     while idx <= last_non_period {
         if tokens[idx].kind == TokenKind::Period {
-            return true;
+            return !all_capitals;
         }
         idx += 1;
     }

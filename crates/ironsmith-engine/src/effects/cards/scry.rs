@@ -293,6 +293,24 @@ fn execute_scry_body(
     )?;
     let keyword_outcome = keyword.outcome.clone();
     retained_children.push(keyword);
+    // CR 701.22a: choosing to put looked-at cards on the bottom is its own
+    // observable event ("Whenever you choose to put one or more cards on the
+    // bottom of your library while scrying", The Temporal Anchor).
+    let bottomed = arrangement.bottom_cards_top_to_bottom.len();
+    if bottomed > 0 {
+        let bottom = crate::effects::composition::complete_keyword_action_with_outputs(
+            game,
+            ctx,
+            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            KeywordActionEvent::new(
+                KeywordActionKind::ScryToBottom,
+                player_id,
+                ctx.source,
+                bottomed as u32,
+            ),
+        )?;
+        retained_children.push(bottom);
+    }
     Ok(CompletedEffectOutputs::from_children(
         retained_children,
         |_| {

@@ -27,6 +27,10 @@ pub struct BecomesTargetedEvent {
     /// Physical ability-source characteristics, separate from its stack proxy
     /// and the independently controlled spell/ability on the stack.
     pub physical_source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    /// A target change made by an effect that "doesn't trigger abilities of
+    /// permanents named <name>" (Psychic Battle): sources with this name
+    /// don't trigger on this event.
+    pub untriggered_source_name: Option<String>,
 }
 
 impl BecomesTargetedEvent {
@@ -53,6 +57,7 @@ impl BecomesTargetedEvent {
             stack_ability: entry.is_ability.then(|| entry.target_id()),
             target_snapshot: None,
             physical_source_snapshot: None,
+            untriggered_source_name: None,
         }
     }
 
@@ -106,6 +111,7 @@ impl BecomesTargetedEvent {
             stack_ability: None,
             target_snapshot: None,
             physical_source_snapshot: None,
+            untriggered_source_name: None,
         }
     }
 
@@ -124,6 +130,7 @@ impl BecomesTargetedEvent {
             stack_ability: None,
             target_snapshot: None,
             physical_source_snapshot: None,
+            untriggered_source_name: None,
         }
     }
 
@@ -142,12 +149,19 @@ impl BecomesTargetedEvent {
             stack_ability: None,
             target_snapshot: None,
             physical_source_snapshot: None,
+            untriggered_source_name: None,
         }
     }
 
     /// Name the targeting ability's stack entry.
     pub fn with_stack_ability(mut self, stack_ability: Option<ObjectId>) -> Self {
         self.stack_ability = stack_ability;
+        self
+    }
+
+    /// Mark a target change that doesn't trigger sources with this name.
+    pub fn with_untriggered_source_name(mut self, name: Option<String>) -> Self {
+        self.untriggered_source_name = name;
         self
     }
 
@@ -193,6 +207,7 @@ impl GameEventType for BecomesTargetedEvent {
             stack_ability: self.stack_ability,
             target_snapshot: None,
             physical_source_snapshot: self.physical_source_snapshot.clone(),
+            untriggered_source_name: self.untriggered_source_name.clone(),
         }))
     }
 

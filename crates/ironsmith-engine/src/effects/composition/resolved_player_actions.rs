@@ -30,6 +30,18 @@ impl EffectExecutor for ResolvedLifeLoss {
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
         let player = crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
+        // "You gain life rather than lose life from radiation" (Strong, the
+        // Brutish Thespian): the radiation instruction gains that life.
+        if self.from_radiation && game.radiation_gains_life(player) {
+            return crate::effects::life::life_change::execute_life_change_with_outputs(
+                game,
+                ctx,
+                crate::events::Event::new_with_provenance(
+                    crate::events::LifeGainEvent::new(player, self.amount),
+                    ctx.provenance,
+                ),
+            );
+        }
         let event = if self.from_radiation {
             crate::events::LifeLossEvent::from_radiation(player, self.amount)
         } else {

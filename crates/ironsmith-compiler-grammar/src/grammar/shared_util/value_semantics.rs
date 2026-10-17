@@ -62,6 +62,9 @@ pub fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option
             | ["amount", "of"]
             | ["where", "x", "is", "the", "amount", "of"]
             | ["where", "x", "is", "amount", "of"]
+            // "You gain 1 life for each {S} spent to cast this spell"
+            // (Search for Glory): the same payment count, read per symbol.
+            | ["for", "each"]
     ) {
         return None;
     }

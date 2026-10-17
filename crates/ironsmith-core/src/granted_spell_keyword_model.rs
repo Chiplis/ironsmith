@@ -32,6 +32,10 @@ pub enum GrantedSpellKeywordKind {
     /// CR 702.144a: no cost; a cast trigger may copy the spell and, if it
     /// does, an opponent also copies it.
     Demonstrate,
+    /// "Sticker kicker {1}" (Wicker Picker, Unfinity): an optional additional
+    /// cost; if it was paid, you get {TK}, then you may put a sticker on the
+    /// resulting permanent. Appended for wire stability.
+    StickerKicker,
 }
 
 impl GrantedSpellKeywordKind {
@@ -41,6 +45,7 @@ impl GrantedSpellKeywordKind {
             Self::Offspring => "offspring",
             Self::Conspire => "conspire",
             Self::Demonstrate => "demonstrate",
+            Self::StickerKicker => "sticker kicker",
         }
     }
 

@@ -1323,6 +1323,10 @@ impl Effect {
         Self::new(crate::effects::RollToVisitAttractionsEffect::new(player))
     }
 
+    pub fn roll_planar_die(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::RollPlanarDieEffect::new(player))
+    }
+
     pub fn open_attraction_with_reminder(reminder: bool) -> Self {
         Self::new(crate::effects::OpenAttractionEffect::new().with_reminder(reminder))
     }
@@ -1564,6 +1568,47 @@ impl Effect {
                 rendered_die,
             ),
         )
+    }
+
+    /// "Roll a six-sided die twice": the rolls keep their order (the first
+    /// is the result, the second the other result).
+    pub fn roll_dice_in_order_with_surface(
+        count: u32,
+        sides: u32,
+        player: crate::target::PlayerFilter,
+        surface: Option<crate::model::ast::DieSurface>,
+    ) -> Self {
+        let rendered_die = surface.map(|surface| surface.render(sides));
+        Self::new(
+            crate::effects::RollDiceChooseResultEffect::new_with_die_text(
+                player,
+                count,
+                sides,
+                rendered_die,
+            )
+            .with_in_order(true),
+        )
+    }
+
+    /// "Roll X d6": one simultaneous roll whose result is the total.
+    pub fn roll_dice_total_with_surface(
+        count: crate::effect::Value,
+        sides: u32,
+        player: crate::target::PlayerFilter,
+        surface: Option<crate::model::ast::DieSurface>,
+    ) -> Self {
+        let rendered_die = surface.map(|surface| surface.render(sides));
+        let fixed = match count {
+            crate::effect::Value::Fixed(n) if n > 0 => Some(n as u32),
+            _ => None,
+        };
+        let effect = crate::effects::RollDiceChooseResultEffect::new_with_die_text(
+            player,
+            fixed.unwrap_or(0),
+            sides,
+            rendered_die,
+        );
+        Self::new(effect.with_total(if fixed.is_some() { None } else { Some(count) }))
     }
 
     pub fn roll_dice_choose_result_with_surface_ignoring_lower(
@@ -2100,6 +2145,18 @@ impl Effect {
         Self::new(crate::effects::PutStickerEffect::new(target, action))
     }
 
+    pub fn put_sticker_with_ticket_terms(
+        target: crate::target::ChooseSpec,
+        action: crate::events::KeywordActionKind,
+        max_ticket_cost: Option<crate::effect::Value>,
+        without_paying_ticket_cost: bool,
+    ) -> Self {
+        Self::new(
+            crate::effects::PutStickerEffect::new(target, action)
+                .with_ticket_terms(max_ticket_cost, without_paying_ticket_cost),
+        )
+    }
+
     pub fn unlock_room_door(
         player: crate::target::PlayerFilter,
         room_filter: crate::target::ObjectFilter,
@@ -2147,6 +2204,10 @@ impl Effect {
 
     pub fn note_activation_mana_type() -> Self {
         Self::new(crate::effects::NoteActivationManaTypeEffect::new())
+    }
+
+    pub fn note_triggering_creature_type() -> Self {
+        Self::new(crate::effects::NoteTriggeringCreatureTypeEffect::new())
     }
 
     pub fn add_mana_of_noted_type(amount: Value, player: crate::target::PlayerFilter) -> Self {
@@ -2276,11 +2337,24 @@ impl Effect {
         Self::new(crate::effects::EmptyManaPoolEffect::new(player))
     }
 
+    pub fn activate_mana_ability_of_each_land_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::ActivateManaAbilityOfEachLandEffect::new(player))
+    }
+
     pub fn set_life_total_player(
         amount: impl Into<Value>,
         player: crate::target::PlayerFilter,
     ) -> Self {
         Self::new(crate::effects::SetLifeTotalEffect::new(amount, player))
+    }
+
+    /// "reduce <player>'s speed by N" with a floor (CR 702.179 speed).
+    pub fn reduce_speed(
+        amount: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+        minimum: u8,
+    ) -> Self {
+        Self::new(crate::effects::ReduceSpeedEffect::new(amount, player, minimum))
     }
 
     pub fn end_turn_player(player: crate::target::PlayerFilter) -> Self {
@@ -2431,7 +2505,30 @@ impl Effect {
             mana_spend_mode,
             alternative_payment,
             alternative_cost,
+            caster_land_mana_abilities_only: false,
+            control_caster_while_spell_resolves: false,
         })
+    }
+
+    /// Attach a resolving instruction's casting riders to a cast-tagged
+    /// effect: the caster's land-only mana lock, and the instruction
+    /// controller's control of the caster while the cast spell resolves.
+    /// Other effects are returned unchanged.
+    pub fn with_cast_tagged_instruction_riders(
+        self,
+        caster_land_mana_abilities_only: bool,
+        control_caster_while_spell_resolves: bool,
+    ) -> Self {
+        if !caster_land_mana_abilities_only && !control_caster_while_spell_resolves {
+            return self;
+        }
+        let Some(cast) = self.downcast_ref::<crate::effects::CastTaggedEffect>() else {
+            return self;
+        };
+        let mut cast = cast.clone();
+        cast.caster_land_mana_abilities_only |= caster_land_mana_abilities_only;
+        cast.control_caster_while_spell_resolves |= control_caster_while_spell_resolves;
+        Self::new(cast)
     }
 
     pub fn exile_instead_of_graveyard_this_turn(player: crate::target::PlayerFilter) -> Self {

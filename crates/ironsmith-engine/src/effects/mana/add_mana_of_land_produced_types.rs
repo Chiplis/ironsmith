@@ -195,6 +195,39 @@ pub(super) fn collect_available_mana_symbols(
         }
     }
 
+    // "any type the sacrificed land could produce" (Squandered Resources):
+    // a tagged land that already left the battlefield is read from its
+    // last-known abilities (CR 106.7, 608.2h).
+    for constraint in &land_filter.tagged_constraints {
+        if constraint.relation != crate::target::TaggedOpbjectRelation::IsTaggedObject {
+            continue;
+        }
+        let Some(snapshots) = ctx.get_tagged_all(constraint.tag.as_str()) else {
+            continue;
+        };
+        for snapshot in snapshots {
+            if game.battlefield.contains(&snapshot.object_id)
+                || !snapshot.card_types.contains(&crate::types::CardType::Land)
+                || !land_filter.matches_snapshot(snapshot, &filter_ctx, game)
+            {
+                continue;
+            }
+            for ability in snapshot.abilities.iter() {
+                let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                    continue;
+                };
+                if !mana_ability.is_mana_ability() {
+                    continue;
+                }
+                for symbol in
+                    mana_ability.inferred_mana_symbols(game, snapshot.object_id, snapshot.controller)
+                {
+                    push_symbol_if_addable(&mut symbols, symbol);
+                }
+            }
+        }
+    }
+
     symbols.sort_by_key(|symbol| canonical_symbol_order(*symbol));
     symbols.dedup();
     symbols

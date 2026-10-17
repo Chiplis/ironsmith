@@ -55,6 +55,9 @@ pub(super) fn parse_player_villainous_choice_statement(
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::ThatPlayer => {
             (PlayerFilter::IteratedPlayer, "that player")
         }
+        crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::DefendingPlayer => {
+            (PlayerFilter::IteratedPlayer, "defending player")
+        }
     };
     let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::VillainousChoice {
         player,
@@ -89,6 +92,15 @@ pub(super) fn parse_player_villainous_choice_statement(
         }
         // The enclosing trigger already names "that player": one choice, no loop.
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::ThatPlayer => vec![choice],
+        // The defending player is bound as the iterated player so the modes'
+        // "that player" names them.
+        crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::DefendingPlayer => {
+            vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                sequential: false,
+                filter: PlayerFilter::Defending,
+                effects: vec![choice],
+            })]
+        }
         crate::grammar::semantic_lowering::VillainousChoicePlayerIteration::TargetOpponent => {
             vec![
                 EffectAst::subject_verb_target_only(TargetAst::Player(

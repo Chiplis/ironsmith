@@ -7,6 +7,7 @@ use crate::cards::builders::LifeResourceActionAst;
 use crate::cards::builders::ObjectChoiceEffectAst;
 use crate::cards::builders::PermissionEffectAst;
 use crate::cards::builders::StackActionAst;
+use crate::cards::builders::TokenActionAst;
 use crate::cards::builders::VoteEffectAst;
 
 /// Rebind the actor of an action offered with "any player/opponent may" to the
@@ -726,7 +727,7 @@ fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<Effect
                 x_value: None,
                 x_maximum: None,
                 independent_x_choice: false,
-
+                mana_cost_of: None,
             }),
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1429,8 +1430,36 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 return Ok(Some(compiled));
             }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let mut scoped_effects = effects.clone();
+            // In "for each permanent attached to it, copy that permanent
+            // attached to that creature", the attachment destination is the
+            // outer host. Bind it before the loop makes `it` its attachment.
+            if let Some(host) = resolved_filter.tagged_constraints.iter().find(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject
+            }) {
+                for effect in &mut scoped_effects {
+                    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Tokens(
+                            TokenActionAst::CreateTokenCopy { attached_to, .. }
+                            | TokenActionAst::CreateTokenCopyFromSource { attached_to, .. }),
+                        ..
+                    }) = effect {
+                        let refers_to_it = attached_to.as_ref().is_some_and(|target| match target {
+                            TargetAst::Tagged(tag, _) => tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str(),
+                            TargetAst::Object(filter, _, _) => filter.tagged_constraints.iter().any(|constraint| {
+                                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                    && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                            }),
+                            _ => false,
+                        });
+                        if refers_to_it {
+                            *attached_to = Some(TargetAst::Tagged(crate::tag::TagRef::of(host.tag.clone()), None));
+                        }
+                    }
+                }
+            }
             let (inner_effects, mut inner_choices) =
-                compile_effects_in_iterated_object_context(effects, ctx)?;
+                compile_effects_in_iterated_object_context(&scoped_effects, ctx)?;
             // "put a -1/-1 counter on each creature target player controls"
             // (Contagion Engine): the iteration filter's own player target
             // must be declared, since the loop exposes no target of its own.
@@ -1558,6 +1587,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             effects,
             continue_effect_index,
             continue_predicate,
+            max_iterations,
         }) => {
             let (mut body_effects, choices, condition) = with_preserved_lowering_context(
                 ctx,
@@ -1588,7 +1618,8 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     condition,
                     effect_predicate_from_if_result(continue_predicate.clone()),
                 )
-                .with_choice_history(choice_history),
+                .with_choice_history(choice_history)
+                .with_max_iterations(*max_iterations),
             );
             compiled.push(effect);
             (compiled, choices)

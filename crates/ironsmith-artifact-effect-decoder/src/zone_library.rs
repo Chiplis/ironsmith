@@ -129,6 +129,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "BecomePlottedEffect" => {
             decode_as::<ironsmith_core::BecomePlottedEffect>(payload).map(Some)
         }
+        "BecomeForetoldEffect" => {
+            decode_as::<ironsmith_core::BecomeForetoldEffect>(payload).map(Some)
+        }
         _ => Ok(None),
     }
 }
@@ -352,6 +355,10 @@ pub(super) fn map_card_ids(
         }
         "BecomePlottedEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::BecomePlottedEffect,
+        >(payload, context)
+        .map(Some),
+        "BecomeForetoldEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::BecomeForetoldEffect,
         >(payload, context)
         .map(Some),
         _ => Ok(None),

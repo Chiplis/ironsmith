@@ -80,6 +80,13 @@ pub(super) fn validate(action: &SubjectVerbActionAst) -> Result<(), CardTextErro
     };
     let supported = match duration {
         Until::PlayersNextUntapStep { .. } => matches!(action, SubjectVerbActionAst::Cant { .. }),
+        // Restrictions and prevention shields key their expiry to the named
+        // player (`Until::next_turn_owner`); other owners would not.
+        // Only delayed-trigger registrations own a named player's turn end.
+        Until::PlayersNextTurnEnd { .. } => false,
+        Until::PlayersNextTurn { .. } => matches!(action,
+            SubjectVerbActionAst::Cant { .. }
+                | SubjectVerbActionAst::DamagePrevention(D::PreventAllDamageToTarget { .. })),
         Until::UntilControllersNextUntapStep { .. } => matches!(action,
             SubjectVerbActionAst::Characteristics(
                 CharacteristicActionAst::BecomeBasicLandType { .. }

@@ -104,8 +104,13 @@ pub(crate) fn walk_player_reference_wrappers(
 ) {
     bind(filter);
     match filter {
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, .. } => {
+            walk_player_reference_wrappers(base, bind);
+            walk_player_reference_wrappers(other, bind);
+        }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
         | PlayerFilter::HasMoreLifeThanYou { base }
+        | PlayerFilter::MostLifeTiedAmong { base }
         | PlayerFilter::LostLifeThisTurn { base }
         | PlayerFilter::OpponentOf(base)
         | PlayerFilter::PlayerToLeftOf(base)

@@ -514,6 +514,7 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
         TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
+        TriggerSpec::SourceManaAbilityResolves => Trigger::source_mana_ability_resolves(),
         TriggerSpec::PlayerAttackDeclaration {
             attacker,
             defender,
@@ -794,10 +795,15 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             activation_cost_has_tap,
         ),
         TriggerSpec::AbilityTriggered {
+            caused_by_permanent_entering: true,
+            ..
+        } => Trigger::ability_triggered_by_permanent_entering(),
+        TriggerSpec::AbilityTriggered {
             another,
             source_filter,
             caused_by_source_entering,
             caused_by_source_attacking,
+            caused_by_permanent_entering: false,
         } => match source_filter {
             Some(source_filter) if caused_by_source_attacking => {
                 Trigger::ability_triggered_by_source_attacking(source_filter)
@@ -1354,10 +1360,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_postcombat_main_phase_with_surface(player, surface)
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
-        // Only a delayed registration links to a shield; as an ordinary
-        // triggered ability the event has no "this way" referent.
-        TriggerSpec::DamagePreventedThisWay { .. } => {
-            Trigger::state_based("Whenever damage is prevented this way")
+        TriggerSpec::DamageToPlayerPrevented(player) => {
+            Trigger::damage_to_player_prevented(player.clone())
+        }
+        // As an ordinary triggered ability "this way" names the permanent's
+        // own static prevention (Phyrexian Vindicator); delayed registrations
+        // link to their shield instead.
+        TriggerSpec::DamagePreventedThisWay { source_filter } => {
+            Trigger::damage_prevented_by_source(source_filter.clone())
         }
         TriggerSpec::ThisEntersBattlefield { origin_condition } => match origin_condition {
             None => Trigger::this_enters_battlefield(),
@@ -1494,6 +1504,9 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::DungeonRoom { room, leads_to } => Trigger::dungeon_room(room, leads_to),
         TriggerSpec::FinalChapterAbilityResolved(filter) => {
             Trigger::final_chapter_ability_resolved(filter)
+        }
+        TriggerSpec::FinalChapterAbilityTriggers(filter) => {
+            Trigger::final_chapter_ability_triggers(filter)
         }
         TriggerSpec::HauntedCreatureDies => Trigger::custom(
             "haunted_creature_dies",
@@ -1678,6 +1691,14 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
         EventValueSpec::CastSpell(quantity) => {
             ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger) == Some(*quantity)
         }
+        EventValueSpec::LoyaltyCountersRemovedToActivate | EventValueSpec::LifePaidToActivate => match trigger {
+            TriggerSpec::WithIntro { trigger, .. }
+            | TriggerSpec::ConditionQualified { trigger, .. } => {
+                trigger_supports_event_value(trigger, spec)
+            }
+            TriggerSpec::AbilityActivated { .. } => true,
+            _ => false,
+        },
         EventValueSpec::LifeChange {
             gained,
             for_controller,
@@ -1693,6 +1714,19 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
                         && (!*for_controller || event.player == PlayerFilter::You)
                 })
         }
+        EventValueSpec::ExcessDamage => match trigger {
+            TriggerSpec::WithIntro { trigger, .. }
+            | TriggerSpec::ConditionQualified { trigger, .. } => {
+                trigger_supports_event_value(trigger, spec)
+            }
+            TriggerSpec::ThisDealsDamageTo(_)
+            | TriggerSpec::ThisDealsCombatDamageTo(_)
+            | TriggerSpec::ThisIsDealtDamage
+            | TriggerSpec::ThisIsDealtCombatDamage
+            | TriggerSpec::IsDealtDamage(_)
+            | TriggerSpec::IsDealtCombatDamage(_) => true,
+            _ => false,
+        },
         EventValueSpec::DieBatchTotal | EventValueSpec::DieResultsAtLeast(_) => {
             ironsmith_compiler_semantic::trigger_references::trigger_die_event_grouped(trigger)
                 == Some(true)

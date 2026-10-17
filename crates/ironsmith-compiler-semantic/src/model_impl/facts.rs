@@ -139,6 +139,9 @@ pub struct TriggeredLineSemanticFacts {
     pub becomes_tapped_during_your_turn: bool,
     pub frequency: TriggerFrequencyFacts,
     pub leading_unless_surface: bool,
+    /// "This ability triggers only if C": the line's intervening condition
+    /// gates only the trigger event and is not rechecked on resolution.
+    pub intervening_if_checked_only_on_trigger: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -538,6 +538,7 @@ fn token_granted_ability<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLex
         )),
         alt((
             primitives::phrase(&["they", "have"]),
+            primitives::phrase(&["they", "each", "have"]),
             primitives::phrase(&["they", "gain"]),
             primitives::phrase(&["those", "tokens", "have"]),
             primitives::phrase(&["those", "tokens", "gain"]),

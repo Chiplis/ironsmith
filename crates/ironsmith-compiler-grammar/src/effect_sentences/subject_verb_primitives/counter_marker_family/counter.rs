@@ -210,3 +210,67 @@ pub fn parse_each_player_return_with_additional_counter_sentence(
         },
     )]))
 }
+
+/// "The token enters with X +1/+1 counters on it" (Printlifter Ooze) after a
+/// creation instruction: the counters are part of the created token's entry
+/// event (CR 122.6). Lowering folds this inline-entry put into the preceding
+/// token creation; a surrounding "where X is ..." binds the amount.
+pub fn parse_created_token_enters_with_counters_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(clause.tokens());
+    // "The token enters with half that many +1/+1 counters on it, rounded
+    // down" (Ochre Jelly): the only punctuation allowed is the comma before
+    // the rounding tail.
+    let tokens: Vec<crate::lexer::OwnedLexToken> = tokens
+        .iter()
+        .filter(|token| token.as_word().is_some() || token.kind != crate::lexer::TokenKind::Comma)
+        .cloned()
+        .collect();
+    let tokens = tokens.as_slice();
+    if tokens.iter().any(|token| token.as_word().is_none()) {
+        return Ok(None);
+    }
+    let words = crate::lexer::token_word_refs(tokens);
+    let mut lead = match words.as_slice() {
+        ["the" | "that", "token", "enters", "with", ..] => 4usize,
+        ["the" | "those", "tokens", "enter", "with", ..] => 4usize,
+        _ => return Ok(None),
+    };
+    let half = words.get(lead) == Some(&"half");
+    if half {
+        lead += 1;
+    }
+    let Some((amount, used)) = crate::util::parse_value(&tokens[lead..]) else {
+        return Ok(None);
+    };
+    let mut rest = &words[lead + used..];
+    let amount = if half {
+        let Some(stripped) = rest.strip_suffix(&["rounded", "down"]) else {
+            return Ok(None);
+        };
+        rest = stripped;
+        Value::HalfRoundedDown(Box::new(amount))
+    } else {
+        amount
+    };
+    let counter_word = match rest {
+        [counter, "counter" | "counters", "on", "it" | "them"]
+        | [counter, "counter" | "counters", "on", "each", "of", "them"] => *counter,
+        _ => return Ok(None),
+    };
+    let Some(counter_type) =
+        crate::grammar::filters::parse_counter_type_words(&[counter_word, "counter"])
+    else {
+        return Ok(None);
+    };
+    Ok(Some(vec![EffectAst::subject_verb_put_counters(
+        counter_type,
+        amount
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence),
+        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span()),
+        None,
+        false,
+    )]))
+}

@@ -7,7 +7,7 @@ pub use ironsmith_core::{
     CostReductionManaCost, CounterRemovalFollowUp, DefendingPlayerAttackCondition,
     EnterAsCopyLinkedExilePairSpec, GraveyardCountMetric, LandwalkKind, ManaSpendPermission,
     OptionalLifeAdditionalCost, PregameActionKind, PregameBeginOnBattlefieldSpec,
-    PregameRevealFromOpeningHandSpec, RemoveCardTypesForFilter, SetColorsForFilter, SpliceQuality,
+    PregameExileDraftedCardsSpec, PregameRevealFromOpeningHandSpec, RemoveCardTypesForFilter, SetColorsForFilter, SpliceQuality,
     SpliceSpec, StaticAbilityId, ThisSpellCastRestrictionKind, ThisSpellCastTiming,
 };
 

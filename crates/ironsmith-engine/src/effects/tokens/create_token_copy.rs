@@ -734,6 +734,20 @@ fn commit_token_copy_original(
         .or(proposal.token_preview.take())
         .ok_or_else(|| ExecutionError::InternalError("copy original lost its template".into()))?;
     let count = replacement.count as usize;
+    // CR 122.6: counters a token copy "enters with" are part of its entry
+    // event ("The token enters with half that many +1/+1 counters on it").
+    let mut initial_counters = Vec::with_capacity(effect.entry_counters.len());
+    for counter in &effect.entry_counters {
+        if counter.condition.is_some() || counter.object_filter.is_some() {
+            return Err(ExecutionError::InternalError(
+                "conditional token entry counters are not a token-creation instruction".into(),
+            ));
+        }
+        let amount = resolve_value(game, &counter.amount, ctx)?.max(0) as u32;
+        if amount > 0 {
+            initial_counters.push((counter.counter_type, amount));
+        }
+    }
     // Attack choices were retained during preparation, so entry cannot prompt
     // again or use a different destination after a sibling's original mutation.
     let entry_options = TokenEntryOptions::default();
@@ -756,8 +770,8 @@ fn commit_token_copy_original(
             ctx.cause.clone(),
             &mut ctx.decision_maker,
             effect.enters_tapped,
-            true,
-            Vec::new(),
+            !effect.suppress_aura_attachment_choice,
+            initial_counters.clone(),
         )?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::SimultaneousEffectCommit::finished(
@@ -823,6 +837,7 @@ fn commit_token_copy_original(
         &mut actual_creation,
         &super::lifecycle::AdditionalTokenInstructions {
             enters_tapped: effect.enters_tapped,
+            suppress_aura_attachment_choice: effect.suppress_aura_attachment_choice,
             entry: entry_options,
             prepared_attack_targets: (effect.enters_attacking
                 || proposal.configured_attack_player.is_some())

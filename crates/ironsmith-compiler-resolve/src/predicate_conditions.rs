@@ -32,6 +32,9 @@ pub fn resolve_condition_from_predicate(
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
         PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
+        PredicateAst::FirstEndStepOfTurn => Condition::FirstEndStepOfTurn,
+        PredicateAst::FirstUpkeepStepOfTurn => Condition::FirstUpkeepStepOfTurn,
+        PredicateAst::SecondMainPhaseOfTurn => Condition::SecondMainPhaseOfTurn,
         PredicateAst::Source(SourcePredicateAst::SourceControllersCombatPhase) => {
             Condition::SourceControllersCombatPhase
         }
@@ -102,7 +105,21 @@ pub fn resolve_condition_from_predicate(
             } else {
                 resolved.zone = None;
             }
-            let tag = saved_last_tag.clone().ok_or_else(|| {
+            // "Put a +1/+1 counter on Venom. If that creature was a Villain,
+            // ...": an explicit source subject superseded the trigger's event
+            // object, but a past-tense identity test still reads that object's
+            // last-known snapshot, which the superseded-antecedent alias keeps.
+            let superseded = || {
+                if !refs.has_source_object_antecedent() {
+                    return None;
+                }
+                let alias = crate::reference_helpers::source_superseded_antecedent_alias();
+                refs.snapshot_tag_aliases
+                    .iter()
+                    .find(|(existing, _)| existing == &alias)
+                    .map(|(_, previous)| previous.clone())
+            };
+            let tag = saved_last_tag.clone().or_else(superseded).ok_or_else(|| {
                 CardTextError::ParseError(
                     "past-tense object predicate has no snapshot-bearing antecedent".to_string(),
                 )
@@ -167,6 +184,15 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectBecameTappedFirstTimeThisTurn,
         ) => Condition::TriggeringObjectBecameTappedFirstTimeThisTurn,
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectTappedForAttack) => {
+            Condition::TriggeringObjectTappedForAttack
+        }
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringObjectWasSacrificed) => {
+            Condition::TriggeringObjectWasSacrificed
+        }
+        PredicateAst::Triggering(TriggeringPredicateAst::TriggeringKeywordActionIs(action)) => {
+            Condition::TriggeringKeywordActionIs(*action)
+        }
         PredicateAst::Triggering(
             TriggeringPredicateAst::TriggeringObjectHadCountersPutFirstTimeThisTurn,
         ) => Condition::TriggeringObjectHadCountersPutFirstTimeThisTurn,
@@ -373,6 +399,34 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player,&refs)?;
             Condition::PlayerWasMonarchAtTurnStart {player}
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasCountersOrMore {
+            player,
+            counter_type,
+            count,
+        }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasCountersOrMore {
+                player,
+                counter_type: counter_type.clone(),
+                count: *count,
+            }
+        }
+        PredicateAst::Player(PlayerPredicateAst::PlayerIsYou { player }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerIsYou { player }
+        }
+        PredicateAst::Player(PlayerPredicateAst::PlayerIsOpponent { player }) => {
+            // Some player named by the reference is outside your team.
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::ValueComparison {
+                left: Value::CountPlayers(PlayerFilter::excluding(
+                    player,
+                    PlayerFilter::your_team(),
+                )),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            }
+        }
         PredicateAst::Player(PlayerPredicateAst::PlayerIsMonarch { player }) => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
@@ -559,6 +613,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::TurnEvents(TurnEventPredicateAst::AnyPlayerLostLifeThisTurnOrMore {
             count,
         }) => Condition::AnyPlayerLostLifeThisTurnOrMore { count: *count },
+        PredicateAst::TurnEvents(
+            TurnEventPredicateAst::AnyPlayerWasDealtCombatDamageThisTurnOrMore(count),
+        ) => Condition::AnyPlayerWasDealtCombatDamageThisTurnOrMore { count: *count },
         PredicateAst::TurnEvents(TurnEventPredicateAst::OpponentWasDealtDamageThisTurnOrMore(
             count,
         )) => Condition::OpponentWasDealtDamageThisTurnOrMore(*count),
@@ -710,6 +767,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisCombat) => {
             Condition::SourceAttackedOrBlockedThisCombat
         }
+        PredicateAst::Source(SourcePredicateAst::SourceAttackedThisCombat) => {
+            Condition::SourceAttackedThisCombat
+        }
         PredicateAst::Source(SourcePredicateAst::SourceAttackedOrBlockedThisTurn) => {
             Condition::SourceAttackedOrBlockedThisTurn
         }
@@ -792,8 +852,20 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::ColorsOfManaSpentToCastThisSpellOrMore(count) => {
             Condition::ColorsOfManaSpentToCastThisSpellOrMore(*count)
         }
+        PredicateAst::ColorsOfManaSpentToActivateThisAbility { amount, exactly } => {
+            Condition::ColorsOfManaSpentToActivateThisAbility {
+                amount: *amount,
+                exactly: *exactly,
+            }
+        }
         PredicateAst::Source(SourcePredicateAst::SourceControllersEndStep) => {
             Condition::SourceControllersEndStep
+        }
+        PredicateAst::Source(SourcePredicateAst::SourceControllersUntapStep) => {
+            Condition::SourceControllersUntapStep
+        }
+        PredicateAst::Source(SourcePredicateAst::SourceStartedTurnUntapped) => {
+            Condition::SourceStartedTurnUntapped
         }
         PredicateAst::YouHaveCardInHandMatching(filter) => {
             Condition::YouHaveCardInHandMatching(filter.clone())
@@ -832,6 +904,9 @@ pub fn resolve_condition_from_predicate(
         PredicateAst::Source(SourcePredicateAst::SourceIsAttacking) => Condition::SourceIsAttacking,
         PredicateAst::Source(SourcePredicateAst::SourceIsUntapped) => Condition::SourceIsUntapped,
         PredicateAst::Source(SourcePredicateAst::SourceIsMonstrous) => Condition::SourceIsMonstrous,
+        PredicateAst::Source(SourcePredicateAst::SourceHasDealtCombatDamageSinceEntered) => {
+            Condition::SourceHasDealtCombatDamageSinceEntered
+        }
         PredicateAst::Source(SourcePredicateAst::SourceHasDealtDamageSinceEntered) => {
             Condition::SourceHasDealtDamageSinceEntered
         }
@@ -875,6 +950,7 @@ pub fn resolve_condition_from_predicate(
             }
         },
         PredicateAst::TargetWasKicked => Condition::TargetWasKicked,
+        PredicateAst::TargetPaidLabel(label) => Condition::TargetPaidLabel(label.clone()),
         PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityActivatedThisTurnAtLeast(count)) =>
             Condition::ThisAbilityActivatedThisTurnAtLeast(*count),
         PredicateAst::TurnEvents(TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(
@@ -974,6 +1050,9 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone) => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(*zone)
             }
+            TurnHistoryPredicateAst::TriggeringObjectEnteredFromZone(zone) => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectEnteredFromZone(*zone)
+            }
             TurnHistoryPredicateAst::PlayerPlayedLandThisTurn(player) => {
                 ironsmith_core::TurnHistoryCondition::PlayerPlayedLandThisTurn(
                     resolve_non_target_player_filter(*player, &refs)?,
@@ -1014,8 +1093,16 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn => {
                 ironsmith_core::TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn
             }
+            TurnHistoryPredicateAst::ActivePlayerAttackedControllerThisTurn => {
+                ironsmith_core::TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn
+            }
             TurnHistoryPredicateAst::PlayerLostLifeLastTurn(player) => {
                 ironsmith_core::TurnHistoryCondition::PlayerLostLifeLastTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
+            TurnHistoryPredicateAst::PlayerWasDealtNoncombatDamageLastTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(
                     resolve_non_target_player_filter(*player, &refs)?,
                 )
             }
@@ -1054,6 +1141,17 @@ pub fn resolve_condition_from_predicate(
             },
             TurnHistoryPredicateAst::TriggeringAbilityIsManaAbility => {
                 ironsmith_core::TurnHistoryCondition::TriggeringAbilityIsManaAbility
+            }
+            TurnHistoryPredicateAst::TriggeringManaIncludesSourceChosenColor => {
+                ironsmith_core::TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor
+            }
+            TurnHistoryPredicateAst::TriggeringSacrificePaidEmergeCost => {
+                ironsmith_core::TurnHistoryCondition::TriggeringSacrificePaidEmergeCost
+            }
+            TurnHistoryPredicateAst::TriggeringPlayerWasAttackedThisTurnBy { attackers } => {
+                ironsmith_core::TurnHistoryCondition::TriggeringPlayerWasAttackedThisTurnBy {
+                    attackers: resolve_it_tag(attackers, &refs)?,
+                }
             }
         }),
         PredicateAst::ValueComparison {

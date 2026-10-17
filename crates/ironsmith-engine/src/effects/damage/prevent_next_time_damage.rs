@@ -43,6 +43,8 @@ pub enum PreventNextTimeDamageTarget {
     /// Damage that would be dealt to you and/or permanents matching the
     /// filter ("you and/or creatures you control").
     YouAndPermanents(ObjectFilter),
+    /// Damage that would be dealt to any player ("to one or more players").
+    AnyPlayer,
     /// Only damage that would be dealt to a chosen target.
     Target(ChooseSpec),
 }
@@ -69,6 +71,36 @@ impl crate::events::traits::ReplacementMatcher for CombatDamageOnly {
 
     fn display(&self) -> String {
         "When combat damage would be dealt (preventable)".to_string()
+    }
+}
+
+/// The same source/recipient constraints for a replacement that prevents
+/// nothing (Eye for an Eye): "damage can't be prevented" doesn't stop it.
+#[derive(Debug, Clone)]
+struct UnpreventableAlsoMatches(PreventableDamageConstraintMatcher);
+
+impl crate::events::traits::ReplacementMatcher for UnpreventableAlsoMatches {
+    fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
+        self.0.may_match_event_kind(kind)
+    }
+
+    fn matches_prepared_event(
+        &self,
+        event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::PreparedEventContext,
+    ) -> bool {
+        match crate::events::downcast_event::<crate::events::DamageEvent>(event) {
+            Some(damage) if damage.is_unpreventable => {
+                let mut preventable = damage.clone();
+                preventable.is_unpreventable = false;
+                self.0.matches_prepared_event(&preventable, ctx)
+            }
+            _ => self.0.matches_prepared_event(event, ctx),
+        }
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt".to_string()
     }
 }
 
@@ -143,6 +175,7 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                 DamageTargetConstraint::Any
             }
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
+            PreventNextTimeDamageTarget::AnyPlayer => DamageTargetConstraint::AnyPlayer,
             PreventNextTimeDamageTarget::YouAndPermanents(filter) => {
                 DamageTargetConstraint::PlayerOrPermanents {
                     player: ctx.controller,
@@ -218,6 +251,43 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             source: source_constraint,
             target: target_constraint,
         };
+        // "instead that source deals that much damage to you and this spell
+        // deals that much damage to that source's controller" (Eye for an
+        // Eye): a one-shot replacement that prevents nothing; the damage is
+        // dealt and the reflection happens with the replaced amount.
+        if self.portion == ironsmith_core::NextTimeDamagePreventionPortion::ReflectOnly {
+            let Some(source) = chosen_source.filter(|_| self.reflect_damage_to_source_controller)
+            else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "a reflect-only next-time damage replacement needs a chosen source".into(),
+                ));
+            };
+            let mut effects = vec![Effect::new(DealDamageEffect::new(
+                Value::EventValue(EventValueSpec::Amount),
+                ChooseSpec::Player(PlayerFilter::ControllerOf(ObjectRef::Specific(source))),
+            ))];
+            effects.extend(self.follow_up_effects.clone());
+            let action = ReplacementAction::Additionally(effects);
+            let replacement = if self.combat_only {
+                ReplacementEffect::with_matcher(
+                    ctx.source,
+                    ctx.controller,
+                    CombatDamageOnly(matcher),
+                    action,
+                )
+            } else {
+                ReplacementEffect::with_matcher(
+                    ctx.source,
+                    ctx.controller,
+                    UnpreventableAlsoMatches(matcher),
+                    action,
+                )
+            };
+            game.effect_store
+                .replacement_effects
+                .add_next_damage_occurrence_effect(replacement);
+            return Ok(EffectOutcome::resolved());
+        }
         // A partial shield prevents only part of the next matching damage
         // event and is then used up (CR 615.1, 615.7); it has no "prevented
         // this way" rider in any printed form.
@@ -244,7 +314,10 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
                         ironsmith_core::StaticDamagePreventionAmount::Amount(Value::Fixed(amount)),
                     )
                 }
-                ironsmith_core::NextTimeDamagePreventionPortion::All => ReplacementAction::Prevent,
+                ironsmith_core::NextTimeDamagePreventionPortion::All
+                | ironsmith_core::NextTimeDamagePreventionPortion::ReflectOnly => {
+                    ReplacementAction::Prevent
+                }
             };
             let replacement = if self.combat_only {
                 ReplacementEffect::with_matcher(

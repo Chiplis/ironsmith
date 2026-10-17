@@ -652,6 +652,12 @@ pub fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> crate::t
     crate::tag::sentence_helper_tag(prefix, span.line, span.start, span.end)
 }
 
+/// The capture a "note the number and kind of counters" instruction writes
+/// and a "with the noted number and kind of counters on it" entry reads.
+pub fn noted_counters_tag() -> crate::tag::TagRef {
+    crate::tag::declared_key("noted_counters")
+}
+
 pub fn is_sentence_helper_tag(tag: &TagKey, prefix: &str) -> bool {
     crate::tag::is_sentence_helper_tag(tag, prefix)
 }
@@ -872,6 +878,10 @@ pub fn compiler_activation_cost_reference_imports(
     if let Some(producer) = crate::model::costs::unique_counter_removal_cost(cost) {
         imports.counter_removal_cost = Some(producer);
         imports.last_effect_id = Some(producer.effect_id);
+    } else if let Some(producer) = crate::model::costs::unique_activation_result_cost(cost) {
+        // "{6}, Roll a d8: Monstrosity X, where X is the result": the paid
+        // roll is the body's prior result.
+        imports.last_effect_id = Some(producer);
     }
     imports
 }
@@ -2250,7 +2260,69 @@ fn restore_distinct_combat_damage_controller_target(
     apply(target, &authored_filter);
 }
 
+/// "up to one target <filter> of each card type [<zone tail>]": parse the
+/// phrase without the slot qualifier, then mark the object filter as
+/// one-per-card-type and lift the count to any number of targets.
+fn parse_one_target_per_card_type_phrase(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TargetAst>, CardTextError> {
+    let positions = crate::lexer::parser_token_word_positions(tokens);
+    let words = positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    if !words.starts_with(&["up", "to", "one", "target"]) {
+        return Ok(None);
+    }
+    let Some(start) = words
+        .windows(4)
+        .position(|window| window == ["of", "each", "card", "type"])
+    else {
+        return Ok(None);
+    };
+    let first_token = positions[start].0;
+    let last_token = positions[start + 3].0;
+    // The four qualifier words must be whole tokens of their own.
+    let qualifier_tokens = positions
+        .iter()
+        .filter(|(index, _)| *index >= first_token && *index <= last_token)
+        .count();
+    if qualifier_tokens != 4 || last_token - first_token != 3 {
+        return Ok(None);
+    }
+    let mut stripped = tokens[..first_token].to_vec();
+    stripped.extend_from_slice(&tokens[last_token + 1..]);
+    let mut target = parse_target_phrase(&stripped)?;
+    fn mark(target: &mut TargetAst) -> bool {
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                filter.one_per_card_type = true;
+                true
+            }
+            TargetAst::WithCount(inner, count) => {
+                if !mark(inner) {
+                    return false;
+                }
+                *count = ChoiceCount::any_number();
+                true
+            }
+            _ => false,
+        }
+    }
+    if !matches!(target, TargetAst::WithCount(..)) || !mark(&mut target) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported one-target-per-card-type phrase (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    Ok(Some(target))
+}
+
 pub fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
+    // "up to one target nonland card of each card type" (Uldaros Theorix)
+    // announces one target slot per card type: any number of targets, each
+    // filling a distinct card-type slot (targeting validates the slots by
+    // matching via the filter's `one_per_card_type`).
+    if let Some(target) = parse_one_target_per_card_type_phrase(tokens)? {
+        return Ok(target);
+    }
     if let Some(filter) =
         crate::grammar::choices::parse_target_opponent_with_more_controlled_as_you_activate_tokens(
             tokens,
@@ -3558,7 +3630,15 @@ pub(crate) fn restore_authored_damage_source_surface(
 fn chosen_at_random_target_suffix(tokens: &[OwnedLexToken]) -> Option<usize> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let view = crate::lexer::TokenWordView::new(tokens);
-    let words = view.word_refs();
+    let mut words = view.word_refs();
+    // "target opponent chosen at random from among your opponents"
+    // (Explosion of Riches): the trailing domain restates the target's own
+    // player set.
+    if words.starts_with(&["target", "opponent"])
+        && words.ends_with(&["chosen", "at", "random", "from", "among", "your", "opponents"])
+    {
+        words.truncate(words.len() - 4);
+    }
     let suffix_start = words.len().checked_sub(3)?;
     if words.get(suffix_start..) != Some(&["chosen", "at", "random"][..])
         || suffix_start == 0

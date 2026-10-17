@@ -162,6 +162,8 @@ pub enum EventKind {
     LifePaid,
     /// A different player acquired the monarch designation.
     MonarchChanged,
+    /// Beginning of the declare attackers step, after the attack declaration.
+    BeginningOfDeclareAttackersStep,
 }
 
 /// A target within an event that can potentially be redirected.

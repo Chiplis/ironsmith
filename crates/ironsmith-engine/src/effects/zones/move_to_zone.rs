@@ -534,11 +534,19 @@ fn move_entry_options(
     counters: Vec<(crate::object::CounterType, u32)>,
     attachment: Option<crate::object::AttachmentTarget>,
 ) -> BattlefieldEntryOptions {
+    // "If a land enters this way, it enters tapped": a per-object entry
+    // status inside the one simultaneous move.
+    let enters_tapped = effect.enters_tapped
+        || effect.enters_tapped_if.as_ref().is_some_and(|filter| {
+            game.object(object).is_some_and(|candidate| {
+                filter.matches(candidate, &ctx.filter_context(game), game)
+            })
+        });
     let options = match effect.battlefield_controller {
-        BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(effect.enters_tapped),
-        BattlefieldController::Owner => BattlefieldEntryOptions::owner(effect.enters_tapped),
+        BattlefieldController::Preserve => BattlefieldEntryOptions::preserve(enters_tapped),
+        BattlefieldController::Owner => BattlefieldEntryOptions::owner(enters_tapped),
         BattlefieldController::You => {
-            BattlefieldEntryOptions::specific(ctx.controller, effect.enters_tapped)
+            BattlefieldEntryOptions::specific(ctx.controller, enters_tapped)
         }
     };
     let mut options = options
@@ -546,6 +554,13 @@ fn move_entry_options(
         .with_entry_attachment(attachment)
         .transformed(effect.enters_transformed)
         .face_down(effect.enters_face_down);
+    if effect.enters_as_non_aura {
+        // "as a non-Aura enchantment": the type change is part of how the
+        // object enters, so it never chooses what to enchant (CR 303.4f).
+        options = options.with_entry_modifications(vec![
+            crate::continuous::Modification::RemoveSubtypes(vec![crate::types::Subtype::Aura]),
+        ]);
+    }
     if effect.transfer_exiled_with_source_links {
         let captured = ctx.get_tagged_all(crate::tag::SOURCE_EXILED_THIS_RESOLUTION_TAG);
         let candidates = captured.cloned().unwrap_or_else(|| {
@@ -1104,13 +1119,21 @@ impl SharedLookbackExecute for MoveToZoneEffect {
             if prepared.is_some() {
                 break;
             }
-            if game.object(*id).is_none() {
+            let Some(stable_id) = game.object(*id).map(|object| object.stable_id) else {
                 continue;
+            };
+            let mut counters =
+                resolve_battlefield_entry_counters(game, ctx, *id, &self.enters_with_counters)?;
+            // "with the noted number and kind of counters on it": the entry
+            // event carries the counters a prior note recorded (CR 614.1c).
+            if self.zone == Zone::Battlefield
+                && let Some(tag) = &self.enters_with_noted_counters
+            {
+                counters.extend(crate::effects::counters::noted_entry_counters(
+                    ctx, tag, *id, stable_id,
+                ));
             }
-            authored_counters.insert(
-                *id,
-                resolve_battlefield_entry_counters(game, ctx, *id, &self.enters_with_counters)?,
-            );
+            authored_counters.insert(*id, counters);
         }
         if let Some(selection) = selection {
             selection.objects = object_ids;

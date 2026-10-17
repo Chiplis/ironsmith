@@ -93,9 +93,193 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
     Some(LineAst::OptionalCost(optional_cost))
 }
 
+/// "<trigger>, roll two six-sided dice. For each result of 1, <effect>. For
+/// each other result, it gains the indicated ability until end of turn. [If
+/// you rolled doubles, <effect>.]" followed by "• N — <keyword>" rows
+/// (Celebr-8000): the bullets are a per-die result table, not modes. Both
+/// dice are rolled once (in order); each die's result selects its row, and
+/// doubles compare the two results.
+fn try_parse_per_die_result_ability_table(
+    modal: &RewriteModalBlock,
+) -> Result<Option<ParsedCardItem>, CardTextError> {
+    use crate::cards::builders::ConditionalEffectAst;
+    use ironsmith_core::{EffectMetric, EffectMetricSource};
+    let tokens = modal.header_tokens.as_slice();
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    if !tokens
+        .first()
+        .is_some_and(|token| token.is_any_word(&["at", "when", "whenever"]))
+    {
+        return Ok(None);
+    }
+    let sentences = crate::lexer::split_lexed_sentences(&tokens[comma + 1..]);
+    let words_of = |sentence: &[OwnedLexToken]| {
+        crate::lexer::token_word_refs(sentence)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let Some(roll) = sentences.first() else {
+        return Ok(None);
+    };
+    let roll_words = words_of(&roll[..]).join(" ");
+    if !matches!(
+        roll_words.as_str(),
+        "roll two six-sided dice" | "roll two six sided dice" | "roll two d6"
+    ) {
+        return Ok(None);
+    }
+    let Some(first_row) = sentences.get(1) else {
+        return Ok(None);
+    };
+    let first_row_words = words_of(&first_row[..]);
+    let (Some(first_value), true) = (
+        first_row_words
+            .get(4)
+            .and_then(|word| crate::util::parse_number_word_i32(word)),
+        first_row_words.starts_with(&[
+            "for".to_string(),
+            "each".to_string(),
+            "result".to_string(),
+            "of".to_string(),
+        ]),
+    ) else {
+        return Ok(None);
+    };
+    let Some(row_comma) = first_row.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let Some(other_rows) = sentences.get(2) else {
+        return Ok(None);
+    };
+    if words_of(&other_rows[..]).join(" ")
+        != "for each other result it gains the indicated ability until end of turn"
+    {
+        return Ok(None);
+    }
+    let doubles_effects = match sentences.get(3) {
+        None => None,
+        Some(doubles) => {
+            let doubles_words = words_of(&doubles[..]);
+            if !doubles_words.starts_with(&[
+                "if".to_string(),
+                "you".to_string(),
+                "rolled".to_string(),
+                "doubles".to_string(),
+            ]) {
+                return Ok(None);
+            }
+            let Some(doubles_comma) = doubles.iter().position(|token| token.is_comma()) else {
+                return Ok(None);
+            };
+            let body = &doubles[doubles_comma + 1..];
+            let mut rewritten = crate::lexer::synthetic_word_tokens(["this", "creature"]);
+            let mut skip = 0usize;
+            if body.first().is_some_and(|token| token.is_word("it")) {
+                skip = 1;
+                if body.get(1).is_some_and(|token| token.is_word("also")) {
+                    skip = 2;
+                }
+            } else {
+                rewritten.clear();
+            }
+            rewritten.extend_from_slice(&body[skip..]);
+            Some(crate::effect_sentences::parse_effect_sentence_lexed(&rewritten)?)
+        }
+    };
+    if sentences.len() > 4 {
+        return Ok(None);
+    }
+    let mut rows: Vec<(i32, Vec<EffectAst>)> = vec![(
+        first_value,
+        crate::effect_sentences::parse_effect_sentence_lexed(&first_row[row_comma + 1..])?,
+    )];
+    for mode in &modal.modes {
+        let text = mode.text.trim().trim_start_matches('•').trim();
+        let Some((value, ability)) = text.split_once('—') else {
+            return Ok(None);
+        };
+        let Ok(value) = value.trim().parse::<i32>() else {
+            return Ok(None);
+        };
+        let ability = ability.trim().trim_end_matches('.');
+        if ability.is_empty() {
+            return Ok(None);
+        }
+        let grant = crate::lexer::lex_line(
+            &format!("this creature gains {ability} until end of turn."),
+            mode.info.line_index,
+        )
+        .map_err(|_| {
+            CardTextError::ParseError(format!("unsupported die-result ability row '{text}'"))
+        })?;
+        rows.push((value, crate::effect_sentences::parse_effect_sentence_lexed(&grant)?));
+    }
+    let trigger = parse_trigger_clause_lexed(&tokens[..comma])?;
+
+    let mut roll_effect = EffectAst::subject_verb_roll_dice_choose_result_with_surface(
+        PlayerAst::Implicit,
+        2,
+        6,
+        None,
+    );
+    if let EffectAst::SubjectVerb(subject_verb) = &mut roll_effect
+        && let SubjectVerbActionAst::Random(crate::cards::builders::RandomActionAst::RollDiceChooseResult {
+            in_order,
+            ..
+        }) = &mut subject_verb.action
+    {
+        *in_order = true;
+    }
+    let die_value = |metric: EffectMetric| crate::effect::Value::PendingEffectMetric {
+        source: EffectMetricSource::Outcome,
+        metric,
+    };
+    let mut effects = vec![roll_effect];
+    for metric in [EffectMetric::Count, EffectMetric::OtherNumber] {
+        for (value, row_effects) in &rows {
+            effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: die_value(metric),
+                    operator: crate::effect::ValueComparisonOperator::Equal,
+                    right: crate::effect::Value::Fixed(*value),
+                },
+                if_true: row_effects.clone(),
+                if_false: Vec::new(),
+            }));
+        }
+    }
+    if let Some(doubles_effects) = doubles_effects {
+        effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::ValueComparison {
+                left: die_value(EffectMetric::Count),
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right: die_value(EffectMetric::OtherNumber),
+            },
+            if_true: doubles_effects,
+            if_false: Vec::new(),
+        }));
+    }
+    Ok(Some(ParsedCardItem::Line(crate::cards::builders::ParsedLineAst {
+        info: modal.header.semantic_info(),
+        chunks: vec![LineAst::Triggered {
+            trigger,
+            effects,
+            max_triggers_per_turn: None,
+        }],
+        restrictions: ParsedRestrictions::default(),
+        semantic_facts: modal.header.semantic_facts.clone(),
+    })))
+}
+
 pub fn rewrite_modal_to_parsed_item(
     modal: RewriteModalBlock,
 ) -> Result<ParsedCardItem, CardTextError> {
+    if let Some(item) = try_parse_per_die_result_ability_table(&modal)? {
+        return Ok(item);
+    }
     let header_text = modal.header.raw_line.clone();
     let Some(mut header) = parse_modal_header(&modal.header, &modal.header_tokens)? else {
         return Err(CardTextError::ParseError(format!(

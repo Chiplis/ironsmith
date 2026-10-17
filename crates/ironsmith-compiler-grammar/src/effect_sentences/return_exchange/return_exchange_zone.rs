@@ -36,7 +36,75 @@ fn split_articled_card_pair_return(
     Some((left, right.to_vec()))
 }
 
+/// "Return half the creatures they control to their owner's hand, rounded
+/// up." (Split the Party): choose that many of the matching permanents, then
+/// return the chosen set.
+fn parse_half_the_objects_return(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    if !(tokens.first().is_some_and(|token| token.is_word("half"))
+        && tokens.get(1).is_some_and(|token| token.is_word("the")))
+    {
+        return Ok(None);
+    }
+    let len = tokens.len();
+    let (rounded_up, body) = if len > 4
+        && tokens[len - 2].is_word("rounded")
+        && (tokens[len - 1].is_word("up") || tokens[len - 1].is_word("down"))
+    {
+        (
+            tokens[len - 1].is_word("up"),
+            trim_commas(&tokens[..len - 2]).to_vec(),
+        )
+    } else {
+        return Ok(None);
+    };
+    let Some(to_idx) = body.iter().rposition(|token| token.is_word("to")) else {
+        return Ok(None);
+    };
+    let destination = crate::lexer::token_word_refs(&body[to_idx + 1..]);
+    if !matches!(
+        destination.as_slice(),
+        ["their" | "its", "owner's" | "owners" | "owners'", "hand" | "hands"]
+    ) {
+        return Ok(None);
+    }
+    let filter_tokens = trim_commas(&body[2..to_idx]).to_vec();
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    filter.zone = Some(Zone::Battlefield);
+    use crate::effect::Value;
+    let basis = Value::Count(filter.clone());
+    let basis = if rounded_up {
+        Value::Add(Box::new(basis), Box::new(Value::Fixed(1)))
+    } else {
+        basis
+    };
+    let tag = crate::util::helper_tag_for_tokens(tokens, "returned");
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::ObjectChoices(crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count: crate::effect::ChoiceCount::dynamic_x(),
+                count_value: Some(Value::HalfRoundedDown(Box::new(basis))),
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of(tag.clone()),
+            }),
+            EffectAst::MoveTaggedGroupToZone {
+                tag: crate::tag::TagRef::of(tag),
+                zone: Zone::Hand,
+            },
+        ],
+    }))
+}
+
 pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(effect) = parse_half_the_objects_return(tokens)? {
+        return Ok(effect);
+    }
     if let Some((left, right)) = split_articled_card_pair_return(tokens) {
         return Ok(EffectAst::Sequence {
             effects: vec![parse_return(&left)?, parse_return(&right)?],
@@ -160,6 +228,31 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         let split = base_tokens.len() - entry_counter_tokens.len() - 1;
         base_tokens.truncate(split);
         let base = parse_return(&trim_commas(&base_tokens))?;
+        // "with the noted number and kind of counters on it" (Tawnos's
+        // Coffin): the counters an earlier note recorded are part of this
+        // return's own entry event.
+        if matches!(
+            crate::lexer::token_word_refs(&entry_counter_tokens).as_slice(),
+            [
+                "the",
+                "noted",
+                "number",
+                "and",
+                "kind" | "kinds",
+                "of",
+                "counters",
+                "on",
+                "it" | "them"
+            ]
+        ) {
+            let mut base = base;
+            if !base.set_return_noted_counters(crate::util::noted_counters_tag()) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported noted-counter return clause (clause: '{clause_text}')"
+                )));
+            }
+            return Ok(base);
+        }
         let mut counters = crate::effect_sentences::zone_counter_helpers::parse_put_counters(
             &entry_counter_tokens,
         )?;
@@ -207,6 +300,20 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         }
         crate::grammar::effects::ReturnTimingShape::EndOfCombat => {
             DelayedReturnTimingAst::EndOfCombat
+        }
+        crate::grammar::effects::ReturnTimingShape::NextDeclareAttackersStep(player) => {
+            DelayedReturnTimingAst::NextDeclareAttackersStep(player)
+        }
+        crate::grammar::effects::ReturnTimingShape::UpcomingDeclareAttackersStep(player) => {
+            // "under its owner's control ... at the beginning of that player's
+            // next declare attackers step" (Noctis): the returned card's owner.
+            let player = if player == PlayerFilter::IteratedPlayer
+                && destination.controller == crate::grammar::effects::ReturnControllerShape::Owner
+            {
+                PlayerFilter::OwnerOf(crate::target::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::It.key()))
+            } else { player };
+            DelayedReturnTimingAst::UpcomingDeclareAttackersStep(player)
         }
     });
     let under_chosen_opponent_control =
@@ -894,6 +1001,26 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
         // destination from the ordinary rules-default owner controller. The
         // owner filter remains the executable identity of "their".
         filter.set_enters_under_controller_surface(true);
+    }
+    if destination.as_non_aura {
+        // "return this card to the battlefield ... as a non-Aura enchantment"
+        // (Takklemaggot) is part of the entry itself; never drop it.
+        effect = effect.with_return_as_non_aura();
+        if !matches!(
+            &effect,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
+                        as_non_aura: true,
+                        ..
+                    })
+                )
+        ) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported non-Aura return clause (clause: '{clause_text}')"
+            )));
+        }
     }
     let effect = wrap_return_with_delayed_timing(effect, delayed_timing);
     if choice_prefix.is_empty() {

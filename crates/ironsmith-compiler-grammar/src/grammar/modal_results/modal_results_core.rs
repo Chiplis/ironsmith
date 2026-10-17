@@ -18,6 +18,9 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         let relation_matches = match characteristic {
             ObjectCharacteristic::Color => words[relative + 2..tail] == ["color"],
             ObjectCharacteristic::CardType => words[relative + 2..tail] == ["card", "type"],
+            ObjectCharacteristic::AllCardTypes => {
+                words[relative + 2..tail] == ["all", "their", "card", "types"]
+            }
             ObjectCharacteristic::PermanentType => words[relative + 2..tail] == ["permanent", "type"],
             ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Creature) => words[relative + 2..tail] == ["creature", "type"],
             ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Land) => words[relative + 2..tail] == ["land", "type"],

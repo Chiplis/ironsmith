@@ -92,6 +92,8 @@ pub(crate) use simultaneous::{
 mod tag_attached_to_source;
 mod tag_matching_objects;
 mod tag_other_block_participant;
+mod tag_last_damage_source;
+mod tag_spliced_cards;
 mod tag_triggering_attacker;
 mod tag_triggering_blockers;
 mod tag_triggering_damage_target;
@@ -181,6 +183,8 @@ pub(crate) use simultaneous::{
 pub use tag_attached_to_source::TagAttachedToSourceEffect;
 pub use tag_matching_objects::TagMatchingObjectsEffect;
 pub use tag_other_block_participant::TagOtherBlockParticipantEffect;
+pub use tag_last_damage_source::TagLastDamageSourceEffect;
+pub use tag_spliced_cards::TagSplicedCardsEffect;
 pub use tag_triggering_attacker::TagTriggeringAttackerEffect;
 pub use tag_triggering_blockers::TagTriggeringBlockersEffect;
 pub use tag_triggering_damage_target::TagTriggeringDamageTargetEffect;

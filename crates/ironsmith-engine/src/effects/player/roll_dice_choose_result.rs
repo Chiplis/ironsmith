@@ -16,6 +16,12 @@ pub struct RollDiceChooseResultEffect {
     /// "... and ignore the lower roll": the result is the highest roll,
     /// with no choice (Berserker's Frenzy).
     pub ignore_lower: bool,
+    /// The result is the total of every retained roll (no choice).
+    pub total: bool,
+    /// A dynamic number of dice ("roll X d6"); replaces `count` when present.
+    pub count_value: Option<crate::effect::Value>,
+    /// The first roll is the result and the second the other result.
+    pub in_order: bool,
 }
 
 impl RollDiceChooseResultEffect {
@@ -26,6 +32,9 @@ impl RollDiceChooseResultEffect {
             sides,
             die_text: None,
             ignore_lower: false,
+            total: false,
+            count_value: None,
+            in_order: false,
         }
     }
 
@@ -41,12 +50,28 @@ impl RollDiceChooseResultEffect {
             sides,
             die_text,
             ignore_lower: false,
+            total: false,
+            count_value: None,
+            in_order: false,
         }
     }
 
     /// Keep the highest roll instead of choosing one.
     pub fn with_ignore_lower(mut self, ignore_lower: bool) -> Self {
         self.ignore_lower = ignore_lower;
+        self
+    }
+
+    /// Sum every roll instead of choosing one ("the total of those results").
+    pub fn with_total(mut self, count_value: Option<crate::effect::Value>) -> Self {
+        self.total = true;
+        self.count_value = count_value;
+        self
+    }
+
+    /// The first roll is the result and the second the other result.
+    pub fn with_in_order(mut self, in_order: bool) -> Self {
+        self.in_order = in_order;
         self
     }
 }
@@ -72,19 +97,52 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
                 let player = resolve_player_filter(game, &self.player, ctx)?;
-                if self.count == 0 || self.sides == 0 {
+                let count = match &self.count_value {
+                    Some(value) => {
+                        crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?
+                    }
+                    None => self.count,
+                };
+                if count == 0 || self.sides == 0 {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
                 }
 
                 let Some(transaction) =
-                    roll_dice_with_modifiers(game, ctx, player, self.count, self.sides)?
+                    roll_dice_with_modifiers(game, ctx, player, count, self.sides)?
                 else {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
                     ));
                 };
+
+                if self.total {
+                    // "the total of those results" (CR 706.2): every retained
+                    // roll contributes; nothing is chosen.
+                    let total = transaction
+                        .rolls
+                        .iter()
+                        .map(|roll| u64::from(roll.result))
+                        .sum::<u64>();
+                    let total = u32::try_from(total).map_err(|_| {
+                        ExecutionError::ResourceLimitExceeded {
+                            resource: "die-roll total",
+                            requested: u128::from(total),
+                            maximum: u128::from(u32::MAX),
+                        }
+                    })?;
+                    return transaction.complete_with_outputs(
+                        game,
+                        ctx,
+                        player,
+                        self.sides,
+                        total,
+                        super::die_roll_transaction::DieRollCompletion::Simultaneous,
+                        EffectOutcome::count(i64::from(total))
+                            .with_execution_fact(ExecutionFact::ChosenNumber(total)),
+                    );
+                }
 
                 let rolls = &transaction.rolls;
                 let options = rolls
@@ -100,7 +158,9 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     .max_by_key(|(_, roll)| roll.result)
                     .map(|(idx, _)| idx)
                     .unwrap_or(0);
-                let chosen_idx = if self.ignore_lower {
+                let chosen_idx = if self.in_order {
+                    0
+                } else if self.ignore_lower {
                     highest_idx
                 } else {
                     let Some(index) = select_typed_option(

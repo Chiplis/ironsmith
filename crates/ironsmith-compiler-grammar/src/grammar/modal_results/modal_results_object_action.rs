@@ -1,8 +1,45 @@
 use crate::effect::Value;
 use super::*;
 
+/// "If you can't sacrifice a creature, ..." (Xathrid Demon): an impossible
+/// restatement of the preceding instruction reads as the bare "If you can't".
+/// "If you can't choose an opponent this way, ..." (Territorial Hellkite)
+/// restates the preceding choice the same way.
+fn cant_restatement_prefix(normalized: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let restates = normalized.len() > 2
+        && (starts_with_phrase(normalized, &["you", "can't"])
+            || starts_with_phrase(normalized, &["you", "cant"]))
+        && normalized[2].is_any_word(&["sacrifice", "discard", "exile", "pay", "return", "tap", "choose"]);
+    restates.then(|| &normalized[..2])
+}
+
+/// "Its owner may put it on top of their library. ... If they didn't put the
+/// card on top of their library, ..." (Clash of Elements): another player's
+/// negated restatement of the preceding optional put reads as the bare "If
+/// they didn't". "you didn't put ... [this way]" keeps its typed readings.
+fn didnt_put_restatement_prefix(normalized: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let subject_len = if starts_with_phrase(normalized, &["that", "player"]) {
+        2
+    } else if normalized.first().is_some_and(|token| token.is_any_word(&["they"])) {
+        1
+    } else {
+        return None;
+    };
+    let restates = normalized.len() > subject_len + 2
+        && normalized[subject_len].is_any_word(&["didn't", "didnt"])
+        && normalized[subject_len + 1].is_any_word(&["put"])
+        && !ends_with_phrase(normalized, &["this", "way"]);
+    restates.then(|| &normalized[..subject_len + 1])
+}
+
 pub fn parse_if_result_predicate_tokens(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
     let normalized = normalized_word_tokens(tokens);
+    if let Some(prefix) = cant_restatement_prefix(&normalized) {
+        return parse_if_result_predicate_tokens(prefix);
+    }
+    if let Some(prefix) = didnt_put_restatement_prefix(&normalized) {
+        return parse_if_result_predicate_tokens(prefix);
+    }
     match parse_modal_result_shape(&normalized)? {
         ModalResultShape::ThisWay {
             subject: ModalResultSubject::If | ModalResultSubject::When,
@@ -23,6 +60,12 @@ pub fn parse_if_result_predicate_lexed_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
     let normalized = normalized_word_tokens(tokens);
+    if let Some(prefix) = cant_restatement_prefix(&normalized) {
+        return parse_if_result_predicate_lexed_tokens(prefix);
+    }
+    if let Some(prefix) = didnt_put_restatement_prefix(&normalized) {
+        return parse_if_result_predicate_lexed_tokens(prefix);
+    }
     let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();
     // "two or more of those cards have the same name" refers to the actual
@@ -40,6 +83,35 @@ pub fn parse_if_result_predicate_lexed_tokens(
         }
     }
 
+    // "Pay any amount of {E}. If you paid one or more {E} this way, ..."
+    // (Vault 112: Sadistic Simulation): a threshold on the amount of energy
+    // the immediately preceding payment removed. The payment's outcome is the
+    // amount paid, so the gate compares that result.
+    let names_energy = tokens.iter().any(|token| {
+        token
+            .mana_group_inner()
+            .is_some_and(|inner| inner.eq_ignore_ascii_case("e"))
+    });
+    if names_energy
+        && let ["you", "paid", count, "or", "more", "this", "way"] = words.as_slice()
+        && let Some(count) = crate::util::parse_number_word_u32(count)
+        && count > 0
+    {
+        return Some(IfResultPredicate::Value(if count == 1 {
+            crate::effect::Comparison::GreaterThan(0)
+        } else {
+            crate::effect::Comparison::GreaterThanOrEqual(count as i32)
+        }));
+    }
+
+    // "If those permanents are exchanged this way, ..." (Gauntlets of Chaos):
+    // the preceding exchange of control actually happened.
+    if matches!(
+        words.as_slice(),
+        ["those" | "the", "permanents" | "creatures", "are" | "were", "exchanged", "this", "way"]
+    ) {
+        return Some(IfResultPredicate::Did);
+    }
     // "Whenever you clash, ... If you won, ..." (Rebellion of the Flamekin,
     // Entangling Trap): the past tense names a clash result. It is read as a
     // clash-win follow-up; with no clash in the ability itself it refers to
@@ -228,6 +300,19 @@ pub fn parse_if_result_predicate_lexed_tokens(
         &normalized,
         &["player", "is", "dealt", "damage", "this", "way"],
     ) {
+        return Some(IfResultPredicate::DealtDamageToPlayer);
+    }
+    // "deals 5 damage to you unless you sacrifice a creature. If this
+    // creature deals damage to you this way, tap it." (Minion of Leshrac):
+    // the preceding damage instruction reached its player.
+    if matches_phrase(
+        &normalized,
+        &["this", "creature", "deals", "damage", "to", "you", "this", "way"],
+    ) || matches_phrase(
+        &normalized,
+        &["this", "permanent", "deals", "damage", "to", "you", "this", "way"],
+    ) || matches_phrase(&normalized, &["it", "deals", "damage", "to", "you", "this", "way"])
+    {
         return Some(IfResultPredicate::DealtDamageToPlayer);
     }
     // A typed object affected by the immediately preceding zone move is a

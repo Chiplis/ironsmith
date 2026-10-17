@@ -144,6 +144,30 @@ pub struct CastTaggedCollectionShape<'a> {
     pub count: ChoiceCount,
     pub subject_tokens: &'a [OwnedLexToken],
     pub mana_value: Option<Comparison>,
+    /// "with total mana value 10 or less" (Primeval Spawn): a cap on the
+    /// whole selection's summed mana value, not on each spell.
+    pub total_mana_value: Option<Value>,
+}
+
+/// "<subject> with total mana value N or less" / "... X or less".
+fn split_collection_cast_total_mana_value(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<Value>) {
+    let Some((bound_start, _, bound_tokens)) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&["with", "total", "mana", "value"])
+    }) else {
+        return (tokens, None);
+    };
+    let words = crate::lexer::token_word_refs(trim_lexed_commas(bound_tokens));
+    let value = match words.as_slice() {
+        ["x", "or", "less"] => Some(Value::X),
+        [count, "or", "less"] => crate::util::parse_number_word_i32(count).map(Value::Fixed),
+        _ => None,
+    };
+    match value {
+        Some(value) => (trim_lexed_commas(&tokens[..bound_start]), Some(value)),
+        None => (tokens, None),
+    }
 }
 
 fn parse_collection_cast_count(
@@ -216,8 +240,9 @@ pub fn parse_cast_tagged_collection_shape(
         "tagged collection free-cast tail",
     )?;
 
-    let (subject_tokens, mana_value) =
-        split_collection_cast_mana_value(trim_lexed_commas(body.get(..scope_start)?))?;
+    let (scope_tokens, total_mana_value) =
+        split_collection_cast_total_mana_value(trim_lexed_commas(body.get(..scope_start)?));
+    let (subject_tokens, mana_value) = split_collection_cast_mana_value(scope_tokens)?;
     if subject_tokens.is_empty() {
         return None;
     }
@@ -239,6 +264,7 @@ pub fn parse_cast_tagged_collection_shape(
         count,
         subject_tokens,
         mana_value,
+        total_mana_value,
     })
 }
 

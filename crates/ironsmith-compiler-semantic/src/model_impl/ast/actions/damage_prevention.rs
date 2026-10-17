@@ -13,6 +13,7 @@ pub struct TimedDamageRedirectionAst {
     pub combat_only: bool,
     pub destination: ironsmith_core::TimedDamageRedirectDestination,
     pub mode: ironsmith_core::ReplacementApplyMode,
+    pub optional_by_controller: bool,
     pub display: String,
 }
 
@@ -77,9 +78,15 @@ pub enum DamagePreventionActionAst {
         combat_only: bool,
         source_of_your_choice: bool,
         protect_you_and_permanents_you_control: bool,
+        /// One shared finite shield with no recipient restriction.
+        protect_all: bool,
         follow_up_effects: Vec<EffectAst>,
         /// "... to any number of targets, divided as you choose" (CR 601.2d).
         divided: bool,
+        /// "... that would be dealt to this creature by Torrent of Lava":
+        /// the one source whose damage the finite shield prevents, bound as
+        /// the shield is created (CR 615.7).
+        source: Option<TargetAst>,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -108,6 +115,10 @@ pub enum DamagePreventionActionAst {
         /// the additional part of the prevention effect, run with each
         /// prevented amount (CR 615.5).
         follow_up_effects: Vec<EffectAst>,
+        /// "If a spell or ability that targets that creature would cause a
+        /// source to deal damage to that creature" (Silhouette): only damage
+        /// whose causing spell or ability targets the protected object.
+        cause_targets_protected: bool,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,

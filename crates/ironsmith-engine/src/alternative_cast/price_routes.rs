@@ -72,6 +72,7 @@ fn grant_allows_separate_price(grant: &Grant) -> bool {
         Grantable::PlayFrom
             | Grantable::DerivedAlternativeCast(
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost { .. }
+                    | DerivedAlternativeCast::ZoneCastFromCardManaCost { .. }
                     | DerivedAlternativeCast::RetraceFromCardManaCost
             )
     ) || matches!(&grant.grantable, Grantable::AlternativeCast(method) if method_allows_separate_price(method))
@@ -312,10 +313,16 @@ pub(crate) fn resolve_announcement_with_effect_authority(
     let mut origin_mana_surcharge = crate::mana::ManaCost::new();
     if let Some(Grant {
         grantable:
-            Grantable::DerivedAlternativeCast(DerivedAlternativeCast::GraveyardCastFromCardManaCost {
-                additional_costs,
-                ..
-            }),
+            Grantable::DerivedAlternativeCast(
+                DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                    additional_costs,
+                    ..
+                }
+                | DerivedAlternativeCast::ZoneCastFromCardManaCost {
+                    additional_costs,
+                    ..
+                },
+            ),
         ..
     }) = &origin_grant
     {

@@ -98,7 +98,14 @@ pub fn parse_effect_with_verb(
                 }
                 Ok::<_, CardTextError>(effect)
             };
-            if has_onto || has_from_into_zone_move {
+            // "Put all exiled cards you own with intel counters on them into
+            // your hand" (Flamewar): a destination-zone tail names a zone
+            // move even without "from"; the counters only qualify the cards.
+            let has_into_zone_tail = crate::lexer::contains_token_word(tokens, "into")
+                && crate::lexer::token_word_refs(tokens)
+                    .last()
+                    .is_some_and(|word| matches!(*word, "hand" | "hands" | "graveyard" | "graveyards"));
+            if has_onto || has_from_into_zone_move || has_into_zone_tail {
                 if let Ok(effect) = parse_put_into_hand(tokens, subject) {
                     Ok(effect)
                 } else if has_counter_words {
@@ -252,6 +259,25 @@ pub fn parse_effect_with_verb(
                     abilities.push(crate::cards::builders::GrantedAbilityAst::CanAttackAsThoughNoDefender);
                 }
                 Ok(EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration))
+            } else if let Some(unblocked_duration) = may_assign_as_unblocked_body(tokens) {
+                // "You may have this creature assign its combat damage this
+                // turn as though it weren't blocked." (Gurzigost): a resolving
+                // grant of the optional unblocked assignment (CR 510.1c); the
+                // choice itself stays with the creature's controller as
+                // combat damage is assigned.
+                let target = match subject {
+                    Some(SubjectAst::This) => TargetAst::Source(span_from_tokens(tokens)),
+                    _ => TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span_from_tokens(tokens)),
+                };
+                Ok(EffectAst::subject_verb_grant_abilities_to_target(
+                    target,
+                    vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
+                        crate::cards::builders::StaticAbilityAst::Static(
+                            crate::model::CompilerStaticAbilityCore::may_assign_damage_as_unblocked(),
+                        ),
+                    ))],
+                    unblocked_duration,
+                ))
             } else {
                 Err(CardTextError::ParseError(format!("unsupported generic assign clause (clause: '{}')", crate::lexer::token_word_refs(tokens).join(" "))))
             }
@@ -260,6 +286,24 @@ pub fn parse_effect_with_verb(
         Verb::Suspect => parse_suspect(tokens),
         Verb::Note => parse_note(tokens, subject),
         Verb::End => parse_end(tokens, subject),
+        Verb::Activate => {
+            // "<player> activates a mana ability of each land they control"
+            // (Drain Power, Pygmy Hippo).
+            let words = crate::lexer::token_word_refs(tokens);
+            if matches!(
+                words.as_slice(),
+                ["a", "mana", "ability", "of", "each", "land", "they" | "you", "control"]
+            ) {
+                Ok(EffectAst::subject_verb_activate_mana_ability_of_each_land(
+                    extract_subject_player(subject).unwrap_or(PlayerAst::Implicit),
+                ))
+            } else {
+                Err(CardTextError::ParseError(format!(
+                    "unsupported activate clause (clause: '{}')",
+                    words.join(" ")
+                )))
+            }
+        }
     }
 }
 
@@ -366,6 +410,58 @@ fn parse_note(
             SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal),
         ));
     }
+    // "note one of its creature types that hasn't been noted for Volo's
+    // Journal": the noted set lives on the ability's source, so the
+    // trailing source reference is the ability's own permanent.
+    let words = crate::lexer::token_word_refs(tokens);
+    if let ["one", "of", "its", "creature", "types", "that", rest @ ..] = words.as_slice()
+        && let Some(noted_at) = rest
+            .windows(3)
+            .position(|window| window == ["been", "noted", "for"])
+        && rest[..noted_at]
+            .iter()
+            .all(|word| matches!(*word, "hasn't" | "hasnt" | "has" | "not" | "n't"))
+        && noted_at + 3 < rest.len()
+    {
+        return Ok(EffectAst::NoteTriggeringCreatureType);
+    }
+    // "note the number and kind of counters that were on that creature"
+    // (Tawnos's Coffin): the referenced object's last-known counters, read
+    // back by a later "with the noted number and kind of counters on it".
+    if let [
+        "the",
+        "number",
+        "and",
+        "kind" | "kinds",
+        "of",
+        "counters",
+        "that",
+        "were" | "are",
+        "on",
+        object_words @ ..,
+    ] = words.as_slice()
+        && !object_words.is_empty()
+    {
+        let prefix_words = words.len() - object_words.len();
+        let mut seen_words = 0usize;
+        let mut object_start = None;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.as_word().is_some() {
+                if seen_words == prefix_words {
+                    object_start = Some(index);
+                    break;
+                }
+                seen_words += 1;
+            }
+        }
+        if let Some(object_start) = object_start {
+            let object = parse_target_phrase(&trim_commas(&tokens[object_start..]))?;
+            return Ok(EffectAst::NoteCounters {
+                object,
+                tag: crate::util::noted_counters_tag(),
+            });
+        }
+    }
     Err(CardTextError::ParseError(format!(
         "unsupported note clause: '{}' (subject: {subject:?})",
         crate::lexer::token_word_refs(tokens).join(" ")
@@ -395,6 +491,19 @@ fn parse_take(
 fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Ok(EffectAst::subject_verb_proliferate(Value::Fixed(1)));
+    }
+
+    // "proliferate a number of times equal to the difference" (Expand the
+    // Sphere): the repetition count is an ordinary value expression.
+    if let ["a", "number", "of", "times", "equal", "to", ..] =
+        crate::lexer::token_word_refs(tokens).as_slice()
+    {
+        let value_tokens = trim_commas(&tokens[6..]);
+        if let Some((count, used)) = parse_value(&value_tokens)
+            && used == value_tokens.len()
+        {
+            return Ok(EffectAst::subject_verb_proliferate(count));
+        }
     }
 
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
@@ -431,6 +540,25 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
     resource_grammar::parse_resource_library_position_shape(tokens)
 }
 
+/// "at each|all <face-down permanent filter>": the face-down battlefield
+/// objects a look instruction names without a possessive owner.
+fn parse_look_at_each_face_down_permanent(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let trimmed = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&trimmed);
+    if !matches!(words.as_slice(), ["at", "each" | "all", ..]) {
+        return None;
+    }
+    let filter_tokens = &trimmed[2..];
+    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    if filter.face_down != Some(true)
+        || !filter.tagged_constraints.is_empty()
+        || !matches!(filter.zone, None | Some(Zone::Battlefield))
+    {
+        return None;
+    }
+    Some(filter.in_zone(Zone::Battlefield))
+}
+
 pub fn parse_look(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -439,6 +567,59 @@ pub fn parse_look(
         SubjectAst::Player(player) => Some(player),
         _ => None,
     });
+    // "Then look at the exiled cards and put them on top of your library"
+    // (Scroll Rack): looking at the cards this ability exiled.
+    if matches!(
+        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
+        ["at", "the", "exiled", "card" | "cards"]
+    ) {
+        return Ok(EffectAst::subject_verb_look_at_objects(
+            subject_player.unwrap_or(PlayerAst::You),
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile),
+        ));
+    }
+    // "look at each face-down creature that's attacking or blocking"
+    // (Revealing Wind): a one-shot private look at every face-down permanent
+    // the filter selects, whoever controls it (CR 708.5 lets only the
+    // controller look otherwise).
+    if let Some(filter) = parse_look_at_each_face_down_permanent(tokens) {
+        return Ok(EffectAst::subject_verb_look_at_objects(
+            subject_player.unwrap_or(PlayerAst::You),
+            filter,
+        ));
+    }
+    // "Until end of turn, you may look at face-down creatures you don't
+    // control any time." (Lumbering Laundry): a resolving grant of the
+    // continuous look permission to this permanent's controller. A leading
+    // duration scope replaces the grant's duration when it is lowered.
+    {
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let words = crate::lexer::token_word_refs(trimmed);
+        let (body_len, duration) = if words.ends_with(&["this", "turn"]) {
+            (words.len() - 2, Until::EndOfTurn)
+        } else {
+            (words.len(), Until::Forever)
+        };
+        let body_end = crate::lexer::LexedClause::new(trimmed)
+            .words()
+            .map_word_or_end_to_token_boundary(body_len)
+            .unwrap_or(trimmed.len());
+        let mut line = crate::lexer::synthetic_word_tokens(&["you", "may", "look"]);
+        line.extend_from_slice(&trimmed[..body_end]);
+        if matches!(subject_player, None | Some(PlayerAst::You))
+            && crate::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(&line)
+        {
+            return Ok(EffectAst::subject_verb_grant_abilities_to_target(
+                TargetAst::Source(span_from_tokens(tokens)),
+                vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(Box::new(
+                    crate::cards::builders::StaticAbilityAst::Static(
+                        crate::model::CompilerStaticAbilityCore::look_at_face_down_creatures_you_dont_control(),
+                    ),
+                ))],
+                duration,
+            ));
+        }
+    }
     let shape =
         resource_grammar::parse_resource_look_shape(tokens, subject_player).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -610,6 +791,15 @@ pub fn parse_look(
                 crate::tag::CompilerReferenceTag::It.bind(),
             ))
         }
+        ResourceLookShape::EachOpponentTopCards { count } => {
+            Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![EffectAst::subject_verb_look_at_top_cards(
+                    PlayerAst::That,
+                    count,
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                )],
+            }))
+        }
         ResourceLookShape::EachPlayerTopCards { count } => {
             Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_look_at_top_cards(
@@ -653,6 +843,13 @@ pub fn parse_reorder(
         .unwrap_or(tokens.len());
     let rest = trim_commas(&tokens[rest_token_idx..]);
 
+    // "Reorder your graveyard at random" (Search for Survivors).
+    if crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(&rest))
+        == ["at", "random"]
+    {
+        return Ok(EffectAst::subject_verb_reorder_graveyard_at_random(owner.player));
+    }
+
     if !resource_grammar::parse_resource_reorder_tail_shape(&rest) {
         return Err(CardTextError::ParseError(format!(
             "unsupported reorder clause tail (clause: '{clause}')"
@@ -660,6 +857,65 @@ pub fn parse_reorder(
     }
 
     Ok(EffectAst::subject_verb_reorder_graveyard(owner.player))
+}
+
+/// "shuffles their hand, graveyard, and all permanents they own into their
+/// library" (Sway of the Stars): one shuffle of every listed card set the
+/// player owns into that player's library.
+fn parse_shuffle_zone_list_into_library(
+    tokens: &[OwnedLexToken],
+    player: PlayerAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some(into_idx) = tokens.iter().position(|token| token.is_word("into")) else {
+        return Ok(None);
+    };
+    let destination = crate::lexer::token_word_refs(&tokens[into_idx + 1..]);
+    if !matches!(
+        destination.as_slice(),
+        ["their" | "your", "library"] | ["his", "or", "her", "library"]
+    ) {
+        return Ok(None);
+    }
+    let target_tokens = &tokens[..into_idx];
+    if !target_tokens.iter().any(|token| token.is_comma()) {
+        return Ok(None);
+    }
+    let Some(owner) =
+        crate::grammar::effects::zone_counter_shapes::player_filter_for_half_reference(player)
+    else {
+        return Ok(None);
+    };
+    let mut parts = Vec::new();
+    for item in target_tokens.split(|token| token.is_comma()) {
+        let words = crate::lexer::token_word_refs(item);
+        let words = match words.as_slice() {
+            ["and", rest @ ..] => rest.to_vec(),
+            rest => rest.to_vec(),
+        };
+        let filter = match words.as_slice() {
+            ["their" | "your", "hand"] | ["hand"] => {
+                ObjectFilter::default().in_zone(Zone::Hand).owned_by(owner.clone())
+            }
+            ["their" | "your", "graveyard"] | ["graveyard"] => {
+                ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(owner.clone())
+            }
+            ["all", "permanents", "they" | "you", "own"] => ObjectFilter::default()
+                .in_zone(Zone::Battlefield)
+                .owned_by(owner.clone()),
+            _ => return Ok(None),
+        };
+        parts.push(filter);
+    }
+    if parts.len() < 2 {
+        return Ok(None);
+    }
+    let mut union = ObjectFilter::default();
+    union.any_of = parts;
+    Ok(Some(EffectAst::subject_verb_shuffle_all_objects_into_library(
+        player,
+        TargetAst::Object(union, None, None),
+    )))
 }
 
 pub fn parse_shuffle(
@@ -677,6 +933,10 @@ pub fn parse_shuffle(
             player,
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
+    }
+
+    if let Some(effect) = parse_shuffle_zone_list_into_library(tokens, player)? {
+        return Ok(effect);
     }
 
     let shape =
@@ -1011,4 +1271,29 @@ fn parse_lose_all_player_counters(
         counter_type,
         false,
     )))
+}
+
+/// "its combat damage [this turn] as though it weren't blocked" after an
+/// optional "have <creature> assign": the duration of the resolving grant.
+fn may_assign_as_unblocked_body(tokens: &[crate::lexer::OwnedLexToken]) -> Option<Until> {
+    let mut words = crate::lexer::token_word_refs(tokens);
+    let mut duration = Until::Forever;
+    if let Some(index) = words.windows(2).position(|pair| pair == ["this", "turn"]) {
+        words.drain(index..index + 2);
+        duration = Until::EndOfTurn;
+    }
+    matches!(
+        words.as_slice(),
+        [
+            "its" | "their",
+            "combat",
+            "damage",
+            "as",
+            "though",
+            "it" | "they",
+            "weren't" | "werent" | "wasn't" | "wasnt",
+            "blocked",
+        ]
+    )
+    .then_some(duration)
 }

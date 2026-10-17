@@ -356,6 +356,23 @@ pub fn parse_has_base_power_toughness_clause(
             effects: vec![set_pt, become_effect],
         }));
     }
+    // "this creature has base power and toughness 3/3 until end of turn and
+    // can't be blocked this turn" (Riverfall Mimic): the restriction is a
+    // second action of the same subject with its own authored duration.
+    if let Some(and_idx) = tokens.windows(2).position(|pair| {
+        pair[0].is_word("and") && pair[1].is_any_word(&["can't", "cant", "cannot"])
+    }) && let Some(has_idx) = tokens[..and_idx]
+        .iter()
+        .position(|token| token.is_word("has") || token.is_word("have"))
+        && has_idx > 0
+        && let Some(set_pt) = parse_has_base_power_toughness_clause(&tokens[..and_idx])?
+    {
+        let mut restriction_tokens = tokens[..has_idx].to_vec();
+        restriction_tokens.extend_from_slice(&tokens[and_idx + 1..]);
+        let mut effects = vec![set_pt];
+        effects.extend(parse_effect_chain(&restriction_tokens)?);
+        return Ok(Some(EffectAst::Sequence { effects }));
+    }
     let Some(shape) = for_each_shapes::parse_base_power_toughness_clause_shape(tokens)? else {
         return Ok(None);
     };
@@ -428,6 +445,45 @@ pub fn parse_has_base_power_toughness_clause(
 pub fn parse_get_for_each_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
+    // "gets +1/+1 for each supertype, card type, and subtype it has"
+    // (Embiggen): the pumped object's own type count.
+    if matches!(
+        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
+        ["for", "each", "supertype", "card", "type", "and", "subtype", "it", "has"]
+    ) {
+        return Ok(Some(
+            Value::TypeCountOf(Box::new(crate::target::ChooseSpec::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind().into(),
+            )))
+            .with_surface_hint(ValueSurfaceHint::ForEach),
+        ));
+    }
+    // "gets -1/-1 until end of turn for each {E} paid this way" (Die Young):
+    // one per energy counter the earlier "pay any amount of {E}" removed.
+    {
+        let mut rest = crate::util::trim_edge_punctuation_tokens(tokens);
+        if rest.len() >= 2 && rest[0].is_word("for") && rest[1].is_word("each") {
+            rest = &rest[2..];
+        }
+        if rest
+            .first()
+            .and_then(|token| token.mana_group_inner())
+            .is_some_and(|inner| inner.eq_ignore_ascii_case("e"))
+            && crate::lexer::token_word_refs(&rest[1..]) == ["paid", "this", "way"]
+        {
+            return Ok(Some(
+                Value::PendingPriorEffectMetric(
+                    ironsmith_core::PriorEffectMetricQuery::new(
+                        ironsmith_core::EffectMetricSource::Outcome,
+                        ironsmith_core::EffectMetric::Count,
+                    )
+                    .with_action(ironsmith_core::PriorEffectAction::Removed)
+                    .with_counter_type(Some(crate::object::CounterType::Energy)),
+                )
+                .with_surface_hint(ValueSurfaceHint::EnergyPaidThisWay),
+            ));
+        }
+    }
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(tokens) else {
         return Ok(None);
     };
@@ -1084,3 +1140,102 @@ mod participant_choices;
 use participant_choices::{
     parse_participant_choice_complement_effects, parse_participant_creature_type_choice,
 };
+
+/// A result consequence that loops over a set: "When you sacrifice an Aura
+/// this way, for each other attacking creature you control, create a token
+/// that's a copy of that Aura attached to that creature" (Three Dog, Galaxy
+/// News DJ). Inside the loop `that creature` is the iterated object, but a
+/// `that <noun>` the loop can't iterate (an Aura while iterating creatures)
+/// still names the result's antecedent; it is bound once before the loop.
+pub(crate) fn parse_result_consequence_for_each_object(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::ForEachEffectAst;
+    let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) else {
+        return Ok(None);
+    };
+    let filter_words = crate::lexer::token_word_refs(shape.filter_tokens);
+    if filter_words.iter().any(|word| matches!(*word, "target" | "player" | "opponent")) {
+        return Ok(None);
+    }
+    let Ok(filter) = parse_for_each_object_filter(shape.filter_tokens) else {
+        return Ok(None);
+    };
+    let Ok(mut effects) = super::parse_effect_sentence_lexed(shape.effect_tokens) else {
+        return Ok(None);
+    };
+    let alias = crate::util::helper_tag_for_tokens(tokens, "result_antecedent");
+    let mut rebound = false;
+    for effect in &mut effects {
+        rebound |= rebind_outer_that_copy_sources(effect, &filter, &alias);
+    }
+    // Without an outer antecedent the ordinary consequence readers own it.
+    if !rebound {
+        return Ok(None);
+    }
+    let for_each = EffectAst::ForEach(ForEachEffectAst::ForEachObject { filter, effects });
+    Ok(Some(vec![EffectAst::SnapshotLastObjectTag { into: alias }, for_each]))
+}
+
+/// Whether an object described by `reference` can never be one of the
+/// objects `iterated` ranges over (an Aura can't be an iterated creature).
+fn reference_names_object_outside_iteration(
+    reference: &ObjectFilter,
+    iterated: &ObjectFilter,
+) -> bool {
+    use crate::types::{CardType, Subtype};
+    if iterated.card_types.is_empty() {
+        return false;
+    }
+    if !reference.card_types.is_empty()
+        && reference
+            .card_types
+            .iter()
+            .all(|card_type| !iterated.card_types.contains(card_type))
+    {
+        return true;
+    }
+    let subtype_fits = |subtype: &Subtype, card_type: &CardType| match card_type {
+        CardType::Creature | CardType::Kindred => subtype.is_creature_type(),
+        CardType::Artifact => subtype.is_artifact_subtype(),
+        CardType::Enchantment => subtype.is_enchantment_subtype(),
+        CardType::Land => subtype.is_land_subtype(),
+        _ => true,
+    };
+    !reference.subtypes.is_empty()
+        && reference.subtypes.iter().all(|subtype| {
+            iterated
+                .card_types
+                .iter()
+                .all(|card_type| !subtype_fits(subtype, card_type))
+        })
+}
+
+fn rebind_outer_that_copy_sources(
+    effect: &mut EffectAst,
+    iterated: &ObjectFilter,
+    alias: &crate::tag::TagRef,
+) -> bool {
+    let mut rebound = false;
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { source, .. }),
+        ..
+    }) = effect
+        && let TargetAst::Object(filter, _, span) = source
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+        })
+        && reference_names_object_outside_iteration(filter, iterated)
+    {
+        let span = *span;
+        *source = TargetAst::Tagged(alias.clone(), span);
+        rebound = true;
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for inner in nested {
+            rebound |= rebind_outer_that_copy_sources(inner, iterated, alias);
+        }
+    });
+    rebound
+}

@@ -28,6 +28,9 @@ pub struct SameControllerSacrificeShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraveyardCastReplacementShape {
     pub until_end_of_turn: bool,
+    /// The duration trails the permission ("... from your graveyard this
+    /// turn"); `until_end_of_turn` is also set.
+    pub trailing_this_turn: bool,
     pub without_paying_mana_cost: bool,
     pub includes_artifact: bool,
     pub artifact_first: bool,
@@ -256,8 +259,14 @@ pub fn parse_choose_then_skip_phase_shape(
 const SAME_CONTROLLER_SUFFIXES: &[&[&str]] = &[
     &["controlled", "by", "the", "same", "player"],
     &["controlled", "by", "same", "player"],
+    &["controlled", "by", "the", "same", "opponent"],
+    &["controlled", "by", "same", "opponent"],
 ];
 const SACRIFICE_ONE: &[&[&str]] = &[
+    // "That player chooses and sacrifices one of those creatures."
+    // (Retribution): the shared controller named by the target sentence.
+    &["that", "player", "chooses", "and", "sacrifices", "one", "of", "those", "creatures"],
+    &["that", "player", "chooses", "and", "sacrifices", "one", "of", "them"],
     &[
         "their",
         "controller",
@@ -350,12 +359,40 @@ pub fn parse_same_controller_sacrifice_shape(
     Some(SameControllerSacrificeShape { target })
 }
 
+const CHOOSE_ONE: &[&[&str]] = &[
+    &["that", "player", "chooses", "one", "of", "those", "creatures"],
+    &["that", "player", "chooses", "one", "of", "them"],
+    &["their", "controller", "chooses", "one", "of", "them"],
+    &["their", "controller", "chooses", "one", "of", "those", "creatures"],
+];
+
+/// "Choose two target creatures controlled by the same opponent. That player
+/// chooses one of those creatures." (Trial of Agony): the shared controller
+/// picks one member of the target pair without an attached action.
+pub fn parse_same_controller_choose_one_shape(
+    choose: &[OwnedLexToken],
+    chooses: &[OwnedLexToken],
+) -> Option<SameControllerSacrificeShape> {
+    if !matches_complete_content_sequence(chooses, CHOOSE_ONE) {
+        return None;
+    }
+    let target = crate::grammar::primitives::probe_all(
+        choose,
+        parse_same_controller_target,
+        "same-controller-choose-target",
+    )?;
+    Some(SameControllerSacrificeShape { target })
+}
+
 pub fn is_return_other_to_owner_hand_shape(tokens: &[OwnedLexToken]) -> bool {
     matches_complete_content_sequence(tokens, RETURN_OTHER)
 }
 
 const CAST_PREFIX: &[&[&str]] = &[
     &["you", "may", "cast", "target"],
+    // "you may cast up to one target card of the other type from your
+    // graveyard" (Gale, Waterdeep Prodigy): an optional single target.
+    &["you", "may", "cast", "up", "to", "one", "target"],
     // "you may cast an artifact, instant, or sorcery spell from your
     // graveyard" (Bilbo, Thief in the Night): a chosen card, not a target.
     &["you", "may", "cast", "an"],
@@ -452,6 +489,15 @@ const CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT: &[&str] = &[
     "it",
     "instead",
 ];
+/// "If a spell cast from your graveyard this way would be put into your
+/// graveyard, exile it instead." (Gale, Waterdeep Prodigy)
+const CAST_FROM_YOUR_GRAVEYARD_THIS_WAY_REPLACEMENT: &[&str] = &[
+    "if", "a", "spell", "cast", "from", "your", "graveyard", "this", "way", "would", "be", "put",
+    "into", "your", "graveyard", "exile", "it", "instead",
+];
+/// "a card of the other type" relative to the triggering instant or sorcery
+/// spell: the permission names its card types only through that relation.
+const OF_THE_OTHER_TYPE: &[&[&str]] = &[&["of", "the", "other", "type"]];
 const MANA_COMPARISONS: &[&[&str]] = &[
     &["or", "less"],
     &["or", "less", "than", "or", "equal"],

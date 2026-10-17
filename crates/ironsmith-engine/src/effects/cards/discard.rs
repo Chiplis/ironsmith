@@ -908,6 +908,13 @@ fn prepare_selected_discard_batch_with_retention(
     // Commit the frozen selection using the discard action owner. The cause is inherited from
     // the execution context so discard-as-cost stays cost-caused.
     let cause = ctx.cause.clone();
+    // "Spells and abilities your opponents control can't cause you to
+    // discard cards" (Tamiyo, Collector of Tales): the discard doesn't happen.
+    let cards_to_discard = if game.can_discard_with_cause(player_id, &cause) {
+        cards_to_discard
+    } else {
+        Vec::new()
+    };
     let chosen_cards = cards_to_discard.clone();
     let chosen_memory: Vec<_> = chosen_cards
         .iter()

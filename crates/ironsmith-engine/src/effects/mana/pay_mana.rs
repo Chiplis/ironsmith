@@ -223,6 +223,44 @@ fn maximum_affordable_bounded_x(
     Ok(Some(lower))
 }
 
+/// The payment with a referenced object's mana cost ("pay that spell's mana
+/// cost") folded into its static cost. `Ok(None)` means the referenced cost
+/// can't be paid: the object is gone or has no mana cost (CR 118.6).
+fn with_referenced_mana_cost(
+    effect: &PayManaEffect,
+    game: &GameState,
+    ctx: &ExecutionContext<'_>,
+) -> Result<Option<PayManaEffect>, ExecutionError> {
+    let Some(spec) = effect.mana_cost_of.as_deref() else {
+        return Ok(Some(effect.clone()));
+    };
+    let objects = crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)?;
+    let [id] = objects.as_slice() else {
+        return Ok(None);
+    };
+    let Some(object) = game.object(*id) else {
+        return Ok(None);
+    };
+    let Some(referenced) = crate::filter::object_current_mana_cost(game, *id) else {
+        return Ok(None);
+    };
+    let mut resolved = effect.clone();
+    resolved.mana_cost_of = None;
+    // CR 107.3f/107.3g: X in a spell's mana cost is the value chosen for
+    // it; outside the stack X is zero.
+    if referenced.has_x() && !effect.cost.has_x() {
+        let x = if object.zone == crate::zone::Zone::Stack {
+            object.x_value.unwrap_or(0)
+        } else {
+            0
+        };
+        resolved.x_value = Some(crate::effect::Value::Fixed(x as i32));
+        resolved.independent_x_choice = false;
+    }
+    resolved.cost = effect.cost.combined_with(&referenced);
+    Ok(Some(resolved))
+}
+
 impl EffectExecutor for PayManaEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -251,19 +289,25 @@ impl EffectExecutor for PayManaEffect {
                 ))
             },
             |game, ctx| {
-                let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+                let Some(resolved) = with_referenced_mana_cost(self, game, ctx)? else {
+                    return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                        EffectOutcome::impossible(),
+                    ));
+                };
+                let this = &resolved;
+                let player_id = resolve_player_from_spec(game, &this.player, ctx)?;
                 let chooses_x =
-                    self.cost.has_x() && self.x_value.is_none()
-                        && (self.independent_x_choice || ctx.x_value.is_none());
-                let bounded_x = if self.x_maximum.is_some() || chooses_x {
-                    let semantic_maximum = if let Some(maximum) = &self.x_maximum {
+                    this.cost.has_x() && this.x_value.is_none()
+                        && (this.independent_x_choice || ctx.x_value.is_none());
+                let bounded_x = if this.x_maximum.is_some() || chooses_x {
+                    let semantic_maximum = if let Some(maximum) = &this.x_maximum {
                         resolve_value(game, maximum, ctx)?.max(0) as u32
-                    } else if self.cost.has_waterbend_obligation() {
+                    } else if this.cost.has_waterbend_obligation() {
                         let reason = payment_reason(ctx);
                         let adjusted = game.adjust_mana_cost_for_payment_reason(
                             player_id,
                             Some(ctx.source),
-                            &self.cost,
+                            &this.cost,
                             reason,
                         );
                         let request =
@@ -284,7 +328,7 @@ impl EffectExecutor for PayManaEffect {
                             .total()
                     };
                     let Some(affordable_maximum) =
-                        maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)?
+                        maximum_affordable_bounded_x(this, game, ctx, player_id, semantic_maximum)?
                     else {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::impossible(),
@@ -310,7 +354,7 @@ impl EffectExecutor for PayManaEffect {
                 let x_value = if let Some(chosen) = bounded_x {
                     chosen
                 } else {
-                    self.x_value
+                    this.x_value
                         .as_ref()
                         .map(|value| resolve_value(game, value, ctx))
                         .transpose()?
@@ -318,7 +362,7 @@ impl EffectExecutor for PayManaEffect {
                         .max(0) as u32
                 };
 
-                let Some(children) = try_pay_interactively(self, game, ctx, player_id, x_value)?
+                let Some(children) = try_pay_interactively(this, game, ctx, player_id, x_value)?
                 else {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::impossible(),
@@ -366,12 +410,20 @@ impl CostExecutableEffect for PayManaEffect {
     ) -> Result<(), CostValidationError> {
         let player = resolve_player_from_spec(game, &self.player, ctx)
             .map_err(CostValidationError::ExecutionFailed)?;
-        let adjusted =
-            game.adjust_mana_cost_for_payment_reason(player, Some(ctx.source), &self.cost, reason);
-        let x = if self.x_maximum.is_some() {
+        let resolved = with_referenced_mana_cost(self, game, ctx)
+            .map_err(CostValidationError::ExecutionFailed)?
+            .ok_or_else(|| CostValidationError::Other("referenced mana cost can't be paid".into()))?;
+        let adjusted = game.adjust_mana_cost_for_payment_reason(
+            player,
+            Some(ctx.source),
+            &resolved.cost,
+            reason,
+        );
+        let x = if resolved.x_maximum.is_some() {
             0
         } else {
-            self.x_value
+            resolved
+                .x_value
                 .as_ref()
                 .map(|value| resolve_value(game, value, ctx))
                 .transpose()

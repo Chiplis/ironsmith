@@ -81,7 +81,7 @@ fn exact_resolving_tap_or_untap_choice(effect: &Effect, tag: &TagKey) -> bool {
         || choice.mode_point_costs != [1, 1]
         || choice.disallow_previously_chosen_modes
         || choice.disallow_previously_chosen_modes_this_turn
-        || choice.distinct_player_targets_per_mode
+        || choice.distinct_player_targets_per_mode || choice.optional_choice
         || choice.conditional_mode_range.is_some()
         || choice.presentation_label.is_some()
     {

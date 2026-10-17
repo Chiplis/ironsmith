@@ -412,6 +412,7 @@ fn triggering_object_cardinality(trigger: &TriggerSpec) -> Option<Cardinality> {
         | TriggerSpec::PlayerBecomesMonarch(_)
         | TriggerSpec::YouDrawCard
         | TriggerSpec::DayNightChanged
+        | TriggerSpec::DamageToPlayerPrevented(_)
         | TriggerSpec::StateBased { .. } => None,
         TriggerSpec::CardsMilled { one_or_more: true, .. }
         | TriggerSpec::PhasingChanged { one_or_more: true, .. }

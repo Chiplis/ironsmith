@@ -126,7 +126,7 @@ pub fn parse_counter_descriptor(
     Ok((descriptor.count, descriptor.counter_type))
 }
 
-fn parse_put_counter_count_value(
+pub(crate) fn parse_put_counter_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<(Value, usize), CardTextError> {
     let clause = render_clause_words(tokens);
@@ -331,6 +331,73 @@ pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // "put a +1/+1 counter on target creature of defending player's choice"
+    // (Erithizon): another player announces the target (CR 115.4, 601.2c).
+    // Declare it with that chooser through the delegated TargetOnly, then
+    // put the counters on the declared object through its tag.
+    if let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
+        && choice.object_tokens.iter().any(|token| token.is_word("target"))
+        && let Some(chooser) = match choice.actor {
+            crate::grammar::choices::PossessiveObjectChoiceActor::DefendingPlayer => {
+                Some(PlayerAst::Defending)
+            }
+            crate::grammar::choices::PossessiveObjectChoiceActor::Opponent => {
+                Some(PlayerAst::Opponent)
+            }
+            _ => None,
+        }
+    {
+        let mut effect = parse_put_counters(&choice.object_tokens)?;
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                    target,
+                    target_count: None,
+                    ..
+                }),
+            ..
+        }) = &mut effect
+            && matches!(target, TargetAst::Object(..))
+        {
+            let tag = crate::util::helper_tag_for_tokens(tokens, "chooser_declared_target");
+            let declared = std::mem::replace(
+                target,
+                TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), span_from_tokens(tokens)),
+            );
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::TagAffected {
+                        effect: Box::new(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            declared, chooser,
+                        )),
+                        tag: crate::tag::TagRef::of(tag),
+                    },
+                    effect,
+                ],
+            });
+        }
+        // Any other shape keeps its ordinary reading below.
+    }
+    // "put the same number and kind of counters on <target>" (Captain
+    // Marvel, Bold Plagiarist): the triggering placement's counters; the
+    // "and" belongs to the noun phrase and must not coordinate.
+    {
+        let body = shapes::strip_optional_put_prefix(tokens);
+        let words = crate::lexer::token_word_refs(body);
+        const NOUN: usize = 8;
+        if words.len() > NOUN
+            && (words[..NOUN] == ["the", "same", "number", "and", "kind", "of", "counters", "on"]
+                || words[..NOUN]
+                    == ["the", "same", "kind", "and", "number", "of", "counters", "on"])
+        {
+            let body_view = crate::lexer::TokenWordView::new(body);
+            let starts = body_view.token_start_indices();
+            if let Some(&start) = starts.get(NOUN) {
+                let target = parse_counter_target_phrase(&body[start..])?;
+                return Ok(EffectAst::PutTriggeringCounterKind { target });
+            }
+        }
+    }
     if let Some(effects) = super::subject_verb_primitives::parse_shared_counter_target(tokens)? {
         return Ok(EffectAst::Sequence { effects });
     }
@@ -807,11 +874,17 @@ pub fn parse_half_starting_life_total_value(
     player: PlayerAst,
 ) -> Option<Value> {
     let shape = shapes::parse_half_starting_life_shape(tokens)?;
-    let player_filter =
-        shapes::player_filter_for_half_reference(player).unwrap_or_else(|| shape.player.clone());
-    if player_filter != shape.player {
-        return None;
-    }
+    let player_filter = if shape.player == PlayerFilter::IteratedPlayer {
+        // "their" names the clause's own subject; keep it relative.
+        PlayerFilter::IteratedPlayer
+    } else {
+        let player_filter = shapes::player_filter_for_half_reference(player)
+            .unwrap_or_else(|| shape.player.clone());
+        if player_filter != shape.player {
+            return None;
+        }
+        player_filter
+    };
     Some(match shape.rounding {
         shapes::HalfStartingLifeRounding::Up => {
             Value::HalfStartingLifeTotalRoundedUp(player_filter)

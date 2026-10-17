@@ -344,6 +344,7 @@ impl CreationPhrase {
                 &["it", "has"],
                 &["it", "gains"],
                 &["they", "have"],
+                &["they", "each", "have"],
                 &["they", "gain"],
                 &["equip"],
                 &["equipped", "creature"],

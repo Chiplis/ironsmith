@@ -93,6 +93,17 @@ pub enum EventValueSpec {
     /// Number of this batch's numeric results satisfying the authored predicate.
     DieResultsAtLeast(i32),
     CastSpell(CastEventQuantity),
+    /// Loyalty counters removed from the source to pay the triggering
+    /// activation's cost ("if you removed two or more loyalty counters to
+    /// activate it", Way of the Mind Sculptor). Appended.
+    LoyaltyCountersRemovedToActivate,
+    /// Life paid to activate the triggering ability ("if life was paid to
+    /// activate it, you may pay that much life again", Verrak). Appended.
+    LifePaidToActivate,
+    /// Damage beyond lethal in the triggering damage event (CR 120.10):
+    /// "you get X {E}, where X is that excess damage" (Overclocked
+    /// Electromancer). Appended.
+    ExcessDamage,
 }
 
 #[cfg(test)]

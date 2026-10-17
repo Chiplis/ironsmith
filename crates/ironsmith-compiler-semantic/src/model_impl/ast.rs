@@ -145,6 +145,16 @@ pub enum StaticAbilityAst {
     SoulbondSharedObjectAbility {
         ability: ParsedAbility,
     },
+    /// "As long as the top card of your graveyard is a creature card, this
+    /// creature has the full text of that card and has the text "..."."
+    /// (Volrath's Shapeshifter): `abilities` are the quoted texts it also
+    /// has, labelled by `ability_labels`.
+    SourceHasFullTextOfTopGraveyardCard {
+        filter: ObjectFilter,
+        abilities: Vec<ParsedAbility>,
+        ability_labels: Vec<String>,
+        display: String,
+    },
     AttachmentRestriction {
         filter: AuraAttachmentFilter,
         display: String,
@@ -187,6 +197,8 @@ pub enum TriggerSpec {
     PlayerBecomesTargeted { player: PlayerFilter, source_controller: PlayerFilter, source_kind: ironsmith_core::filter_model::StackObjectKind },
     BecomesTargetedByAbilitySource { target: ObjectFilter, source: ObjectFilter },
     ThisPhasesOut,
+    /// "Whenever a mana ability of this creature resolves" (Tyvar).
+    SourceManaAbilityResolves,
     PhasingChanged { filter: ObjectFilter, phased_in: bool, one_or_more: bool },
     CardsMilled { player: PlayerFilter, filter: Option<ObjectFilter>, one_or_more: bool, per_player: bool },
     PlayerAttackDeclaration { attacker: PlayerFilter, defender: PlayerFilter, grouping: ironsmith_core::trigger_model::PlayerAttackGrouping },
@@ -424,6 +436,10 @@ pub enum TriggerSpec {
         caused_by_source_entering: bool,
         /// The ability triggered on that same source's attack declaration.
         caused_by_source_attacking: bool,
+        /// Any permanent entering the battlefield caused the ability to
+        /// trigger ("a permanent entering causes a triggered ability to
+        /// trigger").
+        caused_by_permanent_entering: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,
@@ -644,6 +660,8 @@ pub enum TriggerSpec {
         surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface,
     },
     DayNightChanged,
+    /// "Whenever damage that would be dealt to you is prevented" (Selfless Squire).
+    DamageToPlayerPrevented(PlayerFilter),
     /// "Whenever damage [from a <quality> source] is prevented this way";
     /// only meaningful as a delayed trigger linked to the preceding shield.
     DamagePreventedThisWay {
@@ -738,4 +756,6 @@ pub enum TriggerSpec {
     KeywordActionOneOrMore { action: crate::events::KeywordActionKind, player: PlayerFilter, source_filter: ObjectFilter },
     PlayerPaysLife(PlayerFilter),
     PlayerBecomesMonarch(PlayerFilter),
+    /// "Whenever the final chapter ability of a Saga you control triggers".
+    FinalChapterAbilityTriggers(ObjectFilter),
 }

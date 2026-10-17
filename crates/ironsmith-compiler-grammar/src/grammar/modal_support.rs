@@ -269,6 +269,17 @@ pub fn parse_modal_header(
     } else {
         trim_lexed_commas(&tokens[effect_start_idx..choose_idx])
     };
+    // "you may choose two" (CR 700.2): the choice itself is optional, so
+    // choosing no modes is also legal. It is not a "may" effect before the
+    // choice.
+    let optional_choice = prechoose_tokens.len() >= 2
+        && prechoose_tokens[prechoose_tokens.len() - 2].is_word("you")
+        && prechoose_tokens[prechoose_tokens.len() - 1].is_word("may");
+    let prechoose_tokens = if optional_choice {
+        trim_lexed_commas(&prechoose_tokens[..prechoose_tokens.len() - 2])
+    } else {
+        prechoose_tokens
+    };
     let (intervening_if, prechoose_tokens) =
         split_modal_trigger_intervening_if(trigger.is_some(), prechoose_tokens);
     let (prefix_effects_ast, modal_gate) = parse_modal_header_prefix_effects(prechoose_tokens)?;
@@ -303,6 +314,7 @@ pub fn parse_modal_header(
         common_suffix_effects_ast,
         modal_gate,
         cast_chooser,
+        optional_choice,
     }))
 }
 
@@ -604,6 +616,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal {
                 amount,
             })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaScaled { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
@@ -613,6 +626,8 @@ fn replace_modal_header_x_in_effect_ast(
                 amount,
                 ..
             })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. },
@@ -626,6 +641,10 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalLandPlays {
+                count: amount,
+                ..
+            })
+            | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::AdditionalSteps {
                 count: amount,
                 ..
             })
@@ -712,6 +731,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ConniveIterated)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::OpenAttraction { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollToVisitAttractions)
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::RollPlanarDie)
             | SubjectVerbActionAst::Library(LibraryActionAst::ManifestTopCardOfLibrary)
             | SubjectVerbActionAst::Library(LibraryActionAst::CloakTopCardOfLibrary)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ManifestCardFromHand)
@@ -727,7 +747,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. })
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
                 LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
@@ -736,6 +756,7 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyard)
+            | SubjectVerbActionAst::Library(LibraryActionAst::ReorderGraveyardAtRandom)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardType { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNamedOption { .. })
@@ -745,6 +766,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. })
             | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::NoteLifeTotal)
+            | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::RedistributeLifeTotals)
             | SubjectVerbActionAst::Mana(ManaActionAst::AddMana { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeLifeTotals { .. })
             | SubjectVerbActionAst::Exchanges(ExchangeActionAst::ExchangeTextBoxes { .. })
@@ -764,10 +786,12 @@ fn replace_modal_header_x_in_effect_ast(
                 PermanentStateActionAst::SwitchPowerToughness { .. },
             )
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
             | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+            | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
@@ -819,6 +843,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::MustAttackPlayerThisTurn { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockTargetRoomDoor { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::ClearSuspected { .. })
@@ -877,6 +902,7 @@ fn replace_modal_header_x_in_effect_ast(
                 ..
             })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters {
                 ..
@@ -1003,6 +1029,9 @@ fn replace_modal_header_x_in_effect_ast(
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterNextBatchEnterWithCounters { .. },
+            )
+            | SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterNextBatchEnterAsCopy { .. },
             )
             | SubjectVerbActionAst::Control(ControlActionAst::Enchant { .. })
             | SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseSpellCastHistory { .. })

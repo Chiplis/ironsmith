@@ -427,6 +427,376 @@ pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     ]))
 }
 
+/// "For each color, put a +1/+1 counter on a Dragon you control of that
+/// color. If you put +1/+1 counters on five Dragons this way, you win the
+/// game." (Call the Spirit Dragons): one non-target choice and placement per
+/// color (W, U, B, R, G in order), then a gate on the number of distinct
+/// objects that received counters across all five choices.
+pub fn parse_for_each_color_counter_choice_then_distinct_count(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(first), Some(second)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    let first_tokens = trim_commas(first.lowered());
+    let words = crate::lexer::token_word_refs(&first_tokens);
+    if words.len() < 10
+        || !words.starts_with(&["for", "each", "color"])
+        || !words.ends_with(&["of", "that", "color"])
+    {
+        return Ok(None);
+    }
+    let first_view = crate::lexer::TokenWordView::new(&first_tokens);
+    let starts = first_view.token_start_indices();
+    let (Some(&body_start), Some(&body_end)) = (starts.get(3), starts.get(words.len() - 3)) else {
+        return Ok(None);
+    };
+    let body = trim_commas(&first_tokens[body_start..body_end]);
+    let body_words = crate::lexer::token_word_refs(&body);
+    let body_view = crate::lexer::TokenWordView::new(&body);
+    let body_starts = body_view.token_start_indices();
+    if body_words.first() != Some(&"put") {
+        return Ok(None);
+    }
+    let Some(on) = body_words.iter().position(|word| *word == "on") else {
+        return Ok(None);
+    };
+    if on < 2 || !body_words.get(on + 1).is_some_and(|word| matches!(*word, "a" | "an")) {
+        return Ok(None);
+    }
+    let (Some(&descriptor_start), Some(&descriptor_end), Some(&recipient_start)) =
+        (body_starts.get(1), body_starts.get(on), body_starts.get(on + 2))
+    else {
+        return Ok(None);
+    };
+    let (count, counter_type) = crate::effect_sentences::zone_counter_helpers::parse_counter_descriptor(
+        &body[descriptor_start..descriptor_end],
+    )?;
+    let recipient = parse_object_filter_lexed(&body[recipient_start..], false)?;
+
+    let second_tokens = trim_commas(second.lowered());
+    let second_words = crate::lexer::token_word_refs(&second_tokens);
+    if !second_words.starts_with(&["if", "you", "put"]) {
+        return Ok(None);
+    }
+    let Some(second_on) = second_words.iter().position(|word| *word == "on") else {
+        return Ok(None);
+    };
+    let Some(this_way) = second_words
+        .windows(2)
+        .position(|pair| pair == ["this", "way"])
+    else {
+        return Ok(None);
+    };
+    let Some(required) = second_words
+        .get(second_on + 1)
+        .and_then(|word| crate::util::parse_number_word_i32(word))
+    else {
+        return Ok(None);
+    };
+    if this_way <= second_on + 2 {
+        return Ok(None);
+    }
+    let second_view = crate::lexer::TokenWordView::new(&second_tokens);
+    let second_starts = second_view.token_start_indices();
+    let Some(&consequence_start) = second_starts.get(this_way + 2) else {
+        return Ok(None);
+    };
+    let consequence = trim_commas(&second_tokens[consequence_start..]);
+    if consequence.is_empty() {
+        return Ok(None);
+    }
+    let consequence_effects = effect_sentences::parse_effect_sentences_lexed(&consequence)?;
+
+    let colors = [
+        ("white", crate::color::ColorSet::WHITE),
+        ("blue", crate::color::ColorSet::BLUE),
+        ("black", crate::color::ColorSet::BLACK),
+        ("red", crate::color::ColorSet::RED),
+        ("green", crate::color::ColorSet::GREEN),
+    ];
+    let mut effects = Vec::new();
+    let mut received = ObjectFilter::default();
+    received.zone = Some(Zone::Battlefield);
+    for (name, color) in colors {
+        let tag = helper_tag_for_tokens(first.lowered(), &format!("color_counter_choice_{name}"));
+        let mut filter = recipient.clone();
+        filter.colors = Some(color);
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: tag.clone(),
+        }));
+        effects.push(EffectAst::subject_verb_put_counters(
+            counter_type,
+            Value::Fixed(count as i32),
+            TargetAst::Tagged(tag.clone(), None),
+            None,
+            false,
+        ));
+        received.any_of.push(ObjectFilter::tagged(tag));
+    }
+    effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::ValueComparison {
+            left: Value::Count(received),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(required),
+        },
+        if_true: consequence_effects,
+        if_false: Vec::new(),
+    }));
+    Ok(Some(effects))
+}
+
+/// "Each player rolls a d20. If one or more opponents had the highest
+/// result, this creature can't attack those players or planeswalkers they
+/// control this combat." (Chaos Dragon): every player rolls, the highest
+/// rollers matching the quantified group are tagged, and the restriction is
+/// applied for each of them.
+pub fn parse_each_player_rolls_then_highest_result_attack_restriction(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(first), Some(second)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    let first_tokens = trim_commas(first.lowered());
+    let first_words = crate::lexer::token_word_refs(&first_tokens);
+    let ["each", "player", "rolls", "a", die] = first_words.as_slice() else {
+        return Ok(None);
+    };
+    let Some(sides) = die.strip_prefix('d').and_then(|sides| sides.parse::<u32>().ok()) else {
+        return Ok(None);
+    };
+    let second_tokens = trim_commas(second.lowered());
+    let words = crate::lexer::token_word_refs(&second_tokens);
+    let (keep, rest) = match words.as_slice() {
+        ["if", "one", "or", "more", "opponents", "had", "the", "highest", "result", rest @ ..] => {
+            (PlayerFilter::Opponent, rest)
+        }
+        ["if", "one", "or", "more", "players", "had", "the", "highest", "result", rest @ ..] => {
+            (PlayerFilter::Any, rest)
+        }
+        _ => return Ok(None),
+    };
+    let (attackers, rest) = match rest {
+        ["this", "creature" | "permanent", rest @ ..] => (ObjectFilter::source(), rest),
+        _ => return Ok(None),
+    };
+    let duration = match rest {
+        [
+            "can't" | "cant",
+            "attack",
+            "those",
+            "players",
+            "or",
+            "planeswalkers",
+            "they",
+            "control",
+            "this",
+            period,
+        ] => match *period {
+            "combat" => crate::effect::Until::EndOfCombat,
+            "turn" => crate::effect::Until::EndOfTurn,
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    };
+    let tag = helper_tag_for_tokens(first.lowered(), "highest_roll_players");
+    Ok(Some(vec![
+        EffectAst::RollDieKeepHighestPlayers {
+            sides,
+            keep,
+            tag: tag.clone(),
+        },
+        EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
+            tag,
+            effects: vec![EffectAst::subject_verb_cant(
+                crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(
+                    attackers,
+                    PlayerFilter::IteratedPlayer,
+                ),
+                duration,
+                None,
+            )],
+            require_evidence: false,
+        }),
+    ]))
+}
+
+/// "Create a token that's a copy of a card you exiled with cards named
+/// <name>. X is the mana value of that card." (Caller of the Untamed): the
+/// activator picks one linked exiled card whose mana value is the announced
+/// X, then copies it.
+pub fn parse_token_copy_of_chosen_card_with_x_mana_value(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(first), Some(second)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    let second_tokens = trim_commas(second.lowered());
+    let second_words = crate::lexer::token_word_refs(&second_tokens);
+    if !matches!(
+        second_words.as_slice(),
+        ["x", "is", "the", "mana", "value", "of", "that", "card" | "creature" | "permanent"]
+            | ["x", "is", "that", "card's" | "cards", "mana", "value"]
+    ) {
+        return Ok(None);
+    }
+    let first_tokens = trim_commas(first.lowered());
+    let words = crate::lexer::token_word_refs(&first_tokens);
+    const HEAD: usize = 7;
+    if words.len() <= HEAD
+        || !matches!(
+            &words[..HEAD],
+            ["create", "a", "token", "that's" | "thats", "a", "copy", "of"]
+        )
+        || !words.windows(4).any(|window| window == ["exiled", "with", "cards", "named"])
+    {
+        return Ok(None);
+    }
+    let starts = crate::lexer::TokenWordView::new(&first_tokens).token_start_indices();
+    let Some(&filter_start) = starts.get(HEAD) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&first_tokens[filter_start..], false)?;
+    if filter.exiled_with_cards_named.is_none() {
+        return Ok(None);
+    }
+    filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(Value::X)));
+    let copy = crate::lexer::lex_line("create a token that's a copy of it.", 0).map_err(|_| {
+        CardTextError::ParseError("unsupported linked-exile token copy".to_string())
+    })?;
+    let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+        filter,
+        count: ChoiceCount::exactly(1),
+        count_value: None,
+        player: PlayerAst::You,
+        tag: crate::tag::CompilerReferenceTag::It.bind(),
+    })];
+    effects.extend(effect_sentences::parse_effect_sentences_lexed(&copy)?);
+    Ok(Some(effects))
+}
+
+/// "Each player secretly chooses a creature they control and a creature they
+/// don't control. Then those choices are revealed. Destroy each creature
+/// chosen this way." (Call to the Void): two hidden selections per player,
+/// revealed together, then one simultaneous destruction of every chosen
+/// creature.
+pub fn parse_each_player_secret_own_and_other_creature_then_destroy(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(first), Some(second), Some(third)) = (
+        sentences.get(sentence_idx),
+        sentences.get(sentence_idx + 1),
+        sentences.get(sentence_idx + 2),
+    ) else {
+        return Ok(None);
+    };
+    let words_of = |sentence: &SentenceInput| {
+        crate::lexer::token_word_refs(trim_commas(sentence.lowered()).as_slice())
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let first_words = words_of(first);
+    let first_words = first_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let noun = match first_words.as_slice() {
+        [
+            "each",
+            "player",
+            "secretly",
+            "chooses",
+            "a",
+            noun,
+            "they",
+            "control",
+            "and",
+            "a",
+            other_noun,
+            "they",
+            "don't" | "dont",
+            "control",
+        ] if noun == other_noun => *noun,
+        _ => return Ok(None),
+    };
+    let base = match noun {
+        "creature" => ObjectFilter::creature(),
+        "permanent" => ObjectFilter::permanent(),
+        _ => return Ok(None),
+    };
+    let second_words = words_of(second);
+    if second_words != ["then", "those", "choices", "are", "revealed"] {
+        return Ok(None);
+    }
+    let third_words = words_of(third);
+    if third_words.as_slice() != ["destroy", "each", noun, "chosen", "this", "way"] {
+        return Ok(None);
+    }
+    let own_tag = helper_tag_for_tokens(first.lowered(), "secret_own_choice");
+    let other_tag = helper_tag_for_tokens(first.lowered(), "secret_other_choice");
+    let own = base
+        .clone()
+        .controlled_by(PlayerFilter::IteratedPlayer)
+        .in_zone(Zone::Battlefield);
+    let other = base
+        .clone()
+        .controlled_by(PlayerFilter::Excluding {
+            base: Box::new(PlayerFilter::Any),
+            excluded: Box::new(PlayerFilter::IteratedPlayer),
+        })
+        .in_zone(Zone::Battlefield);
+    let mut destroyed = ObjectFilter::default();
+    destroyed.any_of = vec![
+        ObjectFilter::tagged(own_tag.clone()),
+        ObjectFilter::tagged(other_tag.clone()),
+    ];
+    Ok(Some(vec![
+        // The first selection stays hidden until the second one is made;
+        // both are revealed together.
+        EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
+            options: Vec::new(),
+            participants: vec![PlayerFilter::Any],
+            object_choice: Some(crate::effects::SecretObjectChoice {
+                filter: own,
+                count: ChoiceCount::exactly(1),
+                tag: own_tag.into(),
+                reveal_after_choice: false,
+            }),
+        }),
+        EffectAst::Votes(VoteEffectAst::SecretChoiceStart {
+            options: Vec::new(),
+            participants: vec![PlayerFilter::Any],
+            object_choice: Some(crate::effects::SecretObjectChoice {
+                filter: other,
+                count: ChoiceCount::exactly(1),
+                tag: other_tag.into(),
+                reveal_after_choice: true,
+            }),
+        }),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::DestroyAll {
+                filter: destroyed,
+                no_regeneration: false,
+                creature_destroyed_this_way_surface: false,
+            }),
+        ),
+    ]))
+}
+
 #[cfg(test)]
 #[path = "reference_linked_inline_secret_object_choice_tests_13.rs"]
 mod secret_object_choice_tests;
@@ -607,6 +977,49 @@ pub fn parse_inline_look_at_top_then_singleton_hand_partition(
         count,
         remainder_destination,
     ))
+}
+
+/// "Look at the top four cards of your library, then put up to two of them
+/// back on top of your library in any order and the rest into your
+/// graveyard" (Rowan's Grim Search): a counted selection and its exact
+/// remainder, each moved to its own destination.
+pub fn parse_inline_look_at_top_then_counted_partition(
+    look_tokens: &[OwnedLexToken],
+    partition_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let look_tokens = trim_commas(look_tokens);
+    let partition_tokens = trim_commas(partition_tokens);
+    let (player, count, reveal_top) = parse_top_cards_view_sentence(&look_tokens)?;
+    if reveal_top {
+        return None;
+    }
+    let shape = effect_grammar::parse_looked_card_partition_shape(
+        crate::lexer::trim_lexed_commas(&partition_tokens),
+    )?;
+    let looked_tag = helper_tag_for_tokens(&look_tokens, "looked_partition");
+    let selected_tag = helper_tag_for_tokens(&partition_tokens, "partition_selected");
+    let remainder_tag = helper_tag_for_tokens(&partition_tokens, "partition_remainder");
+    Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(
+            player,
+            count,
+            crate::tag::TagRef::of(looked_tag.clone()),
+        ),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: tagged_library_candidate_filter(&looked_tag, &[]),
+            count: shape.selected_count,
+            player,
+            tag: crate::tag::TagRef::of(selected_tag.clone()),
+            zone: Zone::Library,
+        }),
+        EffectAst::subject_verb_tag_matching_objects(
+            tagged_library_candidate_filter(&looked_tag, std::slice::from_ref(&selected_tag)),
+            vec![Zone::Library],
+            crate::tag::TagRef::of(remainder_tag.clone()),
+        ),
+        move_looked_partition_group(selected_tag.key.clone(), shape.selected_destination, player),
+        move_looked_partition_group(remainder_tag.key.clone(), shape.remainder_destination, player),
+    ])
 }
 
 fn compose_distinct_three_way_looked_disposition(
@@ -885,6 +1298,64 @@ pub(crate) fn wrap_optional_consult_effects(
 #[path = "reference_linked_inline_optional_consult_gating_tests_14.rs"]
 mod optional_consult_gating_tests;
 
+fn restrict_target_controller(target: TargetAst, controller: PlayerFilter) -> TargetAst {
+    match target {
+        TargetAst::Object(mut filter, target_span, it_span) => {
+            filter.controller = Some(controller);
+            TargetAst::Object(filter, target_span, it_span)
+        }
+        TargetAst::WithCount(inner, count) => {
+            TargetAst::WithCount(Box::new(restrict_target_controller(*inner, controller)), count)
+        }
+        TargetAst::WithCountValue(inner, count, value) => TargetAst::WithCountValue(
+            Box::new(restrict_target_controller(*inner, controller)),
+            count,
+            value,
+        ),
+        other => other,
+    }
+}
+
+/// "Put a -1/-1 counter on the other." (Retribution): one counter of a named
+/// kind on the target-set member the controller did not choose.
+fn put_counter_on_other_counter_type(tokens: &[OwnedLexToken]) -> Option<crate::object::CounterType> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words: Vec<&str> = words.into_iter().filter(|word| *word != ".").collect();
+    let ["put", "a" | "an" | "one", rest @ ..] = words.as_slice() else {
+        return None;
+    };
+    let counter_idx = rest.iter().position(|word| *word == "counter")?;
+    if !matches!(&rest[counter_idx + 1..], ["on", "the", "other"] | ["on", "other"]) {
+        return None;
+    }
+    crate::grammar::filters::parse_counter_type_words(&rest[..=counter_idx])
+}
+
+#[cfg(test)]
+mod same_controller_counter_program_tests {
+    use super::*;
+
+    #[test]
+    fn target_pair_sacrifice_and_counter_other_form_one_program() {
+        let sentences: Vec<_> = [
+            "Choose two target creatures controlled by the same opponent.",
+            "That player chooses and sacrifices one of those creatures.",
+            "Put a -1/-1 counter on the other.",
+        ].into_iter().enumerate().map(|(line, text)| {
+            SentenceInput::from_lexed(&crate::lexer::lex_line(text, line).unwrap())
+        }).collect();
+        assert!(effect_grammar::parse_same_controller_sacrifice_shape(
+            sentences[0].lowered(), sentences[1].lowered(),
+        ).is_some(), "target and sacrifice sentences must retain their shared controller: {:?} / {:?}", crate::lexer::parser_token_word_refs(sentences[0].lowered()), crate::lexer::parser_token_word_refs(sentences[1].lowered()));
+        assert_eq!(put_counter_on_other_counter_type(sentences[2].lowered()), Some(crate::object::CounterType::MinusOneMinusOne), "counter sentence: {:?}", crate::lexer::parser_token_word_refs(sentences[2].lowered()));
+        let effects = parse_choose_same_controller_targets_then_sacrifice_one_return_other(&sentences, 0)
+            .unwrap().expect("one shared target-pair program");
+        assert_eq!(effects.len(), 5, "target declaration, snapshot, choice, sacrifice, counter");
+        let document = crate::lexer::lex_line("Choose two target creatures controlled by the same opponent. That player chooses and sacrifices one of those creatures. Put a -1/-1 counter on the other.", 0).unwrap();
+        effect_sentences::parse_effect_sentences_lexed(&document).expect("the document entry must preserve the target-pair procedure");
+    }
+}
+
 fn mark_target_set_same_controller(target: TargetAst) -> TargetAst {
     match target {
         TargetAst::Object(mut filter, target_span, it_span) => {
@@ -927,7 +1398,41 @@ pub fn parse_exile_face_down_pile_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_face_down_pile_sentence_shape(tokens) else {
-        return Ok(None);
+        // "Exile <objects> in a face-down pile, shuffle that pile, then
+        // manifest those cards." (Ghastly Conscription): the exiled objects
+        // alone form the shuffled pile that enters face down (CR 701.40a/e).
+        let Some((target_tokens, manifest)) =
+            effect_grammar::parse_object_face_down_pile_sentence_shape(tokens)
+        else {
+            return Ok(None);
+        };
+        let target = effect_sentences::parse_target_phrase(target_tokens)?;
+        let pile_tag = helper_tag_for_tokens(tokens, "face_down_pile");
+        let pile = TargetAst::Tagged(crate::tag::TagRef::of(pile_tag.clone()), None);
+        let entry = if manifest {
+            EffectAst::subject_verb_manifest_onto_battlefield(
+                PlayerAst::You,
+                pile,
+                false,
+                ReturnControllerAst::You,
+                true,
+            )
+        } else {
+            EffectAst::subject_verb_cloak_onto_battlefield(
+                PlayerAst::You,
+                pile,
+                false,
+                ReturnControllerAst::You,
+                true,
+            )
+        };
+        return Ok(Some(vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_exile(target, true)),
+                tag: crate::tag::TagRef::of(pile_tag),
+            },
+            entry,
+        ]));
     };
     face_down_pile_effects(tokens, shape).map(Some)
 }
@@ -1340,7 +1845,10 @@ pub fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
         return Ok(None);
     };
 
-    if !effect_grammar::is_return_other_to_owner_hand_shape(sentences[sentence_idx + 2].lowered()) {
+    let third = sentences[sentence_idx + 2].lowered();
+    let returns_other = effect_grammar::is_return_other_to_owner_hand_shape(third);
+    let other_counter = if returns_other { None } else { put_counter_on_other_counter_type(third) };
+    if !returns_other && other_counter.is_none() {
         return Ok(None);
     }
 
@@ -1351,11 +1859,103 @@ pub fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
             tag: chosen_tag,
             relation: TaggedOpbjectRelation::IsNotTaggedObject,
         });
+    if let Some(counter_type) = other_counter {
+        effects.push(EffectAst::subject_verb_put_counters(
+            counter_type,
+            Value::Fixed(1),
+            TargetAst::Object(other_filter, None, None),
+            None,
+            false,
+        ));
+        return Ok(Some(effects));
+    }
     effects.push(EffectAst::subject_verb_return_to_hand(
         TargetAst::Object(other_filter, None, None),
         false,
     ));
     Ok(Some(effects))
+}
+
+/// "Choose two target creatures controlled by the same opponent. That player
+/// chooses one of those creatures. <Source> deals N damage to that creature,
+/// and the other can't block this turn." (Trial of Agony)
+pub fn parse_choose_same_controller_targets_then_damage_chosen_other_cant_block(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(third) = sentences.get(sentence_idx + 2) else {
+        return Ok(None);
+    };
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Some(shape) =
+        effect_grammar::parse_same_controller_choose_one_shape(&first_tokens, &second_tokens)
+    else {
+        return Ok(None);
+    };
+    let third_words: Vec<&str> = crate::lexer::parser_token_word_refs(third.lowered())
+        .into_iter()
+        .filter(|word| !matches!(*word, "." | ","))
+        .collect();
+    let Some(deals_idx) = third_words.iter().position(|word| *word == "deals") else {
+        return Ok(None);
+    };
+    if !crate::util::is_source_reference_words(&third_words[..deals_idx]) {
+        return Ok(None);
+    }
+    let [amount_word, "damage", "to", "that", "creature", "and", "the", "other", "can't" | "cant", "block", "this", "turn"] =
+        &third_words[deals_idx + 1..]
+    else {
+        return Ok(None);
+    };
+    let Some(amount) = crate::util::parse_number_word_u32(amount_word) else {
+        return Ok(None);
+    };
+
+    let mut target = mark_target_set_same_controller(effect_sentences::parse_target_phrase(
+        &trim_commas(&first_tokens[shape.target]),
+    )?);
+    if crate::lexer::token_word_refs(&first_tokens)
+        .windows(2)
+        .any(|pair| pair == ["same", "opponent"])
+    {
+        target = restrict_target_controller(target, PlayerFilter::Opponent);
+    }
+    let TargetAst::WithCount(_, target_count) = &target else {
+        return Ok(None);
+    };
+    if target_count.min != 2 || target_count.max != Some(2) || target_count.is_random() {
+        return Ok(None);
+    }
+    let target_set_tag = helper_tag_for_tokens(&first_tokens, "target_set");
+    let chosen_tag = helper_tag_for_tokens(&second_tokens, "chosen");
+    let mut other_filter = ObjectFilter::tagged(target_set_tag.clone());
+    other_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: chosen_tag.key.clone(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    Ok(Some(vec![
+        EffectAst::subject_verb_target_only(target),
+        EffectAst::SnapshotLastObjectTag {
+            into: crate::tag::TagRef::of(target_set_tag.clone()),
+        },
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: ObjectFilter::tagged(target_set_tag),
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::ItsController,
+            tag: crate::tag::TagRef::of(chosen_tag.clone()),
+        }),
+        EffectAst::subject_verb_damage(
+            Value::Fixed(amount as i32),
+            TargetAst::Object(ObjectFilter::tagged(chosen_tag), None, None),
+        ),
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::block(other_filter),
+            crate::effect::Until::EndOfTurn,
+            None,
+        ),
+    ]))
 }
 
 fn parse_same_controller_targets_choose_sacrifice(
@@ -1369,9 +1969,17 @@ fn parse_same_controller_targets_choose_sacrifice(
     else {
         return Ok(None);
     };
-    let target = mark_target_set_same_controller(effect_sentences::parse_target_phrase(
+    let mut target = mark_target_set_same_controller(effect_sentences::parse_target_phrase(
         &trim_commas(&first_tokens[shape.target]),
     )?);
+    // "controlled by the same opponent" (Retribution): the shared controller
+    // must also be an opponent.
+    if crate::lexer::token_word_refs(&first_tokens)
+        .windows(2)
+        .any(|pair| pair == ["same", "opponent"])
+    {
+        target = restrict_target_controller(target, PlayerFilter::Opponent);
+    }
     let TargetAst::WithCount(_, target_count) = &target else {
         return Ok(None);
     };
@@ -1550,6 +2158,28 @@ pub fn graveyard_cast_with_exile_replacement_surface(
     shape: &effect_grammar::GraveyardCastReplacementShape,
     cast_this_way: bool,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    graveyard_cast_with_exile_replacement_and_surcharge(first, shape, cast_this_way, None)
+}
+
+/// `unless_targets_surcharge` is "If that spell doesn't target <filter>, it
+/// costs {N} more to cast this way", carried on the turn-long permission.
+pub fn graveyard_cast_with_exile_replacement_and_surcharge(
+    first: &[OwnedLexToken],
+    shape: &effect_grammar::GraveyardCastReplacementShape,
+    cast_this_way: bool,
+    unless_targets_surcharge: Option<(crate::mana::ManaCost, ObjectFilter)>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "... from your graveyard this turn": the trailing duration is not part
+    // of the target description.
+    let first = if shape.trailing_this_turn {
+        crate::grammar::primitives::strip_lexed_suffix_phrase(first, &["this", "turn"])
+            .unwrap_or(first)
+    } else {
+        first
+    };
+    if unless_targets_surcharge.is_some() && !shape.until_end_of_turn {
+        return Ok(None);
+    }
     let chosen_tag = helper_tag_for_tokens(first, "graveyard_cast_target");
     let cast_spell_tag = helper_tag_for_tokens(first, "cast_spell");
     let first_view = crate::lexer::TokenWordView::new(first);
@@ -1608,9 +2238,35 @@ pub fn graveyard_cast_with_exile_replacement_surface(
             }
         }
     }
-    let Ok(filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
+    // "up to one target card ..." (Gale, Waterdeep Prodigy): the single
+    // target is optional.
+    let up_to_one_target = !chosen_not_targeted
+        && target_word >= 3
+        && first_view.word_refs()[target_word - 3..target_word] == ["up", "to", "one"];
+    // "a card of the other type" relative to the triggering instant or
+    // sorcery spell: an instant or sorcery card sharing no card type with it.
+    let other_type_start = target_filter_tokens.windows(4).position(|window| {
+        window[0].is_word("of")
+            && window[1].is_word("the")
+            && window[2].is_word("other")
+            && window[3].is_word("type")
+    });
+    if let Some(start) = other_type_start {
+        target_filter_tokens.drain(start..start + 4);
+    }
+    let Ok(mut filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
         return Ok(None);
     };
+    if other_type_start.is_some() {
+        if !filter.card_types.is_empty() {
+            return Ok(None);
+        }
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        filter = filter.match_tagged(
+            crate::tag::CompilerReferenceTag::Triggering.key(),
+            TaggedOpbjectRelation::SharesNoCardTypeWithTagged,
+        );
+    }
     let spell_card = filter
         .card_types
         .iter()
@@ -1620,29 +2276,49 @@ pub fn graveyard_cast_with_exile_replacement_surface(
     if filter.zone != Some(Zone::Graveyard) || !spell_card {
         return Ok(None);
     }
+    let graveyard_card_target = |filter: ObjectFilter| {
+        let target = TargetAst::Object(filter, Some(TextSpan::synthetic()), None);
+        if up_to_one_target {
+            TargetAst::WithCount(Box::new(target), ChoiceCount::up_to(1))
+        } else {
+            target
+        }
+    };
 
     if shape.until_end_of_turn {
         let replacement_filter = ObjectFilter::tagged(chosen_tag.clone()).in_zone(Zone::Stack);
         let surface = ironsmith_core::GrantPlayTaggedSurface::default()
-            .with_leading_duration(true)
+            .with_leading_duration(!shape.trailing_this_turn)
             .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard);
-        return Ok(Some(vec![
-            EffectAst::TagAffected {
-                effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
-                    filter,
-                    Some(TextSpan::synthetic()),
-                    None,
-                ))),
-                tag: crate::tag::TagRef::of(chosen_tag.clone()),
-            },
+        let mut permission =
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_from_current_zone_with_optional_surface(
-                crate::tag::TagRef::of(chosen_tag),
+                crate::tag::TagRef::of(chosen_tag.clone()),
                 PlayerAst::You,
                 false,
                 shape.without_paying_mana_cost,
                 false,
                 Some(surface),
-            ),
+            );
+        if let Some(surcharge) = unless_targets_surcharge
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        spell_cost_increase_unless_targets,
+                        ..
+                    }),
+                ..
+            }) = &mut permission
+        {
+            *spell_cost_increase_unless_targets = Some(surcharge);
+        }
+        return Ok(Some(vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_target_only(graveyard_card_target(
+                    filter,
+                ))),
+                tag: crate::tag::TagRef::of(chosen_tag.clone()),
+            },
+            permission,
             EffectAst::subject_verb_register_future_zone_replacement(
                 replacement_filter,
                 Some(Zone::Stack),
@@ -1670,11 +2346,7 @@ pub fn graveyard_cast_with_exile_replacement_surface(
         })
     } else {
         EffectAst::TagAffected {
-            effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::Object(
-                filter,
-                Some(TextSpan::synthetic()),
-                None,
-            ))),
+            effect: Box::new(EffectAst::subject_verb_target_only(graveyard_card_target(filter))),
             tag: crate::tag::TagRef::of(chosen_tag.clone()),
         }
     };

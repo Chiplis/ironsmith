@@ -74,6 +74,19 @@ pub fn parse_discard_trigger_card_filter(
 
     let trailing_tokens = envelope.trailing.to_vec();
     if !trailing_tokens.is_empty() {
+        // "a Spirit card or a card with disturb" (Shipwreck Sifters) and
+        // "a card with flashback": the card noun is followed by an alternative
+        // or a qualifier, so the whole phrase is one card filter.
+        let full = strip_leading_articles(strip_leading_one_or_more_lexed(&remainder));
+        if !full.is_empty()
+            && let Ok(mut filter) = parse_object_filter(&full, false)
+        {
+            filter.zone = None;
+            for alternative in &mut filter.any_of {
+                alternative.zone = None;
+            }
+            return Ok(Some(filter));
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing discard trigger clause (clause: '{}')",
             clause_words.join(" ")
@@ -170,6 +183,9 @@ pub fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFilter {
         PossessivePlayerReference::You => PlayerFilter::You,
         PossessivePlayerReference::Opponent => PlayerFilter::Opponent,
         PossessivePlayerReference::Any => PlayerFilter::Any,
+        // Unbound inside the trigger; a granting resolution binds it (see
+        // `bind_granted_trigger_outer_player` in lowering).
+        PossessivePlayerReference::ThatPlayer => PlayerFilter::IteratedPlayer,
     }
 }
 
@@ -701,6 +717,27 @@ pub fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = crate::lexer::token_word_refs(tokens);
+    // "Whenever a player casts a card" (Spellweaver Helix): the spell is a
+    // card, so casting a copy of a card (CR 707.12) doesn't trigger it.
+    if let Some(cast) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "cast" | "casts"))
+        && cast > 0
+        && matches!(&clause_words[cast + 1..], ["a", "card"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.physical_card = true;
+        return Ok(Some(TriggerSpec::SpellCast {
+            filter: Some(filter),
+            mana_source_filter: None,
+            caster: parse_subject_clause_player_filter(&clause_words),
+            timing: None,
+            during_turn: None,
+            min_spells_this_turn: None,
+            exact_spells_this_turn: None,
+            from_not_hand: false,
+        }));
+    }
     let activity_facts = trigger_subject_grammar::parse_spell_activity_surface_facts(&clause_words);
     if !activity_facts.has_spell_noun {
         return Ok(None);
@@ -1153,6 +1190,27 @@ pub fn parse_copy_reference_cost_reduction_sentence(tokens: &[OwnedLexToken]) ->
         return None;
     }
     Some(reduction)
+}
+
+/// "It costs {4} less to cast this way." (Uvilda, Dean of Perfection): the
+/// reduction applies to the cast the preceding instruction permits.
+pub fn parse_cast_this_way_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<ManaCost> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let [it, costs, rest @ ..] = tokens else {
+        return None;
+    };
+    if !(it.is_word("it") || it.is_word("that")) || !costs.is_word("costs") {
+        return None;
+    }
+    let less = rest.iter().position(|token| token.is_word("less"))?;
+    if less == 0
+        || crate::lexer::parser_token_word_refs(&rest[less..]) != ["less", "to", "cast", "this", "way"]
+    {
+        return None;
+    }
+    let reduction_tokens = trim_commas(&rest[..less]).to_vec();
+    let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
+    (consumed == reduction_tokens.len()).then_some(reduction)
 }
 
 pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {

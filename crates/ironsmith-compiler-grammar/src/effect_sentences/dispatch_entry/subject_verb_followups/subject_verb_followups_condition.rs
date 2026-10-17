@@ -904,3 +904,258 @@ pub(super) fn default_effects_for_self_replacement(
 
     (default_effects, carried_player)
 }
+
+/// "Tap that creature as it phases in this way." (Oubliette): a rider on the
+/// preceding source-linked phase-out, not a separate tap now.
+pub(super) fn pre_rule_tap_as_it_phases_in_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    if !matches!(
+        words.as_slice(),
+        ["tap", "that" | "the", "creature" | "permanent", "as", "it", "phases", "in", "this", "way"]
+            | ["tap", "it", "as", "it", "phases", "in", "this", "way"]
+    ) {
+        return Ok(None);
+    }
+    fn mark(effect: &mut EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PermanentState(
+                        crate::cards::builders::PermanentStateActionAst::PhaseOut { duration, .. }
+                        | crate::cards::builders::PermanentStateActionAst::PhaseOutAll {
+                            duration,
+                            ..
+                        },
+                    ),
+                ..
+            }) if *duration == crate::effects::PhaseOutDuration::UntilSourceLeaves => {
+                *duration = crate::effects::PhaseOutDuration::UntilSourceLeavesThenTapped;
+                true
+            }
+            EffectAst::Sequence { effects } => effects.last_mut().is_some_and(mark),
+            _ => false,
+        }
+    }
+    if !state.effects.last_mut().is_some_and(mark) {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
+}
+
+/// "It can't phase in for as long as The Pandorica remains tapped. When The
+/// Pandorica becomes untapped or leaves the battlefield, that permanent phases
+/// in." Both sentences restate one source-linked phasing duration for the
+/// preceding phase-out.
+pub(super) fn pre_rule_phase_in_while_source_tapped_followup(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let Some(source) = words
+        .strip_prefix(&["it", "cant", "phase", "in", "for", "as", "long", "as"][..])
+        .or_else(|| words.strip_prefix(&["it", "can't", "phase", "in", "for", "as", "long", "as"][..]))
+        .and_then(|rest| rest.strip_suffix(&["remains", "tapped"][..]))
+    else {
+        return Ok(None);
+    };
+    if source.first() != Some(&"this") {
+        return Ok(None);
+    }
+    let Some(next) = sentences.get(sentence_idx + 1) else {
+        return Ok(None);
+    };
+    let next_words = crate::lexer::parser_token_word_refs(next.lexed());
+    let mut expected = vec!["when"];
+    expected.extend_from_slice(source);
+    expected.extend_from_slice(&[
+        "becomes", "untapped", "or", "leaves", "the", "battlefield", "that", "permanent",
+        "phases", "in",
+    ]);
+    if next_words != expected {
+        return Ok(None);
+    }
+    fn mark(effect: &mut EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PermanentState(
+                        crate::cards::builders::PermanentStateActionAst::PhaseOut {
+                            duration,
+                            ..
+                        },
+                    ),
+                ..
+            }) if *duration == crate::effects::PhaseOutDuration::UntilNextUntap => {
+                *duration = crate::effects::PhaseOutDuration::UntilSourceUntapsOrLeaves;
+                true
+            }
+            EffectAst::Sequence { effects } => effects.last_mut().is_some_and(mark),
+            _ => false,
+        }
+    }
+    if !state.effects.last_mut().is_some_and(mark) {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 2,
+        route: None,
+    }))
+}
+
+/// "After the second main phase this turn, there's an additional combat phase
+/// followed by an additional main phase. At the beginning of that combat,
+/// untap all creatures that attacked this turn." (World at War)
+///
+/// During the second main phase the phases are added after it now; otherwise
+/// a delayed trigger at the beginning of the postcombat main phase adds them.
+/// "That combat" is the next combat after the insertion, so its rider is a
+/// delayed beginning-of-combat trigger registered with the phases.
+pub(super) fn pre_rule_after_second_main_additional_phases_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let head_ok = matches!(
+        words.as_slice(),
+        ["after", "the", "second", "main", "phase", "this", "turn", "theres" | "there's", "an", "additional", "combat", "phase", "followed", "by", "an", "additional", "main", "phase"]
+            | ["after", "the", "second", "main", "phase", "this", "turn", "there", "is", "an", "additional", "combat", "phase", "followed", "by", "an", "additional", "main", "phase"]
+    );
+    if !head_ok {
+        return Ok(None);
+    }
+    let mut phase_program = vec![EffectAst::subject_verb_additional_phases(vec![
+        crate::effects::AdditionalPhase::Combat,
+        crate::effects::AdditionalPhase::Main,
+    ])];
+    let mut consumed = 1;
+    if let Some(next) = sentences.get(sentence_idx + 1) {
+        let next_tokens = next.lexed();
+        let view = crate::lexer::TokenWordView::new(next_tokens);
+        let next_words = view.word_refs();
+        if next_words.starts_with(&["at", "the", "beginning", "of", "that", "combat"]) {
+            let Some(start) = view.token_index_after_words(6) else {
+                return Ok(None);
+            };
+            let body = trim_commas(&next_tokens[start..]);
+            let rider = crate::clause_support::parse_effect_sentences_lexed(&body)?;
+            if rider.is_empty() {
+                return Ok(None);
+            }
+            phase_program.push(EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+                trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(crate::target::PlayerFilter::Any),
+                effects: rider,
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            }));
+            consumed = 2;
+        }
+    }
+    let delayed = EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: crate::cards::builders::TriggerSpec::BeginningOfPostcombatMain {
+            player: crate::target::PlayerFilter::You,
+            surface: ironsmith_core::trigger_model::PostcombatMainPhaseSurface::SecondMain,
+        },
+        effects: phase_program.clone(),
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    });
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::SecondMainPhaseOfTurn,
+            if_true: phase_program,
+            if_false: vec![delayed],
+        })]),
+        consumed_sentences: consumed,
+    })))
+}
+
+/// "After the first combat phase this turn, there's an additional combat
+/// phase. At the beginning of that combat, untap all creatures that attacked
+/// this turn." (Swinging Ship)
+///
+/// During the first combat phase the combat is added after it now; otherwise
+/// a one-shot delayed trigger at the next end of combat this turn adds it,
+/// provided that combat is still the turn's first (an instruction that
+/// resolves after the first combat phase adds nothing). "That combat" is the
+/// added combat, so its rider is a delayed beginning-of-combat trigger
+/// registered with the phase.
+pub(super) fn pre_rule_after_first_combat_additional_combat_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    let head_ok = matches!(
+        words.as_slice(),
+        ["after", "the", "first", "combat", "phase", "this", "turn", "theres" | "there's", "an", "additional", "combat", "phase"]
+            | ["after", "the", "first", "combat", "phase", "this", "turn", "there", "is", "an", "additional", "combat", "phase"]
+    );
+    if !head_ok {
+        return Ok(None);
+    }
+    let mut phase_program = vec![EffectAst::subject_verb_additional_phases(vec![
+        crate::effects::AdditionalPhase::Combat,
+    ])];
+    let mut consumed = 1;
+    if let Some(next) = sentences.get(sentence_idx + 1) {
+        let next_tokens = next.lexed();
+        let view = crate::lexer::TokenWordView::new(next_tokens);
+        let next_words = view.word_refs();
+        if next_words.starts_with(&["at", "the", "beginning", "of", "that", "combat"]) {
+            let Some(start) = view.token_index_after_words(6) else {
+                return Ok(None);
+            };
+            let body = trim_commas(&next_tokens[start..]);
+            let rider = crate::clause_support::parse_effect_sentences_lexed(&body)?;
+            if rider.is_empty() {
+                return Ok(None);
+            }
+            phase_program.push(EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+                trigger: crate::cards::builders::TriggerSpec::BeginningOfCombat(crate::target::PlayerFilter::Any),
+                effects: rider,
+                one_shot: true,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            }));
+            consumed = 2;
+        }
+    }
+    let delayed = EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: crate::cards::builders::TriggerSpec::EndOfCombat,
+        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::FirstCombatPhaseOfTurn,
+            if_true: phase_program.clone(),
+            if_false: Vec::new(),
+        })],
+        one_shot: true,
+        until_end_of_combat: false,
+        attach_to_previous_ability: false,
+    });
+    Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
+        tokens: sentence_tokens.to_vec(),
+        wrap_if_result: None,
+        direct_effects: Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            predicate: PredicateAst::FirstCombatPhaseOfTurn,
+            if_true: phase_program,
+            if_false: vec![delayed],
+        })]),
+        consumed_sentences: consumed,
+    })))
+}

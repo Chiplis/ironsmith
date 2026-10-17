@@ -25,6 +25,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantAttack
             | DirectCantFact::SourceCantBlock
             | DirectCantFact::SourceCantAttackItsOwner
+            | DirectCantFact::SourceCantAttackPlayerAlreadyAttacked
             | DirectCantFact::SourceCantBeBlocked
             | DirectCantFact::SourceCantAttackAlone
             | DirectCantFact::SourceCantBlockAlone
@@ -51,6 +52,14 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::PlayersCantGainLife => StaticAbility::players_cant_gain_life(),
         DirectCantFact::PlayersCantSearchLibraries => StaticAbility::players_cant_search(),
         DirectCantFact::DamageCantBePrevented => StaticAbility::damage_cant_be_prevented(),
+        DirectCantFact::DamageToYouAsThoughInfect => StaticAbility::restriction(
+            crate::effect::Restriction::damage_as_though_infect(PlayerFilter::You),
+            "All damage is dealt to you as though its source had infect".to_string(),
+        ),
+        DirectCantFact::AllDamageAsThoughWither => StaticAbility::restriction(
+            crate::effect::Restriction::all_damage_as_though_wither(),
+            "All damage is dealt as though its source had wither".to_string(),
+        ),
         DirectCantFact::CombatDamageCantBePrevented => StaticAbility::restriction(
             crate::effect::Restriction::PreventCombatDamage,
             "Combat damage can't be prevented".to_string(),
@@ -68,6 +77,12 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantAttack => StaticAbility::cant_attack(),
         DirectCantFact::SourceCantBlock => StaticAbility::cant_block(),
         DirectCantFact::SourceCantAttackItsOwner => StaticAbility::cant_attack_its_owner(),
+        DirectCantFact::SourceCantAttackPlayerAlreadyAttacked => {
+            StaticAbility::cant_attack_player_already_attacked_this_turn()
+        }
+        DirectCantFact::SourceLethalDamageMustBeFromSingleSource => {
+            StaticAbility::lethal_damage_must_be_from_single_source()
+        }
         DirectCantFact::OpponentCausesCantMakeYouSacrifice => StaticAbility::restriction(
             crate::effect::Restriction::BeSacrificedByCause {
                 filter: ObjectFilter::permanent().controlled_by(PlayerFilter::You),
@@ -77,6 +92,7 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
                     ])),
                     source_filter: None,
                     controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
+                    ability_kind: None,
                 },
             },
             format_negated_restriction_display(tokens),
@@ -450,11 +466,116 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
     tokens
 }
 
+/// "Black creatures can't attack unless their controller sacrifices a land
+/// of their choice for each black creature they control that's attacking."
+/// (Reclamation): the restricted creatures' attack cost, totalled over the
+/// declaration (CR 508.1d/h). Charging each matching attacker one unit of the
+/// action is exactly that total, whoever it attacks.
+fn per_attacker_action_attack_cost_static_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some(cant) = crate::slice_primitives::select_position(tokens, |token| {
+        token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
+    }) else {
+        return Ok(None);
+    };
+    let Some(unless) = crate::slice_primitives::select_position(&tokens[cant + 1..], |token| {
+        token.is_word("unless")
+    })
+    .map(|idx| idx + cant + 1) else {
+        return Ok(None);
+    };
+    if crate::lexer::token_word_refs(&tokens[cant + 1..unless]) != ["attack"] {
+        return Ok(None);
+    }
+    let subject_words = crate::lexer::token_word_refs(&tokens[..cant]);
+    if !subject_words.last().is_some_and(|word| word.ends_with('s')) {
+        return Ok(None);
+    }
+    let payment = trim_edge_punctuation_tokens(&tokens[unless + 1..]);
+    let payment_words = crate::lexer::token_word_refs(payment);
+    if !matches!(
+        payment_words.as_slice(),
+        ["their" | "its", "controller", "sacrifices", ..]
+    ) {
+        return Ok(None);
+    }
+    let Some(verb) = payment.iter().position(|token| token.is_word("sacrifices")) else {
+        return Ok(None);
+    };
+    let Some(per) = payment
+        .iter()
+        .enumerate()
+        .skip(verb + 1)
+        .find_map(|(index, token)| {
+            (token.is_word("for") && payment.get(index + 1).is_some_and(|next| next.is_word("each")))
+                .then_some(index)
+        })
+    else {
+        return Ok(None);
+    };
+    let tail_words = crate::lexer::token_word_refs(&payment[per + 2..]);
+    let Some(noun_words) = tail_words.strip_suffix(&["they", "control", "that's", "attacking"][..])
+        .or_else(|| tail_words.strip_suffix(&["they", "control", "thats", "attacking"][..]))
+    else {
+        return Ok(None);
+    };
+    let singular = |words: &[&str]| -> Vec<String> {
+        let mut words = words.iter().map(|word| (*word).to_string()).collect::<Vec<_>>();
+        if let Some(last) = words.last_mut()
+            && let Some(stripped) = last.strip_suffix('s')
+        {
+            *last = stripped.to_string();
+        }
+        words
+    };
+    if singular(noun_words) != singular(&subject_words) {
+        return Ok(None);
+    }
+    let Some(attackers) = parse_subject_object_filter(&tokens[..cant])? else {
+        return Ok(None);
+    };
+    let mut object_tokens = &payment[verb + 1..per];
+    let object_words = crate::lexer::token_word_refs(object_tokens);
+    if object_words.ends_with(&["of", "their", "choice"]) {
+        let Some(of) = object_tokens.iter().rposition(|token| token.is_word("of")) else {
+            return Ok(None);
+        };
+        object_tokens = &object_tokens[..of];
+    }
+    let mut cost_tokens = vec![OwnedLexToken::word(
+        "sacrifice".to_string(),
+        crate::cards::builders::TextSpan::synthetic(),
+    )];
+    cost_tokens.extend_from_slice(trim_edge_punctuation_tokens(object_tokens));
+    let Ok(cost) = parse_compiler_activation_cost(&cost_tokens) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        StaticAbility::block_cost(
+            attackers,
+            ObjectFilter::creature(),
+            cost,
+            format_negated_restriction_display(tokens),
+        )
+        .with_block_cost_attack_only(),
+    ))
+}
+
+/// Whether the line is a typed per-attacker action attack cost, which the
+/// static family owns rather than the statement probe.
+pub(crate) fn is_per_attacker_action_attack_cost_line(tokens: &[OwnedLexToken]) -> bool {
+    matches!(per_attacker_action_attack_cost_static_ability(tokens), Ok(Some(_)))
+}
+
 /// Parse a CR 509.1d blocking cost before the generic negated-restriction
 /// family can incorrectly turn it into an unconditional prohibition.
 fn block_cost_static_ability(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = per_attacker_action_attack_cost_static_ability(tokens)? {
+        return Ok(Some(ability));
+    }
     let Some(cant_index) = crate::slice_primitives::select_position(tokens, |token| {
         token.is_word("can't") || token.is_word("cant") || token.is_word("cannot")
     }) else {
@@ -790,12 +911,162 @@ use crate::recognition::ParseOutcome;
 #[path = "activation_costs/cant_clause_readings.rs"]
 mod cant_clause_readings;
 
+fn opponent_effects_and_payments_cause() -> ironsmith_core::CauseFilter {
+    ironsmith_core::CauseFilter {
+        cause_type: Some(ironsmith_core::CauseTypeFilter::OneOf(vec![
+            ironsmith_core::CauseType::Effect,
+            ironsmith_core::CauseType::Cost,
+        ])),
+        source_filter: None,
+        controller_filter: Some(ironsmith_core::ControllerFilter::Opponent),
+        ability_kind: None,
+    }
+}
+
+/// "Spells and abilities your opponents control can't cause you to discard
+/// cards [or sacrifice permanents]." (Tamiyo, Collector of Tales): one
+/// opponent-caused protection per action.
+fn opponent_cause_protection_static_abilities(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<StaticAbility>> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let words = words
+        .iter()
+        .copied()
+        .filter(|word| *word != ".")
+        .collect::<Vec<_>>();
+    let head: &[&str] = &[
+        "spells", "and", "abilities", "your", "opponents", "control", "can't", "cause", "you", "to",
+    ];
+    let head_alt: &[&str] = &[
+        "spells", "and", "abilities", "your", "opponents", "control", "cant", "cause", "you", "to",
+    ];
+    let tail = words
+        .strip_prefix(head)
+        .or_else(|| words.strip_prefix(head_alt))?;
+    let (discard, sacrifice) = match tail {
+        ["discard", "cards"] => (true, false),
+        ["discard", "cards", "or", "sacrifice", "permanents"]
+        | ["sacrifice", "permanents", "or", "discard", "cards"] => (true, true),
+        _ => return None,
+    };
+    let mut abilities = Vec::new();
+    if discard {
+        abilities.push(StaticAbility::restriction(
+            crate::effect::Restriction::DiscardByCause {
+                player: PlayerFilter::You,
+                cause: opponent_effects_and_payments_cause(),
+            },
+            "Spells and abilities your opponents control can't cause you to discard cards"
+                .to_string(),
+        ));
+    }
+    if sacrifice {
+        abilities.push(StaticAbility::restriction(
+            crate::effect::Restriction::BeSacrificedByCause {
+                filter: ObjectFilter::permanent().controlled_by(PlayerFilter::You),
+                cause: opponent_effects_and_payments_cause(),
+            },
+            "Spells and abilities your opponents control can't cause you to sacrifice permanents"
+                .to_string(),
+        ));
+    }
+    Some(abilities)
+}
+
+/// "Triggered abilities you control can't cause you to sacrifice or exile
+/// creature tokens you control." (The Master, Multiplied): a protection
+/// against events caused by a resolving ability of one kind (CR 113.3c),
+/// one typed restriction per protected action in a single rule surface.
+fn ability_kind_cause_protection_static_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let word_tokens = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.as_word().map(|word| (index, word)))
+        .filter(|(_, word)| *word != ".")
+        .collect::<Vec<_>>();
+    let words = word_tokens.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    let (ability_kind, rest) = if let Some(rest) = words.strip_prefix(&["triggered", "abilities"][..]) {
+        (ironsmith_core::CauseAbilityKindFilter::Triggered, rest)
+    } else if let Some(rest) = words.strip_prefix(&["activated", "abilities"][..]) {
+        (ironsmith_core::CauseAbilityKindFilter::Activated, rest)
+    } else {
+        return Ok(None);
+    };
+    let (controller, rest) = if let Some(rest) = rest.strip_prefix(&["you", "control"][..]) {
+        (Some(ironsmith_core::ControllerFilter::You), rest)
+    } else if let Some(rest) = rest.strip_prefix(&["your", "opponents", "control"][..]) {
+        (Some(ironsmith_core::ControllerFilter::Opponent), rest)
+    } else {
+        (None, rest)
+    };
+    let Some(rest) = rest
+        .strip_prefix(&["can't", "cause", "you", "to"][..])
+        .or_else(|| rest.strip_prefix(&["cant", "cause", "you", "to"][..]))
+    else {
+        return Ok(None);
+    };
+    let (sacrifice, exile, rest) = match rest {
+        ["sacrifice", "or", "exile", rest @ ..] | ["exile", "or", "sacrifice", rest @ ..] => {
+            (true, true, rest)
+        }
+        ["sacrifice", rest @ ..] => (true, false, rest),
+        ["exile", rest @ ..] => (false, true, rest),
+        _ => return Ok(None),
+    };
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let filter_start = word_tokens[words.len() - rest.len()].0;
+    let filter_end = word_tokens
+        .last()
+        .map_or(tokens.len(), |(index, _)| index + 1);
+    let mut filter =
+        crate::object_filters::parse_object_filter_lexed(&tokens[filter_start..filter_end], false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    let cause = ironsmith_core::CauseFilter {
+        cause_type: None,
+        source_filter: None,
+        controller_filter: controller,
+        ability_kind: Some(ability_kind),
+    };
+    let mut restrictions = Vec::new();
+    if sacrifice {
+        restrictions.push(crate::effect::Restriction::BeSacrificedByCause {
+            filter: filter.clone(),
+            cause: cause.clone(),
+        });
+    }
+    if exile {
+        restrictions.push(crate::effect::Restriction::BeExiledByCause { filter, cause });
+    }
+    Ok(Some(StaticAbility::restrictions(
+        restrictions,
+        format_negated_restriction_display(tokens),
+    )))
+}
+
 pub fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    if let Some(abilities) = opponent_cause_protection_static_abilities(tokens) {
+        return Ok(Some(abilities));
+    }
+    if let Some(ability) = ability_kind_cause_protection_static_ability(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
     // The restriction in a repeated choice belongs to the procedure, not
     // to a static ability on its leading "repeat this process" words.
     if crate::grammar::effects::clause_primitive_shapes::parse_repeat_process_shape(tokens).is_some() {
+        return Ok(None);
+    }
+    // A restriction starting on a future turn is a timed effect. Let the
+    // clause reader retain both its referenced controller and start time.
+    if crate::grammar::effects::clause_dispatch_shapes::parse_next_turn_cant_shape_tokens(tokens).is_some() {
         return Ok(None);
     }
     // Source untap-step rules have their own typed owner, including its
@@ -810,10 +1081,25 @@ pub fn parse_cant_clauses(
     if crate::keyword_static::parse_attached_untap_and_activation_restrictions_line(tokens)?.is_some() {
         return Ok(None);
     }
+    // The conditional unblockable reader owns the whole subject and its
+    // condition. A second generic restriction is a conflicting registry AST.
+    if matches!(crate::keyword_static::parse_subject_cant_be_blocked_as_long_as_condition_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
+    // "<attached> gets X/Y, and its activated abilities can't be activated"
+    // is owned by the attached anthem compound reader.
+    if crate::grammar::attached_object_static_lines::parse_attached_gets_and_activation_restriction_tokens(tokens).is_some() {
+        return Ok(None);
+    }
     // A mixed serial predicate owns the entire subject and every member.
     // A later "can't" must not make this reader reinterpret its first verb
     // as part of a target filter. The compound reader guards its recursion.
     if matches!(crate::keyword_static::parse_compound_self_predicate_line(tokens), Ok(Some(_))) {
+        return Ok(None);
+    }
+    // "<self> can't be blocked unless all creatures defending player controls
+    // block it" is a blocker-count rule, owned by the static marker reader.
+    if crate::keyword_static::is_source_unblockable_unless_all_defenders_block_line(tokens) {
         return Ok(None);
     }
     Ok(parse_cant_clauses_unbound(tokens)?.map(|abilities| {
@@ -967,6 +1253,14 @@ fn parse_cant_clauses_unbound(
             ),
             Ok(Some(_))
         )
+        // The filtered-subject mirror ("Fish you control have haste and
+        // can't be blocked by Humans") is one grant-plus-restriction line.
+        || matches!(
+            crate::keyword_static::parse_subject_has_keywords_and_negated_restriction_line(
+                tokens
+            ),
+            Ok(Some(_))
+        )
         // A subject-scoped evasion line ("Blue creatures you control can't be
         // blocked") has its own canonical static ability. Competing here makes
         // the whole line ambiguous, and the statement fallback then renders it
@@ -1032,6 +1326,132 @@ fn parse_cant_clauses_unbound(
             })
             .collect::<Vec<_>>();
         return Ok(Some(conditioned));
+    }
+
+    // "This creature can't attack if it attacked during your last turn"
+    // (Giant Turtle): a trailing turn-history condition gates the source's
+    // own restriction, like the doesn't-untap form of the same condition.
+    if let Some((neg_start, _)) = find_negation_span(tokens)
+        && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
+            &tokens[..neg_start],
+        ))
+        && let Some(if_index) = tokens.iter().rposition(|token| token.is_word("if"))
+        && if_index > neg_start
+        && let Some(condition) = crate::keyword_static::parse_attacked_during_controllers_last_turn(
+            &trim_commas(&tokens[if_index + 1..]),
+            crate::filter::ObjectFilter::source(),
+        )
+    {
+        let head = trim_commas(&tokens[..if_index]);
+        let Some(abilities) = parse_cant_clauses(&head)? else {
+            return Ok(None);
+        };
+        return Ok(Some(
+            abilities
+                .into_iter()
+                .map(|ability| {
+                    ability
+                        .clone()
+                        .with_condition(condition.clone())
+                        .unwrap_or(ability)
+                })
+                .collect(),
+        ));
+    }
+
+    // "You have no maximum hand size and don't lose the game for having 0 or
+    // less life" (Marina Vendrell's Grimoire): a shared player subject with a
+    // positive hand-size rule and a negated player restriction. Each member
+    // is its own static rule.
+    if let Some(and_index) = tokens.iter().position(|token| token.is_word("and"))
+        && let Some(have_index) = tokens[..and_index]
+            .iter()
+            .position(|token| token.is_word("have") || token.is_word("has"))
+        && have_index > 0
+        && let Ok(Some(hand_size)) =
+            crate::keyword_static::parse_no_maximum_hand_size_line(&tokens[..and_index])
+    {
+        let mut negated = trim_commas(&tokens[..have_index]).to_vec();
+        negated.extend(trim_commas(&tokens[and_index + 1..]).iter().cloned());
+        if find_negation_span(&negated).is_some()
+            && let Some(rest) = parse_cant_clauses(&negated)?
+        {
+            let mut abilities = vec![hand_size];
+            abilities.extend(rest);
+            return Ok(Some(abilities));
+        }
+    }
+
+    // "Players can't play lands as long as ten or more lands are on the
+    // battlefield" (Limited Resources) / "This creature can't be the target of
+    // spells unless it attacked or blocked this turn" (Lurker): a trailing
+    // static condition gates the whole restriction. "unless" is the negated
+    // condition. Payment tails ("unless its controller pays ...") are not
+    // static conditions and fall through to their own readers.
+    if let Some((neg_start, neg_end)) = find_negation_span(tokens)
+        && let Some((marker, condition_first, negated)) = tokens
+            .iter()
+            .enumerate()
+            .skip(neg_end)
+            .find_map(|(index, token)| {
+                if token.is_word("unless") {
+                    Some((index, index + 1, true))
+                } else if token.is_word("as")
+                    && tokens.get(index + 1).is_some_and(|next| next.is_word("long"))
+                    && tokens.get(index + 2).is_some_and(|next| next.is_word("as"))
+                {
+                    Some((index, index + 3, false))
+                } else {
+                    None
+                }
+            })
+        && marker > neg_start
+        // Combat prohibitions with trailing conditions have dedicated owners
+        // (attack taxes, conditional unblockability, "can't block as long as").
+        && !matches!(
+            crate::lexer::token_word_refs(&tokens[neg_end..marker]).as_slice(),
+            ["attack", ..] | ["block", ..] | ["be", "blocked", ..]
+        )
+    {
+        let head = trim_commas(&tokens[..marker]);
+        let mut condition_tokens = trim_edge_punctuation_tokens(&tokens[condition_first..]).to_vec();
+        // A source pronoun in the condition names the restricted object.
+        if crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
+            &tokens[..neg_start],
+        )) && condition_tokens.first().is_some_and(|token| token.is_word("it"))
+        {
+            let span = condition_tokens[0].span();
+            condition_tokens.splice(
+                0..1,
+                [
+                    OwnedLexToken::word("this".to_string(), span),
+                    OwnedLexToken::word("creature".to_string(), span),
+                ],
+            );
+        }
+        if !head.is_empty()
+            && !condition_tokens.is_empty()
+            && let Ok(condition) =
+                crate::keyword_static::parse_static_condition_clause(&condition_tokens)
+            && let Some(abilities) = parse_cant_clauses(&head)?
+        {
+            let condition = if negated {
+                PredicateAst::Not(Box::new(condition))
+            } else {
+                condition
+            };
+            return Ok(Some(
+                abilities
+                    .into_iter()
+                    .map(|ability| {
+                        ability
+                            .clone()
+                            .with_condition(condition.clone())
+                            .unwrap_or(ability)
+                    })
+                    .collect(),
+            ));
+        }
     }
 
     // A final origin can be shared by two different actions. Own the complete
@@ -1173,6 +1593,32 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
         };
         let conditioned = ability.clone().with_condition(condition.clone());
         return Ok(Some(conditioned));
+    }
+    // "Shauku can't attack if there's another creature on the battlefield.":
+    // a source combat prohibition gated by a trailing static condition (the
+    // restriction applies only while the condition holds). "can't be blocked
+    // if ..." belongs to parse_subject_cant_be_blocked_as_long_as_condition_line.
+    if let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if"))
+        && if_idx > 0
+        && if_idx + 1 < tokens.len()
+    {
+        let leading = trim_edge_punctuation_tokens(&tokens[..if_idx]);
+        let predicate_tokens = trim_edge_punctuation_tokens(&tokens[if_idx + 1..]);
+        if !leading.is_empty()
+            && !predicate_tokens.is_empty()
+            && matches!(
+                cant_shapes::parse_direct_cant_fact_tokens(leading),
+                Some(
+                    DirectCantFact::SourceCantAttack
+                        | DirectCantFact::SourceCantBlock
+                        | DirectCantFact::SourceCantAttackOrBlock
+                )
+            )
+            && let Ok(predicate) = crate::keyword_static::parse_static_condition_clause(predicate_tokens)
+            && let Some(ability) = parse_cant_clause(leading)?
+        {
+            return Ok(Some(ability.with_condition(predicate)));
+        }
     }
     if let Some((_, remainder)) = parse_restriction_duration(tokens)?
         && !remainder.is_empty()
@@ -1329,6 +1775,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
                 | crate::effect::Restriction::PlayLandsMatching(_, _)
                 | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateNonManaAbilities(_)
+                | crate::effect::Restriction::ActivateNonManaNonLoyaltyAbilities(_)
                 | crate::effect::Restriction::ActivateAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateTapAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateNonManaAbilitiesOf(_)
@@ -1337,6 +1784,8 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
                 | crate::effect::Restriction::VentureMoreThanOnceEachTurn(_)
                 | crate::effect::Restriction::DrawCards(_)
                 | crate::effect::Restriction::DrawExtraCards(_)
+                | crate::effect::Restriction::GetCounters(_)
+                | crate::effect::Restriction::RadiationGainsLife(_)
                 | crate::effect::Restriction::LoseLife(_)
                 | crate::effect::Restriction::ChangeLifeTotal(_)
                 | crate::effect::Restriction::LoseGame(_)
@@ -1664,6 +2113,16 @@ mod tests {
 #[cfg(test)]
 mod filtered_block_cost_tests {
     use super::*;
+
+    #[test]
+    fn next_controller_turn_restriction_is_not_a_static_ability() {
+        let tokens = crate::lexer::lex_line(
+            "That creature can't attack during its controller's next turn.",
+            0,
+        ).unwrap();
+        assert!(crate::grammar::effects::clause_dispatch_shapes::parse_next_turn_cant_shape_tokens(&tokens).is_some());
+        assert!(parse_cant_clauses(&tokens).unwrap().is_none());
+    }
 
     #[test]
     fn filtered_blockers_keep_their_life_payment_and_attacker_scope() {

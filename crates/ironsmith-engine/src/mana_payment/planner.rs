@@ -1115,6 +1115,14 @@ fn finite_fixed_production_is_insufficient(
                 amount: Value::Fixed(amount),
                 ..
             }
+            | ManaProduction::DraftChosenColors {
+                amount: Value::Fixed(amount),
+                ..
+            }
+            | ManaProduction::DeckChosenColors {
+                amount: Value::Fixed(amount),
+                ..
+            }
             | ManaProduction::NotedType {
                 amount: Value::Fixed(amount),
                 ..

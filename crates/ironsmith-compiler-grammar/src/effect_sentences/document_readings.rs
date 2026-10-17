@@ -201,6 +201,18 @@ const DOCUMENT_READINGS: &[Reading] = &[
         read: |document| document.outcome(read_complete_get_pump(document)),
     },
     Reading {
+        id: RuleId::new("unblock-sole-blocked-attackers"),
+        head: HeadDiscriminator::Any,
+        read: |document| {
+            document.outcome(Ok(match document.sentences.as_slice() {
+                [sentence] => super::statement_readings::parse_unblock_sole_blocked_attackers_sentence(
+                    sentence,
+                ),
+                _ => None,
+            }))
+        },
+    },
+    Reading {
         id: RuleId::new("complete-become"),
         head: HeadDiscriminator::Any,
         read: |document| document.outcome(read_complete_become(document)),

@@ -536,6 +536,24 @@ pub fn is_rounded_up_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     .is_ok()
 }
 
+/// A bare ", rounded down" / ", rounded up" rounding rider. It belongs to the
+/// preceding where-X binding, never to the coordinated action list.
+pub fn is_rounding_rider_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_all(
+        tokens,
+        (
+            alt((
+                semantic_phrase(&["rounded", "up"]),
+                semantic_phrase(&["rounded", "down"]),
+            )),
+            semantic_finish,
+        )
+            .void(),
+        "where-X rounding rider",
+    )
+    .is_ok()
+}
+
 pub fn has_where_x_is_half_tokens(tokens: &[OwnedLexToken]) -> bool {
     find_semantic_phrase(tokens, &["where", "x", "is", "half"]).is_some()
 }

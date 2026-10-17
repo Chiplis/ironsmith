@@ -1440,6 +1440,21 @@ fn choose_trigger_modes(
         return None;
     }
 
+    // "You may choose two" (CR 700.2): declining chooses no modes, which
+    // removes the ability (CR 603.3c); accepting chooses within the range.
+    if modal_spec.optional_choice {
+        let accept: bool = crate::decisions::make_decision(
+            game,
+            decision_maker,
+            trigger.controller,
+            Some(trigger.source),
+            crate::decisions::MaySpec::new(trigger.source, "choose modes"),
+        );
+        if decision_maker.awaiting_choice() || !accept {
+            return None;
+        }
+    }
+
     let spec = crate::decisions::ModesSpec::new(
         trigger.source,
         mode_options,
@@ -1819,6 +1834,14 @@ fn resolve_trigger_target_chooser(
     filter_ctx.defending_player = entry.defending_player;
     filter_ctx.defending_player_reference = entry.defending_player_reference;
     filter_ctx.chosen_player = entry.chosen_player;
+    // "that player chooses target ..." inside "each player's upkeep": the
+    // delegated chooser is the triggering event's player.
+    if filter_ctx.iterated_player.is_none() {
+        filter_ctx.iterated_player = entry
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.trigger_player());
+    }
     filter_ctx.attacking_player = entry
         .triggering_event
         .as_ref()

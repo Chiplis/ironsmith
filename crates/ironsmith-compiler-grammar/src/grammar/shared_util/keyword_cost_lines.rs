@@ -177,12 +177,37 @@ pub fn parse_escape(
     let mana_cost = total_cost.mana_cost().cloned().ok_or_else(|| {
         CardTextError::ParseError("escape keyword missing mana symbols".to_string())
     })?;
-    let tail = trim_edge_commas(tokens.get(comma + 1..).unwrap_or_default());
+    let mut tail = trim_edge_commas(tokens.get(comma + 1..).unwrap_or_default());
     if tail.is_empty() {
         return Err(CardTextError::ParseError(
             "escape keyword missing exile clause".to_string(),
         ));
     }
+    // Escape costs can carry extra comma-separated components before the
+    // graveyard exile ("Escape—{4}{G}{U}, Exile a land you control, Exile five
+    // other cards from your graveyard."). Parse the leading components as an
+    // ordinary cost list and keep the final graveyard-exile component on the
+    // dedicated escape path below.
+    let mut extra_costs: Vec<CompilerCost> = Vec::new();
+    if let Some(last_comma) = tail
+        .iter()
+        .rposition(|token| matches!(token.kind, TokenKind::Comma))
+    {
+        let prefix = trim_edge_commas(&tail[..last_comma]);
+        if !prefix.is_empty() {
+            let prefix_cost = parse_activation_cost(prefix)?;
+            let Some(components) = prefix_cost.as_all() else {
+                return Err(unsupported_escape(&TokenWordView::new(tail).word_refs()));
+            };
+            extra_costs.extend(components.iter().cloned());
+            tail = trim_edge_commas(&tail[last_comma + 1..]);
+        }
+    }
+    let with_extra_costs = |final_cost: CompilerCost| {
+        let mut components = extra_costs.clone();
+        components.push(final_cost);
+        ironsmith_core::TotalCost::from_costs(components)
+    };
     let tail_view = TokenWordView::new(tail);
     let tail_words = tail_view.word_refs();
     if !permission_shapes::prefix_words(&tail_words, &["exile"]) {
@@ -226,7 +251,7 @@ pub fn parse_escape(
                     return Ok(Some(AlternativeCastingMethod::Escape {
                         cost: Some(mana_cost),
                         exile_count: 0,
-                        additional_cost: ironsmith_core::TotalCost::from_cost(
+                        additional_cost: with_extra_costs(
                             CompilerCost::ExileChosen {
                                 count_value: None,
                                 count: crate::effect::ChoiceCount::any_number(),
@@ -281,7 +306,7 @@ pub fn parse_escape(
     Ok(Some(AlternativeCastingMethod::Escape {
         cost: Some(mana_cost),
         exile_count: count,
-        additional_cost: ironsmith_core::TotalCost::from_cost(CompilerCost::ExileChosen {
+        additional_cost: with_extra_costs(CompilerCost::ExileChosen {
             count_value: None,
             count: crate::effect::ChoiceCount::exactly(count as usize),
             filter: ObjectFilter::default()

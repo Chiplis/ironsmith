@@ -546,6 +546,52 @@ fn cant_sentence_next_turn_suffix<'a>(
     .parse_next(input)
 }
 
+/// "That player can't attack you or permanents you control during their next
+/// turn." (Willie Lumpkin; also the subject-less body after "each opponent
+/// who does"): an attack ban on that player's creatures that applies only
+/// during that player's next turn. `IteratedPlayer` names "that player";
+/// lowering rebinds it to the discourse player outside an iteration.
+fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let rest = words
+        .strip_prefix(&["that", "player"][..])
+        .or_else(|| words.strip_prefix(&["they"][..]))
+        .unwrap_or(&words);
+    let [
+        "cant" | "can't" | "cannot",
+        "attack",
+        "you",
+        "or",
+        "permanents" | "planeswalkers",
+        "you",
+        "control",
+        "during",
+        tail @ ..,
+    ] = rest
+    else {
+        return None;
+    };
+    if !matches!(
+        tail,
+        ["their", "next", "turn"]
+            | ["that", "players" | "player's", "next", "turn"]
+            | ["that", "player", "s", "next", "turn"]
+    ) {
+        return None;
+    }
+    let mut attackers = ObjectFilter::creature();
+    attackers.controller = Some(PlayerFilter::IteratedPlayer);
+    Some(EffectAst::subject_verb_cant_starting(
+        crate::effect::Restriction::attack_player_or_planeswalkers_controlled_by(
+            attackers,
+            PlayerFilter::You,
+        ),
+        crate::effect::Until::EndOfTurn,
+        crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer),
+        None,
+    ))
+}
+
 fn cant_sentence_for_as_long_as_marker<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -801,6 +847,9 @@ pub struct ChooseNewTargetsClauseSplit<'a> {
 pub struct ChangeTargetClauseSplit {
     pub target_tokens: Vec<OwnedLexToken>,
     pub fixed_to_source: bool,
+    /// "change the target of that spell to enchanted creature [if able]":
+    /// the destination object phrase after "to" when it is not "this ...".
+    pub fixed_target_tokens: Option<Vec<OwnedLexToken>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -915,20 +964,40 @@ pub fn split_change_target_clause_lexed(
 
     let mut tail_tokens = trim_commas(after_prefix_tokens).to_vec();
     let mut fixed_to_source = false;
+    let mut fixed_target_tokens = None;
     if let Some((before_to, to_tail)) =
         primitives::split_lexed_once_on_separator(&tail_tokens, || {
             use winnow::Parser as _;
             primitives::kw("to").void()
         })
-        && token_slice_first_is(to_tail, "this")
     {
-        fixed_to_source = true;
-        tail_tokens.truncate(before_to.len());
+        let before_len = before_to.len();
+        if token_slice_first_is(to_tail, "this") {
+            fixed_to_source = true;
+            tail_tokens.truncate(before_len);
+        } else {
+            let to_words = token_word_refs(to_tail);
+            let keep = if to_words.ends_with(&["if", "able"]) {
+                let view = crate::lexer::TokenWordView::new(to_tail);
+                view.token_start_indices()
+                    .get(to_words.len() - 2)
+                    .copied()
+                    .unwrap_or(to_tail.len())
+            } else {
+                to_tail.len()
+            };
+            let destination = trim_commas(&to_tail[..keep]).to_vec();
+            if !destination.is_empty() {
+                fixed_target_tokens = Some(destination);
+                tail_tokens.truncate(before_len);
+            }
+        }
     }
 
     Some(ChangeTargetClauseSplit {
         target_tokens: tail_tokens,
         fixed_to_source,
+        fixed_target_tokens,
     })
 }
 
@@ -1423,6 +1492,21 @@ pub fn parse_prevent_damage_source_target_lexed(
     }
 
     let (tokens, has_color_condition) = strip_prevent_damage_shares_color_clause_lexed(tokens);
+    // "dealt to and dealt by the creature" (Delirium): a definite singular
+    // noun is an anaphor for the object the earlier instruction named, the
+    // same reading the pump and sacrifice clauses give "the creature".
+    if matches!(
+        token_word_refs(tokens).as_slice(),
+        ["the", "creature" | "permanent" | "artifact"]
+    ) {
+        return Ok((
+            TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                span_from_tokens(tokens),
+            ),
+            has_color_condition,
+        ));
+    }
     let source_words = crate::util::non_article_token_word_refs(tokens);
     let is_explicit_reference =
         tokens_contain_any_non_article_word(tokens, &["target", "this", "that", "it"])
@@ -1578,6 +1662,92 @@ pub fn split_conditional_sentence_family_head_lexed(
     consumed.checked_sub(1).map(|if_idx| &tokens[if_idx..])
 }
 
+/// "If it doesn't have \"<ability>,\" it gains that ability." (Musician): the
+/// condition names the exact ability the consequence grants, so it is the
+/// grant's own presence gate, not a predicate. Parse the consequence as the
+/// plain grant "<subject> gains \"<ability>\"" and mark that grant to skip a
+/// recipient that already has the ability. The quoted ability's closing comma
+/// belongs to the outer sentence.
+fn parse_grant_quoted_ability_if_absent_lexed(
+    tokens: &[OwnedLexToken],
+    parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
+) -> Option<Vec<EffectAst>> {
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return None;
+    }
+    let open = tokens.iter().position(OwnedLexToken::is_quote)?;
+    let close = open + 1 + tokens[open + 1..].iter().position(OwnedLexToken::is_quote)?;
+    let head = &tokens[1..open];
+    let ends_with_have = head.last().is_some_and(|token| token.is_word("have"));
+    let subject_len = if ends_with_have
+        && head.len() >= 3
+        && head[head.len() - 2]
+            .as_word()
+            .is_some_and(is_dont_negation_word)
+    {
+        head.len() - 2
+    } else if ends_with_have
+        && head.len() >= 4
+        && head[head.len() - 2].is_word("not")
+        && head[head.len() - 3].is_any_word(&["does", "do"])
+    {
+        head.len() - 3
+    } else {
+        return None;
+    };
+    let subject = &head[..subject_len];
+    let mut inner = &tokens[open + 1..close];
+    while inner.last().is_some_and(OwnedLexToken::is_comma) {
+        inner = &inner[..inner.len() - 1];
+    }
+    if inner.is_empty() {
+        return None;
+    }
+    let mut tail = &tokens[close + 1..];
+    while tail.last().is_some_and(OwnedLexToken::is_period) {
+        tail = &tail[..tail.len() - 1];
+    }
+    let tail = trim_lexed_commas(tail);
+    if tail.len() != subject_len + 3 || tail.iter().any(OwnedLexToken::is_quote) {
+        return None;
+    }
+    let (tail_subject, verb) = tail.split_at(subject_len);
+    if token_word_refs(tail_subject) != token_word_refs(subject)
+        || !verb[0].is_any_word(&["gains", "gain"])
+        || !verb[1].is_word("that")
+        || !verb[2].is_word("ability")
+    {
+        return None;
+    }
+    let mut grant_tokens = tail_subject.to_vec();
+    grant_tokens.push(verb[0].clone());
+    grant_tokens.push(tokens[open].clone());
+    grant_tokens.extend_from_slice(inner);
+    grant_tokens.push(tokens[close].clone());
+    let mut effects = parse_effect_chain_lexed(&grant_tokens).ok()?;
+    let mut flagged = 0usize;
+    for effect in &mut effects {
+        if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Grants(
+                    crate::cards::builders::GrantActionAst::GrantAbilitiesToTarget {
+                        only_if_absent,
+                        abilities,
+                        condition: None,
+                        ..
+                    },
+                ),
+            ..
+        }) = effect
+            && !abilities.is_empty()
+        {
+            *only_if_absent = true;
+            flagged += 1;
+        }
+    }
+    (flagged == 1).then_some(effects)
+}
+
 pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
     parse_effect_chain_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
@@ -1658,6 +1828,11 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
             })],
         })]);
     }
+    if let Some(effects) =
+        parse_grant_quoted_ability_if_absent_lexed(tokens, parse_effect_chain_lexed)
+    {
+        return Ok(effects);
+    }
     let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
 
     match split.predicate {
@@ -1703,7 +1878,53 @@ pub fn parse_conditional_sentence_family_lexed(
 pub fn parse_persistent_no_maximum_hand_size_player_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<PlayerFilter> {
-    parse_persistent_no_maximum_hand_size_lexed(tokens).map(|(player, _)| player)
+    parse_persistent_maximum_hand_size_rule_lexed(tokens).map(|(restriction, _)| match restriction {
+        crate::effect::Restriction::NoMaximumHandSize(player)
+        | crate::effect::Restriction::ReduceMaximumHandSize(player, _) => player,
+        _ => PlayerFilter::You,
+    })
+}
+
+/// A resolving maximum-hand-size rule: either "no maximum hand size" or
+/// "<player's> maximum hand size is reduced by N" (Inspired Idea), each with
+/// its authored duration.
+pub fn parse_persistent_maximum_hand_size_rule_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::effect::Restriction, crate::effect::Until)> {
+    if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
+        return Some((crate::effect::Restriction::no_maximum_hand_size(player), until));
+    }
+    parse_persistent_reduced_maximum_hand_size_lexed(tokens)
+}
+
+/// "Your maximum hand size is reduced by three for the rest of the game."
+/// (Inspired Idea). Only the explicit duration makes this a resolving rule;
+/// the bare sentence is the static ability.
+fn parse_persistent_reduced_maximum_hand_size_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(crate::effect::Restriction, crate::effect::Until)> {
+    let words = token_word_refs(tokens);
+    let (player, subject_words) = match words.as_slice() {
+        ["your", ..] => (PlayerFilter::You, 1),
+        ["each", "player's" | "players", ..] => (PlayerFilter::Any, 2),
+        ["each", "opponent's" | "opponents", ..] => (PlayerFilter::Opponent, 2),
+        _ => return None,
+    };
+    let rest = &words[subject_words..];
+    let ["maximum", "hand", "size", "is", "reduced", "by", amount, duration @ ..] = rest else {
+        return None;
+    };
+    let amount = crate::util::parse_number_word_u32(amount)?;
+    let until = match duration {
+        ["for", "the", "rest", "of", "the", "game"] => crate::effect::Until::Forever,
+        ["until", "your", "next", "turn"] => crate::effect::Until::YourNextTurn,
+        ["until", "end", "of", "turn"] | ["this", "turn"] => crate::effect::Until::EndOfTurn,
+        _ => return None,
+    };
+    Some((
+        crate::effect::Restriction::reduce_maximum_hand_size(player, amount),
+        until,
+    ))
 }
 
 /// Parse a resolving "no maximum hand size" rule together with its authored
@@ -1869,9 +2090,52 @@ fn parse_named_player_untap_restriction(
     ]))
 }
 
+/// "Tatsunari and target Frog you control can't be blocked this turn except
+/// by creatures with flying or reach.": a source reference coordinated with a
+/// target shares one restriction; each subject gets its own copy.
+fn parse_source_and_target_cant_effect(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(negation) =
+        crate::grammar::activation_restrictions::parse_activation_negation_span_tokens(tokens)
+    else {
+        return Ok(None);
+    };
+    let subject = &tokens[..negation.first];
+    let Some(and_index) = subject.iter().position(|token| token.is_word("and")) else {
+        return Ok(None);
+    };
+    let left = &subject[..and_index];
+    let right = &subject[and_index + 1..];
+    let left_words = token_word_refs(left);
+    if !matches!(
+        left_words.as_slice(),
+        ["this", "creature" | "permanent"]
+    ) || !right.first().is_some_and(|token| token.is_word("target"))
+        || subject.iter().any(OwnedLexToken::is_comma)
+    {
+        return Ok(None);
+    }
+    let tail = &tokens[negation.first..];
+    let mut effects = Vec::new();
+    for part in [left, right] {
+        let mut sentence = part.to_vec();
+        sentence.extend_from_slice(tail);
+        let Some(parsed) = parse_cant_effect_sentence_with_grammar_entrypoint_lexed(&sentence)?
+        else {
+            return Ok(None);
+        };
+        effects.extend(parsed);
+    }
+    Ok(Some(effects))
+}
+
 pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_source_and_target_cant_effect(tokens)? {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = parse_named_player_untap_restriction(tokens)? {
         return Ok(Some(effects));
     }
@@ -1962,12 +2226,16 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(Some(conditional));
     }
 
-    if let Some((player, until)) = parse_persistent_no_maximum_hand_size_lexed(tokens) {
+    if let Some((restriction, until)) = parse_persistent_maximum_hand_size_rule_lexed(tokens) {
         return Ok(Some(vec![EffectAst::subject_verb_cant(
-            crate::effect::Restriction::no_maximum_hand_size(player),
+            restriction,
             until,
             None,
         )]));
+    }
+
+    if let Some(effect) = parse_next_turn_attack_ban_sentence(tokens) {
+        return Ok(Some(vec![effect]));
     }
 
     if let Some(prefix_tokens) = split_cant_sentence_next_turn_prefix_lexed(tokens) {
@@ -2026,6 +2294,28 @@ pub fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     }
 
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
+    // "Until end of combat, you don't lose this mana as steps end." (Fire
+    // Lord Ozai): the same retention, ending with combat.
+    if crate::word_primitives::sequence_occurs(&words, &["until", "end", "of", "combat"])
+        && crate::word_primitives::sequence_occurs(&words, &["lose", "this", "mana", "as", "steps", "end"])
+    {
+        let EffectAst::SubjectVerb(mut retention) =
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(
+                dont_lose_mana_subject_player(&words),
+                dont_lose_mana_color(&words),
+            )
+        else {
+            return Ok(None);
+        };
+        if let SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn {
+            until_end_of_combat,
+            ..
+        }) = &mut retention.action
+        {
+            *until_end_of_combat = true;
+        }
+        return Ok(Some(vec![EffectAst::SubjectVerb(retention)]));
+    }
     if words_contain_all(&words, LOSE_MANA_STEPS_PHASES_END_WORDS) {
         return Ok(Some(vec![
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn_by(

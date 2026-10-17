@@ -64,6 +64,8 @@ pub enum TriggerDuplicationEventKind {
     BecomesTargeted,
     IsDealtDamage,
     EntersOrLeavesBattlefield,
+    /// "Creatures entering or dying don't cause abilities to trigger."
+    EntersOrDies,
     EntersBattlefield,
     LeavesBattlefield,
     DrawsCard(Option<TriggerDuplicationPlayerSubject>),
@@ -383,6 +385,10 @@ pub fn parse_trigger_duplication_event_shape_tokens(
             TriggerDuplicationEventKind::DrawsCard(None),
         ),
         (&["attacking"], TriggerDuplicationEventKind::Attacks),
+        (
+            &["entering", "or", "dying"],
+            TriggerDuplicationEventKind::EntersOrDies,
+        ),
         (&["dying"], TriggerDuplicationEventKind::Dies),
         (
             &["entering"],

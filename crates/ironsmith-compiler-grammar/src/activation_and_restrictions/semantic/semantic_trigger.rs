@@ -80,6 +80,12 @@ pub(super) fn try_parse_combat_damage_trigger_lexed(
     if trigger_atom_token(tokens, TriggerClauseAtom::Enter).is_some() {
         return Ok(None);
     }
+    // "this creature deals combat damage to a player or dies" (Park Heights
+    // Maverick): the trailing bare death verb is a second event of the same
+    // subject, owned by the shared-subject `or` union.
+    if matches!(words.as_slice(), [.., "or", "dies" | "die"]) {
+        return Ok(None);
+    }
     parse_combat_damage_trigger_lexed(tokens, &words).map(Some)
 }
 
@@ -358,6 +364,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 source_filter: Some(source_filter),
                 caused_by_source_entering: false,
                 caused_by_source_attacking: true,
+                caused_by_permanent_entering: false,
             });
         }
 
@@ -395,6 +402,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 source_filter: Some(source_filter),
                 caused_by_source_entering: true,
                 caused_by_source_attacking: false,
+                caused_by_permanent_entering: false,
             });
         }
     }
@@ -555,6 +563,29 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 let envelope =
                     crate::grammar::trigger_subjects::parse_spell_filter_envelope(filter_tokens);
                 let filter_tokens = &filter_tokens[..envelope.end];
+                // "a spell using teamwork" (Virtual Assistant): the spell was
+                // cast with its Teamwork optional cost paid.
+                let using_teamwork = crate::lexer::parser_token_word_refs(filter_tokens)
+                    .ends_with(&["using", "teamwork"]);
+                let filter_tokens = if using_teamwork {
+                    &filter_tokens[..filter_tokens.len().saturating_sub(2)]
+                } else {
+                    filter_tokens
+                };
+                // "a modal spell" (Riku of Many Paths, CR 700.2): a spell
+                // whose text offers modes; the adjective becomes a marker.
+                let modal_tokens: Vec<OwnedLexToken>;
+                let modal = filter_tokens.iter().any(|token| token.is_word("modal"));
+                let filter_tokens = if modal {
+                    modal_tokens = filter_tokens
+                        .iter()
+                        .filter(|token| !token.is_word("modal"))
+                        .cloned()
+                        .collect();
+                    modal_tokens.as_slice()
+                } else {
+                    filter_tokens
+                };
                 let filter_words = ActivationRestrictionCompatWords::new(filter_tokens);
                 let filter_words = filter_words.to_word_refs();
                 let parser_filter_words = crate::lexer::parser_token_word_refs(filter_tokens);
@@ -604,6 +635,12 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                                 .any(|marker| marker == "kicked")
                         {
                             filter.ability_markers.push("kicked".to_string());
+                        }
+                        if using_teamwork {
+                            filter.ability_markers.push("teamwork".to_string());
+                        }
+                        if modal {
+                            filter.ability_markers.push("modal".to_string());
                         }
                         // The event object is on the stack, but an authored
                         // "from ... hand" clause constrains the cast's origin.
@@ -735,6 +772,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         ));
     }
 
+    // "a mana ability of this creature resolves" (Tyvar the Bellicose).
+    if matches!(
+        words.as_slice(),
+        ["a", "mana", "ability", "of", "this", "resolves"]
+            | ["a", "mana", "ability", "of", "this", "creature" | "permanent" | "artifact" | "land", "resolves"]
+    ) {
+        return Ok(TriggerSpec::SourceManaAbilityResolves);
+    }
     if let Some(trigger) = causal_events::parse(tokens)? { return Ok(trigger); }
     if let Some(trigger) = paid_cost_triggers::parse(tokens) { return Ok(trigger); }
     if let Some(trigger) = monarch_triggers::parse(tokens) {return Ok(trigger);}
@@ -832,6 +877,28 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(TriggerSpec::CounterRemovedFrom {
             filter, source_controller: Some(PlayerFilter::You),
             counter_type: Some(counter_type), last: true, one_or_more: true, caused_by_source: false,
+        });
+    }
+
+    // "Whenever you remove a time counter from this card while it's exiled"
+    // (Watcher of Hours): every active removal of one named counter by you.
+    if crate::word_primitives::parse_sequence_prefix(&words, &["you", "remove"])
+        && matches!(words.get(2), Some(&("a" | "an")))
+        && let Some(counter_idx) = words.iter().position(|word| *word == "counter")
+        && counter_idx > 3
+        && words.get(counter_idx + 1) == Some(&"from")
+        && is_source_reference_words(&words[counter_idx + 2..])
+    {
+        let start = trigger_word_token_start(tokens, 3).ok_or_else(|| CardTextError::ParseError("missing counter descriptor".into()))?;
+        let end = trigger_word_token_start(tokens, counter_idx).ok_or_else(|| CardTextError::ParseError("missing counter noun".into()))?;
+        let source = trigger_word_token_start(tokens, counter_idx + 2).ok_or_else(|| CardTextError::ParseError("missing counter source".into()))?;
+        let counter_type = trigger_counter_type_from_descriptor(&tokens[start..end])
+            .ok_or_else(|| CardTextError::ParseError("unknown removed counter type".into()))?;
+        let filter = source_reference_surface_for_trigger_subject(&tokens[source..])
+            .map(ObjectFilter::source_with_surface).unwrap_or_else(ObjectFilter::source);
+        return Ok(TriggerSpec::CounterRemovedFrom {
+            filter, source_controller: Some(PlayerFilter::You),
+            counter_type: Some(counter_type), last: false, one_or_more: false, caused_by_source: false,
         });
     }
 
@@ -940,9 +1007,36 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         filter.zone.get_or_insert(Zone::Battlefield);
         return Ok(TriggerSpec::FinalChapterAbilityResolved(filter));
     }
+    if words.len() > 6
+        && trigger_pattern_accepts(&words, FINAL_CHAPTER_ABILITY_TRIGGERS_TRIGGER_PATTERN)
+    {
+        let mut filter =
+            parse_object_filter_lexed(&tokens[5..tokens.len() - 1], false).map_err(|err| {
+                CardTextError::ParseError(format!(
+                    "unsupported final chapter trigger filter: {} [{err:?}]",
+                    words[5..words.len() - 1].join(" ")
+                ))
+            })?;
+        filter.zone.get_or_insert(Zone::Battlefield);
+        return Ok(TriggerSpec::FinalChapterAbilityTriggers(filter));
+    }
 
     if trigger_pattern_accepts(&words, DAY_NIGHT_CHANGED_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::DayNightChanged);
+    }
+    // "Whenever damage that would be dealt to you is prevented" (Selfless
+    // Squire): any prevention of damage to you, not only this source's.
+    if crate::word_primitives::parse_sequence_complete(
+        &words,
+        &["damage", "that", "would", "be", "dealt", "to", "you", "is", "prevented"],
+    ) {
+        return Ok(TriggerSpec::DamageToPlayerPrevented(PlayerFilter::You));
+    }
+    if crate::word_primitives::parse_sequence_complete(
+        &words,
+        &["damage", "is", "prevented", "this", "way"],
+    ) {
+        return Ok(TriggerSpec::DamagePreventedThisWay { source_filter: None });
     }
 
     if let Some(enters_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Enter) {
@@ -1149,6 +1243,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             trigger_atom_token(left_tokens, TriggerClauseAtom::Block)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Leave))
+        } else if right_words.len() > 2
+            && right_words
+                .first()
+                .is_some_and(|word| matches!(*word, "is" | "are"))
+            && right_words.get(1).is_some_and(|word| *word == "put")
+        {
+            // "a creature you control dies or is put into the command zone"
+            // (Reyhan, Last of the Abzan): the movement arm shares the dying
+            // subject.
+            trigger_atom_token(left_tokens, TriggerClauseAtom::Die)
         } else if right_words.len() > 1
             && right_words
                 .first()
@@ -1170,6 +1274,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             trigger_atom_token(left_tokens, TriggerClauseAtom::Enter)
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Attack))
                 .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Block))
+                .or_else(|| trigger_atom_token(left_tokens, TriggerClauseAtom::Deal))
         } else if right_words.len() > 1
             && right_words
                 .first()
@@ -1534,10 +1639,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             if !object_tokens.is_empty()
                 && let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
             {
-                return Ok(TriggerSpec::PlayerTapsForMana {
+                let tapped = TriggerSpec::PlayerTapsForMana {
                     player: PlayerFilter::Any,
                     filter,
-                });
+                };
+                // "is tapped for mana of the chosen color" (Gauntlet of
+                // Power): the produced mana qualifies the event itself.
+                let after_words = crate::lexer::token_word_refs(after_tapped);
+                if after_words.as_slice() == ["for", "mana", "of", "the", "chosen", "color"] {
+                    return Ok(TriggerSpec::ConditionQualified {
+                        trigger: Box::new(tapped),
+                        condition: crate::cards::builders::PredicateAst::TurnHistory(
+                            crate::cards::builders::TurnHistoryPredicateAst::TriggeringManaIncludesSourceChosenColor,
+                        ),
+                        surface: "for mana of the chosen color".to_string(),
+                    });
+                }
+                return Ok(tapped);
             }
         }
     }
@@ -1554,6 +1672,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source_filter: None,
             caused_by_source_entering: false,
             caused_by_source_attacking: false,
+            caused_by_permanent_entering: false,
         });
     }
     if crate::word_primitives::parse_any_sequence_complete(
@@ -1568,6 +1687,28 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source_filter: None,
             caused_by_source_entering: false,
             caused_by_source_attacking: false,
+            caused_by_permanent_entering: false,
+        });
+    }
+    // "a permanent entering causes a triggered ability to trigger" (Strict
+    // Proctor): any triggered ability whose trigger event is a permanent
+    // entering the battlefield.
+    if crate::word_primitives::parse_any_sequence_complete(
+        &words,
+        &[
+            &["a", "permanent", "entering", "causes", "a", "triggered", "ability", "to", "trigger"],
+            &[
+                "a", "permanent", "entering", "the", "battlefield", "causes", "a", "triggered",
+                "ability", "to", "trigger",
+            ],
+        ],
+    ) {
+        return Ok(TriggerSpec::AbilityTriggered {
+            another: false,
+            source_filter: None,
+            caused_by_source_entering: false,
+            caused_by_source_attacking: false,
+            caused_by_permanent_entering: true,
         });
     }
 
@@ -3620,6 +3761,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    // "Whenever a player chooses one or more targets" (Psychic Battle): once
+    // per spell or ability each time its targets are chosen or changed, i.e.
+    // any player or object becoming its target (CR 115.1, 115.7).
+    if matches!(
+        words.as_slice(),
+        ["a", "player", "chooses", "one", "or", "more", "targets"]
+    ) {
+        return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+            player: PlayerFilter::Any,
+            object: ObjectFilter::default(),
+            source_controller: PlayerFilter::Any,
+            source_kind: ironsmith_core::filter_model::StackObjectKind::SpellOrAbility,
+            once_per_stack_object: true,
+        });
+    }
+
     if let Some(becomes_idx) = trigger_atom_word(&words, TriggerClauseAtom::Becomes)
         && trigger_pattern_accepts(&words[becomes_idx + 1..], BECOMES_TARGET_OF_PREFIX_PATTERN)
     {
@@ -3863,6 +4020,39 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 filter.set_union_one_or_more(true);
             }
             return Ok(TriggerSpec::IsDealtExcessNoncombatDamage(filter));
+        }
+    }
+
+    // "When one or more of your opponents are dealt combat damage [during
+    // your turn]" (Fblthp, Impossibly Lost): one batched trigger per combat
+    // damage step for the damaged players (CR 510.2, 603.2c). During your
+    // turn only your attacking creatures can deal combat damage to players.
+    {
+        let (core, during_your_turn) = match words.strip_suffix(&["during", "your", "turn"][..]) {
+            Some(core) => (core, true),
+            None => (words.as_slice(), false),
+        };
+        if let ["one", "or", "more", subject @ .., "are", "dealt", "combat", "damage"] = core {
+            let player = match subject {
+                ["opponents"] | ["of", "your", "opponents"] | ["your", "opponents"] => {
+                    Some(PlayerFilter::Opponent)
+                }
+                ["players"] | ["of", "the", "players"] => Some(PlayerFilter::Any),
+                _ => None,
+            };
+            if let Some(player) = player {
+                let source = if during_your_turn {
+                    ObjectFilter::default().controlled_by(PlayerFilter::You)
+                } else {
+                    ObjectFilter::default()
+                };
+                return Ok(TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                    source,
+                    player,
+                    each_damaged_player: false,
+                    per_source_controller: false,
+                });
+            }
         }
     }
 
@@ -4598,11 +4788,78 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
+    // "Whenever you place a sticker" (Wee Champion): any sticker kind, on
+    // any recipient.
+    if let [subject @ .., "place" | "places" | "put" | "puts", "a", "sticker"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::Sticker,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
     if let [subject @ .., "collect" | "collects", "evidence"] = words.as_slice()
         && let Some(player) = parse_trigger_subject_player_filter(subject)
     {
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::CollectEvidence,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
+    // "Whenever a land's ability causes you to add one or more mana of the
+    // chosen color" (Caged Sun): your land's mana production that includes
+    // the color chosen for this source.
+    if let [
+        "a",
+        "land's" | "lands",
+        "ability",
+        "causes",
+        "you",
+        "to",
+        "add",
+        "one",
+        "or",
+        "more",
+        "mana",
+        "of",
+        "the",
+        "chosen",
+        "color",
+    ] = words.as_slice()
+    {
+        return Ok(TriggerSpec::ConditionQualified {
+            trigger: Box::new(TriggerSpec::PlayerTapsForMana {
+                player: PlayerFilter::You,
+                filter: ObjectFilter::land(),
+            }),
+            condition: crate::cards::builders::PredicateAst::TurnHistory(
+                crate::cards::builders::TurnHistoryPredicateAst::TriggeringManaIncludesSourceChosenColor,
+            ),
+            surface: "a land's ability causes you to add one or more mana of the chosen color"
+                .to_string(),
+        });
+    }
+    // "Whenever you solve a Case" (Case File Auditor): CR 719.4.
+    if let [subject @ .., "solve" | "solves", "a", "case"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::SolveCase,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
+    // "Whenever you foretell a card" (Dream Devourer): CR 702.143a.
+    if let [subject @ .., "foretell" | "foretells", "a", "card"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::Foretell,
             player,
             source_filter: None,
             during_your_turn: false,
@@ -4639,6 +4896,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
+    // "Whenever you visit an Attraction" (Motion Sickness): the visit keyword
+    // action of the rolling player (CR 701.51).
+    if let [subject @ .., "visit" | "visits", "an" | "a", "attraction"] = words.as_slice()
+        && let Some(player) = parse_trigger_subject_player_filter(subject)
+    {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::VisitAttraction,
+            player,
+            source_filter: None,
+            during_your_turn: false,
+        });
+    }
     if trigger_pattern_accepts(&words, YOU_OPEN_ATTRACTION_TRIGGER_PATTERN) {
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::OpenAttraction,
@@ -4854,6 +5123,25 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 }
                 return Ok(TriggerSpec::AttacksAndIsntBlockedOneOrMore(filter));
             }
+        }
+        // "Whenever this creature attacks a player and isn't blocked" (Master
+        // of Cruelties): only an attack on a player, never a planeswalker or
+        // battle; "that player" is the attacked player.
+        if let ["a", "player", unblocked_tail @ ..] = tail_words
+            && trigger_pattern_accepts(unblocked_tail, ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN)
+        {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            let subject_tokens = &tokens[..attacks_token_idx];
+            let mut filter = match parse_attack_trigger_subject_filter_lexed(subject_tokens)? {
+                Some(filter) => filter,
+                None => source_reference_surface_for_trigger_subject(subject_tokens)
+                    .map(ObjectFilter::source_with_surface)
+                    .unwrap_or_else(ObjectFilter::source),
+            };
+            filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Any);
+            filter.attacking_player_only = true;
+            return Ok(TriggerSpec::AttacksAndIsntBlocked(filter));
         }
         if trigger_pattern_accepts(tail_words, ATTACKS_AND_IS_NOT_BLOCKED_TAIL_PATTERN) {
             let attacks_token_idx =
@@ -5120,6 +5408,26 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             // planeswalker or battle that player protects.
             source.targets_only_player = Some(attacked_player);
             return Ok(TriggerSpec::Attacks(source));
+        }
+        // "Whenever equipped creature attacks the player with the most life
+        // or tied for most life" (Seraphic Greatsword): the same attacked-
+        // player restriction on a non-source attacker filter.
+        if !is_source_reference_words(subject_words)
+            && let Some(attacked_player) =
+                crate::grammar::shared_util::reference_shapes::parse_life_advantage_player(
+                    &life_advantage_tail,
+                )
+        {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            if let Some(mut filter) =
+                parse_attack_trigger_subject_filter_lexed(&tokens[..attacks_token_idx])?
+            {
+                filter.attacking_player_or_planeswalker_controlled_by =
+                    Some(attacked_player.clone());
+                filter.targets_only_player = Some(attacked_player);
+                return Ok(TriggerSpec::Attacks(filter));
+            }
         }
         if matches!(subject_words.first(), Some(&"this") | Some(&"it"))
             && let Some((count, filter)) = parse_attacks_player_who_controls_at_least_tail(tail)
@@ -5658,9 +5966,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 TriggerSpec::BeginningOfEndStep(player)
             })
         }
-        _ if trigger_pattern_accepts(words, BEGINNING_UPKEEP_TRIGGER_PATTERN) => Ok(
-            TriggerSpec::BeginningOfUpkeep(parse_possessive_clause_player_filter(words)),
-        ),
+        _ if trigger_pattern_accepts(words, BEGINNING_UPKEEP_TRIGGER_PATTERN) => {
+            let upkeep =
+                TriggerSpec::BeginningOfUpkeep(parse_possessive_clause_player_filter(words));
+            // "at the beginning of enchanted player's first upkeep each turn"
+            // (Paradox Haze): additional upkeep steps don't trigger it.
+            if crate::word_primitives::sequence_occurs(words, &["first", "upkeep", "each", "turn"])
+            {
+                Ok(TriggerSpec::ConditionQualified {
+                    trigger: Box::new(upkeep),
+                    condition: crate::cards::builders::PredicateAst::FirstUpkeepStepOfTurn,
+                    surface: "during the first upkeep each turn".to_string(),
+                })
+            } else {
+                Ok(upkeep)
+            }
+        }
         _ if trigger_pattern_accepts(words, BEGINNING_DRAW_STEP_TRIGGER_PATTERN) => Ok(
             TriggerSpec::BeginningOfDrawStep(parse_possessive_clause_player_filter(words)),
         ),

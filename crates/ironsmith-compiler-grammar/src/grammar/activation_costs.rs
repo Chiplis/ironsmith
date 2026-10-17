@@ -204,6 +204,11 @@ pub enum ActivationCostSegmentCst {
         filter: ObjectFilter,
         destination: crate::zone::Zone,
     },
+    /// "Roll a d8": the roll is paid as a cost and its result is retained
+    /// for the resolving ability (CR 706).
+    RollDie {
+        sides: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +230,7 @@ pub enum ActivationCostSegmentKind {
     Exert,
     PutCounter,
     RemoveCounter,
+    RollDie,
     BareSymbol,
 }
 
@@ -261,6 +267,7 @@ pub fn parse_activation_cost_segment_kind_lexed<'a>(
         "exert" => ActivationCostSegmentKind::Exert,
         "put" => ActivationCostSegmentKind::PutCounter,
         "remove" => ActivationCostSegmentKind::RemoveCounter,
+        "roll" => ActivationCostSegmentKind::RollDie,
         "tap" if tokens.len() > 1 => ActivationCostSegmentKind::TapChosen,
         "untap" if tokens.len() > 1 => ActivationCostSegmentKind::UntapChosen,
         _ => ActivationCostSegmentKind::BareSymbol,

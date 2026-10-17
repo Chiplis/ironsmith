@@ -46,14 +46,55 @@ fn copy_statement(sentence: &[OwnedLexToken]) -> Option<(TagRef, u32)> {
 /// "You may cast [any number of] the copies [without paying their mana
 /// costs]" → whether the casts are free.
 fn cast_statement(sentence: &[OwnedLexToken]) -> Option<bool> {
+    cast_statement_mode(sentence).and_then(|(free, mandatory)| (!mandatory).then_some(free))
+}
+
+/// Whether the casts are free, and whether they are mandatory: "Cast the
+/// copies if able without paying their mana costs." (Spelltwine) is an
+/// instruction, not a permission.
+fn cast_statement_mode(sentence: &[OwnedLexToken]) -> Option<(bool, bool)> {
     let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
     let words = parser_token_word_refs(sentence);
+    if let Some(rest) = words.strip_prefix(&["cast", "the", "copies"]) {
+        return match rest {
+            ["if", "able", "without", "paying", "their", "mana", "costs"]
+            | ["without", "paying", "their", "mana", "costs", "if", "able"] => Some((true, true)),
+            ["if", "able"] => Some((false, true)),
+            _ => None,
+        };
+    }
     let rest = words.strip_prefix(&["you", "may", "cast"])?;
     let rest = rest.strip_prefix(&["any", "number", "of"]).unwrap_or(rest);
     let rest = rest.strip_prefix(&["the", "copies"])?;
     match rest {
-        [] => Some(false),
-        ["without", "paying", "their", "mana", "costs"] => Some(true),
+        [] => Some((false, false)),
+        ["without", "paying", "their", "mana", "costs"] => Some((true, false)),
+        _ => None,
+    }
+}
+
+/// "You may cast any number of spells with total mana value N or less from
+/// among the copies [without paying their mana costs]" → (cap, free).
+fn capped_copies_cast_statement(
+    sentence: &[OwnedLexToken],
+) -> Option<(crate::effect::Value, bool)> {
+    let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
+    let words = parser_token_word_refs(sentence);
+    let rest = words.strip_prefix(&[
+        "you", "may", "cast", "any", "number", "of", "spells", "with", "total", "mana", "value",
+    ])?;
+    let (cap, rest) = match rest {
+        ["x", "or", "less", rest @ ..] => (crate::effect::Value::X, rest),
+        [count, "or", "less", rest @ ..] => (
+            crate::effect::Value::Fixed(crate::util::parse_number_word_i32(count)?),
+            rest,
+        ),
+        _ => return None,
+    };
+    let rest = rest.strip_prefix(&["from", "among", "the", "copies"])?;
+    match rest {
+        [] => Some((cap, false)),
+        ["without", "paying", "their", "mana", "costs" | "cost"] => Some((cap, true)),
         _ => None,
     }
 }
@@ -113,15 +154,19 @@ fn choose_then_copy(
 
 fn copy_cast(free: bool) -> EffectAst {
     EffectAst::Permissions(PermissionEffectAst::May {
-        effects: vec![EffectAst::subject_verb_cast_tagged(
-            CompilerReferenceTag::It.bind(),
-            PlayerAst::You,
-            false,
-            true,
-            free,
-            None,
-        )],
+        effects: vec![mandatory_copy_cast(free)],
     })
+}
+
+fn mandatory_copy_cast(free: bool) -> EffectAst {
+    EffectAst::subject_verb_cast_tagged(
+        CompilerReferenceTag::It.bind(),
+        PlayerAst::You,
+        false,
+        true,
+        free,
+        None,
+    )
 }
 
 /// "copy each exiled card [you own] <qualifier>" → the exiled-card filter.
@@ -190,10 +235,43 @@ pub(crate) fn read(
         };
         (None, statement)
     };
-    let Some(free) = cast_statement(cast) else {
+    // "You may cast any number of spells with total mana value 6 or less
+    // from among the copies without paying their mana costs." (Uldaros
+    // Theorix): the copied cards are chosen together under the total mana
+    // value cap (the copies have their cards' mana values, CR 707.2), and
+    // each chosen card's copy is then cast.
+    if let Some((cap, free)) = capped_copies_cast_statement(cast) {
+        if times != 1 {
+            return Ok(None);
+        }
+        let chosen = crate::util::helper_tag_for_tokens(cast, "cast_copies");
+        let mut filter = crate::target::ObjectFilter::default();
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: tag.key.clone(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let mut effects: Vec<EffectAst> = choice.into_iter().collect();
+        effects.push(EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+                filter,
+                count: crate::effect::ChoiceCount::any_number(),
+                player: PlayerAst::You,
+                tag: chosen.clone(),
+                constraint: crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most(
+                    cap,
+                ),
+            },
+        ));
+        effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: chosen,
+            effects: vec![mandatory_copy_cast(free)],
+        }));
+        return Ok(Some(effects));
+    }
+    let Some((free, mandatory)) = cast_statement_mode(cast) else {
         return Ok(None);
     };
-    let one_cast = copy_cast(free);
+    let one_cast = if mandatory { mandatory_copy_cast(free) } else { copy_cast(free) };
     let mut effects: Vec<EffectAst> = choice.into_iter().collect();
     let casts = vec![one_cast; times as usize];
     if tag.as_str() == CompilerReferenceTag::SourceExiled.as_str() {

@@ -44,6 +44,56 @@ impl EffectExecutor for PutCounterOfChosenKindEffect {
 }
 
 pub use ironsmith_core::PutCounterOfKindChosenFromEffect;
+pub use ironsmith_core::PutCounterOfRandomKindEffect;
+
+impl EffectExecutor for PutCounterOfRandomKindEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.execute_with_outputs(game, ctx)
+            .map(crate::effects::CompletedEffectOutputs::into_outcome)
+    }
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        let recipients = resolve_objects_for_effect(game, ctx, &self.recipient)?;
+        let Some(&recipient) = recipients.first() else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        };
+        // The eligible kinds are read when the choice is made; a kind the
+        // recipient already has a counter of is not eligible.
+        let present = kinds_on(game, &[recipient]);
+        let mut candidates = self
+            .kinds
+            .iter()
+            .copied()
+            .filter(|kind| !self.only_absent_kinds || !present.contains(kind))
+            .collect::<Vec<CounterType>>();
+        candidates.dedup();
+        if candidates.is_empty() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::resolved(),
+            ));
+        }
+        game.shuffle_slice(&mut candidates);
+        let kind = candidates[0];
+        put_kind_on_recipients(game, ctx, kind, &[recipient], None, false)
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        self.recipient.is_target().then_some(&self.recipient)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target permanent"
+    }
+}
 
 impl EffectExecutor for PutCounterOfKindChosenFromEffect {
     fn execute(

@@ -832,11 +832,11 @@ pub(super) fn run_station_line_family(
         &["put", "x", "charge", "counters", "on", "this", "artifact"],
     );
     activation_tokens.push(OwnedLexToken::comma(TextSpan::synthetic()));
+    // The station keyword's own amount, which "stations permanents using its
+    // toughness" grants (Tapestry Warden) redirect to the toughness axis.
     push_synthetic_words(
         &mut activation_tokens,
-        &[
-            "where", "x", "is", "the", "power", "of", "the", "creature", "tapped", "this", "way",
-        ],
+        crate::grammar::effects::sentence_predicate_shapes::STATION_CONTRIBUTION_WHERE_X_WORDS,
     );
     activation_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
     push_synthetic_words(
@@ -1339,7 +1339,10 @@ pub(super) fn run_keyword_line_family(
         normalize_named_source_tokens_with_context(ctx.parse, &ctx.line.tokens);
     if let Some(action) = crate::activation_and_restrictions::keyword_action_costs::parse_defined_x_keyword_amount(
         self_named_tokens.as_deref().unwrap_or(&ctx.line.tokens),
-    ) {
+    )
+    .or_else(|| crate::activation_and_restrictions::keyword_action_costs::parse_defined_x_echo_keyword(
+        self_named_tokens.as_deref().unwrap_or(&ctx.line.tokens),
+    )) {
         return line_family_match(
             ctx,
             LineDispatchResult::single(
@@ -2366,6 +2369,9 @@ pub(super) fn run_statement_probe_line_family(
         ) || prefer_statement_before_static)
         && !is_keyword_action_replacement
         && !is_lose_game_replacement
+        && !crate::activation_and_restrictions::activation_costs::is_per_attacker_action_attack_cost_line(
+            &ctx.line.tokens,
+        )
         && let Some(mut statement_line) =
             line_family_try!(ctx, rule, recognize_statement_line(ctx.line))
     {

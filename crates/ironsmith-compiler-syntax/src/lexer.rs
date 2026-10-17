@@ -96,8 +96,9 @@ pub enum TokenKind {
     #[token("&")]
     // Superscript digits and "=" occur in exponent reminder text ("2⁰ = 1",
     // Mathemagics); lex them as words so the reminder can be removed.
+    // U+A789 MODIFIER LETTER COLON is part of a card name (Ratonhnhaké꞉ton).
     #[regex(
-        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9⁰¹²³⁴⁵⁶⁷⁸⁹]+|=)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
+        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9⁰¹²³⁴⁵⁶⁷⁸⁹꞉]+|=)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:(?://)|[-−/])(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+))*"
     )]
     Word,
 }

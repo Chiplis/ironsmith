@@ -26,6 +26,53 @@ fn read_exact_revealed_color_count(input: &Predicate<'_>) -> Result<Option<Predi
     }))
 }
 
+/// "<player> own(s) N or more <cards in a zone>" (Etrata, the Silencer: "they
+/// own three or more exiled cards with hit counters on them"): ownership is
+/// only a distinct relation off the battlefield, so the counted filter must
+/// name a non-battlefield zone; there it counts cards the player owns.
+fn read_player_owns_at_least(
+    input: &Predicate<'_>,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = input.predicate_tokens;
+    let words = crate::lexer::token_word_refs(tokens);
+    if words.len() != tokens.len() {
+        return Ok(None);
+    }
+    let (player, subject_len) = match words.as_slice() {
+        ["you", "own", ..] => (crate::cards::builders::PlayerAst::You, 1),
+        ["they", "own", ..] => (crate::cards::builders::PlayerAst::That, 1),
+        ["that", "player", "owns", ..] => (crate::cards::builders::PlayerAst::That, 2),
+        ["an", "opponent", "owns", ..] => (crate::cards::builders::PlayerAst::Opponent, 2),
+        _ => return Ok(None),
+    };
+    let rest = &tokens[subject_len + 1..];
+    let Some(quantity) =
+        crate::grammar::shared_util::value_shapes::parse_quantity_comparison_prefix_tokens(
+            rest, false, true,
+        )
+    else {
+        return Ok(None);
+    };
+    let count = match quantity.comparison {
+        crate::effect::Comparison::GreaterThanOrEqual(n) if n >= 1 => n as u32,
+        crate::effect::Comparison::GreaterThan(n) if n >= 0 => (n + 1) as u32,
+        _ => return Ok(None),
+    };
+    let filter_tokens = &rest[quantity.consumed_tokens..];
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let Ok(filter) = parse_object_filter_lexed(filter_tokens, false) else {
+        return Ok(None);
+    };
+    if !matches!(filter.zone, Some(zone) if zone != Zone::Battlefield) {
+        return Ok(None);
+    }
+    Ok(Some(PredicateAst::Player(
+        crate::cards::builders::PlayerPredicateAst::PlayerHasAtLeast { player, filter, count },
+    )))
+}
+
 pub(super) fn read_saddled(input: &Predicate<'_>) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
     // Trigger structure owns the subject in "attacks while saddled" and may
@@ -424,6 +471,12 @@ pub(super) const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_saddled(input)),
     },
     Reading {
+        id: RuleId::new("player-owns-at-least-predicate"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_player_owns_at_least(input)),
+    },
+    Reading {
         id: RuleId::new("you-controlled-as-cast-predicate"),
         head: HeadDiscriminator::Any,
         admits: |input| {
@@ -489,6 +542,12 @@ pub(super) const READINGS: &[Reading] = &[
                     .as_word()
                     .is_some_and(|_| !is_article(token.parser_text()))
             }))
+                // "A or if B and C" (Quakebringer) groups as "A or (B and
+                // C)": the repeated "if" opens a new alternative, so the
+                // or-if split binds looser than this conjunction.
+                && !predicate_tokens
+                    .windows(2)
+                    .any(|pair| pair[0].is_word("or") && pair[1].is_word("if"))
         },
         read: |input| input.outcome(read_implicit_subject_and_predicate(input)),
     },

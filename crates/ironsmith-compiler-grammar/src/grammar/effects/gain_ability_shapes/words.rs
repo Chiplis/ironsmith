@@ -337,6 +337,20 @@ pub fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShape {
             alt((
                 primitives::word_slice_exact("it").void(),
                 primitives::word_slice_exact("they").void(),
+                // "Each of them gets ... and gains ..." / "They each get ...
+                // and gain ..." (Sigardian Zealot): the distributive plural
+                // pronoun names the same referenced set as "they".
+                (
+                    primitives::word_slice_exact("each"),
+                    primitives::word_slice_exact("of"),
+                    primitives::word_slice_exact("them"),
+                )
+                    .void(),
+                (
+                    primitives::word_slice_exact("they"),
+                    primitives::word_slice_exact("each"),
+                )
+                    .void(),
             )),
         )
         .is_some(),
@@ -346,6 +360,17 @@ pub fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShape {
                 primitives::word_slice_exact("it").void(),
                 primitives::word_slice_exact("they").void(),
                 primitives::word_slice_exact("them").void(),
+                (
+                    primitives::word_slice_exact("each"),
+                    primitives::word_slice_exact("of"),
+                    primitives::word_slice_exact("them"),
+                )
+                    .void(),
+                (
+                    primitives::word_slice_exact("they"),
+                    primitives::word_slice_exact("each"),
+                )
+                    .void(),
             )),
         )
         .is_some(),

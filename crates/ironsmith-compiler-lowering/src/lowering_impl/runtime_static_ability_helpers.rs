@@ -55,8 +55,10 @@ pub fn executable_object_abilities_for_keyword_action(
         | KeywordAction::MobilizeValue { .. }
             | KeywordAction::Outlast(_)
             | KeywordAction::Unearth(_)
+            | KeywordAction::UnearthTotalCost(_)
             | KeywordAction::Encore(_)
             | KeywordAction::EncoreFromSourceCost { .. }
+            | KeywordAction::EmbalmFromSourceCost
             | KeywordAction::Eternalize(_)
             | KeywordAction::Ninjutsu(_)
             | KeywordAction::CommanderNinjutsu(_)
@@ -73,6 +75,11 @@ pub fn executable_object_abilities_for_keyword_action(
             | KeywordAction::BushidoValue(_)
             | KeywordAction::Frenzy(_)
             | KeywordAction::Annihilator(_)
+            | KeywordAction::AnnihilatorValue(_)
+            // "it gains crew 2" (Captain Rex Nebula): crew/saddle are
+            // activated abilities, granted through the printed expansion.
+            | KeywordAction::Crew { .. }
+            | KeywordAction::Saddle { .. }
     ) {
         return None;
     }
@@ -181,6 +188,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         | KeywordAction::MobilizeValue { .. }
         | KeywordAction::Outlast(_)
         | KeywordAction::Unearth(_)
+        | KeywordAction::UnearthTotalCost(_)
         | KeywordAction::Encore(_)
         | KeywordAction::Eternalize(_)
         | KeywordAction::Ninjutsu(_)
@@ -297,7 +305,7 @@ pub fn static_ability_for_keyword_action(action: KeywordAction) -> Option<Compil
         KeywordAction::Devoid => {
             Some(CompilerStaticAbility::make_colorless(ObjectFilter::source()))
         }
-        KeywordAction::Annihilator(_) => None,
+        KeywordAction::Annihilator(_) | KeywordAction::AnnihilatorValue(_) => None,
         KeywordAction::Dredge(amount) => Some(CompilerStaticAbility::dredge(amount)),
         KeywordAction::StaticMarker(name) => Some(CompilerStaticAbility::keyword_marker(name)),
         KeywordAction::StaticMarkerText(text) => Some(CompilerStaticAbility::keyword_marker(text)),

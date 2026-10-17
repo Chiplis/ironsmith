@@ -106,23 +106,17 @@ pub fn parse_for_each_target_players_clause(
     let Ok(target) = parse_target_phrase(shape.target_tokens) else {
         return Ok(None);
     };
+    // A non-player target slice means the `each` belongs to a later phrase
+    // ("discards all cards of each of the sacrificed creature's colors"),
+    // not to a target-player participant list: decline so the ordinary action
+    // family reads the complete clause.
     let filter = match target {
         TargetAst::Player(filter, _) => filter,
         TargetAst::WithCount(inner, _) => match *inner {
             TargetAst::Player(filter, _) => filter,
-            _ => {
-                return Err(CardTextError::ParseError(format!(
-                    "expected player target in target-player each clause (clause: '{}')",
-                    LexedClause::new(tokens).text()
-                )));
-            }
+            _ => return Ok(None),
         },
-        _ => {
-            return Err(CardTextError::ParseError(format!(
-                "expected player target in target-player each clause (clause: '{}')",
-                LexedClause::new(tokens).text()
-            )));
-        }
+        _ => return Ok(None),
     };
     // The participant after `each` is the actor of the trailing instruction.
     // Supplying that subject before parsing also lets possessive dynamic
@@ -159,6 +153,17 @@ pub fn parse_for_each_player_clause(
     let Some(iteration_filter) = player_filter(outer.scope) else {
         return Ok(None);
     };
+    // "Each player with fewer cards in hand than ... draws" / "each player
+    // with exactly 13 life ...": a `with` qualifier restricts the iterated
+    // players. The participant readings below would read it as the body's
+    // subject and silently drop it; the qualified-player clause owns it.
+    if outer
+        .inner_tokens
+        .first()
+        .is_some_and(|token| token.is_word("with"))
+    {
+        return Ok(None);
+    }
     let clause_text = LexedClause::new(tokens).text();
     let slot_chooser = if outer.participant_is_actor {
         PlayerAst::That
@@ -237,10 +242,68 @@ pub fn parse_for_each_player_clause(
         );
         stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
+    exclude_participant_choice_from_other_discard(&mut effects, &mut None);
     let iteration_filter = reanchor_other_player_copy_filter(iteration_filter, &effects);
     Ok(Some(if outer.participant_is_actor {
         wrap_players(&iteration_filter, effects)
     } else {
         sequential_participant_body(wrap_players(&iteration_filter, effects))
     }))
+}
+
+/// "Each player reveals their hand, chooses <cards> from it, then discards
+/// all other nonland cards" (Noxious Vapors): within one participant's body,
+/// "other" in a discard after a choice is relative to the chosen cards, not
+/// to the source. Keep the source exclusion and also exclude the chosen set
+/// by identity.
+fn exclude_participant_choice_from_other_discard(
+    effects: &mut [EffectAst],
+    chosen: &mut Option<crate::cards::builders::TagKey>,
+) {
+    fn exclude(filter: &mut crate::target::ObjectFilter, chosen: &crate::cards::builders::TagKey) {
+        if !filter.other
+            || filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *chosen
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject
+            })
+        {
+            return;
+        }
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: chosen.clone(),
+                relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+    }
+    for effect in effects {
+        match effect {
+            EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
+            | EffectAst::SourceSentence { effects, .. } => {
+                exclude_participant_choice_from_other_discard(effects, chosen);
+            }
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
+                *chosen = Some(tag.key.clone());
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::Discard { count, filter, .. },
+                    ),
+                ..
+            }) => {
+                let Some(chosen) = chosen.as_ref() else {
+                    continue;
+                };
+                if let Some(filter) = filter.as_mut() {
+                    exclude(filter, chosen);
+                }
+                if let crate::effect::Value::Count(counted) = count {
+                    exclude(counted, chosen);
+                }
+            }
+            _ => {}
+        }
+    }
 }

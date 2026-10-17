@@ -33,6 +33,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "RollToVisitAttractionsEffect" => {
             decode_as::<ironsmith_core::RollToVisitAttractionsEffect>(payload).map(Some)
         }
+        "RollPlanarDieEffect" => {
+            decode_as::<ironsmith_core::RollPlanarDieEffect>(payload).map(Some)
+        }
         "PopulateEffect" => decode_as::<ironsmith_core::PopulateEffect>(payload).map(Some),
         "ReflexiveTriggerEffect" => {
             decode_as::<ironsmith_core::ReflexiveTriggerEffect<wire::WireEffect>>(payload).map(Some)
@@ -71,6 +74,12 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         }
         "TagTriggeringObjectEffect" => {
             decode_as::<ironsmith_core::TagTriggeringObjectEffect>(payload).map(Some)
+        }
+        "TagSplicedCardsEffect" => {
+            decode_as::<ironsmith_core::TagSplicedCardsEffect>(payload).map(Some)
+        }
+        "TagLastDamageSourceEffect" => {
+            decode_as::<ironsmith_core::TagLastDamageSourceEffect>(payload).map(Some)
         }
         "TagTriggeringSourceEffect" => {
             decode_as::<ironsmith_core::TagTriggeringSourceEffect>(payload).map(Some)
@@ -143,6 +152,10 @@ pub(super) fn map_card_ids(
             ironsmith_core::RollToVisitAttractionsEffect,
         >(payload, context)
         .map(Some),
+        "RollPlanarDieEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::RollPlanarDieEffect,
+        >(payload, context)
+        .map(Some),
         "PopulateEffect" => {
             super::card_graph::map_payload_as::<ironsmith_core::PopulateEffect>(payload, context)
                 .map(Some)
@@ -201,6 +214,14 @@ pub(super) fn map_card_ids(
         .map(Some),
         "TagTriggeringObjectEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::TagTriggeringObjectEffect,
+        >(payload, context)
+        .map(Some),
+        "TagSplicedCardsEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TagSplicedCardsEffect,
+        >(payload, context)
+        .map(Some),
+        "TagLastDamageSourceEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::TagLastDamageSourceEffect,
         >(payload, context)
         .map(Some),
         "TagTriggeringSourceEffect" => super::card_graph::map_payload_as::<

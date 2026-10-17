@@ -73,6 +73,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::DoubleCountersOnTarget { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::DoubleManaPool)
             | SubjectVerbActionAst::Mana(ManaActionAst::EmptyManaPool)
+            | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
@@ -112,6 +113,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Counters(CounterActionAst::PoisonCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfChosenKind { .. })
+            | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfKindChosenFrom { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { .. })
             | SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. })
@@ -142,6 +144,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
                 PermanentStateActionAst::ScalePowerToughnessAll { .. }
             )
             | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { .. })
+            | SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhasesThisTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipDrawStep)
@@ -152,6 +155,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             )
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Prepare { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Suspect { .. })
             | SubjectVerbActionAst::PermanentState(
@@ -308,6 +312,18 @@ pub(super) fn compile_return_to_hand(
         }
         Effect::new(effect)
     } else {
+        // "return a card exiled with it at random": the random marker is a
+        // property of the bounded selection, not of the graveyard-only
+        // return effect.
+        let randomized = match &spec {
+            ChooseSpec::WithCount(inner, count) if *random => {
+                Some(ChooseSpec::WithCount(inner.clone(), count.clone().at_random()))
+            }
+            _ => None,
+        };
+        if let Some(randomized) = randomized {
+            spec = randomized;
+        }
         let mut effect = crate::effects::ReturnToHandEffect::with_spec(spec.clone());
         if let Some(player) = actor_surface.clone() {
             effect = effect.with_actor_surface(player);
@@ -414,6 +430,7 @@ pub(super) fn compile_put_counters_action(
         target,
         target_count,
         distributed,
+        required_recipient,
     }) = &subject_verb.action
     else {
         unreachable!("typed put-counters route requires a PutCounters action")
@@ -495,6 +512,11 @@ pub(super) fn compile_put_counters_action(
     }
     if *distributed {
         put_counters = put_counters.with_distributed(true);
+    }
+    if let Some(required) = required_recipient {
+        let (required_spec, _) =
+            resolve_target_spec_with_choices(required, &current_reference_env(ctx))?;
+        put_counters = put_counters.with_required_recipient(required_spec);
     }
     let effect = tag_object_target_effect(Effect::new(put_counters), &spec, ctx, "counters");
     if !spec.is_target()
@@ -770,8 +792,22 @@ pub(super) fn compile_subject_verb_late(
             ))
         }
         SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, filter }) => {
-            let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let outer_env = current_reference_env(ctx);
+            // The damage fanout supplies a recipient-local object frame. With
+            // no outer antecedent, "that creature" in the amount denotes
+            // that recipient, not an unconstrained object count.
+            let amount_env = if outer_env.known_last_object_tag().is_none()
+                && crate::tag_support::value_references_tag(amount, crate::tag::CompilerReferenceTag::It.as_str())
+            {
+                let mut env = outer_env.clone();
+                env.last_object_tag = crate::model::reference_state::RefState::Known(
+                    crate::tag::CompilerReferenceTag::It.bind().into(),
+                );
+                env.iterated_object = true;
+                env
+            } else { outer_env.clone() };
+            let resolved_amount = resolve_value_it_tag(amount, &amount_env)?;
+            let resolved_filter = resolve_it_tag(filter, &outer_env)?;
             let tag = ctx.next_tag("damaged");
             ctx.last_object_tag = Some(tag.clone());
             let effect = Effect::new(crate::effects::DealDamageEachEffect {
@@ -793,6 +829,19 @@ pub(super) fn compile_subject_verb_late(
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
+                    // "divided evenly, rounded down, among all creatures ...":
+                    // an untargeted, uncounted object set is every matching
+                    // object as the damage is dealt, not a choice.
+                    let spec = match spec {
+                        ChooseSpec::Object(filter)
+                            if *distribution
+                                == ironsmith_core::DamageDistributionMode::EvenRoundedDown
+                                && !filter.source =>
+                        {
+                            ChooseSpec::All(filter)
+                        }
+                        spec => spec,
+                    };
                     Effect::new(
                         crate::effects::DealDistributedDamageEffect::new(
                             resolved_amount.clone(),
@@ -1537,9 +1586,18 @@ pub(super) fn compile_subject_verb_late(
                 };
                 ctx.last_exiled_collection_tag = Some(chosen_tag.clone());
                 ctx.last_exiled_collection_is_plural = collection_is_plural;
-                let exile = Effect::new(
-                    crate::effects::ExileEffect::with_spec(chosen_spec).with_face_down(*face_down),
-                );
+                let mut exile =
+                    crate::effects::ExileEffect::with_spec(chosen_spec).with_face_down(*face_down);
+                // The choosing subject ("that player exiles ...") performs
+                // the exile and is recorded as the card's exiler.
+                if let Some(chooser) = choose
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                    .map(|choice| choice.chooser.clone())
+                    .filter(|chooser| !matches!(chooser, PlayerFilter::You | PlayerFilter::EffectController))
+                {
+                    exile = exile.with_actor(chooser);
+                }
+                let exile = Effect::new(exile);
                 return Ok(Some((vec![choose, exile], choices)));
             }
             if let Some(compiled) = lower_hand_exile_target(target, *face_down, ctx)? {
@@ -1982,6 +2040,15 @@ pub(super) fn compile_subject_verb_late(
                                 to_spec.clone(),
                             )
                         }
+                        ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
+                        | ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient => {
+                            crate::effects::MoveCountersEffect {
+                                counter_type: *counter_type,
+                                count: count.clone(),
+                                from: from_spec.clone(),
+                                to: to_spec.clone(),
+                            }
+                        }
                     }),
                     &from_spec,
                     ctx,
@@ -2127,6 +2194,22 @@ pub(super) fn compile_subject_verb_late(
                 choices,
             ))
         }
+        SubjectVerbActionAst::Counters(CounterActionAst::PutCounterOfRandomKind {
+            kinds,
+            target,
+            only_absent_kinds,
+        }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(crate::effects::PutCounterOfRandomKindEffect::new(
+                    kinds.clone(),
+                    spec,
+                    *only_absent_kinds,
+                ))],
+                choices,
+            ))
+        }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { .. }) => {
             compile_return_to_hand(subject_verb, ctx)
         }
@@ -2236,7 +2319,12 @@ pub(super) fn compile_subject_verb_late(
             let effect = Effect::for_each(resolved_filter, vec![inner]);
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::PutSticker { target, action } => match target {
+        SubjectVerbActionAst::PutSticker {
+            target,
+            action,
+            max_ticket_cost,
+            without_paying_ticket_cost,
+        } => match target {
             TargetAst::Object(filter, explicit_target_span, _)
                 if explicit_target_span.is_none() =>
             {
@@ -2255,12 +2343,24 @@ pub(super) fn compile_subject_verb_late(
                 Ok((
                     vec![
                         Effect::new(choose_effect),
-                        Effect::put_sticker(ChooseSpec::Tagged(tag_key), *action),
+                        Effect::put_sticker_with_ticket_terms(
+                            ChooseSpec::Tagged(tag_key),
+                            *action,
+                            max_ticket_cost.clone(),
+                            *without_paying_ticket_cost,
+                        ),
                     ],
                     Vec::new(),
                 ))
             }
-            _ => compile_effect_for_target(target, ctx, |spec| Effect::put_sticker(spec, *action)),
+            _ => compile_effect_for_target(target, ctx, |spec| {
+                Effect::put_sticker_with_ticket_terms(
+                    spec,
+                    *action,
+                    max_ticket_cost.clone(),
+                    *without_paying_ticket_cost,
+                )
+            }),
         },
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::UnlockRoomDoor) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
@@ -2588,7 +2688,7 @@ pub(super) fn compile_subject_verb_late(
             x_value,
             x_maximum,
             independent_x_choice,
-
+            mana_cost_of,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let x_value = x_value
@@ -2610,6 +2710,9 @@ pub(super) fn compile_subject_verb_late(
                     if *independent_x_choice {
                         effect = effect.with_independent_x_choice();
                     }
+                    if let Some(object) = mana_cost_of.clone() {
+                        effect = effect.with_mana_cost_of(object);
+                    }
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
                     }
@@ -2625,6 +2728,9 @@ pub(super) fn compile_subject_verb_late(
                     );
                     if *independent_x_choice {
                         effect = effect.with_independent_x_choice();
+                    }
+                    if let Some(object) = mana_cost_of.clone() {
+                        effect = effect.with_mana_cost_of(object);
                     }
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
@@ -2645,6 +2751,29 @@ pub(super) fn compile_subject_verb_late(
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::empty_mana_pool_player(subject.into_player_filter())
             })
+        }
+        SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand) => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::activate_mana_ability_of_each_land_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::Characteristics(CharacteristicActionAst::ReduceSpeed {
+            amount,
+            minimum,
+        }) => {
+            let minimum = *minimum;
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                amount,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                move |value| Effect::reduce_speed(value, PlayerFilter::You, minimum),
+                move |value, filter| Effect::reduce_speed(value, filter, minimum),
+            )
         }
         SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetLifeTotal { amount }) => {
             compile_subject_verb_player_value_effect(
@@ -2731,8 +2860,25 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::Control(ControlActionAst::ControlPlayer {
             player: target_player,
             duration,
+            controller: explicit_controller,
         }) => {
-            let _subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            // "You control that player ..." names the player an earlier
+            // instruction introduced; outside an iteration bind it to that
+            // player rather than an iterated one.
+            let prior_player = ctx.last_player_filter.clone();
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            // "The first player controls the second player ...": a subject
+            // other than the effect's controller exercises the control.
+            let controlling_player = subject.into_player_filter();
+            let rebound_player = match (target_player, prior_player) {
+                (PlayerFilter::IteratedPlayer, Some(prior))
+                    if !prior.mentions_iterated_player() =>
+                {
+                    Some(as_followup_player_alias(prior))
+                }
+                _ => None,
+            };
+            let target_player = rebound_player.as_ref().unwrap_or(target_player);
             let (start, duration) = match duration {
                 ControlDurationAst::UntilEndOfTurn => (
                     crate::game_state::PlayerControlStart::Immediate,
@@ -2746,6 +2892,10 @@ pub(super) fn compile_subject_verb_late(
                     crate::game_state::PlayerControlStart::NextTurn,
                     crate::game_state::PlayerControlDuration::WholeTurn,
                 ),
+                ControlDurationAst::DuringNextCombatPhase => (
+                    crate::game_state::PlayerControlStart::NextCombatPhase,
+                    crate::game_state::PlayerControlDuration::ThroughCombatPhase,
+                ),
                 ControlDurationAst::Forever => (
                     crate::game_state::PlayerControlStart::Immediate,
                     crate::game_state::PlayerControlDuration::Forever,
@@ -2753,6 +2903,10 @@ pub(super) fn compile_subject_verb_late(
                 ControlDurationAst::AsLongAsYouControlSource => (
                     crate::game_state::PlayerControlStart::Immediate,
                     crate::game_state::PlayerControlDuration::UntilSourceLeaves,
+                ),
+                ControlDurationAst::UntilSourceFinishesResolving => (
+                    crate::game_state::PlayerControlStart::Immediate,
+                    crate::game_state::PlayerControlDuration::UntilSourceFinishesResolving,
                 ),
             };
 
@@ -2765,7 +2919,17 @@ pub(super) fn compile_subject_verb_late(
                 ctx.last_player_filter = Some(target_player.clone());
             }
 
-            let effect = Effect::control_player(target_player.clone(), start, duration);
+            let mut control =
+                crate::effects::ControlPlayerEffect::new(target_player.clone(), start, duration);
+            if let Some(controller) = explicit_controller {
+                control = control.controlled_by(controller.clone());
+            } else if matches!(
+                controlling_player,
+                PlayerFilter::TaggedPlayer(_) | PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+            ) {
+                control = control.controlled_by(controlling_player);
+            }
+            let effect = Effect::new(control);
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }) => {
@@ -3021,6 +3185,20 @@ pub(super) fn compile_subject_verb_late(
                 choices,
             ))
         }
+        SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomeForetold {
+            target,
+            foretell_cost_reduction,
+        }) => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(
+                    crate::effects::BecomeForetoldEffect::new(spec)
+                        .with_foretell_cost_reduction(*foretell_cost_reduction),
+                )],
+                choices,
+            ))
+        }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::BecomePlotted { target }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -3145,16 +3323,26 @@ pub(super) fn compile_subject_verb_late(
             target,
             players_only,
             attacked_player,
+            enters_combat,
+            among_attacked_by,
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut reselect =
                 crate::effects::ReselectAttackTargetEffect::new(spec.clone(), *players_only);
             if let Some(player) = attacked_player {
-                reselect = reselect.now_attacking(resolve_non_target_player_filter(
-                    *player,
-                    &current_reference_env(ctx),
-                )?);
+                let player =
+                    resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+                reselect = if *enters_combat {
+                    reselect.attacking_player(player)
+                } else {
+                    reselect.now_attacking(player)
+                };
+            }
+            if let Some(player) = among_attacked_by {
+                let player =
+                    resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+                reselect = reselect.attacking_one_attacked_by(player);
             }
             let effect = tag_object_target_effect(
                 Effect::new(reselect),
@@ -3170,6 +3358,7 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Regenerate {
             target,
             follow_up_effects,
+            remove_damage_only,
         }) => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -3234,7 +3423,8 @@ pub(super) fn compile_subject_verb_late(
                 crate::effect::Until::EndOfTurn,
             )
             .with_follow_up_effects(follow_ups)
-            .with_follow_up_player(follow_up_player);
+            .with_follow_up_player(follow_up_player)
+            .with_remove_damage_only(*remove_damage_only);
             let effect =
                 tag_object_target_effect(Effect::new(regenerate), &spec, ctx, "regenerated");
             Ok((vec![effect], choices))

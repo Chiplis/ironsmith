@@ -1643,7 +1643,9 @@ fn library_top_revealed_by_static_ability(game: &GameState, player: PlayerId) ->
 }
 
 fn hand_revealed_by_static_ability(game: &GameState, player: PlayerId) -> bool {
-    game.object_store.battlefield.iter().any(|id| {
+    // A resolved "play with their hand revealed for as long as ..." effect
+    // (Stromgald Spy) opens the same public hand view as the statics.
+    game.hand_revealed_by_effect(player) || game.object_store.battlefield.iter().any(|id| {
         !game.is_phased_out(*id) && game.object(*id).is_some_and(|object| {
             let controller = game.current_controller(*id).unwrap_or(object.owner);
             game.object_has_static_ability_id(*id, StaticAbilityId::PlayersPlayWithHandsRevealed)
@@ -1685,6 +1687,31 @@ fn append_static_visibility_views(game: &GameState, views: &mut Vec<ActiveViewed
                         description: "Static ability allows viewing the top card of a library"
                             .to_string(),
                     });
+                }
+            }
+            // A resolved permission over another player's library top
+            // ("look at the top card of their library any time") is a
+            // private view for its beneficiary only.
+            if !library_top_revealed_by_static_ability(game, player.id) {
+                for viewer in game.players.iter().map(|other| other.id).filter(|id| *id != player.id) {
+                    if game
+                        .effect_store
+                        .grant_registry
+                        .grants_private_library_top_view_of(game, viewer, player.id)
+                    {
+                        views.push(ActiveViewedCards {
+                            acknowledged_by: Vec::new(),
+                            viewer,
+                            subject: player.id,
+                            zone: Zone::Library,
+                            cards: vec![top_card],
+                            card_stable_ids: stable_ids_for_viewed_cards(game, &[top_card]),
+                            public: false,
+                            source: None,
+                            description: "Permission allows viewing the top card of another player's library"
+                                .to_string(),
+                        });
+                    }
                 }
             }
         }

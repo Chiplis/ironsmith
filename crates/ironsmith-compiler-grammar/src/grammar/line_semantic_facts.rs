@@ -322,6 +322,7 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
                 max_triggers_per_object: trigger_frequency.max_triggers_per_object,
             },
             leading_unless_surface: has_leading_unless_resolution_surface(tokens),
+            intervening_if_checked_only_on_trigger: false,
         },
     }
 }

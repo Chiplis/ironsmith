@@ -2,11 +2,11 @@ use crate::effect::Effect;
 pub use ironsmith_core::{
     AdaptEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect, AddManaOfAnyColorEffect,
     AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
-    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AmassEffect, EmpowerJaceEffect, CollectEvidenceEffect, AmplifyEffect,
+    AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, AdditionalStepAnchor, AdditionalStepKind, AdditionalStepsEffect, AmassEffect, EmpowerJaceEffect, CollectEvidenceEffect, AmplifyEffect,
     AssignNoCombatDamageEffect, AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect,
     BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
-    BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect, GrantLoyaltyActivationAllowanceEffect,
-    LoyaltyActivationAllowance, LoyaltyActivationScope,
+    BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomePlottedEffect, BecomeForetoldEffect, GrantLoyaltyActivationAllowanceEffect,
+    GrantTapUncontrolledLandsForManaEffect, LoyaltyActivationAllowance, LoyaltyActivationScope,
     BecomeSaddledUntilEotEffect, BeholdEffect, BidLifeEffect as CoreBidLifeEffect, BolsterEffect,
     CantEffect, CastSourceEffect, CastTaggedEffect as CoreCastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
     ChangeTextEffect, ChooseColorEffect, ChooseCreatureTypeEffect, ChooseLandTypeEffect,
@@ -23,7 +23,8 @@ pub use ironsmith_core::{
     DetainEffect, DevourEffect, DirectionalAdjacentPlayerControlEffect, DiscardEffect,
     DiscardHandEffect, DiscoverEffect, DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, EarthbendEffect, EmitGiftGivenEffect,
-    EmitKeywordActionEffect, EmptyManaPoolEffect, EndCombatPhaseEffect, EndTurnEffect,
+    EmitKeywordActionEffect, EmptyManaPoolEffect, ActivateManaAbilityOfEachLandEffect,
+    EndCombatPhaseEffect, EndTurnEffect,
     EnergyCountersEffect, EvolveEffect, ExchangeControlEffect, ExchangeLifeTotalsEffect,
     ExchangeTextBoxesEffect, ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect,
     ExecuteWithSourceEffect as CoreExecuteWithSourceEffect, ExertCostEffect, ExileEffect,
@@ -55,7 +56,7 @@ pub use ironsmith_core::{
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     NewTargetRestriction, NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect,
-    NoteActivationManaTypeEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
     PrepareEffect, PreventAllCombatDamageEffect,
@@ -64,19 +65,21 @@ pub use ironsmith_core::{
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, NextTimeDamagePreventionPortion,
     ProliferateEffect,
-    PutCounterOfChosenKindEffect, PutCounterOfKindChosenFromEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
+    PutCounterOfChosenKindEffect, PutCounterOfKindChosenFromEffect, PutCounterOfRandomKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
     ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
-    RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
+    RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
+    ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
     RegenerateEffect as CoreRegenerateEffect, RegisterCounterPlacementReplacementEffect,
     RegisterDamagedBySourceZoneReplacementEffect,
     RegisterDrawReplacementEffect, RegisterEnterTappedReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
     RegisterFutureZoneReplacementEffect, RegisterManaReplacementEffect, RegisterManaRewriteEffect, RegisterManaSpendPermissionEffect,
-    RegisterNextBatchEnterWithCountersEffect, RegisterZoneReplacementEffect,
+    RegisterNextBatchEnterAsCopyEffect, RegisterNextBatchEnterWithCountersEffect,
+    RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    BecomeBlockedEffect, RemoveFromCombatEffect, ReselectAttackTargetEffect, RollToVisitAttractionsEffect, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, ChooseFriendsOrFoesEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, ReselectAttackTargetEffect, ExchangeBlocksEffect, UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect, RollToVisitAttractionsEffect, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, ChooseFriendsOrFoesEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatProcessPromptEffect,
     ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,
@@ -86,7 +89,8 @@ pub use ironsmith_core::{
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealChosenSubtypeEffect,
     RevealFromHandEffect, RevealSourceFromHandDuration, RevealSourceFromHandEffect,
     RevealTaggedEffect, RevealTopEffect, ReverseTurnOrderEffect, RingTemptsYouEffect,
-    RollDiceChooseResultEffect, RollDieEffect, SacrificeEffect, SacrificePlayerEffect,
+    RollDiceChooseResultEffect, RollDieEffect, RollPlanarDieEffect, SacrificeEffect,
+    SacrificePlayerEffect,
     SacrificeTargetEffect,
     ScheduleEffectsWhenTaggedLeavesEffect as CoreScheduleEffectsWhenTaggedLeavesEffect, ScryEffect,
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
@@ -102,6 +106,7 @@ pub use ironsmith_core::{
     SoulbondPairEffect, SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagOtherBlockParticipantEffect, TagTriggeringAttackerEffect,
     TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
+    TagSplicedCardsEffect, TagLastDamageSourceEffect,
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
@@ -239,12 +244,14 @@ pub mod consult_helpers {
 
 pub mod mana {
     pub use ironsmith_core::{
-        AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect, AddManaOfImprintedColorsEffect,
+        AddManaEqualToManaCostEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
+        AddManaOfImprintedColorsEffect,
         AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect,
     };
 }
 
 pub use ironsmith_core::RegisterDamageMultiplierEffect;
+pub use ironsmith_core::{RegisterDamageCounterReplacementEffect, RegisteredReplacementExpiry};
 pub use ironsmith_core::RegisterDamageAdditionEffect;
 
 pub use ironsmith_core::DealDamageBySourcesEffect;

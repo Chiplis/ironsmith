@@ -333,6 +333,31 @@ pub fn parse_filter_comparison_tokens(
                 .map(|(value, _)| (value, 1));
         }
         value_expr::parse_value_expr_words(words).or_else(|| {
+            // "an Aura card with mana value less than or equal to that Aura"
+            // (Light-Paws): the triggering object's mana value, with the
+            // repeated axis elided or stated ("that Aura's mana value").
+            if axis == "mana value"
+                && let ["that", noun, rest @ ..] = words
+                && matches!(
+                    noun.trim_end_matches("'s"),
+                    "aura" | "creature" | "spell" | "card" | "permanent" | "artifact"
+                        | "enchantment"
+                )
+            {
+                let used = if noun.ends_with("'s") && rest.starts_with(&["mana", "value"]) {
+                    4
+                } else if noun.ends_with("'s") {
+                    return None;
+                } else {
+                    2
+                };
+                return Some((
+                    Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                        crate::tag::CompilerReferenceTag::Triggering.bind().into(),
+                    ))),
+                    used,
+                ));
+            }
             if !matches!(axis, "power" | "toughness") {
                 return None;
             }

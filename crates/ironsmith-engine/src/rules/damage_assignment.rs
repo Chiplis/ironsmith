@@ -55,6 +55,13 @@ pub(crate) fn prepare_processed_damage_assignment(
     amount: u32,
     keywords: SourceDamageKeywords,
 ) -> Result<PreparedDamageAssignment, ExecutionError> {
+    // "All damage is dealt as though its source had wither" (Everlasting
+    // Torment): the frozen proposal carries wither, so the commit places
+    // -1/-1 counters on a creature instead of marking damage (CR 702.80a).
+    let mut keywords = keywords;
+    if game.effect_store.cant_effects.all_damage_as_though_wither {
+        keywords.has_wither = true;
+    }
     let mut plan = PreparedDamageAssignment {
         applied: false,
         target_snapshot: None,
@@ -88,7 +95,14 @@ pub(crate) fn prepare_processed_damage_assignment(
             {
                 return Ok(plan);
             }
-            if keywords.has_infect {
+            // "All damage is dealt to you as though its source had infect"
+            // (Phyrexian Unlife, CR 702.90b applied to the recipient).
+            let as_though_infect = game
+                .effect_store
+                .cant_effects
+                .damage_as_though_infect
+                .contains(&player);
+            if keywords.has_infect || as_though_infect {
                 Some(
                     crate::events::Event::put_player_counters(
                         player,
@@ -130,8 +144,11 @@ pub(crate) fn prepare_processed_damage_assignment(
                 (battle, crate::CounterType::Defense),
             ] {
                 if applies {
-                    let event = crate::events::Event::remove_counters(object.id, kind, amount)
-                        .with_provenance(ctx.provenance);
+                    let event = crate::events::Event::new_with_provenance(
+                        crate::events::RemoveCountersEvent::new(object.id, kind, amount)
+                            .as_damage_result(),
+                        ctx.provenance,
+                    );
                     plan.removals
                         .push(crate::effects::counters::prepare_counter_removal(
                             game, ctx, event,
@@ -232,6 +249,7 @@ pub(crate) fn commit_prepared_damage_original_with_outputs(
                 "marked damage",
             )?;
             game.set_damage_marked(object, total);
+            game.mark_damage_from_source(object, ctx.source, prepared.amount);
         }
         if prepared.creature && prepared.keywords.has_deathtouch {
             game.mark_deathtouch_damage_since_sba(object);

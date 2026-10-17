@@ -85,6 +85,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_atomic_put_counter_for_each(input)),
     },
     Reading {
+        id: RuleId::new("atomic-permanent-and-suspended-counters"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_atomic_permanent_and_suspended_counters(input)),
+    },
+    Reading {
         id: RuleId::new("joint-draw"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -121,9 +127,18 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_sentence_delayed_next_step_unless_pays(input)),
     },
     Reading {
+        id: RuleId::new("for-each-counter-removed-unless-pays"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_for_each_counter_removed_unless_pays(input)),
+    },
+    Reading {
         id: RuleId::new("single-sentence-unless-action"),
         head: HeadDiscriminator::Any,
-        admits: |input| !input.read_by("sentence-delayed-next-step-unless-pays"),
+        admits: |input| {
+            !input.read_by("sentence-delayed-next-step-unless-pays")
+                && !input.read_by("for-each-counter-removed-unless-pays")
+        },
         read: |input| input.outcome(read_single_sentence_unless_action(input)),
     },
     Reading {
@@ -141,6 +156,7 @@ const READINGS: &[Reading] = &[
             // Readings ranked above this one that read the input read it.
             !input.read_by("single-sentence-unless-action")
                 && !input.read_by("sentence-delayed-next-step-unless-pays")
+                && !input.read_by("for-each-counter-removed-unless-pays")
         },
         read: |input| input.outcome(read_unless_control_flow(input)),
     },
@@ -297,6 +313,16 @@ fn read_atomic_put_counter_for_each(
     }
     Ok(None)
 }
+fn read_atomic_permanent_and_suspended_counters(
+    input: &RemainingSentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(
+        super::super::super::chain_carry::parse_atomic_permanent_and_suspended_counter_sentence(
+            input.tokens,
+        )?
+        .map(|effect| vec![effect]),
+    )
+}
 fn read_joint_draw(input: &RemainingSentence<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     // A joint draw has two independent player subjects but one shared verb
@@ -384,6 +410,80 @@ fn read_sentence_delayed_next_step_unless_pays(
     }
     Ok(None)
 }
+/// "For each delay counter removed this way, you lose 1 life unless you pay
+/// {1}{W}." (Delaying Shield): the unless-payment is offered once per counter
+/// the preceding instruction removed, each decided separately, so the whole
+/// "<effect> unless <payment>" body repeats that many times.
+fn read_for_each_counter_removed_unless_pays(
+    input: &RemainingSentence<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+    if crate::lexer::split_lexed_sentences(tokens).len() != 1
+        || !tokens.iter().any(|token| token.is_word("unless"))
+    {
+        return Ok(None);
+    }
+    let Some((head, body)) = SubjectVerbPrimitiveClause::new(tokens).split_once_on_comma() else {
+        return Ok(None);
+    };
+    let head_tokens = head.tokens();
+    let view = crate::lexer::TokenWordView::new(head_tokens);
+    let head_words = view.to_word_refs();
+    let Some(rest) = head_words.strip_prefix(&["for", "each"][..]) else {
+        return Ok(None);
+    };
+    let Some(counter_idx) = rest
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))
+    else {
+        return Ok(None);
+    };
+    if counter_idx > 2 || rest[counter_idx + 1..] != ["removed", "this", "way"] {
+        return Ok(None);
+    }
+    // "for each two counters removed this way" groups counters; that is the
+    // counter-group reading's.
+    if rest[..counter_idx]
+        .iter()
+        .any(|word| crate::util::parse_number_word_u32(word).is_some())
+    {
+        return Ok(None);
+    }
+    let counter_type = if counter_idx == 0 {
+        None
+    } else {
+        let Some(counter_type) = view
+            .token_span_for_words(2, 2 + counter_idx + 1)
+            .and_then(|range| crate::util::parse_counter_type_from_tokens(&head_tokens[range]))
+        else {
+            return Ok(None);
+        };
+        Some(counter_type)
+    };
+    if body.tokens().is_empty()
+        || effect_grammar::choice_damage_shapes::parse_unless_sentence_shape(body.tokens())
+            .is_none()
+    {
+        return Ok(None);
+    }
+    let Some(effects) = parse_sentence_unless_pays(body)? else {
+        return Ok(None);
+    };
+    let count = crate::effect::Value::PendingPriorEffectMetric(
+        ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::Outcome,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Removed)
+        .with_counter_type(counter_type),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay);
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
+        count,
+        effects,
+    })]))
+}
+
 fn read_single_sentence_unless_action(
     input: &RemainingSentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

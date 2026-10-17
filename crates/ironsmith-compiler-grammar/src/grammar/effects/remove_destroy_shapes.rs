@@ -79,6 +79,12 @@ pub enum DestroyAllShape<'a> {
         filter_tokens: &'a [OwnedLexToken],
         player_tokens: &'a [OwnedLexToken],
     },
+    /// "each nonland permanent with mana value X whose controller was dealt
+    /// combat damage by this creature this turn" (Steel Hellkite).
+    ControllerDealtCombatDamageBySourceThisTurn {
+        filter_tokens: &'a [OwnedLexToken],
+        source_tokens: &'a [OwnedLexToken],
+    },
     AttachedTo {
         filter_tokens: &'a [OwnedLexToken],
         target_tokens: &'a [OwnedLexToken],
@@ -463,6 +469,13 @@ fn parse_target_combat_history_shape(
     if has_complete_block_history_filter(tokens) {
         return Some(DestroyCombatHistoryShape::BlockHistoryFilter { target_tokens: tokens });
     }
+    // "destroy target creature blocking it" (Urborg Panther): the ordinary
+    // target reader owns the blocking relation to the referenced creature.
+    if primitives::parse_prefix(tokens, primitives::kw("target")).is_some()
+        && crate::lexer::token_word_refs(tokens).ends_with(&["creature", "blocking", "it"])
+    {
+        return Some(DestroyCombatHistoryShape::BlockHistoryFilter { target_tokens: tokens });
+    }
     if let Some((target_tokens, ())) =
         primitives::split_lexed_once_before_suffix(tokens, 1, || {
             primitives::phrase(&["that", "dealt", "damage", "this", "turn"])
@@ -490,6 +503,19 @@ fn parse_target_combat_history_shape(
 /// The ordinary complete object-filter reader owns the historic relation.
 /// This shape gate only allows that reader to see the entire clause; it never
 /// discards a partner description or an unrecognized trailing qualification.
+/// "all creatures it blocked this turn" (Defiant Vanguard): the shared
+/// filter reader binds "it blocked this turn/combat" to the referenced
+/// blocker (`blocked_by` the `it` antecedent).
+fn has_it_blocked_window_filter(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    words.len() > 4
+        && (words.ends_with(&["it", "blocked", "this", "turn"])
+            || words.ends_with(&["it", "blocked", "this", "combat"]))
+        && !words[..words.len() - 4]
+            .iter()
+            .any(|word| matches!(*word, "blocked" | "blocking" | "dealt" | "and"))
+}
+
 fn has_complete_block_history_filter(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::token_word_refs(tokens);
     let Some(at) = words.windows(4).position(|w|

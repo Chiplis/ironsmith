@@ -844,6 +844,7 @@ fn exact_chosen_group_battlefield_or_hand_choice(
         && !choice.disallow_previously_chosen_modes
         && !choice.disallow_previously_chosen_modes_this_turn
         && !choice.distinct_player_targets_per_mode
+        && !choice.optional_choice
         && choice.conditional_mode_range.is_none()
         && matches!(
             battlefield_mode.effects.as_slice(),

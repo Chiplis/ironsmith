@@ -715,6 +715,9 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             Some(ironsmith::static_abilities::PregameActionKind::ChooseColor) => {
                 format!("Choose a color for {}", object_name(game, *card_id))
             }
+            Some(ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_)) => {
+                format!("Reveal {}", object_name(game, *card_id))
+            }
             None => format!("Use {}", object_name(game, *card_id)),
         },
         LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".into(),

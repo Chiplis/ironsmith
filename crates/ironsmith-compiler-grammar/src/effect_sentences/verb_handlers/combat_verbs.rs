@@ -286,6 +286,52 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     });
                 }
             }
+            // "Attach target Aura attached to a permanent to another permanent
+            // with the same controller" (Simic Guildmage): the destination is
+            // chosen on resolution among permanents controlled by the
+            // controller of the Aura's current host, excluding that host.
+            if !target_is_tagged
+                && object_tokens.first().is_some_and(|token| token.is_word("target"))
+                && crate::word_primitives::parse_any_sequence_complete(
+                    &crate::lexer::token_word_refs(target_tokens),
+                    &[
+                        &["another", "permanent", "with", "same", "controller"],
+                        &["another", "permanent", "with", "the", "same", "controller"],
+                    ],
+                )
+            {
+                let aura = parse_attach_object_phrase(object_tokens)?;
+                let aura_tag = crate::util::helper_tag_for_tokens(object_tokens, "moved_aura");
+                let host_tag = crate::util::helper_tag_for_tokens(object_tokens, "aura_host");
+                let mut host = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+                host.with_attached_object =
+                    Some(Box::new(ObjectFilter::tagged(aura_tag.clone())));
+                let mut destination = ObjectFilter::permanent().in_zone(Zone::Battlefield);
+                for relation in [
+                    TaggedOpbjectRelation::SameControllerAsTagged,
+                    TaggedOpbjectRelation::IsNotTaggedObject,
+                ] {
+                    destination.tagged_constraints.push(TaggedObjectConstraint {
+                        tag: host_tag.key.clone(),
+                        relation,
+                    });
+                }
+                return Ok(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_target_only(aura),
+                        EffectAst::SnapshotLastObjectTag { into: aura_tag.clone() },
+                        EffectAst::subject_verb_tag_matching_objects(
+                            host,
+                            vec![Zone::Battlefield],
+                            host_tag,
+                        ),
+                        EffectAst::subject_verb_attach(
+                            TargetAst::Tagged(aura_tag, span_from_tokens(object_tokens)),
+                            TargetAst::Object(destination, None, None),
+                        ),
+                    ],
+                });
+            }
             let object = parse_attach_object_phrase(object_tokens)?;
             if !target_is_tagged
                 && let Some(target) =
@@ -525,6 +571,34 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
         effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
         return Ok(EffectAst::Sequence { effects });
     }
+    // "deals 2 damage to any target and 3 damage to itself" inside a granted
+    // quoted ability (Psionic Sliver): the reflexive recipient is the damage
+    // source. Read it with the same compound-damage fanout the top-level
+    // sentence uses, sourced from the ability's own object.
+    thread_local! {
+        static IN_REFLEXIVE_FANOUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    if !IN_REFLEXIVE_FANOUT.with(std::cell::Cell::get)
+        && trimmed.last().is_some_and(|token| token.is_word("itself"))
+        && trimmed.iter().any(|token| token.is_word("and"))
+    {
+        let mut sentence = crate::lexer::synthetic_word_tokens(["this", "creature", "deals"]);
+        sentence.extend_from_slice(trimmed);
+        IN_REFLEXIVE_FANOUT.with(|flag| flag.set(true));
+        let parsed =
+            crate::effect_sentences::fanout_family::parse_compound_damage_fanout_sentence(&sentence);
+        IN_REFLEXIVE_FANOUT.with(|flag| flag.set(false));
+        if let Some(effects) = parsed?
+            && !effects.is_empty()
+        {
+            return Ok(if effects.len() == 1 {
+                effects.into_iter().next().expect("one fanout effect")
+            } else {
+                EffectAst::Sequence { effects }
+            });
+        }
+    }
     let has_unpreventable_rider = damage_clause_has_terminal_unpreventable_rider(tokens);
     let parse_tokens = if has_unpreventable_rider {
         strip_terminal_unpreventable_damage_rider(tokens)
@@ -723,6 +797,77 @@ fn parse_damage_each_filter(
     Ok(filter)
 }
 
+/// "deals damage to each opponent who controls more lands than you equal to
+/// the difference" (Spiteful Repossession) / "deals 2 damage to each opponent
+/// who controls more creatures than you": each such opponent is dealt the
+/// damage; "the difference" is that opponent's count minus yours. The
+/// opponent qualifier is a player condition, never an object filter.
+fn parse_damage_each_opponent_controlling_more_than_you(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(damage_idx) = tokens.iter().position(|token| token.is_word("damage")) else {
+        return Ok(None);
+    };
+    const HEAD: &[&str] = &["to", "each", "opponent", "who", "controls", "more"];
+    let after_damage = &tokens[damage_idx + 1..];
+    if after_damage.len() <= HEAD.len()
+        || !after_damage
+            .iter()
+            .zip(HEAD)
+            .all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let rest = &after_damage[HEAD.len()..];
+    let Some(than_idx) = rest.windows(2).position(|window| {
+        window[0].is_word("than") && window[1].is_word("you")
+    }) else {
+        return Ok(None);
+    };
+    if than_idx == 0 {
+        return Ok(None);
+    }
+    let mut counted = parse_object_filter(&rest[..than_idx], false)?;
+    counted.zone = Some(Zone::Battlefield);
+    let theirs = counted.clone().controlled_by(PlayerFilter::IteratedPlayer);
+    let yours = counted.controlled_by(PlayerFilter::You);
+    let tail = crate::lexer::token_word_refs(&rest[than_idx + 2..]);
+    let amount = match (tail.as_slice(), damage_idx) {
+        (["equal", "to", "the", "difference"], 0) => Value::Add(
+            Box::new(Value::Count(theirs.clone())),
+            Box::new(Value::Scaled(Box::new(Value::Count(yours.clone())), -1)),
+        ),
+        ([], _) if damage_idx > 0 => {
+            let Some((value, used)) = parse_value(&tokens[..damage_idx]) else {
+                return Ok(None);
+            };
+            if used != damage_idx {
+                return Ok(None);
+            }
+            value
+        }
+        _ => return Ok(None),
+    };
+    let predicate = crate::cards::builders::PredicateAst::ValueComparison {
+        left: Value::Count(theirs),
+        operator: crate::effect::ValueComparisonOperator::GreaterThan,
+        right: Value::Count(yours),
+    };
+    Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+        effects: vec![EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::Conditional {
+                predicate,
+                if_true: vec![EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+                if_false: Vec::new(),
+            },
+        )],
+    })))
+}
+
 fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let shape = combat_grammar::parse_combat_damage_head_shape_lexed(tokens);
     let tokens = shape.body_tokens;
@@ -734,6 +879,9 @@ fn parse_deal_damage_inner(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         }));
+    }
+    if let Some(effect) = parse_damage_each_opponent_controlling_more_than_you(tokens)? {
+        return Ok(effect);
     }
     if shape.divided {
         if let Some((value, used)) = parse_value(tokens) {

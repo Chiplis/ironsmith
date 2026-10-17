@@ -30,6 +30,19 @@ pub use ironsmith_core::AddManaOfAnyColorEffect;
 impl EffectExecutor for AddManaOfAnyColorEffect {
     fn mana_production(&self) -> Option<crate::mana_payment::program::ManaProduction<'_>> {
         use crate::mana_payment::program::ManaProduction;
+        if self.available_colors_chosen_at_deck_construction {
+            return Some(ManaProduction::DeckChosenColors {
+                amount: &self.amount,
+                player: &self.player,
+            });
+        }
+        if let Some(card_name) = &self.available_colors_chosen_while_drafting_named {
+            return Some(ManaProduction::DraftChosenColors {
+                amount: &self.amount,
+                card_name,
+                player: &self.player,
+            });
+        }
         Some(ManaProduction::ChooseColors {
             amount: &self.amount,
             available: self
@@ -63,16 +76,77 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         use super::production_resolution::{execute_production, ManaOutputProjection, ManaChoiceMenu};
+        if self.available_colors_chosen_while_drafting_named.is_some()
+            || self.available_colors_chosen_at_deck_construction
+        {
+            return execute_production(
+                self.mana_production().expect("mana production descriptor"),
+                game,
+                ctx,
+                ManaOutputProjection::AuthoredCount,
+                ManaChoiceMenu::AvailableColors,
+            );
+        }
+        if let Some(filter) = &self.available_colors_among {
+            // The colors are read as the effect resolves; the restricted
+            // production then runs with exactly those colors.
+            let objects = crate::effects::helpers::resolve_objects_from_spec(
+                game,
+                &crate::target::ChooseSpec::All(filter.clone()),
+                ctx,
+            )?;
+            let mut colors = Vec::new();
+            for id in objects {
+                let Some(characteristics) = game
+                    .try_current_characteristics(id)
+                    .map_err(ExecutionError::ContinuousDiscovery)?
+                else {
+                    continue;
+                };
+                for color in Color::ALL {
+                    if characteristics.colors.contains(color) && !colors.contains(&color) {
+                        colors.push(color);
+                    }
+                }
+            }
+            let mut resolved = self.clone();
+            resolved.available_colors_among = None;
+            if colors.is_empty() {
+                resolved.amount = crate::effect::Value::Fixed(0);
+            }
+            resolved.available_colors = Some(colors);
+            return resolved.execute_with_outputs(game, ctx);
+        }
         execute_production(self.mana_production().expect("mana production descriptor"),
             game, ctx, ManaOutputProjection::AuthoredCount, if self.available_colors.is_none() { ManaChoiceMenu::AnyColor } else { ManaChoiceMenu::AvailableColors })
     }
 
     fn producible_mana_symbols(
         &self,
-        _game: &GameState,
-        _source: crate::ids::ObjectId,
-        _controller: crate::ids::PlayerId,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
     ) -> Option<Vec<ManaSymbol>> {
+        if self.available_colors_chosen_at_deck_construction {
+            let circled = game.deck_construction_chosen_colors(source);
+            return Some(
+                Color::ALL
+                    .into_iter()
+                    .filter(|color| circled.contains(*color))
+                    .map(ManaSymbol::from_color)
+                    .collect(),
+            );
+        }
+        if let Some(card_name) = &self.available_colors_chosen_while_drafting_named {
+            let drafted = game.draft_chosen_colors(controller, card_name);
+            return Some(
+                Color::ALL
+                    .into_iter()
+                    .filter(|color| drafted.contains(*color))
+                    .map(ManaSymbol::from_color)
+                    .collect(),
+            );
+        }
         let symbols = if let Some(colors) = &self.available_colors {
             colors
                 .iter()

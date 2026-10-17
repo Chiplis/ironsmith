@@ -6,13 +6,18 @@ import useUiText from '@/i18n/useUiText';
 
 export default function PriorityHoldButton({ className = '', disabled = false }) {
   const ui = useUiText();
-  const { postActionPriorityWindow: window, holdPostActionPriority } = useGame();
+  const { postActionPriorityWindow: window, holdPostActionPriority, pausePostActionPriority, resumePostActionPriority } = useGame();
   const buttonRef = useRef(null);
   useLayoutEffect(() => {
     if (!window || !buttonRef.current) return;
     const currentTime = performance.now();
     const button = buttonRef.current;
-    button.style.setProperty('--hold-delay', `${Math.min(0, (window.startedAt ?? currentTime) - currentTime)}ms`);
+    const elapsed = window.startedAt === null ? 0 : (window.pausedAt ?? currentTime) - window.startedAt;
+    for (const animation of button.querySelector('.priority-hold-window-fill').getAnimations()) {
+      if (window.startedAt === null || window.pausedAt != null) animation.pause();
+      else animation.play();
+      animation.currentTime = Math.max(0, elapsed);
+    }
     const fitLabel = () => {
       button.style.removeProperty('--hold-label-size');
       const text = button.querySelector('.priority-hold-window-label > span');
@@ -39,8 +44,10 @@ export default function PriorityHoldButton({ className = '', disabled = false })
       disabled={disabled}
       aria-label={ui('Hold Priority')}
       title={ui('Keep priority instead of passing automatically')}
+      onMouseEnter={() => pausePostActionPriority(window.id)}
+      onMouseLeave={() => resumePostActionPriority(window.id)}
       onClick={holdPostActionPriority}
-      style={{ '--hold-duration': `${window.duration}ms`, animationPlayState: window.startedAt === null ? 'paused' : 'running' }}
+      style={{ '--hold-duration': `${window.duration}ms`, animationPlayState: window.startedAt === null || window.pausedAt != null ? 'paused' : 'running' }}
     >
       <span className="priority-hold-window-label">{label}</span>
       <span className="priority-hold-window-fill" aria-hidden="true">{label}</span>

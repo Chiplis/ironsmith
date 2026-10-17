@@ -70,6 +70,7 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
                 || object_filter_mentions_iterated_player(blockers)
         }
         crate::effect::Restriction::PreventDamageFrom { sources, .. }
+        | crate::effect::Restriction::PreventDamageTo { recipients: sources, .. }
         | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(sources)
         | crate::effect::Restriction::MustAttack(sources)
         | crate::effect::Restriction::MustBlock(sources)
@@ -113,6 +114,18 @@ fn result_memories_share_characteristic(
     characteristic: crate::ObjectCharacteristic,
 ) -> bool {
     match characteristic {
+        crate::ObjectCharacteristic::AllCardTypes => memories.iter().any(|candidate| {
+            memories
+                .iter()
+                .filter(|memory| {
+                    crate::ObjectCharacteristic::card_type_sets_match(
+                        &candidate.card_types,
+                        &memory.card_types,
+                    )
+                })
+                .count()
+                >= required_count
+        }),
         crate::ObjectCharacteristic::CardType => memories.iter().any(|candidate| {
             candidate.card_types.iter().any(|card_type| {
                 memories

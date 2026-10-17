@@ -33,6 +33,22 @@ pub fn parse_pay_segment_tokens(
     }
 
     let words = crate::lexer::parser_token_word_refs(tokens);
+    // "pay its mana cost reduced by {2}" (Flash): the referenced object's
+    // mana cost with that much generic mana removed.
+    if words.starts_with(&["pay", "its", "mana", "cost", "reduced", "by"])
+        && let Some(by) = tokens.iter().position(|token| token.is_word("by"))
+        && let Ok(reduction) = crate::grammar::values::parse_mana_cost_tokens(
+            crate::util::trim_edge_punctuation_tokens(&tokens[by + 1..]),
+        )
+        && reduction.generic_mana_total() > 0
+        && reduction.generic_mana_total() == reduction.mana_value()
+    {
+        let mut cost = ironsmith_core::DynamicManaCost::from_object_mana_cost(
+            crate::target::ChooseSpec::tagged(crate::tag::CompilerReferenceTag::It.key()),
+        );
+        cost.generic_reduction = reduction.generic_mana_total();
+        return Ok(ActivationCostSegmentCst::DynamicMana(cost));
+    }
     let reference = match words.as_slice() {
         ["pay", "its", "mana", "cost"] => Some(crate::target::ChooseSpec::tagged(
             crate::tag::CompilerReferenceTag::It.key(),
@@ -90,6 +106,33 @@ pub fn parse_forage_segment_tokens(
         },
         "forage",
     )
+}
+
+/// "Roll a d8" / "Roll a six-sided die" as an activation cost (Clay Golem).
+/// The completed roll is the activation's retained result.
+pub fn parse_roll_die_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let sides = match words.as_slice() {
+        ["roll", "a", size] => size
+            .strip_prefix('d')
+            .and_then(|digits| digits.parse::<u32>().ok()),
+        ["roll", "a", size, "die"] => size
+            .strip_suffix("-sided")
+            .and_then(crate::util::parse_number_word_u32),
+        ["roll", "a", size, "sided", "die"] => crate::util::parse_number_word_u32(size),
+        _ => None,
+    }
+    .filter(|sides| *sides > 0);
+    sides
+        .map(|sides| ActivationCostSegmentCst::RollDie { sides })
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported roll activation cost segment '{}'",
+                words.join(" ")
+            ))
+        })
 }
 
 pub fn parse_collect_evidence_segment_tokens(

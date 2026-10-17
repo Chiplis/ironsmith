@@ -446,6 +446,13 @@ impl HexproofFrom {
 }
 
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].tag.as_str() == crate::tag::HEXPROOF_PROTECTED_OBJECT_TAG
+        && filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::SharesColorWithTagged
+    {
+        return "each of its colors".to_string();
+    }
     if hexproof_from_activated_and_triggered_abilities(filter) {
         return "activated and triggered abilities".to_string();
     }

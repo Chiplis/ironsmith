@@ -19,6 +19,13 @@ pub trait TagKeyWalk {
     /// Calls `f` on every reference key inside `self`, letting it rewrite the
     /// key in place. Keys used as map keys are visited but not rewritten.
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey));
+
+    /// Calls `f` on every player reference inside `self` (each value of a
+    /// type marked `#[tag_walk(player_ref)]`, such as `PlayerFilter` or the
+    /// compiler's `PlayerAst`), passed as `&mut dyn Any` so callers downcast
+    /// the kinds they rewrite. When `f` returns `true` the reference was
+    /// handled and its own fields are not visited. Leaves carry none.
+    fn map_player_refs(&mut self, _f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {}
 }
 
 impl TagKeyWalk for TagKey {
@@ -82,6 +89,11 @@ impl<T: TagKeyWalk> TagKeyWalk for Option<T> {
             value.map_tag_keys(f);
         }
     }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        if let Some(value) = self {
+            value.map_player_refs(f);
+        }
+    }
 }
 
 impl<T: TagKeyWalk> TagKeyWalk for Vec<T> {
@@ -98,6 +110,11 @@ impl<T: TagKeyWalk> TagKeyWalk for Vec<T> {
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         for value in self {
             value.map_tag_keys(f);
+        }
+    }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_player_refs(f);
         }
     }
 }
@@ -118,6 +135,11 @@ impl<T: TagKeyWalk> TagKeyWalk for [T] {
             value.map_tag_keys(f);
         }
     }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_player_refs(f);
+        }
+    }
 }
 
 impl<T: TagKeyWalk, const N: usize> TagKeyWalk for [T; N] {
@@ -134,6 +156,11 @@ impl<T: TagKeyWalk, const N: usize> TagKeyWalk for [T; N] {
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         for value in self {
             value.map_tag_keys(f);
+        }
+    }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self {
+            value.map_player_refs(f);
         }
     }
 }
@@ -159,6 +186,9 @@ impl<T: TagKeyWalk + ?Sized> TagKeyWalk for Box<T> {
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         (**self).map_tag_keys(f);
     }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        (**self).map_player_refs(f);
+    }
 }
 
 impl<T: TagKeyWalk + Clone> TagKeyWalk for std::rc::Rc<T> {
@@ -171,6 +201,9 @@ impl<T: TagKeyWalk + Clone> TagKeyWalk for std::rc::Rc<T> {
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         std::rc::Rc::make_mut(self).map_tag_keys(f);
     }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        std::rc::Rc::make_mut(self).map_player_refs(f);
+    }
 }
 
 impl<T: TagKeyWalk + Clone> TagKeyWalk for std::sync::Arc<T> {
@@ -182,6 +215,9 @@ impl<T: TagKeyWalk + Clone> TagKeyWalk for std::sync::Arc<T> {
     }
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         std::sync::Arc::make_mut(self).map_tag_keys(f);
+    }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        std::sync::Arc::make_mut(self).map_player_refs(f);
     }
 }
 
@@ -197,6 +233,9 @@ macro_rules! tag_key_tuples {
                 }
                 fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
                     $(self.$index.map_tag_keys(f);)+
+                }
+                fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+                    $(self.$index.map_player_refs(f);)+
                 }
             }
         )+
@@ -223,6 +262,11 @@ impl<K: TagKeyWalk, V: TagKeyWalk, S> TagKeyWalk for std::collections::HashMap<K
             value.map_tag_keys(f);
         }
     }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self.values_mut() {
+            value.map_player_refs(f);
+        }
+    }
 }
 
 impl<K: TagKeyWalk, V: TagKeyWalk> TagKeyWalk for std::collections::BTreeMap<K, V> {
@@ -241,6 +285,11 @@ impl<K: TagKeyWalk, V: TagKeyWalk> TagKeyWalk for std::collections::BTreeMap<K, 
     fn map_tag_keys(&mut self, f: &mut dyn FnMut(&mut TagKey)) {
         for value in self.values_mut() {
             value.map_tag_keys(f);
+        }
+    }
+    fn map_player_refs(&mut self, f: &mut dyn FnMut(&mut dyn std::any::Any) -> bool) {
+        for value in self.values_mut() {
+            value.map_player_refs(f);
         }
     }
 }

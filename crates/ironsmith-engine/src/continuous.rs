@@ -1144,6 +1144,24 @@ impl Modification {
         }
     }
 
+    /// "Only you may activate this ability" on a granted activated ability
+    /// (Martyrdom): "you" is the controller of the granting effect, fixed as
+    /// the grant resolves.
+    pub(crate) fn bind_granting_player_activation(self, granter: PlayerId) -> Self {
+        match self {
+            Modification::AddAbilityGeneric(mut ability) => {
+                if let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind
+                    && activated.timing == crate::ability::ActivationTiming::AnyTimeByGrantingPlayer(None)
+                {
+                    activated.timing =
+                        crate::ability::ActivationTiming::AnyTimeByGrantingPlayer(Some(granter));
+                }
+                Modification::AddAbilityGeneric(ability)
+            }
+            other => other,
+        }
+    }
+
     pub fn pt_sublayer(&self) -> Option<PtSublayer> {
         match self {
             Modification::SetPower { sublayer, .. }
@@ -5269,7 +5287,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         // applicability cache entry across effects.
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => false,
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => false,
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_source_independent(base) && player_filter_source_independent(excluded)
         }
@@ -5306,6 +5324,9 @@ fn continuous_effect_duration_is_active(
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.is_active_player(effect.controller))
         }
+        Until::AnyPlayerCastsCreatureSpell {
+            creature_spells_observed,
+        } => creature_spells_cast_this_game(game) == creature_spells_observed,
         Until::EndOfTurnOrAnyPlayerRolls {
             result,
             matching_rolls_observed,
@@ -5467,6 +5488,11 @@ pub(crate) fn continuous_duration_predicate_matches(
                             == Some(crate::object::AttachmentTarget::Object(attached_to))
                     })
             }),
+        // Not a battlefield-visibility test: an "as this enters" copy begins
+        // while the permanent is still entering, and only turning it face
+        // down ends the duration (a zone change makes it a new object).
+        Predicate::ObjectFaceUp(object) => continuous_duration_object_id(object)
+            .is_some_and(|id| game.object(id).is_some() && !game.is_face_down(id)),
         Predicate::ObjectIsEnchanted(object) => {
             continuous_duration_object_id(object).is_some_and(|enchanted| {
                 continuous_duration_object_is_visible(game, enchanted)
@@ -5839,6 +5865,9 @@ fn filter_matches_layered_fast(
     if filter.foretold && !game.is_foretold(object.id) {
         return Some(false);
     }
+    if filter.warped && !game.is_warped(object.id) {
+        return Some(false);
+    }
     if filter.other
         && filter_ctx.target_objects.is_empty()
         && let Some(source_id) = filter_ctx.source
@@ -5937,6 +5966,8 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.colors_chosen_while_drafting_named.is_some()
         || filter.name_noted_while_drafting_named.is_some()
         || filter.creature_types_noted_while_drafting_named.is_some()
+        || filter.exiled_with_cards_named.is_some()
+        || filter.sector.is_some()
         || filter.chosen_land_type
         || filter.chosen_creature_type
         || filter.chosen_card_type
@@ -5945,6 +5976,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.sticker.is_some()
         || filter.modified
         || filter.ring_bearer
+        || filter.prepared
         || filter.attacking
         || filter.attacked_this_turn
         || filter.was_blocked_this_turn
@@ -5983,6 +6015,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.surveilled_this_turn
         || filter.fought_this_turn
         || filter.counters_put_on_this_turn.is_some()
+        || filter.counter_source_history.is_some()
         || filter.discarded_or_cycled_this_turn_by.is_some()
         || filter.was_dealt_damage_this_turn
         || filter.dealt_damage_this_turn
@@ -6072,7 +6105,7 @@ fn bind_effect_controller_in_trigger(
     trigger.clone()
 }
 
-fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: PlayerId) -> Ability {
+pub(crate) fn bind_effect_controller_in_ability(ability: &Ability, effect_controller: PlayerId) -> Ability {
     let mut bound = ability.clone();
     if let AbilityKind::Triggered(triggered) = &mut bound.kind {
         triggered.trigger =
@@ -7160,3 +7193,12 @@ impl Modification {
 #[cfg(test)]
 #[path = "continuous/intrinsic_land_mana_tests.rs"]
 mod intrinsic_land_mana_tests;
+
+/// Creature spells all players have cast this game (CR 601.2i completed
+/// casts), for "until a player casts a creature spell".
+pub(crate) fn creature_spells_cast_this_game(game: &crate::game_state::GameState) -> u32 {
+    game.players
+        .iter()
+        .map(|player| player.creature_spells_cast_this_game)
+        .fold(0u32, u32::saturating_add)
+}

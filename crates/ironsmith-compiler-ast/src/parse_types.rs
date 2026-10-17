@@ -11,6 +11,7 @@ pub enum DamageBySpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+#[tag_walk(player_ref)]
 pub enum PlayerAst {
     You,
     Active,
@@ -105,6 +106,10 @@ pub enum ControlDurationAst {
     DuringNextTurn,
     AsLongAsYouControlSource,
     Forever,
+    /// "during their next combat phase" (player control only).
+    DuringNextCombatPhase,
+    /// "until this spell finishes resolving" (player control only, CR 722).
+    UntilSourceFinishesResolving,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
@@ -180,6 +185,9 @@ pub enum RetargetModeAst<
 > {
     All,
     OneToFixed { target: Target },
+    /// "reselect the targets at random": every target slot is refilled
+    /// at random from its legal targets.
+    AllAtRandom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
@@ -214,6 +222,8 @@ pub enum PreventNextTimeDamageTargetAst {
     /// "you and/or creatures you control": the controller plus every
     /// permanent matching the filter.
     YouAndPermanents(crate::target::ObjectFilter),
+    /// "to one or more players": damage dealt to any player.
+    AnyPlayer,
     Target(TargetAst),
 }
 

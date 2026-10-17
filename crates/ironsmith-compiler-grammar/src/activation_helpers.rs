@@ -141,6 +141,59 @@ fn add_mana_alternatives_effect(player: PlayerAst, groups: Vec<Vec<ManaSymbol>>)
     })
 }
 
+/// "for each {S} spent to cast this spell" (Tundra Fumarole): {S} is mana
+/// from a snow source (CR 107.4h), so the count is the mana spent to cast the
+/// spell whose producing source was snow.
+fn parse_for_each_snow_mana_spent_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = match tokens.last() {
+        Some(last) if last.kind == crate::lexer::TokenKind::Period => &tokens[..tokens.len() - 1],
+        _ => tokens,
+    };
+    let [for_word, each, snow, rest @ ..] = tokens else {
+        return None;
+    };
+    if !for_word.is_word("for") || !each.is_word("each") {
+        return None;
+    }
+    let pip = crate::grammar::leaf::parse_leaf_surface_mana_pip_token(snow)?;
+    if pip.into_pip().as_slice() != [ManaSymbol::Snow] {
+        return None;
+    }
+    let words = crate::lexer::token_word_refs(rest);
+    let reference = match words.as_slice() {
+        ["spent", "to", "cast", "this", "spell"] => ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+        ["spent", "to", "cast", "it"] => ironsmith_core::ManaSpentCastReferenceSurface::It,
+        _ => return None,
+    };
+    if rest.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    let mut source_filter = ObjectFilter::default();
+    source_filter.supertypes.push(crate::types::Supertype::Snow);
+    Some(Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter,
+        include_source_noun: false,
+        reference,
+    })
+}
+
+/// "chosen as you drafted cards named <name>" after "mana of any color".
+fn parse_drafted_chosen_color_mana_tail(tail_tokens: &[OwnedLexToken]) -> Option<String> {
+    const PREFIX: &[&str] = &["chosen", "as", "you", "drafted", "cards", "named"];
+    let view = TokenWordView::new(tail_tokens);
+    let words = view.to_word_refs();
+    if words.len() <= PREFIX.len() || !words.starts_with(PREFIX) {
+        return None;
+    }
+    let name_start = view.map_word_or_end_to_token_boundary(PREFIX.len())?;
+    let name = super::lexer::render_literal_token_slice(tail_tokens.get(name_start..)?)
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_string();
+    (!name.is_empty()).then_some(name)
+}
+
 pub fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -186,6 +239,22 @@ pub fn parse_add_mana(
     if facts.imprinted_colors {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
+    if let Some(filter) = parse_add_mana_equal_to_mana_cost_filter(tokens)? {
+        return Ok(EffectAst::subject_verb_add_mana_equal_to_mana_cost(
+            player, filter,
+        ));
+    }
+    // "Add one mana of either of the circled colors." (Cryptic Spires): the
+    // colors circled for this card as its owner built their deck.
+    if matches!(
+        clause_words.as_slice(),
+        [.., "mana", "of", "either" | "any", "of", "the", "circled", "colors"]
+    ) {
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        return Ok(EffectAst::subject_verb_add_mana_deck_construction_chosen_colors(
+            player, amount,
+        ));
+    }
     // "Add one mana of this artifact's last noted type."
     if clause_words.ends_with(&["last", "noted", "type"]) && clause_words.contains(&"mana") {
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
@@ -206,6 +275,20 @@ pub fn parse_add_mana(
         ));
     }
 
+    // "Add three mana in any combination of its colors" (Omnath, Locus of
+    // All): the colors are the referenced object's, read on resolution.
+    if matches!(
+        clause_words.as_slice(),
+        [.., "any", "combination", "of", "its" | "that", "colors"]
+            | [.., "any", "combination", "of", "that", "card's" | "cards" | "card’s", "colors"]
+    ) {
+        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        return Ok(EffectAst::subject_verb_add_mana_any_color_among(
+            player,
+            amount,
+            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+        ));
+    }
     if let Some(available_colors) = parse_any_combination_mana_colors(tokens)? {
         let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         if matches!(amount, Value::X)
@@ -250,6 +333,31 @@ pub fn parse_add_mana(
         ));
     }
 
+    // "adds three mana of the chosen color for each artifact sacrificed this
+    // way" (Radiant Lotus): a chosen-color amount scaled by a for-each count.
+    if !fixed_output.has_explicit_symbol
+        && let Some(for_each_idx) = tokens
+            .windows(2)
+            .position(|pair| pair[0].is_word("for") && pair[1].is_word("each"))
+        && crate::lexer::token_word_refs(&tokens[..for_each_idx])
+            .ends_with(&["mana", "of", "the", "chosen", "color"])
+        && let Some(per) = parse_dynamic_cost_modifier_value(&tokens[for_each_idx..])?
+    {
+        let per = bind_revealed_this_way_count_to_last_object(per);
+        let amount = match parse_add_mana_amount(&tokens[..for_each_idx]) {
+            None | Some(Value::Fixed(1)) => per,
+            Some(Value::Fixed(multiplier)) => Value::Scaled(Box::new(per), multiplier),
+            Some(_) => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported dynamic chosen-color mana multiplier (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+        };
+        return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+            player, amount, None,
+        ));
+    }
     if !fixed_output.has_explicit_symbol && facts.chosen_color_reference {
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
@@ -321,6 +429,50 @@ pub fn parse_add_mana(
             ));
         }
 
+        // "one mana of any color chosen as you drafted cards named <name>"
+        // (Paliano, the High City): the colors come from the draft record.
+        if !any_type
+            && !any_one
+            && let Some(card_name) = parse_drafted_chosen_color_mana_tail(tail_tokens)
+        {
+            return Ok(EffectAst::subject_verb_add_mana_draft_chosen_colors(
+                player, amount, card_name,
+            ));
+        }
+
+        // "add an additional one mana of any type that land produced for each
+        // other land you control with the same name as it" (Sasaya's
+        // Essence): the produced-type mana is repeated once per matching
+        // permanent. "Other" excludes the land that was tapped, which "it"
+        // names, rather than this ability's source.
+        if matches!(amount, Value::Fixed(1))
+            && let Some(for_idx) = tail_tokens.windows(2).position(|pair| {
+                pair[0].is_word("for") && pair[1].is_word("each")
+            })
+            && for_idx > 0
+            && for_idx + 2 < tail_tokens.len()
+            && let Some((filter, mana_type_source)) =
+                parse_land_could_produce_filter(&tail_tokens[..for_idx])?
+        {
+            let per_tokens = &tail_tokens[for_idx + 2..];
+            let per_words = TokenWordView::new(per_tokens).to_word_refs();
+            let triggering_relative_other = per_words.first() == Some(&"other")
+                && per_words.ends_with(&["as", "it"])
+                && mana_type_source == crate::effects::ManaTypeSource::TriggeringEventProduced;
+            let mut per_filter = parse_object_filter(per_tokens, false)?;
+            if triggering_relative_other {
+                per_filter.other = false;
+                per_filter = per_filter.not_tagged(crate::tag::CompilerReferenceTag::Triggering.key());
+            }
+            return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
+                player,
+                Value::Count(per_filter),
+                filter,
+                any_type,
+                any_one,
+                mana_type_source,
+            ));
+        }
         if let Some((filter, mana_type_source)) = parse_land_could_produce_filter(tail_tokens)? {
             return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
                 player,
@@ -405,6 +557,34 @@ pub fn parse_add_mana(
             ));
         }
 
+        // "Add two mana of any one color and two mana of any other color"
+        // (Open the Omenpaths): a choice of two different colors, each
+        // repeated the same fixed number of times.
+        if any_one
+            && !any_type
+            && let Value::Fixed(per_color) = amount.clone()
+            && per_color > 0
+            && let Some(second_amount) = parse_any_other_color_mana_tail(tail_tokens)
+            && second_amount == per_color
+        {
+            const COLORS: [ManaSymbol; 5] = [
+                ManaSymbol::White,
+                ManaSymbol::Blue,
+                ManaSymbol::Black,
+                ManaSymbol::Red,
+                ManaSymbol::Green,
+            ];
+            let mut groups = Vec::new();
+            for (first_index, first) in COLORS.iter().enumerate() {
+                for second in &COLORS[first_index + 1..] {
+                    let mut group = vec![*first; per_color as usize];
+                    group.extend(std::iter::repeat_n(*second, per_color as usize));
+                    groups.push(group);
+                }
+            }
+            return Ok(add_mana_alternatives_effect(player, groups));
+        }
+
         let base_effect = if any_one {
             EffectAst::subject_verb_add_mana_any_one_color(player, amount)
         } else {
@@ -437,6 +617,11 @@ pub fn parse_add_mana(
         }
         if let Some(for_each_idx) = for_each_idx {
             let amount_tokens = &tokens[for_each_idx..];
+            if let Some(amount) = parse_for_each_snow_mana_spent_value(amount_tokens) {
+                return Ok(EffectAst::subject_verb_add_mana_scaled(
+                    player, mana, amount,
+                ));
+            }
             let amount = parse_dynamic_cost_modifier_value(amount_tokens)?.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported dynamic mana amount (clause: '{}')",
@@ -515,6 +700,75 @@ pub fn parse_add_mana(
         "missing mana symbols (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+/// "add mana equal to enchanted permanent's mana cost" (Elemental
+/// Resonance): the object whose printed mana symbols are produced.
+fn parse_add_mana_equal_to_mana_cost_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let word_tokens: Vec<OwnedLexToken> = tokens
+        .iter()
+        .filter(|token| token.as_word().is_some())
+        .cloned()
+        .collect();
+    let words = crate::lexer::token_word_refs(&word_tokens);
+    let Some(equal) = words
+        .windows(3)
+        .position(|window| window == ["mana", "equal", "to"])
+    else {
+        return Ok(None);
+    };
+    if equal != 0 || words.len() < 6 || !words.ends_with(&["mana", "cost"]) {
+        return Ok(None);
+    }
+    let mut object = word_tokens[3..word_tokens.len() - 2].to_vec();
+    let Some(last) = object.last_mut() else {
+        return Ok(None);
+    };
+    let text = last.as_word().unwrap_or_default().to_string();
+    let stripped = text
+        .strip_suffix("'s")
+        .or_else(|| text.strip_suffix("’s"))
+        .or_else(|| text.strip_suffix('s'))
+        .map(str::to_string);
+    let Some(stripped) = stripped else {
+        return Ok(None);
+    };
+    if stripped.is_empty() {
+        return Ok(None);
+    }
+    *last = OwnedLexToken::word(stripped, last.span());
+    let mut filter = parse_object_filter(&object, false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+    }
+    Ok(Some(filter))
+}
+
+/// "and two mana of any other color" after "<N> mana of any one color":
+/// returns the second fixed amount.
+fn parse_any_other_color_mana_tail(tokens: &[OwnedLexToken]) -> Option<i32> {
+    let tokens = match tokens.last() {
+        Some(last) if last.kind == crate::lexer::TokenKind::Period => &tokens[..tokens.len() - 1],
+        _ => tokens,
+    };
+    let [and, amount_and_rest @ ..] = tokens else {
+        return None;
+    };
+    if !and.is_word("and") {
+        return None;
+    }
+    let (amount, used) = parse_value(amount_and_rest)?;
+    let Value::Fixed(amount) = amount else {
+        return None;
+    };
+    let rest = amount_and_rest.get(used..)?;
+    if rest.iter().any(|token| token.as_word().is_none()) {
+        return None;
+    }
+    (crate::lexer::token_word_refs(rest).as_slice() == ["mana", "of", "any", "other", "color"])
+        .then_some(amount)
 }
 
 fn parse_add_mana_colors_among_filter(

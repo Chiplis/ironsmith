@@ -10,6 +10,24 @@ use crate::replacement::{
 };
 use crate::zone::Zone;
 
+/// The current value of a static prevention amount ("X, where X is the number
+/// of age counters on this enchantment"), read from its source.
+pub(super) fn resolve_static_prevention_amount(
+    game: &GameState,
+    effect: &ReplacementEffect,
+    amount: &crate::effect::Value,
+) -> Result<u32, crate::effects::ExecutionError> {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(effect.source, effect.controller, &mut dm);
+    if let Some(source) = game.object(effect.source) {
+        ctx.optional_costs_paid = source.optional_costs_paid.clone();
+        ctx.x_value = source.own_entry_x_value();
+        ctx = ctx.with_tagged_objects(source.cast_tagged_objects.clone());
+    }
+    let amount = crate::effects::helpers::resolve_value(game, amount, &ctx)?;
+    Ok(amount.max(0) as u32)
+}
+
 pub(super) fn apply_trait_replacement(
     game: &mut GameState,
     event: Event,
@@ -67,20 +85,11 @@ pub(super) fn apply_trait_replacement(
                     ironsmith_core::StaticDamagePreventionAmount::AllBut(remaining) => {
                         damage.amount.saturating_sub(*remaining)
                     }
-                    ironsmith_core::StaticDamagePreventionAmount::Amount(amount) => {
-                        let mut dm = crate::decision::SelectFirstDecisionMaker;
-                        let mut ctx = crate::effects::ExecutionContext::new(
-                            effect.source,
-                            effect.controller,
-                            &mut dm,
-                        );
-                        if let Some(source) = game.object(effect.source) {
-                            ctx.optional_costs_paid = source.optional_costs_paid.clone();
-                            ctx.x_value = source.own_entry_x_value();
-                            ctx = ctx.with_tagged_objects(source.cast_tagged_objects.clone());
-                        }
-                        let amount = crate::effects::helpers::resolve_value(game, amount, &ctx)?;
-                        damage.amount.min(amount.max(0) as u32)
+                    ironsmith_core::StaticDamagePreventionAmount::Amount(amount)
+                    // A lone event spends its source's whole shared budget;
+                    // simultaneous events are allocated before application.
+                    | ironsmith_core::StaticDamagePreventionAmount::SharedPerSource(amount) => {
+                        damage.amount.min(resolve_static_prevention_amount(game, effect, amount)?)
                     }
                 }
             };
@@ -458,6 +467,7 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::EnterWithCounters {
             counter_type,
+            counter_kinds_from,
             count,
             count_condition,
             otherwise_count,
@@ -523,12 +533,14 @@ pub(super) fn apply_trait_replacement(
                 *counter_type,
                 selected_count,
             );
-            let modified = apply_trait_enter_with_counters(
-                &event,
-                counter_type,
-                resolved_count,
-                added_subtypes,
-                added_abilities,
+            let entries = if let Some(source) = counter_kinds_from {
+                let mut context = crate::effects::ExecutionContext::new_default(effect.source, effect.controller);
+                let objects = crate::effects::helpers::resolve_objects_for_effect(game, &mut context, source)?;
+                crate::effects::counters::kind_selection::kinds_on(game, &objects)
+                    .into_iter().map(|kind| (kind, resolved_count)).collect::<Vec<_>>()
+            } else { vec![(counter_type, resolved_count)] };
+            let modified = apply_trait_enter_with_counter_entries(
+                &event, &entries, added_subtypes, added_abilities,
             );
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -641,6 +653,20 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::Additionally(_effects) => TraitApplyResult::Modified(event),
+
+        ReplacementAction::HealRecipientThenProceed => {
+            let Some(damage) =
+                crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
+            else {
+                return Ok(TraitApplyResult::Unchanged(event));
+            };
+            if damage.amount > 0
+                && let crate::events::DamageTarget::Object(recipient) = damage.target
+            {
+                game.clear_damage(recipient);
+            }
+            TraitApplyResult::Modified(event)
+        }
 
         ReplacementAction::DeclineOptional(_) => TraitApplyResult::Modified(event),
 
@@ -1476,6 +1502,9 @@ fn modify_token_groups_checked(
                 u128::from(if round_up { total.div_ceil(2) } else { total / 2 })
             })
         }
+        EventModification::LeaveOneCounter => {
+            tokens.adjusted_token_total(covers, |total| u128::from(total))
+        }
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1504,6 +1533,8 @@ fn modified_count(
         EventModification::Halve { round_up } => {
             if *round_up { count.div_ceil(2) } else { count / 2 }
         }
+        // Needs the target's current counters; see the removal arm below.
+        EventModification::LeaveOneCounter => count,
         EventModification::AddDynamic(_) => {
             unreachable!("dynamic modifier normalized before dispatch")
         }
@@ -1521,7 +1552,17 @@ fn apply_trait_modification(
     match event.kind() {
         EventKind::RemoveCounters => {
             let removal = crate::events::CounterRemovalEvent::from_event(event.inner())?;
-            let count = modified_count(game, removal.count(), modification, effect);
+            let count = if matches!(modification, EventModification::LeaveOneCounter) {
+                let current = match removal.target() {
+                    crate::game_state::Target::Object(object) => {
+                        game.counter_count(object, removal.counter_type())
+                    }
+                    crate::game_state::Target::Player(_) => removal.count().saturating_add(1),
+                };
+                removal.count().min(current.saturating_sub(1))
+            } else {
+                modified_count(game, removal.count(), modification, effect)
+            };
             Some(removal.with_count(event, count))
         }
         EventKind::KeywordAction => {
@@ -1803,42 +1844,28 @@ fn apply_trait_enter_untapped(event: &Event) -> Option<Event> {
 }
 
 pub(super) fn apply_trait_enter_with_counters(
-    event: &Event,
-    counter_type: CounterType,
-    count: u32,
-    added_subtypes: &[crate::types::Subtype],
-    added_abilities: &[crate::ability::Ability],
+    event: &Event, counter_type: CounterType, count: u32,
+    added_subtypes: &[crate::types::Subtype], added_abilities: &[crate::ability::Ability],
+) -> Option<Event> {
+    apply_trait_enter_with_counter_entries(event, &[(counter_type, count)], added_subtypes, added_abilities)
+}
+
+fn apply_trait_enter_with_counter_entries(
+    event: &Event, counters: &[(CounterType, u32)],
+    added_subtypes: &[crate::types::Subtype], added_abilities: &[crate::ability::Ability],
 ) -> Option<Event> {
     use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
-
-    match event.kind() {
-        EventKind::EnterBattlefield => {
-            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
-            Some(
-                event.rewrap(
-                    etb.with_counters(counter_type, count)
-                        .with_added_subtypes(added_subtypes)
-                        .with_added_abilities(added_abilities),
-                ),
-            )
-        }
+    let mut entering = match event.kind() {
+        EventKind::EnterBattlefield => downcast_event::<EnterBattlefieldEvent>(event.inner())?.clone(),
         EventKind::ZoneChange => {
-            let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
-            if zone_change.to == Zone::Battlefield {
-                Some(
-                    event.rewrap(
-                        EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
-                            .with_counters(counter_type, count)
-                            .with_added_subtypes(added_subtypes)
-                            .with_added_abilities(added_abilities),
-                    ),
-                )
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
+            let change = downcast_event::<ZoneChangeEvent>(event.inner())?;
+            if change.to != Zone::Battlefield { return None; }
+            EnterBattlefieldEvent::new(*change.objects.first()?, change.from)
+        },
+        _ => return None,
+    };
+    for (kind, count) in counters { entering = entering.with_counters(*kind, *count); }
+    Some(event.rewrap(entering.with_added_subtypes(added_subtypes).with_added_abilities(added_abilities)))
 }
 
 fn apply_trait_enter_as_copy(
@@ -2508,5 +2535,45 @@ mod quantitative_addition_range_tests {
             check(family, 0, i32::MAX, 0);
             check(family, 2, -1, 1);
         }
+    }
+}
+
+#[cfg(test)]
+mod counter_kind_entry_projection_tests {
+    use super::*;
+    #[test]
+    fn counter_kind_entry_projection_preserves_prior_metadata_and_empty_kind_sets() {
+        use crate::events::{EnterBattlefieldEvent, ZoneChangeEvent, downcast_event};
+        use crate::ids::ObjectId;
+        use crate::types::Subtype;
+        let id = ObjectId::from_raw(1);
+        let donor = ObjectId::from_raw(2);
+        let proposal = EnterBattlefieldEvent::new(id, Zone::Hand).with_tapped()
+            .with_copy_of(donor).with_counters(CounterType::Charge, 3)
+            .with_added_subtypes(&[Subtype::Vehicle]);
+        let event = Event::new_with_provenance(proposal, crate::ProvNodeId::default());
+        for entries in [vec![], vec![(CounterType::Charge, 1), (CounterType::Flying, 1)]] {
+            let changed = apply_trait_enter_with_counter_entries(&event, &entries, &[Subtype::Dinosaur], &[]).unwrap();
+            let etb = downcast_event::<EnterBattlefieldEvent>(changed.inner()).unwrap();
+            assert_eq!(etb.object, id);
+            assert_eq!(etb.from, Zone::Hand);
+            assert!(etb.enters_tapped);
+            assert_eq!(etb.enters_as_copy_of, Some(donor));
+            assert!(etb.added_subtypes.contains(&Subtype::Vehicle));
+            assert!(etb.added_subtypes.contains(&Subtype::Dinosaur));
+            assert_eq!(etb.enters_with_counters.iter().find(|(kind, _)| *kind == CounterType::Charge).unwrap().1, if entries.is_empty() { 3 } else { 4 });
+            assert_eq!(etb.enters_with_counters.iter().any(|(kind, _)| *kind == CounterType::Flying), !entries.is_empty());
+            assert_eq!(changed.provenance(), event.provenance());
+        }
+        for destination in [Zone::Battlefield, Zone::Graveyard] {
+            let zone = Event::new_with_provenance(ZoneChangeEvent::with_cause(id, Zone::Hand, destination, crate::events::EventCause::effect(), None), crate::ProvNodeId::default());
+            let projected = apply_trait_enter_with_counter_entries(&zone, &[], &[], &[]);
+            assert_eq!(projected.is_some(), destination == Zone::Battlefield);
+            if let Some(projected) = projected {
+                assert!(downcast_event::<EnterBattlefieldEvent>(projected.inner()).unwrap().enters_with_counters.is_empty());
+            }
+        }
+        let legacy = apply_trait_enter_with_counters(&event, CounterType::Charge, 2, &[], &[]).unwrap();
+        assert_eq!(downcast_event::<EnterBattlefieldEvent>(legacy.inner()).unwrap().enters_with_counters, vec![(CounterType::Charge, 5)]);
     }
 }

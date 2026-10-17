@@ -50,6 +50,10 @@ pub(crate) struct PreparedEtbEntry {
     /// Attachment specified by the authoring effect, validated during this commit.
     pub(crate) entry_attachment: Option<AttachmentTarget>,
     pub(crate) entry_attachment_requires_aura: bool,
+    /// Further restricts what an Aura entering without a fixed attachment may
+    /// choose to enchant ("Only creatures can be enchanted this way"). With
+    /// it, an Aura that would enchant a player has no legal choice.
+    pub(crate) entry_attachment_filter: Option<crate::filter::ObjectFilter>,
 }
 
 fn named_color_creature_type_option(
@@ -2163,6 +2167,7 @@ impl GameState {
                 linked_face_mana_cost: None,
                 entry_attachment: None,
                 entry_attachment_requires_aura: false,
+                entry_attachment_filter: None,
             }));
         }
         if let Some(choices) = result.prepared_choices.clone() {
@@ -2175,6 +2180,7 @@ impl GameState {
                 linked_face_mana_cost: None,
                 entry_attachment: None,
                 entry_attachment_requires_aura: false,
+                entry_attachment_filter: None,
             }));
         }
 
@@ -2879,6 +2885,18 @@ impl GameState {
                 choices.discard_hand = true;
             }
             if let Some(spec) = static_ability.power_toughness_choice_as_enters_or_turns_face_up()
+                && spec.at_random
+                && !spec.options.is_empty()
+            {
+                // "As this creature enters, flip a coin. If the coin comes up
+                // heads, ..." (Molten Sentry): the deterministic game RNG
+                // picks one listed characteristic option uniformly.
+                let mut indices = (0..spec.options.len()).collect::<Vec<_>>();
+                self.shuffle_slice(&mut indices);
+                if let Some(option) = indices.first().map(|idx| spec.options[*idx].clone()) {
+                    choices.power_toughness_choices.push(option);
+                }
+            } else if let Some(spec) = static_ability.power_toughness_choice_as_enters_or_turns_face_up()
                 && !spec.options.is_empty()
             {
                 let display_options = spec
@@ -2924,6 +2942,7 @@ impl GameState {
             linked_face_mana_cost: None,
             entry_attachment: None,
             entry_attachment_requires_aura: false,
+            entry_attachment_filter: None,
         }))
     }
 
@@ -3275,6 +3294,7 @@ impl GameState {
             linked_face_mana_cost,
             entry_attachment,
             entry_attachment_requires_aura,
+            entry_attachment_filter,
         } = prepared_entry;
         crate::effects::PublishedEffectOutputs::append_distinct(
             published_outputs,
@@ -3902,6 +3922,11 @@ impl GameState {
             && (old_zone != Zone::Stack || result.enters_as_copy_of.is_some())
             && let Some(obj) = self.object(new_id)
             && obj.subtypes.contains(&Subtype::Aura)
+            // An entry effect that makes it a non-Aura ("as a non-Aura
+            // enchantment") means it enters attached to nothing.
+            && !self
+                .current_subtypes(new_id)
+                .is_some_and(|subtypes| !subtypes.contains(&Subtype::Aura))
             && obj.attached_to.is_none()
             && let Some(filter) = obj.aura_attach_filter_owned()
         {
@@ -3928,6 +3953,9 @@ impl GameState {
                         // "any other applicable effects", which includes
                         // protection (702.16c) but not hexproof or shroud.
                         if filter.matches(candidate, &filter_ctx, self)
+                            && entry_attachment_filter.as_ref().is_none_or(|restriction| {
+                                restriction.matches(candidate, &filter_ctx, self)
+                            })
                             && !crate::targeting::has_protection_from_source(self, *id, new_id)
                         {
                             candidates.push(crate::decisions::context::SelectableObject::new(
@@ -3965,7 +3993,8 @@ impl GameState {
                         .players
                         .iter()
                         .filter(|player| {
-                            player.is_in_game()
+                            entry_attachment_filter.is_none()
+                                && player.is_in_game()
                                 && filter.matches_player(player.id, &filter_ctx)
                                 && !match self.object(new_id) {
                                     Some(aura) => {
@@ -4142,6 +4171,7 @@ impl GameState {
             return;
         }
         self.object_annotations_mut().noted_life_totals.remove(&id);
+        self.object_annotations_mut().noted_creature_types.remove(&id);
         if self
             .object(id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
@@ -4632,6 +4662,10 @@ impl GameState {
     ) -> Option<(u32, crate::triggers::TriggerEvent)> {
         // CR 702.26b: ordinary effects cannot change phased-out permanents.
         if self.is_phased_out(id) {
+            return None;
+        }
+        // A "counters can't be removed" prohibition (CR 122.1) leaves them.
+        if !self.can_have_counter_type_removed(id, counter_type) {
             return None;
         }
         self.mark_continuous_state_dirty();
@@ -6006,6 +6040,16 @@ impl GameState {
                 {
                     Some(index)
                 }
+                // CR 611.2a: "until <player>'s next turn" ends once, as that
+                // turn begins; it must not apply again on later turns.
+                duration
+                    if duration.ends_at_next_turn_start()
+                        && !effect.is_pending()
+                        && self.turn.turn_number > effect.expires_end_of_turn
+                        && self.is_active_player(duration.next_turn_owner(effect.controller)) =>
+                {
+                    Some(index)
+                }
                 _ => None,
             })
             .collect();
@@ -6291,6 +6335,7 @@ impl GameState {
             if matches!(
                 effect.restriction,
                 crate::effect::Restriction::NoMaximumHandSize(_)
+                    | crate::effect::Restriction::ReduceMaximumHandSize(_, _)
             ) {
                 hand_size_modifications
                     .push((effect.timestamp, HandSizeModification::Restriction(effect)));

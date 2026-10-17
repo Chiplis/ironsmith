@@ -42,6 +42,13 @@ impl<'a> ObjectSubject<'a> {
             Self::Snapshot(snapshot) => snapshot.owner,
         }
     }
+    /// "a card" as opposed to a token or a copy (CR 108.2, 707.10).
+    pub(crate) fn is_physical_card(self) -> bool {
+        match self {
+            Self::Live(object) => object.kind == ObjectKind::Card,
+            Self::Snapshot(snapshot) => snapshot.kind == ObjectKind::Card,
+        }
+    }
     pub(crate) fn is_token(self) -> bool {
         match self {
             Self::Live(object) => object.kind == ObjectKind::Token,

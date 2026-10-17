@@ -2379,6 +2379,8 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
         target: crate::target::ChooseSpec::target_creature(),
         target_count: Some(crate::effect::ChoiceCount::exactly(1)),
         distributed: false,
+        required_recipient: None,
+        counter_kind_from_trigger: false,
     };
     plus_one
         .execute(&mut game, &mut ctx)
@@ -2408,6 +2410,8 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
         target: crate::target::ChooseSpec::target_creature(),
         target_count: Some(crate::effect::ChoiceCount::exactly(1)),
         distributed: false,
+        required_recipient: None,
+        counter_kind_from_trigger: false,
     };
     deathtouch_counter
         .execute(&mut game, &mut ctx)

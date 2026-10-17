@@ -192,6 +192,22 @@ pub(super) fn standard_gift_create_token_effect(
 pub(super) fn try_lower_hideaway_tokens(
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
+    // "Hideaway 3, hideaway 3" (Evercoat Ursine): each instance is its own
+    // enters trigger (CR 702.75a), and both exile into the same linked set.
+    let segments = parse_tokens
+        .split(OwnedLexToken::is_comma)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments.len() > 1 {
+        let mut instances = Vec::with_capacity(segments.len());
+        for segment in segments {
+            let Some(shape) = semantic_grammar::parse_hideaway_keyword_tokens(segment)? else {
+                return Ok(None);
+            };
+            instances.push(hideaway_line_ast(shape.count));
+        }
+        return Ok(Some(LineAst::Multiple(instances)));
+    }
     let Some(shape) = semantic_grammar::parse_hideaway_keyword_tokens(parse_tokens)? else {
         return Ok(None);
     };

@@ -48,6 +48,10 @@ pub enum TokenActionAst {
         set_base_power_toughness_to_source_totals: bool,
         starting_loyalty: Option<u32>,
         granted_abilities: Vec<GrantedAbilityAst>,
+        /// "a token that's a copy of it attached to <object>": the copy
+        /// enters attached there instead of its controller choosing what an
+        /// Aura copy enchants (CR 303.4f).
+        attached_to: Option<TargetAst>,
     },
     CreateTokenCopyFromSource {
         source: TargetAst,
@@ -85,6 +89,8 @@ pub enum TokenActionAst {
         set_name: Option<String>,
         /// CR 707.9b: "except it's legendary".
         added_supertypes: Vec<Supertype>,
+        /// "a token that's a copy of that Aura attached to <object>".
+        attached_to: Option<TargetAst>,
     },
     CreateTokenWithMods {
         name: String,

@@ -27,6 +27,14 @@ pub struct ZoneChangeSurface {
 }
 
 fn endpoint(words: &[&str]) -> Option<ZoneEndpoint> {
+    // "put into the command zone" (Reyhan, Last of the Abzan): a shared zone
+    // named by a two-word noun.
+    if let Some(prefix) = words.strip_suffix(&["command", "zone"]) {
+        return matches!(prefix, [] | ["the"]).then_some(ZoneEndpoint {
+            zone: Zone::Command,
+            owner: None,
+        });
+    }
     let (noun, prefix) = words.split_last()?;
     let zone = match *noun {
         "battlefield" => Zone::Battlefield,

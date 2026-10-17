@@ -1296,6 +1296,75 @@ pub fn is_this_creature_cant_attack_alone_line_lexed(tokens: &[OwnedLexToken]) -
     primitives::parse_prefix(tokens, parse_this_creature_cant_attack_alone_line).is_some()
 }
 
+/// "If an opponent would face a villainous choice, they face that choice an
+/// additional time." (The Valeyard)
+fn parse_opponents_face_villainous_choice_additional_time_line<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&[
+            "if", "an", "opponent", "would", "face", "a", "villainous", "choice",
+        ]),
+        winnow::combinator::opt(primitives::comma()),
+        primitives::phrase(&["they", "face", "that", "choice", "an", "additional", "time"]),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_opponents_face_villainous_choice_additional_time_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(tokens, parse_opponents_face_villainous_choice_additional_time_line)
+        .is_some()
+}
+
+/// "Each player may attack only the nearest opponent in the [last] chosen
+/// direction and planeswalkers controlled by that opponent." (Mystic Barrier,
+/// Pramikon, Teyo).
+fn parse_nearest_opponent_in_chosen_direction_line<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&[
+            "each", "player", "may", "attack", "only", "the", "nearest", "opponent", "in", "the",
+        ]),
+        winnow::combinator::opt(primitives::kw("last")),
+        primitives::phrase(&[
+            "chosen", "direction", "and", "planeswalkers", "controlled", "by", "that", "opponent",
+        ]),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_nearest_opponent_in_chosen_direction_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, parse_nearest_opponent_in_chosen_direction_line).is_some()
+}
+
+/// "This creature can only attack alone." / "This creature can attack only
+/// alone." (Master of Cruelties): no other creature may attack alongside it.
+fn parse_this_creature_can_only_attack_alone_line<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&["this", "creature", "can"]),
+        winnow::combinator::alt((
+            primitives::phrase(&["only", "attack", "alone"]),
+            primitives::phrase(&["attack", "only", "alone"]),
+        )),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_this_creature_can_only_attack_alone_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    primitives::parse_prefix(tokens, parse_this_creature_can_only_attack_alone_line).is_some()
+}
+
 fn parse_this_creature_cant_attack_its_owner_line<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -1421,6 +1490,31 @@ pub fn is_each_controlled_may_assign_damage_as_unblocked_lexed(tokens: &[OwnedLe
         .is_some()
 }
 
+/// "For each <filter>, you may have that creature assign its combat damage
+/// as though it weren't blocked." (Ruxa, Patient Professor: "creature you
+/// control with no abilities"): the iterated object filter's tokens.
+pub fn split_each_filtered_may_assign_damage_as_unblocked_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    const BODY: &[&str] = &[
+        "you", "may", "have", "that", "creature", "assign", "its", "combat", "damage", "as",
+        "though", "it",
+    ];
+    if !(tokens.first()?.is_word("for") && tokens.get(1)?.is_word("each")) {
+        return None;
+    }
+    let body_start = (2..tokens.len()).find(|&start| {
+        tokens.len() >= start + BODY.len()
+            && tokens[start..start + BODY.len()]
+                .iter()
+                .zip(BODY)
+                .all(|(token, word)| token.is_word(word))
+    })?;
+    primitives::parse_prefix(&tokens[body_start + BODY.len()..], parse_werent_blocked_tail)?;
+    let filter_tokens = trim_lexed_commas(&tokens[2..body_start]);
+    (!filter_tokens.is_empty()).then_some(filter_tokens)
+}
+
 /// "You may have creatures you control assign their combat damage this turn
 /// as though they weren't blocked." (Predatory Focus): a resolving grant of
 /// the permission to the creatures you control (CR 510.1c, 611.2c).
@@ -1450,6 +1544,31 @@ pub fn is_controlled_creatures_may_assign_this_turn_as_unblocked_lexed(
 
 pub fn is_may_assign_damage_as_unblocked_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_prefix(tokens, parse_may_assign_damage_as_unblocked_line).is_some()
+}
+
+/// "If this creature is unblocked, you may have it assign its combat damage
+/// to a creature defending player controls." (Cunning Giant)
+fn parse_unblocked_may_assign_damage_to_defending_creature_line<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        primitives::phrase(&["if", "this"]),
+        opt(primitives::kw("creature")),
+        primitives::phrase(&["is", "unblocked"]),
+        opt(primitives::comma()),
+        primitives::phrase(&["you", "may", "have", "it", "assign", "its", "combat", "damage"]),
+        primitives::phrase(&["to", "a", "creature", "defending", "player", "controls"]),
+        primitives::sentence_end(),
+    )
+        .void()
+        .parse_next(input)
+}
+
+pub fn is_unblocked_may_assign_damage_to_defending_creature_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(tokens, parse_unblocked_may_assign_damage_to_defending_creature_line)
+        .is_some()
 }
 
 fn parse_source_doesnt_untap_during_your_untap_step_prefix<'a>(
@@ -2072,6 +2191,22 @@ pub fn is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(
                 "any",
                 "time",
             ],
+            // "face-down creatures your opponents control" (Found Footage):
+            // the same look permission; outside team formats every creature
+            // you don't control is an opponent's.
+            &[
+                "you",
+                "may",
+                "look",
+                "at",
+                "face-down",
+                "creatures",
+                "your",
+                "opponents",
+                "control",
+                "any",
+                "time",
+            ],
         ],
     )
 }
@@ -2211,6 +2346,20 @@ pub fn is_source_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> boo
         &[
             &["this", "land", "is", "the", "chosen", "type"],
             &["this", "land", "is", "chosen", "type"],
+        ],
+    )
+}
+
+/// "Enchanted creature is a copy of the chosen creature." (Metamorphic
+/// Alteration)
+pub fn is_attached_is_copy_of_chosen_object_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    matches_any_exact_phrase_line_lexed(
+        tokens,
+        &[
+            &["enchanted", "creature", "is", "a", "copy", "of", "the", "chosen", "creature"],
+            &["enchanted", "creature", "is", "copy", "of", "chosen", "creature"],
+            &["enchanted", "permanent", "is", "a", "copy", "of", "the", "chosen", "permanent"],
+            &["enchanted", "permanent", "is", "copy", "of", "chosen", "permanent"],
         ],
     )
 }

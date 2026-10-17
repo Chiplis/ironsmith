@@ -43,6 +43,16 @@ pub enum ZoneMoveActionAst {
         count_value: Option<Value>,
         as_aura: Option<ReturnAsAuraAst>,
         top_only: bool,
+        /// "return ... as a non-Aura enchantment" (Takklemaggot): the
+        /// returned object enters without the Aura subtype.
+        as_non_aura: bool,
+        /// "If a land enters this way, it enters tapped" (Silver Surfer):
+        /// each returned object matching this filter enters tapped.
+        tapped_if: Option<ObjectFilter>,
+        /// "with the noted number and kind of counters on it" (Tawnos's
+        /// Coffin): the counters a `NoteCounters` instruction recorded under
+        /// this tag are part of the returned object's entry.
+        noted_counters: Option<TagRef>,
     },
     ReturnAllToBattlefield {
         filter: ObjectFilter,
@@ -50,6 +60,9 @@ pub enum ZoneMoveActionAst {
         face_down: bool,
         controller: ReturnControllerAst,
         verb_surface: ironsmith_core::MoveToZoneVerbSurface,
+        /// "Only creatures can be enchanted this way": what a returned Aura
+        /// may choose to enchant (CR 303.4f).
+        aura_attachment_filter: Option<ObjectFilter>,
     },
     ExileUntilSourceLeaves {
         target: TargetAst,

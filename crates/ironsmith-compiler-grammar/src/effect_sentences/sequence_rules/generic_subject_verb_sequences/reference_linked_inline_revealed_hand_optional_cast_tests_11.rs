@@ -49,6 +49,8 @@ fn optional_cast_chooses_from_the_exact_target_opponents_revealed_hand() {
                     cost_reduction: None,
                     mana_spend_mode: ironsmith_core::value_model::ManaSpendMode::Normal,
                     alternative_payment: None,
+                    caster_land_mana_abilities_only: false,
+                    control_caster_while_spell_resolves: false,
                 }),
             ..
         }),

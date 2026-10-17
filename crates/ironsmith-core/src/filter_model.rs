@@ -1314,6 +1314,19 @@ pub enum TaggedOpbjectRelation {
     /// Positive damage from this exact object incarnation to the remembered
     /// recipient during the current turn, even if that recipient has left.
     DealtDamageToTaggedThisTurn { combat_only: bool },
+    /// The candidate is the object the tagged object was attached to, per the
+    /// tagged object's last-known snapshot ("If that Equipment was attached to
+    /// a creature, ... that creature", Unforge). Appended for wire stability.
+    WasHostOfTaggedObject,
+    /// The candidate has a name chosen by its own owner among the tagged
+    /// name choices ("If the card a player revealed has the name they chose",
+    /// Conundrum Sphinx): each chooser's snapshot is controlled by that
+    /// chooser. Appended for wire stability.
+    SameNameAsTaggedChosenByOwner,
+    /// The candidate shares no card type with any tagged object ("a card of
+    /// the other type" relative to the triggering instant or sorcery spell,
+    /// Gale, Waterdeep Prodigy). Appended for wire stability.
+    SharesNoCardTypeWithTagged,
 }
 
 /// A characteristic that can be compared between a candidate object and a
@@ -1330,11 +1343,23 @@ pub enum ObjectCharacteristic {
     ManaValue,
     /// At least one shared name; nameless objects never share a name.
     Name,
+    /// Identical card-type sets ("two cards that share all their card
+    /// types"). Appended for wire stability.
+    AllCardTypes,
 }
 
 impl ObjectCharacteristic {
+    /// Whether two card-type lists are the same set, the comparison behind
+    /// `AllCardTypes`. Typeless objects never share all their card types.
+    pub fn card_type_sets_match(left: &[CardType], right: &[CardType]) -> bool {
+        !left.is_empty()
+            && left.iter().all(|card_type| right.contains(card_type))
+            && right.iter().all(|card_type| left.contains(card_type))
+    }
+
     pub fn sharing_phrase(self) -> String {
         match self {
+            Self::AllCardTypes => "all their card types".to_string(),
             Self::CardType => "a card type".to_string(),
             Self::PermanentType => "a permanent type".to_string(),
             Self::Subtype(family) => format!("a {}", family.type_phrase()),
@@ -1529,6 +1554,7 @@ pub struct TaggedObjectConstraint {
 /// Filter for selecting players.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+#[tag_walk(player_ref)]
 pub enum PlayerFilter {
     #[default]
     Any,
@@ -1663,6 +1689,42 @@ pub enum PlayerFilter {
     /// A player who owns at least one object matching the complete filter.
     /// Used for quantified personal zones without iterating individual cards.
     OwnsMatchingObject { filter: Box<ObjectFilter> },
+    /// Every in-game player matching `base` whose life total is at least that
+    /// of every other in-game player matching `base` ("an opponent with the
+    /// most life among your opponents"): ties all match, so the chooser picks
+    /// among the tied players. Appended to preserve serialized ordinals.
+    MostLifeTiedAmong { base: Box<PlayerFilter> },
+    /// A player matching `base` whose `quantity` is strictly greater than
+    /// that of every player `other` names ("target player who has more life
+    /// than they do", Oath of Mages). No match when `other` names nobody.
+    /// Appended to preserve serialized ordinals.
+    QuantityGreaterThanPlayer {
+        base: Box<PlayerFilter>,
+        other: Box<PlayerFilter>,
+        quantity: PlayerQuantity,
+    },
+    /// A player who controls at least one permanent matching the complete
+    /// filter ("each player who controls a white creature", Disorder). The
+    /// filter is evaluated with that player as the iterated player.
+    /// Appended to preserve serialized ordinals.
+    ControlsMatchingObject { filter: Box<ObjectFilter> },
+}
+
+/// A per-player quantity compared by [`PlayerFilter::QuantityGreaterThanPlayer`].
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum PlayerQuantity {
+    Life,
+    CardsInHand,
+}
+
+impl PlayerQuantity {
+    pub fn noun_phrase(self) -> &'static str {
+        match self {
+            Self::Life => "life",
+            Self::CardsInHand => "cards in hand",
+        }
+    }
 }
 
 /// A player's action this turn, for [`PlayerFilter::TurnHistory`].
@@ -1673,6 +1735,9 @@ pub enum PlayerTurnHistoryFilter {
     CastSpell,
     /// Attacked with one or more creatures this turn.
     AttackedWithCreature,
+    /// Was dealt damage this turn ("any target that was dealt damage this
+    /// turn", Needle Drop). Appended to preserve serialized ordinals.
+    WasDealtDamage,
 }
 
 impl PlayerTurnHistoryFilter {
@@ -1680,6 +1745,7 @@ impl PlayerTurnHistoryFilter {
         match self {
             Self::CastSpell => "who cast a spell this turn",
             Self::AttackedWithCreature => "who attacked with a creature this turn",
+            Self::WasDealtDamage => "that was dealt damage this turn",
         }
     }
 }
@@ -1818,11 +1884,14 @@ impl PlayerFilter {
             Self::WasDealtCombatDamageByDistinctSourcesThisTurn { base, sources, .. } => {
                 base.mentions_player_filter(needle) || sources.mentions_player_filter(needle)
             }
-            Self::HasMoreLifeThanYou { base } => base.mentions_player_filter(needle),
+            Self::HasMoreLifeThanYou { base } | Self::MostLifeTiedAmong { base } => base.mentions_player_filter(needle),
+            Self::QuantityGreaterThanPlayer { base, other, .. } => {
+                base.mentions_player_filter(needle) || other.mentions_player_filter(needle)
+            }
             Self::OpponentWithMoreControlledObjectsThan { player, filter, .. } => {
                 player.mentions_player_filter(needle) || filter.mentions_player_filter(needle)
             }
-            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } | Self::OwnsMatchingObject { filter } => {
+            Self::ControlsMost { filter } | Self::ControlsFewestTied { filter } | Self::OwnsMatchingObject { filter } | Self::ControlsMatchingObject { filter } => {
                 filter.mentions_player_filter(needle)
             }
             Self::OpponentOf(base) | Self::PlayerToLeftOf(base) | Self::MaxSpeed { base, .. } => {
@@ -1983,6 +2052,11 @@ impl PlayerFilter {
                 pluralize_count_terminal_word(&filter.description())
             ),
             Self::OwnsMatchingObject { filter } => format!("a player who owns {}", filter.description()),
+            Self::ControlsMatchingObject { filter } => format!("a player who controls {}", filter.description()),
+            Self::MostLifeTiedAmong { base } => describe_most_life_tied_among(base),
+            Self::QuantityGreaterThanPlayer { base, other, quantity } => {
+                describe_quantity_greater_than_player(base, other, *quantity)
+            }
             Self::ControlsFewestTied { filter } => format!(
                 "a player who controls the fewest {}",
                 pluralize_count_terminal_word(&filter.description())
@@ -2191,6 +2265,25 @@ impl CountersPutOnThisTurnConstraint {
     }
 }
 
+/// Lasting per-source counter history of the exact object: "a land that a
+/// mire counter was put onto with this artifact but that a mire counter has
+/// not been removed from with this artifact" (Cyclopean Tomb). "This
+/// artifact" is the current source instance (stable identity), so the history
+/// is still readable after that source has left the battlefield.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CounterSourceHistoryConstraint {
+    pub counter_type: CounterType,
+    /// The source has put a counter of this kind on the object.
+    pub put_by_source: bool,
+    /// The source has never removed a counter of this kind from the object.
+    pub not_removed_by_source: bool,
+    /// Authored noun for the source ("artifact" in "with this artifact");
+    /// display only.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub source_noun: Option<String>,
+}
+
 /// Oracle spelling retained for a literal card name.
 ///
 /// The normalized value in [`ObjectFilter::name`] or
@@ -2216,6 +2309,60 @@ impl LiteralNameSurface {
 impl PartialEq for LiteralNameSurface {
     fn eq(&self, _other: &Self) -> bool {
         true
+    }
+}
+
+/// One of the three sectors a space sculptor divides the battlefield into
+/// (CR 702.158).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SectorName {
+    Alpha,
+    Beta,
+    Gamma,
+}
+
+impl SectorName {
+    pub const ALL: [Self; 3] = [Self::Alpha, Self::Beta, Self::Gamma];
+
+    /// The sector's name word ("alpha"), also the named option recorded
+    /// when a player chooses a sector.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Alpha => "alpha",
+            Self::Beta => "beta",
+            Self::Gamma => "gamma",
+        }
+    }
+
+    pub fn from_word(word: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|sector| sector.word().eq_ignore_ascii_case(word.trim()))
+    }
+}
+
+/// A space-sculptor sector requirement on a permanent's current sector
+/// designation (CR 702.158b).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SectorPredicate {
+    /// "creatures in the alpha sector": assigned to this sector.
+    In(SectorName),
+    /// Not assigned to this sector (including unassigned permanents).
+    NotIn(SectorName),
+    /// "in the sector of your choice": assigned to the sector most recently
+    /// chosen for the filter's source (its recorded named option).
+    ChosenBySource,
+}
+
+impl SectorPredicate {
+    pub fn description(self) -> String {
+        match self {
+            Self::In(sector) => format!("in the {} sector", sector.word()),
+            Self::NotIn(sector) => format!("not in the {} sector", sector.word()),
+            Self::ChosenBySource => "in the chosen sector".to_string(),
+        }
     }
 }
 
@@ -2325,6 +2472,11 @@ pub struct ObjectFilter {
     pub name_noted_while_drafting_named: Option<String>,
     /// Candidate has a creature type recorded in this player’s named draft-note group.
     pub creature_types_noted_while_drafting_named: Option<String>,
+    /// Candidate is a card its filter player ("you") exiled with cards of
+    /// the indicated name ("a card you exiled with cards named Volatile
+    /// Chimera"), recorded across every card of that name.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub exiled_with_cards_named: Option<String>,
     pub chosen_land_type: bool,
     /// Requires at least one of the five basic land subtypes.  This is not
     /// the same as requiring the Basic supertype: nonbasic dual lands can
@@ -2360,9 +2512,18 @@ pub struct ObjectFilter {
     /// Requires a permanent currently designated as goaded.
     #[cfg_attr(feature = "serde", serde(default))]
     pub goaded: bool,
+    /// "prepared": a permanent with the prepared designation, or a spell cast
+    /// from a prepared permanent's prepare spell copy ("Whenever you cast a
+    /// prepared spell", Codie, Ravenous Codex).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub prepared: bool,
     /// Requires the current Ring-bearer designation (or its captured LKI).
     #[cfg_attr(feature = "serde", serde(default))]
     pub ring_bearer: bool,
+    /// Requires a current space-sculptor sector designation (CR 702.158b).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    #[tag_walk(skip)]
+    pub sector: Option<SectorPredicate>,
     pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
@@ -2370,6 +2531,10 @@ pub struct ObjectFilter {
     /// Requires a card currently marked as having been exiled by the foretell
     /// special action. This is distinct from merely being face down in exile.
     pub foretold: bool,
+    /// Requires a card currently in exile because warp's delayed trigger
+    /// exiled it ("a warped creature card you own in exile", CR 702.185).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub warped: bool,
     pub other: bool,
     pub tapped: bool,
     pub untapped: bool,
@@ -2513,6 +2678,10 @@ pub struct ObjectFilter {
     /// Requires this exact object to have received matching counters this turn
     /// from a source controlled by the matching player.
     pub counters_put_on_this_turn: Option<CountersPutOnThisTurnConstraint>,
+    /// Lasting per-source counter history of this exact object ("a land
+    /// that a mire counter was put onto with this artifact but ...").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub counter_source_history: Option<CounterSourceHistoryConstraint>,
     pub discarded_or_cycled_this_turn_by: Option<PlayerFilter>,
     pub was_dealt_damage_this_turn: bool,
     /// Active voice: the object itself DEALT damage this turn
@@ -2633,6 +2802,15 @@ pub struct ObjectFilter {
     /// independently of the color or amount of mana actually paid.
     #[cfg_attr(feature = "serde", serde(default))]
     pub mana_symbol_count: Option<(Color, ChoiceCount)>,
+    /// Count printed pips containing any colored mana symbol ("three or more
+    /// colored mana symbols in its mana cost"); a hybrid or Phyrexian pip is
+    /// one symbol, and a colorless or generic pip is none.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub colored_mana_symbol_count: Option<ChoiceCount>,
+    /// The object is a card: not a token and not a copy of a card or spell
+    /// ("Whenever a player casts a card", CR 108.2 / CR 707.12).
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub physical_card: bool,
     /// Match a producer's exact destination incarnation in its
     /// original public zone. An unspecified zone searches public zones;
     /// an explicit zone remains an additional constraint.
@@ -3259,6 +3437,8 @@ impl ObjectFilter {
             || self.colors_chosen_while_drafting_named.is_some()
             || self.name_noted_while_drafting_named.is_some()
             || self.creature_types_noted_while_drafting_named.is_some()
+            || self.exiled_with_cards_named.is_some()
+            || self.sector.is_some()
             || self.chosen_land_type
             || self.has_basic_land_type
             || self.has_nonbasic_land_type
@@ -3287,6 +3467,7 @@ impl ObjectFilter {
             || self.surveilled_this_turn
             || self.fought_this_turn
             || self.counters_put_on_this_turn.is_some()
+            || self.counter_source_history.is_some()
             || self.discarded_or_cycled_this_turn_by.is_some()
             || self.drawn_this_turn
             || self.last_drawn_this_turn.is_some()
@@ -3296,6 +3477,8 @@ impl ObjectFilter {
             || self.exact_mana_cost.is_some()
             || self.has_mana_cost
             || self.mana_symbol_count.is_some()
+            || self.colored_mana_symbol_count.is_some()
+            || self.physical_card
             || self.has_phyrexian_mana_symbol
             || !self.could_produce_mana.is_empty()
             || self.has_tap_activated_ability
@@ -3592,7 +3775,11 @@ impl ObjectFilter {
     }
 
     pub fn mana_symbol_count_description(&self) -> Option<String> {
-        let (color, count) = self.mana_symbol_count?;
+        let (color_word, count) = match (self.mana_symbol_count, self.colored_mana_symbol_count) {
+            (Some((color, count)), _) => (color.name().to_string(), count),
+            (None, Some(count)) => ("colored".to_string(), count),
+            (None, None) => return None,
+        };
         let number = |n: usize| if n == 1 { "one".to_string() } else { n.to_string() };
         let quantity = match count.max {
             None => format!("{} or more", number(count.min)),
@@ -3600,7 +3787,7 @@ impl ObjectFilter {
             Some(max) if count.min == 0 => format!("up to {}", number(max)),
             Some(max) => format!("between {} and {}", number(count.min), number(max)),
         };
-        Some(format!("with {quantity} {} mana symbols in its mana cost", color.name()))
+        Some(format!("with {quantity} {color_word} mana symbols in its mana cost"))
     }
 
     pub fn with_target_count(mut self, count: ChoiceCount) -> Self {
@@ -3901,6 +4088,11 @@ impl ObjectFilter {
         constraint: CountersPutOnThisTurnConstraint,
     ) -> Self {
         self.counters_put_on_this_turn = Some(constraint);
+        self
+    }
+
+    pub fn with_counter_source_history(mut self, constraint: CounterSourceHistoryConstraint) -> Self {
+        self.counter_source_history = Some(constraint);
         self
     }
 
@@ -4524,6 +4716,9 @@ impl ObjectFilter {
         if self.transformed {
             parts.push("transformed".to_string());
         }
+        if self.prepared {
+            parts.push("prepared".to_string());
+        }
         if self.goaded {
             parts.push("goaded".to_string());
         }
@@ -4609,7 +4804,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::OpponentOf(_)
@@ -4774,6 +4969,7 @@ impl ObjectFilter {
             self.zone,
             Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
         ) && !self.foretold
+            && !self.warped
             && !self.has_owner_before_zone_surface();
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
             if controller_suffix.is_none() && !has_leading_determiner {
@@ -4827,7 +5023,7 @@ impl ObjectFilter {
                 PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
-                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+                PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::OpponentOf(_)
@@ -4875,6 +5071,9 @@ impl ObjectFilter {
         }
         if self.foretold {
             parts.push("foretold".to_string());
+        }
+        if self.warped {
+            parts.push("warped".to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();
@@ -4993,8 +5192,14 @@ impl ObjectFilter {
         if let Some(card_name) = &self.creature_types_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("of a type you noted for cards named {card_name}"));
         }
+        if let Some(sector) = self.sector {
+            post_noun_qualifiers.push(sector.description());
+        }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));
+        }
+        if let Some(card_name) = &self.exiled_with_cards_named {
+            post_noun_qualifiers.push(format!("you exiled with cards named {card_name}"));
         }
         if self.excluded_chosen_creature_type || self.excluded_any_chosen_creature_type {
             let qualifier = if self.has_chosen_type_this_way_surface() {
@@ -5076,6 +5281,13 @@ impl ObjectFilter {
                         }
                         tag if tag == crate::tag::EXILED_BY_YOU_TAG => {
                             post_noun_qualifiers.push("you exiled".to_string());
+                        }
+                        tag if tag == crate::tag::SOURCE_EXILED_BY_YOU_TAG => {
+                            post_noun_qualifiers.push("you exiled with this permanent".to_string());
+                        }
+                        tag if tag == crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG => {
+                            post_noun_qualifiers
+                                .push("you exiled with this permanent this turn".to_string());
                         }
                         _ => {}
                     }
@@ -5242,6 +5454,13 @@ impl ObjectFilter {
                         );
                         continue;
                     }
+                    // The source of the cycling ability whose draw is being
+                    // replaced (or whose cycle triggered): "the cycled card".
+                    if constraint.tag.as_str() == "triggering_source" {
+                        post_noun_qualifiers
+                            .push("that shares a card type with the cycled card".to_string());
+                        continue;
+                    }
                     post_noun_qualifiers.push("that shares a card type with it".to_string());
                 }
                 TaggedOpbjectRelation::SharesPermanentType => {
@@ -5260,6 +5479,15 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::WasAttachedToTaggedObject => {
                     post_noun_qualifiers.push("that was attached to it".to_string());
+                }
+                TaggedOpbjectRelation::WasHostOfTaggedObject => {
+                    post_noun_qualifiers.push("it was attached to".to_string());
+                }
+                TaggedOpbjectRelation::SameNameAsTaggedChosenByOwner => {
+                    post_noun_qualifiers.push("with the name its owner chose".to_string());
+                }
+                TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
+                    post_noun_qualifiers.push("of the other type".to_string());
                 }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
@@ -6227,7 +6455,19 @@ impl ObjectFilter {
                 crate::ChoiceAggregateMetric::ManaValue => "mana value",
                 crate::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
             };
-            if let Some(minimum) = constraint.minimum.as_ref() {
+            if constraint.metric == crate::ChoiceAggregateMetric::DistinctCardTypes
+                && let Some(minimum) = constraint.minimum.as_ref()
+            {
+                // "with four or more card types among them" (Winter, Cynical
+                // Opportunist): the types are counted across the whole set.
+                let minimum = match minimum.unhinted() {
+                    Value::Fixed(minimum) => format!("{minimum} or more"),
+                    _ => describe_comparison(&Comparison::GreaterThanOrEqualExpr(Box::new(
+                        minimum.clone(),
+                    ))),
+                };
+                parts.push(format!("with {minimum} card types among them"));
+            } else if let Some(minimum) = constraint.minimum.as_ref() {
                 let minimum = match minimum.unhinted() {
                     Value::Fixed(minimum) => format!("{minimum} or greater"),
                     _ => describe_comparison(&Comparison::GreaterThanOrEqualExpr(Box::new(
@@ -6287,6 +6527,10 @@ impl ObjectFilter {
             }
         }
         for marker in &self.ability_markers {
+            if marker.eq_ignore_ascii_case("modal") {
+                parts.push("that's modal".to_string());
+                continue;
+            }
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
         }
         if self.excluded_static_abilities.len() > 1 {
@@ -6500,6 +6744,9 @@ impl ObjectFilter {
         }
         if let Some(constraint) = &self.counters_put_on_this_turn {
             parts.push(describe_counters_put_on_this_turn_constraint(constraint));
+        }
+        if let Some(constraint) = &self.counter_source_history {
+            parts.push(describe_counter_source_history_constraint(constraint));
         }
         if let Some(player) = &self.discarded_or_cycled_this_turn_by {
             let actor = describe_player_filter(player);
@@ -7532,6 +7779,41 @@ fn describe_simple_any_of_keyword_clause(
     Some(describe_filter_union_list(labels, connective, false))
 }
 
+/// Wording for [`PlayerFilter::MostLifeTiedAmong`] ("an opponent with the
+/// most life among your opponents").
+pub fn describe_most_life_tied_among(base: &PlayerFilter) -> String {
+    match base {
+        PlayerFilter::Opponent => "an opponent with the most life among your opponents".to_string(),
+        PlayerFilter::Any => "a player with the most life or tied for most life".to_string(),
+        other => format!(
+            "{} with the most life or tied for most life among them",
+            other.description()
+        ),
+    }
+}
+
+/// Wording for [`PlayerFilter::QuantityGreaterThanPlayer`] ("a player who
+/// has more life than they do").
+pub fn describe_quantity_greater_than_player(
+    base: &PlayerFilter,
+    other: &PlayerFilter,
+    quantity: PlayerQuantity,
+) -> String {
+    let other_text = match other {
+        PlayerFilter::You => "you do".to_string(),
+        PlayerFilter::IteratedPlayer
+        | PlayerFilter::Active
+        | PlayerFilter::TaggedPlayer(_)
+        | PlayerFilter::ChosenPlayer => "they do".to_string(),
+        other => other.description(),
+    };
+    format!(
+        "{} who has more {} than {other_text}",
+        base.description(),
+        quantity.noun_phrase()
+    )
+}
+
 fn describe_distinct_source_threshold(sources: &ObjectFilter, minimum: u32) -> String {
     // "by this creature": the source itself is the only possible source.
     if sources.source && minimum <= 1 {
@@ -7631,7 +7913,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             describe_player_filter(player),
             pluralize_count_terminal_word(&filter.description())
         ),
-        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } => {
+        PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
             format!("{}'s", filter.description())
         }
         PlayerFilter::OpponentOf(_) | PlayerFilter::PlayerToLeftOf(_) => {
@@ -7760,6 +8042,17 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             pluralize_count_terminal_word(&filter.description())
         ),
         PlayerFilter::OwnsMatchingObject { filter } => format!("player who owns {}", filter.description()),
+        PlayerFilter::ControlsMatchingObject { filter } => format!("player who controls {}", filter.description()),
+        PlayerFilter::MostLifeTiedAmong { base } => describe_most_life_tied_among(base)
+            .trim_start_matches("an ")
+            .trim_start_matches("a ")
+            .to_string(),
+        PlayerFilter::QuantityGreaterThanPlayer { base, other, quantity } => {
+            describe_quantity_greater_than_player(base, other, *quantity)
+                .trim_start_matches("an ")
+                .trim_start_matches("a ")
+                .to_string()
+        }
         PlayerFilter::ControlsFewestTied { filter } => format!(
             "player who controls the fewest {}",
             pluralize_count_terminal_word(&filter.description())
@@ -7786,6 +8079,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()
         }
+        PlayerFilter::TaggedPlayer(tag)
+            if tag.as_str() == crate::tag::ATTACKING_GROUP_DEFENDERS_TAG =>
+        {
+            "those players".to_string()
+        }
         PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -7807,6 +8105,24 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "that player".to_string()
         }
     }
+}
+
+pub fn describe_counter_source_history_constraint(
+    constraint: &CounterSourceHistoryConstraint,
+) -> String {
+    let counter = constraint.counter_type.description();
+    let article = if counter.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    let source = constraint.source_noun.as_deref().unwrap_or("source");
+    let mut clauses = Vec::new();
+    if constraint.put_by_source {
+        clauses.push(format!("that {article} {counter} counter was put onto with this {source}"));
+    }
+    if constraint.not_removed_by_source {
+        clauses.push(format!(
+            "that {article} {counter} counter has not been removed from with this {source}"
+        ));
+    }
+    clauses.join(" but ")
 }
 
 fn describe_counters_put_on_this_turn_constraint(
@@ -8431,7 +8747,13 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::BasePowerOf(spec) => {
                 format!("{} base power", describe_value_choose_spec_possessive(spec))
             }
+            Value::StationContributionOf(spec) => {
+                format!("{} power", describe_value_choose_spec_possessive(spec))
+            }
             Value::KicksPaidOf(_) => "the number of times it was kicked".to_string(),
+            Value::ModeSelectionsOf(_) => {
+                "the number of times you chose a mode for that spell".to_string()
+            }
             Value::ManaSpentToCast(_) => "the amount of mana spent to cast it".to_string(),
             Value::ManaValueOf(spec) => {
                 if let ChooseSpec::Tagged(tag) = spec.base() {
@@ -8457,6 +8779,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 };
                 format!("the amount of unspent mana {subject} {verb}")
             }
+            Value::DevotionToColors { player, colors } => format!(
+                "{} devotion to {}", describe_possessive_player_filter(player),
+                crate::Color::ALL.into_iter().filter(|color| colors.contains(*color)).map(|color| color.name()).collect::<Vec<_>>().join(" and ")
+            ),
             Value::Devotion { player, color } => format!(
                 "{} devotion to {}",
                 describe_possessive_player_filter(player),

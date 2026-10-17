@@ -1417,6 +1417,21 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         }
         // "for each of the chosen colors it is"
         Value::ChosenColorsOf(_) => Some("of the chosen colors it is".to_string()),
+        // "for each creature type noted for target permanent ..."
+        Value::NotedCreatureTypeCount(spec) => {
+            Some(format!("creature type noted for {}", describe_choose_spec(spec)))
+        }
+        // "for each supertype, card type, and subtype it has" (Embiggen)
+        Value::TypeCountOf(spec) => {
+            if matches!(spec.base(), ChooseSpec::Tagged(_)) {
+                Some("supertype, card type, and subtype it has".to_string())
+            } else {
+                Some(format!(
+                    "supertype, card type, and subtype {} has",
+                    describe_choose_spec(spec)
+                ))
+            }
+        }
         // "for each of that spell's colors"
         Value::ColorsOf(spec) => {
             let owner = if let ChooseSpec::Tagged(tag) = spec.base()
@@ -1580,6 +1595,10 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             Some(format!("{prefix}{described} {tail}"))
         }
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
+        Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => Some(
+            "spell or ability that caused one or more players to guess or to group cards or permanents into a pile this turn"
+                .to_string(),
+        ),
         Value::SourceDevouredCreatureCount => Some("creature it devoured".to_string()),
         Value::Add(inner, offset)
             if matches!(offset.unhinted(), Value::Fixed(-1))
@@ -4874,6 +4893,7 @@ pub(super) fn describe_exile_top_then_play(
             "Until the end of your next turn"
         }
         crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => "Until your next end step",
+        crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => "During your next turn",
         _ => return None,
     };
 

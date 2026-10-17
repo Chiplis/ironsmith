@@ -294,6 +294,25 @@ pub fn parse_participant_clause_shape(
             inner_tokens: trim(rest),
         });
     }
+    // "For each other player, exile up to one target creature that player
+    // controls." (Kaya, Spirits' Justice): every player but you, with you
+    // still the actor.
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::kw("for"),
+            primitives::kw("each"),
+            primitives::kw("other"),
+            semantic_kw("player"),
+        )
+            .void(),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::PlayerExceptYou,
+            participant_is_actor: false,
+            inner_tokens: trim(rest),
+        });
+    }
     if let Some((_, rest)) = primitives::parse_prefix(
         tokens,
         (
@@ -541,6 +560,13 @@ fn tagged_filter_after_action(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
     let (way_index, _, _) =
         primitives::find_prefix(after_action, || primitives::phrase(&["this", "way"]).void())?;
     let filter = trim(after_action.get(..way_index)?);
+    // "who discarded their hand this way" (Snort): the act is the player's
+    // whole-hand choice, not a property of some discarded card. A player who
+    // accepted with an empty hand still discarded their hand (CR 701.9b), so
+    // there is no tagged-object test; the participant's result decides.
+    if crate::lexer::token_word_refs(filter) == ["their", "hand"] {
+        return None;
+    }
     (!filter.is_empty()).then_some(filter)
 }
 

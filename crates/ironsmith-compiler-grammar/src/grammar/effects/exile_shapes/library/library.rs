@@ -108,6 +108,17 @@ pub fn parse_exile_dynamic_top_library_shape(
             primitives::kw("from"),
         ),
     ) {
+        // "shuffle your library, then exile that many cards from the top"
+        // (Vault 112: Sadistic Simulation): a bare "the top" names the
+        // library of the clause's own player, the one just shuffled.
+        let bare_top = TokenWordView::new(trim_commas(after_from)).word_refs();
+        if matches!(bare_top.as_slice(), ["the", "top"] | ["top"]) {
+            return Some(ExileLibraryCardsShape {
+                player: ExileLibraryPlayerShape::Player(default_player),
+                count: Value::EventValue(EventValueSpec::Amount),
+                face_down: false,
+            });
+        }
         (Value::EventValue(EventValueSpec::Amount), after_from)
     } else {
         let (_, after_cards) = primitives::parse_prefix(tokens, card_word)?;
@@ -135,6 +146,35 @@ pub fn parse_exile_top_library_shape(
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
     let tokens = trim_commas(tokens);
+    // "target opponent exiles the top half of their library, rounded up"
+    // (Ulamog, the Defiler): a count computed from the owner's library size.
+    let half_words = TokenWordView::new(tokens).word_refs();
+    let half_words = half_words.strip_prefix(&["the"]).unwrap_or(&half_words);
+    if let ["top", "half", "of", owner, "library", rounding @ ..] = half_words {
+        let (player, library_owner) = match (*owner, default_player) {
+            ("your", _) => (PlayerAst::You, crate::target::PlayerFilter::You),
+            ("their", PlayerAst::Target) => (PlayerAst::Target, crate::target::PlayerFilter::target_player()),
+            ("their", PlayerAst::TargetOpponent) => {
+                (PlayerAst::TargetOpponent, crate::target::PlayerFilter::target_opponent())
+            }
+            ("their", PlayerAst::That) => (PlayerAst::That, crate::target::PlayerFilter::IteratedPlayer),
+            _ => return None,
+        };
+        let base = Value::CardsInLibrary(library_owner);
+        let count = match rounding {
+            ["rounded", "down"] => Value::HalfRoundedDown(Box::new(base)),
+            ["rounded", "up"] => Value::HalfRoundedDown(Box::new(Value::Add(
+                Box::new(base),
+                Box::new(Value::Fixed(1)),
+            ))),
+            _ => return None,
+        };
+        return Some(ExileLibraryCardsShape {
+            player: ExileLibraryPlayerShape::Player(player),
+            count,
+            face_down: false,
+        });
+    }
     let (count, player) = if let Some((count, _implicit, owner_tokens)) =
         parse_position_count_and_owner(tokens, "top")
     {
@@ -155,6 +195,24 @@ pub fn parse_exile_bottom_library_shape(
     default_player: PlayerAst,
 ) -> Option<ExileLibraryCardsShape> {
     let tokens = trim_commas(tokens);
+    // "exile that many cards from the bottom of your library" (The Temporal
+    // Anchor): the triggering event's amount, from the bottom.
+    if let Some((_, after_from)) = primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&["that", "many"]),
+            card_word,
+            primitives::kw("from"),
+        ),
+    ) && let Some(owner_tokens) = strip_position_and_of(trim_commas(after_from), "bottom")
+    {
+        let player = library_player(trim_commas(owner_tokens), default_player, false)?;
+        return Some(ExileLibraryCardsShape {
+            player,
+            count: Value::EventValue(EventValueSpec::Amount),
+            face_down: false,
+        });
+    }
     let (count, _, owner_tokens) = parse_position_count_and_owner(tokens, "bottom")?;
     if count != Value::Fixed(1) {
         return None;

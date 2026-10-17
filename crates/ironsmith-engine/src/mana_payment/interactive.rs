@@ -75,7 +75,11 @@ fn activate_mana_during_payment_inner(
         return Err(crate::special_actions::ActionError::CantPayCost);
     }
     let checkpoint = game.clone();
-    let mut exclusions = if request.reason.is_mana_ability() {
+    // A spell's activation exclusions (a resolving instruction's land-only
+    // payment lock) also bind the nested costs of the abilities it activates.
+    let mut exclusions = if request.reason.is_mana_ability()
+        || request.reason == crate::costs::PaymentReason::CastSpell
+    {
         request.activation_excluded_sources.clone()
     } else {
         Vec::new()

@@ -4561,3 +4561,22 @@ fn activation_threshold_requires_the_exact_ability_current_turn_and_complete_pre
         assert!(super::parse_this_ability_activation_count_predicate(&lex_line(text, 0).unwrap()).is_none(), "{text}");
     }
 }
+#[test]
+fn named_cast_history_conjoins_with_the_current_spells_cast_origin() {
+    for pronoun in ["you've", "youve", "you have"] {
+        let text = format!("this spell was cast from your hand and {pronoun} cast another spell named Approach of the Second Sun this game");
+        let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+        let predicate = super::parse_predicate(&tokens).unwrap();
+        let crate::cards::builders::PredicateAst::And(left, right) = predicate else {
+            panic!("expected conjunction: {predicate:?}");
+        };
+        assert!(matches!(*left, crate::cards::builders::PredicateAst::ThisSpellWasCastFromZone(crate::zone::Zone::Hand)));
+        let crate::cards::builders::PredicateAst::Bound(condition) = *right else {
+            panic!("expected bound named-cast predicate: {right:?}");
+        };
+        assert!(matches!(*condition, crate::ConditionExpr::YouCastSpellNamedThisGameAtLeast {
+            name: Some(ref name), count: 1, excluding_source: true,
+        } if name.eq_ignore_ascii_case("Approach of the Second Sun")));
+    }
+}
+

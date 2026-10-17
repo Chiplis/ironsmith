@@ -23,11 +23,17 @@ pub(super) fn parse_permanent_tap_state_trigger(
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let view = ActivationRestrictionCompatWords::new(tokens);
     let all_words = view.to_word_refs();
-    let (words, during_your_turn) =
+    let (words, during_your_turn, during_your_untap_step) =
         if let Some(words) = all_words.strip_suffix(&["during", "your", "turn"]) {
-            (words, true)
+            (words, true, false)
+        } else if let Some(words) =
+            all_words.strip_suffix(&["during", "your", "untap", "step"])
+        {
+            // "Whenever The Ninth Doctor becomes untapped during your untap
+            // step" qualifies the untap event itself.
+            (words, false, true)
         } else {
-            (all_words.as_slice(), false)
+            (all_words.as_slice(), false, false)
         };
     let [
         subject @ ..,
@@ -77,6 +83,14 @@ pub(super) fn parse_permanent_tap_state_trigger(
             trigger: Box::new(trigger),
             condition: crate::cards::builders::PredicateAst::YourTurn,
             surface: "during your turn".to_owned(),
+        }
+    } else if during_your_untap_step {
+        TriggerSpec::ConditionQualified {
+            trigger: Box::new(trigger),
+            condition: crate::cards::builders::PredicateAst::Source(
+                crate::cards::builders::SourcePredicateAst::SourceControllersUntapStep,
+            ),
+            surface: "during your untap step".to_owned(),
         }
     } else {
         trigger

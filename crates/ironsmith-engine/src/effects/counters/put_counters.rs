@@ -34,6 +34,36 @@ pub use ironsmith_core::PutCountersEffect;
 ///     ChooseSpec::creature(),
 /// );
 /// ```
+/// "put the same number and kind of counters on <target>": bind the counter
+/// kind and amount of the triggering counter placement. A batch of several
+/// kinds is reported by its first receipt, so only that kind is copied.
+/// Without a counter-placement trigger nothing is put.
+fn counter_kind_resolved_from_trigger(
+    effect: &PutCountersEffect,
+    ctx: &ExecutionContext,
+) -> PutCountersEffect {
+    let mut resolved = effect.clone();
+    resolved.counter_kind_from_trigger = false;
+    let placed = ctx.triggering_event.as_ref().and_then(|event| {
+        if let Some(placed) = event.downcast::<crate::events::other::CounterPlacedEvent>() {
+            return Some((placed.counter_type, placed.amount));
+        }
+        let changed = event.downcast::<crate::events::other::MarkersChangedEvent>()?;
+        if !changed.is_added() {
+            return None;
+        }
+        Some((changed.marker.as_counter()?, changed.amount))
+    });
+    match placed {
+        Some((counter_type, amount)) => {
+            resolved.counter_type = counter_type;
+            resolved.amount = Value::Fixed(i32::try_from(amount).unwrap_or(i32::MAX));
+        }
+        None => resolved.amount = Value::Fixed(0),
+    }
+    resolved
+}
+
 impl EffectExecutor for PutCountersEffect {
     fn supports_replacement_draw_continuation(&self) -> bool {
         true
@@ -67,8 +97,13 @@ impl EffectExecutor for PutCountersEffect {
         _game: &GameState,
         _ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let effect = if self.counter_kind_from_trigger {
+            counter_kind_resolved_from_trigger(self, _ctx)
+        } else {
+            self.clone()
+        };
         Ok(Box::new(CounterInstructionProposal {
-            effect: self.clone(),
+            effect,
             input: None,
             prepared: Vec::new(),
         }))
@@ -92,6 +127,9 @@ impl EffectExecutor for PutCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if self.counter_kind_from_trigger {
+            return counter_kind_resolved_from_trigger(self, ctx).execute_with_outputs(game, ctx);
+        }
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
@@ -279,6 +317,14 @@ fn resolve_counter_inputs(
         ChooseSpec::Source => vec![ctx.source],
         _ => match resolve_objects_for_effect(game, ctx, &effect.target) {
             Ok(objects) if !objects.is_empty() => objects,
+            Ok(_) | Err(ExecutionError::InvalidTarget) | Err(ExecutionError::TagNotFound(_))
+                if effect.distributed && effect.required_recipient.is_some() =>
+            {
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CounterInputPlan::Pending);
+                }
+                Vec::new()
+            }
             Ok(_) | Err(ExecutionError::InvalidTarget) | Err(ExecutionError::TagNotFound(_)) => {
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(CounterInputPlan::Pending);
@@ -296,6 +342,40 @@ fn resolve_counter_inputs(
 
     if ctx.decision_maker.awaiting_choice() {
         return Ok(CounterInputPlan::Pending);
+    }
+    // "among it and any number of commanders": the mandatory members join
+    // the recipient set ahead of the optional ones and each receives at
+    // least one counter. A mandatory member that left the battlefield is no
+    // longer a legal recipient and reserves nothing.
+    let required_ids: Vec<ObjectId> = match effect.required_recipient.as_ref() {
+        Some(required) if effect.distributed => {
+            let objects = match required.base() {
+                ChooseSpec::Source => vec![ctx.source],
+                _ => resolve_objects_for_effect(game, ctx, required).unwrap_or_default(),
+            };
+            let mut ids = Vec::new();
+            for id in objects {
+                if game.battlefield.contains(&id) && !game.is_phased_out(id) && !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            ids
+        }
+        _ => Vec::new(),
+    };
+    let target_ids: Vec<ObjectId> = if required_ids.is_empty() {
+        target_ids
+    } else {
+        let mut merged = required_ids.clone();
+        merged.extend(target_ids.into_iter().filter(|id| !required_ids.contains(id)));
+        merged
+    };
+    if target_ids.is_empty() {
+        let count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
+        return Ok(CounterInputPlan::Finished {
+            outcome: EffectOutcome::resolved(),
+            count,
+        });
     }
     // The authored/shared choice is independent of each recipient's headroom.
     let max_count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
@@ -348,6 +428,41 @@ fn resolve_counter_inputs(
             announced.allocations
         } else if target_ids.len() == 1 {
             vec![(Target::Object(target_ids[0]), count)]
+        } else if !required_ids.is_empty() {
+            // Reserve one counter for each mandatory member, then let the
+            // controller divide the rest freely among every recipient: this
+            // reaches exactly the divisions giving each mandatory member at
+            // least one counter.
+            let reserved = (required_ids.len() as u32).min(count);
+            let spec = DistributeSpec::new(
+                ctx.source,
+                count - reserved,
+                target_ids.iter().copied().map(Target::Object).collect(),
+                0,
+            );
+            let mut division = if count > reserved {
+                let division = make_decision_with_fallback(
+                    game,
+                    &mut ctx.decision_maker,
+                    ctx.controller,
+                    Some(ctx.source),
+                    spec,
+                    FallbackStrategy::Maximum,
+                );
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(CounterInputPlan::Pending);
+                }
+                division
+            } else {
+                Vec::new()
+            };
+            division.extend(
+                required_ids
+                    .iter()
+                    .take(reserved as usize)
+                    .map(|id| (Target::Object(*id), 1)),
+            );
+            division
         } else {
             let min_per_target = if effect.target.is_target() && count as usize >= target_ids.len()
             {

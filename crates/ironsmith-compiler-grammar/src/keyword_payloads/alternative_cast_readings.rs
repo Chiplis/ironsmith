@@ -155,6 +155,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_flash_with_additional_cost_line(input)),
     },
     Reading {
+        id: RuleId::new("flash-timing-optional-payment-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| input.outcome(read_flash_timing_optional_payment_line(input)),
+    },
+    Reading {
         id: RuleId::new("jump-start-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -643,6 +649,16 @@ fn read_flash_with_additional_cost_line(
     let tokens = input.tokens;
     if let Some(method) = parse_flash_with_additional_cost_line_lexed(tokens) {
         return Ok(ast(LineAst::AlternativeCastingMethod(method)));
+    }
+    Ok(None)
+}
+fn read_flash_timing_optional_payment_line(
+    input: &AlternativeCastLine<'_>,
+) -> Result<Option<KeywordLinePayload>, CardTextError> {
+    if let Some(optional) =
+        crate::grammar::shared_util::alternative_cost_lines::parse_flash_timing_optional_payment(input.tokens)?
+    {
+        return Ok(ast(LineAst::OptionalCost(optional)));
     }
     Ok(None)
 }

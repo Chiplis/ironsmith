@@ -1065,6 +1065,18 @@ fn pre_rule_skip_tapped_source_turn_replacement(
     if !followup_shapes::is_skip_tapped_source_turn_replacement(sentence_tokens) {
         return Ok(None);
     }
+    // CR 614.10: "If you would begin your turn ..., you may skip that turn
+    // instead" replaces the turn's beginning. The whole line is the static
+    // ability `MaySkipTurnWhileSourceTappedThenUntap`
+    // (keyword_static::parse_may_skip_turn_while_source_tapped_line), which
+    // the turn runner offers before the next turn begins. Lowering it here as
+    // a resolution check produced an effect that never runs (and skipped the
+    // *next* turn when it did), so any sentence-level reading is refused.
+    if sentences.is_empty() || sentence_idx < sentences.len() {
+        return Err(CardTextError::ParseError(
+            "unsupported turn-begin skip replacement (CR 614.10): 'if you would begin your turn while this artifact is tapped, you may skip that turn instead'".to_string(),
+        ));
+    }
     let has_untap_followup = sentences
         .get(sentence_idx + 1)
         .is_some_and(|sentence| followup_shapes::is_if_did_untap_source_followup(sentence.lexed()));
@@ -1090,6 +1102,87 @@ fn pre_rule_skip_tapped_source_turn_replacement(
         )]),
         consumed_sentences: if has_untap_followup { 2 } else { 1 },
     })))
+}
+
+/// "Whenever a card is drawn this way, <effects>." (Explosion of Riches):
+/// one reflexive trigger per card the preceding instructions drew (CR 603.12),
+/// whoever drew it. Each single-card draw of the program is followed by its
+/// own "when you do" reflexive trigger, so a declined optional draw (or an
+/// empty library) creates none.
+fn pre_rule_whenever_card_drawn_this_way_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    const HEAD: &[&str] = &["whenever", "a", "card", "is", "drawn", "this", "way"];
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence_tokens);
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(HEAD) || words.len() == HEAD.len() {
+        return Ok(None);
+    }
+    let Some(body_start) = view.token_start_indices().get(HEAD.len()).copied() else {
+        return Ok(None);
+    };
+    let body = trim_commas(&tokens[body_start..]);
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let reflexive_body = crate::clause_support::parse_effect_sentences_lexed(&body)?;
+    if reflexive_body.is_empty() {
+        return Ok(None);
+    }
+    fn single_draw(effect: &EffectAst) -> Option<bool> {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }),
+                ..
+            }) => Some(matches!(count.unhinted(), Value::Fixed(1))),
+            _ => None,
+        }
+    }
+    /// Returns (single draws bound, other draws seen).
+    fn bind(effects: &mut [EffectAst], body: &[EffectAst]) -> (usize, usize) {
+        let (mut bound, mut other) = (0, 0);
+        for slot in effects.iter_mut() {
+            match single_draw(slot) {
+                Some(true) => {
+                    let draw = std::mem::replace(slot, EffectAst::Sequence { effects: Vec::new() });
+                    *slot = EffectAst::Sequence {
+                        effects: vec![
+                            draw,
+                            EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                                predicate: IfResultPredicate::Did,
+                                effects: body.to_vec(),
+                            }),
+                        ],
+                    };
+                    bound += 1;
+                }
+                Some(false) => other += 1,
+                None => for_each_nested_effects_mut(slot, true, |nested| {
+                    let (b, o) = bind(nested, body);
+                    bound += b;
+                    other += o;
+                }),
+            }
+        }
+        (bound, other)
+    }
+    let mut rewritten = state.effects.clone();
+    let (bound, other) = bind(&mut rewritten, &reflexive_body);
+    if bound == 0 || other != 0 {
+        return Err(CardTextError::ParseError(
+            "'whenever a card is drawn this way' requires preceding single-card draws".into(),
+        ));
+    }
+    *state.effects = rewritten;
+    *state.carried_context = None;
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("whenever-card-drawn-this-way-reflexive"),
+    }))
 }
 
 fn pre_rule_damage_this_way_player_followup(
@@ -1362,6 +1455,18 @@ fn pre_rule_copy_and_cast_followups(
         )));
     }
 
+    if let Some(reduction) =
+        crate::activation_and_restrictions::parse_cast_this_way_cost_reduction_sentence(
+            sentence_tokens,
+        )
+        && attach_cast_cost_reduction_to_effects(state.effects, &reduction)
+    {
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: None,
+        }));
+    }
+
     if let Some(spec) = parse_may_cast_it_sentence(sentence_tokens) {
         let mut cast = build_may_cast_tagged_effect(&spec);
         if spec.as_copy
@@ -1413,12 +1518,34 @@ fn pre_rule_damage_cant_be_prevented_followup(
 }
 
 fn mark_last_deal_damage_unpreventable(effects: &mut [EffectAst]) -> bool {
-    for effect in effects.iter_mut().rev() {
-        if mark_deal_damage_unpreventable_in_effect(effect) {
+    for index in (0..effects.len()).rev() {
+        if mark_deal_damage_unpreventable_in_effect(&mut effects[index]) {
+            // "It deals an amount of damage of your choice to you and target
+            // creature. The damage can't be prevented.": one shared amount
+            // split into adjacent per-recipient instructions is one damage.
+            let shared = top_level_deal_damage_amount(&effects[index]).cloned();
+            let mut previous = index;
+            while let Some(amount) = shared.as_ref()
+                && previous > 0
+                && top_level_deal_damage_amount(&effects[previous - 1]) == Some(amount)
+            {
+                previous -= 1;
+                mark_deal_damage_unpreventable_in_effect(&mut effects[previous]);
+            }
             return true;
         }
     }
     false
+}
+
+fn top_level_deal_damage_amount(effect: &EffectAst) -> Option<&crate::effect::Value> {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamage { amount, .. }) => Some(amount),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn mark_deal_damage_unpreventable_in_effect(effect: &mut EffectAst) -> bool {
@@ -1567,6 +1694,61 @@ mod correlated_plural_sacrifice_result_tests;
 #[cfg(test)]
 #[path = "subject_verb_followups_inline_delayed_copy_retarget_followup_tests_9.rs"]
 mod delayed_copy_retarget_followup_tests;
+
+/// "That spell has undaunted." after an exile cast permission (Durnan of
+/// the Yawning Portal): a spell cast through that permission costs {1} less
+/// for each opponent (CR 702.125a).
+fn pre_rule_permission_spell_undaunted(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !matches!(
+        words.as_slice(),
+        ["that" | "the", "spell", "has", "undaunted"]
+    ) {
+        return Ok(None);
+    }
+    fn annotate(effect: &mut EffectAst) -> bool {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
+                    spell_cost_reduction_per_opponent,
+                    ..
+                }),
+            ..
+        }) = effect
+        {
+            *spell_cost_reduction_per_opponent = 1;
+            return true;
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+            for child in nested.iter_mut().rev() {
+                if !found {
+                    found = annotate(child);
+                }
+            }
+        });
+        found
+    }
+    let mut found = false;
+    for effect in state.effects.iter_mut().rev() {
+        if annotate(effect) {
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("permission-spell-undaunted"),
+    }))
+}
 
 fn pre_rule_permission_spell_discount(
     state: &mut SentenceDispatchState<'_>,
@@ -2015,6 +2197,16 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         &[],
         pre_rule_damage_amount_replacement
     ),
+    pre_followup_rule!(
+        "whenever-card-drawn-this-way-reflexive",
+        &["whenever"],
+        pre_rule_whenever_card_drawn_this_way_followup
+    ),
+    pre_followup_rule!(
+        "damage-recipient-choice-instead",
+        &["that"],
+        pre_rule_damage_recipient_choice_instead
+    ),
     pre_followup_rule!("typed-text-change-destination-exclusion", &["the"], pre_rule_text_change_destination_exclusion),
     pre_followup_rule!(
         "damage-life-floor",
@@ -2040,6 +2232,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "permission-spell-discount",
         &["spells"],
         pre_rule_permission_spell_discount
+    ),
+    pre_followup_rule!(
+        "permission-spell-undaunted",
+        &["that", "the"],
+        pre_rule_permission_spell_undaunted
     ),
     pre_followup_rule!(
         "prepare-each-player-coin-face-followup",
@@ -2151,6 +2348,26 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     pre_followup_rule!("if-no-one-does", &["if"], pre_rule_if_no_one_does_followup),
     pre_followup_rule!("if-you-win", &["if"], pre_rule_if_you_win_followup),
     pre_followup_rule!(
+        "tap-as-it-phases-in",
+        &["tap"],
+        pre_rule_tap_as_it_phases_in_followup
+    ),
+    pre_followup_rule!(
+        "phase-in-while-source-tapped",
+        &["it"],
+        pre_rule_phase_in_while_source_tapped_followup
+    ),
+    pre_followup_rule!(
+        "after-second-main-additional-phases",
+        &["after"],
+        pre_rule_after_second_main_additional_phases_followup
+    ),
+    pre_followup_rule!(
+        "after-first-combat-additional-combat",
+        &["after"],
+        pre_rule_after_first_combat_additional_combat_followup
+    ),
+    pre_followup_rule!(
         "animation-base-pt-self-replacement",
         &["if"],
         pre_rule_animation_base_pt_replacement
@@ -2189,6 +2406,21 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "destroy-those-creatures",
         &["destroy", "then"],
         pre_rule_destroy_those_creatures_followup
+    ),
+    pre_followup_rule!(
+        "do-the-same-for-keywords",
+        &["do"],
+        pre_rule_do_the_same_for_keywords_followup
+    ),
+    pre_followup_rule!(
+        "speed-floor-followup",
+        &["this"],
+        pre_rule_speed_floor_followup
+    ),
+    pre_followup_rule!(
+        "conditional-entry-modifier",
+        &["if"],
+        pre_rule_conditional_entry_modifier_followup
     ),
     pre_followup_rule!("elliptical-condition-fallback", &["if"], pre_rule_elliptical_condition_fallback),
     pre_followup_rule!("otherwise", &["otherwise"], pre_rule_otherwise_followup),
@@ -2406,7 +2638,11 @@ pub(super) use subject_verb_followups_condition_programs::post_rule_future_zone_
 use subject_verb_followups_condition_programs::{
     default_effects_for_self_replacement, post_rule_self_replacement_common_suffix,
     pre_rule_conditional_optional_result_followup, pre_rule_if_no_one_does_followup,
-    pre_rule_if_you_win_followup, predicate_explicitly_says_that_land,
+    pre_rule_after_first_combat_additional_combat_followup,
+    pre_rule_after_second_main_additional_phases_followup, pre_rule_if_you_win_followup,
+    pre_rule_phase_in_while_source_tapped_followup,
+    pre_rule_tap_as_it_phases_in_followup,
+    predicate_explicitly_says_that_land,
     take_self_replacement_condition,
 };
 #[path = "subject_verb_followups/subject_verb_followups_core.rs"]
@@ -2416,7 +2652,10 @@ use subject_verb_followups_core_programs::{
     pre_rule_destroy_those_creatures_followup, pre_rule_otherwise_followup,
     pre_rule_elliptical_condition_fallback,
     pre_rule_x_maximum_followup,
+    pre_rule_conditional_entry_modifier_followup, pre_rule_speed_floor_followup,
+    pre_rule_do_the_same_for_keywords_followup,
 };
+pub(crate) use subject_verb_followups_core_programs::speed_floor_followup_minimum;
 #[path = "subject_verb_followups/subject_verb_followups_choice.rs"]
 mod subject_verb_followups_choice_programs;
 use subject_verb_followups_choice_programs::{
@@ -2427,6 +2666,7 @@ use subject_verb_followups_choice_programs::{
 mod subject_verb_followups_combat_programs;
 use subject_verb_followups_combat_programs::{
     normalize_anaphoric_damage_self_replacement, pre_rule_damage_amount_replacement,
+    pre_rule_damage_recipient_choice_instead,
     primary_damage_source_from_effect,
     replace_anaphoric_damage_source_in_effects, sole_damage_payload,
 };

@@ -14,6 +14,9 @@ pub struct ChoosePlayerEffect {
     pub random: bool,
     pub excluded_tags: Vec<crate::tag::TagKey>,
     pub remember_as_chosen_player: bool,
+    /// Players this effect already chose (in an enclosing loop); excluded
+    /// from the candidates, and each new choice is appended.
+    pub accumulate_into: Option<crate::tag::TagKey>,
 }
 
 impl ChoosePlayerEffect {
@@ -29,7 +32,13 @@ impl ChoosePlayerEffect {
             random: false,
             excluded_tags: Vec::new(),
             remember_as_chosen_player: false,
+            accumulate_into: None,
         }
+    }
+
+    pub fn accumulating_into(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
+        self.accumulate_into = Some(tag.into());
+        self
     }
 
     pub fn at_random(mut self) -> Self {
@@ -75,6 +84,11 @@ impl ChoosePlayerEffect {
             if let Some(excluded_players) = ctx.get_tagged_players(excluded_tag.as_str()) {
                 players.retain(|player| !excluded_players.contains(player));
             }
+        }
+        if let Some(accumulated) = &self.accumulate_into
+            && let Some(already_chosen) = ctx.get_tagged_players(accumulated.as_str())
+        {
+            players.retain(|player| !already_chosen.contains(player));
         }
         if !game
             .source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref())
@@ -144,6 +158,14 @@ impl EffectExecutor for ChoosePlayerEffect {
         }
 
         ctx.set_tagged_players(self.tag.clone(), vec![chosen]);
+        if let Some(accumulated) = &self.accumulate_into {
+            let mut players = ctx
+                .get_tagged_players(accumulated.as_str())
+                .map(|players| players.to_vec())
+                .unwrap_or_default();
+            players.push(chosen);
+            ctx.set_tagged_players(accumulated.clone(), players);
+        }
         if self.remember_as_chosen_player {
             game.set_chosen_player(ctx.source, chosen);
             ctx.combat.chosen_player = Some(chosen);

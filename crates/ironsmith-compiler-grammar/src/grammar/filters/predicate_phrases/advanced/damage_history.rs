@@ -41,6 +41,37 @@ fn guard_reference(spec: &ChooseSpec, predicate: PredicateAst) -> PredicateAst {
 
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "you were dealt damage this turn by a red instant or sorcery spell"
+    // (Suffocation): an existential source class, read from the source's
+    // characteristics when it dealt the damage.
+    if words.len() == tokens.len()
+        && let ["you", "were", "dealt", rest @ ..] = words.as_slice()
+    {
+        let (combat, rest) = match rest {
+            ["damage", rest @ ..] => (None, rest),
+            ["combat", "damage", rest @ ..] => (Some(true), rest),
+            ["noncombat", "damage", rest @ ..] => (Some(false), rest),
+            _ => (None, &[][..]),
+        };
+        if let ["this", "turn", "by", "a" | "an", source @ ..] = rest
+            && !source.is_empty()
+            && let Ok(sources) = crate::object_filters::parse_object_filter(
+                &tokens[tokens.len() - source.len()..],
+                false,
+            )
+        {
+            return Some(compared(
+                DamageHistoryQuery {
+                    sources: DamageHistorySources::Matching(sources),
+                    recipients: DamageHistoryRecipients::Players(crate::target::PlayerFilter::You),
+                    combat,
+                    reduction: DamageHistoryReduction::Total,
+                },
+                ValueComparisonOperator::GreaterThan,
+                0,
+            ));
+        }
+    }
     let body = words.strip_suffix(&["this", "turn"])?;
     if let [
         "a",

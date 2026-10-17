@@ -137,7 +137,10 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddOneManaAnyColorAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaImprintedColors)
         ),
@@ -339,6 +342,7 @@ fn finalize_rewrite_activated_effect_sentences(
                 Some(
                     ActivationTiming::AnyTimeByEnchantedCreatureController
                         | ActivationTiming::AnyTimeByOpponents
+                        | ActivationTiming::AnyTimeBySourceOwner
                         | ActivationTiming::SorcerySpeedByOpponents
                         | ActivationTiming::DeclareAttackersStepByAttackedPlayer
                 )

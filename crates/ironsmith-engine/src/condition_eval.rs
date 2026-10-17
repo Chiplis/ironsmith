@@ -3036,6 +3036,16 @@ fn evaluate_turn_history_condition(
                     })
             })
         }
+        TurnHistoryCondition::TriggeringObjectEnteredFromZone(zone) => {
+            ctx.triggering_event.is_some_and(|event| {
+                event
+                    .downcast::<crate::events::EnterBattlefieldEvent>()
+                    .is_some_and(|etb| etb.from == *zone)
+                    || event
+                        .downcast::<crate::events::ZoneChangeEvent>()
+                        .is_some_and(|change| change.to == Zone::Battlefield && change.from == *zone)
+            })
+        }
         TurnHistoryCondition::TriggeringObjectWasCastFromZone(zone) => triggering_snapshot()
             .is_some_and(|snapshot| {
                 game.turn_store
@@ -3136,6 +3146,24 @@ fn evaluate_turn_history_condition(
                         && players.contains(&event.player)
                 })
         }
+        TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn => {
+            let active_player = game.turn.active_player;
+            game.turn_store.turn_history.projected_records().any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                    .is_some_and(|attack| {
+                        matches!(
+                            attack.target,
+                            crate::triggers::AttackEventTarget::Player(player)
+                                if player == ctx.controller
+                        ) && record
+                            .object_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| snapshot.controller == active_player)
+                    })
+            })
+        }
         TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
             let Some(triggering_player) = ctx
                 .triggering_event
@@ -3162,12 +3190,47 @@ fn evaluate_turn_history_condition(
                     })
             })
         }
+        TurnHistoryCondition::TriggeringPlayerWasAttackedThisTurnBy { attackers } => {
+            let Some(attacked_player) = ctx
+                .triggering_event
+                .and_then(|event| event.trigger_player().or_else(|| event.player()))
+            else {
+                return Ok(false);
+            };
+            // The attacker is judged as it existed when it attacked
+            // ("an Assassin you controlled"), from the attack record's snapshot.
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.turn_store.turn_history.projected_records().any(|record| {
+                record
+                    .event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                    .is_some_and(|attack| {
+                        matches!(
+                            attack.target,
+                            crate::triggers::AttackEventTarget::Player(player)
+                                if player == attacked_player
+                        ) && record
+                            .object_snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| {
+                                attackers.matches_snapshot(snapshot, &filter_ctx, game)
+                            })
+                    })
+            })
+        }
         TurnHistoryCondition::PlayerLostLifeLastTurn(player) => {
             let players = matching_players(player);
             players.iter().any(|player| {
                 game.last_turn_history_for_player(*player)
                     .is_some_and(|history| history.total_life_lost_for_players(&[*player]) > 0)
             })
+        }
+        TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(player) => {
+            let players = matching_players(player);
+            game.turn_store
+                .previous_turn_history
+                .total_noncombat_damage_to_players(&players)
+                > 0
         }
         TurnHistoryCondition::TriggeringPlayersTurn { .. } => ctx
             .triggering_event
@@ -3316,6 +3379,27 @@ fn evaluate_turn_history_condition(
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
             .is_some_and(|event| event.is_mana_ability),
+        TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor => {
+            let Some(color) = game.chosen_color(ctx.source) else {
+                return Ok(false);
+            };
+            let symbol = crate::mana::ManaSymbol::from_color(color);
+            ctx.triggering_event
+                .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
+                .is_some_and(|event| event.mana.contains(&symbol))
+        }
+        TurnHistoryCondition::TriggeringSacrificePaidEmergeCost => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::SacrificeEvent>())
+            .and_then(|event| event.source)
+            .and_then(|source| game.object(source))
+            .is_some_and(|spell| {
+                spell.zone == Zone::Stack
+                    && spell
+                        .cast_alternative_method
+                        .as_deref()
+                        .is_some_and(|method| method.name().eq_ignore_ascii_case("Emerge"))
+            }),
     })
 }
 
@@ -3449,6 +3533,11 @@ pub fn evaluate_condition_external_checked(
         Condition::Not(inner) => Ok(!evaluate_condition_external_checked(
             game, inner, ctx, paid,
         )?),
+        // Checked only as the trigger event happens, never on resolution.
+        Condition::TriggerEventOnly(_) if ctx.options.ignore_trigger_limits => Ok(true),
+        Condition::TriggerEventOnly(inner) => {
+            evaluate_condition_external_checked(game, inner, ctx, paid)
+        }
         Condition::And(left, right) => {
             Ok(evaluate_condition_external_checked(game, left, ctx, paid)?
                 && evaluate_condition_external_checked(game, right, ctx, paid)?)
@@ -3786,7 +3875,7 @@ fn resolve_condition_player_simple(
         | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }
-        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. }
+        | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. }
         | PlayerFilter::OpponentOf(_)
         | PlayerFilter::PlayerToLeftOf(_)
         | PlayerFilter::MaxSpeed { .. } => {
@@ -3975,6 +4064,18 @@ fn evaluate_condition_in_context(
         Condition::FirstCombatPhaseOfTurn => Ok(game.turn.phase
             == crate::game_state::Phase::Combat
             && game.turn_store.combat_phases_started_this_turn == 1),
+        // Counters are maintained by the turn runner when each step begins;
+        // zero means the step began outside it (direct state setup).
+        Condition::FirstEndStepOfTurn => Ok(game.turn.step
+            == Some(crate::game_state::Step::End)
+            && game.turn_store.end_steps_started_this_turn <= 1),
+        Condition::SecondMainPhaseOfTurn => Ok(matches!(
+            game.turn.phase,
+            crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
+        ) && game.turn_store.main_phases_started_this_turn == 2),
+        Condition::FirstUpkeepStepOfTurn => Ok(game.turn.step
+            == Some(crate::game_state::Step::Upkeep)
+            && game.turn_store.upkeep_steps_started_this_turn <= 1),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);
 
@@ -4283,6 +4384,13 @@ fn evaluate_condition_in_context(
             .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))),
         Condition::PlayerWasMonarchAtTurnStart {player} => Ok(ctx.matching_players(game,player)?.into_iter()
             .any(|player|game.turn_store.turn_history.monarch_at_turn_start==Some(player))),
+        Condition::PlayerIsYou { player } => {
+            let you = ctx.controller;
+            Ok(ctx
+                .matching_players(game, player)?
+                .into_iter()
+                .any(|player_id| player_id == you))
+        }
         Condition::PlayerIsMonarch { player } => Ok(ctx
             .matching_players(game, player)?
             .into_iter()
@@ -4614,6 +4722,21 @@ fn evaluate_condition_in_context(
             }
             Ok(false)
         }
+        Condition::TargetPaidLabel(label) => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            // The first object target's own cast receipt (a permanent keeps
+            // the receipt of the spell it resolved from, CR 702.185 warp).
+            for target in &ctx.targets {
+                if let crate::effects::ResolvedTarget::Object(id) = target
+                    && let Some(obj) = game.object(*id)
+                {
+                    return Ok(obj.optional_costs_paid.was_paid_label(label.clone()));
+                }
+            }
+            Ok(false)
+        }
         Condition::ThisSpellWasKicked => {
             if let Some(ctx) = ctx.execution() {
                 Ok(resolve_value(game, &Value::WasKicked, ctx)? != 0)
@@ -4673,6 +4796,22 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .is_some_and(|object| object.optional_costs_paid.was_cast_at_sorcery_timing())),
         Condition::ThisSpellPaidLabel(label) => {
+            // CR 601.2b-d: the selected alternative cost determines target
+            // and division announcements before its payment is committed.
+            // This prospective fact belongs only to the casting view; it must
+            // not manufacture a completed or dated payment receipt.
+            if ctx.is_cast_time() && !label.requires_current_turn()
+                && let Some(source) = game.object(shared.source).filter(|source| source.zone == Zone::Stack)
+                && let Some(method) = source.cast_alternative_method.as_deref()
+            {
+                let named = crate::cost::OptionalCostRef::from_label(method.name());
+                let alternative = crate::cost::OptionalCostRef::new(
+                    crate::cost::OptionalCostKind::AlternativeCast(
+                        ironsmith_core::AlternativeCostReference::paid_marker(method.name(), method.mana_cost()),
+                    ),
+                );
+                if named.matches_query(label) || alternative.matches_query(label) { return Ok(true); }
+            }
             if let Some(ctx) = ctx.execution() {
                 Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)
             } else {
@@ -4904,6 +5043,12 @@ fn evaluate_condition_in_context(
             }
             Ok(game.is_monstrous(ctx.source))
         }
+        Condition::SourceHasDealtCombatDamageSinceEntered => {
+            if ctx.is_cast_time() {
+                return Ok(false);
+            }
+            Ok(game.has_dealt_combat_damage_since_entered(ctx.source))
+        }
         Condition::SourceHasDealtDamageSinceEntered => {
             if ctx.is_cast_time() {
                 return Ok(false);
@@ -4954,6 +5099,14 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
             .unwrap_or(false)),
+        Condition::SourceAttackedThisCombat => {
+            if ctx.is_cast_time() { return Ok(false); }
+            game.turn_store.turn_history.creature_attacked_in_combat(
+                ctx.source, game.turn_store.combat_phases_started_this_turn,
+            ).ok_or_else(|| ExecutionError::IncompleteEvidence(
+                "the source's attack declaration has no retained combat phase".into(),
+            ))
+        }
         Condition::SourceAttackedOrBlockedThisCombat => {
             if ctx.is_cast_time() { return Ok(false); }
             game.turn_store.turn_history.creature_attacked_or_blocked_in_combat(
@@ -5242,6 +5395,30 @@ fn evaluate_condition_in_context(
             }
             Ok(false)
         }
+        Condition::TriggerEventOnly(inner) => {
+            if ctx
+                .external()
+                .is_some_and(|external| external.options.ignore_trigger_limits)
+            {
+                return Ok(true);
+            }
+            evaluate_condition_in_context(game, inner, ctx)
+        }
+        Condition::ColorsOfManaSpentToActivateThisAbility { amount, exactly } => {
+            let Some(ctx) = ctx.execution() else {
+                return Ok(false);
+            };
+            let spent = &ctx.mana.activation_payment;
+            let distinct_colors = [spent.white, spent.blue, spent.black, spent.red, spent.green]
+                .into_iter()
+                .filter(|amount| *amount > 0)
+                .count() as u32;
+            Ok(if *exactly {
+                distinct_colors == *amount
+            } else {
+                distinct_colors >= *amount
+            })
+        }
         Condition::TargetObjectsHaveDifferentColorSets => {
             let Some(ctx) = ctx.execution() else {
                 return Ok(false);
@@ -5377,6 +5554,70 @@ fn evaluate_condition_in_context(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
+        Condition::SourceChosenColorMostCommonAmong { filter, strict } => {
+            let Some(chosen) = game.chosen_color(shared.source) else {
+                return Ok(false);
+            };
+            let filter_ctx = game.filter_context_for(shared.controller, Some(shared.source));
+            let count_color = |color: crate::color::Color| {
+                let mut colored = filter.clone();
+                colored.colors = Some(crate::color::ColorSet::from_color(color));
+                condition_objects_for_zone(game, colored.zone)
+                    .filter(|obj| colored.matches(obj, &filter_ctx, game))
+                    .count()
+            };
+            let chosen_count = count_color(chosen);
+            Ok(crate::color::Color::ALL
+                .into_iter()
+                .filter(|color| *color != chosen)
+                .all(|color| {
+                    let other = count_color(color);
+                    if *strict { chosen_count > other } else { chosen_count >= other }
+                }))
+        }
+        Condition::YouCastSpellNamedThisGameAtLeast { name, count, excluding_source } => {
+            let name = name.clone().or_else(|| game.object(shared.source).map(|object| object.name.to_string()));
+            Ok(name.is_some_and(|name| game.player(shared.controller).is_some_and(|player| {
+                player.spell_cast_names_this_game.iter().filter(|(id, cast_name)| {
+                    (!*excluding_source || **id != shared.source) && cast_name.eq_ignore_ascii_case(&name)
+                }).count() >= *count as usize
+            })))
+        }
+        Condition::YouCycledCardNamedThisGameAtLeast { name, count } => {
+            let name = match name {
+                Some(name) => Some(name.clone()),
+                None => game.object(shared.source).map(|object| object.name.to_string()),
+            };
+            // Authored names reach the condition normalized; compare names
+            // case-insensitively.
+            Ok(name.is_some_and(|name| {
+                game.player(shared.controller).is_some_and(|player| {
+                    player
+                        .cycled_card_names_this_game
+                        .iter()
+                        .filter(|(cycled, _)| cycled.eq_ignore_ascii_case(&name))
+                        .map(|(_, times)| *times)
+                        .sum::<u32>()
+                        >= *count
+                })
+            }))
+        }
+        Condition::TriggeringKeywordActionIs(action) => Ok(shared
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+            .is_some_and(|event| action.matches_performed_action(event.action))),
+        Condition::TriggeringObjectWasSacrificed => Ok(shared
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::ZoneChangeEvent>())
+            .is_some_and(|event| {
+                event.objects.iter().any(|permanent| {
+                    game.turn_store.turn_history.permanent_was_sacrificed_this_turn(*permanent)
+                })
+            })),
+        Condition::TriggeringObjectTappedForAttack => Ok(shared
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::PermanentTappedEvent>())
+            .is_some_and(|event| event.attack_declaration)),
         Condition::TriggeringObjectBecameTappedFirstTimeThisTurn => Ok(
             triggering_object_became_tapped_first_time_this_turn(game, shared.triggering_event),
         ),
@@ -5548,6 +5789,9 @@ fn evaluate_condition_in_context(
                         game.is_active_player(ctx.controller)
                             && game.turn.phase != crate::game_state::Phase::Ending
                     }
+                    crate::ability::ActivationTiming::AnyTimeBySourceOwner => game
+                        .object(ctx.source)
+                        .is_some_and(|object| object.owner == ctx.controller),
                     crate::ability::ActivationTiming::AnyTimeByOpponents => game
                         .current_controller(ctx.source)
                         .is_some_and(|source_controller| {
@@ -5597,6 +5841,9 @@ fn evaluate_condition_in_context(
                     crate::ability::ActivationTiming::DuringAnyUpkeep => {
                         game.turn.phase == crate::game_state::Phase::Beginning
                             && game.turn.step == Some(crate::game_state::Step::Upkeep)
+                    }
+                    crate::ability::ActivationTiming::AnyTimeByGrantingPlayer(granter) => {
+                        granter.is_none_or(|granter| granter == ctx.controller)
                     }
                     timing => crate::decision::activation_step_window_allows(
                         game,
@@ -5663,7 +5910,12 @@ fn evaluate_condition_in_context(
                     .and_then(|chars| chars.abilities.origin(ability_index).cloned()) else {
                     return Ok(false);
                 };
-                game.turn_store.ability_activations_per_object.get(&(ctx.source, origin)).copied().unwrap_or(0) < *limit
+                let limit = limit.saturating_add(power_up_additional_activations(
+                    game,
+                    ctx.source,
+                    ability_index,
+                ));
+                game.turn_store.ability_activations_per_object.get(&(ctx.source, origin)).copied().unwrap_or(0) < limit
             })
         }
         Condition::SourceIsEquipped => {
@@ -6049,6 +6301,12 @@ fn evaluate_condition_in_context(
             && matches!(game.turn.phase, crate::game_state::Phase::Combat)),
         Condition::SourceControllersEndStep => Ok(game.is_active_player(shared.controller)
             && game.turn.phase == crate::game_state::Phase::Ending),
+        Condition::SourceControllersUntapStep => Ok(game.is_active_player(shared.controller)
+            && game.turn.step == Some(crate::game_state::Step::Untap)),
+        Condition::SourceStartedTurnUntapped => Ok(game
+            .turn_store
+            .untapped_at_turn_start
+            .contains(&shared.source)),
         Condition::OpponentsEndStep => Ok(game
             .are_opponents(shared.controller, game.turn.active_player)
             && game.turn.phase == crate::game_state::Phase::Ending
@@ -6091,6 +6349,16 @@ fn evaluate_condition_in_context(
                 game.turn_store
                     .turn_history
                     .player_lost_life_this_turn(*opponent)
+            }))
+        }
+        Condition::AnyPlayerWasDealtCombatDamageThisTurnOrMore { count } => {
+            Ok(game.players.iter().any(|player| {
+                player.is_in_game()
+                    && game
+                        .turn_store
+                        .turn_history
+                        .total_combat_damage_to_player(player.id)
+                        >= *count
             }))
         }
         Condition::AnyPlayerLostLifeThisTurnOrMore { count } => {
@@ -6399,6 +6667,47 @@ fn boast_may_be_activated_an_additional_time(
                     crate::static_abilities::StaticAbilityId::BoastTwiceEachTurn,
                 )
         })
+}
+
+/// Wonder Man, Hollywood Hero: "Each power-up ability of permanents you
+/// control can be activated an additional time." Each such permanent its
+/// controller controls raises a power-up ability's once-per-object cap by one.
+fn power_up_additional_activations(
+    game: &GameState,
+    source: crate::ids::ObjectId,
+    ability_index: usize,
+) -> u32 {
+    let is_power_up = game.current_characteristics(source).is_some_and(|chars| {
+        chars.abilities.as_slice().get(ability_index).is_some_and(|ability| {
+            matches!(
+                &ability.kind,
+                crate::ability::AbilityKind::Activated(activated)
+                    if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::PowerUp)
+                        || activated.additional_restrictions.iter().any(|restriction| {
+                            restriction
+                                .strip_prefix("__ironsmith_activation_label:")
+                                .is_some_and(|label| label.eq_ignore_ascii_case("Power-up"))
+                        })
+            )
+        })
+    });
+    if !is_power_up || game.object(source).is_none_or(|object| object.zone != crate::zone::Zone::Battlefield) {
+        return 0;
+    }
+    let Some(controller) = game.object(source).map(|object| game.controller_of(object)) else {
+        return 0;
+    };
+    game.battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|object| game.controller_of(object) == controller)
+                && game.current_has_static_ability_id(
+                    id,
+                    crate::static_abilities::StaticAbilityId::PowerUpAbilitiesAdditionalTime,
+                )
+        })
+        .count() as u32
 }
 
 #[cfg(test)]
@@ -6958,5 +7267,38 @@ mod alternative_payment_evidence_tests {
                 branch.end_token_resource_scope(root, &meter);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod announced_alternative_payment_tests {
+    use super::*;
+    #[test]
+    fn announced_alternative_cost_is_cast_time_only_and_does_not_author_payment_evidence() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Proposed alternative spell")
+            .card_types(vec![crate::types::CardType::Sorcery]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Stack);
+        game.object_mut(source).unwrap().cast_alternative_method = Some(Box::new(
+            crate::alternative_cast::AlternativeCastingMethod::Madness { total_cost: crate::cost::TotalCost::free() },
+        ));
+        let madness = Condition::ThisSpellPaidLabel("Madness".into());
+        let other = Condition::ThisSpellPaidLabel("Flashback".into());
+        assert!(evaluate_condition_cast_time_checked(&game, &madness, alice, source).unwrap());
+        assert!(!evaluate_condition_cast_time_checked(&game, &other, alice, source).unwrap());
+        let current_turn = Condition::ThisSpellPaidLabel(crate::cost::OptionalCostRef::from_label("Madness").this_turn());
+        assert!(!evaluate_condition_cast_time_checked(&game, &current_turn, alice, source).unwrap());
+        let object = game.object(source).unwrap();
+        assert!(!object.optional_costs_paid.was_paid_label("Madness"));
+        assert!(object.optional_costs_paid.cast_payment_turn.is_none());
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        assert!(!evaluate_condition_resolution(&game, &madness, &ctx).unwrap());
+        ctx.optional_costs_paid.mark_label_paid("Madness");
+        ctx.optional_costs_paid.record_completed_cast_payment(game.turn.turn_number);
+        assert!(evaluate_condition_resolution(&game, &madness, &ctx).unwrap());
+        assert!(evaluate_condition_resolution(&game, &current_turn, &ctx).unwrap());
+        game.object_mut(source).unwrap().zone = Zone::Battlefield;
+        assert!(!evaluate_condition_cast_time_checked(&game, &madness, alice, source).unwrap());
     }
 }

@@ -147,6 +147,9 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
             &["player", "who", "has", "the", "most", "life"],
             &["the", "player", "with", "the", "most", "life"],
             &["player", "with", "the", "most", "life"],
+            &["the", "player", "with", "the", "highest", "life", "total"],
+            &["player", "with", "the", "highest", "life", "total"],
+            &["the", "player", "who", "has", "the", "highest", "life", "total"],
         ],
     ) {
         return SubjectAst::Player(PlayerAst::MostLifeTied);
@@ -191,7 +194,16 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     ) {
         return SubjectAst::Player(PlayerAst::Chosen);
     }
-    if prefix_one_of(slice, &[&["opponent"], &["opponents"], &["an", "opponent"]]) {
+    if prefix_one_of(
+        slice,
+        &[
+            &["opponent"],
+            &["opponents"],
+            &["an", "opponent"],
+            // "each of your opponents" ("each" already stripped).
+            &["of", "your", "opponents"],
+        ],
+    ) {
         return SubjectAst::Player(PlayerAst::Opponent);
     }
     if prefix_one_of(

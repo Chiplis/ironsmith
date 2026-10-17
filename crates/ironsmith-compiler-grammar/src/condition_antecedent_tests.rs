@@ -270,6 +270,7 @@ mod tests {
                 duration: Until::EndOfTurn,
                 condition: None,
                 set_quantifier_surface: None,
+                only_if_absent: false,
             },
         ))];
 
@@ -430,6 +431,7 @@ mod tests {
                     duration: Until::EndOfTurn,
                     condition: None,
                     set_quantifier_surface: None,
+                    only_if_absent: false,
                 },
             )),
         ];
@@ -518,6 +520,7 @@ mod tests {
                     duration: Until::EndOfTurn,
                     condition: None,
                     set_quantifier_surface: None,
+                    only_if_absent: false,
                 },
             )),
         ];
@@ -546,6 +549,7 @@ mod tests {
                     duration: Until::EndOfTurn,
                     condition: None,
                     set_quantifier_surface: None,
+                    only_if_absent: false,
                 },
             ))
         };

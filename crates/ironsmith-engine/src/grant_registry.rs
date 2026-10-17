@@ -49,6 +49,11 @@ pub enum GrantSource {
         expires_end_of_turn: u32,
         /// Set once CR 800.4m clamped the boundary because the player left.
         departure_clamped: bool,
+        /// "During your next turn": the grant is usable only during the
+        /// boundary turn itself (once `duration_player` is taking it), never
+        /// during the turns before it.
+        #[cfg_attr(feature = "serialization", serde(default))]
+        during_only: bool,
     },
     /// From a one-shot effect that lasts "until your next end step": until
     /// the end step of the next turn `duration_player` controls begins. When
@@ -116,6 +121,13 @@ pub enum GrantSource {
         filter: ObjectFilter,
         minimum: u32,
     },
+    /// A persistent zone grant whose permission is active only while
+    /// `player` has already cast another spell this turn ("You may cast this
+    /// card from exile as long as you've cast another spell this turn").
+    EffectDuringTurnsCastAnotherSpell {
+        source_id: ObjectId,
+        player: PlayerId,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -160,6 +172,25 @@ impl GrantSource {
             duration_player,
             expires_end_of_turn: turn,
             departure_clamped: false,
+            during_only: false,
+        }
+    }
+
+    /// Create a grant usable only during `duration_player`'s next turn
+    /// ("During your next turn, you may play that card"). `turn` is the
+    /// predicted turn number; `expire_at_turn_start` re-targets it to the
+    /// turn the player actually takes next.
+    pub fn during_player_next_turn(
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        turn: u32,
+    ) -> Self {
+        GrantSource::EffectUntilPlayerNextTurnEnd {
+            source_id,
+            duration_player,
+            expires_end_of_turn: turn,
+            departure_clamped: false,
+            during_only: true,
         }
     }
 
@@ -202,6 +233,7 @@ impl GrantSource {
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsAttackedWith { source_id, .. } => *source_id,
+            GrantSource::EffectDuringTurnsCastAnotherSpell { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id }
             | GrantSource::EffectWhileSourceOnBattlefield { source_id } => *source_id,
         }
@@ -239,6 +271,17 @@ impl GrantSource {
                     })
             }
 
+            // "During your next turn": only the boundary turn itself, once
+            // the duration player is actually taking it.
+            GrantSource::EffectUntilPlayerNextTurnEnd {
+                duration_player,
+                expires_end_of_turn,
+                during_only: true,
+                ..
+            } => {
+                game.turn.turn_number == *expires_end_of_turn
+                    && game.is_active_player(*duration_player)
+            }
             GrantSource::Effect {
                 expires_end_of_turn,
                 ..
@@ -317,6 +360,12 @@ impl GrantSource {
                 );
                 attacked >= (*minimum).max(1) as i32
             }
+            // The permission is checked while proposing the cast, before
+            // this spell's own cast is recorded, so any recorded cast this
+            // turn is "another" spell (CR 601.2).
+            GrantSource::EffectDuringTurnsCastAnotherSpell { player, .. } => {
+                game.turn_store.turn_history.spells_cast_by_player(*player) >= 1
+            }
         }
     }
 
@@ -362,7 +411,8 @@ impl GrantSource {
                 ..
             } => turn_number <= *expires_end_of_turn,
             GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
-            | GrantSource::EffectDuringTurnsAttackedWith { .. } => true,
+            | GrantSource::EffectDuringTurnsAttackedWith { .. }
+            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. } => true,
         }
     }
 }
@@ -403,6 +453,10 @@ pub enum GrantLifetime {
         source_id: ObjectId,
         player: PlayerId,
     },
+    DuringTurnsCastAnotherSpell {
+        source_id: ObjectId,
+        player: PlayerId,
+    },
 }
 
 impl GrantLifetime {
@@ -416,6 +470,7 @@ impl GrantLifetime {
             GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantLifetime::DuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
             GrantLifetime::DuringTurnsAttackedWith { source_id, .. } => *source_id,
+            GrantLifetime::DuringTurnsCastAnotherSpell { source_id, .. } => *source_id,
         }
     }
 }
@@ -505,6 +560,12 @@ impl GrantSource {
                 source_id: *source_id,
                 player: *player,
             },
+            GrantSource::EffectDuringTurnsCastAnotherSpell { source_id, player } => {
+                GrantLifetime::DuringTurnsCastAnotherSpell {
+                    source_id: *source_id,
+                    player: *player,
+                }
+            }
         }
     }
 }
@@ -602,10 +663,17 @@ pub(crate) fn grant_top_card_matches(
                 .cast_origin_snapshot(card_id)
                 .is_some_and(|snapshot| snapshot.zone == Zone::Library);
     }
+    // The permitted library is the beneficiary's own, or the one library a
+    // resolved permission names by its locked owner ("the top card of their
+    // library", CR 608.2h).
+    let names_owner_library = card.owner == grant.player
+        || grant.filter.as_ref().is_some_and(|filter| {
+            filter.owner == Some(crate::target::PlayerFilter::Specific(card.owner))
+        });
     card.zone == Zone::Library
-        && card.owner == grant.player
+        && names_owner_library
         && game
-            .player(grant.player)
+            .player(card.owner)
             .is_some_and(|player| player.library.last() == Some(&card_id))
 }
 
@@ -747,11 +815,23 @@ pub struct PlayFromConstraints {
         serde(deserialize_with = "deserialize_present_permission_reference")
     )]
     pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    /// "If that spell doesn't target <filter>, it costs {N} more to cast this
+    /// way": `spell_cost_increase` applies only when no chosen target of the
+    /// spell matches this filter (checked at CR 601.2f, after targets).
+    #[cfg_attr(
+        feature = "serialization",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub spell_cost_increase_unless_targets: Option<ObjectFilter>,
     #[cfg_attr(
         feature = "serialization",
         serde(deserialize_with = "deserialize_present_permission_reference")
     )]
     pub spell_cost_reduction: Option<crate::mana::ManaCost>,
+    /// Generic reduction per opponent of the caster ("That spell has
+    /// undaunted", CR 702.125a), counted as the cost is determined.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub spell_cost_reduction_per_opponent: u32,
     pub lands_enter_tapped: bool,
     /// Required in retained native permission carriers; omission cannot widen a library permission.
     pub top_card_only: bool,
@@ -1504,10 +1584,24 @@ impl GrantRegistry {
                     // relation, not a hidden card quality. Preserve that prior
                     // route without granting it a new definition/acquisition pair.
                     if !unqualified.tagged_constraints.is_empty() {
+                        // "cards they exiled with this" (this turn) is the
+                        // same object-history relation, scoped to the exiler.
+                        let source_id = grant.source.source_id();
+                        let exiler_scoped = |constraint: &crate::target::TaggedObjectConstraint| {
+                            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                                && match constraint.tag.as_str() {
+                                    crate::tag::SOURCE_EXILED_BY_YOU_TAG =>
+                                        game.exiled_with_source_by_player(source_id, card_id, player),
+                                    crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG =>
+                                        game.exiled_with_source_by_player_this_turn(source_id, card_id, player),
+                                    _ => false,
+                                }
+                        };
                         if !unqualified.tagged_constraints.iter().all(|constraint| {
-                            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                            (constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
                                 && constraint.relation
-                                    == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                                    == crate::target::TaggedOpbjectRelation::IsTaggedObject)
+                                || exiler_scoped(constraint)
                         }) || !game
                             .get_exiled_with_source_links(grant.source.source_id())
                             .contains(&card_id)
@@ -1709,6 +1803,7 @@ impl GrantRegistry {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsCounterPutOnSource { source_id: sid, .. } |
                 GrantSource::EffectDuringTurnsAttackedWith { source_id: sid, .. } |
+                GrantSource::EffectDuringTurnsCastAnotherSpell { source_id: sid, .. } |
                 GrantSource::EffectWhileSourceOnBattlefield { source_id: sid } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
@@ -1840,7 +1935,8 @@ impl GrantRegistry {
             }
             GrantSource::EffectUntilSourceExilesAnother { .. }
             | GrantSource::EffectDuringTurnsCounterPutOnSource { .. }
-            | GrantSource::EffectDuringTurnsAttackedWith { .. } => true,
+            | GrantSource::EffectDuringTurnsAttackedWith { .. }
+            | GrantSource::EffectDuringTurnsCastAnotherSpell { .. } => true,
         });
         self.cleanup_orphaned_shared_usage();
     }
@@ -1871,10 +1967,29 @@ impl GrantRegistry {
         game: &crate::game_state::GameState,
         player: PlayerId,
     ) -> bool {
-        game.player(player)
+        self.grants_private_library_top_view_of(game, player, player)
+    }
+
+    /// Continuous private inspection of `subject`'s library top granted to
+    /// `viewer` by a resolving top permission. A permission over another
+    /// player's library ("look at the top card of their library any time")
+    /// names that library by its locked owner; it never reveals the
+    /// beneficiary's own top.
+    pub fn grants_private_library_top_view_of(
+        &self,
+        game: &crate::game_state::GameState,
+        viewer: PlayerId,
+        subject: PlayerId,
+    ) -> bool {
+        game.player(viewer)
             .is_some_and(|player| player.is_in_game())
             && self.grants.iter().any(|grant| {
-                grant.player == player
+                let owner = grant.filter.as_ref().and_then(|filter| match &filter.owner {
+                    Some(crate::target::PlayerFilter::Specific(owner)) => Some(*owner),
+                    _ => None,
+                });
+                grant.player == viewer
+                    && owner.unwrap_or(viewer) == subject
                     && grant.zone == Zone::Library
                     && grant.play_from_constraints.may_look_at_top
                     && grant.source.is_valid(game)
@@ -2109,14 +2224,47 @@ impl GrantRegistry {
                 {
                     continue;
                 }
-                let linked_targets =
+                // "Each player may look at cards they exiled with this ...":
+                // the pool is the source's links narrowed per beneficiary by
+                // the recorded exiler, not a definition-local exile pair.
+                let exiler_scoped = has_exiler_scoped_pool(&spec.filter)
+                    && !spec.requires_linked_exile_pair
+                    && spec.linked_exile_pair.is_none()
+                    && spec.linked_exile_class_level.is_none();
+                let linked_targets = if exiler_scoped {
+                    None
+                } else {
                     match static_linked_exile_targets(game, &spec, &permission_identity) {
                         Ok(targets) => targets,
                         Err(error) => {
                             game.record_token_resource_failure(&error);
                             continue;
                         }
-                    };
+                    }
+                };
+                if exiler_scoped && spec.may_look_at_linked_exile {
+                    let combat = game.combat.as_ref();
+                    for player in game.players.iter().filter(|player| {
+                        player.is_in_game()
+                            && player_matches_filter_with_combat(
+                                player.id,
+                                &spec.beneficiary,
+                                game,
+                                controller,
+                                combat,
+                            )
+                    }) {
+                        let ctx = source_filter_context(
+                            &game.filter_context_for(player.id, None), source_id, game);
+                        for &member in game.get_exiled_with_source_links(source_id) {
+                            if game.object(member).is_some_and(|object| {
+                                object.zone == Zone::Exile && spec.filter.matches(object, &ctx, game)
+                            }) {
+                                inspection.push((member, player.id));
+                            }
+                        }
+                    }
+                }
                 for mut spec in spec.zone_specs() {
                     if linked_targets.is_some() {
                         // The exact member ObjectId becomes a conjunctive target.
@@ -2265,6 +2413,16 @@ fn normalize_grant_filter(mut filter: ObjectFilter) -> ObjectFilter {
     filter
 }
 
+/// A pool narrowed to the cards the evaluating player exiled with the source.
+fn has_exiler_scoped_pool(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.tag.as_str(),
+            crate::tag::SOURCE_EXILED_BY_YOU_TAG | crate::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG
+        ) && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+    })
+}
+
 fn has_linked_exile_pool(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
@@ -2355,8 +2513,17 @@ fn grant_filter_context(
     grant: &Grant,
     game: &crate::game_state::GameState,
 ) -> crate::filter::FilterContext {
+    source_filter_context(ctx, grant.source.source_id(), game)
+}
+
+/// A permission's card filter context: its source and that source's linked
+/// exile pool, for the evaluating player's "you".
+fn source_filter_context(
+    ctx: &crate::filter::FilterContext,
+    source_id: ObjectId,
+    game: &crate::game_state::GameState,
+) -> crate::filter::FilterContext {
     let mut ctx = ctx.clone();
-    let source_id = grant.source.source_id();
     ctx.source = Some(source_id);
     let source_exiled = game
         .get_exiled_with_source_links(source_id)

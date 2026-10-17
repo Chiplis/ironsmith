@@ -1147,7 +1147,8 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
         AnthemValue::Dynamic(value)
             if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value)
-                || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value) =>
+                || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value)
+                || ironsmith_core::anthem_model::supports_recipient_relative_anthem_value(value) =>
         {
             Some(value.clone())
         }
@@ -1349,6 +1350,8 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
             format!("{} mana symbol in its mana cost", color.name())
         }
+        AnthemCountExpression::BushidoOfAffected => "point of bushido it has".to_string(),
+        AnthemCountExpression::SourcePower => "point of this creature's power".to_string(),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             "time it has attacked this turn".to_string()
         }
@@ -1578,6 +1581,10 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} mana symbol in its mana cost",
             color.name()
         )),
+        AnthemCountExpression::BushidoOfAffected => Some("point of bushido it has".to_string()),
+        AnthemCountExpression::SourcePower => {
+            Some("point of this creature's power".to_string())
+        }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
@@ -2830,7 +2837,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::OpponentWithMoreControlledObjectsThan { .. } => {
                 "as long as that player is the monarch".to_string()
             }
-            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } | crate::target::PlayerFilter::OwnsMatchingObject { .. } => {
+            crate::target::PlayerFilter::ControlsMost { .. } | crate::target::PlayerFilter::ControlsFewestTied { .. } | crate::target::PlayerFilter::OwnsMatchingObject { .. } | crate::target::PlayerFilter::ControlsMatchingObject { .. } | crate::target::PlayerFilter::MostLifeTiedAmong { .. } | crate::target::PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                 "as long as that player is the monarch".to_string()
             }
             crate::target::PlayerFilter::OpponentOf(_)
@@ -3283,6 +3290,49 @@ pub(crate) fn resolve_anthem_count_expression_checked(
     crate::events::damage::checked_scalar_count(exact, "unspent mana count")
 }
 
+/// CR 702.45a/b: an object's total bushido is the sum of N over its
+/// "Whenever this creature blocks or becomes blocked, it gets +N/+N until
+/// end of turn" abilities (the shape bushido N lowers to).
+pub(crate) fn bushido_total(game: &GameState, object: ObjectId) -> i32 {
+    let Some(object) = game.object(object) else {
+        return 0;
+    };
+    let bushido_trigger = crate::triggers::Trigger::either(
+        crate::triggers::Trigger::this_blocks(),
+        crate::triggers::Trigger::this_becomes_blocked(),
+    );
+    object
+        .abilities
+        .iter()
+        .filter_map(|ability| {
+            let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            if triggered.intervening_if.is_some() || triggered.trigger != bushido_trigger {
+                return None;
+            }
+            let effects = triggered.effects.all_effects();
+            let [effect] = effects.as_slice() else {
+                return None;
+            };
+            let pump = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()?;
+            if !matches!(pump.target, crate::target::ChooseSpec::Source)
+                || pump.duration != crate::effect::Until::EndOfTurn
+            {
+                return None;
+            }
+            match (&pump.power, &pump.toughness) {
+                (crate::effect::Value::Fixed(power), crate::effect::Value::Fixed(toughness))
+                    if power == toughness && *power > 0 =>
+                {
+                    Some(*power)
+                }
+                _ => None,
+            }
+        })
+        .sum()
+}
+
 pub(crate) fn resolve_anthem_count_expression(
     count: &AnthemCountExpression,
     game: &GameState,
@@ -3350,6 +3400,8 @@ pub(crate) fn resolve_anthem_count_expression(
         }
         // Chroma (CR 702.49): mana symbols of that color in the affected
         // object's mana cost; a hybrid symbol of that color counts.
+        AnthemCountExpression::BushidoOfAffected => bushido_total(game, source),
+        AnthemCountExpression::SourcePower => game.calculated_power(source).unwrap_or(0),
         AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
             let symbol = crate::mana::ManaSymbol::from_color(*color);
             game.object(source)
@@ -6515,6 +6567,111 @@ impl StaticAbilityKind for SourceCharacteristicsOfLastExiledCreatureCard {
                     power: Value::Fixed(power),
                     toughness: Value::Fixed(toughness),
                     sublayer: PtSublayer::Setting,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
+/// "As long as the top card of your graveyard is a creature card, this
+/// creature has the full text of that card and has the text "{2}: Discard a
+/// card."" (Volrath's Shapeshifter): while the top card of the controller's
+/// graveyard matches `filter`, a layer-1 copy effect (CR 613.2a, 707.2)
+/// gives this permanent that card's copiable values plus `abilities`.
+///
+/// The overwrite replaces this static ability in the permanent's text, but
+/// static effects are generated from the printed text box (only registered
+/// text-changing effects reach the generator), and the layer-1 effect checks
+/// its source before it applies, so the overwrite keeps applying for as long
+/// as the condition holds. Its copiable values are read afresh each time
+/// characteristics are determined, so a new top card changes the text too.
+#[derive(Debug, Clone)]
+pub struct SourceHasFullTextOfTopGraveyardCard {
+    pub filter: ObjectFilter,
+    pub abilities: Vec<Ability>,
+    pub ability_labels: Vec<String>,
+    pub display: String,
+}
+
+impl SourceHasFullTextOfTopGraveyardCard {
+    pub fn new(
+        filter: ObjectFilter,
+        abilities: Vec<Ability>,
+        ability_labels: Vec<String>,
+        display: String,
+    ) -> Self {
+        Self {
+            filter,
+            abilities,
+            ability_labels,
+            display,
+        }
+    }
+
+    /// The top card of `controller`'s graveyard, when it matches the filter.
+    fn qualifying_top_card(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Option<ObjectId> {
+        let top = *game.player(controller)?.graveyard.last()?;
+        let card = game.object(top)?;
+        let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
+        self.filter
+            .matches_non_recursive(card, &filter_ctx, game)
+            .then_some(top)
+    }
+}
+
+impl StaticAbilityKind for SourceHasFullTextOfTopGraveyardCard {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SourceHasFullTextOfTopGraveyardCard
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(top) = self.qualifying_top_card(source, controller, game) else {
+            return Vec::new();
+        };
+        let Some(card) = game.object(top) else {
+            return Vec::new();
+        };
+        let mut values = crate::snapshot::CopiableValues::from_object(card);
+        let mut abilities = values.abilities.as_ref().clone();
+        abilities.extend(self.abilities.iter().cloned());
+        values.abilities = std::sync::Arc::new(abilities);
+        values
+            .ability_labels
+            .extend(self.ability_labels.iter().cloned());
+        for label in &self.ability_labels {
+            if !values.compiled_card_text.is_empty() {
+                values.compiled_card_text.push('\n');
+            }
+            values.compiled_card_text.push_str(label);
+        }
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::CopyOf {
+                    retain_original_name: false,
+                    target_id: top,
+                    copiable_values: Box::new(values),
+                    preserve_source_abilities: false,
+                    name_override: None,
+                    name_override_surface: None,
+                    add_supertypes: Vec::new(),
                 },
             )
             .with_source_type(EffectSourceType::StaticAbility),

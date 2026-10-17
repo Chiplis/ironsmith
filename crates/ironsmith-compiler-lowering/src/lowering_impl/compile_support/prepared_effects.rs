@@ -736,6 +736,92 @@ fn fold_cross_segment_counter_rewrites(segments: &mut Vec<crate::resolution::Res
     }
 }
 
+/// "Counter target spell. ... a card spliced onto that spell" (CR 702.47):
+/// the spliced cards are read from the spell's stack entry, which the
+/// counter removes. Capture them immediately before the counter that tags
+/// "that spell", from the counter's own target.
+fn capture_spliced_cards_before_counter(segments: &mut [crate::resolution::ResolutionSegment]) {
+    // "that spell": the tagged reference itself, or an object filter that
+    // is exactly that tagged object.
+    fn spell_reference_tag(spell: &ChooseSpec) -> Option<&TagKey> {
+        match spell.base() {
+            ChooseSpec::Tagged(tag) => Some(tag),
+            ChooseSpec::Object(filter) => match filter.tagged_constraints.as_slice() {
+                [constraint]
+                    if constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject =>
+                {
+                    Some(&constraint.tag)
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    fn capture_tag(effects: &[Effect]) -> Option<TagKey> {
+        effects.iter().find_map(|effect| {
+            if let Some(capture) = effect.downcast_ref::<crate::effects::TagSplicedCardsEffect>() {
+                return spell_reference_tag(&capture.spell).cloned();
+            }
+            effect
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .and_then(|sequence| capture_tag(&sequence.effects))
+        })
+    }
+    fn take_capture(
+        effects: &mut Vec<Effect>,
+        spell_tag: &TagKey,
+    ) -> Option<crate::effects::TagSplicedCardsEffect> {
+        for idx in 0..effects.len() {
+            if let Some(capture) = effects[idx]
+                .downcast_ref::<crate::effects::TagSplicedCardsEffect>()
+                .cloned()
+            {
+                if spell_reference_tag(&capture.spell) == Some(spell_tag) {
+                    effects.remove(idx);
+                    return Some(capture);
+                }
+                continue;
+            }
+            if let Some(sequence) = effects[idx].downcast_ref::<crate::effects::SequenceEffect>() {
+                let mut sequence = sequence.clone();
+                if let Some(capture) = take_capture(&mut sequence.effects, spell_tag) {
+                    effects[idx] = Effect::new(sequence);
+                    return Some(capture);
+                }
+            }
+        }
+        None
+    }
+
+    for later in 1..segments.len() {
+        while let Some(spell_tag) = capture_tag(&segments[later].default_effects) {
+            let counter = (0..later).rev().find_map(|segment| {
+                segments[segment]
+                    .default_effects
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, effect)| {
+                        tagged_counter_spell_target(effect)
+                            .filter(|(tag, _)| *tag == &spell_tag)
+                            .map(|(_, target)| (segment, index, target.clone()))
+                    })
+            });
+            let Some((segment, index, target)) = counter else {
+                break;
+            };
+            let Some(capture) = take_capture(&mut segments[later].default_effects, &spell_tag)
+            else {
+                break;
+            };
+            segments[segment].default_effects.insert(
+                index,
+                Effect::new(crate::effects::TagSplicedCardsEffect::new(target, capture.tag)),
+            );
+        }
+    }
+}
+
 /// Source-sentence boundaries are presentation boundaries, not reference
 /// boundaries. Keep the generic ordered-target fight repairs effective when
 /// the target declarations, conditional action, and final fight originated in
@@ -1659,6 +1745,7 @@ fn materialize_source_sentence_segments(
     bind_returned_attachment_history_to_triggering_object(&mut segments);
     bind_exchange_of_declared_target_and_its_referent(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
+    capture_spliced_cards_before_counter(&mut segments);
     if let Some(first) = segments.first_mut() {
         first.default_effects = prepend_effect_prelude(
             std::mem::take(&mut first.default_effects),
@@ -1887,7 +1974,11 @@ fn materialize_trailing_self_replacement(
         // original imports loses that antecedent at source-sentence boundaries
         // (for example, "target player's library ... instead ... that
         // player's library").
-        let branch_imports = ReferenceExports::from_env(&condition_env).to_imports();
+        let mut branch_imports = ReferenceExports::from_env(&condition_env).to_imports();
+        // Exports drop snapshot aliases; the arms still read the prefix's
+        // aliased collections ("nonland cards revealed this way" names the
+        // consult's whole exposure, never its singular match).
+        branch_imports.snapshot_tag_aliases = condition_env.snapshot_tag_aliases.clone();
         let default_lowered =
             compile_statement_effects_with_imports(&effective_if_false, &branch_imports)?;
         let shared_target_prelude = (shared_counter_target.is_some()

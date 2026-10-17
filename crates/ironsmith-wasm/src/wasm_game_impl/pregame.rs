@@ -2260,8 +2260,11 @@ impl WasmGame {
                         }
                     }
                     ironsmith::static_abilities::PregameActionKind::RevealFromOpeningHand(_) => {}
+                    // Taken from the library before the opening shuffle, not
+                    // from the opening hand.
                     ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
-                    | ironsmith::static_abilities::PregameActionKind::ChooseColor => continue,
+                    | ironsmith::static_abilities::PregameActionKind::ChooseColor
+                    | ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => continue,
                 }
                 actions.push(LegalAction::UsePregameAction {
                     card_id,
@@ -2842,7 +2845,8 @@ impl WasmGame {
                         spec
                     }
                     ironsmith::static_abilities::PregameActionKind::MulliganExileHandDrawSameCount
-                    | ironsmith::static_abilities::PregameActionKind::ChooseColor => {
+                    | ironsmith::static_abilities::PregameActionKind::ChooseColor
+                    | ironsmith::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(_) => {
                         return Err(JsValue::from_str(
                             "selected ability is not a supported opening pregame action",
                         ));

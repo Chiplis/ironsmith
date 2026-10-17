@@ -1138,6 +1138,9 @@ fn max_attackers_this_blocker_can_block(
 enum BlockingRequirement<'a> {
     AttackerMustBeBlocked(ObjectId),
     AttackerMustBeBlockedBy(ObjectId, &'a HashSet<ObjectId>),
+    /// "must be blocked by two or more creatures if able" (Gorm the Great):
+    /// obeyed only when at least this many creatures block the attacker.
+    AttackerMustBeBlockedByAtLeast(ObjectId, usize),
     BlockerMustBlock(ObjectId),
     BlockerMustBlockAttacker {
         blocker: ObjectId,
@@ -1195,6 +1198,16 @@ fn blocking_requirements<'a>(
             requirements.push(BlockingRequirement::AttackerMustBeBlocked(
                 attacker.creature,
             ));
+        }
+        if let Some(minimums) = game
+            .effect_store
+            .cant_effects
+            .must_be_blocked_by_at_least
+            .get(&attacker.creature)
+        {
+            requirements.extend(minimums.iter().map(|&minimum| {
+                BlockingRequirement::AttackerMustBeBlockedByAtLeast(attacker.creature, minimum)
+            }));
         }
     }
 
@@ -1264,6 +1277,11 @@ fn block_requirement_is_obeyed(
         BlockingRequirement::AttackerMustBeBlocked(attacker) => blockers_by_attacker
             .get(&attacker)
             .is_some_and(|blockers| !blockers.is_empty()),
+        BlockingRequirement::AttackerMustBeBlockedByAtLeast(attacker, minimum) => {
+            blockers_by_attacker
+                .get(&attacker)
+                .is_some_and(|blockers| blockers.len() >= minimum)
+        }
         BlockingRequirement::BlockerMustBlock(blocker) => attackers_by_blocker
             .get(&blocker)
             .is_some_and(|attackers| !attackers.is_empty()),
@@ -1296,7 +1314,8 @@ fn blocking_requirement_defending_player(
 ) -> Option<PlayerId> {
     match requirement {
         BlockingRequirement::AttackerMustBeBlocked(attacker)
-        | BlockingRequirement::AttackerMustBeBlockedBy(attacker, _) => {
+        | BlockingRequirement::AttackerMustBeBlockedBy(attacker, _)
+        | BlockingRequirement::AttackerMustBeBlockedByAtLeast(attacker, _) => {
             defending_player_for_attacker(game, combat, attacker)
         }
         BlockingRequirement::BlockerMustBlock(blocker)
@@ -1365,7 +1384,8 @@ fn block_edge_can_obey_requirement(
         BlockingRequirement::AttackerMustBeBlockedBy(required_attacker, matching) => {
             matching.contains(&blocker) && attackers_share_band(combat, attacker, required_attacker)
         }
-        BlockingRequirement::AttackerMustBeBlocked(required_attacker) => {
+        BlockingRequirement::AttackerMustBeBlocked(required_attacker)
+        | BlockingRequirement::AttackerMustBeBlockedByAtLeast(required_attacker, _) => {
             attackers_share_band(combat, attacker, required_attacker)
         }
         BlockingRequirement::BlockerMustBlock(required_blocker) => blocker == required_blocker,
@@ -1660,6 +1680,33 @@ fn first_unsatisfied_block_requirement_error(
                     attacker,
                     required,
                     provided: 0,
+                };
+            }
+            BlockingRequirement::AttackerMustBeBlockedByAtLeast(attacker, minimum) => {
+                let able = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|&blocker| {
+                        combat.attackers.iter().any(|candidate| {
+                            attackers_share_band(combat, candidate.creature, attacker)
+                                && legal_block_edge(
+                                    game,
+                                    combat,
+                                    effects,
+                                    blocker,
+                                    candidate.creature,
+                                )
+                        })
+                    })
+                    .count();
+                if able < minimum {
+                    continue;
+                }
+                return CombatError::NotEnoughBlockers {
+                    attacker,
+                    required: minimum,
+                    provided: blockers_by_attacker.get(&attacker).map_or(0, Vec::len),
                 };
             }
             BlockingRequirement::BlockerMustBlockAttacker { blocker, attacker } => {

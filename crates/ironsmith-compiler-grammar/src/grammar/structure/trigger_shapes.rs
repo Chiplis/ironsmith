@@ -12,6 +12,10 @@ const SPELL_MARKERS: &[&[&str]] = &[&["spell"], &["spells"]];
 const FIRST_TIME_EACH_TURN_SUFFIXES: &[&[&str]] = &[
     &["for", "the", "first", "time", "each", "turn"],
     &["for", "the", "first", "time", "this", "turn"],
+    // "becomes tapped for the first time during each of your turns" (Tale of
+    // Katara and Toph); the turn scope is re-added by the callers' frequency
+    // facts (a YourTurn condition).
+    &["for", "the", "first", "time", "during", "each", "of", "your", "turns"],
 ];
 const THAT_ATTACHED_REFERENCE_PREFIXES: &[&[&str]] =
     &[&["that", "creature"], &["that", "permanent"]];
@@ -23,6 +27,31 @@ enum TriggerListTailKind {
     Object,
     Numeric,
     DiscardQualifier,
+    /// "Whenever an opponent scries, surveils, or searches their library,"
+    /// (River Song): a serial list of player-action verbs.
+    PlayerActionVerb,
+}
+
+/// Third-person player-action verbs a trigger can list serially.
+const PLAYER_ACTION_VERBS: &[&str] = &[
+    "scries", "surveils", "searches", "mills", "discards", "draws", "sacrifices", "cycles",
+    "explores", "investigates", "shuffles", "reveals", "exiles", "casts", "activates",
+];
+
+fn player_action_verb_list_tail(
+    trigger_prefix_tokens: &[OwnedLexToken],
+    tail_tokens: &[OwnedLexToken],
+) -> bool {
+    let prefix_words = parser_token_word_refs(trigger_prefix_tokens);
+    let tail_words = parser_token_word_refs(tail_tokens);
+    prefix_words
+        .last()
+        .is_some_and(|word| PLAYER_ACTION_VERBS.contains(word))
+        && tail_words
+            .first()
+            .is_some_and(|word| PLAYER_ACTION_VERBS.contains(word))
+        && phrase_occurs(tail_tokens, &["or"])
+        && first_comma(tail_tokens).is_some()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +128,7 @@ fn first_non_list_comma(tokens: &[OwnedLexToken], kind: TriggerListTailKind) -> 
         || match kind {
             TriggerListTailKind::Color => parse_color(next_word).is_some(),
             TriggerListTailKind::Object => objectish_word(next_word),
+            TriggerListTailKind::PlayerActionVerb => PLAYER_ACTION_VERBS.contains(&next_word),
             _ => false,
         };
     if !continues_list {
@@ -173,6 +203,8 @@ fn classify_tail(
 ) -> Option<TriggerListTailKind> {
     if discard_qualifier_tail(trigger_prefix_tokens, tail_tokens) {
         Some(TriggerListTailKind::DiscardQualifier)
+    } else if player_action_verb_list_tail(trigger_prefix_tokens, tail_tokens) {
+        Some(TriggerListTailKind::PlayerActionVerb)
     } else if numeric_list_tail(tail_tokens) {
         Some(TriggerListTailKind::Numeric)
     } else if type_list_tail(tail_tokens) {
@@ -201,6 +233,7 @@ pub fn parse_trigger_effect_list_tail_split_lexed(
             first_comma_after_marker(tail_tokens, SPELL_MARKERS)
                 .or_else(|| first_non_list_comma(tail_tokens, kind))?
         }
+        TriggerListTailKind::PlayerActionVerb => first_non_list_comma(tail_tokens, kind)?,
     };
     Some(TriggerEffectListTailSplit { split_token_idx })
 }

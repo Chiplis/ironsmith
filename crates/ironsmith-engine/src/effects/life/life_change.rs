@@ -58,7 +58,9 @@ impl LifeChangeProposal {
     pub(crate) fn event(&self, ctx: &ExecutionContext) -> Event {
         match self.kind {
             LifeProposalKind::Gain => Event::new_with_provenance(
-                LifeGainEvent::new(self.player, self.amount).with_source(ctx.source),
+                LifeGainEvent::new(self.player, self.amount)
+                    .with_source(ctx.source)
+                    .with_effect_controller(ctx.controller),
                 ctx.provenance,
             ),
             LifeProposalKind::Loss { provenance, .. } => Event::new_with_provenance(
@@ -530,13 +532,19 @@ fn commit_resolved_life_change(
         if loss.amount == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        let amount = if loss.from_damage && game.damage_cant_reduce_life_below_one(loss.player) {
+        let floor = if loss.from_damage {
+            game.damage_life_floor(loss.player)
+        } else {
+            None
+        };
+        let amount = if let Some(floor) = floor {
             let life = game
                 .player(loss.player)
                 .ok_or(ExecutionError::PlayerNotFound(loss.player))?
                 .life;
+            let floor = i32::try_from(floor).unwrap_or(i32::MAX);
             loss.amount
-                .min(u32::try_from(life.saturating_sub(1).max(0)).unwrap_or(0))
+                .min(u32::try_from(life.saturating_sub(floor).max(0)).unwrap_or(0))
         } else {
             loss.amount
         };

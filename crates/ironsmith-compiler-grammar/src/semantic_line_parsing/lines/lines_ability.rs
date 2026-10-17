@@ -218,6 +218,15 @@ pub(super) fn parse_static_line_impl(
     }
     if matches!(
         special_shape,
+        Some(semantic_grammar::StaticSpecialLineShape::LoyaltyTwice)
+    ) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::loyalty_abilities_twice_each_turn().into()),
+            chosen_option,
+        );
+    }
+    if matches!(
+        special_shape,
         Some(semantic_grammar::StaticSpecialLineShape::BoastTwice)
     ) {
         return wrap_chosen_option_static_chunk(

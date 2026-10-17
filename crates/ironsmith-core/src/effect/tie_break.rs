@@ -47,3 +47,26 @@ impl KeepGreatestManaValuePlayersEffect {
         }
     }
 }
+
+/// "Each player rolls a d20. If one or more opponents had the highest
+/// result, ..." (Chaos Dragon): every contender tagged `players_tag` rolls a
+/// `sides`-sided die in turn order; the tag then keeps only the contenders
+/// who rolled the highest result and also match `keep`. The outcome count
+/// is the number kept.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RollDieKeepHighestPlayersEffect {
+    pub players_tag: TagKey,
+    pub sides: u32,
+    pub keep: PlayerFilter,
+}
+
+impl RollDieKeepHighestPlayersEffect {
+    pub fn new(players_tag: impl Into<TagKey>, sides: u32, keep: PlayerFilter) -> Self {
+        Self {
+            players_tag: players_tag.into(),
+            sides,
+            keep,
+        }
+    }
+}

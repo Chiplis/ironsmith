@@ -162,6 +162,88 @@ fn substituted_instructions(
     }
 }
 
+fn card_type_word(word: &str) -> Option<crate::types::CardType> {
+    crate::util::parse_card_type(word)
+        .or_else(|| word.strip_suffix('s').and_then(crate::util::parse_card_type))
+}
+
+/// "For each land target player controls in excess of the number you
+/// control, choose a land that player controls, then the chosen permanents
+/// phase out. Repeat this process for artifacts and creatures." (Equipoise):
+/// per card type, you choose as many of that type the targeted player
+/// controls as they control beyond your own count, and the chosen permanents
+/// phase out. The one target player is shared by every repetition.
+fn read_excess_type_choice_phase_out(
+    base: &[OwnedLexToken],
+    repeat: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    use crate::cards::builders::{ObjectChoiceEffectAst, PlayerAst, TargetAst};
+    use crate::effect::Value;
+    use crate::target::{ObjectFilter, PlayerFilter};
+    let base_tokens = strip_sentence_edges(base);
+    let words = crate::lexer::parser_token_word_refs(base_tokens);
+    let [
+        "for", "each", counted, "target", "player", "controls", "in", "excess", "of", "the",
+        "number", "you", "control", "choose", "a", chosen, "that", "player", "controls", "then",
+        "the", "chosen", "permanents", "phase", "out",
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    let first = card_type_word(counted)?;
+    if card_type_word(chosen)? != first {
+        return None;
+    }
+    let repeat_tokens = strip_sentence_edges(repeat);
+    let ((), rest) = primitives::parse_prefix(
+        repeat_tokens,
+        primitives::phrase(&["repeat", "this", "process", "for"]),
+    )?;
+    let mut types = vec![first];
+    for item in list_items(rest) {
+        let item_words = crate::lexer::parser_token_word_refs(item);
+        let [word] = item_words.as_slice() else {
+            return None;
+        };
+        types.push(card_type_word(word)?);
+    }
+    if types.len() < 2 {
+        return None;
+    }
+    let target_player = PlayerFilter::Target(Box::new(PlayerFilter::Any));
+    let mut effects = vec![EffectAst::subject_verb_target_only(TargetAst::Player(
+        PlayerFilter::Any,
+        crate::util::span_from_tokens(base_tokens),
+    ))];
+    for card_type in types {
+        let of_type = |controller: PlayerFilter| {
+            let mut filter = ObjectFilter::default().in_zone(crate::zone::Zone::Battlefield);
+            filter.card_types = vec![card_type];
+            filter.controller = Some(controller);
+            filter
+        };
+        let theirs = of_type(target_player.clone());
+        let excess = Value::Add(
+            Box::new(Value::Count(theirs.clone())),
+            Box::new(Value::Scaled(Box::new(Value::Count(of_type(PlayerFilter::You))), -1)),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::InExcessOf);
+        let tag = crate::util::helper_tag_for_tokens(
+            base_tokens,
+            &format!("excess_{}", format!("{card_type:?}").to_ascii_lowercase()),
+        );
+        effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            filter: theirs,
+            count: crate::effect::ChoiceCount::dynamic_x(),
+            count_value: Some(excess),
+            player: PlayerAst::You,
+            tag: tag.clone(),
+        }));
+        effects.push(EffectAst::subject_verb_phase_out(TargetAst::Tagged(tag, None)));
+    }
+    Some(effects)
+}
+
 /// "<instruction>. [Then] repeat this process for <values>." CR 608.2c: the
 /// instructions are followed in order, so each repetition happens after the
 /// previous one, with its own value.
@@ -173,6 +255,9 @@ pub(super) fn read_repeat_with_new_values(
     else {
         return Ok(None);
     };
+    if let Some(effects) = read_excess_type_choice_phase_out(base.lowered(), repeat.lowered()) {
+        return Ok(Some(effects));
+    }
     let Some(values) = parse_repeat_values(repeat.lowered()) else {
         return Ok(None);
     };

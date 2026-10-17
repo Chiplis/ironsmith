@@ -32,6 +32,16 @@ pub enum AmountEventSpec {
         action: KeywordActionKind,
         performer: PlayerFilter,
     },
+    /// "if damage dealt to a planeswalker you control of the chosen type
+    /// would result in all loyalty counters on it being removed"
+    /// (Deification; CR 120.3c): the counter removal that damage causes on a
+    /// matching permanent, when it would remove every counter of that kind.
+    /// The damage itself is still dealt in full. Appended for wire
+    /// compatibility.
+    DamageRemovesAllCounters {
+        object: ObjectFilter,
+        counter_type: crate::CounterType,
+    },
 }
 
 /// How the proposed amount changes.
@@ -46,4 +56,10 @@ pub enum AmountModifierSpec {
     SetTo(u32),
     /// "half that damage, rounded down" / "rounded up".
     Half { round_up: bool },
+    /// "instead all but one of those counters are removed" (Deification): a
+    /// counter removal leaves one counter of that kind on the permanent.
+    /// Appended for wire compatibility.
+    AllButOne,
+    /// "that much damage minus N": an amount reduction, not prevention.
+    Subtract(u32),
 }

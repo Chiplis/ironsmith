@@ -5,4 +5,4 @@ mod draw;
 pub mod matchers;
 
 pub use discard::DiscardEvent;
-pub use draw::DrawEvent;
+pub use draw::{DrawCauseAbility, DrawEvent};

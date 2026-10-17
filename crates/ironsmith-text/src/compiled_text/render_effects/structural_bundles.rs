@@ -449,6 +449,7 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         || permission.filter.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
+        || permission.during_turns_cast_another_spell
         || !permission.lands_enter_tapped
         || !matches!(
             &permission.player,
@@ -1980,6 +1981,7 @@ pub(super) fn describe_target_prevention_fanout_pair(
         || first_prevent.source_of_your_choice != second_prevent.source_of_your_choice
         || first_prevent.protect_you_and_permanents_you_control
             != second_prevent.protect_you_and_permanents_you_control
+        || first_prevent.protect_all != second_prevent.protect_all
     {
         return None;
     }
@@ -6116,13 +6118,15 @@ pub(super) fn value_references_target_player(value: &Value) -> bool {
         | Value::MaxDiceRolledThisTurn(player)
         | Value::LandsEnteredBattlefieldThisTurn(player)
         | Value::MaxCardsInHand(player)
+        | Value::MaxSpeed(player)
         | Value::CardsInGraveyard(player)
         | Value::SpellsCastThisTurn(player)
         | Value::SpellsCastBeforeThisTurn(player)
         | Value::CommanderCastCount(player)
         | Value::CardTypesInGraveyard(player) => player_filter_references_target_player(player),
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. }
-        | Value::Devotion { player, .. } => player_filter_references_target_player(player),
+        | Value::Devotion { player, .. }
+        | Value::DevotionToColors { player, .. } => player_filter_references_target_player(player),
         Value::SpellsCastThisTurnMatching { player, filter, .. }
         | Value::TotalManaValueOfSpellsCastThisTurnMatching { player, filter, .. } => {
             player_filter_references_target_player(player)
@@ -8948,6 +8952,7 @@ fn describe_quantified_player_damage(
     let (amount, where_x) = describe_damage_amount_clause(&damage.amount);
     let (amount, where_x) = match damage.amount.unhinted() {
         Value::Devotion { .. }
+        | Value::DevotionToColors { .. }
         | Value::DevotionToChosenColor(_)
         | Value::BasicLandTypesAmong(_) => (
             format!(
@@ -11496,6 +11501,7 @@ pub(super) fn describe_targeted_pump_then_grant_same_objects(effects: &[Effect])
         || grant.lock_filter_at_resolution
         || grant.resolve_set_pt_values_at_resolution
         || grant.require_creature_target
+        || grant.grant_only_if_absent
     {
         return None;
     }
@@ -13589,6 +13595,7 @@ pub(in crate::compiled_text) fn describe_opponent_top_exile_and_play(
         || permission.spell_cost_increase.is_some()
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
+        || permission.during_turns_cast_another_spell
         || permission.max_plays.is_some()
         || permission.lands_enter_tapped
     {
@@ -13659,6 +13666,7 @@ pub(in crate::compiled_text) fn describe_hand_choice_exile_permission(
         || permission.lands_enter_tapped
         || permission.during_turns_counter_put_on_source.is_some()
         || permission.during_turns_attacked_with.is_some()
+        || permission.during_turns_cast_another_spell
     {
         return None;
     }

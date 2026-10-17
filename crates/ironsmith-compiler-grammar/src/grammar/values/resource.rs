@@ -20,6 +20,22 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
     if tail.is_empty() {
         return None;
     }
+    // "the amount of mana that player lost this way" (Pygmy Hippo): the
+    // unspent mana the preceding lose-all-unspent-mana instruction removed.
+    if let Some(rest) = tail
+        .strip_prefix(&["the", "amount", "of", "mana"])
+        .or_else(|| tail.strip_prefix(&["the", "mana"]))
+        && let Some(player_words) = rest.strip_suffix(&["lost", "this", "way"])
+        && matches!(player_words, [] | ["that", "player"] | ["they"] | ["you"])
+    {
+        return Some(Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::Count,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::ManaLost),
+        ));
+    }
 
     let segment_clause = |start: usize, end: usize| -> Option<LexedClause<'_>> {
         tail_clause.between_word_range(start, end)
