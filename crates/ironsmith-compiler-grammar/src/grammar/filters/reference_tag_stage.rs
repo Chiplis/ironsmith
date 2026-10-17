@@ -970,6 +970,24 @@ fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> Result<bool, CardTextError> {
     let words = non_article_parser_word_refs(segment_tokens);
+    // A shared terminal time window applies to both active combat roles.
+    if let Some(start) = words.len().checked_sub(5)
+        .filter(|start| words[*start..] == ["attacked", "or", "blocked", "this", "turn"])
+    {
+        let clause_start = start.checked_sub(1)
+            .filter(|idx| matches!(words[*idx], "that" | "which"))
+            .unwrap_or(start);
+        let previous = std::mem::take(&mut filter.any_of);
+        filter.any_of = vec![
+            ObjectFilter { attacked_this_turn: true, any_of: previous.clone(), ..Default::default() },
+            ObjectFilter { blocked_this_turn: true, any_of: previous, ..Default::default() },
+        ];
+        all_words.truncate(clause_start);
+        if let Some(start) = token_boundary_for_non_article_word(segment_tokens, clause_start) {
+            segment_tokens.truncate(start);
+        }
+        return Ok(true);
+    }
     let Some(blocked_idx) = words.windows(4).position(|part|
         part == ["blocked", "or", "was", "blocked"]
             || part == ["blocked", "or", "were", "blocked"])

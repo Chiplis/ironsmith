@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { useI18n } from "@/i18n/I18nContext";
-import { anchorDecisionDock, anchorManaPaymentDock } from "@/lib/floating-dock-position";
+import { anchorDecisionDock } from "@/lib/floating-dock-position";
 import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
@@ -319,18 +319,6 @@ export default function TableCore({
       const handTop = reservedRect
         ? reservedRect.top
         : handRects.reduce((top, rect) => Math.min(top, rect.top), window.innerHeight);
-      if (state?.decision?.kind === 'mana_payment' && !surrenderRequested) {
-        const opponentRows = [...table.querySelectorAll('.battlefield-panel--opponents [data-zone-anchor-player]')].map(zone => zone.querySelector('.battlefield-row[data-bf-side="top"]')).filter(Boolean);
-        const opponentCards = opponentRows.flatMap(row => [...row.querySelectorAll('.battlefield-row-card')]);
-        opponentCards.forEach(observe);
-        const opponentCardBottom = opponentCards.map(visibleRect).filter(Boolean).reduce((bottom, rect) => Math.max(bottom, rect.bottom), 48);
-        const next = anchorManaPaymentDock({ viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, dockHeight, protectedZones, opponentCardBottom, handRight, handTop, commandZoneMidpoint });
-        next.navigationRight = navigationRight;
-        next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
-        setHumanActionDockPosition(previous => Object.keys(next).every(key => previous?.[key] === next[key]) ? previous : next);
-        if (performance.now() < handMotionUntil) schedule();
-        return;
-      }
       const next = anchorDecisionDock({
         viewportWidth: window.innerWidth,
         viewportHeight: window.innerHeight,
@@ -368,7 +356,7 @@ export default function TableCore({
       window.removeEventListener("scroll", schedule, true);
       window.removeEventListener(ZONE_PILES_MOVED_EVENT, schedule);
     };
-  }, [focusedHudDesktop, dockNavigationUtilities, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
+  }, [decisionRolloutRef, focusedHudDesktop, dockNavigationUtilities, deckLoadingMode, puzzleSetupMode, state?.players, state?.decision, state?.phase, state?.step, surrenderRequested]);
 
   if (!players.length) {
     return <main className="table-gradient table-shell rounded-none min-h-0" />;
@@ -609,7 +597,6 @@ export default function TableCore({
             left: `${humanActionDockPosition.left}px`,
             top: `${humanActionDockPosition.top}px`,
             maxWidth: `${humanActionDockPosition.maxWidth}px`,
-            ...(decision?.kind === 'mana_payment' && !surrenderRequested ? { width: `${humanActionDockPosition.maxWidth}px` } : {}),
             "--dock-max-height": `${humanActionDockPosition.panelMaxHeight ?? humanActionDockPosition.maxHeight}px`,
             right: "auto",
             bottom: "auto",

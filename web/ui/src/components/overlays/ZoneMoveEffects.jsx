@@ -1,3 +1,4 @@
+import {burst, shockwave} from "@/lib/motion/stack-fx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DEATH_COLLAPSE_EFFECT_MS,
@@ -1172,12 +1173,19 @@ function ParticleExileCard({ effect }) {
   );
 }
 
-const DEATH_ASH_COUNT = 10;
-
 function DeathCollapseCard({ effect }) {
   const rect = effect.rect;
   const artUrl = effect.sourceImageUrl || null;
   const sacrificed = effect.collapseVariant === "sacrificed";
+  useEffect(() => {
+    if (!effect.includeSourceClone) return undefined;
+    const timer = window.setTimeout(() => {
+      const rgb = sacrificed ? "183, 156, 255" : "255, 170, 90";
+      burst({rect:effect.rect, rgb, accentRgb:"255, 232, 200", kind:"embers", count:34});
+      shockwave({at:effect.rect, rgb, radius:Math.max(effect.rect.width, effect.rect.height) * .55, duration:520, width:2});
+    }, Math.max(0, effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0));
+    return () => window.clearTimeout(timer);
+  }, [effect, sacrificed]);
 
   // The layout hold keeps the dead card's slot occupied so neighbors don't
   // reflow mid-collapse, but the collapse clone is the only thing that should
@@ -1206,30 +1214,6 @@ function DeathCollapseCard({ effect }) {
       }
     };
   }, [effect.stableIds]);
-
-  const ashes = useMemo(() => {
-    return Array.from({ length: DEATH_ASH_COUNT }, (_, index) => {
-      const seed = hashText(`${effect.id}:ash:${index}`);
-      const originX = 8 + ((seed % 1000) / 1000) * 84;
-      const originY = 28 + (((seed >> 4) % 1000) / 1000) * 58;
-      const driftX = -26 + (((seed >> 8) % 1000) / 1000) * 52;
-      const fallY = 34 + (((seed >> 12) % 1000) / 1000) * 60;
-      const size = 2.5 + (((seed >> 16) % 1000) / 1000) * 3.5;
-      return {
-        key: index,
-        style: {
-          left: `${originX}%`,
-          top: `${originY}%`,
-          width: `${size}px`,
-          height: `${size}px`,
-          "--ash-dx": `${driftX}px`,
-          "--ash-dy": `${fallY}px`,
-          "--ash-delay": `${260 + (index * 52) + (seed % 90)}ms`,
-          "--ash-duration": `${680 + ((seed >> 20) % 360)}ms`,
-        },
-      };
-    });
-  }, [effect.id]);
 
   const style = useMemo(() => ({
     left: `${rect.left}px`,
@@ -1267,10 +1251,6 @@ function DeathCollapseCard({ effect }) {
         ) : null}
       </div>
       <div className="zone-death-flash" />
-      <div className="zone-death-soul" />
-      {ashes.map((ash) => (
-        <span key={ash.key} className="zone-death-ash" style={ash.style} />
-      ))}
     </div>
   );
 }

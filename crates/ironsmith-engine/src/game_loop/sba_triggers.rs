@@ -1406,7 +1406,9 @@ fn choose_trigger_modes(
     let min_modes = resolve_trigger_modal_count(&modal_spec.min_modes, trigger.x_value, max_modes);
 
     if max_modes == 0 || modal_spec.mode_descriptions.is_empty() {
-        return Some(Some(Vec::new()));
+        // CR 603.3c / 700.2b removes a modal trigger with no chosen modes,
+        // including when a dynamic mode budget is zero before prompting.
+        return None;
     }
 
     // "Choose one that hasn't been chosen [this turn]" (CR 603.3c: the

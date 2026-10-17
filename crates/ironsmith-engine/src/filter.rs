@@ -4342,6 +4342,9 @@ impl ObjectFilterExt for ObjectFilter {
     ///
     /// Used primarily for trigger display text.
     fn description(&self) -> String {
+        if let Some(description) = ironsmith_core::filter_model::describe_shared_combat_history_union(self) {
+            return description;
+        }
         if let Some(description) =
             ironsmith_core::filter_model::describe_shared_combat_role_union(self)
         {
@@ -4895,6 +4898,9 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push(format!(
                 "that's one or more of the colors chosen as you drafted cards named {card_name}"
             ));
+        }
+        if let Some(card_name) = &self.creature_types_noted_while_drafting_named {
+            post_noun_qualifiers.push(format!("of a type you noted for cards named {card_name}"));
         }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));

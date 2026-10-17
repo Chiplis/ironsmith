@@ -163,7 +163,7 @@
   position: absolute;
   inset: 0;
   transform-origin: 50% 80%;
-  animation: zone-death-card-collapse 1050ms cubic-bezier(0.4, 0, 0.6, 1) var(--death-delay, 0ms) both;
+  animation: zone-death-card-collapse 850ms cubic-bezier(0.4, 0, 0.6, 1) var(--death-delay, 0ms) both;
 }
 
 .zone-death-source-clone,
@@ -187,43 +187,10 @@
 }
 
 @keyframes zone-death-card-collapse {
-  0% {
-    filter: none;
-    transform: none;
-    opacity: 1;
-    clip-path: polygon(0% 0%, 14% 0%, 30% 0%, 47% 0%, 65% 0%, 82% 0%, 100% 0%, 100% 100%, 0% 100%);
-  }
-  7% {
-    filter: brightness(1.85) saturate(1.5) contrast(1.1);
-    transform: scale(1.035);
-  }
-  14% {
-    filter: brightness(1.1) saturate(1.1);
-    transform: scale(1.0);
-  }
-  38% {
-    filter: grayscale(0.85) brightness(0.62) contrast(0.95);
-    transform: translateY(2px) rotate(calc(var(--death-tilt, 1.6deg) * 0.4)) scale(0.99);
-    opacity: 1;
-    clip-path: polygon(0% 0%, 14% 2%, 30% 0%, 47% 3%, 65% 0%, 82% 2%, 100% 0%, 100% 100%, 0% 100%);
-  }
-  62% {
-    filter: grayscale(1) brightness(0.42) contrast(0.9);
-    transform: translateY(6px) rotate(var(--death-tilt, 1.6deg)) scale(0.965);
-    opacity: 0.96;
-    clip-path: polygon(0% 34%, 14% 22%, 30% 38%, 47% 26%, 65% 41%, 82% 27%, 100% 36%, 100% 100%, 0% 100%);
-  }
-  84% {
-    filter: grayscale(1) brightness(0.3);
-    opacity: 0.7;
-    clip-path: polygon(0% 72%, 14% 58%, 30% 76%, 47% 62%, 65% 78%, 82% 64%, 100% 74%, 100% 100%, 0% 100%);
-  }
-  100% {
-    filter: grayscale(1) brightness(0.2);
-    transform: translateY(13px) rotate(var(--death-tilt, 1.6deg)) scale(0.92);
-    opacity: 0;
-    clip-path: polygon(0% 100%, 14% 96%, 30% 100%, 47% 97%, 65% 100%, 82% 97%, 100% 100%, 100% 100%, 0% 100%);
-  }
+  0% { opacity: 1; transform: none; filter: none; }
+  18% { opacity: 1; transform: scale(1.025); filter: brightness(1.65) saturate(1.2); }
+  48% { opacity: .85; transform: translateY(-4px) scale(1.015); filter: brightness(1.15) saturate(.7); }
+  100% { opacity: 0; transform: translateY(-16px) scale(.96); filter: brightness(.6) saturate(.2) blur(3px); }
 }
 
 .zone-death-flash {
@@ -244,61 +211,10 @@
   100% { opacity: 0; transform: scale(1.18); }
 }
 
-.zone-death-soul {
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  width: 26%;
-  aspect-ratio: 1 / 1.9;
-  margin-left: -13%;
-  border-radius: 0;
-  background: radial-gradient(ellipse at 50% 60%,
-    rgba(236, 240, 255, 0.75) 0%,
-    rgba(190, 205, 255, 0.32) 48%,
-    rgba(190, 205, 255, 0) 75%);
-  filter: blur(3px);
-  opacity: 0;
-  animation: zone-death-soul 880ms ease-out calc(var(--death-delay, 0ms) + 170ms) both;
-}
-
-@keyframes zone-death-soul {
-  0% { opacity: 0; transform: translateY(8px) scale(0.6, 0.5); }
-  26% { opacity: 0.9; transform: translateY(-8px) scale(1, 1); }
-  100% { opacity: 0; transform: translateY(-58px) scale(0.7, 1.45); }
-}
-
-.zone-death-ash {
-  position: absolute;
-  border-radius: 0;
-  background: linear-gradient(180deg, #6f6a66, #2e2b29);
-  box-shadow: 0 0 3px rgba(20, 18, 16, 0.8);
-  opacity: 0;
-  animation: zone-death-ash var(--ash-duration, 800ms) cubic-bezier(0.3, 0.2, 0.7, 1)
-    calc(var(--death-delay, 0ms) + var(--ash-delay, 300ms)) both;
-}
-
-@keyframes zone-death-ash {
-  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
-  18% { opacity: 0.95; }
-  100% {
-    opacity: 0;
-    transform: translate(var(--ash-dx, 0px), var(--ash-dy, 48px)) rotate(160deg);
-  }
-}
-
-
-/* Sacrifice variant of the collapse: drawn down and inward rather than
- * crumbling — violet soul, inverted ash drift (pulled into the card). */
+/* Sacrifice retains an inward motion with violet stack embers. */
 .zone-death-effect--sacrificed .zone-death-card {
   animation-name: zone-death-card-sacrifice;
   transform-origin: 50% 100%;
-}
-
-.zone-death-effect--sacrificed .zone-death-soul {
-  background: radial-gradient(ellipse at 50% 60%,
-    rgba(214, 186, 255, 0.8) 0%,
-    rgba(150, 110, 235, 0.35) 48%,
-    rgba(150, 110, 235, 0) 75%);
 }
 
 .zone-death-effect--sacrificed .zone-death-flash {
@@ -306,11 +222,6 @@
     rgba(214, 186, 255, 0.7) 0%,
     rgba(122, 86, 214, 0.38) 42%,
     rgba(90, 60, 180, 0) 72%);
-}
-
-.zone-death-effect--sacrificed .zone-death-ash {
-  background: linear-gradient(180deg, #7a6a96, #2c2440);
-  animation-name: zone-death-ash-implode;
 }
 
 @keyframes zone-death-card-sacrifice {
@@ -344,14 +255,13 @@
   }
 }
 
-@keyframes zone-death-ash-implode {
-  0% { opacity: 0; transform: translate(var(--ash-dx, 0px), calc(var(--ash-dy, 48px) * -0.6)) rotate(0deg); }
-  22% { opacity: 0.9; }
-  100% {
-    opacity: 0;
-    transform: translate(0, 14px) rotate(-120deg);
+@media (prefers-reduced-motion: reduce) {
+  .zone-death-flash { display: none; }
+  .zone-death-card, .zone-death-effect--sacrificed .zone-death-card {
+    animation: zone-death-reduced 150ms linear var(--death-delay, 0ms) both;
   }
 }
+@keyframes zone-death-reduced { from { opacity: 1; } to { opacity: 0; } }
 
 /* ---- Counter-spell shatter (stack -> graveyard) ---- */
 .zone-shatter-effect {

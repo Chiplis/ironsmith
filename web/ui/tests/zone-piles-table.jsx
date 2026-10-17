@@ -63,7 +63,7 @@ function Fixture(){
      {kind:"mana_payment",player:0,source_id:8000,subject:"Ornithopter"},
      {kind:"targets",player:0,description:"Choose a target",requirements:[{description:"Target player",min_targets:1,max_targets:1,legal_targets:[{kind:"player",player:0},{kind:"player",player:1}]}]},
    ][motionStep];
-   if (motionStep === 2) state.mana_payment = {plan_id:"1",request_hash:"2",planning_complete:true,can_confirm:true,source_name:"Ornithopter",pips:[["1"],["G"]],planned_sources:[],available_sources:[],pool_before:{},pool_after_payment:{},cost_context:["Additional cost"]};
+   if (motionStep === 2) state.mana_payment = {plan_id:"1",request_hash:"2",planning_complete:!new URLSearchParams(location.search).has("paymentBusy"),can_confirm:true,source_name:"Ornithopter",pips:[["1"],["G"]],planned_sources:[],available_sources:[],pool_before:{},pool_after_payment:{},cost_context:["Additional cost"]};
  }
  if (new URLSearchParams(location.search).has("combatCycle")) {
    state.phase = motionStep === 3 ? "Main" : "Combat";

@@ -599,6 +599,23 @@ fn mark_authoritative_snapshot_parse_failed(
     snapshot.content_hash = snapshot.compute_content_hash();
 }
 
+/// Proper card-name references do not author the mechanics contained in the
+/// name. Retain standalone mechanic words and inflections outside that name.
+fn semantic_marker_outside_card_name(text: &str, card_name: &str, marker: &str) -> bool {
+    let name = card_name.to_ascii_lowercase();
+    if name.is_empty() || name == marker || !name.contains(marker) {
+        return text.contains(marker);
+    }
+    text.match_indices(marker).any(|(marker_start, _)| {
+        !text.match_indices(&name).any(|(name_start, _)| {
+            let name_end = name_start + name.len();
+            marker_start >= name_start && marker_start + marker.len() <= name_end
+                && text[..name_start].chars().next_back().is_none_or(|ch| !ch.is_alphanumeric())
+                && text[name_end..].chars().next().is_none_or(|ch| !ch.is_alphanumeric())
+        })
+    })
+}
+
 fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> Option<String> {
     if snapshot.parse_status != ParseStatus::StrictCompiled {
         return None;
@@ -844,10 +861,17 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
         ),
     ];
     for (oracle_markers, compiled_markers, label) in required_marker_groups {
-        if oracle_markers.iter().any(|marker| oracle.contains(marker))
+        let contains_marker = |text: &str, marker: &str| {
+            if label == "crew" {
+                semantic_marker_outside_card_name(text, &snapshot.card_name, marker)
+            } else {
+                text.contains(marker)
+            }
+        };
+        if oracle_markers.iter().any(|marker| contains_marker(&oracle, marker))
             && !compiled_markers
                 .iter()
-                .any(|marker| compiled.contains(marker))
+                .any(|marker| contains_marker(&compiled, marker))
         {
             return Some(format!(
                 "compiled text dropped required semantic marker: {label}"
@@ -3194,6 +3218,30 @@ pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crew_marker_guard_ignores_names_but_requires_actual_crew_semantics() {
+        // Pure snapshot/guard checks: no card definition or Oracle compiler is used.
+        for (name, oracle, compiled, missing) in [
+            ("Fixture Crew", "Fixture Crew enters.", "This creature enters.", false),
+            ("Fixture Crew", "Fixture Crew has crew 3.", "This creature has another ability.", true),
+            ("Fixture Crew", "Fixture Crew has crew 3.", "Fixture Crew has another ability.", true),
+            ("Fixture Crew", "Crew 3", "Crew 3", false),
+            ("Fixture Crew", "Whenever this creature crews a Vehicle, draw a card.", "Whenever this creature becomes tapped, draw a card.", true),
+            ("Crew", "Crew 3", "Flying", true),
+            ("Fixture Crewman", "Fixture Crewman attacks.", "This creature attacks.", false),
+        ] {
+            let mut snapshot = CompilationSnapshot::from_definition_result(
+                name, oracle, ParseStatus::StrictCompiled, None, None,
+                &parse_loss::ParseLossReport::default(),
+            );
+            snapshot.compiled_text = Some(compiled.into());
+            assert_eq!(authoritative_semantic_marker_parse_error(&snapshot).as_deref(),
+                missing.then_some("compiled text dropped required semantic marker: crew"),
+                "{name}: {oracle} -> {compiled}");
+        }
+    }
+
     use ironsmith::compiled_text::debug_compiled_lines;
     use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
     use std::time::{SystemTime, UNIX_EPOCH};

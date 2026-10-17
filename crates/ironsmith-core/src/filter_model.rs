@@ -59,43 +59,34 @@ pub fn describe_shared_combat_role_union(filter: &ObjectFilter) -> Option<String
         .then(|| description.replacen(role, alternatives, 1))
 }
 
-/// "each creature that blocked or was blocked this turn" (Heat Stroke): two
-/// bare combat-history branches over one shared outer noun.
-fn describe_blocked_or_was_blocked_union(filter: &ObjectFilter) -> Option<String> {
-    let [first, second] = filter.any_of.as_slice() else {
-        return None;
-    };
+/// Two bare combat-history alternatives over one shared outer object domain.
+/// Keep every common restriction and require exact branch shapes before
+/// shortening the shared turn window.
+pub fn describe_shared_combat_history_union(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else { return None; };
     if filter.union_connective() != ObjectFilterUnionConnective::Or
-        || filter.blocked_this_turn
-        || filter.was_blocked_this_turn
-    {
-        return None;
-    }
-    let mut blocked = ObjectFilter::default();
-    blocked.blocked_this_turn = true;
-    let mut was_blocked = ObjectFilter::default();
-    was_blocked.was_blocked_this_turn = true;
+        || filter.attacked_this_turn || filter.blocked_this_turn || filter.was_blocked_this_turn
+    { return None; }
     let bare = |branch: &ObjectFilter| {
         let mut branch = branch.clone();
         branch.union_surface = ObjectFilter::default().union_surface;
         branch
     };
-    if !((bare(first) == blocked && bare(second) == was_blocked)
-        || (bare(first) == was_blocked && bare(second) == blocked))
-    {
-        return None;
-    }
+    let attacked = ObjectFilter { attacked_this_turn: true, ..Default::default() };
+    let blocked = ObjectFilter { blocked_this_turn: true, ..Default::default() };
+    let was_blocked = ObjectFilter { was_blocked_this_turn: true, ..Default::default() };
+    let (left, right) = (bare(first), bare(second));
+    let (base, from, to) = if (left == attacked && right == blocked) || (left == blocked && right == attacked) {
+        (attacked, "that attacked this turn", "that attacked or blocked this turn")
+    } else if (left == blocked && right == was_blocked) || (left == was_blocked && right == blocked) {
+        (blocked, "that blocked this turn", "that blocked or was blocked this turn")
+    } else { return None; };
     let mut combined = filter.clone();
     combined.any_of.clear();
-    combined.blocked_this_turn = true;
+    combined.attacked_this_turn = base.attacked_this_turn;
+    combined.blocked_this_turn = base.blocked_this_turn;
     let description = combined.description();
-    description.contains("that blocked this turn").then(|| {
-        description.replacen(
-            "that blocked this turn",
-            "that blocked or was blocked this turn",
-            1,
-        )
-    })
+    description.contains(from).then(|| description.replacen(from, to, 1))
 }
 
 fn ensure_indefinite_article(text: String) -> String {
@@ -2332,6 +2323,8 @@ pub struct ObjectFilter {
     /// drafting cards with the indicated name ("a name you noted for cards
     /// named Noble Banneret").
     pub name_noted_while_drafting_named: Option<String>,
+    /// Candidate has a creature type recorded in this player’s named draft-note group.
+    pub creature_types_noted_while_drafting_named: Option<String>,
     pub chosen_land_type: bool,
     /// Requires at least one of the five basic land subtypes.  This is not
     /// the same as requiring the Basic supertype: nonbasic dual lands can
@@ -3265,6 +3258,7 @@ impl ObjectFilter {
             || self.chosen_color
             || self.colors_chosen_while_drafting_named.is_some()
             || self.name_noted_while_drafting_named.is_some()
+            || self.creature_types_noted_while_drafting_named.is_some()
             || self.chosen_land_type
             || self.has_basic_land_type
             || self.has_nonbasic_land_type
@@ -4343,7 +4337,7 @@ impl ObjectFilter {
         if let Some(description) = describe_shared_combat_role_union(self) {
             return description;
         }
-        if let Some(description) = describe_blocked_or_was_blocked_union(self) {
+        if let Some(description) = describe_shared_combat_history_union(self) {
             return description;
         }
         let any_of_keyword_clause =
@@ -4995,6 +4989,9 @@ impl ObjectFilter {
             post_noun_qualifiers.push(format!(
                 "with a name originally printed in the {set_name} expansion"
             ));
+        }
+        if let Some(card_name) = &self.creature_types_noted_while_drafting_named {
+            post_noun_qualifiers.push(format!("of a type you noted for cards named {card_name}"));
         }
         if let Some(card_name) = &self.name_noted_while_drafting_named {
             post_noun_qualifiers.push(format!("with a name you noted for cards named {card_name}"));

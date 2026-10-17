@@ -20,6 +20,56 @@ fn unique_announced_object_target(effect: &EffectAst) -> Option<TargetAst> {
     (targets.len() == 1).then(|| targets.remove(0))
 }
 
+/// A count-only replacement's "of those creatures" repeats the selection
+/// domain, not the result of a default sacrifice that will never execute.
+fn preserve_sacrifice_domain_in_count_replacement(
+    defaults: &[EffectAst], replacements: &mut [EffectAst], tokens: &[OwnedLexToken],
+) {
+    let words = LexedClause::new(tokens).word_refs();
+    let Some(index) = words.windows(2).position(|part| part == ["of", "those"]) else { return; };
+    let Some(noun) = words.get(index + 2).copied() else { return; };
+    let tail = &words[index + 3..];
+    if !(tail == ["instead"] || tail == ["of", "their", "choice", "instead"])
+        || words.iter().filter(|word| **word == "sacrifices").count() != 1
+    { return; }
+    let card_type = match noun {
+        "creatures" => crate::types::CardType::Creature,
+        "artifacts" => crate::types::CardType::Artifact,
+        "enchantments" => crate::types::CardType::Enchantment,
+        "lands" => crate::types::CardType::Land,
+        "planeswalkers" => crate::types::CardType::Planeswalker,
+        "battles" => crate::types::CardType::Battle,
+        _ => return,
+    };
+    fn collect(effects: &[EffectAst], found: &mut Vec<(SubjectVerbSubjectAst, ObjectFilter)>) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {subject, action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {filter,target:None,one_of_referenced_set:false,..})}) = effect {
+                found.push((subject.clone(),filter.clone()));
+            }
+            for_each_nested_effects(effect,true,|nested| collect(nested,found));
+        }
+    }
+    let mut original = Vec::new(); collect(defaults,&mut original);
+    let mut replacement = Vec::new(); collect(replacements,&mut replacement);
+    let ([(actor, domain)], [(new_actor, new_domain)]) = (original.as_slice(),replacement.as_slice()) else { return; };
+    let mut bare = ObjectFilter::default(); bare.zone = Some(Zone::Battlefield); bare.card_types = vec![card_type];
+    let mut new_domain = new_domain.clone(); new_domain.union_surface = ObjectFilter::default().union_surface;
+    // The demonstrative can arrive as the ordinary `it` result reference.
+    // A replaced action produces no such result; it repeats the domain.
+    if new_domain.tagged_constraints == ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).tagged_constraints {
+        new_domain.tagged_constraints.clear();
+    }
+
+    if actor != new_actor || domain.card_types != [card_type] || new_domain != bare { return; }
+    fn replace(effects: &mut [EffectAst], domain: &ObjectFilter) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {filter,target:None,..}),..}) = effect { *filter = domain.clone(); }
+            for_each_nested_effects_mut(effect,true,|nested| replace(nested,domain));
+        }
+    }
+    replace(replacements,domain);
+}
+
 /// Binds the replacement's pronouns to the default action's object up to and
 /// including the first action that moves that object to another zone
 /// ("instead exile it, then return that card to its owner's hand"). After
@@ -759,6 +809,7 @@ pub(in super::super) fn post_rule_future_zone_and_self_replacement(
         if let Some(player) = carried_player {
             bind_that_player_subjects_in_effects(&mut if_true, player);
         }
+        preserve_sacrifice_domain_in_count_replacement(&default_effects, &mut if_true, sentence_tokens);
         preserve_search_owner_anaphor_in_self_replacement(&mut default_effects);
         preserve_search_owner_anaphor_in_self_replacement(&mut if_true);
         if let Some(owner) = first_search_library_owner(&default_effects) {

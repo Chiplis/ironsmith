@@ -60,6 +60,21 @@ pub(crate) fn split_drafted_noted_name_qualifier_tokens(
     (!name.is_empty()).then(|| (super::util::trim_commas(&tokens[..base_token_end]), name))
 }
 
+pub(crate) fn split_drafted_noted_creature_types_qualifier_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, String)> {
+    let view = TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let phrase = &["of", "a", "type", "you", "noted", "for", "cards", "named"];
+    let start = crate::word_primitives::parse_sequence_start(&words, phrase)?;
+    let name_start = start + phrase.len();
+    if start == 0 || name_start >= words.len() { return None; }
+    let base_end = view.map_word_or_end_to_token_boundary(start)?;
+    let name_token = view.map_word_or_end_to_token_boundary(name_start)?;
+    let name = render_token_slice(tokens.get(name_token..)?).trim().trim_end_matches('.').to_string();
+    (!name.is_empty()).then(|| (super::util::trim_commas(&tokens[..base_end]), name))
+}
+
 const DRAFTED_COLOR_QUALIFIER: &[&str] = &[
     "one", "or", "more", "of", "the", "colors", "chosen", "as", "you", "drafted", "cards", "named",
 ];
@@ -1598,6 +1613,11 @@ pub fn parse_object_filter(
         filter.colors_chosen_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
+    if let Some((base_tokens, card_name)) = split_drafted_noted_creature_types_qualifier_tokens(tokens) {
+        let mut filter = parse_object_filter_inner(&base_tokens, other)?;
+        filter.creature_types_noted_while_drafting_named = Some(card_name);
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
+    }
     if let Some((base_tokens, card_name)) = split_drafted_noted_name_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_inner(&base_tokens, other)?;
         filter.name_noted_while_drafting_named = Some(card_name);
@@ -1943,6 +1963,11 @@ pub fn parse_object_filter_lexed(
         filter.colors_chosen_while_drafting_named = Some(card_name);
         return Ok(finalize_public_object_filter(filter, &base_tokens));
     }
+    if let Some((base_tokens, card_name)) = split_drafted_noted_creature_types_qualifier_tokens(tokens) {
+        let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
+        filter.creature_types_noted_while_drafting_named = Some(card_name);
+        return Ok(finalize_public_object_filter(filter, &base_tokens));
+    }
     if let Some((base_tokens, card_name)) = split_drafted_noted_name_qualifier_tokens(tokens) {
         let mut filter = parse_object_filter_lexed_inner(&base_tokens, other)?;
         filter.name_noted_while_drafting_named = Some(card_name);
@@ -2064,6 +2089,7 @@ pub fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.chosen_color
         || filter.colors_chosen_while_drafting_named.is_some()
         || filter.name_noted_while_drafting_named.is_some()
+        || filter.creature_types_noted_while_drafting_named.is_some()
         || filter.chosen_creature_type
         || filter.chosen_card_type
         || filter.excluded_chosen_creature_type
@@ -2156,6 +2182,9 @@ pub fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) {
     }
     if base.name_noted_while_drafting_named.is_none() {
         base.name_noted_while_drafting_named = extra.name_noted_while_drafting_named;
+    }
+    if base.creature_types_noted_while_drafting_named.is_none() {
+        base.creature_types_noted_while_drafting_named = extra.creature_types_noted_while_drafting_named;
     }
     base.chosen_creature_type |= extra.chosen_creature_type;
     base.chosen_card_type |= extra.chosen_card_type;

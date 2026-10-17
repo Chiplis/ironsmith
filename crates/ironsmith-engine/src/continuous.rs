@@ -5934,6 +5934,9 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.targets_only_any_of
         || filter.could_be_targeted_by.is_some()
         || filter.chosen_color
+        || filter.colors_chosen_while_drafting_named.is_some()
+        || filter.name_noted_while_drafting_named.is_some()
+        || filter.creature_types_noted_while_drafting_named.is_some()
         || filter.chosen_land_type
         || filter.chosen_creature_type
         || filter.chosen_card_type

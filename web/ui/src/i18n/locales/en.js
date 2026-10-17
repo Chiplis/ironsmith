@@ -233,7 +233,7 @@ export const messages = {
   "decision.collapseDetails": "Hide options",
   "decision.expandDetails": "Show options",
   "decision.title.targets": "Choose Targets",
-  "decision.title.objects": "Choose Objects",
+  "decision.title.objects": "Choose",
   "decision.title.options": "Choose Option",
   "decision.title.number": "Choose Number",
   "decision.title.manaPayment": "Pay Mana",

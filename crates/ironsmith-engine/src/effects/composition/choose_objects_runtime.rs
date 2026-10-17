@@ -233,39 +233,44 @@ fn describe_choose_from_filter(
     min: usize,
     max: usize,
     verb: &str,
+    zones: &[Zone],
 ) -> String {
-    let type_word = if filter.card_types.len() == 1 {
-        filter.card_types[0].selection_name()
-    } else if filter.card_types.is_empty() {
-        "permanent"
-    } else {
-        // Multiple types like "creature or artifact"
-        let types = filter
-            .card_types
-            .iter()
+    let cards = !zones.is_empty()
+        && zones.iter().all(|zone| !matches!(zone, Zone::Battlefield | Zone::Stack));
+    let type_word = if filter.card_types.is_empty() {
+        match (cards, max == 1) {
+            (true, true) => "card",
+            (true, false) => "cards",
+            (false, true) => "permanent",
+            (false, false) => "permanents",
+        }.to_string()
+    } else if cards {
+        let types = filter.card_types.iter()
             .map(|card_type| card_type.name())
-            .collect::<Vec<_>>()
-            .join(" or ");
-        let article = article_for_count(min, max);
-        return capitalize_first(&format!("{verb} {article} {types}"));
+            .collect::<Vec<_>>().join(" or ");
+        format!("{types} {}", if max == 1 { "card" } else { "cards" })
+    } else {
+        filter.card_types.iter()
+            .map(|card_type| if max == 1 { card_type.name() } else { card_type.plural_name() })
+            .collect::<Vec<_>>().join(" or ")
     };
-
     let mut parts = Vec::new();
-    if !filter.excluded_card_types.is_empty() {
-        for card_type in &filter.excluded_card_types {
-            parts.push(format!("non{}", card_type.name()));
-        }
+    for card_type in &filter.excluded_card_types {
+        parts.push(format!("non{}", card_type.name()));
     }
-    if !filter.subtypes.is_empty() {
-        for st in &filter.subtypes {
-            parts.push(format!("{st:?}"));
-        }
+    for subtype in &filter.subtypes {
+        parts.push(format!("{subtype:?}"));
     }
-    parts.push(type_word.to_string());
-
+    parts.push(type_word);
     let noun = parts.join(" ");
-    let article = article_for_count(min, max);
-    capitalize_first(&format!("{verb} {article} {noun}"))
+    let count = if min == max {
+        format!("exactly {max}")
+    } else if min == 0 {
+        format!("up to {max}")
+    } else {
+        format!("between {min} and {max}")
+    };
+    capitalize_first(&format!("{verb} {count} {noun}"))
 }
 
 fn capitalize_first(s: &str) -> String {
@@ -273,16 +278,6 @@ fn capitalize_first(s: &str) -> String {
     match chars.next() {
         Some(c) => c.to_uppercase().to_string() + chars.as_str(),
         None => String::new(),
-    }
-}
-
-fn article_for_count(min: usize, max: usize) -> &'static str {
-    if max == 1 {
-        "a"
-    } else if min == max {
-        "exactly"
-    } else {
-        "up to"
     }
 }
 
@@ -2021,7 +2016,17 @@ fn run_choose_objects_phase_with_outputs(
                         } else {
                             "choose"
                         };
-                        describe_choose_from_filter(&effect.filter, min, max, verb)
+                        // Tagged choices can come from a different zone than the
+                        // filter's default (for example, cards just looked at).
+                        let candidate_zones: Vec<_> = candidates.iter()
+                            .filter_map(|id| game.object(*id).map(|object| object.zone))
+                            .collect();
+                        let prompt_zones = if candidate_zones.is_empty() {
+                            &search_zones
+                        } else {
+                            &candidate_zones
+                        };
+                        describe_choose_from_filter(&effect.filter, min, max, verb, prompt_zones)
                     } else {
                         effect.description.clone()
                     };
@@ -2421,6 +2426,17 @@ mod tests {
     use crate::tag::TagKey;
     use crate::target::{ChooseSpec, PlayerFilter};
     use crate::types::CardType;
+
+    #[test]
+    fn choice_prompts_include_counts_and_use_the_candidates_zone() {
+        let filter = ObjectFilter::default();
+        assert_eq!(describe_choose_from_filter(&filter, 2, 2, "choose", &[Zone::Library]), "Choose exactly 2 cards");
+        assert_eq!(describe_choose_from_filter(&filter, 1, 1, "choose", &[Zone::Library]), "Choose exactly 1 card");
+        assert_eq!(describe_choose_from_filter(&filter, 0, 1, "choose", &[Zone::Hand]), "Choose up to 1 card");
+        assert_eq!(describe_choose_from_filter(&filter, 1, 3, "choose", &[Zone::Graveyard]), "Choose between 1 and 3 cards");
+        assert_eq!(describe_choose_from_filter(&filter, 2, 2, "sacrifice", &[Zone::Battlefield]), "Sacrifice exactly 2 permanents");
+        assert_eq!(describe_choose_from_filter(&ObjectFilter::creature(), 0, 2, "choose", &[Zone::Library]), "Choose up to 2 creature cards");
+    }
 
     #[test]
     fn optional_search_zones_share_one_card_limit_and_emit_only_selected_library_events() {

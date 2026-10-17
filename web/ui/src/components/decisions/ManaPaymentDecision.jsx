@@ -211,12 +211,14 @@ export default function ManaPaymentDecision({ decision, canAct, inlineSubmit = t
       {busyLabel && <span className="mana-payment-editor-busy" role="status"><LoaderCircle size={14} className="animate-spin" />{busyLabel}</span>}
       {hasChoices && <Button type="button" variant="ghost" size="sm" className="mana-payment-reset-button" disabled={!canAct || confirming} onClick={editor.reset}><RotateCcw size={13} />{ui('Reset')}</Button>}
       <div className="mana-payment-submit-row">
-      <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
+      <div className="mana-payment-secondary-controls">
+        <Button type="button" variant="ghost" size="sm" className="decision-neon-button decision-neon-button--danger decision-cancel-button font-bold uppercase" disabled={!canAct || confirming} onClick={cancel}>{ui('Cancel')}</Button>
+        {inlineSubmit ? quickControls : null}
+      </div>
       {inlineSubmit && <div className="mana-payment-pay-region">
         <Button type="button" variant="ghost" size="sm" className="mana-payment-pay-button decision-neon-button decision-main-button decision-submit-button action-strip-submit-button font-bold uppercase" disabled={payDisabled} onClick={editor.confirm}>{ui('Pay')}</Button>
         {warnings.length > 0 && <Popover><PopoverTrigger asChild><button type="button" className="mana-payment-warning-trigger" aria-label={ui('Payment warnings')}><AlertTriangle size={17} /></button></PopoverTrigger><PopoverContent side="top" aria-label={ui('Payment warnings')} className="mana-payment-warning-details"><ul>{warnings.map((warning, index) => <li key={index}>{ui(warning)}</li>)}</ul></PopoverContent></Popover>}
       </div>}
-      {inlineSubmit ? quickControls : null}
       </div>
     </div>
     {menu?.anchor.isConnected && <ActionPopover anchorElement={menu.anchor} anchorRect={menu.anchor.getBoundingClientRect()} actions={menu.actions} onAction={pickAction} onClose={closeMenu} variant="game" collapseEquivalentActions={false} previewCards={false} highlightObjects fitViewport focusOnOpen disabled={!canAct || confirming} ariaLabel={ui(menu.mode === 'advanced' ? 'Advanced payment controls' : 'Choose payment source')} />}

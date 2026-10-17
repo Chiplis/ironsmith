@@ -108,6 +108,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         subtypes, all_subtypes, type_or_subtype_union, union_surface, excluded_subtypes,
         supertypes, excluded_supertypes, colors, required_colors, chosen_color,
         colors_chosen_while_drafting_named, name_noted_while_drafting_named,
+        creature_types_noted_while_drafting_named,
         chosen_land_type, has_basic_land_type, has_nonbasic_land_type,
         chosen_creature_type, chosen_card_type, excluded_chosen_creature_type,
         excluded_any_chosen_creature_type, excluded_colors, colorless, multicolored,

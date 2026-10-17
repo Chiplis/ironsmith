@@ -326,3 +326,67 @@
   .build-card-toolbar-actions { width: 100%; margin-left: 0; }
   .build-card-toolbar-actions .card-forge-field { flex: 1 1 120px; width: auto; }
 }
+
+/* Casting changes the options above the controls, never the action footprint. */
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+      width: 340px !important;
+      min-width: 0 !important;
+      transition: none !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.battlefield-human-decision-dock, .battlefield-human-decision-panel) {
+      width: 100% !important; min-width: 0 !important; max-width: 100% !important;
+      transition: none !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel {
+      padding: 6px !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-stack-footer, .mana-payment-submit-row) {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) 132px !important;
+      gap: 6px !important;
+      width: 100% !important; height: 40px !important; min-height: 40px !important;
+      padding: 0 !important; margin: 0 !important; border: 0 !important;
+      flex: 0 0 40px !important;
+      align-items: center !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-stack-footer, .mana-payment-submit-row) .decision-main-button {
+      width: 100% !important; min-width: 0 !important; max-width: 100% !important;
+      height: 40px !important; min-height: 40px !important; max-height: 40px !important;
+      margin: 0 !important; transform: none !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
+      justify-content: flex-end !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-pay-region { grid-column: 1; grid-row: 1; min-width: 0; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack { padding-bottom: 0 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-main-button, .action-strip-main-title-text, .priority-pass-label-current, .priority-pass-label-advance) {
+      font-size: 14px !important; transition-property: background-color, border-color, opacity !important;
+    }
+  }
+}
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel { border: 0 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-editor {
+      border: 0 !important; max-height: calc(var(--dock-max-height, 70dvh) - 12px) !important; height: calc(var(--dock-max-height, 70dvh) - 12px) !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-editor-footer { padding: 12px 0 0 !important; }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-secondary-controls {
+      display: flex; align-items: center; justify-content: flex-end; gap: 6px;
+      grid-column: 2; grid-row: 1;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-secondary-controls .decision-cancel-button { flex: 1; min-width: 0; height: 40px; }
+  }
+}
+@layer decision-stability {
+  @media (min-width: 1024px) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack[data-details-expanded="false"] {
+      display: flex !important; flex-direction: column !important; gap: 6px !important;
+    }
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack[data-details-expanded="false"] .decision-stack-footer {
+      width: 100% !important; min-width: 0 !important; max-width: 100% !important;
+    }
+  }
+}

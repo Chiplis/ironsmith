@@ -699,6 +699,8 @@ struct AuxiliaryTrackingState {
     /// Card names a player noted while drafting, grouped by the named card
     /// whose instruction noted them ("note its name", Noble Banneret).
     draft_noted_names: HashMap<(PlayerId, String), Vec<String>>,
+    /// Creature types captured during the draft, independent of later card changes.
+    draft_noted_creature_types: HashMap<(PlayerId, String), Vec<crate::types::Subtype>>,
     /// Public cards a player removed from the draft, grouped by the card name
     /// they were placed with. Stored object identities retain complete printed
     /// characteristics and abilities for ordinary `ObjectFilter` matching.
@@ -5136,6 +5138,34 @@ impl GameState {
             .draft_noted_names
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .is_some_and(|names| names.iter().any(|noted| noted.eq_ignore_ascii_case(name)))
+    }
+
+    /// Record the captured creature types of a revealed draft card. Pass all
+    /// creature types for a card with changeling; noncreature subtypes are ignored.
+    pub fn record_draft_noted_creature_types(
+        &mut self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        types: impl IntoIterator<Item = crate::types::Subtype>,
+    ) {
+        let noted = self.auxiliary_tracking_mut().draft_noted_creature_types
+            .entry((player, normalize_draft_note_card_name(card_name.as_ref())))
+            .or_default();
+        for subtype in types {
+            if subtype.is_creature_type() && !noted.contains(&subtype) {
+                noted.push(subtype);
+            }
+        }
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+    }
+
+    pub fn draft_noted_creature_types(
+        &self, player: PlayerId, card_name: impl AsRef<str>,
+    ) -> &[crate::types::Subtype] {
+        self.auxiliary_tracking.draft_noted_creature_types
+            .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
+            .map_or(&[], Vec::as_slice)
     }
 
     pub fn set_draft_chosen_colors(

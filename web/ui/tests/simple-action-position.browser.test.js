@@ -48,6 +48,27 @@ test('looking, combat, and effect ordering keep the primary action in the priori
         await button.click();
         assert.deepEqual(JSON.parse(await page.locator('output').textContent()), { type: 'select_options', option_indices: indices });
       }
+      await open('stableDecisions&paymentBusy');
+      const castingSlot = await button.boundingBox();
+      sameSlot(attacking, castingSlot);
+      for (let step = 1; step <= 3; step++) {
+        await page.getByRole('button', { name: 'Next decision', exact: true }).click();
+        await page.waitForTimeout(600);
+        sameSlot(castingSlot, await button.boundingBox());
+        if (step === 2) {
+          assert.equal((await button.textContent()).trim(), 'Pay');
+          assert.equal(await page.locator('.mana-payment-editor-busy').textContent(), 'Improving');
+          const pay = await button.boundingBox();
+          const cancel = await page.getByRole('button', { name: 'Cancel', exact: true }).boundingBox();
+          assert.ok(cancel.x >= pay.x + pay.width, 'Cancel stays beside the fixed primary action');
+        }
+        const disclosure=page.locator('[data-human-action-dock] .battlefield-decision-disclosure-toggle');
+        if(await disclosure.count()) {
+          await disclosure.click();
+          await page.waitForTimeout(400);
+          sameSlot(castingSlot, await button.boundingBox());
+        }
+      }
       await page.close();
     }
   } finally {

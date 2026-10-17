@@ -782,6 +782,14 @@ pub(super) fn matches_subject(
             return false;
         }
     }
+    if let Some(card_name) = &filter.creature_types_noted_while_drafting_named {
+        let Some(player) = ctx.you else { return false; };
+        if !game.draft_noted_creature_types(player, card_name).iter()
+            .any(|subtype| subject.matches_subtype(calculated_chars_ref, *subtype, game))
+        {
+            return false;
+        }
+    }
     if let Some(card_name) = &filter.name_noted_while_drafting_named {
         let Some(player) = ctx.you else {
             return false;
