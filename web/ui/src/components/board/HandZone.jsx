@@ -20,6 +20,8 @@ import {
 import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
+import { requestObjectSelection } from "@/lib/object-selection";
+import { setHandHoverObjectId } from "@/lib/hand-hover";
 import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
 import {
   HAND_KEYBOARD_CAST_EVENT,
@@ -903,6 +905,11 @@ export default function HandZone({
         || interactionObjectId
         || pinnedHandObjectId
         || selectedObjectIdKey;
+  // Decision panels shade the row of the hand card under the pointer.
+  useEffect(() => {
+    setHandHoverObjectId(activeFanObjectId);
+  }, [activeFanObjectId]);
+  useEffect(() => () => setHandHoverObjectId(null), []);
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
@@ -983,6 +990,22 @@ export default function HandZone({
 
   const handleCardClick = useCallback((event, card) => {
     const cardId = String(card.id);
+    // While choosing objects (a discard, say) a click on a candidate in the
+    // hand picks it, as the rows in the decision panel do; a second click
+    // gives it back.
+    const decision = state?.decision;
+    const choosing = decision?.kind === "select_objects"
+      && samePlayerId(decision.player, state?.perspective)
+      ? decision
+      : null;
+    const candidate = choosing?.candidates?.find((entry) =>
+      entry?.legal !== false && String(entry?.id) === cardId
+    );
+    if (candidate) {
+      event.preventDefault?.();
+      requestObjectSelection(candidate.id, "toggle");
+      return;
+    }
     // Clicking the same pinned hand card is the direct, reversible way to
     // leave inspection without affecting any field-card selection.
     if (pinnedHandObjectId === cardId) {
@@ -1003,7 +1026,7 @@ export default function HandZone({
     clearHover();
     clearAnchoredCardPreview();
     window.dispatchEvent(new CustomEvent("ironsmith:hand-inspection", { detail: { locked: true } }));
-  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId]);
+  }, [clearAnchoredCardPreview, clearHover, pinnedHandObjectId, state]);
 
   useEffect(() => {
     if (!isMobileFan && pinnedHandObjectId == null) return undefined;

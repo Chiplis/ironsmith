@@ -1,4 +1,7 @@
 import useUiText from "@/i18n/useUiText";
+import ZoneArt from "@/components/board/ZonePileArt";
+import { zoneChoiceCards } from "@/lib/look-pile";
+import { useHandHoverObjectId } from "@/lib/hand-hover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
@@ -61,8 +64,12 @@ export default function SelectObjectsDecision({
     [state]
   );
 
+  // Cards off the table (looked at, in a graveyard or exile) are offered as
+  // cards, so they can be read and picked here; the Look pile steps aside.
+  const lookCards = useMemo(() => zoneChoiceCards(state), [state]);
   const scopedCandidates = useMemo(() => {
-    if (stripLayout) return candidates;
+    // A hovered card narrows name rows to it, but cards stay put.
+    if (stripLayout || lookCards) return candidates;
     if (hoveredObjectId == null) return candidates;
     const hoveredStr = String(hoveredObjectId);
     const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
@@ -70,12 +77,22 @@ export default function SelectObjectsDecision({
     return candidates.filter(
       (c) => String(c.id) === hoveredStr || isObjectChosen(selected, c.id)
     );
-  }, [candidates, hoveredObjectId, selected, stripLayout]);
+  }, [candidates, hoveredObjectId, lookCards, selected, stripLayout]);
   const showRows = scopedCandidates.length > 0;
   const [visibleCandidates, setVisibleCandidates] = useState(scopedCandidates);
   const focusedToHover = hoveredObjectId != null
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
   const showHeader = !stripLayout;
+  // The hand card under the pointer shades its row, as hovering the row
+  // previews the card.
+  const handHoverObjectId = useHandHoverObjectId();
+  const rowsRef = useRef(null);
+  useEffect(() => {
+    if (handHoverObjectId == null) return;
+    rowsRef.current
+      ?.querySelector(`[data-candidate-id="${CSS.escape(handHoverObjectId)}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [handHoverObjectId]);
 
   const chooseObject = useCallback((id, mode = "toggle") => {
     applyChoice?.({ objectId: id, mode, max });
@@ -189,14 +206,21 @@ export default function SelectObjectsDecision({
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
-          <div className={cn(
+          <div
+            ref={rowsRef}
+            data-card-choices={lookCards ? "true" : undefined}
+            // The card row scrolls sideways; a vertical wheel moves it too.
+            onWheel={lookCards ? (event) => {
+              if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY;
+            } : undefined}
+            className={cn(
             stripLayout
               ? "decision-strip-options-row decision-strip-options-row--vertical-objects flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {
               const isSelected = isObjectChosen(selected, c.id);
-              const isUnavailable = !isSelected && selected.length >= max;
+              const isUnavailable = !isSelected && max !== 1 && selected.length >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
               const controllerId = c?.object_controller != null
                 ? Number(c.object_controller)
@@ -210,6 +234,10 @@ export default function SelectObjectsDecision({
               return (
                 <Button
                   key={c.id}
+                  data-candidate-id={String(c.id)}
+                  data-object-id={lookCards ? String(c.id) : undefined}
+                  data-zone-card={lookCards ? "look" : undefined}
+                  data-decision-option-object={lookCards ? String(c.id) : undefined}
                   aria-pressed={isSelected}
                   variant="ghost"
                   size="sm"
@@ -219,6 +247,8 @@ export default function SelectObjectsDecision({
                       : "decision-option-row decision-option-row--panel h-8 w-full min-w-0 justify-start px-2.5 text-[13px]",
                     stripLayout && isSelected && STRIP_ITEM_ACTIVE_CLASS,
                     !stripLayout && isSelected && "is-selected",
+                    !isDisabled && String(c.id) === handHoverObjectId && "is-highlighted",
+                    lookCards && "decision-option-row--card",
                     isDisabled
                       && (stripLayout
                         ? STRIP_ITEM_DISABLED_CLASS
@@ -246,11 +276,18 @@ export default function SelectObjectsDecision({
                   }}
                   onBlur={clearHover}
                 >
-                  <HighlightedDecisionText
-                    className="decision-option-label"
-                    text={localizeCardName(c.name)}
-                    highlightText={localizeCardName(c.name)}
-                  />
+                  {lookCards ? (
+                    <span className="decision-card-choice" title={localizeCardName(c.name)}>
+                      <ZoneArt card={lookCards.get(String(c.id))} />
+                      <span className="sr-only">{localizeCardName(c.name)}</span>
+                    </span>
+                  ) : (
+                    <HighlightedDecisionText
+                      className="decision-option-label"
+                      text={localizeCardName(c.name)}
+                      highlightText={localizeCardName(c.name)}
+                    />
+                  )}
                 </Button>
               );
             })}

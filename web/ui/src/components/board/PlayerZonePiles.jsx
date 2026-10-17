@@ -10,7 +10,7 @@ import { useI18n } from "@/i18n/I18nContext";
 import { useCastTargeting, useCastZoneHovered } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
 import ZoneArt from "./ZonePileArt";
-import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
+import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookChoiceCards, zoneChoiceCards, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, pileZonesFor, zonePileCards } from "@/lib/zone-piles";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
@@ -76,14 +76,31 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       // Target scaling animates back to normal as the strip opens. Its
       // transformed width must not become a permanent negative popover offset.
       const cardWidth = zone === "look" ? trigger.offsetWidth : anchor.width;
-      setStripBounds({ width: Math.max(0, (anchor.right - Math.max(field.left, 8)) + 6), cardWidth });
+      // An open decision panel (a choice among these very cards, say) keeps
+      // its place: the strip ends at the panel's left edge instead of
+      // opening over it.
+      const panel = [...document.querySelectorAll(".battlefield-human-action-dock")]
+        .map((element) => element.getBoundingClientRect())
+        .find((rect) => rect.width > 0 && rect.left < anchor.left && rect.right > anchor.left - 160
+          && rect.top < anchor.bottom + 12 && rect.bottom > anchor.top - 12);
+      const right = panel ? panel.left - 8 : anchor.right;
+      setStripBounds({
+        width: Math.max(0, (right - Math.max(field.left, 8)) + 6),
+        cardWidth,
+        offset: panel ? anchor.left - right : -(cardWidth + 6),
+      });
     };
     measure();
+    // The pile shrinks back from its target growth as the strip opens (a
+    // transform, which no observer reports); measure again once it settles.
+    const settle = setTimeout(measure, ZONE_TARGET_GROW_MS + 40);
     const observer = new ResizeObserver(measure);
     observer.observe(battlefield);
     observer.observe(trigger);
+    const dock = document.querySelector(".battlefield-human-action-dock");
+    if (dock) observer.observe(dock);
     window.addEventListener("resize", measure);
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+    return () => { clearTimeout(settle); observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [open, zone]);
   const cards = cardsOverride ?? zonePileCards(player, zone);
   // The inspector and its portaled glossary are part of this pile's surface.
@@ -129,7 +146,10 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     : legalTargetObjectIds?.has(Number(card.id)) || (decision?.requirements || []).some((req) =>
       (req.legal_targets || []).some((target) => target.kind === "object" && String(target.object) === String(card.id))
     );
-  const hasLegalCards = canChoose && (choosingTarget || choosingObject) && cards.some(isLegal);
+  // When the decision panel shows the choice as cards, the piles do not grow
+  // and call for the same pick a second time.
+  const choiceInPanel = choosingObject && Boolean(zoneChoiceCards(state));
+  const hasLegalCards = canChoose && (choosingTarget || choosingObject) && !choiceInPanel && cards.some(isLegal);
   const hoverOpensZone = Boolean(castIntent && hasLegalCards && castZoneHovered);
   useEffect(() => {
     if (!hoverOpensZone) return undefined;
@@ -196,7 +216,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       .find(Boolean)
     : null;
   const collapsedCard = optionHoveredCard || latestChosenCard || topCard;
-  const chosenInPile = !open && choosingObject
+  const chosenInPile = !open && choosingObject && !choiceInPanel
     ? latestChosenCard || cards.find((card) => isObjectChosen(chosenObjectIds, card.id))
     : null;
 
@@ -292,7 +312,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   };
 
   return (
-    <Popover open={open} onOpenChange={changeOpen}>
+    // While the decision panel offers the choice as cards, a pile does not
+    // open a second strip of them beside it.
+    <Popover open={open && !choiceInPanel} onOpenChange={changeOpen}>
       {/* The slot carries its transitions inline, so the growth a legal target
           brings has to be listed here too or the stylesheet's is overridden. */}
       <div className="zone-pile-slot" style={{
@@ -334,7 +356,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       ) : null}
       </div>
       {/* Keep the top card over its pile and extend the strip to the left. */}
-      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
+      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side="left" align="start" sideOffset={stripBounds.offset ?? -(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
         updatePositionStrategy={zone === "look" ? "always" : "optimized"}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
@@ -391,7 +413,11 @@ function LookPile({ player, onCardClick, legalTargetObjectIds }) {
     return () => clearTimeout(timer);
   }, [active, open, retained]);
   const cards = mergeLookCards(persistent, (active ? view : retained)?.cards || []);
+  // While the decision panel offers these very cards, the pile keeps its
+  // place but hides: one place to see and pick them.
+  const mergedIntoDecision = Boolean(lookChoiceCards(state));
   if (!cards.length) return null;
+  if (mergedIntoDecision) return <div className="zone-pile-slot" data-merged-into-decision="true" aria-hidden="true" />;
   return <>
     {active && <div key={key} className="look-eye-effect" aria-hidden="true">
       <svg viewBox="0 0 96 54" role="presentation">

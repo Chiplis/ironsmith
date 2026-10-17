@@ -7955,3 +7955,86 @@ html[data-hand-pointer-suspended="true"] * {
 .local-command-zone-dock > .zone-pile-slot:first-child {
   margin-top: 0;
 }
+
+/* Cards off the table offered by a decision are shown as cards, in one row
+   that scrolls sideways, instead of name rows. */
+.table-shell .battlefield-human-action-dock .battlefield-human-decision-panel .decision-strip-options-row[data-card-choices="true"],
+[data-card-choices="true"] {
+  display: grid !important;
+  grid-auto-flow: column !important;
+  grid-auto-columns: 76px !important;
+  grid-template-columns: none !important;
+  align-items: start !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  gap: 6px !important;
+  padding: 4px 4px 8px !important;
+}
+
+.table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card {
+  position: relative;
+  display: block !important;
+  flex: none !important;
+  width: auto !important;
+  max-width: none !important;
+  border: 0 !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  scroll-snap-align: start;
+  transition: outline-color 120ms ease, transform 120ms ease;
+}
+
+[data-card-choices="true"] .decision-card-choice {
+  display: block;
+  width: 100%;
+  aspect-ratio: 63 / 88;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-card-choices="true"] .decision-card-choice img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card:is(:hover, .is-highlighted):not(:disabled) {
+  outline-color: rgba(183, 156, 255, 0.7);
+  transform: translateY(-2px);
+}
+
+.table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card:is(.is-selected, [aria-pressed="true"]) {
+  outline-color: #c9acff;
+}
+
+.table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card:is(.is-selected, [aria-pressed="true"])::after {
+  content: "✓";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #7150ab;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.table-shell .battlefield-human-decision-panel [data-card-choices="true"][data-card-choices] > button.decision-option-row--card.is-disabled:not([aria-pressed="true"]) {
+  opacity: 0.45;
+}
