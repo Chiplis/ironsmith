@@ -8,7 +8,11 @@ const ui = fileURLToPath(new URL('../../', import.meta.url));
 const cache = path.join(ui, 'node_modules/.cache/card-glint');
 const source = path.join(cache, 'source');
 const output = path.join(ui, 'public/card-glint');
-const run = (command, args, cwd = source, env = process.env) => execFileSync(command, args, {cwd, env, stdio: 'inherit'});
+// Windows only resolves npm through its npm.cmd shim, which needs a shell.
+const windows = process.platform === 'win32';
+const run = (command, args, cwd = source, env = process.env) => (windows && command === 'npm'
+  ? execFileSync('npm.cmd', args, {cwd, env, stdio: 'inherit', shell: true})
+  : execFileSync(command, args, {cwd, env, stdio: 'inherit'}));
 const capture = (command, args) => execFileSync(command, args, {cwd: source, encoding: 'utf8'}).trim();
 const exists = async file => access(file).then(() => true, () => false);
 await mkdir(cache, {recursive: true});
@@ -26,10 +30,11 @@ const buildHash = createHash('sha256').update(await readFile(fileURLToPath(impor
 const completed = await readFile(path.join(destination, 'complete.json'), 'utf8').then(JSON.parse, () => null);
 if (completed?.buildHash !== buildHash) {
   const lock = await readFile(path.join(source, 'Cargo.lock'), 'utf8');
-  const version = lock.match(/name = "wasm-bindgen"\nversion = "([^"]+)"/)?.[1];
+  // A Windows checkout may convert the lockfile to CRLF line endings.
+  const version = lock.match(/name = "wasm-bindgen"\r?\nversion = "([^"]+)"/)?.[1];
   if (!version) throw new Error('Cannot determine card-glint wasm-bindgen version');
   const toolRoot = path.join(cache, 'tools', version);
-  const bindgen = path.join(toolRoot, 'bin/wasm-bindgen');
+  const bindgen = path.join(toolRoot, windows ? 'bin/wasm-bindgen.exe' : 'bin/wasm-bindgen');
   if (!await exists(bindgen)) run('cargo', ['install', 'wasm-bindgen-cli', '--version', version, '--locked', '--root', toolRoot]);
   run('npm', ['ci', '--no-audit', '--no-fund']);
   const env = {...process.env, PATH: `${path.join(toolRoot, 'bin')}${path.delimiter}${process.env.PATH}`};

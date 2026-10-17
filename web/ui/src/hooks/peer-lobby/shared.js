@@ -84,10 +84,12 @@ import {
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
+  parseDeckFoilNames,
   parseDeckPrintPreferences,
   parseSideboardList,
   saveDefaultLobbyDeck,
 } from "@/lib/decklists";
+import { setFoilCards } from "@/lib/foil-cards";
 import { setPreferredCardPrints } from "@/lib/scryfall";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDisadvantageousActivePlayerClockAdvance } from "@/lib/match-clock";
@@ -2147,6 +2149,10 @@ export function parseDeckSubmission(format, deckText, commanderText = "") {
   setPreferredCardPrints([
     ...parseDeckPrintPreferences(deckText),
     ...parseDeckPrintPreferences(commanderText),
+  ]);
+  setFoilCards([
+    ...parseDeckFoilNames(deckText),
+    ...parseDeckFoilNames(commanderText),
   ]);
   const status = evaluateLobbyDeckSubmission(format, deck, commanders);
   return {

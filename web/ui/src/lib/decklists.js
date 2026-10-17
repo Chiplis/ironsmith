@@ -18,18 +18,25 @@ const SET_COLLECTOR_SUFFIX =
 const SET_COLLECTOR_COMPACT_SUFFIX =
   /\s*\[(?<set>[a-z0-9]{2,8}):(?<collector>\d+[a-z]?\*?)\]\s*$/i;
 
+// Finish markers after a card name. The words need a space before them so the
+// cards "Foil" and "Lavinia, Foil to Conspiracy" keep their names; "$foil"
+// is the table's own foil marker and may sit anywhere on the line.
+const FINISH_SUFFIX = /(?:\s*(?:\*F\*|★)|\s+(?:foil|nonfoil|etched))\s*$/i;
+const FOIL_TAG = /\s*\$foil\b\s*/gi;
+
+function stripFinishMarkers(raw) {
+  return String(raw || "").replace(FOIL_TAG, " ").trim().replace(FINISH_SUFFIX, "");
+}
+
 function normalizeCardName(raw) {
-  return String(raw || "")
-    .replace(/\s*(?:\*F\*|foil|nonfoil|etched|★)\s*$/i, "")
+  return stripFinishMarkers(raw)
     .replace(/\s*(?:\([a-z0-9]{2,8}\)|\[[a-z0-9]{2,8}\])\s*\d*[a-z]?\*?\s*$/i, "")
     .replace(/\s*\[[a-z0-9]{2,8}:\d+[a-z]?\]\s*$/i, "")
     .trim();
 }
 
 function parseCardPrintPreference(raw) {
-  const source = String(raw || "")
-    .replace(/\s*(?:\*F\*|foil|nonfoil|etched|★)\s*$/i, "")
-    .trim();
+  const source = stripFinishMarkers(raw).trim();
   if (!source) return null;
 
   const compactMatch = source.match(SET_COLLECTOR_COMPACT_SUFFIX);
@@ -242,6 +249,36 @@ export function parseDeckPrintPreferences(text) {
   }
 
   return preferences;
+}
+
+// Card lines marked foil: "$foil" anywhere on the line, or the "*F*" / "★"
+// suffixes Moxfield and Arena exports write. A bare "foil" word is not a
+// marker, since cards like "Foil" carry it in their names. normalizeCardName
+// strips the markers, so the deck itself is unchanged.
+const FOIL_MARKER = /\$foil\b|\*F\*\s*$|★\s*$/i;
+
+export function parseDeckFoilNames(text) {
+  const names = [];
+
+  for (const line of String(text || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+    if (
+      MAIN_DECK_HEADER.test(trimmed)
+      || COMMANDER_HEADER.test(trimmed)
+      || EXTRA_DECK_HEADER.test(trimmed)
+    ) {
+      continue;
+    }
+
+    const match = trimmed.match(CARD_LINE);
+    const rawName = match ? match[2] : trimmed;
+    if (!FOIL_MARKER.test(rawName)) continue;
+    const name = normalizeCardName(rawName);
+    if (name) names.push(name);
+  }
+
+  return names;
 }
 
 export function parseSideboardList(text) {

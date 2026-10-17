@@ -99,8 +99,9 @@
   /* ---------------------------------------------------------------------
      Local player bar: the mirror of the opponent's top bar. One row along
      the bottom edge, in reading order: life, name, Lobby, Compile, Add card.
+     Shared by both battlefield appearances.
      --------------------------------------------------------------------- */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header {
     /* An inline-size container ignores its content when sizing itself; the
        bar has to measure its own row. Its container queries live elsewhere. */
     container-type: normal !important;
@@ -126,13 +127,13 @@
      would run into the hand: they move to a line of their own above life,
      name and Lobby. */
   @media (max-width: 1919px) {
-    .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header {
+    .table-shell[data-focused-hud="true"] .table-shared-player-header {
       max-width: 340px !important;
       padding-top: 4px !important;
     }
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header [data-my-zone-header-content] {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header [data-my-zone-header-content] {
     width: auto !important;
     min-width: 0 !important;
     flex: 0 0 auto !important;
@@ -141,14 +142,14 @@
     gap: 6px !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .player-identity-box {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .player-identity-box {
     flex: 0 0 auto;
     align-items: center;
     gap: 8px;
     padding-right: 4px;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .player-header-card-controls {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .player-header-card-controls {
     position: static !important;
     display: flex !important;
     flex: 0 0 auto !important;
@@ -160,7 +161,7 @@
   }
 
   /* Lobby keeps its slot as the anchor its chat grows up from. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .player-header-chat-dock {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .player-header-chat-dock {
     position: relative !important;
     width: 66px !important;
     min-width: 66px !important;
@@ -205,7 +206,7 @@
   }
 
   /* Compile and Add card share Lobby's height, radius, type and states. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .table-zone-action-button {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button {
     display: inline-flex !important;
     width: auto !important;
     min-width: 0 !important;
@@ -232,19 +233,19 @@
     transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .table-zone-action-button:is(:hover, :focus-visible) {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button:is(:hover, :focus-visible) {
     border-color: var(--fc-line-strong) !important;
     background: rgba(40, 30, 66, 0.82) !important;
     color: var(--fc-ink) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .table-zone-action-button:focus-visible {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button:focus-visible {
     outline: 2px solid var(--fc-violet-strong) !important;
     outline-offset: 2px !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .table-zone-action-button::before,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .table-shared-player-header .table-zone-action-button::after {
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button::before,
+  .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button::after {
     display: none !important;
   }
 
@@ -253,8 +254,15 @@
      edge of the battlefield. It slides in when the first object arrives,
      and each entry opens to its full rules text on hover or focus.
      --------------------------------------------------------------------- */
+  /* Both stack forms start after the mana rails. The card pile
+     (CardStackPile) sizes its own anchor through --card-stack-extent; only
+     the rail, still used while ordering triggers or replacements, is capped
+     here. */
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
     left: calc(var(--stack-frame-rail-left, 0px) + var(--fc-rail-gutter)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail:not([data-card-stack-anchor]) {
     width: max(0px, min(calc(var(--stack-frame-rail-width, 0px) - var(--fc-rail-gutter)), var(--fc-stack-max-w))) !important;
   }
 
@@ -337,34 +345,47 @@
      Actions: one dock, one height, one palette. The button rules below
      apply to both battlefield appearances; the dock frame is full-only.
      Primary (Resolve, Go to …, Keep hand, No attackers): filled violet.
-     Pass: outlined violet. Auto-pass (») : quiet icon button.
+     End turn: design-system.css's blue. Auto-pass (») : quiet icon button.
      --------------------------------------------------------------------- */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock:not(:has(.action-strip-decision-stack, .combat-decision-panel)) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not(:has(.action-strip-decision-stack, .combat-decision-panel)) {
     width: auto !important;
     min-width: 0 !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock:not(:has(.action-strip-decision-stack, .combat-decision-panel)) .battlefield-human-decision-dock {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not(:has(.action-strip-decision-stack, .combat-decision-panel)) .battlefield-human-decision-dock {
     display: flex !important;
     justify-content: flex-end !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-decision-panel:not(:has(.combat-decision-panel, .action-strip-decision-stack)) {
+  /* The bottom-right dock speaks the bottom-left navigation's language
+     (Lobby / Build): small corners, a muted violet line, a dark surface. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    --fc-radius: 3px;
+    --fc-line: rgba(154, 131, 197, 0.4);
+    --fc-line-strong: rgba(195, 161, 255, 0.7);
+    --fc-surface: rgba(19, 18, 33, 0.92);
+    --fc-dock-primary: linear-gradient(120deg, #7150ab, #39245f);
+    --fc-dock-accent: #c9acff;
+    --fc-dock-ink: #ece5fb;
+  }
+
+  /* Plain actions float like the navigation buttons, without a frame. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:not(:has(.combat-decision-panel, .action-strip-decision-stack)) {
     display: flex !important;
     width: auto !important;
     height: auto !important;
     min-height: 0 !important;
     align-items: center !important;
-    gap: 6px !important;
-    padding: 5px !important;
-    border: 1px solid var(--fc-line) !important;
-    border-radius: 12px !important;
-    background: var(--fc-surface) !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4) !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
     clip-path: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-decision-panel .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack)) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack)) {
     display: flex !important;
     width: auto !important;
     height: var(--fc-action-h) !important;
@@ -386,26 +407,29 @@
     margin: 0 !important;
     border-radius: var(--fc-radius) !important;
     clip-path: none !important;
-    font-size: 11.5px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     line-height: 1 !important;
-    letter-spacing: 0.07em !important;
+    letter-spacing: 0.12em !important;
     text-transform: uppercase !important;
     white-space: nowrap !important;
     transform: none !important;
     transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, filter 140ms ease !important;
   }
 
+  /* Primary actions take the Lobby button's face: a diagonal violet fill,
+     a light bar on the left edge and one rounded top-right corner. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
     width: auto !important;
     min-width: 150px !important;
     padding: 0 18px !important;
-    border: 1px solid rgba(214, 190, 255, 0.5) !important;
-    background: linear-gradient(180deg, var(--fc-violet-strong), var(--fc-violet-deep)) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 4px 14px rgba(110, 66, 190, 0.35) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
+    border: 1px solid #c3a1ff !important;
+    border-radius: 3px 13px 3px 3px !important;
+    background: var(--fc-dock-primary) !important;
+    box-shadow: inset 3px 0 0 var(--fc-dock-accent), 0 3px 16px rgba(0, 0, 0, 0.4) !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
+    text-shadow: 0 1px 1px rgba(20, 10, 40, 0.55) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button *:not(.priority-hold-window-fill) {
@@ -433,13 +457,13 @@
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .action-strip-main-text-stack :is(*, .action-strip-main-title-row, .action-strip-main-title-text) {
     justify-content: center !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    font-size: 11.5px !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
+    font-size: 13px !important;
     font-weight: 700 !important;
-    letter-spacing: 0.07em !important;
+    letter-spacing: 0.12em !important;
     text-align: center !important;
-    text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
+    text-shadow: 0 1px 1px rgba(20, 10, 40, 0.55) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack :is(*, .action-strip-main-title-text) {
@@ -454,18 +478,21 @@
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):hover {
-    filter: brightness(1.1) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 18px rgba(130, 80, 220, 0.5) !important;
+    filter: brightness(1.12) !important;
+    box-shadow: inset 3px 0 0 #e2d1ff, 0 4px 18px rgba(113, 80, 171, 0.45) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:not(:disabled):not([aria-disabled="true"]):active {
     filter: brightness(0.95) !important;
-    box-shadow: inset 0 2px 6px rgba(20, 8, 44, 0.55) !important;
+    box-shadow: inset 3px 0 0 var(--fc-dock-accent), inset 0 2px 6px rgba(20, 8, 44, 0.55) !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button:is(:disabled, [aria-disabled="true"]) {
-    border-color: var(--fc-line) !important;
-    background: rgba(40, 34, 58, 0.8) !important;
+  /* Unavailable actions settle into the Build button's quiet face. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button:is(:disabled, [aria-disabled="true"]) {
+    border-radius: 3px 13px 3px 3px !important;
+    border-color: rgba(154, 131, 197, 0.28) !important;
+    border-bottom: 2px solid rgba(169, 134, 221, 0.35) !important;
+    background: var(--fc-surface) !important;
     box-shadow: none !important;
     color: rgba(221, 211, 241, 0.45) !important;
     -webkit-text-fill-color: rgba(221, 211, 241, 0.45) !important;
@@ -473,24 +500,29 @@
   }
 
   /* The theme swaps the primary face to black with a yellow label on hover.
-     Repeated classes outrank those rules so every state stays violet/white. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]),
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, :active) {
-    border-color: rgba(214, 190, 255, 0.55) !important;
-    background: linear-gradient(180deg, var(--fc-violet-strong), var(--fc-violet-deep)) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
+     Repeated classes outrank those rules so every state keeps the Lobby face. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(.priority-hold-window):not(:disabled):not([aria-disabled="true"]),
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(.priority-hold-window):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible, :active) {
+    border-color: #c3a1ff !important;
+    border-radius: 3px 13px 3px 3px !important;
+    background: var(--fc-dock-primary) !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(.priority-hold-window):not(:disabled):not([aria-disabled="true"]):not(:hover):not(:focus-visible):not(:active) {
+    box-shadow: inset 3px 0 0 var(--fc-dock-accent), 0 3px 16px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button.decision-main-button.decision-main-button.decision-main-button:not(.priority-hold-window):not(:disabled):not([aria-disabled="true"]):is(:hover, :focus-visible) {
     filter: brightness(1.12) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 18px rgba(130, 80, 220, 0.5) !important;
+    box-shadow: inset 3px 0 0 #e2d1ff, 0 4px 18px rgba(113, 80, 171, 0.45) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-    text-shadow: 0 1px 1px rgba(30, 14, 60, 0.6) !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
+    text-shadow: 0 1px 1px rgba(20, 10, 40, 0.55) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-command-region .action-strip-main-region:has(.decision-main-button:is(:disabled, [aria-disabled="true"])) .action-strip-main-text-stack .action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text.action-strip-main-title-text {
@@ -504,80 +536,63 @@
     background: transparent !important;
   }
 
-  /* The hold window keeps its draining fill, in the dock's colours. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.decision-main-button,
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.decision-main-button:not(:disabled):is(:hover, :active) {
-    overflow: hidden !important;
-    border-color: rgba(214, 190, 255, 0.5) !important;
-    border-radius: var(--fc-radius) !important;
-    background: rgba(24, 19, 40, 0.96) !important;
-    box-shadow: none !important;
-    color: var(--fc-violet-strong) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-label {
-    color: var(--fc-violet-strong) !important;
-    -webkit-text-fill-color: var(--fc-violet-strong) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.decision-main-button .priority-hold-window-fill {
-    background: linear-gradient(180deg, var(--fc-violet-strong), var(--fc-violet-deep)) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
+  /* Hold Priority has its own dock-styled face further below. */
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
     display: flex !important;
     width: auto !important;
     height: var(--fc-action-h) !important;
     align-items: center !important;
-    gap: 6px !important;
+    gap: 8px !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-phase-pass {
+  /* Secondary actions (End turn, ») take the Build button's face: a dark
+     plate with a violet underline, shorter than the primary beside them. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass.decision-phase-pass,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.battlefield-auto-pass-toggle.battlefield-auto-pass-toggle {
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+    border: 1px solid var(--fc-line) !important;
+    border-bottom: 2px solid #a986dd !important;
+    border-radius: 3px !important;
+    background: var(--fc-surface) !important;
+    box-shadow: none !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass.decision-phase-pass {
     width: auto !important;
     min-width: 76px !important;
-    padding: 0 16px !important;
-    border: 1px solid rgba(196, 160, 255, 0.78) !important;
-    background: rgba(120, 82, 196, 0.32) !important;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-    color: #f4edff !important;
-    -webkit-text-fill-color: #f4edff !important;
+    padding: 0 15px !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-phase-pass:not(:disabled):hover {
-    border-color: #d2b6ff !important;
-    background: rgba(140, 98, 220, 0.5) !important;
-    color: #fff !important;
-    -webkit-text-fill-color: #fff !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass[aria-pressed="true"] {
-    border-color: var(--fc-violet-strong) !important;
-    background: rgba(157, 114, 230, 0.32) !important;
-    box-shadow: inset 0 0 0 1px rgba(214, 190, 255, 0.35) !important;
-  }
-
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle {
-    width: var(--fc-action-h) !important;
-    min-width: var(--fc-action-h) !important;
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.battlefield-auto-pass-toggle.battlefield-auto-pass-toggle {
+    width: 34px !important;
+    min-width: 34px !important;
     padding: 0 !important;
-    border: 1px solid rgba(196, 170, 245, 0.5) !important;
-    background: rgba(120, 82, 196, 0.18) !important;
-    box-shadow: none !important;
-    color: #e9e0ff !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle:hover {
-    border-color: #d2b6ff !important;
-    background: rgba(140, 98, 220, 0.4) !important;
-    color: #fff !important;
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button:is(.decision-phase-pass.decision-phase-pass, .battlefield-auto-pass-toggle.battlefield-auto-pass-toggle):not(:disabled):hover {
+    border-color: var(--fc-line-strong) !important;
+    border-bottom-color: var(--fc-dock-accent) !important;
+    background: rgba(40, 33, 66, 0.95) !important;
   }
 
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-auto-pass-toggle[data-enabled="true"] {
-    border-color: var(--fc-violet-strong) !important;
-    background: rgba(157, 114, 230, 0.28) !important;
-    color: #fff !important;
+  /* Pressed (End turn passing phases) or enabled (» auto-pass): a violet
+     plate. The safe/all auto-resolve glows of design-system.css stay on top. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.decision-phase-pass.decision-phase-pass[aria-pressed="true"],
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.battlefield-auto-pass-toggle.battlefield-auto-pass-toggle[data-enabled="true"] {
+    border-color: #c3a1ff !important;
+    border-bottom-color: var(--fc-dock-accent) !important;
+    background: linear-gradient(120deg, rgba(113, 80, 171, 0.7), rgba(57, 36, 95, 0.85)) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls button.battlefield-auto-pass-toggle.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
+    border-color: var(--resolve-glow) !important;
+    box-shadow: 0 0 7px var(--resolve-glow), inset 0 0 3px var(--resolve-glow) !important;
+    color: var(--resolve-glow) !important;
   }
 
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle):focus-visible {
@@ -585,39 +600,87 @@
     outline-offset: 2px !important;
   }
 
+  /* Decision panels (targets, choices, payments) share the dock's plate:
+     small corners, a muted border and the violet underline. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel.battlefield-human-decision-panel.battlefield-human-decision-panel:has(.action-strip-decision-stack) {
+    border: 1px solid var(--fc-line) !important;
+    border-bottom: 2px solid #a986dd !important;
+    border-radius: var(--fc-radius) !important;
+    background: var(--fc-surface) !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  /* Cancel is a secondary plate with a red accent instead of violet. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.decision-cancel-button.decision-cancel-button.decision-cancel-button.decision-cancel-button {
+    border: 1px solid rgba(222, 128, 128, 0.36) !important;
+    border-bottom: 2px solid #d97a86 !important;
+    border-radius: 3px !important;
+    background: var(--fc-surface) !important;
+    box-shadow: none !important;
+    color: #f3d6da !important;
+    -webkit-text-fill-color: #f3d6da !important;
+    letter-spacing: 0.12em !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.decision-cancel-button.decision-cancel-button.decision-cancel-button.decision-cancel-button:hover {
+    background: rgba(64, 30, 40, 0.9) !important;
+  }
+
+  /* Options are quiet plates; the chosen one takes the Lobby button's
+     left bar and a violet tint. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.decision-option-row.decision-option-row.decision-option-row.decision-option-row {
+    border: 1px solid rgba(154, 131, 197, 0.26) !important;
+    border-radius: 3px !important;
+    background: rgba(28, 25, 46, 0.72) !important;
+    box-shadow: none !important;
+    color: var(--fc-dock-ink) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.decision-option-row.decision-option-row.decision-option-row.decision-option-row:not(:disabled):hover {
+    border-color: var(--fc-line-strong) !important;
+    background: rgba(48, 38, 78, 0.85) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.decision-option-row.decision-option-row.decision-option-row.decision-option-row:is([aria-pressed="true"], [aria-selected="true"], [data-selected="true"]) {
+    border-color: #c3a1ff !important;
+    background: linear-gradient(120deg, rgba(113, 80, 171, 0.55), rgba(57, 36, 95, 0.7)) !important;
+    box-shadow: inset 3px 0 0 var(--fc-dock-accent) !important;
+  }
+
   /* Decisions with a list (targets, choices) may grow taller so every
      option shows without scrolling when the table has room; TableCore's
      --dock-max-height still keeps the dock clear of anything above it. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel:has(.action-strip-decision-stack[data-details-expanded="true"]) {
     max-height: var(--dock-max-height, calc(100vh - 64px)) !important;
   }
 
   /* The decision title already names it ("Choose targets"); the stage chip
      beside it only repeats that. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-action-dock .action-strip-decision-stack .decision-stage-chip {
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-decision-stack .decision-stage-chip {
     display: none !important;
   }
 
   /* Combat prompt: the phase track already names the step (Attackers,
      Blockers), so the panel keeps only its instruction and its actions. */
   /* One frame: the dock panel draws it, the combat panel inside is bare. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-decision-panel:has(.combat-decision-panel) {
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.combat-decision-panel) {
     padding: 10px !important;
     border: 1px solid var(--fc-line) !important;
-    border-radius: 12px !important;
+    border-bottom: 2px solid #a986dd !important;
+    border-radius: var(--fc-radius) !important;
     background: var(--fc-surface) !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4) !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.4) !important;
     clip-path: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-decision-panel:has(.combat-decision-panel)::before,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .battlefield-human-decision-panel:has(.combat-decision-panel)::after,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel::before,
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel::after {
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.combat-decision-panel)::before,
+  .table-shell[data-focused-hud="true"] .battlefield-human-decision-panel:has(.combat-decision-panel)::after,
+  .table-shell[data-focused-hud="true"] .combat-decision-panel::before,
+  .table-shell[data-focused-hud="true"] .combat-decision-panel::after {
     display: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel {
     width: 100% !important;
     padding: 0 !important;
     border: 0 !important;
@@ -627,7 +690,7 @@
     clip-path: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-toolbar {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-toolbar {
     display: flex !important;
     flex-direction: column !important;
     gap: 10px !important;
@@ -636,7 +699,7 @@
     background: transparent !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-heading {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-heading {
     display: flex !important;
     min-height: 28px !important;
     align-items: center !important;
@@ -646,12 +709,12 @@
     border: 0 !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-meta {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-meta {
     min-width: 0 !important;
     align-items: center !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-minimize {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-minimize {
     display: grid !important;
     width: 28px !important;
     height: 28px !important;
@@ -660,12 +723,12 @@
     margin: 0 !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-minimize:hover {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-minimize:hover {
     border-color: var(--fc-line-strong) !important;
     color: var(--fc-ink) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-actions {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-actions {
     display: flex !important;
     align-items: center !important;
     gap: 6px !important;
@@ -674,32 +737,353 @@
 
   /* The main action takes the row's slack, so its right edge, Pass and »
      line up with the collapse button above. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-actions .decision-main-button {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-actions .decision-main-button {
     flex: 1 1 auto !important;
     min-width: 150px !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel :is(.decision-stage-chip, .action-strip-decision-inline-summary) {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel :is(.decision-stage-chip, .action-strip-decision-inline-summary) {
     display: none !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .action-strip-decision-title {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .action-strip-decision-title {
     color: var(--fc-ink) !important;
     font-size: 11.5px !important;
     letter-spacing: 0.1em !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel .combat-decision-minimize {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel .combat-decision-minimize {
     border: 1px solid var(--fc-line) !important;
     border-radius: var(--fc-radius) !important;
     background: transparent !important;
     color: var(--fc-ink-muted) !important;
   }
 
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .combat-decision-panel :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle) {
+  .table-shell[data-focused-hud="true"] .combat-decision-panel :is(.decision-main-button, .decision-phase-pass, .battlefield-auto-pass-toggle) {
     height: var(--fc-action-h) !important;
     min-height: var(--fc-action-h) !important;
     max-height: var(--fc-action-h) !important;
+  }
+
+  /* The local mana pool is a left rail mirroring the opponent's: same edge,
+     a column of chips, centred as far from the bottom as theirs is from the
+     top. FullCardsManaRail renders it outside the action dock, whose
+     translate/scale animations would carry a fixed child along with them;
+     the dock's own copy is hidden. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-mana-dock {
+    display: none !important;
+  }
+
+  .fc-local-mana-rail {
+    position: fixed;
+    left: 3px;
+    bottom: 167px;
+    z-index: 150;
+    display: flex;
+    width: 38px;
+    justify-content: center;
+    padding: 4px 2px;
+    transform: translateY(50%);
+    pointer-events: auto;
+  }
+
+  .fc-local-mana-rail .mana-pool-inline {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 4px;
+    width: 34px;
+    margin: 0;
+  }
+
+  /* Bare symbols, like the opponent's rail: no plate, border or shadow. */
+  .fc-local-mana-rail .mana-pool-chip {
+    position: relative;
+    flex: 0 0 auto;
+    justify-content: center;
+    gap: 0;
+    padding: 2px;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .fc-local-mana-rail .mana-pool-chip[data-mana-active="false"] {
+    opacity: 0.4;
+  }
+
+  /* The count rides the symbol's corner, as in the dock's own pool. */
+  .fc-local-mana-rail .mana-pool-chip > span:last-child {
+    position: absolute;
+    right: -2px;
+    bottom: -1px;
+    z-index: 1;
+    min-width: 15px;
+    padding: 2px 3px;
+    border-radius: 3px;
+    background: #171321;
+    box-shadow: 0 0 0 1px #a889d355;
+    color: #f2eaff;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .fc-local-mana-rail .mana-pool-chip[data-mana-active="false"] > span:last-child {
+    display: none;
+  }
+
+  /* While » auto-resolves (white "safe" or gold "all" glow), tiny motes of
+     that glow drift up from it and fade, like an aura. Two layers of uneven
+     dots on different, unsynced cycles keep the rise from looking regular. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"]) {
+    overflow: visible !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
+    content: "";
+    position: absolute;
+    left: -7px;
+    right: -7px;
+    bottom: 35%;
+    height: 44px;
+    pointer-events: none;
+    background-repeat: no-repeat;
+    opacity: 0;
+    filter: drop-shadow(0 0 2px var(--resolve-glow));
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::before {
+    background-image:
+      radial-gradient(circle, var(--resolve-glow) 0 1.2px, transparent 2px),
+      radial-gradient(circle, var(--resolve-glow) 0 0.9px, transparent 1.6px),
+      radial-gradient(circle, var(--resolve-glow) 0 1.5px, transparent 2.3px),
+      radial-gradient(circle, var(--resolve-glow) 0 0.7px, transparent 1.3px);
+    background-size: 5px 5px, 4px 4px, 5px 5px, 3px 3px;
+    background-position: 18% 88%, 47% 70%, 71% 94%, 90% 78%;
+    animation: fc-aura-rise 2.9s ease-out infinite;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle[data-enabled="true"]:is([data-resolve-mode="safe"], [data-resolve-mode="all"])::after {
+    background-image:
+      radial-gradient(circle, var(--resolve-glow) 0 0.9px, transparent 1.6px),
+      radial-gradient(circle, var(--resolve-glow) 0 1.3px, transparent 2.1px),
+      radial-gradient(circle, var(--resolve-glow) 0 0.7px, transparent 1.3px);
+    background-size: 4px 4px, 5px 5px, 3px 3px;
+    background-position: 30% 92%, 60% 84%, 8% 74%;
+    animation: fc-aura-rise 3.8s ease-out -1.6s infinite;
+  }
+
+  @keyframes fc-aura-rise {
+    0% { opacity: 0; transform: translate(0, 6px); }
+    20% { opacity: 0.95; }
+    70% { opacity: 0.5; }
+    100% { opacity: 0; transform: translate(2px, -18px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle::before,
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.battlefield-auto-pass-toggle::after {
+      animation: none !important;
+      opacity: 0 !important;
+    }
+  }
+
+  /* Life, name and counts sit directly on the arena art, like the rest of
+     the HUD, instead of on a black plate. */
+  .table-shell[data-focused-hud="true"] .player-identity-box {
+    background: transparent !important;
+  }
+
+  /* Hold Priority speaks the dock's language: a dark Build plate whose
+     Lobby-violet face drains away as the window closes, instead of
+     priority-stops.css's black and yellow. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.priority-hold-window.decision-main-button,
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.priority-hold-window.decision-main-button:not(:disabled),
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock button.priority-hold-window.priority-hold-window.decision-main-button:not(:disabled):is(:hover, :active) {
+    border: 1px solid var(--fc-line) !important;
+    border-bottom: 2px solid #a986dd !important;
+    border-radius: 3px 13px 3px 3px !important;
+    background: var(--fc-surface) !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.4) !important;
+    color: var(--fc-dock-ink) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.priority-hold-window.decision-main-button .priority-hold-window-label {
+    color: var(--fc-dock-accent) !important;
+    -webkit-text-fill-color: var(--fc-dock-accent) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-hold-window.priority-hold-window.decision-main-button .priority-hold-window-fill {
+    background: var(--fc-dock-primary) !important;
+    box-shadow: inset 3px 0 0 var(--fc-dock-accent) !important;
+    color: var(--fc-dock-ink) !important;
+    -webkit-text-fill-color: var(--fc-dock-ink) !important;
+  }
+
+  /* The plain action row lines up with the bottom-left navigation and sits
+     centred between the hand and the screen edge; dock-placement.js measures
+     both and publishes the position, which outranks the dock's own inset. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock[data-fc-placed] {
+    top: var(--fc-dock-top) !important;
+    left: var(--fc-dock-left) !important;
+    right: auto !important;
+    bottom: auto !important;
+    max-width: var(--fc-dock-max-width) !important;
+  }
+
+  /* Menu, brand and links sit in the top-right corner, on the opponent's
+     header strip above their piles, instead of under the local player. */
+  .table-shell[data-focused-hud="true"] .navigation-utility-controls,
+  html[data-full-cards] .navigation-utility-controls {
+    position: fixed !important;
+    top: 6px !important;
+    right: 10px !important;
+    left: auto !important;
+    bottom: auto !important;
+    z-index: 230 !important;
+    width: auto !important;
+    margin: 0 !important;
+  }
+}
+
+/* Action sizing. play-workspace.css pins every primary action to 190px from
+   its decision-stability layer, where !important outranks any unlayered rule.
+   This layer is declared earlier (this file is imported first), so its
+   !important rules win over that one. The 190px footprint stays the
+   preferred width, so the dock does not jump between phases, but the button
+   gives way (down to 100px, wrapping its label) when End turn and » share
+   the dock's capped width, and a button sharing a row (Pay, Submit) takes
+   that row's room instead of overflowing it. */
+@layer fc-dock-sizing {
+  @media (min-width: 1024px) {
+    /* Phase changes resize the dock. Its own animation scales it unevenly
+       (squashing the labels) while dock-placement.js moves it, so the two
+       fought and the dock zigzagged; here it keeps its shape and glides to
+       its new place instead. In this layer so it also outranks
+       decision-stability's transition: none. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+      translate: none !important;
+      scale: none !important;
+      transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region {
+      width: 190px !important;
+      min-width: 100px !important;
+      max-width: 300px !important;
+      flex: 0 1 auto !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
+      width: 190px !important;
+      min-width: 100px !important;
+      max-width: 300px !important;
+      flex: 0 1 auto !important;
+    }
+
+    /* A label that wraps to a third line ("Skipping Begin Combat" beside
+       End turn) grows its button instead of losing that line. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.decision-main-button, .action-strip-main-region) {
+      height: auto !important;
+      min-height: 40px !important;
+      max-height: none !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region .decision-main-button {
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    /* Every level between the dock and the row passes the dock's capped
+       width down, so the main action shrinks instead of overflowing. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.battlefield-human-decision-dock, .battlefield-human-decision-panel, .battlefield-human-decision-panel > div) {
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      text-wrap: balance;
+    }
+
+    /* The plain action row (main action, End turn, ») is a row that grows
+       with its buttons: its grid tracks could shrink to nothing and let the
+       main action slide under the quick controls. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      justify-content: flex-end !important;
+      gap: 8px !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      /* The » aura rises above the row. */
+      overflow: visible !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) :is(.action-strip-layout, .action-strip-command-region) {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      flex: 0 1 auto !important;
+    }
+
+    /* A command region never shrinks below the button it holds, or the
+       button would spill onto its neighbour. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) .action-strip-command-region {
+      min-width: 100px !important;
+    }
+
+    /* Paired actions (Resolve / Resolve all, Keep hand / Mulligan) stay on
+       one line and share it, rather than dropping the second below. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) .action-strip-layout {
+      display: flex !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      gap: 8px !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
+      flex: 0 0 auto !important;
+    }
+
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.mana-payment-submit-row, .action-strip-submit-row, .combat-decision-actions) :is(.decision-main-button, .action-strip-main-region) {
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 1 0 !important;
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  /* Cancel keeps its own width; Pay (and » when present) share the rest. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row:has(.decision-quick-controls) {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+  }
+
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-submit-row button.decision-cancel-button.decision-cancel-button.decision-cancel-button.decision-cancel-button {
+    width: auto !important;
+    padding: 0 14px !important;
+  }
+
+  /* The payment editor sits on the dock's plate like every other panel. */
+  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .mana-payment-editor.mana-payment-editor {
+    border: 1px solid var(--fc-line) !important;
+    border-bottom: 2px solid #a986dd !important;
+    border-radius: var(--fc-radius) !important;
+    background: var(--fc-surface) !important;
+    box-shadow: 0 3px 16px rgba(0, 0, 0, 0.4) !important;
   }
 }
 
