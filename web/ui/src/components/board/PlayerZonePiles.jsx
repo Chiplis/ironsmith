@@ -312,7 +312,9 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   };
 
   return (
-    <Popover open={open} onOpenChange={changeOpen}>
+    // While the decision panel offers the choice as cards, a pile does not
+    // open a second strip of them beside it.
+    <Popover open={open && !choiceInPanel} onOpenChange={changeOpen}>
       {/* The slot carries its transitions inline, so the growth a legal target
           brings has to be listed here too or the stylesheet's is overridden. */}
       <div className="zone-pile-slot" style={{
