@@ -53,3 +53,10 @@ test("choices answer to either id shape and ignore missing ids", () => {
   const chosen = [12];
   assert.equal(selectionAfterChoice(chosen, { objectId: null, mode: "add" }), chosen);
 });
+
+test("a single choice swaps to the newly picked object", () => {
+  assert.deepEqual(selectionAfterChoice([12], { objectId: 15, max: 1 }), [15]);
+  assert.deepEqual(selectionAfterChoice([12], { objectId: 15, mode: "add", max: 1 }), [15]);
+  assert.deepEqual(selectionAfterChoice([12], { objectId: 12, max: 1 }), []);
+  assert.deepEqual(selectionAfterChoice([12], { objectId: 15, mode: "remove", max: 1 }), [12]);
+});

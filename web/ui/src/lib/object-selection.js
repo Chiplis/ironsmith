@@ -30,6 +30,9 @@ export function selectionAfterChoice(
   }
   if (mode === "remove") return current;
   const limit = Number(max);
+  // Choosing one object: a new choice replaces the old, so changing your
+  // mind takes one click instead of clearing the first choice.
+  if (limit === 1 && current.length >= 1) return [objectId];
   if (Number.isFinite(limit) && current.length >= Math.max(0, limit)) return current;
   return [...current, objectId];
 }

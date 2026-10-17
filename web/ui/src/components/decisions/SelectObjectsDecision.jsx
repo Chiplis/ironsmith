@@ -1,4 +1,5 @@
 import useUiText from "@/i18n/useUiText";
+import { useHandHoverObjectId } from "@/lib/hand-hover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
@@ -76,6 +77,16 @@ export default function SelectObjectsDecision({
   const focusedToHover = hoveredObjectId != null
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
   const showHeader = !stripLayout;
+  // The hand card under the pointer shades its row, as hovering the row
+  // previews the card.
+  const handHoverObjectId = useHandHoverObjectId();
+  const rowsRef = useRef(null);
+  useEffect(() => {
+    if (handHoverObjectId == null) return;
+    rowsRef.current
+      ?.querySelector(`[data-candidate-id="${CSS.escape(handHoverObjectId)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [handHoverObjectId]);
 
   const chooseObject = useCallback((id, mode = "toggle") => {
     applyChoice?.({ objectId: id, mode, max });
@@ -189,14 +200,14 @@ export default function SelectObjectsDecision({
           )}
           style={stripLayout ? undefined : { maxHeight: `${optionsMaxHeight}px` }}
         >
-          <div className={cn(
+          <div ref={rowsRef} className={cn(
             stripLayout
               ? "decision-strip-options-row decision-strip-options-row--vertical-objects flex w-full min-w-full flex-col items-stretch gap-1 py-0.5 pr-1"
               : "w-full divide-y divide-[rgba(128,107,78,0.28)]"
           )}>
             {visibleCandidates.map((c) => {
               const isSelected = isObjectChosen(selected, c.id);
-              const isUnavailable = !isSelected && selected.length >= max;
+              const isUnavailable = !isSelected && max !== 1 && selected.length >= max;
               const isDisabled = !canAct || !c.legal || isUnavailable;
               const controllerId = c?.object_controller != null
                 ? Number(c.object_controller)
@@ -210,6 +221,7 @@ export default function SelectObjectsDecision({
               return (
                 <Button
                   key={c.id}
+                  data-candidate-id={String(c.id)}
                   aria-pressed={isSelected}
                   variant="ghost"
                   size="sm"
@@ -219,6 +231,7 @@ export default function SelectObjectsDecision({
                       : "decision-option-row decision-option-row--panel h-8 w-full min-w-0 justify-start px-2.5 text-[13px]",
                     stripLayout && isSelected && STRIP_ITEM_ACTIVE_CLASS,
                     !stripLayout && isSelected && "is-selected",
+                    !isDisabled && String(c.id) === handHoverObjectId && "is-highlighted",
                     isDisabled
                       && (stripLayout
                         ? STRIP_ITEM_DISABLED_CLASS

@@ -21,6 +21,7 @@ import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
 import { samePlayerId } from "@/lib/player-display";
 import { requestObjectSelection } from "@/lib/object-selection";
+import { setHandHoverObjectId } from "@/lib/hand-hover";
 import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
 import {
   HAND_KEYBOARD_CAST_EVENT,
@@ -904,6 +905,11 @@ export default function HandZone({
         || interactionObjectId
         || pinnedHandObjectId
         || selectedObjectIdKey;
+  // Decision panels shade the row of the hand card under the pointer.
+  useEffect(() => {
+    setHandHoverObjectId(activeFanObjectId);
+  }, [activeFanObjectId]);
+  useEffect(() => () => setHandHoverObjectId(null), []);
   const activeFanIndex = useMemo(() => {
     if (!activeFanObjectId) return null;
     const handIndex = handCards.findIndex((card) => String(card.id) === activeFanObjectId);
