@@ -2359,7 +2359,7 @@ export default function HoverArtOverlay({
           loyalty: liveCard.loyalty ?? face.loyalty, defense: liveCard.defense ?? face.defense} : face);
     }
     return <div className="absolute inset-0 z-30 pointer-events-auto" data-zone-transition-token={transientPreview?.token || undefined}>
-      <CardFramePresentation card={frameCard} imageUrl={imageUrl} faceIndex={faceIndex}
+      <CardFramePresentation card={frameCard} imageUrl={imageUrl} faceIndex={faceIndex} inspector
         rulesView={isMiniatureFrame ? null : rulesView} onActivate={onInteractiveAction}
         highlighted={highlightedRuleLineIndices} stats={displayStatsText} counters={displayCountersLine}
         zone={displayZoneLine} badges={displayTypeLineBadges} onReadyChange={onCardFrameReadyChange}/>

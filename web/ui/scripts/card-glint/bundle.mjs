@@ -39,7 +39,8 @@ const result = await build({
   },
 });
 const presentation = [result].flat().flatMap(bundle => bundle.output).find(chunk => chunk.type === 'chunk' && chunk.name === 'magic-presentation');
-for (const name of ['loadCanvasImages','composeCardTexture','ordinaryTextLayout','retroTextLayout','planeswalkerRuleRows','sagaRuleLayout','faceFrame','hasExtraRules','isRetro','rulesFont']) {
+for (const name of ['loadCanvasImages','composeCardTexture','ordinaryTextLayout','retroTextLayout','planeswalkerRuleRows','sagaRuleLayout','faceFrame','hasExtraRules','isRetro','rulesFont',
+  'faceRects','printingStyles','printingStyleOptions','resolvePrintingStyle']) {
   if (!presentation?.exports.includes(name)) throw new Error(`card-glint no longer exports required API: ${name}`);
 }
 for (const name of ['renderer','pixels']) await cp(`packages/browser/generated/${name}_bg.wasm`,`dist/lib/${name}_bg.wasm`);

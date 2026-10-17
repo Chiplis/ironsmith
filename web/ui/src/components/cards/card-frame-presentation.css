@@ -83,3 +83,21 @@
 .simple-card-frame[data-frame-mode=baked]>.simple-card-frame__art{background:var(--card-frame-edge)}
 .simple-card-frame[data-frame-mode=baked]>.simple-card-frame__rules{padding-bottom:6cqw}
 .simple-card-frame[data-frame-mode=baked]>.simple-card-frame__footer{position:absolute;bottom:2%;left:7%;right:7%}
+
+/* Build's live card-glint preview: host-owned tilt over renderer-owned pixels. */
+.card-glint-live{position:relative;width:100%;height:100%;min-height:0;display:grid;place-items:center;container-type:size;perspective:1000px}
+.card-glint-live__tilt{position:relative;width:min(100cqw,71.765cqh);aspect-ratio:732/1020;border-radius:4.15%/2.98%;transform:rotateX(var(--card-glint-tilt-x,0rad)) rotateY(var(--card-glint-tilt-y,0rad));transition:transform .18s ease-out;touch-action:pan-y}
+.card-glint-live__canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+.card-glint-live__canvas[hidden]{display:none}
+.card-glint-live[data-card-glint-live=pending] .card-glint-live__tilt{visibility:hidden}
+.card-glint-live[data-card-glint-rendering=true] .card-glint-live__tilt::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(105deg,transparent 35%,#ffffff24 50%,transparent 65%);background-size:250% 100%;animation:mse-stand-in-sheen 1.6s ease-in-out infinite}
+.card-glint-live__target{position:absolute;z-index:1;padding:0;border:0;border-radius:2px;background:transparent;cursor:pointer}
+.card-glint-live__target:hover{background:#f6d48a33;box-shadow:0 0 0 1px #f6d48a99}
+.card-glint-live__target:focus-visible{outline:2px solid #73c8ff;outline-offset:1px}
+.card-glint-live__message{position:absolute;inset:0;display:grid;place-items:center;padding:16px;text-align:center;font:12px/1.4 system-ui,sans-serif;color:#cdb991}
+@media (prefers-reduced-motion:reduce){
+  .card-glint-live__tilt{transform:none;transition:none}
+  .card-glint-live[data-card-glint-rendering=true] .card-glint-live__tilt::after{animation:none}
+}
+.card-glint-surface>canvas.card-glint-surface__live{position:absolute;inset:0;pointer-events:none}
