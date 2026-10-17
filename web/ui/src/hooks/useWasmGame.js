@@ -4,6 +4,7 @@ import { beginEngineRequest, endEngineRequest, recordWorkerTaskDiagnostics,
 import { beginJournalEntry, completeJournalEntry, failJournalEntry, recordWorkerInit } from '../lib/engine-journal.js';
 import { useLayoutEffect, useState } from "react";
 import { isGameRead } from '../lib/game-methods.js';
+import { clearCardPresentations } from '../lib/card-glint/printing-choices.mjs';
 import { installEmbeddedCardCatalog } from '../lib/embedded-card-catalog.js';
 import { attachRuntimeBranches } from '../lib/runtime-branches.js';
 
@@ -105,6 +106,8 @@ const WORKER_METHODS = [
   "ziffleRevealCards",
   "ziffleVerifyShuffle",
 ];
+
+const MATCH_STARTS = new Set(['reset', 'resetEmpty', 'startMatch', 'loadDecks']);
 
 const ZIFFLE_WORKER_METHODS = new Set([
   "ziffleBuildRevealToken",
@@ -233,6 +236,8 @@ export function useWasmGame() {
         }
         const id = nextRequestId++;
         if (method === 'restoreExactBuildSnapshot') gameProxy.runtimeGeneration++;
+        // A new match restarts object IDs, ending per-card printing choices.
+        if (runtimeBranch == null && MATCH_STARTS.has(method)) clearCardPresentations();
         const mutation = runtimeBranch == null && !isGameRead(method);
         if (mutation) { viewVersion++; pendingMutations++; }
         const version = viewVersion;

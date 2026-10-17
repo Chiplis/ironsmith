@@ -1,6 +1,7 @@
 import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
 import { registerCustomCardFlavor } from "@/lib/custom-card-flavor";
 import { setCompiledCardNames, setCustomCardArtUrls } from "@/lib/scryfall";
+import { setCardPresentation, snapshotStableIds } from "@/lib/card-glint/printing-choices.mjs";
 import useUiText from "@/i18n/useUiText";
 import { useState, useCallback, useEffect, useRef, useId } from "react";
 import { useGame } from "@/context/GameContext";
@@ -196,7 +197,12 @@ export default function AddCardSheet({
       }
       try {
         if (custom) {
-          await game.createCustomCard({ draft: custom.draft, playerIndex: selectedPlayer, zoneName: zone, skipTriggers });
+          const existing = snapshotStableIds(state);
+          const objectId = await game.createCustomCard({ draft: custom.draft, playerIndex: selectedPlayer, zoneName: zone, skipTriggers });
+          if (custom.draft.presentation) {
+            const names = custom.draft.faces.map(face => face.name);
+            setCardPresentation(objectId, [names.join(" // "), ...names], custom.draft.presentation, { existing });
+          }
           registerCustomCardFlavor([custom]);
           setCustomCardArtUrls(custom.draft.faces.filter(face => face.artUrl).map(face => ({ name: face.name, artUrl: face.artUrl })));
           setCompiledCardNames(custom.draft.faces.map(face => face.name));
@@ -243,6 +249,7 @@ export default function AddCardSheet({
     onAddCardNotice,
     refresh,
     runWasmInteraction,
+    state,
     selectedPlayer,
     setStatus,
     skipTriggers,

@@ -37,7 +37,7 @@
     "test:forge-board": "node --test tests/forge-board-layout.test.js tests/forge-scenery.test.js tests/player-board-lights.test.js tests/compact-land-layout.test.js tests/battlefield-token-shape.browser.test.js tests/forge-board.browser.test.js",
     "test:startup": "node --test tests/default-startup.browser.test.js",
     "assets:card-glint": "node ./scripts/card-glint/sync.mjs",
-    "test:card-glint": "node --test tests/card-glint.test.mjs tests/card-glint-preparation.test.mjs tests/card-glint.browser.test.mjs"
+    "test:card-glint": "node --test tests/card-glint.test.mjs tests/card-glint-preparation.test.mjs tests/card-glint.browser.test.mjs tests/card-glint-build.browser.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
