@@ -916,16 +916,6 @@
     -webkit-text-fill-color: var(--fc-dock-ink) !important;
   }
 
-  /* Phase changes resize the dock. Its own animation scales it unevenly
-     (squashing the labels) while dock-placement.js moves it, so the two
-     fought and the dock zigzagged; here it keeps its shape and glides to its
-     new place instead. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
-    translate: none !important;
-    scale: none !important;
-    transition: left 220ms var(--fc-ease), top 220ms var(--fc-ease) !important;
-  }
-
   /* The plain action row lines up with the bottom-left navigation and sits
      centred between the hand and the screen edge; dock-placement.js measures
      both and publishes the position, which outranks the dock's own inset. */
@@ -957,21 +947,32 @@
    This layer is declared earlier (this file is imported first), so its
    !important rules win over that one. The 190px footprint stays the
    preferred width, so the dock does not jump between phases, but the button
-   gives way (down to 110px, wrapping its label) when End turn and » share
+   gives way (down to 100px, wrapping its label) when End turn and » share
    the dock's capped width, and a button sharing a row (Pay, Submit) takes
    that row's room instead of overflowing it. */
 @layer fc-dock-sizing {
   @media (min-width: 1024px) {
+    /* Phase changes resize the dock. Its own animation scales it unevenly
+       (squashing the labels) while dock-placement.js moves it, so the two
+       fought and the dock zigzagged; here it keeps its shape and glides to
+       its new place instead. In this layer so it also outranks
+       decision-stability's transition: none. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+      translate: none !important;
+      scale: none !important;
+      transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+    }
+
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region {
       width: 190px !important;
-      min-width: 110px !important;
+      min-width: 100px !important;
       max-width: 300px !important;
       flex: 0 1 auto !important;
     }
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-main-button {
       width: 190px !important;
-      min-width: 110px !important;
+      min-width: 100px !important;
       max-width: 300px !important;
       flex: 0 1 auto !important;
     }
@@ -1024,6 +1025,21 @@
       min-width: 0 !important;
       max-width: 100% !important;
       flex: 0 1 auto !important;
+    }
+
+    /* A command region never shrinks below the button it holds, or the
+       button would spill onto its neighbour. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) .action-strip-command-region {
+      min-width: 100px !important;
+    }
+
+    /* Paired actions (Resolve / Resolve all, Keep hand / Mulligan) stay on
+       one line and share it, rather than dropping the second below. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) .action-strip-layout {
+      display: flex !important;
+      flex-wrap: nowrap !important;
+      align-items: center !important;
+      gap: 8px !important;
     }
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .decision-quick-controls {
