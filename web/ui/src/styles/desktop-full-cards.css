@@ -24,7 +24,6 @@
     /* Left column shared by both mana rails; the stack starts after it. */
     --fc-rail-w: 38px;
     --fc-rail-gutter: 48px;
-    --fc-stack-max-w: 340px;
   }
 
   /* ---------------------------------------------------------------------
@@ -247,82 +246,6 @@
   .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button::before,
   .table-shell[data-focused-hud="true"] .table-shared-player-header .table-zone-action-button::after {
     display: none !important;
-  }
-
-  /* ---------------------------------------------------------------------
-     Stack: a bounded column after the mana rails, never the whole free
-     edge of the battlefield. It slides in when the first object arrives,
-     and each entry opens to its full rules text on hover or focus.
-     --------------------------------------------------------------------- */
-  /* Both stack forms start after the mana rails. The card pile
-     (CardStackPile) sizes its own anchor through --card-stack-extent; only
-     the rail, still used while ordering triggers or replacements, is capped
-     here. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
-    left: calc(var(--stack-frame-rail-left, 0px) + var(--fc-rail-gutter)) !important;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail:not([data-card-stack-anchor]) {
-    width: max(0px, min(calc(var(--stack-frame-rail-width, 0px) - var(--fc-rail-gutter)), var(--fc-stack-max-w))) !important;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-panel {
-    overflow: hidden;
-    border: 1px solid var(--fc-line) !important;
-    border-radius: var(--fc-radius) !important;
-    background: var(--fc-surface) !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42) !important;
-    clip-path: none !important;
-    animation: fc-stack-in 260ms var(--fc-ease) both;
-    transform-origin: left top;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-panel-header {
-    padding-inline: 10px !important;
-    border-bottom: 1px solid rgba(196, 170, 245, 0.12) !important;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-panel-title {
-    color: var(--fc-ink-muted) !important;
-    letter-spacing: 0.12em !important;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-panel-count {
-    border-radius: 999px !important;
-    background: rgba(157, 114, 230, 0.22) !important;
-    color: var(--fc-ink) !important;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-timeline-entry .stack-card {
-    transition: background-color 160ms ease, box-shadow 160ms ease;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-timeline-entry:is(:hover, :focus-within) .stack-card {
-    background-color: rgba(157, 114, 230, 0.1) !important;
-    box-shadow: inset 2px 0 0 var(--fc-violet-strong) !important;
-  }
-
-  /* Details: the effect line is one truncated line at rest and grows to its
-     full text, eased, on hover or keyboard focus. */
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-card-effect {
-    display: block !important;
-    max-height: 1.35em;
-    overflow: hidden !important;
-    white-space: nowrap !important;
-    text-overflow: ellipsis !important;
-    transition: max-height 220ms var(--fc-ease);
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-timeline-entry:is(:hover, :focus-within) .stack-card-effect {
-    max-height: 12em;
-    white-space: normal !important;
-    overflow-wrap: anywhere;
-  }
-
-  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-timeline-entry:is(:hover, :focus-within) :is(.stack-card-sub, .stack-card-text, .stack-card-body) {
-    height: auto !important;
-    max-height: none !important;
-    white-space: normal !important;
   }
 
   /* ---------------------------------------------------------------------
@@ -1130,16 +1053,20 @@
   }
 }
 
-@keyframes fc-stack-in {
-  from { opacity: 0; transform: translateX(-12px) scale(0.98); }
-  to { opacity: 1; transform: none; }
+
+/* The local battlefield sits up from the hand: its cards fill the room
+   down to the hand's top edge, so lift them into the free band under the
+   phase track and leave a clear gap above the hand. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"] [data-my-zone] .battlefield-row[data-battlefield-style="full"] {
+    translate: 0 -18px;
+  }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .table-shell[data-focused-hud="true"] .my-zone-stack-rail .stack-panel {
-    animation: none !important;
-  }
-  .table-shell[data-focused-hud="true"] .my-zone-stack-rail .stack-card-effect {
-    transition: none !important;
+/* Full cards shows the arena art bare: no red or blue (player colour) glow
+   washed over either battlefield. */
+@media (min-width: 1024px) {
+  .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) :is(.battlefield-subpanel, .battlefield-panel) {
+    background-image: none !important;
   }
 }
