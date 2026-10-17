@@ -1,9 +1,11 @@
 import {CardGlintRenderQueue} from './render-queue.mjs';
 import {CardGlintImageCache} from './image-cache.mjs';
+import {presentCardGlintFace} from './printing-choices.mjs';
 let library;
+export const cardGlintAsset = name => new URL(`./card-glint/${__CARD_GLINT_REVISION__}/${name}`, document.baseURI);
 export function loadCardGlint() {
   if (!library) library = (async () => {
-    const base = new URL(`./card-glint/${__CARD_GLINT_REVISION__}/`, document.baseURI);
+    const base = cardGlintAsset('');
     await new Promise((resolve, reject) => {
       const link = document.createElement('link');
       link.rel = 'stylesheet'; link.href = new URL('magic.css', base).href;
@@ -19,9 +21,11 @@ let images;
 const queue = new CardGlintRenderQueue(async face => {
   const api = await loadCardGlint();
   images ??= new CardGlintImageCache(api.loadCanvasImages);
-  const canvas = await api.composeCardTexture({face,printingId:null,printedImage:null}, 'inspect', new AbortController().signal,
+  // Interactions are measured on the face that was actually painted.
+  const presented = presentCardGlintFace(api, face);
+  const canvas = await api.composeCardTexture({face:presented,printingId:null,printedImage:null}, 'inspect', new AbortController().signal,
     {loadImages:(urls,signal)=>images.images(urls,signal)});
-  return {canvas,face,api};
+  return {canvas,face:presented,api};
 });
 export const renderCardGlint = (face,options) => queue.render(face,options);
 export const hasCardGlintFrame = face => queue.has(face);

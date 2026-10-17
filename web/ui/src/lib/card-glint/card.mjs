@@ -1,6 +1,7 @@
 import {cardFlavorSource} from '../card-flavor-source.js';
 import {cardDisplayTypeLine} from '../card-display-type-line.js';
 import {cardArtCropUrl} from '../card-image-variants.js';
+import {cardPresentation,cardPrintingChoice} from './printing-choices.mjs';
 
 const rules = card => {
   const value = card.oracle_text ?? card.effect_text ?? card.ability_text ?? card.compiled_text ?? card.abilities ?? '';
@@ -26,7 +27,8 @@ function cardTypeLine(face, card) {
 }
 
 // Live engine fields take precedence over printing metadata. Printing only supplies decoration.
-export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing} = {}) {
+// Cards added from Build carry their own printing choices.
+export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presentation} = {}) {
   const print = printing ?? card.printing ?? card;
   const face = card.card_faces?.[faceIndex] ?? card;
   const type = cardTypeLine(face, card);
@@ -63,14 +65,19 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing} = {}) {
     frameStyle: print.frame ? (Number(print.frame) < 2003 ? 'retro' : 'modern') : CARD_GLINT_DEFAULT_FRAME.frameStyle,
     layout: face.layout ?? card.layout ?? 'normal',
   };
+  const chosen = presentation === undefined ? cardPresentation(card) : presentation;
+  if (chosen?.rarity) result.rarity = chosen.rarity;
   if (result.land && !palette.length) result.frameColors = colors([...(card.color_identity ?? card.colorIdentity ?? []), ...(card.intrinsic_mana ?? [])]);
   if (result.layout === 'flip') result.frameTemplate = 'flip';
   else if (/\bBattle\b/.test(type)) result.frameTemplate = 'battle';
   else if (print.frame === 'future') result.frameTemplate = 'future';
   if (['split','adventure','flip'].includes(result.layout) && card.card_faces?.length > 1) {
     result.faces = card.card_faces.map((part, index) => cardGlintFace({...part, printing:print}, {
-      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index,
+      imageUrl:part.image_uris?.art_crop ?? imageUrl, printing:print, faceIndex:index, presentation:chosen && {rarity:chosen.rarity},
     }));
   }
+  // The painter resolves this with card-glint's style catalog.
+  const printingChoice = cardPrintingChoice(chosen);
+  if (printingChoice) result.printingChoice = printingChoice;
   return result;
 }

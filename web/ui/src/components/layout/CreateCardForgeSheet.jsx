@@ -1,4 +1,11 @@
 import BuildCardSearch from "./BuildCardSearch";
+import CardPrintingStage from "./CardPrintingStage";
+import {
+  isDefaultCardPresentation,
+  normalizeCardPresentation,
+  setCardPresentation,
+  snapshotStableIds,
+} from "@/lib/card-glint/printing-choices.mjs";
 import CustomCardsButton from "./CustomCardsButton";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
@@ -12,6 +19,7 @@ import {
   fetchCardBuildDraft,
   customCardArtUrl,
   resolveScryfallImageUrl,
+  resolveScryfallPrintingMetadata,
   setCustomCardCounterOverrides,
   setCompiledCardNames,
   setCustomCardArtUrls,
@@ -77,7 +85,13 @@ function blankDraft() {
     layout: "single",
     hasFuse: false,
     faces: [{ ...blankFace(), manaCost: "{0}" }],
+    presentation: normalizeCardPresentation(),
   };
+}
+
+// Printing choices alone never turn a catalog card into a custom compile.
+function rulesSnapshot(draft) {
+  return JSON.stringify({ ...draft, presentation: undefined });
 }
 
 // Keep this list aligned with the engine's CounterType enum. The showcase
@@ -216,6 +230,7 @@ function cloneDraft(draft) {
   return {
     layout: draft?.layout || "single",
     hasFuse: draft?.hasFuse === true,
+    presentation: normalizeCardPresentation(draft?.presentation),
     faces: Array.isArray(draft?.faces)
       ? draft.faces.map((face) => ({
         name: face?.name || "",
@@ -556,7 +571,7 @@ export default function CreateCardForgeSheet({
   trigger = null,
 }) {
   const ui = useUiText();
-  const { game, refresh, runWasmInteraction, setStatus } = useGame();
+  const { game, state, refresh, runWasmInteraction, setStatus } = useGame();
   const [open, setOpen] = useState(false);
   const [catalogCard, setCatalogCard] = useState(null);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -570,11 +585,14 @@ export default function CreateCardForgeSheet({
   const [draft, setDraft] = useState(blankDraft());
   const [preview, setPreview] = useState(null);
   const [activeFace, setActiveFace] = useState("face-0");
+  // The real card a draft started from, whose printing "Current printing" shows.
+  const [printingName, setPrintingName] = useState(null);
+  const [currentPrinting, setCurrentPrinting] = useState(null);
 
   const activeFaceIndex = Number(activeFace.replace("face-", "")) || 0;
   const previewFace = preview?.faces?.[activeFaceIndex] || null;
   const primaryName = preview?.faces?.[0]?.name || draft.faces[0]?.name || "Custom Card";
-  const unchangedCatalogCard = catalogCard && JSON.stringify(draft) === catalogCard.snapshot;
+  const unchangedCatalogCard = catalogCard && rulesSnapshot(draft) === catalogCard.snapshot;
   const canCompile = !disabled && !submitting && !seedLoading && (unchangedCatalogCard || (Boolean(preview?.canCreate) && !previewError && !previewLoading));
 
   useEffect(() => {
@@ -582,6 +600,19 @@ export default function CreateCardForgeSheet({
       setActiveFace("face-0");
     }
   }, [activeFaceIndex, draft.faces.length]);
+
+  useEffect(() => {
+    if (!printingName) return undefined;
+    let active = true;
+    (async () => {
+      const imageUrl = await resolveScryfallImageUrl(printingName, "normal");
+      const printing = imageUrl ? await resolveScryfallPrintingMetadata(imageUrl) : null;
+      if (active) setCurrentPrinting({ name: printingName, imageUrl, printing });
+    })().catch(() => { if (active) setCurrentPrinting(null); });
+    return () => { active = false; };
+  }, [printingName]);
+  // Renaming the card leaves that printing behind.
+  const draftPrinting = currentPrinting && currentPrinting.name === draft.faces[0]?.name ? currentPrinting : null;
 
   useEffect(() => {
     if (!open || !game) return undefined;
@@ -619,6 +650,7 @@ export default function CreateCardForgeSheet({
       const seed = cloneDraft(await game.sampleLoadedDeckSeed(excludeName));
       setSeedDraft(seed);
       setDraft(seed);
+      setPrintingName(seed.faces[0]?.name || null);
       setActiveFace("face-0");
       setPreviewError("");
       if (reroll) {
@@ -677,6 +709,7 @@ export default function CreateCardForgeSheet({
           layout: nextLayout,
           hasFuse: false,
           faces: [nextFaces[0] || blankFace()],
+          presentation: current.presentation,
         };
       }
       while (nextFaces.length < 2) {
@@ -686,6 +719,7 @@ export default function CreateCardForgeSheet({
         layout: nextLayout,
         hasFuse: nextLayout === "split" ? current.hasFuse : false,
         faces: nextFaces.slice(0, 2),
+        presentation: current.presentation,
       };
     });
     setActiveFace("face-0");
@@ -706,6 +740,8 @@ export default function CreateCardForgeSheet({
       // Validate this exact snapshot, even if the debounced preview is stale.
       const validation = await game.previewCustomCard(savedDraft);
       if (!validation.canCreate) throw new Error("This card must compile before it can be saved");
+      // Printing choices are saved with the card but never sent to the engine.
+      savedDraft.presentation = draft.presentation;
       await saveCustomCard(savedDraft);
       setSaveMessage(`Saved ${savedDraft.faces[0].name}. Find it with Include custom cards in Build. Saved on this browser; saving the same name updates it.`);
     } catch (error) {
@@ -722,19 +758,26 @@ export default function CreateCardForgeSheet({
         return;
       }
       setSubmitting(true);
+      const existing = snapshotStableIds(state);
       try {
         if (unchangedCatalogCard) {
-          await game.addCardToZone(selectedPlayer, catalogCard.name, zone, skipTriggers);
+          const objectId = await game.addCardToZone(selectedPlayer, catalogCard.name, zone, skipTriggers);
+          // Only this copy changes, and only when a printing choice was made.
+          if (!isDefaultCardPresentation(draft.presentation)) {
+            setCardPresentation(objectId, [catalogCard.name], draft.presentation, { existing });
+          }
           setOpen(false);
           await refresh(`Added ${catalogCard.name}`);
           return;
         }
-        await game.createCustomCard({
+        const objectId = await game.createCustomCard({
           draft: normalizeDraftForApi(draft),
           playerIndex: selectedPlayer,
           zoneName: zone,
           skipTriggers,
         });
+        setCardPresentation(objectId, [draft.faces.map((face) => face.name).join(" // "), ...draft.faces.map((face) => face.name)],
+          draft.presentation, { existing });
         setCustomCardArtUrls(draft.faces.map((face) => ({
           name: face.name,
           artUrl: face.artUrl,
@@ -750,7 +793,7 @@ export default function CreateCardForgeSheet({
         setSubmitting(false);
       }
     });
-  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard]);
+  }, [draft, game, primaryName, refresh, runWasmInteraction, selectedPlayer, setStatus, skipTriggers, zone, unchangedCatalogCard, catalogCard, state]);
 
   const handleCounterShowcase = useCallback(async () => {
     const result = await runWasmInteraction(async () => {
@@ -960,7 +1003,8 @@ export default function CreateCardForgeSheet({
               const next = cloneDraft(option.card?.draft || await fetchCardBuildDraft(option.name));
               setDraft(next);
               setSeedDraft(next);
-              setCatalogCard(option.card ? null : { name: option.name, snapshot: JSON.stringify(next) });
+              setCatalogCard(option.card ? null : { name: option.name, snapshot: rulesSnapshot(next) });
+              setPrintingName(option.card ? null : next.faces[0]?.name || null);
               setActiveFace("face-0");
               setPreview(null);
               setPreviewError("");
@@ -972,7 +1016,7 @@ export default function CreateCardForgeSheet({
               {seedLoading ? ui("Loading deck sample...") : ui("Editing: {0}", { 0: draft.faces?.[0]?.name || "New card" })}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={seedLoading || submitting} onClick={() => { setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
+              <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={seedLoading || submitting} onClick={() => { setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
               <CustomCardsButton className="stone-pill px-3 py-2" label={ui("Load custom cards")} />
               <Button
                 type="button"
@@ -1008,7 +1052,14 @@ export default function CreateCardForgeSheet({
           </div>
 
           <div className="card-forge-grid">
-            <div className="card-forge-main">
+            <div className="card-forge-main card-forge-workbench">
+              <CardPrintingStage
+                draft={draft}
+                faceIndex={activeFaceIndex}
+                printing={draftPrinting}
+                onPresentationChange={(presentation) => setDraft((current) => ({ ...current, presentation }))}
+              />
+              <div className="card-forge-details">
               {draft.faces.length === 1 ? (
                 <div className="card-forge-single-face">
                   <InlineFaceEditor
@@ -1057,6 +1108,7 @@ export default function CreateCardForgeSheet({
                   ))}
                 </Tabs>
               )}
+              </div>
             </div>
 
             <div className="card-forge-side">

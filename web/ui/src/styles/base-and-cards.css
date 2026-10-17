@@ -466,6 +466,38 @@
   overflow: hidden;
 }
 
+/* The painted card and its printing choices sit beside the details form. */
+.card-forge-workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  gap: 12px;
+}
+
+.card-forge-details {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-printing {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.card-forge-printing-card {
+  min-height: 0;
+}
+
+.card-forge-printing-controls {
+  display: grid;
+  gap: 8px;
+  max-height: 46%;
+  overflow: auto;
+}
+
 .card-forge-side {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -902,6 +934,19 @@
 }
 
 @media (max-width: 960px) {
+  .card-forge-workbench {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .card-forge-printing-card {
+    height: min(70vh, 460px);
+  }
+
+  .card-forge-printing-controls {
+    max-height: none;
+  }
+
   .card-forge-grid {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(480px, auto) auto minmax(320px, 1fr);

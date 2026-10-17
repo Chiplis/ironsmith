@@ -4,8 +4,12 @@ import {renderCardGlint,peekCardGlintFrame} from '@/lib/card-glint/session.mjs';
 import {peekScryfallPrintingMetadata,resolveScryfallPrintingMetadata} from '@/lib/scryfall';
 import CardGlintInteractions from './CardGlintInteractions';
 import {cardGlintRegions,cardGlintActionsCovered} from '@/lib/card-glint/interactions.mjs';
+import {cardPresentation} from '@/lib/card-glint/printing-choices.mjs';
+import useCardGlintLive from './useCardGlintLive';
 
-export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,rulesView,onActivate,highlighted,details}) {
+// In the inspector, a card with Build choices is drawn by the WebGL renderer
+// over its static face, which still provides the interaction regions.
+export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,rulesView,onActivate,highlighted,details,inspector=false}) {
   const canvas = useRef(null), [finished,setFinished] = useState(null), [metadata,setMetadata] = useState(null);
   const card = useMemo(() => JSON.parse(snapshot), [snapshot]);
   const printing = metadata && metadata.imageUrl === imageUrl ? metadata.printing : peekScryfallPrintingMetadata(imageUrl);
@@ -36,14 +40,24 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     return () => {cancelled = true;};
   }, [face,imageUrl,printing]);
   const result = finished?.face === face ? finished.result : null;
+  const presentation = inspector ? cardPresentation(card) : null;
+  const [liveCanvas,live] = useCardGlintLive(face,presentation,{enabled:Boolean(presentation)});
+  const foil = live.mode === 'live' && live.current;
+  const onPointerMove = event => {
+    const box = event.currentTarget.getBoundingClientRect();
+    live.pointer({x:(event.clientX-box.left)/box.width,y:(event.clientY-box.top)/box.height});
+  };
   const regions = useMemo(() => cardGlintRegions(result,rulesView), [result,rulesView]);
   const ready = Boolean(result && cardGlintActionsCovered(regions,rulesView));
   return <>
     {!ready && fallback}
-    <div className="card-glint-surface" style={{display:ready?'block':'none'}}>
+    <div className="card-glint-surface" style={{display:ready?'block':'none'}}
+      onPointerMove={presentation ? onPointerMove : undefined} onPointerLeave={presentation ? () => live.pointer(null) : undefined}>
       <canvas ref={canvas} data-card-glint-frame={ready?'ready':result?'unavailable':finished?.face===face&&finished.error?'error':'pending'}
         data-card-glint-error={finished?.face===face?finished.error?.message:undefined}
         aria-label={`${face.name}: ${face.typeLine}. ${face.rulesText}`} role="img"/>
+      {presentation && <canvas ref={liveCanvas} className="card-glint-surface__live" aria-hidden="true"
+        data-card-glint-finish={foil?presentation.finish:undefined} style={{visibility:foil?'visible':'hidden'}}/>}
       {ready && rulesView && <CardGlintInteractions result={result} regions={regions} rulesView={rulesView}
         onActivate={onActivate} highlighted={highlighted} name={face.name}/>}
       {details && <span className="mse-card-live-details">{details}</span>}
