@@ -50,3 +50,19 @@ export function mergeLookCards(...groups) {
     ...card, face_down: false, is_face_down: false,
   }])).values()];
 }
+
+/**
+ * The looked-at cards a select_objects decision chooses among, by id, when
+ * every candidate is one of them (Devourer of Destiny, impulse draws...).
+ * The decision panel then shows them as cards and the Look pile steps aside,
+ * so the same cards are not offered in two places at once.
+ */
+export function lookChoiceCards(state) {
+  const decision = state?.decision;
+  if (decision?.kind !== "select_objects") return null;
+  const candidates = decision.candidates || [];
+  const view = temporaryLookView(state);
+  if (!candidates.length || !view?.cards?.length) return null;
+  const byId = new Map(mergeLookCards(view.cards).map((card) => [String(card.id), card]));
+  return candidates.every((candidate) => byId.has(String(candidate?.id))) ? byId : null;
+}
