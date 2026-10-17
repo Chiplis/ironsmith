@@ -76,14 +76,31 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       // Target scaling animates back to normal as the strip opens. Its
       // transformed width must not become a permanent negative popover offset.
       const cardWidth = zone === "look" ? trigger.offsetWidth : anchor.width;
-      setStripBounds({ width: Math.max(0, (anchor.right - Math.max(field.left, 8)) + 6), cardWidth });
+      // An open decision panel (a choice among these very cards, say) keeps
+      // its place: the strip ends at the panel's left edge instead of
+      // opening over it.
+      const panel = [...document.querySelectorAll(".battlefield-human-action-dock")]
+        .map((element) => element.getBoundingClientRect())
+        .find((rect) => rect.width > 0 && rect.left < anchor.left && rect.right > anchor.left - 160
+          && rect.top < anchor.bottom + 12 && rect.bottom > anchor.top - 12);
+      const right = panel ? panel.left - 8 : anchor.right;
+      setStripBounds({
+        width: Math.max(0, (right - Math.max(field.left, 8)) + 6),
+        cardWidth,
+        offset: panel ? anchor.left - right : -(cardWidth + 6),
+      });
     };
     measure();
+    // The pile shrinks back from its target growth as the strip opens (a
+    // transform, which no observer reports); measure again once it settles.
+    const settle = setTimeout(measure, ZONE_TARGET_GROW_MS + 40);
     const observer = new ResizeObserver(measure);
     observer.observe(battlefield);
     observer.observe(trigger);
+    const dock = document.querySelector(".battlefield-human-action-dock");
+    if (dock) observer.observe(dock);
     window.addEventListener("resize", measure);
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+    return () => { clearTimeout(settle); observer.disconnect(); window.removeEventListener("resize", measure); };
   }, [open, zone]);
   const cards = cardsOverride ?? zonePileCards(player, zone);
   // The inspector and its portaled glossary are part of this pile's surface.
@@ -334,7 +351,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       ) : null}
       </div>
       {/* Keep the top card over its pile and extend the strip to the left. */}
-      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side="left" align="start" sideOffset={-(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
+      <PopoverContent ref={menuRef} className={`zone-pile-menu${zone === "look" ? " zone-pile-menu--look" : ""}`} side="left" align="start" sideOffset={stripBounds.offset ?? -(stripBounds.cardWidth + 6)} alignOffset={-6} avoidCollisions={zone === "look"} collisionPadding={8}
         updatePositionStrategy={zone === "look" ? "always" : "optimized"}
         data-local-zone-strip={samePlayerId(player.id ?? player.index, state?.perspective) ? "true" : undefined}
         style={{ "--zone-strip-width": `${stripBounds.width}px`, "--zone-strip-card-width": `${stripBounds.cardWidth}px` }}
