@@ -996,14 +996,14 @@
 @layer fc-dock-sizing {
   @media (min-width: 1024px) {
     /* Phase changes resize the dock. Its own animation scales it unevenly
-       (squashing the labels) while dock-placement.js moves it, so the two
-       fought and the dock zigzagged; here it keeps its shape and glides to
-       its new place instead. In this layer so it also outranks
-       decision-stability's transition: none. */
+       (squashing the labels), and any glide makes the buttons drift or drop
+       into place. dock-placement.js places the row before each paint, so it
+       simply stays put: the main action keeps one spot between phases. In
+       this layer so it also outranks decision-stability's rules. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
       translate: none !important;
       scale: none !important;
-      transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+      transition: none !important;
     }
 
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .action-strip-main-region {
@@ -1018,6 +1018,13 @@
       min-width: 100px !important;
       max-width: 300px !important;
       flex: 0 1 auto !important;
+    }
+
+    /* In the placed row the main action takes the width that fills the
+       row's slot (dock-placement.js), so it starts at the same spot in every
+       phase, with or without End turn beside it. */
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock[data-fc-placed] :is(.action-strip-main-region, .decision-main-button:not(.action-strip-main-region .decision-main-button)) {
+      width: var(--fc-main-width, 190px) !important;
     }
 
     /* A label that wraps to a third line ("Skipping Begin Combat" beside
