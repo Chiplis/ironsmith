@@ -10,7 +10,7 @@ import { useI18n } from "@/i18n/I18nContext";
 import { useCastTargeting, useCastZoneHovered } from "@/context/DragContext";
 import { useHover } from "@/context/HoverContext";
 import ZoneArt from "./ZonePileArt";
-import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookChoiceCards, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
+import { LOOK_DONE_EVENT, LOOK_FADE_MS, lookChoiceCards, zoneChoiceCards, lookViewKey, temporaryLookView, persistentLookCards, mergeLookCards } from "@/lib/look-pile";
 import { samePlayerId } from "@/lib/player-display";
 import { isFaceUpZoneCard, pileZonesFor, zonePileCards } from "@/lib/zone-piles";
 import { isObjectChosen, requestObjectSelection } from "@/lib/object-selection";
@@ -148,7 +148,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     );
   // When the decision panel shows the choice as cards, the piles do not grow
   // and call for the same pick a second time.
-  const choiceInPanel = choosingObject && Boolean(lookChoiceCards(state));
+  const choiceInPanel = choosingObject && Boolean(zoneChoiceCards(state));
   const hasLegalCards = canChoose && (choosingTarget || choosingObject) && !choiceInPanel && cards.some(isLegal);
   const hoverOpensZone = Boolean(castIntent && hasLegalCards && castZoneHovered);
   useEffect(() => {

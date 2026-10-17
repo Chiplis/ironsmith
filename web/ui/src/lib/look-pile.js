@@ -66,3 +66,25 @@ export function lookChoiceCards(state) {
   const byId = new Map(mergeLookCards(view.cards).map((card) => [String(card.id), card]));
   return candidates.every((candidate) => byId.has(String(candidate?.id))) ? byId : null;
 }
+
+/**
+ * The cards a select_objects decision chooses among, by id, when every
+ * candidate is a card off the battlefield and out of the hand whose face is
+ * known: looked-at cards, graveyards, face-up exile. The decision panel then
+ * offers them as cards, whatever spell asks.
+ */
+export function zoneChoiceCards(state) {
+  const decision = state?.decision;
+  if (decision?.kind !== "select_objects") return null;
+  const candidates = decision.candidates || [];
+  if (!candidates.length) return null;
+  const look = lookChoiceCards(state);
+  if (look) return look;
+  const zoneCards = (state?.players || []).flatMap((player) => [
+    ...(player.graveyard_cards || []),
+    ...(player.exile_cards || []).filter((card) => !card.face_down),
+  ]);
+  const byId = new Map(mergeLookCards(temporaryLookView(state)?.cards || [], zoneCards)
+    .map((card) => [String(card.id), card]));
+  return candidates.every((candidate) => byId.has(String(candidate?.id))) ? byId : null;
+}

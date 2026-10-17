@@ -1,6 +1,6 @@
 import useUiText from "@/i18n/useUiText";
 import ZoneArt from "@/components/board/ZonePileArt";
-import { lookChoiceCards } from "@/lib/look-pile";
+import { zoneChoiceCards } from "@/lib/look-pile";
 import { useHandHoverObjectId } from "@/lib/hand-hover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/context/GameContext";
@@ -64,8 +64,12 @@ export default function SelectObjectsDecision({
     [state]
   );
 
+  // Cards off the table (looked at, in a graveyard or exile) are offered as
+  // cards, so they can be read and picked here; the Look pile steps aside.
+  const lookCards = useMemo(() => zoneChoiceCards(state), [state]);
   const scopedCandidates = useMemo(() => {
-    if (stripLayout) return candidates;
+    // A hovered card narrows name rows to it, but cards stay put.
+    if (stripLayout || lookCards) return candidates;
     if (hoveredObjectId == null) return candidates;
     const hoveredStr = String(hoveredObjectId);
     const hasHoveredCandidate = candidates.some((c) => String(c.id) === hoveredStr);
@@ -73,14 +77,12 @@ export default function SelectObjectsDecision({
     return candidates.filter(
       (c) => String(c.id) === hoveredStr || isObjectChosen(selected, c.id)
     );
-  }, [candidates, hoveredObjectId, selected, stripLayout]);
+  }, [candidates, hoveredObjectId, lookCards, selected, stripLayout]);
   const showRows = scopedCandidates.length > 0;
   const [visibleCandidates, setVisibleCandidates] = useState(scopedCandidates);
   const focusedToHover = hoveredObjectId != null
     && candidates.some((c) => String(c.id) === String(hoveredObjectId));
   const showHeader = !stripLayout;
-  // Looked-at cards (the Look pile steps aside for them) are offered as cards.
-  const lookCards = useMemo(() => lookChoiceCards(state), [state]);
   // The hand card under the pointer shades its row, as hovering the row
   // previews the card.
   const handHoverObjectId = useHandHoverObjectId();
@@ -228,6 +230,7 @@ export default function SelectObjectsDecision({
                   data-candidate-id={String(c.id)}
                   data-object-id={lookCards ? String(c.id) : undefined}
                   data-zone-card={lookCards ? "look" : undefined}
+                  data-decision-option-object={lookCards ? String(c.id) : undefined}
                   aria-pressed={isSelected}
                   variant="ghost"
                   size="sm"
