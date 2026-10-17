@@ -80,6 +80,9 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
         DirectCantFact::SourceCantAttackPlayerAlreadyAttacked => {
             StaticAbility::cant_attack_player_already_attacked_this_turn()
         }
+        DirectCantFact::CreaturesCantAttackPlayersInactiveLastTurn => {
+            StaticAbility::creatures_cant_attack_players_inactive_last_turn()
+        }
         DirectCantFact::SourceLethalDamageMustBeFromSingleSource => {
             StaticAbility::lethal_damage_must_be_from_single_source()
         }
@@ -1102,6 +1105,12 @@ pub fn parse_cant_clauses(
     if crate::keyword_static::is_source_unblockable_unless_all_defenders_block_line(tokens) {
         return Ok(None);
     }
+    // "... can't be blocked unless it's attacking its owner or a permanent
+    // its owner controls" is an attack-target evasion rule, owned by its
+    // static marker reader (with or without an authored subject).
+    if crate::keyword_static::cant_be_blocked_unless_attacking_owner_subject_len(tokens).is_some() {
+        return Ok(None);
+    }
     Ok(parse_cant_clauses_unbound(tokens)?.map(|abilities| {
         abilities
             .into_iter()
@@ -1421,13 +1430,12 @@ fn parse_cant_clauses_unbound(
         )) && condition_tokens.first().is_some_and(|token| token.is_word("it"))
         {
             let span = condition_tokens[0].span();
-            condition_tokens.splice(
-                0..1,
-                [
-                    OwnedLexToken::word("this".to_string(), span),
-                    OwnedLexToken::word("creature".to_string(), span),
-                ],
-            );
+            let mut rebound = vec![
+                OwnedLexToken::word("this".to_string(), span),
+                OwnedLexToken::word("creature".to_string(), span),
+            ];
+            rebound.extend_from_slice(&condition_tokens[1..]);
+            condition_tokens = rebound;
         }
         if !head.is_empty()
             && !condition_tokens.is_empty()
@@ -1774,6 +1782,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
                 | crate::effect::Restriction::CastSpellsMatching(_, _)
                 | crate::effect::Restriction::PlayLandsMatching(_, _)
                 | crate::effect::Restriction::ActivateLoyaltyAbilitiesOf(_)
+                | crate::effect::Restriction::ActivateKeywordAbilitiesOf { .. }
                 | crate::effect::Restriction::ActivateNonManaAbilities(_)
                 | crate::effect::Restriction::ActivateNonManaNonLoyaltyAbilities(_)
                 | crate::effect::Restriction::ActivateAbilitiesOf(_)

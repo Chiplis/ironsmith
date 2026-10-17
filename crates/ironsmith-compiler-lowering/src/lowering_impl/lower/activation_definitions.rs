@@ -24,6 +24,9 @@ fn ability_reads_activation_history(ability: &crate::ability::Ability) -> bool {
     activated.effects.all_effects().into_iter().any(effect_reads_activation_history)
         || activated.effects.segments.iter().any(|segment| segment.self_replacements.iter()
             .any(|branch| reads_activation_history(&branch.condition)))
+        // "This ability can't be copied." A copy effect identifies the stack
+        // entry's authored activation by this definition.
+        || activated.ability_cant_be_copied()
 }
 
 /// The compiler, not a later live source lookup, owns this namespace. Include

@@ -34,6 +34,10 @@ fn rider_subject<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
             "an", "instant", "or", "sorcery", "spell", "cast", "this", "way",
         ])
         .value(true),
+        // "If those spells would be put into your graveyard, exile them
+        // instead." (Invoke Calamity): the spells an immediate collection
+        // cast just put on the stack.
+        primitives::phrase(&["those", "spells"]).value(false),
     ))
     .parse_next(input)
 }
@@ -49,7 +53,11 @@ fn rider_line<'a>(input: &mut LexStream<'a>) -> WResult<GraveyardExileRider> {
     .parse_next(input)?;
     primitives::kw("graveyard").parse_next(input)?;
     opt(primitives::comma()).parse_next(input)?;
-    primitives::phrase(&["exile", "it", "instead"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["exile", "it", "instead"]),
+        primitives::phrase(&["exile", "them", "instead"]),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(GraveyardExileRider {
         cast_this_way,
@@ -71,7 +79,36 @@ fn last_this_turn_permission_tag(effects: &[EffectAst]) -> Option<TagRef> {
                 }),
             ..
         }) => Some(tag.clone()),
+        // An immediate collection cast: the chosen cards each cast in turn.
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+            tag,
+            effects,
+        }) if effects.iter().any(|effect| {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Stack(
+                        crate::cards::builders::StackActionAst::CastTagged { .. }
+                    ),
+                    ..
+                })
+            )
+        }) => Some(tag.clone()),
         EffectAst::Sequence { effects } => last_this_turn_permission_tag(effects),
+        _ => None,
+    })
+}
+
+/// The last filtered graveyard cast permission among the statement's effects.
+fn last_graveyard_grant_spec(
+    effects: &mut [EffectAst],
+) -> Option<&mut crate::model::CompilerGrantSpecCore> {
+    effects.iter_mut().rev().find_map(|effect| match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Grants(GrantActionAst::GrantBySpec { spec, .. }),
+            ..
+        }) if spec.zone == Zone::Graveyard => Some(spec.as_mut()),
+        EffectAst::Sequence { effects } => last_graveyard_grant_spec(effects),
         _ => None,
     })
 }
@@ -87,7 +124,29 @@ pub(super) fn bind_cast_spell_graveyard_exile_rider(
         return false;
     };
     let Some(tag) = last_this_turn_permission_tag(effects) else {
-        return false;
+        // "Until end of turn, you may cast instant and sorcery spells from
+        // the top of your graveyard. If a spell cast this way would be put
+        // into a graveyard, exile it instead." (Bösium Strip): a filtered
+        // zone permission carries the replacement as a cast-this-way grant
+        // on each spell it permits.
+        if !rider.cast_this_way {
+            return false;
+        }
+        let Some(spec) = last_graveyard_grant_spec(effects) else {
+            return false;
+        };
+        let owner = if rider.your_graveyard {
+            PlayerFilter::You
+        } else {
+            PlayerFilter::Any
+        };
+        spec.cast_this_way_grants.push(
+            crate::model::CompilerStaticAbilityCore::exile_to_exile_instead_of_graveyard(
+                ObjectFilter::source(),
+                owner,
+            ),
+        );
+        return true;
     };
     let mut spell = ObjectFilter::tagged(tag.key().clone()).in_zone(Zone::Stack);
     if rider.your_graveyard {

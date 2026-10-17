@@ -844,6 +844,18 @@ fn describe_turn_history_value_comparison(
                 ))
             }
         }
+        ironsmith_core::TurnHistoryCount::PlayerCountersRemoved { player, .. } => {
+            let player = describe_history_player_subject(player);
+            if is_present {
+                Some(format!("{player} paid or lost energy this turn"))
+            } else if is_absent {
+                Some(format!("{player} didn't pay or lose energy this turn"))
+            } else {
+                Some(format!(
+                    "{player} paid or lost {count_text} or more energy this turn"
+                ))
+            }
+        }
         ironsmith_core::TurnHistoryCount::LandsPlayed(player) => {
             let player = describe_history_player_subject(player);
             if is_present {
@@ -1133,6 +1145,9 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         }
         TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
             "that player attacked you during their last turn".to_string()
+        }
+        TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn => {
+            "a player attacked you during their last turn".to_string()
         }
         TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn => {
             "they attacked you that turn".to_string()
@@ -2051,6 +2066,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerHasMoreLifeThanYou { player } => {
             format!("{} has more life than you", describe_player_filter(player))
+        }
+        Condition::PlayerHasMoreLifeThanAnotherOpponent { player } => {
+            let subject = if *player == PlayerFilter::Defending {
+                "that opponent".to_string()
+            } else {
+                describe_player_filter(player)
+            };
+            format!("{subject} has more life than another of your opponents")
         }
         Condition::PlayerHasNoOpponentWithMoreLifeThan { player } => {
             format!(
@@ -4115,6 +4138,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     "you guessed correctly for a card named {}",
                     title_case_card_name_fragment(card_name)
                 );
+            }
+            // "if one or more permanents were sacrificed to activate it"
+            // (Ashnod the Uncaring).
+            if let (
+                Value::EventValue(EventValueSpec::PermanentsSacrificedToActivate),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left.unhinted(), operator, right.unhinted())
+            {
+                return "one or more permanents were sacrificed to activate it".to_string();
             }
             // "if that creature was dealt excess damage this turn"
             // (Overclocked Electromancer): the triggering damage's excess.

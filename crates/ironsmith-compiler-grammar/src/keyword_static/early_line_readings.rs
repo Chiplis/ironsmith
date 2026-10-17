@@ -785,6 +785,7 @@ fn read_players_cant_pay_life_or_sacrifice_line(
         return Ok(Some(vec![StaticAbility::restriction(
             crate::effect::Restriction::CastOrActivatePayments {
                 player: PlayerFilter::Any, pay_life: true, sacrifice: Some(filter),
+                exempt_mana_abilities: false,
             }, crate::lexer::render_token_slice(trimmed),
         ).into()]));
     }

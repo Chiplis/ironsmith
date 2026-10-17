@@ -54,6 +54,10 @@ pub enum GrantSource {
         /// during the turns before it.
         #[cfg_attr(feature = "serialization", serde(default))]
         during_only: bool,
+        /// "Until end of combat on your next turn" (Brazen Cannonade): on the
+        /// boundary turn the grant ends once that turn's combat phase is over.
+        #[cfg_attr(feature = "serialization", serde(default))]
+        until_end_of_combat: bool,
     },
     /// From a one-shot effect that lasts "until your next end step": until
     /// the end step of the next turn `duration_player` controls begins. When
@@ -173,6 +177,7 @@ impl GrantSource {
             expires_end_of_turn: turn,
             departure_clamped: false,
             during_only: false,
+            until_end_of_combat: false,
         }
     }
 
@@ -191,6 +196,26 @@ impl GrantSource {
             expires_end_of_turn: turn,
             departure_clamped: false,
             during_only: true,
+            until_end_of_combat: false,
+        }
+    }
+
+    /// Create a grant that lasts until end of combat on `duration_player`'s
+    /// next turn ("Until end of combat on your next turn, you may play that
+    /// card"). `turn` is the predicted turn number; `expire_at_turn_start`
+    /// re-targets it to the turn the player actually takes next.
+    pub fn until_end_of_combat_on_player_next_turn(
+        source_id: ObjectId,
+        duration_player: PlayerId,
+        turn: u32,
+    ) -> Self {
+        GrantSource::EffectUntilPlayerNextTurnEnd {
+            source_id,
+            duration_player,
+            expires_end_of_turn: turn,
+            departure_clamped: false,
+            during_only: false,
+            until_end_of_combat: true,
         }
     }
 
@@ -281,6 +306,24 @@ impl GrantSource {
             } => {
                 game.turn.turn_number == *expires_end_of_turn
                     && game.is_active_player(*duration_player)
+            }
+            // "Until end of combat on your next turn": through the boundary
+            // turn's combat phase.
+            GrantSource::EffectUntilPlayerNextTurnEnd {
+                duration_player,
+                expires_end_of_turn,
+                until_end_of_combat: true,
+                ..
+            } => {
+                let turn = game.turn.turn_number;
+                turn < *expires_end_of_turn
+                    || (turn == *expires_end_of_turn
+                        && !(game.is_active_player(*duration_player)
+                            && matches!(
+                                game.turn.phase,
+                                crate::game_state::Phase::NextMain
+                                    | crate::game_state::Phase::Ending
+                            )))
             }
             GrantSource::Effect {
                 expires_end_of_turn,
@@ -641,6 +684,34 @@ pub(crate) fn grant_top_card_matches(
 ) -> bool {
     if !grant.play_from_constraints.top_card_only {
         return true;
+    }
+    // "cast instant and sorcery spells from the top of your graveyard"
+    // (Bösium Strip): the topmost card of the beneficiary's graveyard. A cast
+    // already announced keeps its receipt, like the library case below.
+    if grant.zone == Zone::Graveyard {
+        let Some(card) = game.object(card_id) else {
+            return false;
+        };
+        if card.zone == Zone::Stack {
+            return card
+                .cast_play_from_constraints
+                .as_ref()
+                .is_some_and(|captured| {
+                    captured.0 == grant.source.source_id()
+                        && captured.1 == Zone::Graveyard
+                        && captured.2.top_card_only
+                        && card.cast_grant_usage_identity.as_deref()
+                            == grant.permission_identity.as_ref()
+                })
+                && game
+                    .cast_origin_snapshot(card_id)
+                    .is_some_and(|snapshot| snapshot.zone == Zone::Graveyard);
+        }
+        return card.zone == Zone::Graveyard
+            && card.owner == grant.player
+            && game
+                .player(card.owner)
+                .is_some_and(|player| player.graveyard.last() == Some(&card_id));
     }
     if grant.zone != Zone::Library {
         return false;

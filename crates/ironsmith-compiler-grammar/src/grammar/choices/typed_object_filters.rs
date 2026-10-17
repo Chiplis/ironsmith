@@ -195,7 +195,13 @@ pub fn parse_typed_choice_object_clause_tokens(
         filter.could_be_enchanted_by_source = true;
     }
     if references_it {
-        if (shape.references.explicit_container_reference
+        if shape.references.references_object_group && filter.zone.is_none() {
+            // "choose a creature card from among them" (Kaya, Spirits'
+            // Justice; "Mill three cards. ... from among them"): the chosen
+            // object is a member of the referenced group wherever that group
+            // went, not a card in the chooser's hand. A zone-less tagged pool
+            // lowers to a choice across the collection zones.
+        } else if (shape.references.explicit_container_reference
             && matches!(filter.zone, None | Some(Zone::Battlefield)))
             || (shape.references.references_container_it && filter.zone.is_none())
         {

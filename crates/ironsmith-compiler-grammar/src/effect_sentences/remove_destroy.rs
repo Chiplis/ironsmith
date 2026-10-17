@@ -55,7 +55,18 @@ pub fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     false,
                 ));
             }
-            let pronoun_target = crate::lexer::token_word_refs(target_tokens) == ["it"];
+            // "remove all -1/-1 counters from the creature" (Giant Oyster): a
+            // bare definite noun names the same antecedent as the pronoun; an
+            // all-counters removal never selects a fresh object.
+            let pronoun_target = matches!(
+                crate::lexer::token_word_refs(target_tokens).as_slice(),
+                ["it"]
+                    | [
+                        "the",
+                        "creature" | "permanent" | "artifact" | "land" | "enchantment"
+                            | "planeswalker" | "battle"
+                    ]
+            );
             let target = if pronoun_target {
                 // "remove all -1/-1 counters from it": the pronoun names the
                 // latest object antecedent (falling back to the source only

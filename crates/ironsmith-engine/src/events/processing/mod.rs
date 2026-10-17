@@ -132,26 +132,40 @@ fn apply_enter_counter_choice_response(
     source: ObjectId,
     counter_types: &[CounterType],
     count: &crate::effect::Value,
+    kinds: u32,
 ) -> Event {
-    let Some(counter_type) = response
-        .selected_option_index()
-        .and_then(|index| counter_types.get(index))
-        .copied()
-        .or_else(|| counter_types.first().copied())
-    else {
-        return event;
-    };
-    let resolved_count = application::resolve_value_for_etb_for_choice(count, game, source);
-    apply_trait_enter_with_counters(&event, counter_type, resolved_count, &[], &[]).unwrap_or(event)
-}
-
-impl InteractiveReplacementResponse {
-    fn selected_option_index(&self) -> Option<usize> {
-        match self {
-            InteractiveReplacementResponse::Options(selected) => selected.first().copied(),
-            _ => None,
+    // "your choice of two different counters ... from among" (Grimdancer):
+    // every selected kind is distinct, and each gets `count` counters.
+    let wanted = (kinds.max(1) as usize).min(counter_types.len());
+    let mut chosen: Vec<CounterType> = Vec::new();
+    if let InteractiveReplacementResponse::Options(selected) = response {
+        for index in selected {
+            if let Some(counter_type) = counter_types.get(*index).copied()
+                && !chosen.contains(&counter_type)
+                && chosen.len() < wanted
+            {
+                chosen.push(counter_type);
+            }
         }
     }
+    for counter_type in counter_types {
+        if chosen.len() >= wanted {
+            break;
+        }
+        if !chosen.contains(counter_type) {
+            chosen.push(*counter_type);
+        }
+    }
+    if chosen.is_empty() {
+        return event;
+    }
+    let resolved_count = application::resolve_value_for_etb_for_choice(count, game, source);
+    let mut current = event;
+    for counter_type in chosen {
+        current = apply_trait_enter_with_counters(&current, counter_type, resolved_count, &[], &[])
+            .unwrap_or(current);
+    }
+    current
 }
 
 pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
@@ -176,6 +190,7 @@ pub(super) fn counter_choice_context(
     source: ObjectId,
     controller: PlayerId,
     counter_types: &[CounterType],
+    kinds: u32,
 ) -> crate::decisions::context::DecisionContext {
     let source_name = tribute_source_name(game, source);
     let options = counter_types
@@ -188,14 +203,20 @@ pub(super) fn counter_choice_context(
             )
         })
         .collect();
+    let picks = (kinds.max(1) as usize).min(counter_types.len().max(1));
+    let prompt = if picks > 1 {
+        format!("Choose {picks} different counter types for {source_name}")
+    } else {
+        format!("Choose a counter type for {source_name}")
+    };
     crate::decisions::context::DecisionContext::SelectOptions(
         crate::decisions::context::SelectOptionsContext::new(
             controller,
             Some(source),
-            format!("Choose a counter type for {source_name}"),
+            prompt,
             options,
-            1,
-            1,
+            picks,
+            picks,
         ),
     )
 }
@@ -306,6 +327,16 @@ pub(crate) fn replacement_effect_choice_description(
             let names: Vec<_> = templates
                 .iter()
                 .filter_map(|template| {
+                    if let Some(copy) =
+                        template.downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+                        && let crate::target::ChooseSpec::SpecificObject(id) = copy.target.base()
+                    {
+                        return Some(format!(
+                            "copy of {}",
+                            game.current_name(*id)
+                                .unwrap_or_else(|| "Unknown object".to_string())
+                        ));
+                    }
                     template
                         .downcast_ref::<crate::effects::CreateTokenEffect>()
                         .map(|create| create.token.card.name.clone())
@@ -2750,7 +2781,8 @@ fn trait_effect_matches_event(
         ReplacementAction::Redirect { .. } | ReplacementAction::RedirectDamageAmount { .. }
     ) && let Some(damage) =
         crate::events::downcast_event::<crate::events::DamageEvent>(event.inner())
-        && !game.can_redirect_damage_to(damage.target)
+        && (!game.can_redirect_damage_to(damage.target)
+            || !game.can_redirect_damage_from_to(damage.source, damage.target, damage.is_combat))
     {
         return Ok(None);
     }
@@ -8500,8 +8532,9 @@ fn collect_simultaneous_prevention_allocations(
             if item.amount == 0
                 || item.unpreventable
                 || !game.can_prevent_damage_to(item.target)
-                || !game.can_prevent_damage_from(
+                || !game.can_prevent_damage_from_to(
                     item.source,
+                    Some(item.target),
                     item.is_combat,
                     item.source_snapshot.as_ref(),
                 )
@@ -9062,7 +9095,7 @@ fn prepare_damage_proposal(
     // Check if damage can be prevented
     let can_prevent = !unpreventable
         && game.can_prevent_damage_to(target)
-        && game.can_prevent_damage_from(source, is_combat, source_snapshot);
+        && game.can_prevent_damage_from_to(source, Some(target), is_combat, source_snapshot);
 
     // Create the event using the new Event type
     let event = if can_prevent {
@@ -10619,6 +10652,16 @@ fn prepare_etb_replacements_inner(
                     &mut completed_program_outputs,
                     choices.as_enters_outputs.iter().cloned(),
                 );
+                // "put this creature into its owner's graveyard instead of
+                // onto the battlefield" (Frankenstein's Monster): the entry
+                // program redirected the entering object (CR 614.1c).
+                if let Some(destination) = choices.entry_redirect.take() {
+                    return Ok(EtbEventResult {
+                        prevented: true,
+                        new_destination: Some(destination),
+                        ..Default::default()
+                    });
+                }
                 crate::effects::PublishedEffectOutputs::append_distinct(
                     &mut resumed.program_choices.as_enters_outputs,
                     choices.as_enters_outputs.drain(..),
@@ -11120,6 +11163,7 @@ fn prepare_etb_replacements_inner(
                             if let ReplacementAction::EnterWithCounterChoice {
                                 counter_types,
                                 count,
+                                kinds,
                             } = &chosen_effect.replacement
                             {
                                 current_event = apply_enter_counter_choice_response(
@@ -11129,6 +11173,7 @@ fn prepare_etb_replacements_inner(
                                     chosen_effect.source,
                                     counter_types,
                                     count,
+                                    *kinds,
                                 );
                                 if dm.awaiting_choice() {
                                     return Ok(EtbEventResult {
@@ -11308,6 +11353,7 @@ fn prepare_etb_replacements_inner(
                     if let Some(ReplacementAction::EnterWithCounterChoice {
                         counter_types,
                         count,
+                        kinds,
                     }) = find_effect_for_choice(game, &current_additional_effects, effect_id)
                         .map(|effect| effect.replacement)
                     {
@@ -11318,6 +11364,7 @@ fn prepare_etb_replacements_inner(
                             object_id,
                             &counter_types,
                             &count,
+                            kinds,
                         );
                         if dm.awaiting_choice() {
                             return Ok(EtbEventResult {
@@ -14525,6 +14572,7 @@ mod tests {
                 ReplacementAction::EnterWithCounterChoice {
                     counter_types: vec![CounterType::PlusOnePlusOne, CounterType::Charge],
                     count: crate::effect::Value::Fixed(2),
+                    kinds: 1,
                 },
             ),
         );

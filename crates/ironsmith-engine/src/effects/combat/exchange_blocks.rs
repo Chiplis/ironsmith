@@ -35,6 +35,84 @@ fn could_block_all(game: &GameState, blocker: ObjectId, attackers: &[ObjectId]) 
     })
 }
 
+/// Could `attacker` be blocked by every one of `blockers`, judged one blocker
+/// at a time?
+fn could_be_blocked_by_all(game: &GameState, attacker: ObjectId, blockers: &[ObjectId]) -> bool {
+    let Some(attacker) = game.object(attacker) else {
+        return false;
+    };
+    blockers.iter().all(|blocker| {
+        game.object(*blocker)
+            .is_some_and(|blocker| crate::rules::combat::can_block(attacker, blocker, game))
+    })
+}
+
+/// General Jarkeld: two blocked attackers trade every creature blocking
+/// exactly one of them, provided each could be blocked by all creatures the
+/// other is blocked by. A creature blocking both keeps blocking both. No
+/// blocker is declared again and both attackers stay blocked (CR 509.1h).
+fn exchange_attackers_blockers(
+    game: &mut GameState,
+    first: ObjectId,
+    second: ObjectId,
+) -> Result<EffectOutcome, ExecutionError> {
+    let Some(combat) = game.combat.as_ref() else {
+        return Ok(EffectOutcome::count(0));
+    };
+    let attacking = |id: ObjectId| combat.attackers.iter().any(|info| info.creature == id);
+    if !attacking(first)
+        || !attacking(second)
+        || !combat.blocked_attackers.contains(&first)
+        || !combat.blocked_attackers.contains(&second)
+    {
+        return Ok(EffectOutcome::count(0));
+    }
+    let first_blockers = combat.blockers.get(&first).cloned().unwrap_or_default();
+    let second_blockers = combat.blockers.get(&second).cloned().unwrap_or_default();
+    if !could_be_blocked_by_all(game, first, &second_blockers)
+        || !could_be_blocked_by_all(game, second, &first_blockers)
+    {
+        return Ok(EffectOutcome::count(0));
+    }
+    let only_first = first_blockers
+        .iter()
+        .copied()
+        .filter(|id| !second_blockers.contains(id))
+        .collect::<Vec<_>>();
+    let only_second = second_blockers
+        .iter()
+        .copied()
+        .filter(|id| !first_blockers.contains(id))
+        .collect::<Vec<_>>();
+    if only_first.is_empty() && only_second.is_empty() {
+        return Ok(EffectOutcome::count(0));
+    }
+    let new_first = first_blockers
+        .iter()
+        .copied()
+        .filter(|id| second_blockers.contains(id))
+        .chain(only_second.iter().copied())
+        .collect::<Vec<_>>();
+    let new_second = second_blockers
+        .iter()
+        .copied()
+        .filter(|id| first_blockers.contains(id))
+        .chain(only_first.iter().copied())
+        .collect::<Vec<_>>();
+    let moved = (only_first.len() + only_second.len()) as i32;
+    let Some(combat) = game.combat.as_mut() else {
+        return Ok(EffectOutcome::count(0));
+    };
+    for (attacker, blockers) in [(first, new_first), (second, new_second)] {
+        if let Some(order) = combat.damage_assignment_order.get_mut(&attacker) {
+            *order = blockers.clone();
+        }
+        combat.blockers.insert(attacker, blockers);
+    }
+    game.mark_continuous_state_dirty();
+    Ok(EffectOutcome::count(moved))
+}
+
 fn swap_in(list: &mut [ObjectId], first: ObjectId, second: ObjectId) {
     for id in list.iter_mut() {
         if *id == first {
@@ -66,6 +144,9 @@ impl EffectExecutor for ExchangeBlocksEffect {
             let (first, second) = (*first, *second);
             if first == second {
                 return Ok(EffectOutcome::count(0));
+            }
+            if self.between_attackers {
+                return exchange_attackers_blockers(game, first, second);
             }
             let first_blocks = attackers_blocked_by(game, first);
             let second_blocks = attackers_blocked_by(game, second);

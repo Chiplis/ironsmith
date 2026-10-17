@@ -174,9 +174,7 @@ impl CostExecutableEffect for LoseLifeEffect {
     ) -> Result<(), crate::effects::CostValidationError> {
         use crate::effects::CostValidationError;
 
-        if reason.is_cast_or_ability_payment()
-            && game.player_cant_pay_life_to_cast_or_activate(controller)
-        {
+        if game.player_cant_pay_life_for_payment_reason(controller, reason) {
             return Err(CostValidationError::NotEnoughLife);
         }
 

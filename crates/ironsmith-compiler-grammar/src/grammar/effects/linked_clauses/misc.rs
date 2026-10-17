@@ -489,6 +489,12 @@ const CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT: &[&str] = &[
     "it",
     "instead",
 ];
+/// "If a spell cast this way would be put into a graveyard, exile it
+/// instead." (Diluvian Primordial)
+const A_SPELL_CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT: &[&str] = &[
+    "if", "a", "spell", "cast", "this", "way", "would", "be", "put", "into", "a", "graveyard",
+    "exile", "it", "instead",
+];
 /// "If a spell cast from your graveyard this way would be put into your
 /// graveyard, exile it instead." (Gale, Waterdeep Prodigy)
 const CAST_FROM_YOUR_GRAVEYARD_THIS_WAY_REPLACEMENT: &[&str] = &[

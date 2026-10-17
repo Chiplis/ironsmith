@@ -1526,6 +1526,7 @@ pub(crate) fn describe_tagged_pump_then_conditional_keyword(effects: &[&Effect])
         .downcast_ref::<crate::effects::BecomeColorChoiceEffect>()
     {
         if become_color.duration != pump.until
+            || become_color.color_from.is_some()
             || !target_specs_select_same_objects(target_spec, &become_color.target)
         {
             return None;
@@ -2239,6 +2240,7 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_bottom(
         crate::effects::consult_helpers::LibraryConsultMode::Exile => {
             (player_verb(&player, "exile", "exiles"), "exile")
         }
+        crate::effects::consult_helpers::LibraryConsultMode::Mill => return None,
     };
     let put_verb = player_verb(&player, "put", "puts");
     let pronoun = if player == "you" { "you" } else { "they" };

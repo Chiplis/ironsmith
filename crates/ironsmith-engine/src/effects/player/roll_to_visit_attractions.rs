@@ -47,6 +47,9 @@ pub(crate) fn roll_to_visit_attractions_for_player(
         DieRollCompletion::AttractionVisit,
         EffectOutcome::resolved(),
     )?;
+    // "phases out until you roll a 3 or less while rolling to visit your
+    // Attractions" (Ferris Wheel) ends as this roll completes.
+    game.release_visit_roll_phase_out_holds(player, roll.result);
     let visits = game
         .attraction_visit_profiles(player, roll.result)
         .iter()

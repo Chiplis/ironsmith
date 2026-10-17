@@ -29,7 +29,9 @@ pub(crate) fn source_spending_rule(
 pub(crate) fn spell_source_spending_ability(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::model::CompilerStaticAbilityCore> {
-    let rule = source_spending_rule(tokens, false).or_else(|| x_spending_rule(tokens))?;
+    let rule = source_spending_rule(tokens, false)
+        .or_else(|| x_spending_rule(tokens))
+        .or_else(|| no_mana_spending_rule(tokens))?;
     Some(
         crate::model::CompilerStaticAbilityCore::spell_mana_spending_restriction(
             rule,
@@ -38,6 +40,50 @@ pub(crate) fn spell_source_spending_ability(
                 .trim_end_matches('.'),
         ),
     )
+}
+
+/// "You can't spend mana to cast this spell." (Hogaak, Arisen Necropolis):
+/// the whole cost must be paid without spending mana (convoke, delve).
+pub(crate) fn no_mana_spending_rule(tokens: &[OwnedLexToken]) -> Option<ManaSpendingRestriction> {
+    let words = TokenWordView::new(tokens).word_refs();
+    matches!(
+        words.as_slice(),
+        ["you", "can't" | "cant" | "cannot", "spend", "mana", "to", "cast", "this", "spell"]
+    )
+    .then_some(ManaSpendingRestriction::NoMana)
+}
+
+/// "For each mana in this ability's activation cost, you may tap an untapped
+/// creature you control rather than pay that mana." (Heirloom Epic): the
+/// activation price admits a creature tap per generic mana. It is an
+/// alternative way to pay the cost, never a resolving instruction.
+pub(crate) fn is_creature_tap_payment_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    matches!(
+        words.as_slice(),
+        [
+            "for", "each", "mana", "in", "this", "ability's" | "abilitys" | "ability",
+            "activation", "cost", "you", "may", "tap", "an", "untapped", "creature", "you",
+            "control", "rather", "than", "pay", "that", "mana",
+        ] | [
+            "for", "each", "mana", "in", "this", "ability's" | "abilitys" | "ability", "s",
+            "activation", "cost", "you", "may", "tap", "an", "untapped", "creature", "you",
+            "control", "rather", "than", "pay", "that", "mana",
+        ]
+    )
+}
+
+/// Let every mana component of an activation price be paid by tapping
+/// untapped creatures the activator controls, one {1} each.
+pub(crate) fn allow_creature_tap_payment(
+    cost: ironsmith_core::TotalCost<crate::model::CompilerCost>,
+) -> ironsmith_core::TotalCost<crate::model::CompilerCost> {
+    cost.try_map(|component| Ok::<_, std::convert::Infallible>(match component {
+        crate::model::CompilerCost::Mana(cost) => {
+            crate::model::CompilerCost::Mana(cost.with_creature_tap_payment())
+        }
+        other => other,
+    })).unwrap_or_else(|never| match never {})
 }
 
 /// A restriction on actual mana spent on X. It is never lowered as a colored

@@ -135,6 +135,7 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
@@ -197,7 +198,12 @@ struct SplitRewriteActivatedEffectText {
     restrictions: ParsedRestrictions,
     mana_restrictions: Vec<ParsedManaRestriction>,
     x_cant_be_zero: bool,
+    /// "This ability can't be copied." (Gogo, Master of Mimicry).
+    ability_cant_be_copied: bool,
     x_spending_rules: Vec<ironsmith_core::mana::ManaSpendingRestriction>,
+    /// "For each mana in this ability's activation cost, you may tap an
+    /// untapped creature you control rather than pay that mana."
+    creature_tap_payment: bool,
 }
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
@@ -309,12 +315,16 @@ fn finalize_rewrite_activated_effect_sentences(
     let mut effect_sentence_tokens = Vec::new();
     let mut mana_restrictions = Vec::new();
     let mut x_cant_be_zero = false;
+    let mut ability_cant_be_copied = false;
     let mut x_spending_rules = Vec::new();
+    let mut creature_tap_payment = false;
 
     for tokens in merge_copy_retarget_sentences(sentence_tokens) {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let restriction_kind = activated_grammar::classify_activated_restriction_sentence(&tokens);
-        if let Some(rule) = crate::consumer_mana::x_spending_rule(&tokens) {
+        if crate::consumer_mana::is_creature_tap_payment_sentence(&tokens) {
+            creature_tap_payment = true;
+        } else if let Some(rule) = crate::consumer_mana::x_spending_rule(&tokens) {
             if !x_spending_rules.contains(&rule) {
                 x_spending_rules.push(rule);
             }
@@ -334,6 +344,11 @@ fn finalize_rewrite_activated_effect_sentences(
             &tokens,
         ) {
             x_cant_be_zero = true;
+        } else if let Some(also_x_cant_be_zero) = ability_cant_be_copied_sentence(&tokens) {
+            // "This ability can't be copied [and X can't be 0]." restricts the
+            // ability itself; it is never a resolving instruction.
+            ability_cant_be_copied = true;
+            x_cant_be_zero |= also_x_cant_be_zero;
         } else if is_standalone_x_definition_sentence(&tokens) {
             continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens)
@@ -363,7 +378,23 @@ fn finalize_rewrite_activated_effect_sentences(
         restrictions,
         mana_restrictions,
         x_cant_be_zero,
+        ability_cant_be_copied,
         x_spending_rules,
+        creature_tap_payment,
+    }
+}
+
+/// "This ability can't be copied." or "This ability can't be copied and X
+/// can't be 0." (Gogo, Master of Mimicry): `Some(also_x_cant_be_zero)`.
+fn ability_cant_be_copied_sentence(tokens: &[OwnedLexToken]) -> Option<bool> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    match words.as_slice() {
+        ["this", "ability", "cant" | "can't", "be", "copied"] => Some(false),
+        [
+            "this", "ability", "cant" | "can't", "be", "copied", "and", "x", "cant" | "can't",
+            "be", "0",
+        ] => Some(true),
+        _ => None,
     }
 }
 

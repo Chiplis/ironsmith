@@ -3,6 +3,7 @@
 #![allow(unused_imports)]
 use super::compile_to_runtime_definition;
 use ironsmith::effect::Effect;
+use ironsmith::{PlayerId, Zone};
 
 fn p51_activated_abilities(
     definition: &ironsmith::cards::CardDefinition,
@@ -90,4 +91,108 @@ fn p51_cryptic_spires_adds_only_the_colors_circled_for_that_card() {
         game.deck_construction_chosen_colors(other),
         ColorSet::from_color(Color::White).union(ColorSet::from_color(Color::Blue))
     );
+}
+
+const CYCLOPEAN_TOMB_TEXT: &str = "Mana cost: {4}\nType: Artifact\n{2}, {T}: Put a mire counter on target non-Swamp land. That land is a Swamp for as long as it has a mire counter on it. Activate only during your upkeep.\nWhen this artifact is put into a graveyard from the battlefield, at the beginning of each of your upkeeps for the rest of the game, remove all mire counters from a land that a mire counter was put onto with this artifact but that a mire counter has not been removed from with this artifact.";
+
+/// The tomb's counters are a lasting per-source record that survives the
+/// tomb leaving play, and "at the beginning of each of your upkeeps for the
+/// rest of the game" is a delayed trigger that never expires: each upkeep it
+/// clears one land the tomb mired and has not cleared yet.
+#[test]
+fn p51_cyclopean_tomb_clears_one_land_it_mired_each_upkeep_forever() {
+    use ironsmith::object::CounterType;
+    use ironsmith::card::CardBuilder;
+    use ironsmith::ids::CardId;
+    use ironsmith::types::CardType;
+    let tomb = compile_to_runtime_definition("Cyclopean Tomb", CYCLOPEAN_TOMB_TEXT, false)
+        .expect("Cyclopean Tomb should compile");
+    let debug = format!("{:?}", tomb.abilities);
+    assert!(
+        debug.contains(
+            "counter_source_history: Some(CounterSourceHistoryConstraint { counter_type: Mire, put_by_source: true, not_removed_by_source: true"
+        ),
+        "{debug}"
+    );
+    assert!(debug.contains("one_shot: false"), "{debug}");
+    assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
+
+    let activation = p51_activated_abilities(&tomb)
+        .into_iter()
+        .next()
+        .expect("mire activation")
+        .clone();
+    let leaves = tomb
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("graveyard trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let land = CardBuilder::new(CardId::new(), "Mired Plains")
+        .card_types(vec![CardType::Land])
+        .build();
+    let first = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    let second = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    let untouched = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    game.add_counters(untouched, CounterType::Mire, 1);
+    let source = game.create_object_from_definition(&tomb, alice, Zone::Battlefield);
+    let tomb_identity = game.object(source).unwrap().stable_id;
+    for land in [first, second] {
+        game.push_to_stack(
+            ironsmith::game_state::StackEntry::ability(source, alice, activation.effects.clone())
+                .with_targets(vec![ironsmith::game_state::Target::Object(land)]),
+        );
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        assert_eq!(game.counter_count(land, CounterType::Mire), 1);
+        assert!(game.source_put_counter_on_object(tomb_identity, land, CounterType::Mire));
+    }
+    assert!(!game.source_put_counter_on_object(tomb_identity, untouched, CounterType::Mire));
+
+    // The tomb dies; its leaves trigger registers the repeating delayed trigger
+    // from the graveyard card, which keeps the same stable identity.
+    let in_graveyard = game
+        .move_object(source, Zone::Graveyard, ironsmith::events::EventCause::effect())
+        .expect("tomb goes to the graveyard");
+    assert_eq!(game.object(in_graveyard).unwrap().stable_id, tomb_identity);
+    let mut ctx = ironsmith::effects::EffectContext::new_default(in_graveyard, alice);
+    for effect in leaves.effects.all_effects() {
+        ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+    }
+    drop(ctx);
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+    let upkeep = |game: &mut ironsmith::GameState| {
+        let event = ironsmith::triggers::TriggerEvent::new(
+            ironsmith::events::BeginningOfUpkeepEvent::new(alice),
+            Default::default(),
+        );
+        let entries = ironsmith::triggers::check_delayed_triggers(game, &event);
+        assert_eq!(entries.len(), 1, "the delayed trigger fires every upkeep");
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        for entry in entries {
+            queue.add(entry);
+        }
+        ironsmith::game_loop::put_triggers_on_stack(game, &mut queue).unwrap();
+        while !game.stack.is_empty() {
+            ironsmith::game_loop::resolve_stack_entry(game).unwrap();
+        }
+        [first, second].map(|land| game.counter_count(land, CounterType::Mire))
+    };
+    let after_first = upkeep(&mut game);
+    assert_eq!(after_first.iter().sum::<u32>(), 1, "one mired land is cleared");
+    let after_second = upkeep(&mut game);
+    assert_eq!(after_second, [0, 0], "the other mired land is cleared next");
+    for land in [first, second] {
+        assert!(game.source_removed_counter_from_object(tomb_identity, land, CounterType::Mire));
+    }
+    // A mire counter the tomb did not put there is never touched, and the
+    // trigger keeps repeating with nothing left to clear.
+    assert_eq!(upkeep(&mut game), [0, 0]);
+    assert_eq!(game.counter_count(untouched, CounterType::Mire), 1);
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 }

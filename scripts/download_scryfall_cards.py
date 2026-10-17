@@ -27,6 +27,7 @@ DEFAULT_METADATA_SUFFIX = ".scryfall-bulk-data.json"
 BULK_DATA_URL = "https://api.scryfall.com/bulk-data/default-cards"
 USER_AGENT = "ironsmith/1.0 (https://github.com/chiplis/ironsmith)"
 ACCEPT = "application/json;q=0.9,*/*;q=0.8"
+FILTER_VERSION = 2
 
 
 def fetch_json(url: str) -> dict:
@@ -100,6 +101,7 @@ def local_metadata_matches(remote_metadata: dict, metadata_path: Path, cards_pat
         bool(remote_type)
         and bool(remote_updated_at)
         and bool(local_cards_sha256)
+        and local_metadata.get("filterVersion") == FILTER_VERSION
         and local_metadata.get("type") == remote_type
         and local_metadata.get("updated_at") == remote_updated_at
         and local_cards_sha256 == file_sha256(cards_path)
@@ -117,6 +119,7 @@ def write_download_metadata(
     destination.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schemaVersion": 1,
+        "filterVersion": FILTER_VERSION,
         "id": metadata.get("id"),
         "type": metadata.get("type"),
         "name": metadata.get("name"),
@@ -236,7 +239,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download Scryfall Default Cards and keep only paper cards that are "
-            f"legal in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}."
+            f"legal or restricted in any of: {', '.join(fmt.title() for fmt in SUPPORTED_PAPER_FORMATS)}."
         )
     )
     parser.add_argument(

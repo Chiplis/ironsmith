@@ -1611,6 +1611,149 @@ pub fn get_declare_blockers_decision(
     )
 }
 
+/// "This turn, instead of declaring blockers, each defending player chooses
+/// any number of creatures they control and divides them into a number of
+/// piles equal to the number of attacking creatures for whom that player is
+/// the defending player." (Camouflage): one slot per such attacker, which any
+/// creature the player controls may be put into. The slots are only piles;
+/// [`assign_random_pile_blocks`] decides which attacker each pile blocks.
+pub fn get_pile_division_blockers_decision(
+    game: &GameState,
+    combat: &CombatState,
+    defending_player: PlayerId,
+) -> crate::decisions::context::DecisionContext {
+    let view = DerivedGameView::new(game);
+    let creatures: Vec<(ObjectId, String)> = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| game.controller_of(object) == defending_player)
+                && view.object_has_card_type(*id, crate::types::CardType::Creature)
+        })
+        .map(|id| {
+            let name = game
+                .object(id)
+                .map(|o| o.name.to_string())
+                .unwrap_or_else(|| format!("Creature #{}", id.0));
+            (id, name)
+        })
+        .collect();
+    let blocker_options = compute_legal_blockers(game, combat, defending_player)
+        .into_iter()
+        .enumerate()
+        .map(|(index, option)| crate::decisions::context::BlockerOptionContext {
+            attacker: option.attacker,
+            attacker_name: format!("Pile {}", index + 1),
+            valid_blockers: creatures.clone(),
+            min_blockers: 0,
+        })
+        .collect();
+    crate::decisions::context::DecisionContext::Blockers(
+        crate::decisions::context::BlockersContext::new(defending_player, blocker_options),
+    )
+}
+
+/// "Creatures those players control that can block additional creatures may
+/// likewise be put into additional piles. Assign each pile to a different one
+/// of those attacking creatures at random. Each creature in a pile that can
+/// block the creature that pile is assigned to does so." (Camouflage)
+///
+/// `piles` is the pile division answered for the slots of
+/// [`get_pile_division_blockers_decision`]: a declaration's `blocking` names
+/// its pile's slot. The piles are assigned to the attackers by a random
+/// permutation, and the returned declarations are the blocks that follow.
+/// A pile whose blocks would be illegal together (menace, "can't block
+/// alone") blocks with none of its creatures.
+pub fn assign_random_pile_blocks(
+    game: &GameState,
+    combat: &CombatState,
+    defending_player: PlayerId,
+    piles: &[crate::decision::BlockerDeclaration],
+) -> Vec<crate::decision::BlockerDeclaration> {
+    let slots: Vec<ObjectId> = compute_legal_blockers(game, combat, defending_player)
+        .into_iter()
+        .map(|option| option.attacker)
+        .collect();
+    if slots.is_empty() {
+        return Vec::new();
+    }
+    // A creature is in at most as many piles as attackers it can block.
+    let all_effects = game.all_continuous_effects_arc();
+    let mut pile_members: Vec<Vec<ObjectId>> = vec![Vec::new(); slots.len()];
+    let mut uses: std::collections::HashMap<ObjectId, usize> = std::collections::HashMap::new();
+    for declaration in piles {
+        let Some(slot) = slots.iter().position(|attacker| *attacker == declaration.blocking) else {
+            continue;
+        };
+        if game
+            .object(declaration.blocker)
+            .is_none_or(|object| game.controller_of(object) != defending_player)
+            || pile_members[slot].contains(&declaration.blocker)
+        {
+            continue;
+        }
+        let capacity = crate::combat_state::max_attackers_blocker_can_block(
+            game,
+            declaration.blocker,
+            &all_effects,
+        );
+        let used = uses.entry(declaration.blocker).or_insert(0);
+        if *used >= capacity {
+            continue;
+        }
+        *used += 1;
+        pile_members[slot].push(declaration.blocker);
+    }
+    // Fisher-Yates over the game's deterministic random stream.
+    let mut assignment: Vec<ObjectId> = slots.clone();
+    for index in (1..assignment.len()).rev() {
+        let pick = (game.next_random_u64() % (index as u64 + 1)) as usize;
+        assignment.swap(index, pick);
+    }
+    let mut declarations = Vec::new();
+    for (members, attacker_id) in pile_members.iter().zip(assignment.iter()) {
+        let Some(attacker) = game.object(*attacker_id) else {
+            continue;
+        };
+        let group: Vec<crate::decision::BlockerDeclaration> = members
+            .iter()
+            .filter(|blocker_id| {
+                game.object(**blocker_id)
+                    .is_some_and(|blocker| crate::rules::combat::can_block(attacker, blocker, game))
+            })
+            .map(|blocker_id| crate::decision::BlockerDeclaration {
+                blocker: *blocker_id,
+                blocking: *attacker_id,
+            })
+            .collect();
+        if group.is_empty() {
+            continue;
+        }
+        let mut trial: Vec<(ObjectId, ObjectId)> = declarations
+            .iter()
+            .chain(group.iter())
+            .map(|declaration: &crate::decision::BlockerDeclaration| {
+                (declaration.blocker, declaration.blocking)
+            })
+            .collect();
+        trial.dedup();
+        let mut trial_combat = combat.clone();
+        if crate::combat_state::declare_blockers_for_defending_player(
+            game,
+            &mut trial_combat,
+            trial,
+            defending_player,
+        )
+        .is_ok()
+        {
+            declarations.extend(group);
+        }
+    }
+    declarations
+}
+
 /// Apply blocker declarations to the combat state.
 pub fn apply_blocker_declarations(
     game: &mut GameState,

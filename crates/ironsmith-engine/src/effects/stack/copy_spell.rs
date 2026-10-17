@@ -211,6 +211,26 @@ pub(crate) fn create_stack_copy_from_object(
             return Ok(None);
         }
     }
+    // "This ability can't be copied." (Gogo, Master of Mimicry): the
+    // activated ability this stack entry was activated from forbids copies.
+    if original_entry.is_ability
+        && let Some(definition) = original_entry
+            .ability_effects
+            .as_ref()
+            .and_then(|program| program.activation_definition)
+    {
+        let abilities = game
+            .current_abilities(source.id)
+            .unwrap_or_else(|| source.abilities_vec());
+        if abilities.iter().any(|ability| {
+            matches!(&ability.kind,
+                crate::ability::AbilityKind::Activated(activated)
+                    if activated.effects.activation_definition == Some(definition)
+                        && activated.ability_cant_be_copied())
+        }) {
+            return Ok(None);
+        }
+    }
     // A spell copy takes the source's frozen layer-1 definition, including
     // earlier copy effects. Layer-3 word substitutions remain uncopiable.
     // Ability copies keep their independently captured StackEntry program.

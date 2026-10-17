@@ -648,6 +648,13 @@ pub(super) fn action_drag_metadata(
             | ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
                 ..
             } => ("special_action", None, None, None, None),
+            ironsmith::special_actions::SpecialAction::DiscardFromHand { card_id } => (
+                "special_action",
+                Some(card_id.0),
+                None,
+                Some(zone_name(Zone::Hand)),
+                Some(zone_name(Zone::Graveyard)),
+            ),
         },
     }
 }
@@ -979,10 +986,15 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             }
             ironsmith::special_actions::SpecialAction::IgnoreAttachedRestriction {
                 source_id,
-                ..
+                ability_index,
             } => {
                 format!(
-                    "Sacrifice a permanent: Ignore this effect until end of turn. ({})",
+                    "{}: Ignore this effect until end of turn. ({})",
+                    ironsmith::special_actions::ignore_attached_restriction_cost_display(
+                        game,
+                        *source_id,
+                        *ability_index,
+                    ),
                     object_name(game, *source_id)
                 )
             }
@@ -1003,6 +1015,9 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             }
             ironsmith::special_actions::SpecialAction::PayDelayedTrigger { .. } => {
                 "Pay the pending delayed-trigger cost".to_string()
+            }
+            ironsmith::special_actions::SpecialAction::DiscardFromHand { card_id } => {
+                format!("Discard {}", object_name(game, *card_id))
             }
             ironsmith::special_actions::SpecialAction::PerformRepeatableManaPaymentAction {
                 action_index,
@@ -1393,6 +1408,9 @@ pub(super) fn special_action_ref(
         } => SpecialActionRef::PerformRepeatableManaPaymentAction {
             action_index: *action_index,
         },
+        ironsmith::special_actions::SpecialAction::DiscardFromHand { card_id } => {
+            SpecialActionRef::DiscardFromHand { card_id: card_id.0 }
+        }
     }
 }
 

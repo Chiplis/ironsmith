@@ -1546,11 +1546,12 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::CastOrActivatePayments { player: filter, pay_life, sacrifice } => {
+            Restriction::CastOrActivatePayments { player: filter, pay_life, sacrifice, exempt_mana_abilities } => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cast_or_activate_payment_restrictions.push(crate::game_state::ScopedCastOrActivatePaymentRestriction {
                             iterated_player, payer: player.id, controller, source, pay_life: *pay_life,
+                            exempt_mana_abilities: *exempt_mana_abilities,
                             sacrifice: sacrifice.clone(), tagged_objects: tagged_objects.clone(),
                         });
                     }
@@ -1662,6 +1663,16 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::ActivateKeywordAbilitiesOf { filter, keyword } => {
+                for &id in &game.battlefield {
+                    if let Some(object) = game.object(id)
+                        && !game.is_phased_out(id)
+                        && filter.matches(object, &ctx, game)
+                    {
+                        tracker.cant_activate_keyword_abilities_of.insert((id, *keyword));
+                    }
+                }
+            }
             Restriction::CastSpellsOnlyAsSorcery(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
@@ -1741,6 +1752,7 @@ impl RestrictionExt for Restriction {
                 player: filter,
                 spells,
                 maximum,
+                ..
             } => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
@@ -1882,6 +1894,45 @@ impl RestrictionExt for Restriction {
                         controller,
                         iterated_player,
                         tagged_objects: tagged_objects.clone(),
+                        recipients: None,
+                        or_redirected: false,
+                    },
+                );
+            }
+            // Source- and recipient-keyed (Lava Burst): the pair is checked
+            // as each damage event is proposed, so the rule keeps both
+            // filters rather than a recipient set.
+            Restriction::PreventDamageFromTo {
+                sources,
+                recipients,
+                or_redirected,
+            } => {
+                tracker.source_damage_cant_be_prevented.push(
+                    crate::game_state::SourceDamagePreventionProhibition {
+                        sources: sources.clone(),
+                        combat_only: false,
+                        host: source,
+                        controller,
+                        iterated_player,
+                        tagged_objects: tagged_objects.clone(),
+                        recipients: Some(recipients.clone()),
+                        or_redirected: *or_redirected,
+                    },
+                );
+            }
+            // Ghostly Flame: matching permanents and spells are colorless as
+            // sources of damage; read through `damage_source_is_colorless`.
+            Restriction::DamageSourcesAreColorless(sources) => {
+                tracker.colorless_damage_sources.push(
+                    crate::game_state::SourceDamagePreventionProhibition {
+                        sources: sources.clone(),
+                        combat_only: false,
+                        host: source,
+                        controller,
+                        iterated_player,
+                        tagged_objects: tagged_objects.clone(),
+                        recipients: None,
+                        or_redirected: false,
                     },
                 );
             }

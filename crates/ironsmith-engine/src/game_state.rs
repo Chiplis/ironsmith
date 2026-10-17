@@ -546,6 +546,13 @@ struct BattlefieldFlags {
     tap_on_held_phase_in: HashSet<ObjectId>,
     /// Sources whose phase-out holds also end when the source untaps.
     phase_out_holds_release_on_untap: HashSet<ObjectId>,
+    /// Directly phased-out permanents held until the recorded player rolls
+    /// at most the recorded result while rolling to visit their Attractions
+    /// (Ferris Wheel).
+    phase_out_holds_until_visit_roll: HashMap<ObjectId, (PlayerId, u32)>,
+    /// The permanents each source has phased out ("that hasn't been phased
+    /// out with this Attraction", Ferris Wheel), per source incarnation.
+    phased_out_with_source: HashMap<ObjectId, HashSet<ObjectId>>,
 }
 
 /// Exile/casting permission flags grouped behind copy-on-write storage.
@@ -588,6 +595,10 @@ struct ObjectAnnotationStore {
     /// ("note one of its creature types that hasn't been noted for Volo's
     /// Journal").
     noted_creature_types: HashMap<ObjectId, Vec<Subtype>>,
+    /// Die results stored on an object ("roll five six-sided dice and store
+    /// those results on it", Centaur of Attention): the die size and the
+    /// results, in roll order. A new object (CR 400.7) has none.
+    stored_die_results: HashMap<ObjectId, (u32, Vec<u32>)>,
     /// Stickers attached to an object, keyed by stable object identity.
     object_stickers: HashMap<StableId, Vec<StickerMarker>>,
     /// Names from the player's accessible sticker sheets, keyed by physical sticker identity.
@@ -734,6 +745,9 @@ struct AuxiliaryTrackingState {
     combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
     /// Timestamp counter for combat-choice control effects.
     combat_choice_control_timestamp: u64,
+    /// The turn whose blockers are declared by random piles instead of a
+    /// declaration (Camouflage).
+    random_pile_block_turn: Option<u32>,
     /// "You choose how each player votes this turn" (Illusion of Choice):
     /// (controller, turn number), latest last.
     vote_control_effects: Vec<(PlayerId, u32)>,
@@ -745,6 +759,9 @@ struct AuxiliaryTrackingState {
     /// Colors selected during draft instructions, grouped by player and the
     /// named card family whose constructed-deck copies share those choices.
     draft_chosen_colors: HashMap<(PlayerId, String), crate::color::ColorSet>,
+    /// Players noted while drafting cards of a name ("note the player who
+    /// passed it to you", Cogwork Tracker), grouped by drafter and name.
+    draft_noted_players: HashMap<(PlayerId, String), Vec<PlayerId>>,
     /// Colors chosen for one physical card as its owner built their deck
     /// ("As you create your deck, circle two of the colors below.", Cryptic
     /// Spires), keyed by the card's stable identity so the choice follows
@@ -849,6 +866,57 @@ struct AuxiliaryTrackingState {
     /// trigger, first match first. Its controller chooses which of them
     /// causes it to trigger when it is put on the stack.
     delayed_trigger_alternatives: Vec<Vec<crate::triggers::TriggeredAbilityEntry>>,
+    /// "Target spell's controller exiles it ... the player puts it onto the
+    /// stack as a copy of the original spell" (Ertai's Meddling): the
+    /// original spell's announced choices, kept with the exiled card by its
+    /// stable identity until that card is put back onto the stack.
+    retained_spell_choices: HashMap<StableId, RetainedSpellChoices>,
+}
+
+/// The announced choices of a spell that left the stack (CR 601.2b-d):
+/// targets, their assignments and divisions, X, modes and optional costs.
+/// A copy of that original spell put onto the stack later keeps them
+/// (CR 707.10).
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serialization",
+    derive(serde::Serialize, serde::Deserialize)
+)]
+pub struct RetainedSpellChoices {
+    pub controller: PlayerId,
+    pub targets: Vec<Target>,
+    pub target_assignments: Vec<TargetAssignment>,
+    pub target_distributions: Vec<TargetDistribution>,
+    pub x_value: Option<u32>,
+    pub chosen_modes: Option<Vec<usize>>,
+    pub optional_costs_paid: OptionalCostsPaid,
+}
+
+impl RetainedSpellChoices {
+    pub fn from_stack_entry(entry: &StackEntry) -> Self {
+        Self {
+            controller: entry.controller,
+            targets: entry.targets.clone(),
+            target_assignments: entry.target_assignments.clone(),
+            target_distributions: entry.target_distributions.clone(),
+            x_value: entry.x_value,
+            chosen_modes: entry.chosen_modes.clone(),
+            optional_costs_paid: entry.optional_costs_paid.clone(),
+        }
+    }
+
+    /// The stack entry of a copy of the original spell, represented by
+    /// `object_id` and controlled by `controller`.
+    pub fn stack_entry(&self, object_id: ObjectId, controller: PlayerId) -> StackEntry {
+        let mut entry = StackEntry::new(object_id, controller);
+        entry.targets = self.targets.clone();
+        entry.target_assignments = self.target_assignments.clone();
+        entry.target_distributions = self.target_distributions.clone();
+        entry.x_value = self.x_value;
+        entry.chosen_modes = self.chosen_modes.clone();
+        entry.optional_costs_paid = self.optional_costs_paid.clone();
+        entry
+    }
 }
 
 fn delayed_alternative_key(
@@ -1136,6 +1204,10 @@ pub struct TurnStore {
     /// Hand cards revealed by Forecast through the end of the current upkeep.
     /// A zone change removes the old object ID immediately.
     pub forecast_revealed_hand_cards: HashSet<ObjectId>,
+    /// Hand cards revealed until their owner's next turn begins (Firestorm
+    /// Phoenix), with whether that owner can't play them meanwhile. Keyed by
+    /// the hand object, so leaving the hand ends both.
+    pub hand_cards_revealed_until_owners_next_turn: HashMap<ObjectId, (PlayerId, bool)>,
     /// Control acquisitions since each controller's latest upkeep began.
     pub came_under_control_since_last_upkeep: HashSet<ObjectId>,
     /// Acquisitions in the interval preceding the currently begun upkeep,
@@ -1309,6 +1381,10 @@ pub struct ChoiceStore {
     pub chosen_basic_land_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Chosen land types for permanents ("as this enters, choose a land type").
     pub chosen_land_types: HashMap<ObjectId, crate::types::Subtype>,
+    /// Several basic land types one permanent chose in order ("as this
+    /// enters, choose two basic land types", Illusionary Terrain). Readers
+    /// of "the first/second chosen type" index this sequence.
+    pub chosen_basic_land_type_sequences: HashMap<ObjectId, Vec<crate::types::Subtype>>,
     /// Chosen creature types for permanents ("as this enters, choose a creature type").
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Unrevealed choices are separate from public chosen characteristics.
@@ -1330,6 +1406,11 @@ pub struct ChoiceStore {
     pub chosen_objects: HashMap<ObjectId, crate::snapshot::ObjectSnapshot>,
     /// Chosen named options for permanents ("as this enters, choose A or B").
     pub chosen_named_options: HashMap<ObjectId, String>,
+    /// Named options chosen by each player for a permanent ("As this
+    /// creature enters, each player chooses war or peace"), in APNAP order.
+    /// Filter contexts expose each option's players as
+    /// `player_option_choice_tag(option)` ("players who chose war").
+    pub chosen_player_named_options: HashMap<ObjectId, Vec<(PlayerId, String)>>,
     pub(crate) numeric_acquisitions: crate::source_numbers::NumberChoiceMemory,
     /// Every number this object chose in a "choose a number ... that hasn't
     /// been chosen" instruction (The Toymaker's Trap), in choice order.
@@ -1968,6 +2049,8 @@ pub struct ScopedCastOrActivatePaymentRestriction {
     pub controller: PlayerId,
     pub source: Option<ObjectId>,
     pub pay_life: bool,
+    /// Mana-ability payments are exempt (Karn's Sylex).
+    pub exempt_mana_abilities: bool,
     pub sacrifice: Option<crate::target::ObjectFilter>,
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
@@ -2117,6 +2200,9 @@ pub struct CantEffectTracker {
 
     pub cant_play_land_filters: HashMap<PlayerId, Vec<LandPlayRestrictionFilter>>,
     pub cant_activate_loyalty_abilities_of: HashSet<ObjectId>,
+    /// Permanents whose activated abilities with the keyword can't be
+    /// activated ("power-up abilities can't be activated", Kang).
+    pub cant_activate_keyword_abilities_of: HashSet<(ObjectId, ironsmith_core::ActivatedAbilityKeyword)>,
 
     /// Players who can cast spells only any time they could cast a sorcery.
     pub cast_spells_only_as_sorcery: HashSet<PlayerId>,
@@ -2216,6 +2302,10 @@ pub struct CantEffectTracker {
     pub all_damage_as_though_wither: bool,
     /// Dynamic source-scoped prohibitions supplied by active statics or rules.
     pub source_damage_cant_be_prevented: Vec<SourceDamagePreventionProhibition>,
+    /// Permanents and spells that are colorless as sources of damage (Ghostly
+    /// Flame). Only `sources` and the host context are read; the prevention
+    /// fields are unused. Consulted through `damage_source_is_colorless`.
+    pub colorless_damage_sources: Vec<SourceDamagePreventionProhibition>,
     /// Permanents damage to which can't be prevented (Whippoorwill).
     pub damage_to_cant_be_prevented: HashSet<ObjectId>,
     /// Permanents damage to which can't be dealt instead to another
@@ -2323,6 +2413,13 @@ pub struct SourceDamagePreventionProhibition {
     pub controller: PlayerId,
     pub iterated_player: Option<PlayerId>,
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    /// Only damage dealt to an object matching this filter (Lava Burst:
+    /// "if this would deal damage to a creature"); `None` covers every
+    /// recipient.
+    pub recipients: Option<crate::target::ObjectFilter>,
+    /// Redirection replacements (CR 614.9) can't move the matching damage
+    /// either ("... or dealt instead to another permanent or player").
+    pub or_redirected: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3041,6 +3138,8 @@ impl CantEffectTracker {
         }
         self.cant_activate_loyalty_abilities_of
             .extend(other.cant_activate_loyalty_abilities_of);
+        self.cant_activate_keyword_abilities_of
+            .extend(other.cant_activate_keyword_abilities_of);
         self.cast_spells_only_as_sorcery
             .extend(other.cast_spells_only_as_sorcery);
         self.cant_activate_non_mana_abilities
@@ -3092,6 +3191,8 @@ impl CantEffectTracker {
         self.all_damage_as_though_wither |= other.all_damage_as_though_wither;
         self.source_damage_cant_be_prevented
             .extend(other.source_damage_cant_be_prevented);
+        self.colorless_damage_sources
+            .extend(other.colorless_damage_sources);
         self.damage_to_cant_be_prevented
             .extend(other.damage_to_cant_be_prevented);
         self.damage_to_cant_be_redirected
@@ -3183,6 +3284,7 @@ impl CantEffectTracker {
         self.cant_cast_filters.clear();
         self.cant_play_land_filters.clear();
         self.cant_activate_loyalty_abilities_of.clear();
+        self.cant_activate_keyword_abilities_of.clear();
         self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();
         self.cant_activate_non_mana_non_loyalty_abilities.clear();
@@ -3208,6 +3310,7 @@ impl CantEffectTracker {
         self.combat_damage_cant_be_prevented = false;
         self.all_damage_as_though_wither = false;
         self.source_damage_cant_be_prevented.clear();
+        self.colorless_damage_sources.clear();
         self.damage_to_cant_be_prevented.clear();
         self.damage_to_cant_be_redirected.clear();
         self.life_total_cant_change.clear();
@@ -4430,6 +4533,9 @@ pub struct GrantedManaAbility {
     pub controller: PlayerId,
     pub ability: crate::ability::ActivatedAbility,
     pub expires_end_of_turn: u32,
+    /// The command-zone object that carries the ability so it can be
+    /// activated like any other mana source; removed when the grant expires.
+    pub carrier: Option<ObjectId>,
 }
 
 impl StackEntry {
@@ -5004,6 +5110,32 @@ impl GameState {
         true
     }
 
+    /// Keep the choices of a spell leaving the stack, by its card's stable id.
+    pub fn retain_spell_choices(&mut self, card: StableId, choices: RetainedSpellChoices) {
+        self.auxiliary_tracking_mut()
+            .retained_spell_choices
+            .insert(card, choices);
+        self.bump_mutation_revision();
+    }
+
+    /// The retained choices of the original spell this card was.
+    pub fn retained_spell_choices(&self, card: StableId) -> Option<&RetainedSpellChoices> {
+        self.auxiliary_tracking.retained_spell_choices.get(&card)
+    }
+
+    /// Consume the retained choices as the copy is put onto the stack.
+    pub fn take_retained_spell_choices(&mut self, card: StableId) -> Option<RetainedSpellChoices> {
+        if !self.auxiliary_tracking.retained_spell_choices.contains_key(&card) {
+            return None;
+        }
+        let taken = self
+            .auxiliary_tracking_mut()
+            .retained_spell_choices
+            .remove(&card);
+        self.bump_mutation_revision();
+        taken
+    }
+
     /// Clear all sector designations when no space-sculptor source remains.
     pub fn clear_sector_designations(&mut self) -> bool {
         if self.auxiliary_tracking.sector_designations.is_empty() {
@@ -5486,6 +5618,34 @@ impl GameState {
             .map_or(&[], Vec::as_slice)
     }
 
+    /// Record a player `player` noted while drafting a card named `card_name`.
+    pub fn record_draft_noted_player(
+        &mut self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        noted: PlayerId,
+    ) {
+        let players = self
+            .auxiliary_tracking_mut()
+            .draft_noted_players
+            .entry((player, normalize_draft_note_card_name(card_name.as_ref())))
+            .or_default();
+        if !players.contains(&noted) {
+            players.push(noted);
+        }
+        self.bump_mutation_revision();
+        self.mark_continuous_state_dirty();
+    }
+
+    /// The players `player` noted while drafting cards named `card_name`.
+    /// Outside a draft nobody is noted.
+    pub fn draft_noted_players(&self, player: PlayerId, card_name: impl AsRef<str>) -> &[PlayerId] {
+        self.auxiliary_tracking
+            .draft_noted_players
+            .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
+            .map_or(&[], Vec::as_slice)
+    }
+
     pub fn set_draft_chosen_colors(
         &mut self,
         player: PlayerId,
@@ -5831,6 +5991,41 @@ impl GameState {
             .noted_life_totals
             .get(&source)
             .copied()
+    }
+
+    /// The die size and results stored on `object`, in roll order.
+    pub fn stored_die_results(&self, object: ObjectId) -> Option<(u32, &[u32])> {
+        self.object_annotations
+            .stored_die_results
+            .get(&object)
+            .map(|(sides, results)| (*sides, results.as_slice()))
+    }
+
+    /// Replace the die results stored on `object`. Stored results are read by
+    /// characteristic-defining values, so the continuous state is refreshed.
+    pub fn set_stored_die_results(&mut self, object: ObjectId, sides: u32, results: Vec<u32>) {
+        let entry = (sides, results);
+        let previous = self
+            .object_annotations_mut()
+            .stored_die_results
+            .insert(object, entry.clone());
+        if previous.as_ref() != Some(&entry) {
+            self.bump_mutation_revision();
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    /// The greatest number of results stored on `object` that share one
+    /// value (0 when none are stored).
+    pub fn greatest_equal_stored_die_result_count(&self, object: ObjectId) -> u32 {
+        let Some((_, results)) = self.stored_die_results(object) else {
+            return 0;
+        };
+        let mut counts = std::collections::BTreeMap::<u32, u32>::new();
+        for result in results {
+            *counts.entry(*result).or_default() += 1;
+        }
+        counts.values().copied().max().unwrap_or(0)
     }
 
     pub fn put_sticker_on_object(&mut self, object_id: ObjectId, action: KeywordActionKind) {
@@ -7037,6 +7232,7 @@ impl GameState {
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
             || filter.entered_graveyard_from_library_this_turn
+            || filter.entered_graveyard_not_from_battlefield_this_turn
             || filter.milled_into_graveyard_this_turn
             || filter.surveilled_this_turn
             || filter.fought_this_turn
@@ -8435,6 +8631,38 @@ impl GameState {
                     .flatten()
                     .copied(),
             )
+            // "This creature attacks a player you noted for cards named ...
+            // each combat if able": one requirement per noted opponent.
+            .chain(self.draft_noted_attack_requirements(creature))
+    }
+
+    fn draft_noted_attack_requirements(&self, creature: ObjectId) -> Vec<PlayerId> {
+        if !self.current_has_static_ability_id(
+            creature,
+            crate::static_abilities::StaticAbilityId::MustAttackDraftNotedPlayers,
+        ) {
+            return Vec::new();
+        }
+        let view = DerivedGameView::new(self);
+        let Some(chars) = view.calculated_characteristics(creature) else {
+            return Vec::new();
+        };
+        let controller = chars.controller;
+        let mut players = Vec::new();
+        for ability in chars.static_abilities.iter() {
+            let Some(card_name) = ability.must_attack_draft_noted_card_name() else {
+                continue;
+            };
+            for &noted in self.draft_noted_players(controller, &card_name) {
+                if noted != controller
+                    && self.player(noted).is_some_and(|state| state.is_in_game())
+                    && !players.contains(&noted)
+                {
+                    players.push(noted);
+                }
+            }
+        }
+        players
     }
 
     /// CR 508.1d: a pending "attacks during its controller's next combat
@@ -8510,9 +8738,19 @@ impl GameState {
 
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
+        let expired_carriers: Vec<ObjectId> = self
+            .effect_store
+            .granted_mana_abilities
+            .iter()
+            .filter(|grant| grant.expires_end_of_turn <= current_turn)
+            .filter_map(|grant| grant.carrier)
+            .collect();
         self.effect_store
             .granted_mana_abilities
             .retain(|grant| grant.expires_end_of_turn > current_turn);
+        for carrier in expired_carriers {
+            self.remove_object(carrier);
+        }
     }
 
     pub fn cleanup_mana_spend_permissions_end_of_turn(&mut self) {
@@ -8658,10 +8896,7 @@ impl GameState {
         amount: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        if reason.is_cast_or_ability_payment()
-            && self.player_cant_pay_life_to_cast_or_activate(player)
-            && amount > 0
-        {
+        if amount > 0 && self.player_cant_pay_life_for_payment_reason(player, reason) {
             return false;
         }
         self.can_pay_life(player, amount)
@@ -9142,6 +9377,19 @@ impl GameState {
         is_combat: bool,
         source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
     ) -> bool {
+        self.can_prevent_damage_from_to(source, None, is_combat, source_snapshot)
+    }
+
+    /// Source-sensitive prevention legality for damage proposed to `target`.
+    /// Recipient-keyed source rules (Lava Burst) apply only when the
+    /// recipient is known and matches.
+    pub fn can_prevent_damage_from_to(
+        &self,
+        source: ObjectId,
+        target: Option<crate::events::DamageTarget>,
+        is_combat: bool,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    ) -> bool {
         if !self.can_prevent_damage_of_kind(is_combat) {
             return false;
         }
@@ -9153,25 +9401,116 @@ impl GameState {
                 if rule.combat_only && !is_combat {
                     return true;
                 }
-                let mut context = self
-                    .filter_context_for(rule.controller, rule.host)
-                    .with_iterated_player(rule.iterated_player)
-                    .with_tagged_objects(&rule.tagged_objects);
-                let matches = if let Some(object) =
-                    self.object(source).filter(|_| !self.is_phased_out(source))
-                {
-                    // A resolving spell may already be popped from the stack's
-                    // entry list while its card remains in the stack zone.
-                    context.caster = Some(self.controller_of(object));
-                    rule.sources.matches(object, &context, self)
-                } else {
-                    source_snapshot.is_some_and(|snapshot| {
-                        snapshot.object_id == source
-                            && rule.sources.matches_snapshot(snapshot, &context, self)
-                    })
-                };
-                !matches
+                !self.source_damage_rule_applies(rule, source, target, source_snapshot)
             })
+    }
+
+    /// Whether damage `source` would deal to `target` may be dealt instead to
+    /// another permanent or player by a redirection replacement (CR 614.9),
+    /// given the source- and recipient-keyed "can't be dealt instead" rules.
+    pub fn can_redirect_damage_from_to(
+        &self,
+        source: ObjectId,
+        target: crate::events::DamageTarget,
+        is_combat: bool,
+    ) -> bool {
+        self.effect_store
+            .cant_effects
+            .source_damage_cant_be_prevented
+            .iter()
+            .filter(|rule| rule.or_redirected && (is_combat || !rule.combat_only))
+            .all(|rule| !self.source_damage_rule_applies(rule, source, Some(target), None))
+    }
+
+    /// The shared damage-source color hook: whether `source` is colorless as
+    /// a source of damage ("Black and/or red permanents and spells are
+    /// colorless sources of damage", Ghostly Flame). Only permanents and
+    /// spells are covered. Every damage-source color check (protection,
+    /// prevention and damage filters) reads the source through
+    /// `damage_source_color_snapshot` instead of its plain colors.
+    pub fn damage_source_is_colorless(
+        &self,
+        source: ObjectId,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    ) -> bool {
+        let rules = &self.effect_store.cant_effects.colorless_damage_sources;
+        if rules.is_empty() {
+            return false;
+        }
+        let zone = match self.object(source).filter(|_| !self.is_phased_out(source)) {
+            Some(object) => Some(object.zone),
+            None => source_snapshot
+                .filter(|snapshot| snapshot.object_id == source)
+                .map(|snapshot| snapshot.zone),
+        };
+        if !matches!(zone, Some(Zone::Battlefield | Zone::Stack)) {
+            return false;
+        }
+        rules
+            .iter()
+            .any(|rule| self.source_damage_rule_applies(rule, source, None, source_snapshot))
+    }
+
+    /// The damage source's characteristics as a colorless source of damage,
+    /// when `damage_source_is_colorless` covers it: its current (or last
+    /// known) characteristics with no colors. `None` means the source keeps
+    /// its own colors and callers match it as usual.
+    pub fn damage_source_color_snapshot(
+        &self,
+        source: ObjectId,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    ) -> Option<crate::snapshot::ObjectSnapshot> {
+        if !self.damage_source_is_colorless(source, source_snapshot) {
+            return None;
+        }
+        let mut snapshot = match self.object(source).filter(|_| !self.is_phased_out(source)) {
+            Some(object) => crate::snapshot::ObjectSnapshot::capture_for_execution(object, self)?,
+            None => source_snapshot
+                .filter(|snapshot| snapshot.object_id == source)?
+                .clone(),
+        };
+        snapshot.colors = crate::color::ColorSet::COLORLESS;
+        Some(snapshot)
+    }
+
+    /// Whether one source-keyed damage rule covers this source (live or by
+    /// its damage LKI) and, when the rule names recipients, this recipient.
+    fn source_damage_rule_applies(
+        &self,
+        rule: &SourceDamagePreventionProhibition,
+        source: ObjectId,
+        target: Option<crate::events::DamageTarget>,
+        source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    ) -> bool {
+        let mut context = self
+            .filter_context_for(rule.controller, rule.host)
+            .with_iterated_player(rule.iterated_player)
+            .with_tagged_objects(&rule.tagged_objects);
+        let source_matches = if let Some(object) =
+            self.object(source).filter(|_| !self.is_phased_out(source))
+        {
+            // A resolving spell may already be popped from the stack's
+            // entry list while its card remains in the stack zone.
+            context.caster = Some(self.controller_of(object));
+            rule.sources.matches(object, &context, self)
+        } else {
+            source_snapshot.is_some_and(|snapshot| {
+                snapshot.object_id == source
+                    && rule.sources.matches_snapshot(snapshot, &context, self)
+            })
+        };
+        if !source_matches {
+            return false;
+        }
+        let Some(recipients) = &rule.recipients else {
+            return true;
+        };
+        match target {
+            Some(crate::events::DamageTarget::Object(object)) => self
+                .object(object)
+                .is_some_and(|object| recipients.matches(object, &context, self)),
+            _ => false,
+        }
     }
 
     /// Recipient-keyed prevention legality ("damage that would be dealt to

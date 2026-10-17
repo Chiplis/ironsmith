@@ -722,7 +722,43 @@ fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
         || primitives::has_phrase(tokens, &["toughness", "is", "equal", "to"])
 }
 
+/// "a player other than this creature's owner controls it" (Bronze
+/// Bombshell): the source's controller isn't its owner. State triggers read
+/// "you" as the source's controller, so this is "you don't own the source".
+pub(crate) fn is_source_controlled_by_non_owner_condition(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    let words = match words.as_slice() {
+        ["when" | "whenever", rest @ ..] => rest,
+        all => all,
+    };
+    let ["a", "player", "other", "than", possessive @ .., "owner", "controls", object @ ..] =
+        words
+    else {
+        return false;
+    };
+    let Some((last, head)) = possessive.split_last() else {
+        return false;
+    };
+    let Some(noun) = last.strip_suffix("'s") else {
+        return false;
+    };
+    let mut source_words = head.to_vec();
+    source_words.push(noun);
+    let names_source = |words: &[&str]| {
+        crate::util::is_source_reference_words(words)
+            || crate::util::source_reference_surface_for_words(words).is_some()
+    };
+    names_source(&source_words) && (object == ["it"] || names_source(object))
+}
+
 pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if is_source_controlled_by_non_owner_condition(tokens) {
+        return Some(PredicateAst::Source(
+            crate::cards::builders::SourcePredicateAst::SourceMatches(
+                crate::target::ObjectFilter::source().owned_by(PlayerFilter::NotYou),
+            ),
+        ));
+    }
     if let Some(predicate) =
         crate::grammar::anthem_grants::parse_chosen_color_most_common_predicate(tokens)
     {
@@ -742,6 +778,7 @@ pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
             PlayerFilter::Opponent => PlayerAst::Opponent,
             PlayerFilter::Any => PlayerAst::Any,
             PlayerFilter::IteratedPlayer => PlayerAst::That,
+            PlayerFilter::Defending => PlayerAst::Defending,
             _ => return None,
         };
         match relation.relation {
@@ -756,6 +793,9 @@ pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
             )),
             PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => Some(PredicateAst::Player(
                 PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player },
+            )),
+            PlayerLifeRelationAst::HasMoreLifeThanAnotherOpponent => Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreLifeThanAnotherOpponent { player },
             )),
         }
     }

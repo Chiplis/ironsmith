@@ -109,6 +109,10 @@ fn is_draft_rule(words: &[&str]) -> bool {
             &["as", "you", "draft"],
             &["during", "the", "draft"],
             &["immediately", "after", "the", "draft"],
+            &["instead", "of", "drafting"],
+            &[
+                "as", "long", "as", "this", "card", "is", "face", "up", "during", "the", "draft",
+            ],
         ]
         .iter()
         .any(|prefix| phrase_is_prefix(words, prefix))

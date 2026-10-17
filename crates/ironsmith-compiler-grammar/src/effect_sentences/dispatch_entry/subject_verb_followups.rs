@@ -2191,7 +2191,80 @@ fn pre_rule_text_change_destination_exclusion(
     Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("typed-text-change-destination-exclusion") }))
 }
 
+/// "When this ability resolves for the third time this turn, <effects>"
+/// (Gimli, Mournful Avenger): a reflexive trigger keyed on the resolving
+/// ability's own resolution count rather than on an action's result. The
+/// state gate is checked as the ability resolves; the follow-up's targets are
+/// chosen when the reflexive ability is put on the stack (CR 603.12).
+pub(super) fn pre_rule_ability_resolution_ordinal_reflexive(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence_tokens);
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(None);
+    };
+    let head = crate::lexer::token_word_refs(&tokens[..comma]);
+    let ["when", "this", "ability", "resolves", "for", "the", ordinal, "time", "this", "turn"] =
+        head.as_slice()
+    else {
+        return Ok(None);
+    };
+    if state.effects.is_empty() {
+        return Ok(None);
+    }
+    let span = tokens[0].span;
+    let predicate_tokens = [
+        "this", "is", "the", *ordinal, "time", "this", "ability", "has", "resolved", "this",
+        "turn",
+    ]
+    .iter()
+    .map(|word| OwnedLexToken::word(*word, span))
+    .collect::<Vec<_>>();
+    let Ok(predicate) =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens)
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        predicate,
+        PredicateAst::TurnEvents(
+            crate::cards::builders::TurnEventPredicateAst::ThisAbilityResolvedThisTurnExactly(_)
+        )
+    ) {
+        return Ok(None);
+    }
+    let body = crate::lexer::trim_lexed_commas(&tokens[comma + 1..]);
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(body)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(
+            "resolution-count reflexive trigger has no effect".into(),
+        ));
+    }
+    state.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate,
+        if_true: Vec::new(),
+        if_false: Vec::new(),
+    }));
+    state.effects.push(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+        predicate: IfResultPredicate::ConditionMatched,
+        effects,
+    }));
+    *state.carried_context = None;
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("ability-resolution-ordinal-reflexive"),
+    }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    pre_followup_rule!(
+        "ability-resolution-ordinal-reflexive",
+        &["when"],
+        pre_rule_ability_resolution_ordinal_reflexive
+    ),
     pre_followup_rule!(
         "damage-amount-replacement",
         &[],
@@ -2416,6 +2489,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         "speed-floor-followup",
         &["this"],
         pre_rule_speed_floor_followup
+    ),
+    pre_followup_rule!(
+        "spend-symbol-for-copied-abilities",
+        &["you"],
+        pre_rule_spend_symbol_for_copied_abilities_followup
     ),
     pre_followup_rule!(
         "conditional-entry-modifier",
@@ -2654,6 +2732,7 @@ use subject_verb_followups_core_programs::{
     pre_rule_x_maximum_followup,
     pre_rule_conditional_entry_modifier_followup, pre_rule_speed_floor_followup,
     pre_rule_do_the_same_for_keywords_followup,
+    pre_rule_spend_symbol_for_copied_abilities_followup,
 };
 pub(crate) use subject_verb_followups_core_programs::speed_floor_followup_minimum;
 #[path = "subject_verb_followups/subject_verb_followups_choice.rs"]

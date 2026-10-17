@@ -6269,6 +6269,9 @@ pub(super) fn describe_choose_top_exile_then_play_structural(effects: &[Effect])
             crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => {
                 format!("During your next turn, you may {verb} that card{mana_suffix}")
             }
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
+                format!("Until end of combat on your next turn, you may {verb} that card{mana_suffix}")
+            }
             _ => return None,
         }
     };

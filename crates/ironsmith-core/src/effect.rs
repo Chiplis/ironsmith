@@ -23,6 +23,7 @@ mod reselect_attack;
 mod hand_reveal;
 mod friend_or_foe;
 mod tie_break;
+mod retained_spell;
 mod attraction_visits;
 pub use attraction_visits::*;
 pub use ascend::*;
@@ -33,6 +34,7 @@ pub use player_option_choice::*;
 pub use reselect_attack::*;
 pub use hand_reveal::*;
 pub use tie_break::*;
+pub use retained_spell::*;
 
 /// Identifier for an effect within an effect sequence.
 ///
@@ -504,6 +506,10 @@ pub enum GrantPlayTaggedDuration {
     /// card" (Casey & Raph): the permission holder's own next end step,
     /// rather than the effect controller's (`UntilYourNextEndStep`).
     UntilPlayerNextEndStep,
+    /// Appended: "Until end of combat on your next turn, you may play that
+    /// card" (Brazen Cannonade): through the combat phase of the holder's
+    /// next turn.
+    UntilEndOfCombatOnYourNextTurn,
 }
 
 /// Oracle-facing noun phrase for a temporary permission over a tagged card
@@ -848,6 +854,10 @@ pub enum DelayedTriggerDuration {
     EndOfCombat,
     UntilControllerNextTurn,
     UntilControllerNextTurnEnd,
+    /// "For as long as this creature remains tapped" (Giant Oyster): the
+    /// registration ends once the ability's source untaps or leaves the
+    /// battlefield. Appended for wire stability.
+    WhileSourceTapped,
 }
 
 /// A cost that may be paid while a delayed trigger is pending to cancel that
@@ -1019,6 +1029,14 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
 
     pub fn until_controller_next_turn_end(mut self) -> Self {
         self.duration = DelayedTriggerDuration::UntilControllerNextTurnEnd;
+        self.until_end_of_turn = false;
+        self.until_end_of_combat = false;
+        self
+    }
+
+    /// End the registration when the ability's source untaps or leaves.
+    pub fn until_source_untaps(mut self) -> Self {
+        self.duration = DelayedTriggerDuration::WhileSourceTapped;
         self.until_end_of_turn = false;
         self.until_end_of_combat = false;
         self
@@ -1594,6 +1612,42 @@ pub struct RedistributeLifeTotalsEffect {
 impl RedistributeLifeTotalsEffect {
     pub fn new(chooser: PlayerFilter) -> Self {
         Self { chooser }
+    }
+}
+
+/// "put this creature into its owner's graveyard instead of onto the
+/// battlefield" inside an as-enters program (Frankenstein's Monster): the
+/// entering source goes to `destination` instead of entering (CR 614.1c).
+/// Outside an entry program it does nothing.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RedirectEnteringSourceEffect {
+    pub destination: crate::zone::Zone,
+}
+
+impl RedirectEnteringSourceEffect {
+    pub fn new(destination: crate::zone::Zone) -> Self {
+        Self { destination }
+    }
+}
+
+/// "Flip a coin. If you win the flip, you gain N life and target opponent
+/// loses N life, and you decide whether to flip again. If you lose the flip,
+/// you lose N life and that opponent gains N life, and that player decides
+/// whether to flip again. Double the life stakes with each flip." (Game of
+/// Chaos): the controller flips repeatedly; each flip moves the current stakes
+/// of life between the two players, the flip's winner decides whether to flip
+/// again, and the stakes double after every flip.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CoinFlipLifeStakesEffect {
+    pub opponent: ChooseSpec,
+    pub initial_stakes: u32,
+}
+
+impl CoinFlipLifeStakesEffect {
+    pub fn new(opponent: ChooseSpec, initial_stakes: u32) -> Self {
+        Self { opponent, initial_stakes }
     }
 }
 
@@ -4276,12 +4330,33 @@ impl BecomeCreatureTypeChoiceEffect {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct BecomeColorChoiceEffect {
     pub target: ChooseSpec,
     pub duration: Until,
     pub chooser: PlayerFilter,
     pub allow_multiple: bool,
+    /// "becomes that color" (Foraging Wickermaw): the color is the one
+    /// completed by this exact earlier local color decision (a chosen color or
+    /// the color of mana just added), so no new choice is made. Appended with
+    /// a serde default; omitted from Debug when absent.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub color_from: Option<crate::value_model::ColorChoiceReference>,
+}
+
+impl std::fmt::Debug for BecomeColorChoiceEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("BecomeColorChoiceEffect");
+        debug
+            .field("target", &self.target)
+            .field("duration", &self.duration)
+            .field("chooser", &self.chooser)
+            .field("allow_multiple", &self.allow_multiple);
+        if let Some(color_from) = &self.color_from {
+            debug.field("color_from", color_from);
+        }
+        debug.finish()
+    }
 }
 
 impl BecomeColorChoiceEffect {
@@ -4291,7 +4366,14 @@ impl BecomeColorChoiceEffect {
             duration,
             chooser: PlayerFilter::You,
             allow_multiple: false,
+            color_from: None,
         }
+    }
+
+    /// Use the color completed by an exact earlier local color decision.
+    pub fn with_color_from(mut self, reference: crate::value_model::ColorChoiceReference) -> Self {
+        self.color_from = Some(reference);
+        self
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
@@ -4394,6 +4476,13 @@ impl CollectEvidenceEffect {
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
     pub amount: Value,
+    /// The player who amasses ("Its controller amasses Goblins X", Azog,
+    /// Moria's Ruin). None is the effect's controller. Appended.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
+    pub player: Option<PlayerFilter>,
 }
 
 impl AmassEffect {
@@ -4401,7 +4490,13 @@ impl AmassEffect {
         Self {
             subtype,
             amount: amount.into(),
+            player: None,
         }
+    }
+
+    pub fn with_player(mut self, player: PlayerFilter) -> Self {
+        self.player = Some(player);
+        self
     }
 }
 
@@ -4423,6 +4518,12 @@ pub struct GrantNextSpellCostReductionEffect {
     /// to matching spells' costs instead of subtracted from them.
     #[cfg_attr(feature = "serde", serde(default))]
     pub increases_cost: bool,
+    /// "Rather than pay the mana cost of the next spell you cast this turn,
+    /// you may pay life equal to that spell's mana value." (Marshland
+    /// Bloodcaster): with `without_paying_mana_cost`, the alternative cost is
+    /// that life payment instead of nothing.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub pay_life_equal_to_mana_value: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
@@ -4442,6 +4543,18 @@ impl GrantNextSpellCostReductionEffect {
         }
     }
 
+    /// "Rather than pay the mana cost of the next spell you cast this turn,
+    /// you may pay life equal to that spell's mana value."
+    pub fn next_matching_for_life_equal_to_mana_value_this_turn(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self {
+            pay_life_equal_to_mana_value: true,
+            ..Self::next_matching_without_paying_mana_cost_this_turn(player, filter)
+        }
+    }
+
     pub fn new(
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -4456,6 +4569,7 @@ impl GrantNextSpellCostReductionEffect {
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
             increases_cost: false,
+            pay_life_equal_to_mana_value: false,
         }
     }
 
@@ -4473,6 +4587,7 @@ impl GrantNextSpellCostReductionEffect {
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
             increases_cost: false,
+            pay_life_equal_to_mana_value: false,
         }
     }
 
@@ -4490,6 +4605,7 @@ impl GrantNextSpellCostReductionEffect {
             duration: Until::EndOfTurn,
             without_paying_mana_cost: false,
             increases_cost: false,
+            pay_life_equal_to_mana_value: false,
         }
     }
 
@@ -4508,6 +4624,7 @@ impl GrantNextSpellCostReductionEffect {
             duration,
             without_paying_mana_cost: false,
             increases_cost: false,
+            pay_life_equal_to_mana_value: false,
         }
     }
 }
@@ -4521,6 +4638,12 @@ pub struct GrantAbilitiesTargetEffect<A> {
     /// Snapshot this object's activated abilities when the grant resolves.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub activated_from: Option<ChooseSpec>,
+    /// "You may spend blue mana as though it were mana of any color to
+    /// activate those abilities" (Grell Philosopher, CR 609.4b): mana of this
+    /// color may pay any colored symbol in the copied activation costs, and
+    /// only in those. Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activated_from_symbol_as_any_color: Option<ManaSymbol>,
 }
 
 impl<A> GrantAbilitiesTargetEffect<A> {
@@ -4534,6 +4657,7 @@ impl<A> GrantAbilitiesTargetEffect<A> {
             abilities: abilities.into_iter().collect(),
             duration,
             activated_from: None,
+            activated_from_symbol_as_any_color: None,
         }
     }
 }

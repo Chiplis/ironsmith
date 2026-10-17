@@ -106,6 +106,26 @@ fn parse_effect_sentence_lexed_uncached(
     if let Some(effects) = crate::effect_sentences::bundle_rules::parse_put_from_outside_game(tokens)? {
         return Ok(effects);
     }
+    // "Target opponent reveals the top three cards of their library, may put
+    // a creature card from among them onto the battlefield, then puts the
+    // rest into their graveyard." The subject player owns every member;
+    // generic coordination would hand the choice to the controller.
+    // "For as long as you control Hama, you may cast the exiled card during
+    // your turn by waterbending {X} rather than paying its mana cost, where X
+    // is its mana value." The leading duration, turn limit, price, and X
+    // binding all belong to one lasting permission.
+    if tokens.first().is_some_and(|token| token.is_word("for"))
+        && let Some(effect) =
+            crate::permission_helpers::effect_cast_prices::parse_control_source_priced_permission(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
+    if tokens.windows(2).any(|pair| pair[0].is_word("may") && pair[1].is_word("put"))
+        && let Some(effects) =
+            crate::effect_sentences::pair_procedure::reveal_put_rest_do_same::read_single_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = crate::effect_sentences::local_self_replacement::read(tokens)? {
         return Ok(effects);
     }

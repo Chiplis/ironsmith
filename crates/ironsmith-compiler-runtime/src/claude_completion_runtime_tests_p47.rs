@@ -75,3 +75,42 @@ fn serial_named_control_condition_attaches_those_equipment_to_the_token() {
     }
     assert!(debug.contains("attachobjectseffect"), "{debug}");
 }
+
+/// "any number of target opponents each discard a card. For each of those
+/// opponents who didn't discard a card with mana value 4 or greater, draw a
+/// card.": one loop over the targeted opponents, checking each opponent's own
+/// discarded card, with the draw made by the ability's controller.
+#[test]
+fn for_each_of_those_opponents_who_didnt_discard_checks_each_targeted_discard() {
+    let definition = compile_to_runtime_definition(
+        "Hollow Marauder",
+        "Mana cost: {6}{B}\nType: Creature — Specter Rogue\nPower/Toughness: 4/2\nThis spell costs {1} less to cast for each creature card in your graveyard.\nFlying\nWhen this creature enters, any number of target opponents each discard a card. For each of those opponents who didn't discard a card with mana value 4 or greater, draw a card.",
+        false,
+    )
+    .unwrap_or_else(|error| panic!("Hollow Marauder should compile: {error:?}"));
+    let debug = format!("{:?}", definition.abilities);
+    assert_eq!(debug.matches("ForPlayersEffect").count(), 1, "one per-target loop: {debug}");
+    assert!(debug.contains("DiscardEffect"), "{debug}");
+    assert!(debug.contains("PlayerTaggedObjectMatches"), "{debug}");
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+}
+
+/// "put a charge counter on it or remove one from it. When you remove a
+/// counter this way, choose one —": the reflexive modal trigger is attached to
+/// the removal mode only, never to the put mode.
+#[test]
+fn when_you_remove_a_counter_this_way_is_a_reflexive_trigger_of_the_removal_mode() {
+    let definition = compile_to_runtime_definition(
+        "Immard, the Stormcleaver",
+        "Mana cost: {2}{R}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 3/3\nWhenever Immard, the Stormcleaver enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one —\n• Immard deals 4 damage to any target.\n• Immard gains lifelink and indestructible until end of turn.",
+        false,
+    )
+    .unwrap_or_else(|error| panic!("Immard should compile: {error:?}"));
+    let debug = format!("{:?}", definition.abilities);
+    let remove = debug.find("RemoveCountersEffect").unwrap_or_else(|| panic!("{debug}"));
+    let reflexive = debug.find("ReflexiveTriggerEffect").unwrap_or_else(|| panic!("{debug}"));
+    let outer_prefix = debug.find("common_prefix_effects").unwrap_or_else(|| panic!("{debug}"));
+    assert!(remove < reflexive, "{debug}");
+    assert!(reflexive < outer_prefix, "the reflexive trigger is inside a mode of the counter choice: {debug}");
+    assert!(debug.contains("DealDamageEffect"), "{debug}");
+}

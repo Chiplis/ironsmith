@@ -298,6 +298,61 @@ impl StaticAbilityKind for SourceLandIsChosenType {
     }
 }
 
+/// "Basic lands of the first chosen type are the second chosen type."
+/// (Illusionary Terrain): objects matching `filter` that have the first basic
+/// land type the source chose have their land types set to the second one
+/// (CR 305.7), which also removes their land rules-text abilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FirstChosenLandTypeBecomesSecond {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl FirstChosenLandTypeBecomesSecond {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for FirstChosenLandTypeBecomesSecond {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetLandSubtypes
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some([first, second, ..]) = game.chosen_basic_land_type_sequence(source) else {
+            return Vec::new();
+        };
+        let mut filter = self.filter.clone();
+        filter.subtypes = vec![*first];
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &filter),
+                Modification::SetSubtypes(vec![*second]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &filter),
+                Modification::RemoveAllAbilities,
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// "This creature is the chosen type in addition to its other types."
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddChosenCreatureTypeForFilter {

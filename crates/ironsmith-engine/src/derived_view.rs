@@ -1051,7 +1051,9 @@ impl<'a> DerivedGameView<'a> {
         self.ensure_memo_context();
         self.player_can_pay_black_with_life(payer)
             && (!reason.is_cast_or_ability_payment()
-                || !self.player_cant_pay_life_to_cast_or_activate(payer))
+                || !self.player_cant_pay_life_to_cast_or_activate(payer)
+                || (reason.is_mana_ability()
+                    && !self.game.player_cant_pay_life_for_mana_abilities(payer)))
     }
 
     fn player_can_pay_black_with_life(&self, payer: PlayerId) -> bool {
@@ -1199,6 +1201,39 @@ impl<'a> DerivedGameView<'a> {
             if let Some(output) = first_output {
                 analysis.first_output_by_permanent.insert(perm_id, output);
             }
+        }
+
+        // A mana ability a player has until end of turn ("any time you could
+        // activate a mana ability, you may pay 1 life. If you do, add {C}",
+        // CR 605.1a) is carried by a command-zone object it owns. It is a
+        // mana source for payment (CR 605.3a); its priority activation is
+        // already offered with the player's other non-battlefield abilities.
+        for granted in &self.game.effect_store.granted_mana_abilities {
+            let Some(carrier) = granted.carrier else {
+                continue;
+            };
+            if granted.controller != player || analysis.mana_source_ids.contains(&carrier) {
+                continue;
+            }
+            if self
+                .game
+                .object(carrier)
+                .is_none_or(|object| object.zone != Zone::Command)
+                || !self.game.can_activate_abilities_of(carrier)
+            {
+                continue;
+            }
+            let Some(ability_summary) = self.ability_index_summary(carrier) else {
+                continue;
+            };
+            let mana_ability_indices = ability_summary.mana_ability_indices().to_vec();
+            if mana_ability_indices.is_empty() {
+                continue;
+            }
+            analysis.mana_source_ids.push(carrier);
+            analysis
+                .mana_ability_indices
+                .insert(carrier, mana_ability_indices);
         }
 
         let analysis = Rc::new(analysis);

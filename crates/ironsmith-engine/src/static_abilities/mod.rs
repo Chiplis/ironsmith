@@ -945,6 +945,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// How many basic land types the as-enters choice records, in order
+    /// ("choose two basic land types", Illusionary Terrain).
+    fn basic_land_type_choice_count_as_enters(&self) -> u32 {
+        u32::from(self.basic_land_type_choice_as_enters().is_some())
+    }
+
     /// Returns info for "as this enters, choose a land type" abilities.
     fn land_type_choice_as_enters(&self) -> Option<ChooseLandTypeAsEntersSpec> {
         None
@@ -1472,6 +1478,10 @@ pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
     /// The option is picked uniformly at random, not by the controller.
     pub at_random: bool,
+    /// "each player chooses <A> or <B>": every player chooses, in APNAP
+    /// order, and each player's option is recorded on the permanent
+    /// ([`crate::game_state::GameState::player_named_option_choices`]).
+    pub each_player: bool,
 }
 
 /// One option for "as this enters or is turned face up, choose characteristics" abilities.
@@ -1769,6 +1779,10 @@ impl StaticAbility {
 
     pub fn basic_land_type_choice_as_enters(&self) -> Option<ChooseBasicLandTypeAsEntersSpec> {
         self.0.basic_land_type_choice_as_enters()
+    }
+
+    pub fn basic_land_type_choice_count_as_enters(&self) -> u32 {
+        self.0.basic_land_type_choice_count_as_enters()
     }
 
     pub fn land_type_choice_as_enters(&self) -> Option<ChooseLandTypeAsEntersSpec> {
@@ -2879,6 +2893,10 @@ impl StaticAbility {
         Self::new(CantAttackPlayerAlreadyAttackedThisTurn)
     }
 
+    pub fn creatures_cant_attack_players_inactive_last_turn() -> Self {
+        Self::new(CreaturesCantAttackPlayersInactiveLastTurn)
+    }
+
     pub fn cant_attack_unless_controller_cast_creature_spell_this_turn() -> Self {
         Self::new(CantAttackUnlessControllerCastCreatureSpellThisTurn)
     }
@@ -3136,6 +3154,10 @@ impl StaticAbility {
         ))
     }
 
+    pub fn cant_be_blocked_unless_attacking_owner_or_owners_permanent() -> Self {
+        Self::new(CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent)
+    }
+
     pub fn cant_be_blocked_while_defending_player_controls_most_creatures() -> Self {
         Self::new(CantBeBlockedWhileDefendingPlayerControlsMostCreatures)
     }
@@ -3190,6 +3212,10 @@ impl StaticAbility {
 
     pub fn can_attack_as_though_haste() -> Self {
         Self::new(CanAttackAsThoughHaste)
+    }
+
+    pub fn creatures_can_attack_opponents_as_though_haste() -> Self {
+        Self::new(CreaturesCanAttackOpponentsAsThoughHaste)
     }
 
     pub fn doesnt_untap() -> Self {
@@ -3250,6 +3276,27 @@ impl StaticAbility {
 
     pub fn may_discard_source_any_time_you_could_cast_instant() -> Self {
         Self::new(MayDiscardSourceAnyTimeYouCouldCastInstant)
+    }
+
+    pub fn may_plot_nonland_cards_from_top_of_library() -> Self {
+        Self::new(MayPlotNonlandCardsFromTopOfLibrary)
+    }
+
+    pub fn must_attack_draft_noted_players(card_name: impl Into<String>) -> Self {
+        Self::new(MustAttackDraftNotedPlayers {
+            card_name: card_name.into(),
+        })
+    }
+
+    /// The noted card family of a [`MustAttackDraftNotedPlayers`] ability.
+    pub(crate) fn must_attack_draft_noted_card_name(&self) -> Option<String> {
+        if self.id() != StaticAbilityId::MustAttackDraftNotedPlayers {
+            return None;
+        }
+        self.display()
+            .strip_prefix(misc::MUST_ATTACK_DRAFT_NOTED_PREFIX)?
+            .strip_suffix(misc::MUST_ATTACK_DRAFT_NOTED_SUFFIX)
+            .map(str::to_string)
     }
 
     pub fn power_up_abilities_additional_time() -> Self {
@@ -3745,6 +3792,10 @@ impl StaticAbility {
 
     pub fn assigns_damage_as_unblocked() -> Self {
         Self::new(AssignsDamageAsUnblocked)
+    }
+
+    pub fn may_divide_combat_damage_among_defending_player_and_creatures() -> Self {
+        Self::new(MayDivideCombatDamageAmongDefendingPlayerAndCreatures)
     }
 
     pub fn may_assign_unblocked_damage_to_defending_creature() -> Self {
@@ -4259,6 +4310,13 @@ impl StaticAbility {
         Self::new(ChooseNamedOptionAsEnters::new(options, display).at_random())
     }
 
+    pub fn each_player_chooses_named_option_as_enters(
+        options: Vec<String>,
+        display: String,
+    ) -> Self {
+        Self::new(ChooseNamedOptionAsEnters::new(options, display).each_player())
+    }
+
     pub fn choose_power_toughness_as_enters_or_turns_face_up(
         options: Vec<(i32, i32)>,
         display: String,
@@ -4291,6 +4349,10 @@ impl StaticAbility {
 
     pub fn source_land_is_chosen_type(display: String) -> Self {
         Self::new(SourceLandIsChosenType::new(display))
+    }
+
+    pub fn first_chosen_land_type_becomes_second(filter: ObjectFilter, display: String) -> Self {
+        Self::new(FirstChosenLandTypeBecomesSecond::new(filter, display))
     }
 
     pub fn set_chosen_creature_type(filter: crate::target::ObjectFilter, display: String) -> Self {

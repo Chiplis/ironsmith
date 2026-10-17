@@ -319,6 +319,15 @@ pub fn preserve_and_reason(
     if color_pair_boundary(current, remaining) {
         return Some(AndPreservation::ColorPair);
     }
+    // "you may play one of the exiled cards, and you may spend mana as
+    // though it were mana of any color to cast it" (Kotose): the mana rider
+    // belongs to the play permission it follows.
+    if contains_any(current, &["play", "cast"])
+        && (tail.starts_with(&["you", "may", "spend", "mana", "as", "though"])
+            || tail.starts_with(&["they", "may", "spend", "mana", "as", "though"]))
+    {
+        return Some(AndPreservation::SharedPlayerMay);
+    }
     // "exiles all cards with that name from their hand and graveyard"
     // (Legion's End): the conjunction joins two zones of one search.
     if words.len() >= 3

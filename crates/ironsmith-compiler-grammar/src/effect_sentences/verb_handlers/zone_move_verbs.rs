@@ -740,6 +740,7 @@ fn parse_draw_for_each_object_filter_value(
                 Value::ColorsOf(_)
                     | Value::SourceDevouredCreatureCount
                     | Value::PlayersBeingAttacked
+                    | Value::DistinctCounterTypesAmong(_)
             ) =>
             {
                 return Ok(Some(value));

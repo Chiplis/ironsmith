@@ -58,6 +58,8 @@ pub enum ReturnControllerAst {
 pub enum LibraryConsultModeAst {
     Reveal,
     Exile,
+    /// One-card mills repeated until the stop condition (CR 701.13a).
+    Mill,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]

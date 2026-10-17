@@ -1690,7 +1690,15 @@ impl TurnRunner {
 
                 game.refresh_continuous_state()
                     .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-                let ctx = get_declare_blockers_decision(game, &self.combat, defending_player);
+                let ctx = if game.blockers_declared_by_random_piles_this_turn() {
+                    crate::game_loop::get_pile_division_blockers_decision(
+                        game,
+                        &self.combat,
+                        defending_player,
+                    )
+                } else {
+                    get_declare_blockers_decision(game, &self.combat, defending_player)
+                };
                 self.state = TurnState::DeclareBlockersApply;
                 Ok(TurnAction::Decision(ctx))
             }
@@ -1783,6 +1791,18 @@ impl TurnRunner {
                                     self.defending_player.unwrap_or(game.turn.active_player),
                                 )
                             });
+                        // The answer divided creatures into piles; the piles
+                        // are assigned to attackers at random (Camouflage).
+                        let declarations = if game.blockers_declared_by_random_piles_this_turn() {
+                            crate::game_loop::assign_random_pile_blocks(
+                                game,
+                                &self.combat,
+                                player,
+                                &declarations,
+                            )
+                        } else {
+                            declarations
+                        };
                         (declarations, player, Vec::new())
                     };
                     defending_player = player;

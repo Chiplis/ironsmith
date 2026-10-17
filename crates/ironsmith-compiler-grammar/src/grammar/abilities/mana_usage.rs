@@ -513,6 +513,26 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         )
     } else if crate::word_primitives::sequence_occurs(
         &words,
+        &["instant", "or", "sorcery", "spell", "with", "mana", "value"],
+    ) && let Some(limit) = words
+        .windows(10)
+        .find_map(|window| match window {
+            ["instant", "or", "sorcery", "spell", "with", "mana", "value", limit, "or", "less"] => {
+                crate::util::parse_number_word_u32(limit)
+            }
+            _ => None,
+        })
+    {
+        // "an instant or sorcery spell with mana value 3 or less" (Forger's
+        // Foundry).
+        let mut filter =
+            ObjectFilter::default().with_mana_value(crate::effect::Comparison::LessThanOrEqual(
+                limit as i32,
+            ));
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+        (filter, None)
+    } else if crate::word_primitives::sequence_occurs(
+        &words,
         &["red", "instant", "or", "sorcery", "spell"],
     ) {
         let mut filter = ObjectFilter::default().with_colors(crate::color::ColorSet::RED);
@@ -543,6 +563,30 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
                 count: Value::CommanderCastCount(PlayerFilter::You),
             }),
         )
+    } else if crate::word_primitives::sequence_occurs(
+        &words,
+        &["you", "may", "exile", "that", "spell", "instead", "of", "putting", "it", "into"],
+    ) && crate::word_primitives::sequence_occurs(&words, &["graveyard", "as", "it", "resolves"])
+    {
+        // "you may exile that spell instead of putting it into its owner's
+        // graveyard as it resolves" (Forger's Foundry): an optional one-shot
+        // replacement on the paid spell's resolution move, linking the exiled
+        // card to this source ("cards exiled with this artifact").
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects: vec![EffectAst::subject_verb_register_future_zone_replacement(
+                ObjectFilter::default().match_tagged(
+                    crate::tag::CompilerReferenceTag::ManaPaidObject.bind(),
+                    crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                ),
+                Some(Zone::Stack),
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot,
+                crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+                true,
+            )],
+        })
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         let may_choose_new_targets =
             crate::word_primitives::sequence_occurs(&words, &["choose", "new", "targets"]);

@@ -60,6 +60,12 @@ pub struct WaterbendPaymentScope {
     /// obligations may already have different values after component joining.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub x_pip_binding: Option<u32>,
+    /// "For each mana in this ability's activation cost, you may tap an
+    /// untapped creature you control rather than pay that mana" (Heirloom
+    /// Epic): only creatures may be tapped, each paying for {1}, and the
+    /// payment is not the waterbend keyword action.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub creatures_only: bool,
 }
 
 impl ManaCost {
@@ -72,14 +78,37 @@ impl ManaCost {
         };
         self.waterbend_payment_scope = Some(WaterbendPaymentScope {
             obligations: vec![amount.clone()], capacity: WaterbendCapacity::Amount(amount), x_pip_binding: None,
+            creatures_only: false,
         });
         self
+    }
+
+    /// Mark this generic/X component as payable by tapping untapped creatures
+    /// the payer controls, one {1} per creature (Heirloom Epic). It shares
+    /// Waterbend's scoped tap-payment owner without being a waterbend.
+    pub fn with_creature_tap_payment(self) -> Self {
+        let mut cost = self.with_waterbend();
+        if let Some(scope) = cost.waterbend_payment_scope.as_mut() {
+            scope.creatures_only = true;
+        }
+        cost
+    }
+
+    /// Whether the scoped tap payment admits only creatures and is not a
+    /// waterbend keyword action.
+    pub fn has_creature_tap_payment(&self) -> bool {
+        self.waterbend_payment_scope
+            .as_ref()
+            .is_some_and(|scope| scope.creatures_only)
     }
 
     /// A typed cost surface. The ordinary mana remainder is kept separate from
     /// each Waterbend component, including mixed `{T}` activation costs.
     pub fn payment_surface(&self) -> String {
         let Some(scope) = &self.waterbend_payment_scope else { return self.to_oracle(); };
+        // The creature tap payment is a rider on the ordinary price, not a
+        // printed Waterbend component.
+        if scope.creatures_only { return self.to_oracle(); }
         let mut remainder = self.pips_with_bound_x_expanded();
         let mut parts = Vec::new();
         for obligation in &scope.obligations {
@@ -193,6 +222,7 @@ impl ManaCost {
                 self.waterbend_payment_scope = Some(WaterbendPaymentScope { obligations,
                     capacity: WaterbendCapacity::Sum(Box::new(a.capacity.clone()), Box::new(b.capacity.clone())),
                     x_pip_binding: None,
+                    creatures_only: a.creatures_only && b.creatures_only,
                 });
             },
         }

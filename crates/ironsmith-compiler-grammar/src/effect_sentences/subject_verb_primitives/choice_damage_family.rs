@@ -703,9 +703,61 @@ pub fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, Cho
     }
 }
 
+/// "This creature gets +2/+2 until end of turn unless a player has this
+/// creature deal 4 damage to them." (Barbarian Bully): starting with the
+/// active player, each player may choose to be dealt the damage instead
+/// (CR 101.4); the deciding player is the alternative's recipient.
+fn parse_unless_any_player_has_source_deal_damage(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(clause.tokens());
+    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else {
+        return Ok(None);
+    };
+    if unless == 0 {
+        return Ok(None);
+    }
+    let words = crate::lexer::parser_token_word_refs(&tokens[unless + 1..]);
+    let ["a" | "any", "player", "has", rest @ ..] = words.as_slice() else {
+        return Ok(None);
+    };
+    let Some(deal) = rest.iter().position(|word| *word == "deal") else {
+        return Ok(None);
+    };
+    if deal == 0 || !crate::util::is_source_reference_words(&rest[..deal]) {
+        return Ok(None);
+    }
+    let [amount, "damage", "to", "them"] = &rest[deal + 1..] else {
+        return Ok(None);
+    };
+    let Some(amount) = amount
+        .parse::<i32>()
+        .ok()
+        .or_else(|| crate::util::parse_number_word_i32(amount))
+    else {
+        return Ok(None);
+    };
+    let main_tokens = crate::util::trim_commas(&tokens[..unless]);
+    let effects = parse_effect_chain(&main_tokens)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
+        effects,
+        alternative: vec![EffectAst::subject_verb_damage(
+            Value::Fixed(amount),
+            TargetAst::Player(PlayerFilter::Any, None),
+        )],
+        player: PlayerAst::Any,
+    })]))
+}
+
 pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_unless_any_player_has_source_deal_damage(clause)? {
+        return Ok(Some(effects));
+    }
     let Some(shape) = choice_shapes::parse_damage_unless_shape(clause.tokens()) else {
         return Ok(None);
     };

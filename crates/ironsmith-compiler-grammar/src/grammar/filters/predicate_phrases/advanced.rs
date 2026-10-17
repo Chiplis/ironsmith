@@ -414,6 +414,21 @@ fn parse_turn_history_intervening_predicate(
             TurnHistoryPredicateAst::TriggeringSacrificePaidEmergeCost,
         )));
     }
+    // "If cards with at least six different mana values are revealed this
+    // way" (Atemsis, All-Seeing): distinct mana values among the cards the
+    // preceding reveal showed.
+    if let ["cards", "with", "at", "least", count, "different", "mana", "values", "are", "revealed", "this", "way"] =
+        words.as_slice()
+        && let Some(count) = crate::util::parse_number_word_i32(count)
+    {
+        return Ok(Some(PredicateAst::ValueComparison {
+            left: crate::effect::Value::DistinctManaValues(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            )),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(count),
+        }));
+    }
     // "If all cards revealed this way are creature cards" (Game Preserve):
     // no card revealed this way lacks the named card type.
     if let ["all", "cards", "revealed", "this", "way", "are", type_word, "cards"] =
@@ -562,6 +577,16 @@ fn parse_turn_history_intervening_predicate(
     ) {
         return Ok(Some(PredicateAst::TurnHistory(
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn,
+        )));
+    }
+    // "if a player attacked you during their last turn" (Avenge): each other
+    // player's own most recent turn is consulted.
+    if matches!(
+        words.as_slice(),
+        ["a" | "an", "player" | "opponent", "attacked", "you", "during", "their", "last", "turn"]
+    ) {
+        return Ok(Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::OpponentAttackedControllerDuringTheirLastTurn,
         )));
     }
     // "if they didn't attack you that turn" (Faramir, Prince of Ithilien):
@@ -1596,6 +1621,11 @@ pub(super) fn parse_player_life_relation_predicate(
         crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
             Some(PredicateAst::Player(
                 PlayerPredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player },
+            ))
+        }
+        crate::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanAnotherOpponent => {
+            Some(PredicateAst::Player(
+                PlayerPredicateAst::PlayerHasMoreLifeThanAnotherOpponent { player },
             ))
         }
     }
@@ -5302,6 +5332,10 @@ pub(super) fn parse_card_types_among_predicate(tokens: &[OwnedLexToken]) -> Opti
     let scope = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let filter = if surface::exact_any(scope, SACRIFICED_PERMANENTS_SCOPE_PHRASES) {
         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind())
+    } else if let Some(filter) = permanents_you_control_scope(scope) {
+        // "if there are three or more card types among permanents you
+        // control"
+        filter
     } else {
         permanents_and_your_graveyard_scope(scope)?
     };
@@ -6901,6 +6935,19 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     {
         return Ok(PredicateAst::ValueComparison {
             left: crate::effect::Value::EventValue(crate::effect::EventValueSpec::ExcessDamage),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(1),
+        });
+    }
+    // "if one or more permanents were sacrificed to activate it" (Ashnod the
+    // Uncaring): the triggering activation's sacrifice payments.
+    if let ["one", "or", "more", "permanents", "were", "sacrificed", "to", "activate", "it"]
+    | ["a", "permanent", "was", "sacrificed", "to", "activate", "it"] = monarch_words.as_slice()
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: crate::effect::Value::EventValue(
+                crate::effect::EventValueSpec::PermanentsSacrificedToActivate,
+            ),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(1),
         });

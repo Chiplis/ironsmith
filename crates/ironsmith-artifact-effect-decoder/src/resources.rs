@@ -27,6 +27,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "AddManaEqualToManaCostEffect" => {
             decode_as::<ironsmith_core::AddManaEqualToManaCostEffect>(payload).map(Some)
         }
+        "AddManaLostThisWayEffect" => {
+            decode_as::<ironsmith_core::AddManaLostThisWayEffect>(payload).map(Some)
+        }
         "AddManaOfImprintedColorsEffect" => {
             decode_as::<ironsmith_core::AddManaOfImprintedColorsEffect>(payload).map(Some)
         }
@@ -152,6 +155,10 @@ pub(super) fn map_card_ids(
         .map(Some),
         "AddManaEqualToManaCostEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::AddManaEqualToManaCostEffect,
+        >(payload, context)
+        .map(Some),
+        "AddManaLostThisWayEffect" => super::card_graph::map_payload_as::<
+            ironsmith_core::AddManaLostThisWayEffect,
         >(payload, context)
         .map(Some),
         "AddManaOfImprintedColorsEffect" => super::card_graph::map_payload_as::<

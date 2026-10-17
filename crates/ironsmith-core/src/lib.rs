@@ -96,7 +96,7 @@ pub use counter::CounterType;
 pub use definition_model::CardDefinition;
 pub use effect::{
     DELAYED_DURATION_PLAYER_TAG,
-    AdaptEffect, AddManaEffect, AddManaEqualToManaCostEffect,
+    AdaptEffect, AddManaEffect, AddManaEqualToManaCostEffect, AddManaLostThisWayEffect,
     AddManaFromCommanderColorIdentityEffect, AddManaOfAnyColorEffect,
     AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
     AddManaOfImprintedColorsEffect, AddManaOfLandProducedTypesEffect, AddManaOfNotedTypeEffect,
@@ -107,7 +107,7 @@ pub use effect::{
     BattlefieldEntryCounterSpec, BattlefieldEntryCounterSurface, BecomeBasicLandTypeChoiceEffect,
     BecomeColorChoiceEffect, BecomeCreatureTypeChoiceEffect, BecomeForetoldWithCostEffect,
     BecomeMonarchEffect, BecomePlottedEffect, BecomeForetoldEffect, GrantLoyaltyActivationAllowanceEffect,
-    GrantTapUncontrolledLandsForManaEffect, LoyaltyActivationAllowance, LoyaltyActivationScope, BecomeSaddledUntilEotEffect, BeholdEffect,
+    GrantTapUncontrolledLandsForManaEffect, GrantPayLifeManaAbilityUntilEndOfTurnEffect, LoyaltyActivationAllowance, LoyaltyActivationScope, BecomeSaddledUntilEotEffect, BeholdEffect,
     BidLifeEffect, BolsterEffect, CantEffect, CastSourceEffect, CastTaggedAlternativePayment,
     CastTaggedEffect, ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
@@ -128,7 +128,7 @@ pub use effect::{
     DoubleCountersEffect, DoubleManaPoolEffect, DrawCardsEffect, DrawForEachTaggedMatchingEffect,
     DrawTheGameEffect, EachPlayerScryEffect, EarthbendEffect, EffectId, EffectMode,
     EffectPredicate, EmitGiftGivenEffect, EmitKeywordActionEffect, EmitKeywordActionObjectTag,
-    EmptyManaPoolEffect, ActivateManaAbilityOfEachLandEffect, EndCombatPhaseEffect, EndTurnEffect,
+    EmptyManaPoolEffect, ActivateManaAbilityOfEachLandEffect, EndCombatPhaseEffect, DeclareBlockersByRandomPilesThisTurnEffect, EndTurnEffect,
     EnergyCountersEffect, EvolveEffect,
     ExcessDamageRedirect, ExchangeControlEffect, ExchangeLifeTotalsEffect, ExchangeTextBoxesEffect,
     ExchangeValueOperand, ExchangeValuesEffect, ExchangeZonesEffect, ExecuteWithSourceEffect,
@@ -160,7 +160,7 @@ pub use effect::{
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     MoveToZoneVerbSurface, NewTargetRestriction, NextAdaptIgnoresCountersEffect,
-    NinjutsuCostEffect, NinjutsuEffect, NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect,
+    NinjutsuCostEffect, NinjutsuEffect, NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect,
     OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect,
     PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect,
     PlayerControlDuration, PlayerControlStart, PoisonCountersEffect, PopulateEffect, PrepareEffect,
@@ -171,7 +171,7 @@ pub use effect::{
     PriorEffectResultQuantifier, PriorEffectResultSurface, ProliferateEffect,
     PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
-    ReconfigureEffect, ReselectAttackTargetEffect, ExchangeBlocksEffect, UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect, PlayWithHandRevealedEffect, HandRevealDuration, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, ChooseFriendsOrFoesEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
+    ReconfigureEffect, ReselectAttackTargetEffect, ExchangeBlocksEffect, UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect, PlayWithHandRevealedEffect, RevealSourceInHandUntilOwnersNextTurnEffect, HandRevealDuration, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, RetainSpellChoicesEffect, PutRetainedSpellCopyOntoStackEffect, ChooseFriendsOrFoesEffect, RedirectAllDamageThisTurnToTargetEffect, TimedDamageRedirectDestination, TimedDamageRedirectionScope, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect, ReduceSpeedEffect,
     ReflexiveTriggerEffect, RegenerateEffect, RegisterCounterPlacementReplacementEffect,
@@ -194,7 +194,7 @@ pub use effect::{
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, RevealChosenSubtypeEffect,
     RevealFromHandEffect, RevealSourceFromHandDuration, RevealSourceFromHandEffect,
     RevealTaggedEffect, RevealTopEffect, ReverseTurnOrderEffect, RingTemptsYouEffect,
-    RollDiceChooseResultEffect, RollDieEffect, RollPlanarDieEffect, SacrificeEffect,
+    RollDiceChooseResultEffect, RollDieEffect, RollAndStoreDieResultsEffect, RerollStoredDieResultsEffect, RollPlanarDieEffect, SacrificeEffect,
     SacrificePlayerEffect,
     SacrificeTargetEffect, ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect,
     ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
@@ -303,6 +303,7 @@ pub use filter_model::describe_filter_static_ability;
 pub use effect::RegisterDamageMultiplierEffect;
 pub use effect::{RegisterDamageCounterReplacementEffect, RegisteredReplacementExpiry};
 pub use effect::RegisterDamageAdditionEffect;
+pub use effect::RegisterTokenCreationMultiplierEffect;
 pub use effect::DealDamageToRecipientsEffect;
 
 mod damage_history_model;

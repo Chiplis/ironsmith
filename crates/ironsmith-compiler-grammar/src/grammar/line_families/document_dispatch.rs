@@ -210,6 +210,12 @@ fn draft_rule_prefix(input: &mut LexStream<'_>) -> WResult<()> {
         primitives::phrase(&["as", "you", "draft"]),
         primitives::phrase(&["during", "the", "draft"]),
         primitives::phrase(&["immediately", "after", "the", "draft"]),
+        // Draft-only pick rules (Agent of Acquisitions, Archdemon of Paliano)
+        // change how the card is drafted and have no in-game effect.
+        primitives::phrase(&["instead", "of", "drafting"]),
+        primitives::phrase(&[
+            "as", "long", "as", "this", "card", "is", "face", "up", "during", "the", "draft",
+        ]),
         // Deck-construction instructions are pregame rule text too ("As you
         // create your deck, circle two of the colors below.", Cryptic
         // Spires); the static grammar files them as deck-construction rules.

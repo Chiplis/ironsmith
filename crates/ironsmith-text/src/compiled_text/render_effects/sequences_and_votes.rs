@@ -5383,6 +5383,7 @@ pub(super) fn describe_consult_may_cast_remainder_bottom_sequence(
             "exile",
             "the exiled cards that weren't cast this way",
         ),
+        crate::effects::consult_helpers::LibraryConsultMode::Mill => return None,
     };
     let pronoun = if player == "you" { "you" } else { "they" };
     let selection = concise_triggering_spell_selection

@@ -78,6 +78,10 @@ pub enum PlayerPredicateAst {
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },
+    /// "that opponent has more life than another of your opponents".
+    PlayerHasMoreLifeThanAnotherOpponent {
+        player: PlayerAst,
+    },
     PlayerIsMonarch {
         player: PlayerAst,
     },

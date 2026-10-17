@@ -64,6 +64,10 @@ pub struct GrantPlayTaggedEffect {
     /// Generic reduction per opponent for spells cast through this
     /// permission ("That spell has undaunted", CR 702.125a).
     pub spell_cost_reduction_per_opponent: u32,
+    /// "during your turn": usable only while its player is active.
+    pub during_your_turns: bool,
+    /// Each X in `alternative_cost` is the granted card's mana value.
+    pub alternative_cost_x_is_mana_value: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -99,6 +103,8 @@ impl GrantPlayTaggedEffect {
             during_turns_attacked_with: None,
             during_turns_cast_another_spell: false,
             spell_cost_reduction_per_opponent: 0,
+            during_your_turns: false,
+            alternative_cost_x_is_mana_value: false,
         }
     }
 
@@ -259,7 +265,8 @@ impl GrantPlayTaggedEffect {
                 Self::next_turn_number_for_player(game, player).saturating_sub(1)
             }
             GrantPlayTaggedDuration::UntilYourNextTurnEnd
-            | GrantPlayTaggedDuration::DuringYourNextTurn => {
+            | GrantPlayTaggedDuration::DuringYourNextTurn
+            | GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
                 Self::next_turn_number_for_player(game, player)
             }
             GrantPlayTaggedDuration::UntilYourNextEndStep
@@ -492,6 +499,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
             } else if self.duration == GrantPlayTaggedDuration::DuringYourNextTurn {
                 GrantSource::during_player_next_turn(ctx.source, player_id, expires_end_of_turn)
+            } else if self.duration == GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn {
+                GrantSource::until_end_of_combat_on_player_next_turn(
+                    ctx.source,
+                    player_id,
+                    expires_end_of_turn,
+                )
             } else if matches!(
                 self.duration,
                 GrantPlayTaggedDuration::UntilYourNextEndStep
@@ -529,8 +542,26 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 if !spell_filter.excluded_card_types.contains(&crate::types::CardType::Land) {
                     spell_filter.excluded_card_types.push(crate::types::CardType::Land);
                 }
-                let mana = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
+                let mut mana = cost.costs().iter().filter_map(|cost| cost.mana_cost_ref())
                     .fold(crate::mana::ManaCost::new(), |sum, part| crate::decision::add_mana_cost(&sum, part));
+                if self.alternative_cost_x_is_mana_value {
+                    // "{X} rather than paying its mana cost, where X is its
+                    // mana value": X is fixed by this card, not announced.
+                    let x_pips = mana.pips().iter()
+                        .filter(|pip| pip.as_slice() == [crate::mana::ManaSymbol::X]).count() as u32;
+                    let waterbend = mana.has_waterbend_obligation();
+                    let other_pips = mana.pips().iter()
+                        .filter(|pip| pip.as_slice() != [crate::mana::ManaSymbol::X]).cloned().collect::<Vec<_>>();
+                    let mut bound = crate::mana::ManaCost::from_pips(other_pips);
+                    let generic = x_pips.saturating_mul(snapshot.mana_value());
+                    if generic > 0 {
+                        bound = bound.add_generic(generic);
+                    }
+                    if waterbend && !bound.is_empty() {
+                        bound = bound.with_waterbend();
+                    }
+                    mana = bound;
+                }
                 let mut components = cost.costs().iter().filter(|cost| cost.mana_cost_ref().is_none()).cloned().collect::<Vec<_>>();
                 if !mana.is_empty() { components.insert(0, crate::costs::Cost::mana(mana)); }
                 let price = crate::cost::TotalCost::from_costs(components);
@@ -634,6 +665,15 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     .filter = Some(filter.clone());
             }
             granted += 1;
+        }
+
+        if self.during_your_turns {
+            // "you may cast the exiled card during your turn": every
+            // permission this instruction created is usable only while its
+            // player is the active player.
+            for grant in &mut game.effect_store.grant_registry.grants[first_grant..] {
+                grant.usage_limit = Some(crate::grant::GrantUsageLimit::DuringYourTurns);
+            }
         }
 
         for (player_id, mana_permission_stable_ids) in mana_permission_stable_ids {

@@ -170,6 +170,8 @@ pub(crate) fn production_satisfies_cost(
         // This restriction belongs to the final generic-pip allocation, not
         // to each unit offered for fixed/base/tax obligations.
         ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => true,
+        // No mana unit, tracked or not, may be spent on this cost.
+        ironsmith_core::mana::ManaSpendingRestriction::NoMana => false,
         ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => {
             snapshot.is_some_and(|snapshot| {
                 snapshot.zone == crate::zone::Zone::Battlefield && matches(filter, snapshot)

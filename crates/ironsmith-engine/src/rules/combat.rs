@@ -430,6 +430,27 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    // "Can't be blocked unless it's attacking its owner or a permanent its
+    // owner controls" (Become the Pilot): the attack target decides.
+    if attacker_has(StaticAbilityId::CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent) {
+        let owner = attacker.owner;
+        let attacking_owner_side = game
+            .combat
+            .as_ref()
+            .and_then(|combat| crate::combat_state::get_attack_target(combat, attacker.id))
+            .is_some_and(|target| match target {
+                crate::combat_state::AttackTarget::Player(player) => *player == owner,
+                crate::combat_state::AttackTarget::Planeswalker(permanent)
+                | crate::combat_state::AttackTarget::Battle(permanent) => game
+                    .object(*permanent)
+                    .is_some_and(|permanent| game.controller_of(permanent) == owner),
+                crate::combat_state::AttackTarget::Nothing { .. } => false,
+            });
+        if !attacking_owner_side {
+            return false;
+        }
+    }
+
     // "Can block only creatures with flying"
     if blocker_has(StaticAbilityId::CanBlockOnlyFlying) && !attacker_has(StaticAbilityId::Flying) {
         return false;
@@ -593,10 +614,11 @@ pub(crate) fn can_attack_with_view(
         }
     }
 
-    // Summoning sickness prevents attacking (unless haste)
-    if game.is_summoning_sick(creature.id)
-        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::Haste)
-        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::CanAttackAsThoughHaste)
+    // Summoning sickness prevents attacking (unless haste). A battlefield
+    // permission scoped to some defenders (Frenzied Saddlebrute) leaves the
+    // creature able to attack; the per-defender check narrows it.
+    if summoning_sick_without_haste(creature, game, view)
+        && opponents_attackable_as_though_haste_controllers(game, view).is_empty()
     {
         return false;
     }
@@ -607,6 +629,41 @@ pub(crate) fn can_attack_with_view(
     }
 
     true
+}
+
+fn summoning_sick_without_haste(
+    creature: &Object,
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    game.is_summoning_sick(creature.id)
+        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::Haste)
+        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::CanAttackAsThoughHaste)
+}
+
+/// Controllers of battlefield sources with "All creatures can attack your
+/// opponents and planeswalkers your opponents control as though those
+/// creatures had haste" (Frenzied Saddlebrute).
+fn opponents_attackable_as_though_haste_controllers(
+    game: &crate::game_state::GameState,
+    view: &DerivedGameView<'_>,
+) -> Vec<crate::ids::PlayerId> {
+    let mut controllers = Vec::new();
+    for &id in game.battlefield.iter() {
+        if !view.object_has_static_ability_id(
+            id,
+            StaticAbilityId::CreaturesCanAttackOpponentsAsThoughHaste,
+        ) {
+            continue;
+        }
+        if let Some(source) = game.object(id) {
+            let controller = game.controller_of(source);
+            if !controllers.contains(&controller) {
+                controllers.push(controller);
+            }
+        }
+    }
+    controllers
 }
 
 /// Check if a creature can attack a specific defending player.
@@ -651,6 +708,22 @@ pub(crate) fn can_attack_target_with_view(
 ) -> bool {
     if matches!(target, crate::combat_state::AttackTarget::Player(_))
         && !game.can_attack_player_directly(creature.id, defending_player)
+    {
+        return false;
+    }
+    // Arboria: no creature can attack a player who neither cast a spell nor
+    // put a nontoken permanent onto the battlefield during their last turn.
+    if matches!(target, crate::combat_state::AttackTarget::Player(_))
+        && game.battlefield.iter().any(|&id| {
+            view.object_has_static_ability_id(
+                id,
+                StaticAbilityId::CreaturesCantAttackPlayersInactiveLastTurn,
+            )
+        })
+        && !crate::static_abilities::player_was_active_during_their_last_turn(
+            game,
+            defending_player,
+        )
     {
         return false;
     }
@@ -703,6 +776,18 @@ fn can_attack_defender_kind_with_view(
     view: &DerivedGameView<'_>,
 ) -> bool {
     if !can_attack_with_view(creature, game, view) {
+        return false;
+    }
+    // "can attack your opponents and planeswalkers your opponents control as
+    // though those creatures had haste": only a defending player who is an
+    // opponent of a permission source's controller (not a battle) lifts
+    // summoning sickness for this attack.
+    if summoning_sick_without_haste(creature, game, view)
+        && (battle
+            || !opponents_attackable_as_though_haste_controllers(game, view)
+                .into_iter()
+                .any(|controller| game.are_opponents(controller, defending_player)))
+    {
         return false;
     }
     let allowed = if battle {

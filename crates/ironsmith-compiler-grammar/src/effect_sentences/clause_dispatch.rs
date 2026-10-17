@@ -1581,6 +1581,18 @@ fn lower_direct_clause_shape(
                 None,
             )
         }
+        clause_grammar::DirectClauseShape::CastOnlyMoreSpellsThisTurn(more) => {
+            EffectAst::subject_verb_cant(
+                crate::effect::Restriction::cast_only_n_more_spells(
+                    PlayerFilter::You,
+                    // Any spell, as for "can't cast more than one spell".
+                    ObjectFilter::default(),
+                    more,
+                ),
+                Until::EndOfTurn,
+                None,
+            )
+        }
         clause_grammar::DirectClauseShape::DamageCantBePrevented => EffectAst::subject_verb_cant(
             crate::effect::Restriction::prevent_damage(),
             Until::EndOfTurn,

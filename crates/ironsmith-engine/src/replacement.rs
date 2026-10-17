@@ -259,6 +259,8 @@ pub enum ReplacementAction {
     EnterWithCounterChoice {
         counter_types: Vec<CounterType>,
         count: Value,
+        /// Number of different kinds chosen; each gets `count` counters.
+        kinds: u32,
     },
 
     /// As this enters, an opponent may put counters on it and mark a keyword paid.
@@ -1353,6 +1355,72 @@ impl ReplacementEffect {
             };
             alternative
         }).collect()
+    }
+
+    /// "choose a creature other than Esix and create that many tokens that
+    /// are copies of that creature" (Esix, Fractal Bloom): a copy template
+    /// naming a filter of permanents, rather than one fixed permanent, is a
+    /// choice among the matching permanents made as the replacement applies
+    /// (CR 616.1, 707.2). Offer one alternative per candidate; like a
+    /// choose-one template list, every alternative shares this effect's
+    /// application identity, so accepting any of them (or declining) uses the
+    /// same CR 614.5 opportunity. A unique or absent match stays as is.
+    pub fn token_copy_choice_alternatives(
+        &self,
+        game: &crate::game_state::GameState,
+    ) -> Vec<Self> {
+        use crate::filter::ObjectFilterExt as _;
+        let ReplacementAction::TokenCreationTemplates {
+            templates,
+            mode,
+            choose_one: false,
+            choice_parent,
+        } = &self.replacement
+        else {
+            return vec![self.clone()];
+        };
+        let Some((index, copy, filter)) = templates.iter().enumerate().find_map(|(index, template)| {
+            let copy = template.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+            match copy.target.base() {
+                crate::target::ChooseSpec::Object(filter) => Some((index, copy, filter)),
+                _ => None,
+            }
+        }) else {
+            return vec![self.clone()];
+        };
+        let filter_ctx = game.filter_context_for(self.controller, Some(self.source));
+        let candidates: Vec<ObjectId> = game
+            .battlefield
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.object(*id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+            })
+            .collect();
+        if candidates.len() <= 1 {
+            return vec![self.clone()];
+        }
+        let parent = choice_parent
+            .clone()
+            .unwrap_or_else(|| self.application_key());
+        candidates
+            .into_iter()
+            .map(|candidate| {
+                let mut chosen = copy.clone();
+                chosen.target = crate::target::ChooseSpec::SpecificObject(candidate);
+                let mut chosen_templates = templates.clone();
+                chosen_templates[index] = Effect::new(chosen);
+                let mut alternative = self.clone();
+                alternative.replacement = ReplacementAction::TokenCreationTemplates {
+                    templates: chosen_templates,
+                    mode: *mode,
+                    choose_one: false,
+                    choice_parent: Some(parent.clone()),
+                };
+                alternative
+            })
+            .collect()
     }
 
     /// Build the alternative for declining this same effect. For persistent

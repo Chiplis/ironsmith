@@ -308,7 +308,7 @@ export CONTROLLER_SWAP_GB=$(printf '%q' "$CONTROLLER_SWAP_GB")
 export CONTROLLER_CARGO_JOBS=$(printf '%q' "$CONTROLLER_CARGO_JOBS")
 export CONTROLLER_SELF_TERMINATE=$(printf '%q' "$CONTROLLER_SELF_TERMINATE")
 export CARGO_BUILD_JOBS=$(printf '%q' "$CONTROLLER_CARGO_JOBS")
-export CARGO_INCREMENTAL=$(printf '%q' "${CARGO_INCREMENTAL:-0}")
+export CARGO_INCREMENTAL=$(printf '%q' "${CARGO_INCREMENTAL:-1}")
 export CONTROLLER_DISK_HYGIENE=$(printf '%q' "${CONTROLLER_DISK_HYGIENE:-1}")
 export CONTROLLER_MIN_FREE_GB=$(printf '%q' "${CONTROLLER_MIN_FREE_GB:-10}")
 export CONTROLLER_AGGRESSIVE_CLEAN_FREE_GB=$(printf '%q' "${CONTROLLER_AGGRESSIVE_CLEAN_FREE_GB:-18}")
@@ -484,7 +484,7 @@ source /tmp/controller-env.sh
 export HOME=/root
 unset AWS_PROFILE AWS_DEFAULT_PROFILE
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-${CONTROLLER_CARGO_JOBS:-2}}"
-export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}"
 if [[ -n "${GITHUB_TOKEN_SSM_PARAM:-}" ]]; then
   export GH_TOKEN="$(aws --region "${AWS_REGION:-us-east-2}" ssm get-parameter --name "$GITHUB_TOKEN_SSM_PARAM" --with-decryption --query 'Parameter.Value' --output text)"
 fi

@@ -273,6 +273,14 @@ fn parse_passive_stop(
             &["card", "is", "exiled"],
             &["is", "exiled"],
         ],
+        LibraryConsultModeAst::Mill => &[
+            &["cards", "have", "been", "put", "into", "their", "graveyard", "this", "way"],
+            &["card", "has", "been", "put", "into", "their", "graveyard", "this", "way"],
+            &["cards", "have", "been", "put", "into", "your", "graveyard", "this", "way"],
+            &["card", "has", "been", "put", "into", "your", "graveyard", "this", "way"],
+            &["cards", "are", "milled"],
+            &["card", "is", "milled"],
+        ],
     };
     let suffix_len = suffixes.iter().find_map(|suffix| {
         permission_shapes::suffix_words(&word_refs, suffix).then_some(suffix.len())

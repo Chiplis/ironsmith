@@ -1218,6 +1218,22 @@ pub(super) fn apply_admitted_priority_action(
                 flat_components,
                 &mut remaining_cost_steps,
             );
+            // "Activated abilities cost an additional \"Sacrifice a Swamp\"
+            // to activate for each black mana symbol in their activation
+            // costs." (Drought)
+            for cost_component in flat_components {
+                let sacrifices = crate::decision::battlefield_sacrifice_surcharges_for_mana_cost(
+                    game,
+                    true,
+                    cost_component.mana_cost_ref(),
+                );
+                if !sacrifices.is_empty() {
+                    append_activation_cost_steps_from_components(
+                        &sacrifices,
+                        &mut remaining_cost_steps,
+                    );
+                }
+            }
             for cost_component in flat_components {
                 if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
                     // Power-up keeps a conditional source-mana subtraction in

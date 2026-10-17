@@ -25,7 +25,12 @@ pub(crate) fn waterbend_sources(game: &GameState, request: &ManaPaymentRequest) 
     {
         return Vec::new();
     }
-    let mut sources = crate::decision::get_improvise_artifacts(game, request.payer);
+    // A creature-only tap payment (Heirloom Epic) never admits artifacts.
+    let mut sources = if request.cost.has_creature_tap_payment() {
+        Vec::new()
+    } else {
+        crate::decision::get_improvise_artifacts(game, request.payer)
+    };
     sources.extend(
         crate::decision::get_convoke_creatures(game, request.payer)
             .into_iter()
@@ -80,6 +85,11 @@ pub(crate) fn record_waterbend_payment_with_outputs(
     let Some(scope) = request.cost.waterbend_payment_scope() else {
         return Ok(Vec::new());
     };
+    // Tapping creatures instead of paying mana is not the waterbend keyword
+    // action, so no waterbend completion is observed.
+    if scope.creatures_only {
+        return Ok(Vec::new());
+    }
     let mut outputs = Vec::new();
     for obligation in &scope.obligations {
         let amount = obligation.amount(request.x_value).ok_or_else(|| {

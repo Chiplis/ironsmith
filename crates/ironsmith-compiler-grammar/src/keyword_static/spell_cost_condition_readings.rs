@@ -97,6 +97,35 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_known_spell_cost_fact(input)),
     },
     Reading {
+        // "if a player attacked you during their last turn" (Avenge).
+        id: RuleId::new("player-attacked-you-during-their-last-turn"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(
+                matches!(
+                    input.words,
+                    [
+                        "a" | "an",
+                        "player" | "opponent",
+                        "attacked",
+                        "you",
+                        "during",
+                        "their",
+                        "last",
+                        "turn"
+                    ]
+                )
+                .then(|| ThisSpellCostCondition::ConditionExpr {
+                    condition: crate::ConditionExpr::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn,
+                    ),
+                    display: input.words.join(" "),
+                }),
+            )
+        },
+    },
+    Reading {
         id: RuleId::new("bound-condition-predicate"),
         head: HeadDiscriminator::Any,
         admits: |input| !input.read_by("combat-and-completed-action-cost-condition"),

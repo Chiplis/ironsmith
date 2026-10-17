@@ -24,6 +24,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
@@ -200,6 +201,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamageMultiplier { .. }
                     | ReplacementActionAst::RegisterDamageAddition { .. }
+                    | ReplacementActionAst::RegisterTokenCreationMultiplier { .. }
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterEnterWithCountersReplacement { .. }
@@ -456,12 +458,22 @@ pub(super) fn compile_subject_verb_early(
     let role = subject_verb_role(subject_verb.subject.role);
     let player = subject_verb.subject.player;
     let result = match &subject_verb.action {
-        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, duration }) => {
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantActivatedAbilitiesFrom {
+            target, source, duration, each_recipient, symbol_as_any_color,
+        }) => {
             let (target, mut choices) = resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // "each Horror you control gains ...": the whole matching set.
+            let target = match target {
+                crate::target::ChooseSpec::Object(filter) if *each_recipient => {
+                    crate::target::ChooseSpec::All(filter)
+                }
+                target => target,
+            };
             let (source, source_choices) = resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
             for choice in source_choices { push_choice(&mut choices, choice); }
             let mut grant = crate::effects::GrantAbilitiesTargetEffect::new(target, Vec::new(), duration.clone());
             grant.activated_from = Some(source);
+            grant.activated_from_symbol_as_any_color = *symbol_as_any_color;
             Ok((vec![Effect::new(grant)], choices))
         }
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count }) => {
@@ -773,14 +785,35 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { subtype, amount }) => {
-            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            let mut effect = Effect::amass(*subtype, amount);
-            if ctx.auto_tag_object_targets {
+            // "Its controller amasses Goblins X" (Azog, Moria's Ruin): a
+            // named player amasses under their own control.
+            let subtype = *subtype;
+            let (mut effects, choices) = if matches!(player, PlayerAst::Implicit | PlayerAst::You) {
+                let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+                (vec![Effect::amass(subtype, amount)], Vec::new())
+            } else {
+                compile_subject_verb_player_value_effect(
+                    role,
+                    player,
+                    amount,
+                    ctx,
+                    true,
+                    true,
+                    true,
+                    true,
+                    |amount| Effect::amass(subtype, amount),
+                    |amount, player| {
+                        Effect::new(crate::effects::AmassEffect::new(subtype, amount).with_player(player))
+                    },
+                )?
+            };
+            if ctx.auto_tag_object_targets && effects.len() == 1 {
                 let tag = ctx.next_tag("amassed");
                 ctx.last_object_tag = Some(tag.clone());
-                effect = effect.tag(tag);
+                let effect = effects.remove(0).tag(tag);
+                effects.push(effect);
             }
-            Ok((vec![effect], Vec::new()))
+            Ok((effects, choices))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Bolster { amount }) => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
@@ -1373,6 +1406,7 @@ pub(super) fn compile_subject_verb_early(
             secretly,
             excluded_subtypes,
             family,
+            note_for_source,
         }) => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
             let mut effect = crate::effects::ChooseCreatureTypeEffect::for_family(
                 subject.into_player_filter(),
@@ -1381,6 +1415,7 @@ pub(super) fn compile_subject_verb_early(
             effect.excluded_subtypes = excluded_subtypes.clone();
             effect.allowed_subtypes = allowed_subtypes.clone();
             effect.secretly = *secretly;
+            effect.note_for_source = *note_for_source;
             Effect::new(effect)
         }),
         SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseLandType {
@@ -1570,6 +1605,26 @@ pub(super) fn compile_subject_verb_early(
                 choices,
                 || Effect::add_mana_of_any_one_color(amount.clone()),
                 |filter| Effect::add_mana_of_any_one_color_player(amount.clone(), filter),
+            )
+        }
+        SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount }) => {
+            let (amount, player_filter, choices) =
+                resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
+            compile_player_effect_from_resolved_filter(
+                player_filter,
+                choices,
+                || {
+                    Effect::new(crate::effects::mana::AddManaLostThisWayEffect::new(
+                        amount.clone(),
+                        PlayerFilter::You,
+                    ))
+                },
+                |filter| {
+                    Effect::new(crate::effects::mana::AddManaLostThisWayEffect::new(
+                        amount.clone(),
+                        filter,
+                    ))
+                },
             )
         }
         SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount }) => {
@@ -2128,6 +2183,9 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageAddition {
             spec,
         }) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
+        SubjectVerbActionAst::Replacements(
+            ReplacementActionAst::RegisterTokenCreationMultiplier { spec },
+        ) => Ok((vec![Effect::new(spec.clone())], Vec::new())),
         SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             spec,
         }) => {

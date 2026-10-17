@@ -104,6 +104,10 @@ pub enum EventValueSpec {
     /// "you get X {E}, where X is that excess damage" (Overclocked
     /// Electromancer). Appended.
     ExcessDamage,
+    /// Permanents sacrificed to pay the triggering activation's costs ("if
+    /// one or more permanents were sacrificed to activate it", Ashnod the
+    /// Uncaring). Appended.
+    PermanentsSacrificedToActivate,
 }
 
 #[cfg(test)]

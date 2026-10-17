@@ -31,14 +31,81 @@ impl EffectExecutor for GrantManaAbilityUntilEotEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let expires_end_of_turn = game.turn.turn_number;
-        game.effect_store
-            .granted_mana_abilities
-            .push(GrantedManaAbility {
-                controller: ctx.controller,
-                ability: self.ability.clone(),
-                expires_end_of_turn,
-            });
+        grant_player_mana_ability_until_end_of_turn(
+            game,
+            ctx.controller,
+            ctx.source,
+            self.ability.clone(),
+        );
+        Ok(EffectOutcome::resolved())
+    }
+}
+
+/// Give `player` a mana ability of their own until end of turn (CR 605.1a).
+///
+/// The ability is not tied to a permanent, so it is carried by an object in
+/// that player's command zone: the priority actions, the mana payment
+/// planner and manual payment all enumerate it like any other mana source
+/// (CR 605.3a), and it is removed when the grant expires during cleanup.
+pub(crate) fn grant_player_mana_ability_until_end_of_turn(
+    game: &mut GameState,
+    player: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+    ability: ActivatedAbility,
+) -> crate::ids::ObjectId {
+    let expires_end_of_turn = game.turn.turn_number;
+    let name = game
+        .object(source)
+        .map(|object| object.name.to_string())
+        .unwrap_or_else(|| "Granted mana ability".to_string());
+    let carrier = game.new_object_id();
+    let carried = crate::ability::Ability {
+        kind: crate::ability::AbilityKind::Activated(ability.clone()),
+        functional_zones: vec![crate::zone::Zone::Command],
+    };
+    game.add_object(crate::object::Object::new_emblem(
+        carrier,
+        player,
+        name,
+        vec![carried],
+    ));
+    game.effect_store
+        .granted_mana_abilities
+        .push(GrantedManaAbility {
+            controller: player,
+            ability,
+            expires_end_of_turn,
+            carrier: Some(carrier),
+        });
+    carrier
+}
+
+/// "Until end of turn, any time you could activate a mana ability, you may
+/// pay N life. If you do, add <mana>." (Channel)
+pub type GrantPayLifeManaAbilityUntilEndOfTurnEffect =
+    ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect;
+
+impl EffectExecutor for GrantPayLifeManaAbilityUntilEndOfTurnEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let player = crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
+        let ability = ActivatedAbility {
+            keyword: None,
+            mana_cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::life(self.life_cost)),
+            effects: crate::resolution::ResolutionProgram::default(),
+            choices: vec![],
+            timing: crate::ability::ActivationTiming::AnyTime,
+            is_loyalty_ability: false,
+            additional_restrictions: vec![],
+            activation_restrictions: vec![],
+            mana_output: Some(self.mana.clone()),
+            activation_condition: None,
+            mana_usage_restrictions: vec![],
+        };
+        grant_player_mana_ability_until_end_of_turn(game, player, ctx.source, ability);
         Ok(EffectOutcome::resolved())
     }
 }

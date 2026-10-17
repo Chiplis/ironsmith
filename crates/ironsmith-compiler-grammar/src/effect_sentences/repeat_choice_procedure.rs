@@ -15,7 +15,9 @@
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
     CardTextError, EffectAst, ForEachEffectAst, IfResultPredicate, LibraryActionAst,
-    PermissionEffectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    LibraryBottomOrderAst, PermissionEffectAst, PlayerAst, ReturnControllerAst,
+    RevealLookActionAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    TargetAst,
 };
 use ironsmith_core::tag::TagKeyWalk as _;
 
@@ -23,6 +25,11 @@ pub(super) struct RepeatChoiceGroup {
     effects: Vec<EffectAst>,
     /// The group every exiled card joins, when a round exiles cards.
     accumulated: Option<crate::tag::TagRef>,
+    /// "Look at the top five cards ... As many times as you choose, ...
+    /// then look at the top five cards" (Lim-Dûl's Vault): every look
+    /// re-tags the same group, so "those cards" in a round and "the last
+    /// cards you looked at this way" afterwards name the latest view.
+    looked: Option<crate::tag::TagRef>,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -57,7 +64,92 @@ fn accumulate_exiles(effects: &mut [EffectAst], tag: &crate::tag::TagRef) -> boo
     found
 }
 
+fn look_tag(effects: &[EffectAst]) -> Option<crate::tag::TagRef> {
+    effects.iter().find_map(|effect| match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards { tag, .. }),
+            ..
+        }) => Some(tag.clone()),
+        EffectAst::Permissions(PermissionEffectAst::May { effects })
+        | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+        | EffectAst::Sequence { effects }
+        | EffectAst::SourceSentence { effects, .. } => look_tag(effects),
+        _ => None,
+    })
+}
+
+/// Point every look at the top of a library in the round at `tag`.
+fn retag_looks(effects: &mut [EffectAst], tag: &crate::tag::TagRef) -> bool {
+    let mut found = false;
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTopCards {
+                        tag: looked,
+                        ..
+                    }),
+                ..
+            }) => {
+                *looked = tag.clone();
+                found = true;
+            }
+            EffectAst::Permissions(PermissionEffectAst::May { effects })
+            | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
+            | EffectAst::Sequence { effects }
+            | EffectAst::SourceSentence { effects, .. }
+            | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. }) => {
+                found |= retag_looks(effects, tag);
+            }
+            _ => {}
+        }
+    }
+    found
+}
+
 pub(super) fn open(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<RepeatChoiceGroup>, CardTextError> {
+    if let Some(group) = open_after_look(sentences, sentence_idx)? {
+        return Ok(Some(group));
+    }
+    open_round(sentences, sentence_idx)
+}
+
+/// "Look at the top five cards of your library. As many times as you
+/// choose, you may pay 1 life, put those cards on the bottom of your library
+/// in any order, then look at the top five cards of your library."
+fn open_after_look(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<RepeatChoiceGroup>, CardTextError> {
+    let Some(look_sentence) = sentences.get(sentence_idx) else {
+        return Ok(None);
+    };
+    let words = crate::lexer::token_word_refs(look_sentence.lowered());
+    if !words.starts_with(&["look", "at", "the", "top"]) {
+        return Ok(None);
+    }
+    let Some(mut group) = open_round(sentences, sentence_idx + 1)? else {
+        return Ok(None);
+    };
+    let mut effects = super::parse_effect_sentence_lexed(look_sentence.lowered())?;
+    let Some(tag) = look_tag(&effects) else {
+        return Ok(None);
+    };
+    if !retag_looks(&mut group.effects, &tag) {
+        return Ok(None);
+    }
+    effects.append(&mut group.effects);
+    group.effects = effects;
+    group.looked = Some(tag);
+    group.first_sentence = sentence_idx;
+    group.consumed = 2;
+    Ok(Some(group))
+}
+
+fn open_round(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<RepeatChoiceGroup>, CardTextError> {
@@ -94,6 +186,22 @@ pub(super) fn open(
     if let Some(unwrapped) = unwrapped {
         body = unwrapped;
     }
+    // "you may pay 1 life, put those cards on the bottom ..., then look at
+    // the top five cards" (Lim-Dûl's Vault): the whole series after "you
+    // may" is the optional round, including the instructions the comma/then
+    // chain left after the permission.
+    if let [EffectAst::Sequence { effects }] = body.as_mut_slice()
+        && matches!(effects.first(), Some(EffectAst::Permissions(PermissionEffectAst::May { .. })))
+    {
+        body = std::mem::take(effects);
+    }
+    if body.len() > 1
+        && let Some((first, rest)) = body.split_first_mut()
+        && let EffectAst::Permissions(PermissionEffectAst::May { effects }) = first
+    {
+        effects.extend(rest.iter().cloned());
+        body.truncate(1);
+    }
     if !matches!(
         body.as_slice(),
         [EffectAst::Permissions(
@@ -113,6 +221,7 @@ pub(super) fn open(
             max_iterations: None,
         })],
         accumulated,
+        looked: None,
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -124,6 +233,9 @@ pub(super) fn continue_with(
     group: &mut RepeatChoiceGroup,
     sentence: &SentenceInput,
 ) -> Result<bool, CardTextError> {
+    if let Some(looked) = group.looked.clone() {
+        return continue_after_looks(group, sentence, looked);
+    }
     let Some(accumulated) = group.accumulated.clone() else {
         return Ok(false);
     };
@@ -150,6 +262,46 @@ pub(super) fn continue_with(
         });
     }
     group.effects.extend(effects);
+    group.consumed += 1;
+    Ok(true)
+}
+
+/// "Then shuffle and put the last cards you looked at this way on top in any
+/// order." The cards are found in the shuffled library and placed on top in
+/// the controller's chosen order.
+fn continue_after_looks(
+    group: &mut RepeatChoiceGroup,
+    sentence: &SentenceInput,
+    looked: crate::tag::TagRef,
+) -> Result<bool, CardTextError> {
+    if group.consumed != 2 {
+        return Ok(false);
+    }
+    let words = crate::lexer::token_word_refs(sentence.lowered());
+    let words = words.strip_prefix(&["then"][..]).unwrap_or(&words);
+    const PUT_LAST_LOOKED_ON_TOP: &[&str] = &[
+        "shuffle", "and", "put", "the", "last", "cards", "you", "looked", "at", "this", "way",
+        "on", "top", "in", "any", "order",
+    ];
+    if words != PUT_LAST_LOOKED_ON_TOP {
+        return Ok(false);
+    }
+    group.effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::LibraryOwner,
+        PlayerAst::You,
+        SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+    ));
+    group.effects.push(
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(looked, None),
+            crate::zone::Zone::Library,
+            true,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )
+        .with_library_order(Some(LibraryBottomOrderAst::ChooserChooses), PlayerAst::You),
+    );
     group.consumed += 1;
     Ok(true)
 }

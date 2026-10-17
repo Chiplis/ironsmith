@@ -781,6 +781,76 @@ pub fn parse_untargeted_life_bid_sentences<'a>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TwoPlayerLifeBidShape<'a> {
+    /// The other bidder ("target spell's controller").
+    pub opponent: &'a [OwnedLexToken],
+    pub starting_bid: Option<u32>,
+    /// The controller's reward after "If you win the bidding,".
+    pub reward: &'a [OwnedLexToken],
+}
+
+/// "You and target spell's controller bid life. You start the bidding with a
+/// bid of 1. In turn order, each player may top the high bid. The bidding
+/// ends if the high bid stands. The high bidder loses life equal to the high
+/// bid. If you win the bidding, counter that spell." (Mages' Contest): a
+/// two-bidder life auction whose reward is the controller's only.
+pub fn parse_two_player_life_bid_sentences<'a>(
+    sentences: &[&'a [OwnedLexToken]],
+) -> Option<TwoPlayerLifeBidShape<'a>> {
+    let &[first, start, top, stands, pay, reward] = sentences else {
+        return None;
+    };
+    if !exact_surface(
+        top,
+        &[
+            "in", "turn", "order", "each", "player", "may", "top", "the", "high", "bid",
+        ],
+    ) || !exact_surface(
+        stands,
+        &[
+            "the", "bidding", "ends", "if", "the", "high", "bid", "stands",
+        ],
+    ) || !exact_surface(
+        pay,
+        &[
+            "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid",
+        ],
+    ) {
+        return None;
+    }
+    let first_words = parser_token_word_refs(first);
+    let opponent_words = consume_head(&first_words, &["you", "and"])?;
+    if opponent_words.len() < 3
+        || opponent_words[opponent_words.len() - 2..] != ["bid", "life"]
+    {
+        return None;
+    }
+    let opponent = token_slice_for_words(first, 2..first_words.len() - 2)?;
+    let start_words = parser_token_word_refs(start);
+    let starting_bid = match consume_head(
+        &start_words,
+        &["you", "start", "the", "bidding", "with", "a", "bid", "of"],
+    )? {
+        ["any", "number"] => None,
+        [amount] => Some(amount.parse::<u32>().ok()?),
+        _ => return None,
+    };
+    let reward_words = parser_token_word_refs(reward);
+    const LEAD: &[&str] = &["if", "you", "win", "the", "bidding"];
+    consume_head(&reward_words, LEAD)?;
+    let reward = token_slice_for_words(reward, LEAD.len()..reward_words.len())?;
+    let reward = trim_lexed_commas(reward);
+    if reward.is_empty() || opponent.is_empty() {
+        return None;
+    }
+    Some(TwoPlayerLifeBidShape {
+        opponent,
+        starting_bid,
+        reward,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegenerateControlShape<'a> {
     pub regenerate_target: &'a [OwnedLexToken],
     pub control_target: &'a [OwnedLexToken],

@@ -189,3 +189,49 @@ fn light_paws_searches_for_an_aura_no_costlier_than_the_entering_aura() {
     assert!(debug.contains("LessThanOrEqualExpr(ManaValueOf(Tagged("), "{debug}");
     assert!(debug.contains("\"triggering\""), "{debug}");
 }
+
+#[test]
+fn kylox_casts_from_among_cards_exiled_with_it() {
+    let definition = p36_compile("Kylox's Voltstrider",
+        "Mana cost: {1}{U}{R}\nType: Artifact — Vehicle\nPower/Toughness: 6/6\nCollect evidence 6: This Vehicle becomes an artifact creature until end of turn.\nWhenever this Vehicle attacks, you may cast an instant or sorcery spell from among cards exiled with it. If that spell would be put into a graveyard, put it on the bottom of its owner's library instead.\nCrew 2");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("source_exiled") || debug.contains("SourceExiled"), "{debug}");
+}
+
+#[test]
+fn leonardo_graveyard_casts_during_your_turn_enter_with_finality_counters() {
+    let definition = p36_compile("Leonardo, Sewer Samurai",
+        "Mana cost: {3}{W}\nType: Legendary Creature — Mutant Ninja Turtle Samurai\nPower/Toughness: 3/3\nSneak {2}{W}{W}\nDouble strike\nDuring your turn, you may cast creature spells with power or toughness 1 or less from your graveyard. If you cast a spell this way, that creature enters with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("DuringYourTurns"), "{debug}");
+    assert!(debug.contains("Finality"), "{debug}");
+}
+
+#[test]
+fn kotose_may_play_one_exiled_card_while_you_control_it_with_any_color_mana() {
+    let definition = p36_compile("Kotose, the Silent Spider",
+        "Mana cost: {3}{U}{B}\nType: Legendary Creature — Human Ninja\nPower/Toughness: 4/4\nWhen Kotose enters, exile target card other than a basic land card from an opponent's graveyard. Search that player's graveyard, hand, and library for any number of cards with the same name as that card and exile them. Then that player shuffles. For as long as you control Kotose, you may play one of the exiled cards, and you may spend mana as though it were mana of any color to cast it.");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("AnyColor"), "{debug}");
+    assert!(debug.contains("max_plays: Some(1)"), "one of the exiled cards: {debug}");
+}
+
+#[test]
+fn lara_croft_may_play_one_discovery_card_from_exile_this_turn() {
+    let definition = p36_compile("Lara Croft, Tomb Raider",
+        "Mana cost: {G}{U}{R}\nType: Legendary Creature — Human Ranger\nPower/Toughness: 3/3\nFirst strike, reach\nWhenever Lara Croft attacks, exile up to one target legendary artifact card or legendary land card from a graveyard and put a discovery counter on it. You may play a card from exile with a discovery counter on it this turn.\nRaid — At end of combat on your turn, if you attacked this turn, create a Treasure token.");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("OnceEachTurn"), "one play: {debug}");
+    assert!(debug.to_lowercase().contains("discovery"), "{debug}");
+}
+
+#[test]
+fn keeper_of_the_dead_targets_an_opponent_two_creature_cards_behind_in_the_graveyard() {
+    let definition = p36_compile("Keeper of the Dead",
+        "Mana cost: {B}{B}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\n{B}, {T}: Choose target opponent who has at least two fewer creature cards in their graveyard than you do as you activate this ability. Destroy target nonblack creature that player controls.");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("OpponentWithMoreControlledObjectsThan"), "{debug}");
+    assert!(debug.contains("fewer: true"), "{debug}");
+    assert!(debug.contains("as_you_activate: true"), "{debug}");
+    assert!(debug.contains("minimum_difference: 2"), "{debug}");
+}

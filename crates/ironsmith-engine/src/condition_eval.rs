@@ -2220,6 +2220,23 @@ fn player_has_no_opponent_with_more_life_than(
         .all(|candidate| candidate.id == player_id || life >= candidate.life)
 }
 
+/// "<player> has more life than another of your opponents": some in-game
+/// opponent of `controller`, other than `player_id`, has less life.
+fn player_has_more_life_than_another_opponent(
+    game: &GameState,
+    controller: PlayerId,
+    player_id: PlayerId,
+) -> bool {
+    let Some(life) = game.player(player_id).map(|p| p.life) else {
+        return false;
+    };
+    game.players
+        .iter()
+        .filter(|candidate| candidate.is_in_game() && candidate.id != player_id)
+        .filter(|candidate| game.are_opponents(controller, candidate.id))
+        .any(|candidate| life > candidate.life)
+}
+
 fn triggering_event_object_matches(
     game: &GameState,
     ctx: &ExternalEvaluationContext<'_>,
@@ -3144,6 +3161,32 @@ fn evaluate_turn_history_condition(
                 .any(|event| {
                     event.action == crate::events::KeywordActionKind::VisitAttraction
                         && players.contains(&event.player)
+                })
+        }
+        TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn => {
+            game.players
+                .iter()
+                .map(|player| player.id)
+                .filter(|player| *player != ctx.controller)
+                .any(|attacker| {
+                    game.last_turn_history_for_player(attacker)
+                        .is_some_and(|history| {
+                            history.projected_records().any(|record| {
+                                record
+                                    .event
+                                    .downcast::<crate::events::combat::CreatureAttackedEvent>()
+                                    .is_some_and(|attack| {
+                                        matches!(
+                                            attack.target,
+                                            crate::triggers::AttackEventTarget::Player(player)
+                                                if player == ctx.controller
+                                        ) && record
+                                            .object_snapshot
+                                            .as_ref()
+                                            .is_some_and(|snapshot| snapshot.controller == attacker)
+                                    })
+                            })
+                        })
                 })
         }
         TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn => {
@@ -4382,6 +4425,12 @@ fn evaluate_condition_in_context(
             .matching_players(game, player)?
             .into_iter()
             .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))),
+        Condition::PlayerHasMoreLifeThanAnotherOpponent { player } => Ok(ctx
+            .matching_players(game, player)?
+            .into_iter()
+            .any(|player_id| {
+                player_has_more_life_than_another_opponent(game, ctx.controller, player_id)
+            })),
         Condition::PlayerWasMonarchAtTurnStart {player} => Ok(ctx.matching_players(game,player)?.into_iter()
             .any(|player|game.turn_store.turn_history.monarch_at_turn_start==Some(player))),
         Condition::PlayerIsYou { player } => {

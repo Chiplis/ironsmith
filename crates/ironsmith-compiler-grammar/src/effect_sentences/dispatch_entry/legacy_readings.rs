@@ -162,6 +162,9 @@ const READINGS: &[Reading] = &[
                 // "At end of combat, ..." inside a resolving effect schedules
                 // a delayed trigger for this combat.
                 && !leading_end_of_combat_delay(tokens)
+                // "<trigger> for the rest of the game, ..." registers a
+                // repeating delayed trigger.
+                && rest_of_game_delayed_trigger_parts(tokens).is_none()
         },
         read: |input| input.outcome(read_trigger_line_sentence(input)),
     },
@@ -533,11 +536,107 @@ fn read_become_rest(input: &LegacyDocument<'_>) -> Result<Option<Vec<EffectAst>>
     }
     Ok(None)
 }
+/// "For as long as this creature remains tapped, target tapped creature
+/// doesn't untap during its controller's untap step, and at the beginning of
+/// each of your draw steps, put a -1/-1 counter on that creature." (Giant
+/// Oyster): one leading duration scopes both the restriction and a repeating
+/// delayed trigger the effect registers (CR 603.7, 611.2b).
+fn leading_duration_with_recurring_delayed_trigger(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(first_comma) = tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    let duration = match crate::grammar::leaf::parse_leaf_conditional_duration_kind_tokens(
+        &tokens[..first_comma],
+    ) {
+        Some(crate::grammar::leaf::LeafConditionalDurationKind::SourceRemainsTapped) => {
+            crate::effect::Until::SourceUntaps
+        }
+        _ => return Ok(None),
+    };
+    if !crate::lexer::parser_token_word_refs(&tokens[..first_comma])
+        .starts_with(&["for", "as", "long", "as"])
+    {
+        return Ok(None);
+    }
+    // ", and at the beginning of each of your <steps>, <body>"
+    let Some(split) = (first_comma + 1..tokens.len()).find(|&index| {
+        tokens[index].is_comma()
+            && crate::lexer::parser_token_word_refs(&tokens[index + 1..]).starts_with(&[
+                "and", "at", "the", "beginning", "of", "each", "of", "your",
+            ])
+    }) else {
+        return Ok(None);
+    };
+    let delayed_tokens = &tokens[split + 2..];
+    let Some(trigger_comma) = delayed_tokens.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    let trigger_words = crate::lexer::parser_token_word_refs(&delayed_tokens[..trigger_comma]);
+    let ["at", "the", "beginning", "of", "each", "of", "your", step @ ..] =
+        trigger_words.as_slice()
+    else {
+        return Ok(None);
+    };
+    let Some((last, before)) = step.split_last() else {
+        return Ok(None);
+    };
+    let Some(singular) = last.strip_suffix('s') else {
+        return Ok(None);
+    };
+    let body = &delayed_tokens[trigger_comma + 1..];
+    if crate::lexer::parser_token_word_refs(body).is_empty() {
+        return Ok(None);
+    }
+    let span = delayed_tokens[0].span;
+    let mut line = Vec::with_capacity(delayed_tokens.len());
+    for word in ["at", "the", "beginning", "of", "your"] {
+        line.push(OwnedLexToken::word(word.to_string(), span));
+    }
+    for word in before {
+        line.push(OwnedLexToken::word((*word).to_string(), span));
+    }
+    line.push(OwnedLexToken::word(singular.to_string(), span));
+    line.push(OwnedLexToken::comma(span));
+    line.extend_from_slice(body);
+    let Ok(crate::cards::builders::LineAst::Triggered {
+        trigger,
+        effects: delayed_effects,
+        max_triggers_per_turn: None,
+    }) = super::super::super::clause_support::parse_triggered_line_lexed(&line)
+    else {
+        return Ok(None);
+    };
+    if delayed_effects.is_empty() {
+        return Ok(None);
+    }
+    // The restriction keeps its own leading duration surface.
+    let mut effects = super::super::parse_effect_sentences_lexed(&tokens[..split])?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects: delayed_effects,
+        one_shot: false,
+        duration,
+        either_of_watched_objects: false,
+        while_any_tagged_object_in_zone: None,
+    }));
+    Ok(Some(effects))
+}
+
 fn read_leading_duration_sentence(
     input: &LegacyDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     let sentences = input.sentences;
+    if sentences.len() == 1
+        && let Some(effects) = leading_duration_with_recurring_delayed_trigger(tokens)?
+    {
+        return Ok(Some(effects));
+    }
     let source_words = crate::lexer::parser_token_word_refs(tokens);
     // A leading duration and its dynamic base-P/T clause are one typed
     // control-flow program. The broad sentence dispatcher can independently
@@ -625,6 +724,11 @@ fn read_delayed_schedule_sentence(
         )]));
     }
     if sentences.len() == 1
+        && let Some(delayed) = rest_of_game_delayed_trigger(tokens)?
+    {
+        return Ok(Some(vec![delayed]));
+    }
+    if sentences.len() == 1
         && (effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
             .is_some()
             || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens)
@@ -634,6 +738,83 @@ fn read_delayed_schedule_sentence(
     }
     Ok(None)
 }
+/// The `<trigger> for the rest of the game` header of a resolving effect's
+/// repeating delayed trigger, split from its body at the first comma.
+fn rest_of_game_delayed_trigger_parts(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    const SUFFIX: [&str; 6] = ["for", "the", "rest", "of", "the", "game"];
+    let comma = tokens.iter().position(OwnedLexToken::is_comma)?;
+    let header = &tokens[..comma];
+    let body = &tokens[comma + 1..];
+    if header.len() <= SUFFIX.len()
+        || crate::lexer::parser_token_word_refs(body).is_empty()
+        || !header
+            .first()
+            .is_some_and(|token| token.is_any_word(&["at", "when", "whenever"]))
+    {
+        return None;
+    }
+    let trigger_len = header.len() - SUFFIX.len();
+    header[trigger_len..]
+        .iter()
+        .zip(SUFFIX)
+        .all(|(token, word)| token.is_word(word))
+        .then_some((&header[..trigger_len], body))
+}
+
+/// "At the beginning of each of your upkeeps for the rest of the game,
+/// <effect>" inside a resolving effect (Cyclopean Tomb): a delayed trigger
+/// that repeats with no expiry (CR 603.7), registered when the effect
+/// resolves. "each of your upkeeps" reads as the ordinary "your upkeep"
+/// trigger.
+fn rest_of_game_delayed_trigger(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((trigger_tokens, body)) = rest_of_game_delayed_trigger_parts(tokens) else {
+        return Ok(None);
+    };
+    let span = trigger_tokens[0].span;
+    let mut line = Vec::with_capacity(tokens.len());
+    let trigger_words = crate::lexer::parser_token_word_refs(trigger_tokens);
+    if let ["at", "the", "beginning", "of", "each", "of", "your", step @ ..] =
+        trigger_words.as_slice()
+        && let Some((last, before)) = step.split_last()
+        && let Some(singular) = last.strip_suffix('s')
+    {
+        for word in ["at", "the", "beginning", "of", "your"] {
+            line.push(OwnedLexToken::word(word.to_string(), span));
+        }
+        for word in before {
+            line.push(OwnedLexToken::word((*word).to_string(), span));
+        }
+        line.push(OwnedLexToken::word(singular.to_string(), span));
+    } else {
+        line.extend_from_slice(trigger_tokens);
+    }
+    line.push(OwnedLexToken::comma(span));
+    line.extend_from_slice(body);
+    let Ok(crate::cards::builders::LineAst::Triggered {
+        trigger,
+        effects,
+        max_triggers_per_turn: None,
+    }) = super::super::super::clause_support::parse_triggered_line_lexed(&line)
+    else {
+        return Ok(None);
+    };
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger,
+        effects,
+        one_shot: false,
+        duration: crate::effect::Until::Forever,
+        either_of_watched_objects: false,
+        while_any_tagged_object_in_zone: None,
+    })))
+}
+
 fn read_generic_consult_reveal_until_battlefield_bottom(
     input: &LegacyDocument<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {

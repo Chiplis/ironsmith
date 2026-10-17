@@ -1394,6 +1394,23 @@ fn compile_effect_inner(
     if let EffectAst::UnblockSoleBlockedAttackers(unblock) = effect {
         return Ok((vec![Effect::new(unblock.clone())], Vec::new()));
     }
+    if let EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(grant) = effect {
+        return Ok((vec![Effect::new(grant.clone())], Vec::new()));
+    }
+    if let EffectAst::RollAndStoreDieResults(roll) = effect {
+        return Ok((vec![Effect::new(roll.clone())], Vec::new()));
+    }
+    if let EffectAst::RerollStoredDieResults(reroll) = effect {
+        return Ok((vec![Effect::new(reroll.clone())], Vec::new()));
+    }
+    if let EffectAst::DeclareBlockersByRandomPilesThisTurn = effect {
+        return Ok((
+            vec![Effect::new(
+                ironsmith_core::DeclareBlockersByRandomPilesThisTurnEffect::new(),
+            )],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::UnblockSoleBlockedAttackersOf { blocker } = effect {
         let (blocker, _choices) =
             resolve_target_spec_with_choices(blocker, &current_reference_env(ctx))?;
@@ -1421,6 +1438,9 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::RevealSourceInHandUntilOwnersNextTurn(reveal) = effect {
+        return Ok((vec![Effect::new(reveal.clone())], Vec::new()));
+    }
     if let EffectAst::PlayWithHandRevealed(reveal) = effect {
         let mut reveal = reveal.clone();
         // "that player" names the discourse player (a chosen target, or the
@@ -1431,11 +1451,23 @@ fn compile_effect_inner(
         }
         return Ok((vec![Effect::new(reveal)], Vec::new()));
     }
-    if let EffectAst::ExchangeBlocks { blockers } = effect {
+    if let EffectAst::CoinFlipLifeStakes { opponent, initial_stakes } = effect {
+        let (opponent, choices) =
+            resolve_target_spec_with_choices(opponent, &current_reference_env(ctx))?;
+        return Ok((
+            vec![Effect::new(crate::effects::CoinFlipLifeStakesEffect::new(
+                opponent,
+                *initial_stakes,
+            ))],
+            choices,
+        ));
+    }
+    if let EffectAst::ExchangeBlocks { blockers, attackers } = effect {
         let (blockers, _choices) =
             resolve_target_spec_with_choices(blockers, &current_reference_env(ctx))?;
+        let exchange = crate::effects::ExchangeBlocksEffect::new(blockers);
         return Ok((
-            vec![Effect::new(crate::effects::ExchangeBlocksEffect::new(blockers))],
+            vec![Effect::new(if *attackers { exchange.between_attackers() } else { exchange })],
             Vec::new(),
         ));
     }
@@ -1493,6 +1525,27 @@ fn compile_effect_inner(
                     spec,
                 )
                 .with_counter_kind_from_trigger(),
+            )],
+            choices,
+        ));
+    }
+    if let EffectAst::RetainSpellChoices { target, controller_tag } = effect {
+        let (spec, choices) =
+            resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+        return Ok((
+            vec![Effect::new(crate::effects::RetainSpellChoicesEffect::new(
+                spec,
+                controller_tag.clone(),
+            ))],
+            choices,
+        ));
+    }
+    if let EffectAst::PutRetainedSpellCopyOntoStack { target } = effect {
+        let (spec, choices) =
+            resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+        return Ok((
+            vec![Effect::new(
+                crate::effects::PutRetainedSpellCopyOntoStackEffect::new(spec),
             )],
             choices,
         ));
@@ -2138,9 +2191,16 @@ fn compile_effect_inner(
         target,
         starting_bid,
         winner_effects,
+        opponent,
+        controller_must_win,
     }) = effect
     {
         let refs = current_reference_env(ctx);
+        // "You and target spell's controller bid life": the other bidder
+        // is read before the reward clauses can move the antecedent.
+        let opponent = (*opponent)
+            .map(|player| resolve_non_target_player_filter(player, &refs))
+            .transpose()?;
         let (target_spec, mut choices) = match target {
             Some(target) => {
                 let (spec, choices) = resolve_target_spec_with_choices(target, &refs)?;
@@ -2162,6 +2222,8 @@ fn compile_effect_inner(
             winner_effects,
         );
         bid.target = target_spec;
+        bid.opponent = opponent;
+        bid.controller_must_win = *controller_must_win;
         return Ok((vec![Effect::new(bid)], choices));
     }
     if let EffectAst::Votes(VoteEffectAst::SecretChoiceStart {

@@ -1616,39 +1616,58 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
     };
 
     let special_action_words = crate::lexer::parser_token_word_refs(special_action);
-    let expected_special_action = [
-        "that",
-        match attached_noun {
-            "creature" => "creatures",
-            "permanent" => "permanents",
-            _ => unreachable!("the complete grammar above owns the attached noun"),
-        },
-        "controller",
-        "may",
-        "sacrifice",
-        "a",
-        "permanent",
-        "of",
-        "their",
-        "choice",
-        "for",
-        "that",
-        "player",
-        "to",
-        "ignore",
-        "this",
-        "effect",
-        "until",
-        "end",
-        "of",
-        "turn",
+    // "That creature's controller may <cost> for that player to ignore this
+    // effect until end of turn" / "Its controller may <cost> ..." (Lost in
+    // Thought): the attached object's controller pays the authored cost.
+    let plural_noun = match attached_noun {
+        "creature" => "creatures",
+        "permanent" => "permanents",
+        _ => unreachable!("the complete grammar above owns the attached noun"),
+    };
+    const IGNORE_TAIL: &[&str] = &[
+        "for", "that", "player", "to", "ignore", "this", "effect", "until", "end", "of", "turn",
     ];
-    if !crate::word_primitives::parse_sequence_complete(
-        &special_action_words,
-        &expected_special_action,
-    ) {
+    let head_len = if special_action_words.starts_with(&["that", plural_noun, "controller", "may"]) {
+        4
+    } else if special_action_words.starts_with(&["its", "controller", "may"]) {
+        3
+    } else {
+        return Ok(None);
+    };
+    if special_action_words.len() <= head_len + IGNORE_TAIL.len()
+        || !special_action_words.ends_with(IGNORE_TAIL)
+    {
         return Ok(None);
     }
+    let cost_words = &special_action_words[head_len..special_action_words.len() - IGNORE_TAIL.len()];
+    let sacrifices_permanent = cost_words == ["sacrifice", "a", "permanent", "of", "their", "choice"];
+    let authored_cost = if sacrifices_permanent {
+        None
+    } else {
+        let view = crate::lexer::TokenWordView::new(special_action);
+        let Some(range) = view.token_span_for_words(head_len, head_len + cost_words.len()) else {
+            return Ok(None);
+        };
+        // The paying player is "you" while the cost is paid.
+        let cost_tokens = special_action[range.clone()]
+            .iter()
+            .map(|token| {
+                if token.is_word("their") {
+                    crate::lexer::OwnedLexToken::word("your".to_string(), token.span())
+                } else {
+                    token.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        let Some(cost) =
+            crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(
+                &cost_tokens,
+            )?
+        else {
+            return Ok(None);
+        };
+        Some((cost, crate::lexer::render_token_slice(&special_action[range]).trim().to_string()))
+    };
 
     let subject = format!("enchanted {attached_noun}");
     let attached_filter = match attached_noun {
@@ -1670,14 +1689,23 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
         crate::effect::Restriction::activate_abilities_of(attached_filter),
         activation_display,
     ));
-    let special_action_display = format!(
-        "That {attached_noun}'s controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn"
-    );
-    let ignore_special_action =
+    let ignore_special_action = if let Some((cost, cost_text)) = authored_cost {
+        StaticAbility::attached_controller_may_pay_cost_to_ignore_source_effect_until_end_of_turn(
+            cost,
+            format!(
+                "Its controller may {cost_text} for that player to ignore this effect until end of turn"
+            ),
+        )
+        .into()
+    } else {
+        let special_action_display = format!(
+            "That {attached_noun}'s controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn"
+        );
         StaticAbility::attached_controller_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
             special_action_display,
         )
-        .into();
+        .into()
+    };
 
     Ok(Some(vec![
         combat_restriction,
@@ -1959,6 +1987,14 @@ fn parse_attached_gets_and_negated_restriction_line(
     }
     let mut restriction_tokens = trim_edge_punctuation(parsed.subject_tokens).to_vec();
     restriction_tokens.extend_from_slice(&trim_edge_punctuation(parsed.negated_tail));
+    // "gets +2/+2 and can't be blocked unless it's attacking its owner or a
+    // permanent its owner controls": an evasion rule on the attached host,
+    // not a blocker restriction.
+    if let Some(evasion) =
+        parse_subject_cant_be_blocked_unless_attacking_owner_line(&restriction_tokens)?
+    {
+        return Ok(Some(vec![build_anthem_static_ability(&clause).into(), evasion]));
+    }
     let Some(parsed_restriction) = parse_negated_object_restriction_clause(&restriction_tokens)?
     else {
         return Ok(None);

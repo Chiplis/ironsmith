@@ -395,11 +395,18 @@ pub(crate) fn interpret_trigger_model(
             source,
             target,
             source_surface,
-        } => crate::triggers::Trigger::deals_damage_to_with_source_surface(
-            source,
-            target,
-            source_surface,
-        ),
+            recipient_is_source_target,
+        } => {
+            if recipient_is_source_target {
+                crate::triggers::Trigger::deals_damage_to_source_target(source, target)
+            } else {
+                crate::triggers::Trigger::deals_damage_to_with_source_surface(
+                    source,
+                    target,
+                    source_surface,
+                )
+            }
+        }
         TriggerKind::DealsDamageToPlayer {
             source,
             player,

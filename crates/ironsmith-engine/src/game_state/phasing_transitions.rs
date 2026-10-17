@@ -148,6 +148,7 @@ impl GameState {
             for held in flags.phase_out_holds_by_source.values_mut() {
                 held.remove(id);
             }
+            flags.phase_out_holds_until_visit_roll.remove(id);
         }
         self.mark_continuous_state_dirty();
         self.effect_store

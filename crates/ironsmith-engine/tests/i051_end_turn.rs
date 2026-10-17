@@ -89,6 +89,7 @@ fn delayed_upkeep_trigger(source: ObjectId, controller: PlayerId) -> DelayedTrig
         expires_at_end_of_combat: false,
         bound_extra_turn_index: None,
         while_any_tagged_object_in_zone: None,
+        while_source_tapped: None,
         target_objects: Vec::new(),
         ability_source: Some(source),
         ability_source_stable_id: None,

@@ -15,6 +15,21 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
         | ["paying" | "pay", "life", "equal", "to", "that", "spells", "mana", "value"])
     { return Ok(Some(mana_value_life_price())); }
     let Some(head) = words.first() else { return Ok(None); };
+    // "by waterbending {X}" (CR 702.185): a generic or X price with the
+    // waterbend obligation (artifacts and creatures may be tapped for it).
+    if matches!(*head, "waterbending" | "waterbend") {
+        let mut payment = crate::lexer::synthetic_word_tokens(["pay"]);
+        payment.extend_from_slice(&tokens[1..]);
+        let Some(cost) = crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(&payment)? else {
+            return Ok(None);
+        };
+        let Some([crate::model::CompilerCost::Mana(mana)]) = cost.as_all() else { return Ok(None); };
+        if mana.pips().is_empty() || mana.pips().iter().any(|pip| !matches!(pip.as_slice(),
+            [crate::mana::ManaSymbol::Generic(_) | crate::mana::ManaSymbol::X]))
+        { return Ok(None); }
+        return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(
+            mana.clone().with_waterbend()))));
+    }
     let normalized = match *head {
         "paying" => "pay",
         "discarding" => "discard",
@@ -90,6 +105,99 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     let Some(mut effect) = super::parse_cast_or_play_tagged_clause(body)? else { return Ok(None); };
     if attach_price(&mut effect, &cost) != 1 {
         return Err(CardTextError::ParseError("an alternative casting price needs one exact cast instruction".into()));
+    }
+    Ok(Some(effect))
+}
+
+/// "For as long as you control <this source>, you may cast <the exiled card>
+/// [during your turn] by <price> rather than paying its mana cost[, where X
+/// is its mana value]." (Hama, the Bloodbender): a lasting priced permission
+/// bounded by continued control of the source, optionally usable only during
+/// the permission player's turns, whose X is fixed by the granted card.
+pub(crate) fn parse_control_source_priced_permission(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    const HEAD: [&str; 6] = ["for", "as", "long", "as", "you", "control"];
+    if tokens.len() <= HEAD.len()
+        || !tokens.iter().zip(HEAD).all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let rest = &tokens[HEAD.len()..];
+    let Some(may) = rest.windows(3).position(|window| {
+        window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("cast")
+    }) else {
+        return Ok(None);
+    };
+    let source = trim_lexed_commas(&rest[..may]);
+    if source.is_empty()
+        || !(crate::util::is_source_reference_words(&token_word_refs(source))
+            || crate::lexer::is_authored_proper_name_phrase(source))
+    {
+        return Ok(None);
+    }
+    let mut body = trim_lexed_commas(&rest[may + 3..]);
+    let mut x_is_mana_value = false;
+    if let Some(where_index) = body.iter().rposition(|token| token.is_word("where"))
+        && token_word_refs(&body[where_index..]) == ["where", "x", "is", "its", "mana", "value"]
+    {
+        body = trim_lexed_commas(&body[..where_index]);
+        x_is_mana_value = true;
+    }
+    let Some((granted, price)) = replacement_price_suffix(body)? else {
+        return Ok(None);
+    };
+    if x_is_mana_value
+        && !price.as_all().is_some_and(|costs| costs.iter().any(|cost| matches!(cost,
+            crate::model::CompilerCost::Mana(mana) if mana.has_x())))
+    {
+        return Ok(None);
+    }
+    let mut granted = trim_lexed_commas(granted);
+    let mut during_your_turns = false;
+    if granted.len() > 3
+        && token_word_refs(&granted[granted.len() - 3..]) == ["during", "your", "turn"]
+    {
+        granted = trim_lexed_commas(&granted[..granted.len() - 3]);
+        during_your_turns = true;
+    }
+    let Some((target, tail)) = super::parse_tagged_cast_or_play_target_tokens(granted) else {
+        return Ok(None);
+    };
+    if !trim_lexed_commas(tail).is_empty() || target.as_copy || target.max_plays.is_some() {
+        return Ok(None);
+    }
+    let mut surface = ironsmith_core::GrantPlayTaggedSurface::default()
+        .with_leading_duration(true)
+        .with_control_source(ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+            "this creature".to_string(),
+        ));
+    if let Some(object) = target
+        .surface
+        .clone()
+        .or_else(|| super::tagged_permission_target_surface(granted))
+    {
+        surface = surface.with_object(object);
+    }
+    let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
+        crate::tag::TagRef::of(target.tag),
+        PlayerAst::Implicit,
+        false,
+        ironsmith_core::value_model::ManaSpendMode::Normal,
+        Some(surface),
+    );
+    if let EffectAst::SubjectVerb(subject) = &mut effect
+        && let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
+            during_your_turns: during,
+            alternative_cost,
+            alternative_cost_x_is_mana_value,
+            ..
+        }) = &mut subject.action
+    {
+        *during = during_your_turns;
+        *alternative_cost = Some(price);
+        *alternative_cost_x_is_mana_value = x_is_mana_value;
     }
     Ok(Some(effect))
 }

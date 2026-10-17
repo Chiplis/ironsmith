@@ -1685,12 +1685,18 @@ pub struct CombatDamageDivision {
     /// creatures an unblocked attacker may instead assign all of its combat
     /// damage to (one of them, never split).
     pub unblocked_creature_alternatives: Vec<ObjectId>,
+    /// "You may assign this creature's combat damage divided as you choose
+    /// among defending player and/or any number of creatures they control."
+    /// (Butcher Orgg): when every assigned point lands among these
+    /// recipients, the division is free (no lethal-damage ordering).
+    pub free_division_recipients: Vec<Target>,
 }
 
 impl CombatDamageDivision {
     /// Every legal recipient, in assignment order.
     pub fn targets(&self) -> Vec<Target> {
-        self.creatures
+        let mut targets: Vec<Target> = self
+            .creatures
             .iter()
             .copied()
             .chain(self.planeswalker)
@@ -1698,7 +1704,22 @@ impl CombatDamageDivision {
             .chain(self.excess_target)
             .chain(self.separate_unblocked_alternative())
             .chain(self.separate_creature_alternatives().map(Target::Object))
-            .collect()
+            .collect();
+        for recipient in &self.free_division_recipients {
+            if !targets.contains(recipient) {
+                targets.push(*recipient);
+            }
+        }
+        targets
+    }
+
+    /// Whether every assigned point lands among the free-division recipients
+    /// (Butcher Orgg), which lifts the lethal-damage ordering.
+    fn is_free_division(&self, targets: &[Target], amounts: &[u32]) -> bool {
+        !self.free_division_recipients.is_empty()
+            && targets.iter().zip(amounts).all(|(target, amount)| {
+                *amount == 0 || self.free_division_recipients.contains(target)
+            })
     }
 
     /// The creatures an unblocked attacker may assign all its damage to
@@ -1914,6 +1935,30 @@ impl CombatDamageDivision {
         if self.is_all_unblocked_alternative(&targets, &amounts) {
             return Ok(targets.into_iter().zip(amounts).collect());
         }
+        if self.is_free_division(&targets, &amounts) {
+            return Ok(targets.into_iter().zip(amounts).collect());
+        }
+        // A recipient only the free division adds can't share damage with an
+        // ordinary division (e.g. a planeswalker being attacked).
+        let standard = self
+            .creatures
+            .iter()
+            .copied()
+            .chain(self.planeswalker)
+            .map(Target::Object)
+            .chain(self.excess_target)
+            .chain(self.unblocked_alternative)
+            .chain(self.unblocked_creature_alternatives.iter().copied().map(Target::Object))
+            .collect::<Vec<_>>();
+        if targets.iter().zip(&amounts).any(|(target, amount)| {
+            *amount > 0 && !standard.contains(target)
+        }) {
+            return Err((
+                CombatDamageAssignmentErrorKind::IllegalRecipient,
+                "combat damage divided among defending player and their creatures can't include other recipients"
+                    .to_string(),
+            ));
+        }
         // Cunning Giant: all of the damage goes to one creature the defending
         // player controls, or none of it does.
         let alternative_creatures = self.separate_creature_alternatives().collect::<Vec<_>>();
@@ -2042,19 +2087,47 @@ fn attacker_damage_division(
         ))
     .then(|| trample_excess_target(game, &attacker_info.target))
     .flatten();
+    // Butcher Orgg: the defending player and every creature they control.
+    let free_division_recipients = if game.object_has_static_ability_id(
+        attacker_id,
+        StaticAbilityId::MayDivideCombatDamageAmongDefendingPlayerAndCreatures,
+    ) && let Some(defender) =
+        crate::combat_state::defending_player_for_attack_target(game, &attacker_info.target)
+    {
+        game.player(defender)
+            .is_some_and(|player| player.is_in_game())
+            .then_some(Target::Player(defender))
+            .into_iter()
+            .chain(
+                game.battlefield
+                    .iter()
+                    .copied()
+                    .filter(|id| {
+                        *id != attacker_id
+                            && game.controller_of_id(*id) == Some(defender)
+                            && game.object_has_card_type(*id, crate::types::CardType::Creature)
+                    })
+                    .map(Target::Object),
+            )
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     if blocked && !trample {
         // CR 510.1c: a blocked creature assigns damage only to its blockers,
         // unless it may assign it as though it weren't blocked.
-        return (!creatures.is_empty() || unblocked_alternative.is_some()).then_some(
-            CombatDamageDivision {
-                creatures,
-                planeswalker: None,
-                excess_target: None,
-                deathtouch,
-                unblocked_alternative,
-                unblocked_creature_alternatives,
-            },
-        );
+        return (!creatures.is_empty()
+            || unblocked_alternative.is_some()
+            || !free_division_recipients.is_empty())
+        .then_some(CombatDamageDivision {
+            creatures,
+            planeswalker: None,
+            excess_target: None,
+            deathtouch,
+            unblocked_alternative,
+            unblocked_creature_alternatives,
+            free_division_recipients,
+        });
     }
     // Unblocked (CR 510.1b), or a trampler: past its blockers (all of them
     // assigned lethal damage, or none left, CR 702.19d) to what it's attacking.
@@ -2067,6 +2140,7 @@ fn attacker_damage_division(
         && planeswalker.is_none()
         && excess_target.is_none()
         && unblocked_creature_alternatives.is_empty()
+        && free_division_recipients.is_empty()
     {
         return None;
     }
@@ -2077,6 +2151,7 @@ fn attacker_damage_division(
         deathtouch,
         unblocked_alternative,
         unblocked_creature_alternatives,
+        free_division_recipients,
     })
 }
 
@@ -2211,6 +2286,7 @@ fn combat_damage_assigners(
                 ),
                 unblocked_alternative: None,
                 unblocked_creature_alternatives: Vec::new(),
+                free_division_recipients: Vec::new(),
             },
         });
     }

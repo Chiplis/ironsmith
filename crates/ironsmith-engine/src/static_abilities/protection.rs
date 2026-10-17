@@ -258,7 +258,14 @@ impl crate::events::traits::ReplacementMatcher for ProtectionDamageMatcher {
         if ctx.source != Some(target) || damage.amount == 0 {
             return false;
         }
-        let subject = if let Some(object) = ctx.game.object(damage.source)
+        // A colorless source of damage (Ghostly Flame) is judged with no
+        // colors through the shared damage-source color hook.
+        let colorless_source = ctx
+            .game
+            .damage_source_color_snapshot(damage.source, ctx.event_source_snapshot);
+        let subject = if let Some(snapshot) = colorless_source.as_ref() {
+            crate::filter::ObjectSubject::Snapshot(snapshot)
+        } else if let Some(object) = ctx.game.object(damage.source)
             && !ctx.game.is_phased_out(damage.source)
         {
             crate::filter::ObjectSubject::Live(object)

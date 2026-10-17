@@ -121,6 +121,9 @@ pub(crate) fn land_play_restriction_applies(
     let object = game
         .object(card)
         .ok_or(ExecutionError::ObjectNotFound(card))?;
+    if game.hand_card_cant_be_played_until_owners_next_turn(card) {
+        return Ok(true);
+    }
     Ok(game
         .effect_store
         .cant_effects

@@ -115,6 +115,8 @@ pub(super) fn parse_bid_life_for_control_bundle(
     Some(vec![EffectAst::Votes(VoteEffectAst::BidLife {
         target: Some(target.clone()),
         starting_bid: Some(0),
+        opponent: None,
+        controller_must_win: false,
         winner_effects: vec![EffectAst::subject_verb_gain_control(
             PlayerAst::Implicit,
             target,

@@ -333,6 +333,9 @@ pub struct ReplacementExecutionContext {
     /// parts of one simultaneous event (for example, a lethal Exquisite
     /// Archangel whose lose-game replacement also tries to exile itself).
     pub simultaneous_zone_destinations: HashMap<ObjectId, crate::zone::Zone>,
+    /// Set by an entry program that puts the entering object into another
+    /// zone instead of onto the battlefield (Frankenstein's Monster).
+    pub entry_redirect: Option<crate::zone::Zone>,
 }
 
 impl Default for ReplacementExecutionContext {
@@ -346,6 +349,7 @@ impl Default for ReplacementExecutionContext {
             suppressed_replacement_effects: HashSet::new(),
             suppressed_replacement_effect_keys: HashSet::new(),
             simultaneous_zone_destinations: HashMap::new(),
+            entry_redirect: None,
         }
     }
 }

@@ -1340,6 +1340,44 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::PermanentState(PermanentStateActionAst::Convert { target }) => {
             compile_tagged_effect_for_target(target, ctx, "converted", Effect::convert)
         }
+        // "target opponent destroys four lands they control" (Burning of
+        // Xinye): the named player chooses which of their objects are
+        // destroyed (CR 701.8a), and "they" is that player.
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
+            target: TargetAst::WithCount(inner, count),
+            no_regeneration: false,
+            ..
+        }) if !matches!(player, PlayerAst::Implicit | PlayerAst::You)
+            && matches!(
+                inner.as_ref(),
+                TargetAst::Object(filter, ..)
+                    if filter.controller == Some(PlayerFilter::IteratedPlayer)
+            ) =>
+        {
+            let TargetAst::Object(filter, ..) = inner.as_ref() else {
+                unreachable!("checked by the guard");
+            };
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let chooser = subject.into_player_filter();
+            let choices = subject.into_choices();
+            let mut filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            filter.controller = Some(chooser.clone());
+            let tag = ctx.next_tag("destroyed");
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    filter,
+                    count.clone(),
+                    chooser,
+                    tag.clone(),
+                )
+                .in_zone(Zone::Battlefield),
+            );
+            let destroy = Effect::new(crate::effects::DestroyEffect::with_spec(
+                ChooseSpec::Tagged(tag.as_str().into()),
+            ));
+            ctx.last_object_tag = Some(tag);
+            Ok((vec![choose, destroy], choices))
+        }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
             target,
             no_regeneration,
@@ -2636,6 +2674,39 @@ pub(super) fn compile_subject_verb_late(
         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy { amount }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let amount = subject.bind_player_refs_in_value(amount, ctx)?;
+            // "pay an amount of {E} equal to target nonland permanent's mana
+            // value" (Behemoth of Vault 0): the amount names an object
+            // target, chosen with the ability and tagged for later "that
+            // permanent" references.
+            if let Some(spec) = value_object_target_spec(&amount)
+                && ctx.auto_tag_object_targets
+            {
+                let target_effect = tag_object_target_effect(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+                    &spec,
+                    ctx,
+                    "targeted",
+                );
+                let (mut effects, mut choices) = compile_player_effect_from_resolved_filter(
+                    subject.into_player_filter(),
+                    subject.into_choices(),
+                    || {
+                        Effect::new(crate::effects::PayEnergyEffect::new(
+                            amount.clone(),
+                            ChooseSpec::Player(PlayerFilter::You),
+                        ))
+                    },
+                    |filter| {
+                        Effect::new(crate::effects::PayEnergyEffect::new(
+                            amount.clone(),
+                            ChooseSpec::Player(filter),
+                        ))
+                    },
+                )?;
+                effects.insert(0, target_effect);
+                push_choice(&mut choices, spec);
+                return Ok(Some((effects, choices)));
+            }
             compile_player_effect_from_resolved_filter(
                 subject.into_player_filter(),
                 subject.into_choices(),
@@ -2932,19 +3003,25 @@ pub(super) fn compile_subject_verb_late(
             let effect = Effect::new(control);
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }) => {
+        SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+            filter,
+            pay_life_equal_to_mana_value,
+        }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let player_filter = subject.into_player_filter();
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            Ok((
-                vec![Effect::new(
-                    crate::effects::GrantNextSpellCostReductionEffect::next_matching_without_paying_mana_cost_this_turn(
-                        player_filter,
-                        resolved_filter,
-                    ),
-                )],
-                Vec::new(),
-            ))
+            let grant = if *pay_life_equal_to_mana_value {
+                crate::effects::GrantNextSpellCostReductionEffect::next_matching_for_life_equal_to_mana_value_this_turn(
+                    player_filter,
+                    resolved_filter,
+                )
+            } else {
+                crate::effects::GrantNextSpellCostReductionEffect::next_matching_without_paying_mana_cost_this_turn(
+                    player_filter,
+                    resolved_filter,
+                )
+            };
+            Ok((vec![Effect::new(grant)], Vec::new()))
         }
         SubjectVerbActionAst::Stack(StackActionAst::ReduceNextSpellCostThisTurn {
             filter,

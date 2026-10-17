@@ -42,6 +42,9 @@ pub struct DelayedTriggerConfig {
     pub expires_at_end_of_combat: bool,
     pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
+    /// "For as long as this creature remains tapped": the registration ends
+    /// once this permanent untaps or leaves the battlefield (CR 611.2b).
+    pub while_source_tapped: Option<ObjectId>,
     pub target_objects: Vec<ObjectId>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
@@ -75,6 +78,7 @@ impl DelayedTriggerConfig {
             expires_at_end_of_combat: false,
             bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
+            while_source_tapped: None,
             target_objects,
             ability_source: None,
             controller,
@@ -123,6 +127,11 @@ impl DelayedTriggerConfig {
         duration: Option<(TagKey, crate::zone::Zone)>,
     ) -> Self {
         self.while_any_tagged_object_in_zone = duration;
+        self
+    }
+
+    pub fn while_source_tapped(mut self, source: Option<ObjectId>) -> Self {
+        self.while_source_tapped = source;
         self
     }
 
@@ -220,6 +229,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub expires_at_end_of_combat: bool,
     pub bound_extra_turn_index: Option<usize>,
     pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
+    pub while_source_tapped: Option<ObjectId>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
     pub x_value: Option<u32>,
@@ -251,6 +261,7 @@ impl DelayedTriggerTemplate {
             expires_at_end_of_combat: false,
             bound_extra_turn_index: None,
             while_any_tagged_object_in_zone: None,
+            while_source_tapped: None,
             ability_source: None,
             controller,
             x_value: None,
@@ -298,6 +309,11 @@ impl DelayedTriggerTemplate {
         duration: Option<(TagKey, crate::zone::Zone)>,
     ) -> Self {
         self.while_any_tagged_object_in_zone = duration;
+        self
+    }
+
+    pub fn while_source_tapped(mut self, source: Option<ObjectId>) -> Self {
+        self.while_source_tapped = source;
         self
     }
 
@@ -401,6 +417,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         expires_at_end_of_combat: config.expires_at_end_of_combat,
         bound_extra_turn_index: config.bound_extra_turn_index,
         while_any_tagged_object_in_zone: config.while_any_tagged_object_in_zone,
+        while_source_tapped: config.while_source_tapped,
         target_objects: config.target_objects,
         ability_source: config.ability_source,
         ability_source_stable_id,
@@ -444,6 +461,7 @@ pub(crate) fn queue_delayed_from_template(
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
                 .with_bound_extra_turn_index(template.bound_extra_turn_index)
                 .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
+                .while_source_tapped(template.while_source_tapped)
                 .with_linked_exile_owner(template.linked_exile_owner.clone())
                 .with_source_number_owner(template.source_number_owner.clone())
                 .with_ability_source(template.ability_source)
@@ -480,6 +498,7 @@ pub(crate) fn queue_delayed_from_template(
                     .while_any_tagged_object_in_zone_opt(
                         template.while_any_tagged_object_in_zone.clone(),
                     )
+                    .while_source_tapped(template.while_source_tapped)
                     .with_linked_exile_owner(template.linked_exile_owner.clone())
                     .with_source_number_owner(template.source_number_owner.clone())
                 .with_ability_source(template.ability_source)

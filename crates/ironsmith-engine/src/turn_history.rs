@@ -668,6 +668,39 @@ impl TurnHistory {
             .flat_map(|event| event.snapshots().iter())
     }
 
+    /// "Note the mana value of each card as it's put into exile. ... the
+    /// greatest number noted for it this turn" (Bell Borca): the greatest
+    /// mana value among cards put into exile this turn while the battlefield
+    /// object `source` existed. A source that entered this turn only noted
+    /// cards exiled after that entry (CR 400.7: an earlier object noted
+    /// nothing for it). Each card's value is read as it is in exile.
+    pub fn greatest_mana_value_exiled_this_turn_since_entry(&self, source: ObjectId) -> u32 {
+        let records = self.projected_records().collect::<Vec<_>>();
+        let start = records
+            .iter()
+            .rposition(|record| {
+                record.event.downcast::<ZoneChangeEvent>().is_some_and(|event| {
+                    event.is_etb() && event.result_objects.contains(&source)
+                })
+            })
+            .map_or(0, |index| index + 1);
+        records[start..]
+            .iter()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.to == Zone::Exile && event.from != Zone::Exile)
+            .flat_map(|event| {
+                if event.destination_snapshots.is_empty() {
+                    event.snapshots().iter()
+                } else {
+                    event.destination_snapshots.iter()
+                }
+            })
+            .filter(|snapshot| !snapshot.is_token)
+            .map(|snapshot| snapshot.mana_value())
+            .max()
+            .unwrap_or(0)
+    }
+
     pub fn total_creatures_died_this_turn(&self) -> u32 {
         self.battlefield_departure_snapshots(Some(Zone::Graveyard))
             .filter(|snapshot| snapshot.card_types.contains(&CardType::Creature))
@@ -2602,6 +2635,23 @@ pub(crate) fn resolve_turn_history_count(
             })
             .filter(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
             .count() as i32,
+        TurnHistoryCount::PlayerCountersRemoved {
+            player,
+            counter_type,
+        } => history
+            .projected_records()
+            .filter_map(|record| {
+                let event = record
+                    .event
+                    .downcast::<crate::events::MarkersChangedEvent>()?;
+                let counter = event.marker.as_counter()?;
+                let owner = event.player()?;
+                (event.is_removed()
+                    && counter_type.is_none_or(|kind| kind == counter)
+                    && player.matches_player(owner, filter_ctx))
+                .then_some(event.amount)
+            })
+            .sum::<u32>() as i32,
         TurnHistoryCount::LandsPlayed(player) => game
             .players
             .iter()

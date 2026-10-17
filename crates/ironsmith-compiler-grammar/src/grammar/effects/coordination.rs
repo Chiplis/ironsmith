@@ -540,6 +540,42 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
             continue;
         }
 
+        // Numeric alternatives naming how many recipients share a division
+        // belong to one selector even without "target": "distribute three
+        // +1/+1 counters among one, two, or three creatures you control"
+        // (Awaken the Maelstrom).
+        if matches!(
+            candidate.operator,
+            CoordinationOperatorAst::Comma | CoordinationOperatorAst::Or
+        ) && {
+            let is_count_word = |token: &crate::lexer::OwnedLexToken| {
+                token
+                    .as_word()
+                    .is_some_and(|word| crate::util::parse_number_word_i32(word).is_some())
+            };
+            let mut index = candidate.start;
+            let mut saw_count = false;
+            let mut reaches_among = false;
+            while index > member_start {
+                index -= 1;
+                let token = &tokens[index];
+                if is_count_word(token) {
+                    saw_count = true;
+                } else if token.is_word("among") {
+                    reaches_among = saw_count;
+                    break;
+                } else if !(token.kind == crate::lexer::TokenKind::Comma || token.is_word("or")) {
+                    break;
+                }
+            }
+            reaches_among
+                && tokens[candidate.end..]
+                    .iter()
+                    .find(|token| token.kind != crate::lexer::TokenKind::Comma && !token.is_word("or"))
+                    .is_some_and(is_count_word)
+        } {
+            continue;
+        }
         // Numeric alternatives in an explicit target head belong to one
         // selector, e.g. `one, two, or three target creature cards`.
         // Let the target grammar prove the complete prefix before treating
@@ -799,6 +835,18 @@ fn classify_boundary<'a>(
             && before.iter().any(|token| {
                 token.is_any_word(&["isnt", "isn't", "arent", "aren't", "thats", "that's"])
             })
+        {
+            return None;
+        }
+        // "up to one target artifact, creature, or planeswalker an opponent
+        // controls loses all abilities" (Azure Beastbinder): a serial type
+        // list right after "target" is one target's selector.
+        if after_head.is_some_and(type_word)
+            && let Some(target) = before.iter().rposition(|token| token.is_word("target"))
+            && target + 1 < before.len()
+            && before[target + 1..]
+                .iter()
+                .all(|token| token.is_comma() || token.is_word("or") || type_word(token))
         {
             return None;
         }
@@ -1220,6 +1268,25 @@ fn classify_boundary<'a>(
         // coordination otherwise mistakes the adjective comma for a new
         // ordered action and emits a verb-less `non-Vehicle creatures ...`
         // clause.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Comma
+        && before.iter().any(|token| token.is_word("target"))
+        && before
+            .last()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| crate::word_primitives::parse_word_prefix(word, "non-"))
+        && after.first().is_some_and(|token| {
+            token_is_card_type_noun(token)
+                || token
+                    .as_word()
+                    .is_some_and(|word| crate::word_primitives::parse_word_prefix(word, "non"))
+        })
+    {
+        // "exile up to one target non-Saga, nonland permanent that player
+        // controls" (Battle at the Helvault): a hyphenated negative modifier
+        // before the comma is part of the targeted object filter, not the
+        // end of an ordered action.
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or

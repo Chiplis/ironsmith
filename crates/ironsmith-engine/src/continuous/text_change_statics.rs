@@ -117,6 +117,7 @@ pub(crate) fn rewrite_static_model_words(
     match &mut rewritten.payload {
         P::DevotionIncrease { .. } => {}
         P::MorphCostIncrease { .. } => {}
+        P::UnlockCostReduction { .. } => {}
         P::OpponentDiscardThisToBattlefieldWithCounters { .. } => {}
         P::None | P::SelfSubjectSurface { .. } => {
             if !wordless_leaf(model.id) { return Err(hold(model)); }
@@ -141,6 +142,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::SetName { filter, .. } | P::AddSupertypes { filter, .. }
         | P::RemoveSupertypes { filter, .. } | P::AddChosenCreatureType { filter, .. }
         | P::AddChosenBasicLandType { filter, .. } | P::AddChosenColor { filter, .. }
+        | P::FirstChosenLandTypeBecomesSecond { filter, .. }
         | P::SourceHasAbilityStickerAbilitiesOf { filter, .. }
         | P::SetChosenColor { filter, .. } | P::SetBasePowerToughness { filter, .. }
         | P::SetBasePower { filter, .. } | P::SetBaseToughness { filter, .. }
@@ -566,6 +568,7 @@ pub(crate) fn rewrite_static_model_words(
             ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => mana_producer_words(filter, change),
             // The color set conflates an authored list with the word "colored".
             ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => return Err(hold(model)),
+            ironsmith_core::mana::ManaSpendingRestriction::NoMana => {}
         },
         P::ManaProductionRewrite { rule, .. } => {
             // Symbol input lacks symbol-versus-word provenance. Basic-land
@@ -598,6 +601,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::ChooseLandTypeAsEnters(_) | P::EnchantedLandIsChosenType(_)
         | P::AttachedIsCopyOfChosenObject(_)
         | P::SourceLandIsChosenType(_) | P::SoulbondSharedPowerToughness { .. }
+        | P::ChooseBasicLandTypesAsEnters { .. }
         | P::CostIncreasePerTargetBeyondFirst(_) | P::CostIncreaseManaCostPerTargetBeyondFirst(_)
         | P::AdditionalLifeCostPerTarget(_) | P::CommanderTaxLifeSubstitution { .. }
         | P::MinimumSpellTotalMana(_) | P::BuybackCostReduction(_)
@@ -622,7 +626,16 @@ pub(crate) fn rewrite_static_model_words(
         | P::EventReplacementWithEffects { .. }
         | P::MaySkipDrawStepWithFollowup { .. }
         | P::EchoCostAlternative { .. }
-        | P::EventAmountReplacement { .. } => return Err(hold(model)),
+        | P::EventAmountReplacement { .. }
+        // The authored display would go stale if only the filter changed.
+        | P::CastTargetRestriction { .. }
+        | P::EntersAttachedToChosenObject { .. }
+        | P::AdditionalSacrificePerManaSymbol { .. }
+        | P::ControllerCounterExilePermission { .. }
+        | P::AttackingPlayerChoosesBlocks { .. }
+        | P::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn { .. } => {
+            return Err(hold(model));
+        }
     }
     Ok(rewritten)
 }
@@ -793,10 +806,12 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::BeBlocked(filter) | R::BeDestroyed(filter) | R::BeRegenerated(filter)
         | R::BeSacrificed(filter) | R::HaveCountersPlaced(filter) | R::HaveCounterTypePlaced(filter, _)
         | R::HaveCounterTypeRemoved(filter, _)
+        | R::DamageSourcesAreColorless(filter)
         | R::BeTargeted(filter) | R::BeCountered(filter) | R::Transform(filter) | R::TurnFaceUp(filter)
         | R::PhaseOut(filter) | R::PhaseIn(filter) | R::AttackOrBlock(filter)
         | R::AttackOrBlockAlone(filter) | R::EnterBattlefield(filter)
         | R::PreventDamageFrom { sources: filter, .. } | R::ActivateLoyaltyAbilitiesOf(filter)
+        | R::ActivateKeywordAbilitiesOf { filter, .. }
         | R::PreventDamageTo { recipients: filter, .. }
         | R::MustAttack(filter) | R::BecomeSuspected(filter) | R::BecomeUntapped(filter)
         | R::AttackBlockOrCrew(filter)
@@ -808,7 +823,8 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::BeCounteredFrom(blockers, attacker) | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
         | R::BeTargetedByRequirementsLimitedTo(blockers, attacker)
         | R::AttackPermanents { attackers: blockers, permanents: attacker }
-        | R::MustAttackPermanents { attackers: blockers, permanents: attacker } => {
+        | R::MustAttackPermanents { attackers: blockers, permanents: attacker }
+        | R::PreventDamageFromTo { sources: blockers, recipients: attacker, .. } => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
         }
@@ -865,7 +881,7 @@ fn grantable_words(
             | D::MiracleFromCardManaCostReducedBy { .. } | D::EscapeFromCardManaCost { .. }
             | D::ManaValueAsGenericFromHand | D::LifeEqualManaValueFromHand { .. }
             | D::LifeEqualManaValueFromZone { .. } | D::MadnessFromCardManaCost
-            | D::ForetellFromCardManaCostReducedBy { .. } => {}
+            | D::ForetellFromCardManaCostReducedBy { .. } | D::PlotFromCardManaCost => {}
         },
         G::AlternativeCast(method) => match method {
             A::Blitz { total_cost } | A::Flashback { total_cost, .. } | A::Harmonize { total_cost }
@@ -1107,7 +1123,7 @@ mod tests {
     fn opaque_child_and_lossy_native_combinations_hold_without_mutating_parent() {
         let original = model(P::EquipmentGrant(vec![
             CompiledStaticAbility::protection(ironsmith_core::ProtectionFrom::Color(ColorSet::BLACK)),
-            model(P::ChooseNamedOptionAsEnters { options: vec!["black".into()], display: String::new(), at_random: false }),
+            model(P::ChooseNamedOptionAsEnters { options: vec!["black".into()], display: String::new(), at_random: false, each_player: false }),
         ]));
         assert!(matches!(rewrite_static_model_words(&original, change()), Err(Error::StaticAbility(_))));
         let P::EquipmentGrant(children) = &original.payload else { unreachable!() };

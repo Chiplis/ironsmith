@@ -2828,6 +2828,24 @@ pub fn parse_keyword_mechanic_clause(
             },
         )));
     }
+    // "Its controller amasses Goblins X, where X is that creature's power."
+    // (Azog, Moria's Ruin): the named player amasses (CR 701.47a).
+    if let Some(verb) = tokens.iter().position(|token| token.is_word("amasses"))
+        && verb > 0
+    {
+        let SubjectAst::Player(player) = crate::util::parse_subject(&tokens[..verb]) else {
+            return Ok(None);
+        };
+        let mut action_tokens = tokens[verb..].to_vec();
+        action_tokens[0] = OwnedLexToken::word("amass", action_tokens[0].span);
+        let Some(mut effect) = parse_keyword_mechanic_clause(&action_tokens)? else {
+            return Ok(None);
+        };
+        if let EffectAst::SubjectVerb(subject_verb) = &mut effect {
+            subject_verb.subject.player = player;
+        }
+        return Ok(Some(effect));
+    }
     let Some(shape) = clause_shapes::parse_keyword_mechanic_tokens(tokens) else {
         return Ok(None);
     };
@@ -2954,6 +2972,7 @@ pub fn parse_keyword_mechanic_clause(
             direction,
             subject,
             until_source_leaves,
+            until_visit_roll_at_most,
         } => match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {
                 let mut filter = parse_object_filter(filter_tokens, false)?;
@@ -2981,7 +3000,27 @@ pub fn parse_keyword_mechanic_clause(
                             target,
                             phase_source_surface(source),
                         ),
-                        None => EffectAst::subject_verb_phase_out(target),
+                        None => {
+                            let mut phase_out = EffectAst::subject_verb_phase_out(target);
+                            // "until you roll a 3 or less while rolling to
+                            // visit your Attractions" (Ferris Wheel).
+                            if let Some(max_result) = until_visit_roll_at_most
+                                && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                                    action:
+                                        crate::cards::builders::SubjectVerbActionAst::PermanentState(
+                                            crate::cards::builders::PermanentStateActionAst::PhaseOut {
+                                                duration,
+                                                ..
+                                            },
+                                        ),
+                                    ..
+                                }) = &mut phase_out
+                            {
+                                *duration =
+                                    crate::effects::PhaseOutDuration::UntilVisitRollAtMost(max_result);
+                            }
+                            phase_out
+                        }
                     },
                 };
                 // "this creature and that creature phase out" (Dream
@@ -3136,6 +3175,49 @@ pub fn parse_keyword_mechanic_clause(
         }
         clause_shapes::KeywordMechanicShape::ManifestFromHand => {
             EffectAst::subject_verb_manifest_from_hand(PlayerAst::You)
+        }
+        clause_shapes::KeywordMechanicShape::ManifestCardsFromHand {
+            that_player,
+            count_tokens,
+        } => {
+            // CR 701.40a: the actor chooses that many cards in their own hand
+            // and puts them onto the battlefield face down under their control.
+            let Value::Fixed(count) =
+                parse_keyword_value_tokens(count_tokens, "manifest", &clause_text)?
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported manifest-from-hand amount (clause: '{clause_text}')"
+                )));
+            };
+            let (player, owner) = if that_player {
+                (PlayerAst::That, crate::target::PlayerFilter::IteratedPlayer)
+            } else {
+                (PlayerAst::You, crate::target::PlayerFilter::You)
+            };
+            let chosen = crate::util::helper_tag_for_tokens(tokens, "manifest_from_hand");
+            let mut filter = ObjectFilter::default();
+            filter.zone = Some(crate::zone::Zone::Hand);
+            filter.owner = Some(owner);
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::ObjectChoices(
+                        crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                            filter,
+                            count: crate::effect::ChoiceCount::exactly(count.max(0) as usize),
+                            count_value: None,
+                            player,
+                            tag: crate::tag::TagRef::of(chosen.clone()),
+                        },
+                    ),
+                    EffectAst::subject_verb_manifest_onto_battlefield(
+                        player,
+                        TargetAst::Tagged(crate::tag::TagRef::of(chosen), None),
+                        false,
+                        crate::cards::builders::ReturnControllerAst::Preserve,
+                        false,
+                    ),
+                ],
+            }
         }
         clause_shapes::KeywordMechanicShape::CloakFromHand => {
             // CR 701.58a: choose a card in your hand and put it onto the

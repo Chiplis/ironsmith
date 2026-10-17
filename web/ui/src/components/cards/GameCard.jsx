@@ -25,6 +25,8 @@ import {
   isCompiledCardName,
 } from "@/lib/scryfall";
 import { useScryfallImage } from "@/hooks/useScryfallImageUrl";
+import { knownFaceDownNames } from "@/lib/look-pile";
+import { HIDDEN_CARD_BACK_IMAGE_URL as FACE_DOWN_BACK_URL } from "@/lib/scryfall";
 import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import MiniatureCardFrame from "./MiniatureCardFrame";
 import HoloFoil from "./HoloFoil";
@@ -749,6 +751,11 @@ export default function GameCard({
   const usePortraitBattlefield = variant === "battlefield" && !compactArtwork;
   const artVersion = variant === "hand" || usePortraitBattlefield ? "normal" : "art_crop";
   const { url: resolvedArtUrl, ready: artResolved } = useScryfallImage(sourceImageUrl ? "" : name, artVersion);
+  // A face-down permanent shows its back; when this perspective knows the
+  // face (its controller, or an earlier look) the name rides on top.
+  const faceDownPermanent = variant === "battlefield" && Boolean(card.face_down);
+  const knownFaceDownName = faceDownPermanent
+    ? knownFaceDownNames(state).get(String(card.id)) || null : null;
   const artUrl = sourceImageUrl || resolvedArtUrl;
   // Render hand text and frames locally; only custom supplied prints retain
   // their complete image. The selected printing still supplies art/metadata.
@@ -1530,6 +1537,12 @@ export default function GameCard({
       {variant !== "stack" && <span className="card-inspector-source-glow" aria-hidden="true" />}
       {pseudoHandOwnerAccent && <span className="card-pseudo-hand-owner-glow" aria-hidden="true" />}
       <div className="game-card-surface">
+        {faceDownPermanent && (
+          <span className="face-down-permanent-back" data-known-face={knownFaceDownName ? "true" : undefined} aria-hidden="true">
+            <img src={FACE_DOWN_BACK_URL} alt="" draggable={false} />
+            {knownFaceDownName && <span className="face-down-permanent-name">{knownFaceDownName}</span>}
+          </span>
+        )}
         {(usePortraitBattlefield || useHandFrame) && (
           <MiniatureCardFrame card={presentationCard} imageUrl={artUrl} />
         )}

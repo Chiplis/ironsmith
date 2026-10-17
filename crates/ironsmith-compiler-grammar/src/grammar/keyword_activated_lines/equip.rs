@@ -21,6 +21,9 @@ pub struct EquipQualifierSpec<'a> {
     pub worthy: bool,
     /// "Equip creature token {1}": the target must be a token creature.
     pub token: bool,
+    /// "Equip planeswalker {1}" (Luxior, Giada's Gift): the target is a
+    /// planeswalker you control instead of a creature.
+    pub planeswalker: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +91,7 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
     let ((mana_prefix, trailing), cost_tokens) = (leaf::parse_leaf_mana_cost_prefix_lexed, rest)
         .with_taken()
         .parse_next(input)?;
-    let (subtypes, legendary, commander, worthy, token) = qualifier;
+    let (subtypes, legendary, commander, worthy, token, planeswalker) = qualifier;
     Ok(EquipLineSpec::QualifiedCost {
         qualifier: EquipQualifierSpec {
             tokens: trim_lexed_commas(qualifier_tokens),
@@ -97,6 +100,7 @@ fn parse_qualified_equip_cost<'a>(input: &mut LexStream<'a>) -> WResult<EquipLin
             commander,
             worthy,
             token,
+            planeswalker,
         },
         cost_tokens: trim_lexed_commas(cost_tokens),
         mana_prefix: mana_prefix.cost,
@@ -128,7 +132,10 @@ fn parse_general_equip_activation_cost<'a>(
 
 fn parse_equip_qualifier_lexed<'a>(
     input: &mut LexStream<'a>,
-) -> WResult<(Vec<Subtype>, bool, bool, bool, bool)> {
+) -> WResult<(Vec<Subtype>, bool, bool, bool, bool, bool)> {
+    if opt((primitives::kw("planeswalker"), eof)).parse_next(input)?.is_some() {
+        return Ok((Vec::new(), false, false, false, false, true));
+    }
     // "Equip legendary creature {3}" (Blackblade Reforged), "Equip commander
     // {3}" (Commander's Plate): a supertype or commander qualifier instead of
     // (or before) a subtype list. "Equip worthy {1}" (Mjölnir, Hammer of
@@ -175,7 +182,7 @@ fn parse_equip_qualifier_lexed<'a>(
             "a subtype or qualifier",
         ));
     }
-    Ok((subtypes, legendary, commander, worthy, token))
+    Ok((subtypes, legendary, commander, worthy, token, false))
 }
 
 fn parse_equip_subtype_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {

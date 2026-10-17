@@ -160,6 +160,18 @@ fn granted_optional_cost(
             OptionalCost::custom("Sticker kicker", price?),
             OptionalCostKind::Additional,
         ),
+        // "You may pay any amount of mana": one generic mana per payment of a
+        // repeatable optional cost (CR 601.2b, 601.2f).
+        GrantedSpellKeywordKind::AnyAmountOfManaForEntryCounters => (
+            OptionalCost::custom(
+                ANY_AMOUNT_OF_MANA_LABEL,
+                TotalCost::mana(crate::mana::ManaCost::from_pips(vec![vec![
+                    crate::mana::ManaSymbol::Generic(1),
+                ]])),
+            )
+            .repeatable(),
+            OptionalCostKind::Additional,
+        ),
         GrantedSpellKeywordKind::Demonstrate => return None,
     };
     cost.kind = kind.clone();
@@ -198,6 +210,22 @@ fn offspring_entry_trigger_grant(
         crate::target::ObjectFilter::source(),
         trigger,
         "Offspring".to_string(),
+    )
+}
+
+/// Source label of the granted "you may pay any amount of mana" cost.
+const ANY_AMOUNT_OF_MANA_LABEL: &str = "Any amount of mana";
+
+/// "If you do, that creature enters with that many additional +1/+1 counters
+/// on it." Granted to the spell for this one instance; it applies as the
+/// resulting permanent enters (CR 614.1c), one counter per payment of that
+/// instance's cost.
+fn any_amount_of_mana_entry_counters_grant(
+    reference: OptionalCostRef,
+) -> crate::static_abilities::StaticAbility {
+    crate::static_abilities::StaticAbility::enters_with_counters_value(
+        crate::object::CounterType::PlusOnePlusOne,
+        crate::effect::Value::TimesPaidLabel(reference),
     )
 }
 
@@ -270,6 +298,11 @@ pub(crate) fn ensure_granted_spell_keyword_optional_costs(
             }
             if cost.source_label == "Sticker kicker" {
                 entry_grants.push(sticker_kicker_entry_trigger_grant(cost.reference.clone()));
+            }
+            if cost.source_label == ANY_AMOUNT_OF_MANA_LABEL {
+                entry_grants.push(any_amount_of_mana_entry_counters_grant(
+                    cost.reference.clone(),
+                ));
             }
             spell.optional_costs.push(cost);
         }

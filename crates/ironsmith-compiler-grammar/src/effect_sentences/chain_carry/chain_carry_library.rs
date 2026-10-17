@@ -98,6 +98,7 @@ pub(super) fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { .. }),

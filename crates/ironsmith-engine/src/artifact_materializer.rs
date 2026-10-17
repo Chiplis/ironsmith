@@ -84,6 +84,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "AddManaEqualToManaCostEffect" => {
             decode_as::<T, ironsmith_core::AddManaEqualToManaCostEffect>(effect)
         }
+        "AddManaLostThisWayEffect" => {
+            decode_as::<T, ironsmith_core::AddManaLostThisWayEffect>(effect)
+        }
         "AddManaOfImprintedColorsEffect" => {
             decode_as::<T, ironsmith_core::AddManaOfImprintedColorsEffect>(effect)
         }
@@ -295,6 +298,12 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "FatesealEffect" => decode_as::<T, ironsmith_core::FatesealEffect>(effect),
         "FightEffect" => decode_as::<T, ironsmith_core::FightEffect>(effect),
         "FlipCoinEffect" => decode_as::<T, ironsmith_core::FlipCoinEffect>(effect),
+        "CoinFlipLifeStakesEffect" => {
+            decode_as::<T, ironsmith_core::CoinFlipLifeStakesEffect>(effect)
+        }
+        "RedirectEnteringSourceEffect" => {
+            decode_as::<T, ironsmith_core::RedirectEnteringSourceEffect>(effect)
+        }
         "FlipEffect" => decode_as::<T, ironsmith_core::FlipEffect>(effect),
         "ForEachControllerOfTaggedEffect" => decode_as::<
             T,
@@ -434,6 +443,12 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RollDieKeepHighestPlayersEffect" => {
             decode_as::<T, ironsmith_core::RollDieKeepHighestPlayersEffect>(effect)
         }
+        "RetainSpellChoicesEffect" => {
+            decode_as::<T, ironsmith_core::RetainSpellChoicesEffect>(effect)
+        }
+        "PutRetainedSpellCopyOntoStackEffect" => {
+            decode_as::<T, ironsmith_core::PutRetainedSpellCopyOntoStackEffect>(effect)
+        }
         "PayEnergyEffect" => decode_as::<T, ironsmith_core::PayEnergyEffect>(effect),
         "PayLifeEffect" => decode_as::<T, ironsmith_core::PayLifeEffect>(effect),
         "PayManaEffect" => decode_as::<T, ironsmith_core::PayManaEffect>(effect),
@@ -522,6 +537,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "RegisterDamageMultiplierEffect" => {
             decode_as::<T, ironsmith_core::RegisterDamageMultiplierEffect>(effect)
+        }
+        "RegisterTokenCreationMultiplierEffect" => {
+            decode_as::<T, ironsmith_core::RegisterTokenCreationMultiplierEffect>(effect)
         }
         "RegisterDamageCounterReplacementEffect" => {
             decode_as::<T, ironsmith_core::RegisterDamageCounterReplacementEffect>(effect)
@@ -676,6 +694,18 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "GrantTapUncontrolledLandsForManaEffect" => {
             decode_as::<T, ironsmith_core::GrantTapUncontrolledLandsForManaEffect>(effect)
         }
+        "GrantPayLifeManaAbilityUntilEndOfTurnEffect" => {
+            decode_as::<T, ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect>(effect)
+        }
+        "RollAndStoreDieResultsEffect" => {
+            decode_as::<T, ironsmith_core::RollAndStoreDieResultsEffect>(effect)
+        }
+        "DeclareBlockersByRandomPilesThisTurnEffect" => {
+            decode_as::<T, ironsmith_core::DeclareBlockersByRandomPilesThisTurnEffect>(effect)
+        }
+        "RerollStoredDieResultsEffect" => {
+            decode_as::<T, ironsmith_core::RerollStoredDieResultsEffect>(effect)
+        }
         "MustAttackPlayerThisTurnEffect" => {
             decode_as::<T, ironsmith_core::MustAttackPlayerThisTurnEffect>(effect)
         }
@@ -728,6 +758,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         }
         "PlayWithHandRevealedEffect" => {
             decode_as::<T, ironsmith_core::PlayWithHandRevealedEffect>(effect)
+        }
+        "RevealSourceInHandUntilOwnersNextTurnEffect" => {
+            decode_as::<T, ironsmith_core::RevealSourceInHandUntilOwnersNextTurnEffect>(effect)
         }
         "TurnFaceUpEffect" => decode_as::<T, ironsmith_core::TurnFaceUpEffect>(effect),
         "UnattachObjectsEffect" => decode_as::<T, ironsmith_core::UnattachObjectsEffect>(effect),
@@ -1219,6 +1252,9 @@ fn convert_derived_alternative_cast(
         wire::WireDerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
             crate::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
         }
+        wire::WireDerivedAlternativeCast::PlotFromCardManaCost => {
+            crate::grant::DerivedAlternativeCast::PlotFromCardManaCost
+        }
         wire::WireDerivedAlternativeCast::ZoneCastFromCardManaCost {
             zone,
             additional_costs,
@@ -1495,6 +1531,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::AddManaOfChosenColorEffect,
             crate::effects::AddManaOfColorsAmongEffect,
             crate::effects::AddManaEqualToManaCostEffect,
+            crate::effects::AddManaLostThisWayEffect,
             crate::effects::AddManaOfNotedTypeEffect,
             crate::effects::AddOneManaOfAnyColorAmongEffect,
             crate::effects::AddScaledManaEffect,
@@ -1593,9 +1630,13 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::TagPlayersEffect,
             crate::effects::KeepGreatestManaValuePlayersEffect,
             crate::effects::RollDieKeepHighestPlayersEffect,
+            crate::effects::RetainSpellChoicesEffect,
+            crate::effects::PutRetainedSpellCopyOntoStackEffect,
             crate::effects::PayEnergyEffect,
             crate::effects::PayLifeEffect,
             crate::effects::RedistributeLifeTotalsEffect,
+            crate::effects::CoinFlipLifeStakesEffect,
+            crate::effects::RedirectEnteringSourceEffect,
             crate::effects::PayManaEffect,
             crate::effects::PopulateEffect,
             crate::effects::PreventAllCombatDamageEffect,
@@ -1608,6 +1649,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::ReduceSpeedEffect,
             crate::effects::RegisterCounterPlacementReplacementEffect,
             crate::effects::RegisterDamageMultiplierEffect,
+            crate::effects::RegisterTokenCreationMultiplierEffect,
             crate::effects::RegisterDamageCounterReplacementEffect,
             crate::effects::RegisterDamageAdditionEffect,
             crate::effects::RegisterEnterTappedReplacementEffect,
@@ -1674,6 +1716,7 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::UnblockSoleBlockedAttackersEffect,
             crate::effects::BlockAttackerOfChoiceEffect,
             crate::effects::PlayWithHandRevealedEffect,
+            crate::effects::RevealSourceInHandUntilOwnersNextTurnEffect,
             crate::effects::ChooseFriendsOrFoesEffect,
             crate::effects::UnattachObjectsEffect,
             crate::effects::UnearthEffect,

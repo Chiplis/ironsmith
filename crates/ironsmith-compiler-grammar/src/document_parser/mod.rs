@@ -2820,7 +2820,11 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
                 // event of the preceding instructions, so it is a reflexive
                 // trigger of this ability (Talion's Messenger), never a
                 // sibling ability of the permanent.
-                || is_reflexive_this_way_followup_sentence(sentence_tokens);
+                || is_reflexive_this_way_followup_sentence(sentence_tokens)
+                // CR 603.12: "When you win the flip, ..." / "When you lose
+                // the flip, ..." (Breeches, the Blastmaker) are reflexive
+                // triggers on the preceding coin flip.
+                || is_reflexive_flip_result_followup_sentence(sentence_tokens);
         let sentence_is_attack_group_followup =
             is_attack_group_combat_damage_followup_sentence(sentence_tokens);
         if !current.is_empty()
@@ -2848,6 +2852,14 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
     }
 
     chunks
+}
+
+fn is_reflexive_flip_result_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    matches!(
+        words.as_slice(),
+        ["when", "you" | "they", "win" | "lose", "the", "flip", ..]
+    )
 }
 
 fn is_reflexive_this_way_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
@@ -4238,6 +4250,9 @@ fn dispatch_remaining_preprocessed_line(
     if try_push_trailing_keyword_activation(preprocessed, line, lines)? {
         return Ok(idx + 1);
     }
+    if try_push_chosen_abilities_grant_line(line, lines)? {
+        return Ok(idx + 1);
+    }
     let normalized = line.info.normalized.normalized.as_str();
     if normalized == LESS_THAN_ONE_MANA_REDUCTION_REMINDER {
         // A few inputs preserve this rules sentence on its own physical line.
@@ -4641,6 +4656,79 @@ fn try_push_trailing_keyword_activation(
         effect_parse_tokens,
         presentation: None,
         chosen_option: None,
+    });
+    trace_recognized_line(&recognized);
+    lines.push(recognized);
+    Ok(true)
+}
+
+/// "Humans you control have each of the chosen abilities." after "As this
+/// enters, choose two abilities from among first strike, vigilance, and
+/// lifelink." (Greymond, Avacyn's Stalwart): the earlier line recorded one
+/// named option per listed combination, so the grant is one conditional
+/// grant of each combination's abilities while that combination is chosen.
+fn try_push_chosen_abilities_grant_line(
+    line: &PreprocessedLine,
+    lines: &mut Vec<RecognizedLine>,
+) -> Result<bool, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(&line.tokens);
+    let Some(verb) = tokens.iter().position(|token| token.is_any_word(&["have", "has"])) else {
+        return Ok(false);
+    };
+    if verb == 0
+        || token_word_refs(&tokens[verb + 1..]) != ["each", "of", "the", "chosen", "abilities"]
+    {
+        return Ok(false);
+    }
+    let Some(combinations) = lines.iter().rev().find_map(|recognized| match recognized {
+        RecognizedLine::Static(previous) => {
+            crate::keyword_static::chosen_ability_combinations_as_enters(&previous.parse_tokens)
+        }
+        _ => None,
+    }) else {
+        return Ok(false);
+    };
+    let subject = &tokens[..verb];
+    let span = tokens[verb].span;
+    let mut abilities = Vec::new();
+    for (label, chosen) in combinations {
+        let mut granted = subject.to_vec();
+        granted.push(tokens[verb].clone());
+        for (index, item) in chosen.iter().enumerate() {
+            if index > 0 {
+                if chosen.len() > 2 {
+                    granted.push(OwnedLexToken::comma(span));
+                }
+                if index + 1 == chosen.len() {
+                    granted.push(OwnedLexToken::word("and", span));
+                }
+            }
+            granted.extend(item.iter().cloned());
+        }
+        let Some(parsed) = parse_static_ability_ast_line_lexed(&granted)? else {
+            return Ok(false);
+        };
+        if parsed.is_empty() {
+            return Ok(false);
+        }
+        let condition = crate::cards::builders::PredicateAst::Source(
+            crate::cards::builders::SourcePredicateAst::SourceChosenOption(label),
+        );
+        abilities.extend(parsed.into_iter().map(|ability| {
+            crate::cards::builders::StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition: condition.clone(),
+            }
+        }));
+    }
+    if abilities.is_empty() {
+        return Ok(false);
+    }
+    let recognized = RecognizedLine::Static(RecognizedStaticLine {
+        info: line.info.clone(),
+        parse_tokens: line.tokens.clone(),
+        chosen_option: None,
+        parsed: Some(Box::new(LineAst::StaticAbilities(abilities))),
     });
     trace_recognized_line(&recognized);
     lines.push(recognized);

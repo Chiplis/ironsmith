@@ -11,6 +11,7 @@ pub fn is_graveyard_cast_replacement_sentence(replacement: &[OwnedLexToken]) -> 
             CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT,
             CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
             CAST_FROM_YOUR_GRAVEYARD_THIS_WAY_REPLACEMENT,
+            A_SPELL_CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
         ],
     )
 }

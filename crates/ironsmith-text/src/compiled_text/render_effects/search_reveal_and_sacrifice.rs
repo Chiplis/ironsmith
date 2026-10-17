@@ -4280,6 +4280,7 @@ pub(super) fn is_exact_consult_remainder_shuffle(
     let zone = match consult.mode {
         crate::effects::consult_helpers::LibraryConsultMode::Reveal => Zone::Library,
         crate::effects::consult_helpers::LibraryConsultMode::Exile => Zone::Exile,
+        crate::effects::consult_helpers::LibraryConsultMode::Mill => Zone::Graveyard,
     };
     let target = ChooseSpec::Object(
         ObjectFilter::tagged(consult.all_tag.clone())

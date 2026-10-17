@@ -798,6 +798,11 @@ pub(in super::super) fn parse_object_filter_inner(
         &mut segment_tokens,
     );
 
+    // Lasting per-source counter history ("a land that a mire counter was
+    // put onto with this artifact but ..."): consume it before any relation
+    // or noun pass can read "this artifact" as the object's own type.
+    try_apply_counter_source_history_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
     // Preserve the source-relative history used by leaves-the-battlefield abilities such as
     // "a creature put onto the battlefield with this enchantment". This is an object-identity
     // relation, not a type clause; consume it before the ordinary noun pass can flatten the

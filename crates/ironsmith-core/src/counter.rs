@@ -156,6 +156,10 @@ pub enum CounterType {
     Named(crate::InternedStr),
     /// -1/-0 (Jabari's Influence). Appended for ordinal compatibility.
     MinusOneMinusZero,
+    /// +2/+0 (Frankenstein's Monster). Appended for ordinal compatibility.
+    PlusTwoPlusZero,
+    /// +0/+2 (Frankenstein's Monster). Appended for ordinal compatibility.
+    PlusZeroPlusTwo,
 }
 
 impl CounterType {
@@ -172,6 +176,8 @@ impl CounterType {
             CounterType::MinusTwoMinusOne => Some((-2, -1)),
             CounterType::MinusTwoMinusTwo => Some((-2, -2)),
             CounterType::MinusOneMinusZero => Some((-1, 0)),
+            CounterType::PlusTwoPlusZero => Some((2, 0)),
+            CounterType::PlusZeroPlusTwo => Some((0, 2)),
             _ => None,
         }
     }
@@ -189,6 +195,8 @@ impl CounterType {
             CounterType::MinusTwoMinusOne => Cow::Borrowed("-2/-1"),
             CounterType::MinusTwoMinusTwo => Cow::Borrowed("-2/-2"),
             CounterType::MinusOneMinusZero => Cow::Borrowed("-1/-0"),
+            CounterType::PlusTwoPlusZero => Cow::Borrowed("+2/+0"),
+            CounterType::PlusZeroPlusTwo => Cow::Borrowed("+0/+2"),
             CounterType::DoubleStrike => Cow::Borrowed("double strike"),
             CounterType::FirstStrike => Cow::Borrowed("first strike"),
             CounterType::Named(name) => Cow::Owned(name.to_string()),

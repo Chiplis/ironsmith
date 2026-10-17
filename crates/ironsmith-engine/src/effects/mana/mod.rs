@@ -11,6 +11,7 @@ mod add_mana_of_any_one_color;
 mod add_mana_of_chosen_color;
 mod add_mana_of_colors_among;
 mod add_mana_equal_to_mana_cost;
+mod add_mana_lost_this_way;
 mod add_mana_of_imprinted_colors;
 mod add_mana_of_land_produced_types;
 mod add_one_mana_of_any_color_among;
@@ -34,13 +35,16 @@ pub use add_mana_of_any_one_color::AddManaOfAnyOneColorEffect;
 pub use add_mana_of_chosen_color::AddManaOfChosenColorEffect;
 pub use add_mana_of_colors_among::AddManaOfColorsAmongEffect;
 pub use add_mana_equal_to_mana_cost::AddManaEqualToManaCostEffect;
+pub use add_mana_lost_this_way::AddManaLostThisWayEffect;
 pub use add_mana_of_imprinted_colors::AddManaOfImprintedColorsEffect;
 pub use add_mana_of_land_produced_types::AddManaOfLandProducedTypesEffect;
 pub use add_one_mana_of_any_color_among::AddOneManaOfAnyColorAmongEffect;
 pub use add_scaled_mana::AddScaledManaEffect;
 pub use double_mana_pool::DoubleManaPoolEffect;
 pub use empty_mana_pool::EmptyManaPoolEffect;
-pub use grant_mana_ability_until_eot::GrantManaAbilityUntilEotEffect;
+pub use grant_mana_ability_until_eot::{
+    GrantManaAbilityUntilEotEffect, GrantPayLifeManaAbilityUntilEndOfTurnEffect,
+};
 pub use ironsmith_core::ManaTypeSource;
 pub use noted_mana_type::{AddManaOfNotedTypeEffect, NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect};
 pub use pay_mana::PayManaEffect;

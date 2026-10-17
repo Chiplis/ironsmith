@@ -101,6 +101,10 @@ pub enum StackActionAst {
     /// its mana cost."
     FreeCastNextSpellThisTurn {
         filter: ObjectFilter,
+        /// "Rather than pay the mana cost of the next spell you cast this
+        /// turn, you may pay life equal to that spell's mana value."
+        /// (Marshland Bloodcaster): the alternative cost is that life.
+        pay_life_equal_to_mana_value: bool,
     },
     ReduceMatchingSpellCostThisTurn {
         filter: ObjectFilter,

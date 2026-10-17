@@ -749,6 +749,9 @@ fn parse_effect_chain_lexed_inner(
     if let Some(effect) = super::uncontrolled_land_mana_permission::parse(tokens)? {
         return Ok(vec![effect]);
     }
+    if let Some(effect) = super::stored_die_result_reroll::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
         return Ok(vec![effect]);
     }
@@ -1666,6 +1669,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
     if let Some(effect) = super::uncontrolled_land_mana_permission::parse(tokens)? {
         return Ok(vec![effect]);
     }
+    if let Some(effect) = super::stored_die_result_reroll::parse(tokens)? {
+        return Ok(vec![effect]);
+    }
     // Conditional sentence readers enter here directly. A value definition
     // between coordinated actions still belongs to the complete chain; the
     // outer binding reader removes that definition before recursing here.
@@ -1684,6 +1690,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
     }
     if let Some(effect) = matching_spell_cost_modifier_chain(tokens) {
         return Ok(vec![effect]);
+    }
+    // "for each creature that dealt damage to this creature this turn,
+    // destroy that creature unless its controller pays 2 life" (Giant
+    // Albatross, under "If you do,"): the per-object body owns its comma and
+    // its unless rider. The inner control-flow and coordination readers would
+    // otherwise split the quantifier from its body.
+    if tokens.first().is_some_and(|token| token.is_word("for"))
+        && tokens.get(1).is_some_and(|token| token.is_word("each"))
+        && tokens.iter().any(|token| token.is_word("unless"))
+        && let Ok(Some(effects)) = parse_for_each_object_effect_chain_shape(tokens)
+    {
+        return Ok(effects);
     }
     let input = inner_chain_readings::InnerChain {
         tokens,
@@ -2201,6 +2219,15 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if let Some(effect) =
             super::dispatch_inner::parse_generic_control_combat_choices_subject_verb(&segment)?
         {
+            effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
+        }
+        // A complete resolving combat rule ("creatures your opponents control
+        // block this turn if able, and you choose how those creatures block")
+        // is one coordinated member; its subject is a described set, not an
+        // actor the generic subject/verb dispatcher can read.
+        if let Some(effect) = super::temporary_attack_requirement::parse(&segment)? {
             effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             previous_segment = Some(segment);
             continue;

@@ -52,6 +52,8 @@ pub(crate) fn execute_production(
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     use super::choice_helpers::*;
     let resolved = production.resolve(game, ctx)?;
+    let color_choice = matches!(resolved.output, ResolvedManaOutput::Choice { .. })
+        && !matches!(menu, ManaChoiceMenu::Types);
     let symbols = match resolved.output {
         ResolvedManaOutput::Exact(symbols) => symbols,
         ResolvedManaOutput::Choice {
@@ -111,8 +113,28 @@ pub(crate) fn execute_production(
         ));
     }
     let authored_count = symbols.len() as i32;
+    // A color-choice production whose mana is all one color completes a local
+    // color decision ("Add one mana of any color. This creature becomes that
+    // color"). Mixed or colorless output records no single chosen color.
+    let chosen_color = color_choice
+        .then(|| {
+            let colors = symbols
+                .iter()
+                .map(|symbol| match symbol {
+                    ManaSymbol::White => Some(Color::White),
+                    ManaSymbol::Blue => Some(Color::Blue),
+                    ManaSymbol::Black => Some(Color::Black),
+                    ManaSymbol::Red => Some(Color::Red),
+                    ManaSymbol::Green => Some(Color::Green),
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()?;
+            let first = *colors.first()?;
+            colors.iter().all(|color| *color == first).then_some(first)
+        })
+        .flatten();
     let receipt = credit_mana_symbols_from_context(game, resolved.player, symbols, ctx)?;
-    Ok(match projection {
+    let mut outputs = match projection {
         ManaOutputProjection::Symbols => mana_added_value_outputs(ctx, resolved.player, receipt),
         ManaOutputProjection::AuthoredCount => {
             mana_added_count_outputs(ctx, resolved.player, receipt, authored_count)
@@ -121,7 +143,13 @@ pub(crate) fn execute_production(
             let count = receipt.mana_count();
             mana_added_count_outputs(ctx, resolved.player, receipt, count)
         }
-    })
+    };
+    if let Some(color) = chosen_color {
+        outputs.outcome = outputs
+            .outcome
+            .with_execution_fact(crate::effect::ExecutionFact::ChosenColor(color));
+    }
+    Ok(outputs)
 }
 
 impl ResolvedManaOutput {

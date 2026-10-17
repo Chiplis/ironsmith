@@ -56,7 +56,7 @@ pub use ironsmith_core::{
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     NewTargetRestriction, NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect,
-    NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
     PrepareEffect, PreventAllCombatDamageEffect,
@@ -79,7 +79,7 @@ pub use ironsmith_core::{
     RegisterNextBatchEnterAsCopyEffect, RegisterNextBatchEnterWithCountersEffect,
     RegisterZoneReplacementEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    BecomeBlockedEffect, RemoveFromCombatEffect, ReselectAttackTargetEffect, ExchangeBlocksEffect, UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect, RollToVisitAttractionsEffect, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, ChooseFriendsOrFoesEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
+    BecomeBlockedEffect, RemoveFromCombatEffect, ReselectAttackTargetEffect, ExchangeBlocksEffect, UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect, RollToVisitAttractionsEffect, TagPlayersEffect, KeepGreatestManaValuePlayersEffect, RollDieKeepHighestPlayersEffect, RetainSpellChoicesEffect, PutRetainedSpellCopyOntoStackEffect, ChooseFriendsOrFoesEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect, RenownEffect,
     ReorderGraveyardEffect, ReorderLibraryTopEffect, ReorderTopPlanarDeckEffect,
     RepeatProcessPromptEffect,
     ReplaceNextDamageToTargetEffect as CoreReplaceNextDamageToTargetEffect, ReplacementApplyMode,
@@ -244,7 +244,7 @@ pub mod consult_helpers {
 
 pub mod mana {
     pub use ironsmith_core::{
-        AddManaEqualToManaCostEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
+        AddManaEqualToManaCostEffect, AddManaLostThisWayEffect, AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect,
         AddManaOfImprintedColorsEffect,
         AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect,
     };
@@ -253,6 +253,7 @@ pub mod mana {
 pub use ironsmith_core::RegisterDamageMultiplierEffect;
 pub use ironsmith_core::{RegisterDamageCounterReplacementEffect, RegisteredReplacementExpiry};
 pub use ironsmith_core::RegisterDamageAdditionEffect;
+pub use ironsmith_core::RegisterTokenCreationMultiplierEffect;
 
 pub use ironsmith_core::DealDamageBySourcesEffect;
 

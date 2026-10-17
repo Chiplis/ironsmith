@@ -317,6 +317,7 @@ pub fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
                 | TurnHistoryCount::LandsPlayed(player)
+                | TurnHistoryCount::PlayerCountersRemoved { player, .. }
                 | TurnHistoryCount::KeywordActionsPerformed { player, .. }
                 | TurnHistoryCount::CardsDrawn(player)
                 | TurnHistoryCount::PlayersLostLife(player)
@@ -516,6 +517,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerHasMoreLifeThanYou { player }
         | PlayerHasNoOpponentWithMoreLifeThan { player }
         | PlayerHasMoreLifeThanEachOtherPlayer { player }
+        | PlayerHasMoreLifeThanAnotherOpponent { player }
         | PlayerIsMonarch { player }
         | PlayerWasMonarchAtTurnStart { player }
         | PlayerIsYou { player }
@@ -617,6 +619,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
                     .is_some_and(object_filter_mentions_iterated_player)
         }
         ActivateLoyaltyAbilitiesOf(filter)
+        | ActivateKeywordAbilitiesOf { filter, .. }
         | ActivateAbilitiesOf(filter)
         | ActivateTapAbilitiesOf(filter)
         | ActivateNonManaAbilitiesOf(filter)
@@ -639,6 +642,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | HaveCountersPlaced(filter)
         | HaveCounterTypePlaced(filter, _)
         | HaveCounterTypeRemoved(filter, _)
+        | DamageSourcesAreColorless(filter)
         | BeTargeted(filter)
         | BeCountered(filter)
         | TurnFaceUp(filter)
@@ -681,6 +685,14 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         }
         PreventDamageFrom { sources, .. } => object_filter_mentions_iterated_player(sources),
         PreventDamageTo { recipients, .. } => object_filter_mentions_iterated_player(recipients),
+        PreventDamageFromTo {
+            sources,
+            recipients,
+            ..
+        } => {
+            object_filter_mentions_iterated_player(sources)
+                || object_filter_mentions_iterated_player(recipients)
+        }
         AttackTax(rule) => object_filter_mentions_iterated_player(&rule.attackers),
         PreventDamage | PreventCombatDamage | AllDamageAsThoughWither
         | AttackYouUnlessControllerPaysPerAttacker(..) => false,

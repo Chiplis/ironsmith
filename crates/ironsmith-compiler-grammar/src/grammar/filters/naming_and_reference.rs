@@ -1776,6 +1776,23 @@ pub(super) struct ReferenceTagStageResult {
     pub(super) early_return: bool,
 }
 
+/// Find a trailing "that hasn't been phased out with <this source>"
+/// relation (Ferris Wheel), returning where "that" starts.
+fn find_not_phased_out_with_source_phrase(words: &[&str]) -> Option<usize> {
+    const HEADS: &[&[&str]] = &[
+        &["that", "hasn't", "been", "phased", "out", "with"],
+        &["that", "hasnt", "been", "phased", "out", "with"],
+        &["that", "has", "not", "been", "phased", "out", "with"],
+    ];
+    (0..words.len()).find(|&idx| {
+        HEADS.iter().any(|head| {
+            words_start_with_phrase(&words[idx..], head)
+                && idx + head.len() < words.len()
+                && is_source_reference_words(&words[idx + head.len()..])
+        })
+    })
+}
+
 /// Find a trailing "crewed by <this source> this turn" relation.
 fn find_crewed_by_source_this_turn_phrase(words: &[&str]) -> Option<usize> {
     const CREWED_BY: &[&str] = &["crewed", "by"];

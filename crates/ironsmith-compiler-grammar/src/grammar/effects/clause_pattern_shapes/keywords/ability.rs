@@ -26,6 +26,7 @@ pub(super) fn parse_keyword_mechanic_lexed<'a>(
                 parse_manifest_top_count_you,
                 parse_cloak_top_that_player,
                 parse_manifest_top_that_player,
+                parse_manifest_cards_from_hand,
             )),
             parse_populate,
             parse_meld,

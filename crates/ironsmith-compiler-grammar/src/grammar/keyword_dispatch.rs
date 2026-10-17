@@ -124,6 +124,16 @@ pub fn parse_keyword_dispatch_hint_tokens(tokens: &[OwnedLexToken]) -> Option<Ke
     {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
+    // "As long as you've discarded a card this turn, you may pay {B/R} to
+    // cast this spell." (Asmoranomardicadaistinaculdacar)
+    if words.starts_with(&["as", "long", "as"])
+        && super::permission_shapes::find_words(&words, &["you", "may", "pay"]).is_some()
+        && (words.ends_with(&["to", "cast", "this", "spell"])
+            || super::permission_shapes::find_words(&words, &["rather", "than", "pay", "this"])
+                .is_some())
+    {
+        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
+    }
     if words.starts_with(&["emerge", "from"]) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }

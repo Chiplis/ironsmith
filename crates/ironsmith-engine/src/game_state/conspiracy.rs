@@ -21,6 +21,10 @@ pub struct DraftCard {
     /// chooses a color, you choose another color, ..."), parsed from the
     /// public note of a reveal-as-drafted card whose draft text chooses colors.
     pub chosen_colors: Option<crate::color::ColorSet>,
+    /// The player who passed this card to its drafter, for a reveal-as-drafted
+    /// card that notes them ("note the player who passed it to you"). `None`
+    /// for a card picked from a freshly opened pack.
+    pub noted_player: Option<PlayerId>,
 }
 
 /// One player's simultaneous choice for a single draft step.
@@ -56,6 +60,17 @@ pub struct ConspiracyDraftState {
     next_card_id: u64,
     ordinary_pick_count: usize,
     complete: bool,
+    /// Who passed each player their current pack this round; absent for a
+    /// pack its holder just opened.
+    pack_passers: HashMap<PlayerId, PlayerId>,
+}
+
+/// "Reveal this card as you draft it and note the player who passed it to
+/// you." (Cogwork Tracker): the noted information is the passing seat itself.
+fn notes_passing_player(definition: &crate::cards::CardDefinition) -> bool {
+    draft_rule_labels(definition)
+        .iter()
+        .any(|label| label.contains("note the player who passed it to you"))
 }
 
 fn draft_rule_labels(definition: &crate::cards::CardDefinition) -> Vec<String> {
@@ -184,6 +199,7 @@ impl ConspiracyDraftState {
             next_card_id: 1,
             ordinary_pick_count,
             complete: false,
+            pack_passers: HashMap::new(),
         };
         state.open_round()?;
         Ok(state)
@@ -209,6 +225,7 @@ impl ConspiracyDraftState {
                     visibility: DraftVisibility::FaceDown,
                     public_note: None,
                     chosen_colors: None,
+                    noted_player: None,
                 }
             })
             .collect()
@@ -221,6 +238,7 @@ impl ConspiracyDraftState {
             return Ok(());
         }
         self.current_packs.clear();
+        self.pack_passers.clear();
         for player in self.players.clone() {
             let definitions = self
                 .unopened
@@ -337,11 +355,22 @@ impl ConspiracyDraftState {
                 returned.visibility = DraftVisibility::FaceDown;
                 returned.public_note = None;
                 returned.chosen_colors = None;
+                returned.noted_player = None;
                 pack.push(returned);
             }
 
             for mut card in picked {
-                if is_revealed_and_noted(&card.definition) {
+                if is_revealed_and_noted(&card.definition)
+                    && notes_passing_player(&card.definition)
+                {
+                    // The noted information is determined by the draft, not
+                    // chosen: the seat that passed this pack (if any).
+                    card.noted_player = self.pack_passers.get(&selection.player).copied();
+                    card.public_note = card
+                        .noted_player
+                        .map(|passer| format!("passed by player {}", passer.0 + 1));
+                    card.visibility = DraftVisibility::FaceDown;
+                } else if is_revealed_and_noted(&card.definition) {
                     let note = selection
                         .public_notes
                         .get(&card.id)
@@ -383,6 +412,7 @@ impl ConspiracyDraftState {
 
         let pass_left = self.round == 1 || self.round == 3;
         let mut passed = HashMap::new();
+        let mut passers = HashMap::new();
         let player_count = self.players.len();
         for (index, holder) in self.players.iter().copied().enumerate() {
             let destination_index = if pass_left {
@@ -393,8 +423,10 @@ impl ConspiracyDraftState {
             let destination = self.players[destination_index];
             let pack = self.current_packs.remove(&holder).unwrap_or_default();
             passed.insert(destination, pack);
+            passers.insert(destination, holder);
         }
         self.current_packs = passed;
+        self.pack_passers = passers;
         Ok(())
     }
 
@@ -638,6 +670,7 @@ impl GameState {
     /// are matched by seat id; seats absent from this game are ignored.
     pub fn record_conspiracy_draft_choices(&mut self, draft: &ConspiracyDraftState) {
         let mut chosen = Vec::new();
+        let mut noted_players = Vec::new();
         for (player, cards) in &draft.drafted {
             if self.player(*player).is_none() {
                 continue;
@@ -646,7 +679,13 @@ impl GameState {
                 if let Some(colors) = card.chosen_colors {
                     chosen.push((*player, card.definition.name().to_string(), colors));
                 }
+                if let Some(noted) = card.noted_player {
+                    noted_players.push((*player, card.definition.name().to_string(), noted));
+                }
             }
+        }
+        for (player, card_name, noted) in noted_players {
+            self.record_draft_noted_player(player, card_name, noted);
         }
         for (player, card_name, colors) in chosen {
             let combined = self.draft_chosen_colors(player, &card_name).union(colors);

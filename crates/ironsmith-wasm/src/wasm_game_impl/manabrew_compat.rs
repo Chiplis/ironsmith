@@ -1351,7 +1351,8 @@ impl WasmGame {
                 | SpecialAction::Suspend { card_id }
                 | SpecialAction::Foretell { card_id }
                 | SpecialAction::Plot { card_id }
-                | SpecialAction::Companion { card_id } => Some(*card_id),
+                | SpecialAction::Companion { card_id }
+                | SpecialAction::DiscardFromHand { card_id } => Some(*card_id),
                 SpecialAction::TurnFaceUp { permanent_id, .. }
                 | SpecialAction::ActivateManaAbility { permanent_id, .. } => Some(*permanent_id),
                 SpecialAction::UnlockRoomDoor { room_id, .. } => Some(*room_id),

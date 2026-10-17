@@ -1845,6 +1845,12 @@ if filter.zone == Some(Zone::Hand)
     if let Some(choose_creature_type) =
         effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
     {
+        if choose_creature_type.note_for_source {
+            return format!(
+                "Note a {} that hasn't been noted for this permanent",
+                choose_creature_type.family.type_phrase()
+            );
+        }
         let chooser = describe_player_filter(&choose_creature_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let secrecy = if choose_creature_type.secretly { "secretly " } else { "" };
@@ -5665,6 +5671,15 @@ if filter.zone == Some(Zone::Hand)
             return format!("{} with phasing phase out", capitalize_first(&desc));
         }
         let target = describe_choose_spec(&phase_out.spec);
+        if let crate::effects::PhaseOutDuration::UntilVisitRollAtMost(max_result) = phase_out.duration {
+            let subject = match phase_out.spec.base() {
+                ChooseSpec::Tagged(_) => "That creature".to_string(),
+                _ => capitalize_first(&target),
+            };
+            return format!(
+                "{subject} phases out until you roll a {max_result} or less while rolling to visit your Attractions"
+            );
+        }
         if phase_out.duration.is_until_source_leaves() {
             let source = phase_out
                 .source_surface
@@ -6945,6 +6960,21 @@ if filter.zone == Some(Zone::Hand)
                 })
                 .collect::<Vec<_>>()
                 .join(" and ");
+            // "You and target spell's controller bid life. ... If you win
+            // the bidding, counter that spell." (Mages' Contest)
+            if let Some(opponent) = &bid_life.opponent {
+                let opponent = describe_player_filter(opponent);
+                let reward = if bid_life.controller_must_win {
+                    format!(" If you win the bidding, {reward}.")
+                } else if reward.is_empty() {
+                    String::new()
+                } else {
+                    format!(" The high bidder {reward}.")
+                };
+                return format!(
+                    "You and {opponent} bid life. You start the bidding with a bid of {opening}. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid.{reward}"
+                );
+            }
             return format!(
                 "Each player may bid life. You start the bidding with a bid of {opening}. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and {reward}"
             );
@@ -7393,6 +7423,20 @@ if filter.zone == Some(Zone::Hand)
     if effect.downcast_ref::<crate::effects::TagPlayersEffect>().is_some() {
         return String::new();
     }
+    // Keeping a spell's choices is bookkeeping for a later copy; the
+    // instruction that exiles it carries the authored words.
+    if effect
+        .downcast_ref::<crate::effects::RetainSpellChoicesEffect>()
+        .is_some()
+    {
+        return String::new();
+    }
+    if effect
+        .downcast_ref::<crate::effects::PutRetainedSpellCopyOntoStackEffect>()
+        .is_some()
+    {
+        return "the player puts it onto the stack as a copy of the original spell".to_string();
+    }
     if let Some(roll) = effect.downcast_ref::<crate::effects::RollDieKeepHighestPlayersEffect>() {
         return format!("Each player rolls a d{}", roll.sides);
     }
@@ -7427,6 +7471,15 @@ if filter.zone == Some(Zone::Hand)
             format!("Have {blocker} block {attackers} of your choice")
         };
     }
+    if let Some(reveal) =
+        effect.downcast_ref::<crate::effects::RevealSourceInHandUntilOwnersNextTurnEffect>()
+    {
+        return if reveal.cant_play {
+            "Until that player's next turn, that player plays with that card revealed in their hand and can't play it".to_string()
+        } else {
+            "Until that player's next turn, that player plays with that card revealed in their hand".to_string()
+        };
+    }
     if let Some(reveal) = effect.downcast_ref::<crate::effects::PlayWithHandRevealedEffect>() {
         let subject = describe_player_filter(&reveal.player);
         let (verb, possessive) = match reveal.player {
@@ -7443,7 +7496,10 @@ if filter.zone == Some(Zone::Hand)
             ),
         };
     }
-    if effect.downcast_ref::<crate::effects::ExchangeBlocksEffect>().is_some() {
+    if let Some(exchange) = effect.downcast_ref::<crate::effects::ExchangeBlocksEffect>() {
+        if exchange.between_attackers {
+            return "If each of those creatures could be blocked by all creatures that the other is blocked by, each creature that's blocking exactly one of those attacking creatures stops blocking it and is blocking the other attacking creature".to_string();
+        }
         return "If each of those creatures could block all creatures that the other is blocking, remove both of them from combat. Each one then blocks all creatures the other was blocking".to_string();
     }
     if let Some(reselect) = effect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()

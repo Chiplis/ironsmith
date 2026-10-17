@@ -626,7 +626,13 @@ fn parse_tagged_permission_target_lexed<'a>(
             primitives::any_phrase(&[
                 &["one", "of", "those", "cards"],
                 &["one", "of", "those", "card"],
+                // "You may cast one of those two cards" (Invasion of Alara):
+                // the counted collection an exile-until loop just tagged.
+                &["one", "of", "those", "two", "cards"],
                 &["one", "of", "them"],
+                // "you may play one of the exiled cards" (Kotose, the Silent
+                // Spider): the collection just exiled.
+                &["one", "of", "the", "exiled", "cards"],
             ])
             .value((
                 TaggedPermissionReference::LastTagged,
@@ -662,6 +668,10 @@ fn parse_tagged_permission_target_lexed<'a>(
                     &["exiled", "cards"],
                     &["those", "spells"],
                     &["that", "exiled", "card"],
+                    // "until they exile a nonland card. ... you may cast the
+                    // exiled nonland card" (Black Widow, Super Spy): the
+                    // card that stopped the exile loop, not the source pool.
+                    &["the", "exiled", "nonland", "card"],
                     &["the", "card"],
                     &["the", "cards"],
                 ])

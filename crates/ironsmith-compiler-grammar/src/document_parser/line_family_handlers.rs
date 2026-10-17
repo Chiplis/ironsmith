@@ -2171,6 +2171,10 @@ pub(super) fn run_statement_probe_line_family(
     if is_this_spell_cost_modifier_line(ctx)
         || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
             &ctx.line.tokens), Ok(Some(_)))
+        || crate::keyword_static::parse_note_mana_value_of_cards_put_into_exile_line(
+            &ctx.line.tokens,
+        )
+        .is_some()
     {
         crate::parse_trace::event("statement-probe: declined for this-spell cost modifier");
         return ParseOutcome::NoMatch;
@@ -2473,6 +2477,10 @@ pub(super) fn run_statement_line_family(
     if is_this_spell_cost_modifier_line(ctx)
         || matches!(crate::keyword_static::parse_player_may_cast_spells_free_and_flash_line(
             &ctx.line.tokens), Ok(Some(_)))
+        || crate::keyword_static::parse_note_mana_value_of_cards_put_into_exile_line(
+            &ctx.line.tokens,
+        )
+        .is_some()
     {
         return ParseOutcome::NoMatch;
     }

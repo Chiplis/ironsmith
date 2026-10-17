@@ -1,7 +1,40 @@
 use super::*;
 use crate::cards::builders::ForEachEffectAst;
 
-pub(super) fn wrap_opponents(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
+/// "each opponent who has three or more poison counters exiles the top card
+/// of their library face down. You may look at and play those cards ..."
+/// (Ixhel): an opponent loop whose last action, possibly inside its own
+/// condition, exiles the top of that player's library builds the union of
+/// those cards across the loop, so a later "those cards" names all of them.
+fn accumulate_trailing_loop_exile(effects: &mut [EffectAst]) {
+    use crate::cards::builders::{ConditionalEffectAst, LibraryActionAst};
+    match effects.last_mut() {
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    tags,
+                    accumulated_tags,
+                    ..
+                }),
+        })) if subject.player == PlayerAst::That
+            && accumulated_tags.is_empty()
+            && tags.len() == 1
+            && crate::tag::is_sentence_helper_tag(&tags[0].key, "exiled") =>
+        {
+            accumulated_tags.append(tags);
+        }
+        Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            if_true, if_false, ..
+        })) if if_false.is_empty() => accumulate_trailing_loop_exile(if_true),
+        _ => {}
+    }
+}
+
+pub(super) fn wrap_opponents(filter: &PlayerFilter, mut effects: Vec<EffectAst>) -> EffectAst {
+    if matches!(effects.as_slice(), [EffectAst::Conditionals(_)]) {
+        accumulate_trailing_loop_exile(&mut effects);
+    }
     if *filter == PlayerFilter::Opponent {
         EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })
     } else {

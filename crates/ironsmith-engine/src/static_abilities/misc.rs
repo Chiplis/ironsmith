@@ -1451,6 +1451,33 @@ impl StaticAbilityKind for SourceLoyaltyAbilitiesTwiceEachTurn {
     }
 }
 
+/// "This creature attacks a player you noted for cards named <name> each
+/// combat if able." (Cogwork Tracker): one attack requirement toward each
+/// player its controller noted while drafting cards of that name.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MustAttackDraftNotedPlayers {
+    pub card_name: String,
+}
+
+/// Prefix and suffix of [`MustAttackDraftNotedPlayers`]'s display, which
+/// carries its noted card family's name.
+pub(crate) const MUST_ATTACK_DRAFT_NOTED_PREFIX: &str =
+    "This creature attacks a player you noted for cards named ";
+pub(crate) const MUST_ATTACK_DRAFT_NOTED_SUFFIX: &str = " each combat if able";
+
+impl StaticAbilityKind for MustAttackDraftNotedPlayers {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MustAttackDraftNotedPlayers
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "{MUST_ATTACK_DRAFT_NOTED_PREFIX}{}{MUST_ATTACK_DRAFT_NOTED_SUFFIX}",
+            self.card_name
+        )
+    }
+}
+
 /// "You may discard this card any time you could cast an instant." (Circling
 /// Vultures): its owner may discard it from hand as a special action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1463,6 +1490,22 @@ impl StaticAbilityKind for MayDiscardSourceAnyTimeYouCouldCastInstant {
 
     fn display(&self) -> String {
         "You may discard this card any time you could cast an instant".to_string()
+    }
+}
+
+/// "You may plot nonland cards from the top of your library." (Fblthp, Lost
+/// on the Range): its controller may plot the top card of their library
+/// (CR 702.170a) when that card is nonland and has plot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MayPlotNonlandCardsFromTopOfLibrary;
+
+impl StaticAbilityKind for MayPlotNonlandCardsFromTopOfLibrary {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MayPlotNonlandCardsFromTopOfLibrary
+    }
+
+    fn display(&self) -> String {
+        "You may plot nonland cards from the top of your library".to_string()
     }
 }
 
@@ -2633,6 +2676,9 @@ impl StaticAbilityKind for EntersWithCounters {
 pub struct EntersWithCounterChoice {
     pub counter_types: Vec<CounterType>,
     pub count: Value,
+    /// How many different kinds the controller chooses ("your choice of two
+    /// different counters on it from among ...", Grimdancer).
+    pub kinds: u32,
     /// Applies only when this entry condition holds ("escapes with your
     /// choice of ...", Tizerus Charger).
     pub condition: Option<(Condition, String)>,
@@ -2643,8 +2689,14 @@ impl EntersWithCounterChoice {
         Self {
             counter_types,
             count,
+            kinds: 1,
             condition: None,
         }
+    }
+
+    pub fn with_kinds(mut self, kinds: u32) -> Self {
+        self.kinds = kinds.max(1);
+        self
     }
 
     pub fn with_condition(mut self, condition: Condition, display: String) -> Self {
@@ -2680,6 +2732,27 @@ impl StaticAbilityKind for EntersWithCounterChoice {
             Value::Fixed(1) => String::new(),
             value => format!("{} ", describe_value(value)),
         };
+        if self.kinds > 1 {
+            let kinds = match self.kinds {
+                2 => "two".to_string(),
+                3 => "three".to_string(),
+                n => n.to_string(),
+            };
+            let names = self
+                .counter_types
+                .iter()
+                .map(|counter_type| counter_type.description().to_string())
+                .collect::<Vec<_>>();
+            let among = match names.as_slice() {
+                [] => String::new(),
+                [single] => single.clone(),
+                [first, second] => format!("{first} and {second}"),
+                [head @ .., last] => format!("{}, and {last}", head.join(", ")),
+            };
+            return format!(
+                "Enters the battlefield with your choice of {kinds} different counters on it from among {among}"
+            );
+        }
         match &self.condition {
             Some((Condition::ThisSpellEscaped, _)) => {
                 format!("Escapes with your choice of {count_prefix}{choices} on it")
@@ -2699,6 +2772,7 @@ impl StaticAbilityKind for EntersWithCounterChoice {
         let action = ReplacementAction::EnterWithCounterChoice {
             counter_types: self.counter_types.clone(),
             count: self.count.clone(),
+            kinds: self.kinds,
         };
         if let Some((condition, condition_display)) = &self.condition {
             return Some(ReplacementEffect::with_matcher(
@@ -3321,6 +3395,8 @@ pub struct ChooseNamedOptionAsEnters {
     pub options: Vec<String>,
     pub display: String,
     pub at_random: bool,
+    /// Every player chooses; see [`ChooseNamedOptionAsEntersSpec::each_player`].
+    pub each_player: bool,
 }
 
 impl ChooseNamedOptionAsEnters {
@@ -3329,7 +3405,14 @@ impl ChooseNamedOptionAsEnters {
             options,
             display,
             at_random: false,
+            each_player: false,
         }
+    }
+
+    /// "each player chooses <A> or <B>": every player chooses.
+    pub fn each_player(mut self) -> Self {
+        self.each_player = true;
+        self
     }
 
     /// "choose 2, 3, or 4 at random": the game picks the option.
@@ -3352,6 +3435,7 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
         Some(ChooseNamedOptionAsEntersSpec {
             options: self.options.clone(),
             at_random: self.at_random,
+            each_player: self.each_player,
         })
     }
 }

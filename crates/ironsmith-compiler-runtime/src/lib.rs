@@ -425,6 +425,9 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
             ironsmith::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
         }
+        compiler::grant::DerivedAlternativeCast::PlotFromCardManaCost => {
+            ironsmith::grant::DerivedAlternativeCast::PlotFromCardManaCost
+        }
         compiler::grant::DerivedAlternativeCast::ZoneCastFromCardManaCost {
             zone,
             additional_costs,
@@ -3958,3 +3961,39 @@ mod claude_completion_runtime_tests_p53;
 
 #[cfg(test)]
 mod claude_completion_runtime_tests_p54;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p55;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p56;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p57;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p58;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p59;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p60;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p61;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p62;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p63;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p64;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p65;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p66;

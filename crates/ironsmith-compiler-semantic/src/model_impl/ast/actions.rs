@@ -498,13 +498,19 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 secretly,
                 excluded_subtypes,
                 family,
-            }) => f
-                .debug_struct("ChooseCreatureType")
-                .field("allowed_subtypes", allowed_subtypes)
-                .field("secretly", secretly)
-                .field("excluded_subtypes", excluded_subtypes)
-                .field("family", family)
-                .finish(),
+                note_for_source,
+            }) => {
+                let mut debug = f.debug_struct("ChooseCreatureType");
+                debug
+                    .field("allowed_subtypes", allowed_subtypes)
+                    .field("secretly", secretly)
+                    .field("excluded_subtypes", excluded_subtypes)
+                    .field("family", family);
+                if *note_for_source {
+                    debug.field("note_for_source", note_for_source);
+                }
+                debug.finish()
+            }
             Self::Choices(ChoiceActionAst::ChooseLandType {
                 exclude_basic,
                 basic_only,
@@ -567,6 +573,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Mana(ManaActionAst::AddManaAnyOneColor { amount }) => {
                 f.debug_tuple("AddManaAnyOneColor").field(amount).finish()
             }
+            Self::Mana(ManaActionAst::AddManaLostThisWay { amount }) => f
+                .debug_struct("AddManaLostThisWay")
+                .field("amount", amount)
+                .finish(),
             Self::Mana(ManaActionAst::AddManaNotedType { amount }) => f
                 .debug_struct("AddManaNotedType")
                 .field("amount", amount)
@@ -779,6 +789,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::Replacements(ReplacementActionAst::RegisterDamageAddition { spec }) => f
                 .debug_struct("RegisterDamageAddition").field("spec", spec).finish(),
+            Self::Replacements(ReplacementActionAst::RegisterTokenCreationMultiplier { spec }) => f
+                .debug_struct("RegisterTokenCreationMultiplier").field("spec", spec).finish(),
             Self::Replacements(ReplacementActionAst::RegisterDamageMultiplier { spec }) => f
                 .debug_struct("RegisterDamageMultiplier")
                 .field("spec", spec)
@@ -1342,6 +1354,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 until_next_end_step,
                 until_next_turn_start,
                 during_next_turn,
+                until_end_of_combat_next_turn,
                 spell_filter,
                 surface,
                 max_plays,
@@ -1355,6 +1368,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("until_next_end_step", until_next_end_step)
                 .field("until_next_turn_start", until_next_turn_start)
                 .field("during_next_turn", during_next_turn)
+                .field("until_end_of_combat_next_turn", until_end_of_combat_next_turn)
                 .field("spell_filter", spell_filter)
                 .field("surface", surface)
                 .field("max_plays", max_plays)
@@ -1409,6 +1423,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 allow_any_color_for_cast,
                 surface,
+                max_plays,
+                during_your_turns,
+                alternative_cost,
+                alternative_cost_x_is_mana_value,
             }) => f
                 .debug_struct("GrantPlayTaggedForAsLongAsYouControlSource")
                 .field("tag", tag)
@@ -1416,6 +1434,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("surface", surface)
+                .field("max_plays", max_plays)
+                .field("during_your_turns", during_your_turns)
+                .field("alternative_cost", alternative_cost)
+                .field("alternative_cost_x_is_mana_value", alternative_cost_x_is_mana_value)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::ReturnToBattlefield {
                 target,
@@ -1877,12 +1899,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 duration,
                 allow_multiple,
-            }) => f
-                .debug_struct("BecomeColorChoice")
-                .field("target", target)
-                .field("duration", duration)
-                .field("allow_multiple", allow_multiple)
-                .finish(),
+                color_choice,
+            }) => {
+                let mut debug = f.debug_struct("BecomeColorChoice");
+                debug
+                    .field("target", target)
+                    .field("duration", duration)
+                    .field("allow_multiple", allow_multiple);
+                // Printed only when present: the exact-choice producer export
+                // looks for this marker in later siblings.
+                if color_choice.is_some() {
+                    debug.field("color_choice", color_choice);
+                }
+                debug.finish()
+            }
             Self::Characteristics(CharacteristicActionAst::BecomeCopy {
                 target,
                 source,
@@ -1965,9 +1995,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("abilities", abilities)
                 .field("duration", duration)
                 .finish(),
-            Self::Grants(GrantActionAst::GrantActivatedAbilitiesFrom { target, source, duration }) => f
+            Self::Grants(GrantActionAst::GrantActivatedAbilitiesFrom {
+                target, source, duration, each_recipient, symbol_as_any_color,
+            }) => f
                 .debug_struct("GrantActivatedAbilitiesFrom")
-                .field("target", target).field("source", source).field("duration", duration).finish(),
+                .field("target", target).field("source", source).field("duration", duration)
+                .field("each_recipient", each_recipient)
+                .field("symbol_as_any_color", symbol_as_any_color).finish(),
             Self::Grants(GrantActionAst::GrantAbilitiesToTarget {
                 target,
                 abilities,
@@ -2815,10 +2849,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 }
                 debug.finish()
             }
-            Self::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }) => f
-                .debug_struct("FreeCastNextSpellThisTurn")
-                .field("filter", filter)
-                .finish(),
+            Self::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+                filter,
+                pay_life_equal_to_mana_value,
+            }) => {
+                let mut debug = f.debug_struct("FreeCastNextSpellThisTurn");
+                debug.field("filter", filter);
+                if *pay_life_equal_to_mana_value {
+                    debug.field("pay_life_equal_to_mana_value", pay_life_equal_to_mana_value);
+                }
+                debug.finish()
+            }
             Self::Stack(StackActionAst::ReduceNextSpellCostThisTurn { filter, reduction }) => f
                 .debug_struct("ReduceNextSpellCostThisTurn")
                 .field("filter", filter)

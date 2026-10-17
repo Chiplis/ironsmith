@@ -391,6 +391,8 @@ pub fn supports_scoped_reference_anthem_value(value: &Value) -> bool {
         Value::Fixed(_) => true,
         Value::ManaValueOf(spec) => matches!(spec.unhinted(), crate::ChooseSpec::Iterated),
         Value::CountersOn(spec, None) => matches!(spec.unhinted(), crate::ChooseSpec::Source),
+        // Die results stored on the source (Centaur of Attention).
+        Value::GreatestEqualStoredDieResultsOnSource => true,
         Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
             supports_scoped_reference_anthem_value(inner)
         }

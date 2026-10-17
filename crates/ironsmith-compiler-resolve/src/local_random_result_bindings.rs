@@ -42,9 +42,32 @@ impl Family {
             Self::Die => matches!(action, SubjectVerbActionAst::Random(RandomActionAst::RollDie { .. } | RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })),
             Self::Coin => matches!(action, SubjectVerbActionAst::Random(RandomActionAst::FlipCoin | RandomActionAst::FlipCoinFaceOnly | RandomActionAst::FlipCoins { .. })),
             Self::Number => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { .. })),
-            Self::Color => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)),
+            // Adding mana of a color the player chooses completes the same
+            // local color decision ("Add one mana of any color. This creature
+            // becomes that color"); the executor records its single color.
+            Self::Color => matches!(action, SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor)
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColor { .. })),
             Self::Reveal => matches!(action, SubjectVerbActionAst::RevealLook(RevealLookActionAst::RevealHand)),
         }
+    }
+    /// Mana production is an ordinary instruction first: it exports its color
+    /// only to a visible later consumer, never speculatively (so plain mana
+    /// abilities keep their unwrapped shape).
+    pub(super) fn only_exported_for_visible_consumer(self, effect: &EffectAst) -> bool {
+        fn mana(effect: &EffectAst) -> bool {
+            match effect {
+                EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => {
+                    matches!(action, SubjectVerbActionAst::Mana(_))
+                }
+                EffectAst::Sequence { effects } | EffectAst::CommaThen { effects }
+                | EffectAst::SourceSentence { effects, .. } | EffectAst::Coordinated { effects, .. } => {
+                    effects.last().is_some_and(mana)
+                }
+                EffectAst::Coordination(coordination) => coordination.effects().last().is_some_and(mana),
+                _ => false,
+            }
+        }
+        self == Self::Color && mana(effect)
     }
     pub(super) fn compatible(self, effect: &EffectAst) -> bool {
         if self.direct(effect) { return true; }
@@ -54,6 +77,26 @@ impl Family {
                 // "Choose a card name and a number": the wrapper's terminal
                 // effect is the only producer of this family, so the wrapper's
                 // assigned result ID lands on it (lowering wraps the last effect).
+                match effects.as_slice() {
+                    [only] => self.compatible(only),
+                    [earlier @ .., last] => {
+                        self.compatible(last) && !earlier.iter().any(|effect| self.contains(effect))
+                    }
+                    [] => false,
+                }
+            }
+            // "Return target creature ..., then roll a six-sided die": an
+            // ordered typed coordination lowers its members in order (flat or
+            // as a terminal-outcome sequence), so the wrapper's assigned ID
+            // observes its terminal member exactly as a plain sequence does.
+            // Alternatives ("A or B") lower to a mode choice and never export.
+            EffectAst::Coordination(coordination)
+                if coordination.kind != crate::model::CoordinationKindAst::Disjunction
+                    && coordination.boundaries.iter().all(|boundary| {
+                        boundary.ordering != crate::model::EffectOrderingAst::Alternative
+                    }) =>
+            {
+                let effects = coordination.effects().collect::<Vec<_>>();
                 match effects.as_slice() {
                     [only] => self.compatible(only),
                     [earlier @ .., last] => {
@@ -106,6 +149,13 @@ impl Family {
         if self == Self::Die && state.dice_event_grouped == Some(false) {
             return Ok(Value::EventValue(EventValueSpec::DieResult));
         }
+        // "As an additional cost to cast this spell, choose a number between
+        // 0 and 5. ... where X is the chosen number" (Liquid Fire): with no
+        // local numeric producer, the number chosen while casting is the
+        // spell's announced X (CR 601.2b).
+        if self == Self::Number && state.has_announced_x && query.metric == EffectMetric::Count {
+            return Ok(Value::X);
+        }
         Err(CardTextError::ParseError(match self {
             Self::Die => "die-result predicate requires a compatible local roll or singular numeric roll trigger",
             Self::Coin => "coin-result predicate requires a compatible local flip instruction",
@@ -155,9 +205,24 @@ impl Family {
                 _ => {}
             }
         }
+        // "becomes that color" stores its bound producer on the action itself.
+        fn collect_that_color(effect: &EffectAst, ids: &mut Vec<EffectId>) {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+                    color_choice: Some(ironsmith_core::ColorChoiceReference::Effect(id)), ..
+                }), ..
+            }) = effect {
+                if !ids.contains(id) { ids.push(*id); }
+                return;
+            }
+            for_each_nested_effects(effect, true, |effects| {
+                for effect in effects { collect_that_color(effect, ids); }
+            });
+        }
         for consumer in remaining {
             if self.contains(consumer) { return None; }
             let mut ids = Vec::new();
+            if self == Self::Color { collect_that_color(consumer, &mut ids); }
             visit_effect_values(consumer, &mut |value| collect(self, value, &mut ids));
             if ids.len() == 1 { return Some(ids[0]); }
         }

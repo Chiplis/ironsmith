@@ -61,6 +61,8 @@ pub(crate) use execute_payload::{
 mod register_damage_addition;
 mod register_damage_multiplier;
 mod register_damage_counter_replacement;
+mod register_token_creation_multiplier;
+pub use register_token_creation_multiplier::RegisterTokenCreationMultiplierEffect;
 pub use register_damage_addition::RegisterDamageAdditionEffect;
 pub use register_damage_multiplier::RegisterDamageMultiplierEffect;
 pub use register_damage_counter_replacement::{

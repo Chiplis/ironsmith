@@ -51,6 +51,9 @@ pub enum GrantActionAst {
         /// "During your next turn, you may play ...": usable only during
         /// that turn, not for the rest of the current one.
         during_next_turn: bool,
+        /// "Until end of combat on your next turn, you may play ..." (Brazen
+        /// Cannonade): through the combat phase of that turn.
+        until_end_of_combat_next_turn: bool,
         spell_filter: Option<ObjectFilter>,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
         /// Total plays shared by the tagged collection across the duration.
@@ -94,6 +97,17 @@ pub enum GrantActionAst {
         allow_land: bool,
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+        /// "you may play one of the exiled cards" (Kotose): a shared play
+        /// budget over the tagged collection; `None` grants each card.
+        max_plays: Option<u32>,
+        /// "... during your turn": usable only during the player's turns.
+        during_your_turns: bool,
+        /// "by waterbending {X} rather than paying its mana cost": the
+        /// required replacement price for a spell cast this way.
+        alternative_cost: Option<ironsmith_core::TotalCost<crate::model::CompilerCost>>,
+        /// "..., where X is its mana value": X in `alternative_cost` is the
+        /// granted card's mana value.
+        alternative_cost_x_is_mana_value: bool,
     },
     GrantAbilitiesAll {
         filter: ObjectFilter,
@@ -115,6 +129,12 @@ pub enum GrantActionAst {
         target: TargetAst,
         source: TargetAst,
         duration: Until,
+        /// "each Horror you control gains ...": every object matching the
+        /// recipient filter at resolution receives the copies.
+        each_recipient: bool,
+        /// "You may spend blue mana as though it were mana of any color to
+        /// activate those abilities": only the copies' costs widen.
+        symbol_as_any_color: Option<ironsmith_core::ManaSymbol>,
     },
     GrantAbilitiesToTarget {
         target: TargetAst,

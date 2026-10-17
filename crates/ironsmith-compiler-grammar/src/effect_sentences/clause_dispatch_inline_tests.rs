@@ -875,6 +875,7 @@ fn secret_subtype_choice_retains_complete_options_and_secrecy() {
                 excluded_subtypes,
                 secretly,
                 family,
+                ..
             }),
     }) = parsed
     else {

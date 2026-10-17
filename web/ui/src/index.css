@@ -18,6 +18,7 @@
 @import "./styles/arena-ambience.css";
 @import "./styles/card-stack-pile.css";
 @import "./styles/play-workspace.css";
+@import "./styles/zone-icons.css";
 
 .surrender-button,
 .table-shell button.surrender-button.table-zone-action-button,

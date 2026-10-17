@@ -1632,7 +1632,8 @@ fn add_battlefield_actions(
                 continue;
             };
             let action = match static_ability.id() {
-                crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn => {
+                crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+                | crate::static_abilities::StaticAbilityId::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn => {
                     SpecialAction::IgnoreAttachedRestriction {
                         source_id,
                         ability_index,
@@ -2071,6 +2072,31 @@ fn compute_legal_actions_checked(
     let hand_special_actions_started_at = PerfTimer::start();
     add_hand_special_actions(game, &mut actions, player, &hand_summaries, hand_has_active_grants)?;
     perf.hand_special_actions_ms = hand_special_actions_started_at.elapsed_ms();
+    // "You may discard this card any time you could cast an instant."
+    for &card_id in hand {
+        let action = crate::special_actions::SpecialAction::DiscardFromHand { card_id };
+        if crate::special_actions::has_discard_from_hand_special_action(game, card_id)
+            && crate::special_actions::can_perform_check(&action, game, player).is_ok()
+        {
+            actions.push(LegalAction::SpecialAction(action));
+        }
+    }
+    // "You may plot nonland cards from the top of your library." (Fblthp,
+    // Lost on the Range): the plot special action for the library's top card.
+    if game.player_may_plot_nonland_from_top_of_library(player)
+        && let Some(&top) = game.player(player).and_then(|state| state.library.last())
+    {
+        let action = crate::special_actions::SpecialAction::Plot { card_id: top };
+        if !actions.contains(&LegalAction::SpecialAction(action.clone())) {
+            match crate::special_actions::can_perform_check(&action, game, player) {
+                Ok(()) => actions.push(LegalAction::SpecialAction(action)),
+                Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => {
+                    return Err(error);
+                }
+                Err(_) => {}
+            }
+        }
+    }
 
     let graveyard_casts_started_at = PerfTimer::start();
     add_graveyard_cast_actions(
@@ -2758,6 +2784,18 @@ fn activation_precheck_with_view(
                 .cant_activate_loyalty_abilities_of
                 .contains(&source))
     {
+        if let Some(perf_ctx) = perf_ctx {
+            perf_ctx.add_precheck_ms(started_at.elapsed_ms());
+        }
+        return None;
+    }
+
+    if activated.keyword.is_some_and(|keyword| {
+        game.effect_store
+            .cant_effects
+            .cant_activate_keyword_abilities_of
+            .contains(&(source, keyword))
+    }) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }

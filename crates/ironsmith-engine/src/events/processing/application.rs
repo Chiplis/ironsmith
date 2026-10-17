@@ -548,7 +548,7 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
-        ReplacementAction::EnterWithCounterChoice { counter_types, .. } => {
+        ReplacementAction::EnterWithCounterChoice { counter_types, kinds, .. } => {
             if counter_types.is_empty() {
                 return Ok(TraitApplyResult::Unchanged(event));
             }
@@ -558,6 +558,7 @@ pub(super) fn apply_trait_replacement(
                     effect.source,
                     effect.controller,
                     counter_types,
+                    *kinds,
                 ),
                 redirect_zone: Zone::Battlefield,
                 effect_id: effect.id,
@@ -1431,6 +1432,12 @@ fn replacement_copy_template_object(
             let first = matches.next()?;
             matches.next().is_none().then_some(first)
         }
+        // A chosen candidate of a filtered copy template (one registered
+        // alternative per matching permanent, Esix, Fractal Bloom).
+        crate::target::ChooseSpec::SpecificObject(id) => game
+            .object(*id)
+            .is_some_and(|object| object.zone == Zone::Battlefield)
+            .then_some(*id),
         _ => None,
     }
 }

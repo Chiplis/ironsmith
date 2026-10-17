@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, eof, peek, repeat, repeat_till, separated};
+use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till, separated};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -33,6 +33,8 @@ pub enum SpellNumberFact {
 pub struct PlayFromZoneFact<'a> {
     pub filter_tokens: &'a [OwnedLexToken],
     pub zone: Zone,
+    /// "from the top of your graveyard" (Bösium Strip): only the topmost card.
+    pub top_of_graveyard: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,12 +124,20 @@ fn parse_mana_value_one_of(input: &mut LexStream<'_>) -> WResult<Vec<i32>> {
 fn parse_play_from_zone<'a>(input: &mut LexStream<'a>) -> WResult<PlayFromZoneFact<'a>> {
     let filter_tokens = take_until(input, 1, || semantic_kw("from"))?;
     semantic_kw("from").parse_next(input)?;
-    let zone = zone_location.parse_next(input)?;
+    let top_of_graveyard = opt(semantic_phrase(&["the", "top", "of", "your", "graveyard"]))
+        .parse_next(input)?
+        .is_some();
+    let zone = if top_of_graveyard {
+        Zone::Graveyard
+    } else {
+        zone_location.parse_next(input)?
+    };
     semantic_finish(input)?;
     let filter_tokens = trim_sentence_edges(filter_tokens);
     Ok(PlayFromZoneFact {
         filter_tokens,
         zone,
+        top_of_graveyard,
     })
 }
 

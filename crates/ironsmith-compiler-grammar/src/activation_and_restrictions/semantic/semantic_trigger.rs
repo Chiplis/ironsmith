@@ -163,6 +163,7 @@ fn parse_combat_damage_trigger_lexed(
             filter: Box::new(ObjectFilter::default().with_type(card_type)),
             fewer: false,
             as_you_activate: false,
+            minimum_difference: 0,
         }),
         // "Whenever a creature deals combat damage to its owner": the damaged
         // player is the damage source's own owner/controller.
@@ -1180,6 +1181,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     // this typed union ahead of the general OR splitter, which otherwise
     // sees a subjectless right arm ("surveil"). Explicit right-hand subjects
     // and trailing qualifiers remain owned by their complete clause rules.
+    if let Some((subject, actions)) =
+        crate::grammar::trigger_clauses::parse_shared_keyword_action_list(tokens)
+        && let Some(player) =
+            parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[subject]))
+    {
+        let mut triggers = actions.into_iter().map(|action| TriggerSpec::KeywordAction {
+            action,
+            player: player.clone(),
+            source_filter: None,
+            during_your_turn: false,
+        });
+        if let Some(first) = triggers.next() {
+            return Ok(triggers.fold(first, |left, right| {
+                TriggerSpec::Either(Box::new(left), Box::new(right))
+            }));
+        }
+    }
     if let Some(alternatives) =
         crate::grammar::trigger_clauses::parse_shared_keyword_action_alternatives(tokens)
         && let Some(player) = parse_trigger_subject_player_filter(
@@ -3973,6 +3991,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             source,
             target,
             source_surface: crate::triggers::DamageSourceSurface::PassiveBy,
+            recipient_is_source_target: false,
         });
     }
 
@@ -4265,6 +4284,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let exact_amount = parse_leading_exactly_quantifier(&tokens[deals_idx + 1..damage_idx])
                 .and_then(|(amount, remainder)| remainder.is_empty().then_some(amount));
             let target_tokens = split_target_clause_before_comma(&tokens[to_idx + 1..]);
+            if let Some(trigger) =
+                parse_single_target_source_damages_its_target_lexed(subject_tokens, &target_tokens)?
+            {
+                return Ok(trigger);
+            }
             let (target_tokens_without_turn, during_turn) = if let Some(without_turn) =
                 crate::grammar::primitives::strip_lexed_suffix_phrase(
                     &target_tokens,
@@ -4314,6 +4338,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     source,
                     target,
                     source_surface,
+                    recipient_is_source_target: false,
                 };
                 return Ok(if player_first {
                     TriggerSpec::Either(Box::new(player_trigger), Box::new(object_trigger))
@@ -4373,6 +4398,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     source,
                     target,
                     source_surface,
+                    recipient_is_source_target: false,
                 });
             }
             if let Ok(mut target) =
@@ -5373,6 +5399,23 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let Some(attacks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Attack) {
         let subject_words = &words[..attacks_word_idx];
         let tail = &words[attacks_word_idx + 1..];
+        // "Whenever a player attacks one of your opponents" (Breena, the
+        // Demagogue): once for each opponent attacked (CR 508.1), so "that
+        // opponent" is the defending player of that group.
+        if matches!(tail, ["one", "of", "your", "opponents"]) {
+            let attacks_token_idx =
+                trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
+            let subject_tokens = &tokens[..attacks_token_idx];
+            if subject_words.first().is_some_and(|word| matches!(*word, "a" | "each" | "any"))
+                && subject_words.last() == Some(&"player")
+                && let Some(attacker) = trigger_subject_player_selector_lexed(subject_tokens)
+            {
+                return Ok(TriggerSpec::PlayerAttacksTargetWithOneOrMore {
+                    attacker,
+                    target: ironsmith_core::AttackTargetRestriction::Player(PlayerFilter::Opponent),
+                });
+            }
+        }
         if let Some(target) = parse_planeswalker_attacked_with_one_or_more_creatures_target(tail) {
             let attacks_token_idx =
                 trigger_word_token_start(tokens, attacks_word_idx).unwrap_or(tokens.len());
@@ -6063,6 +6106,59 @@ pub(super) fn parse_possessive_ability_trigger_tail_lexed(
     })?;
 
     Ok(Some((owner_filter, tail.marker)))
+}
+
+/// "<spell> that targets only a single <object> deals damage to that
+/// <object>" (CR 115.1): the source's sole target restriction stays on the
+/// source filter, and the recipient must be that source's own target rather
+/// than any object matching the noun.
+fn parse_single_target_source_damages_its_target_lexed(
+    subject_tokens: &[OwnedLexToken],
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggerSpec>, CardTextError> {
+    const SINGLE_TARGET_TAIL: [&str; 5] = ["that", "targets", "only", "a", "single"];
+    let [that, recipient_noun] = target_tokens else {
+        return Ok(None);
+    };
+    if !that.is_word("that") {
+        return Ok(None);
+    }
+    let Some(tail_idx) = (0..subject_tokens.len()).find(|&idx| {
+        SINGLE_TARGET_TAIL.iter().enumerate().all(|(offset, word)| {
+            subject_tokens
+                .get(idx + offset)
+                .is_some_and(|token| token.is_word(word))
+        })
+    }) else {
+        return Ok(None);
+    };
+    let object_tokens = &subject_tokens[tail_idx + SINGLE_TARGET_TAIL.len()..];
+    let [object_noun] = object_tokens else {
+        return Ok(None);
+    };
+    let noun_matches = ["creature", "permanent", "planeswalker", "battle", "artifact", "enchantment", "land"]
+        .iter()
+        .any(|noun| object_noun.is_word(noun) && recipient_noun.is_word(noun));
+    if !noun_matches {
+        return Ok(None);
+    }
+    let Ok(target) = parse_object_filter_lexed(object_tokens, false) else {
+        return Ok(None);
+    };
+    let Some((source, source_surface)) =
+        parse_damage_source_trigger_filter_lexed(&subject_tokens[..tail_idx])?
+    else {
+        return Ok(None);
+    };
+    let source = source
+        .targeting_only_object(target.clone())
+        .target_count_exact(1);
+    Ok(Some(TriggerSpec::DealsDamageTo {
+        source,
+        target,
+        source_surface,
+        recipient_is_source_target: true,
+    }))
 }
 
 /// "an ability that targets [only] <objects or players>": the activated

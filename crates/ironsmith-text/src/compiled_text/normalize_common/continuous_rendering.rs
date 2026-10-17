@@ -5543,11 +5543,16 @@ fn describe_ability_kind_cause_protection(
 
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
-        crate::effect::Restriction::CastOrActivatePayments { player, pay_life, sacrifice } => {
+        crate::effect::Restriction::CastOrActivatePayments { player, pay_life, sacrifice, exempt_mana_abilities } => {
             let mut components = Vec::new();
             if *pay_life { components.push("pay life".to_string()); }
             if let Some(filter) = sacrifice { components.push(format!("sacrifice {}", pluralize_noun_phrase(&filter.description()))); }
-            format!("{} can't {} to cast spells or activate abilities", describe_player_set_filter(player), components.join(" or "))
+            let abilities = if *exempt_mana_abilities {
+                "to activate abilities that aren't mana abilities"
+            } else {
+                "activate abilities"
+            };
+            format!("{} can't {} to cast spells or {abilities}", describe_player_set_filter(player), components.join(" or "))
         }
 
         crate::effect::Restriction::AdditionalLandPlays(filter, count) => {
@@ -5651,6 +5656,22 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "loyalty abilities of {} can't be activated",
             filter.description()
         ),
+        crate::effect::Restriction::ActivateKeywordAbilitiesOf { filter, keyword } => {
+            let keyword = match keyword {
+                ironsmith_core::ActivatedAbilityKeyword::Equip => "equip",
+                ironsmith_core::ActivatedAbilityKeyword::PowerUp => "power-up",
+                ironsmith_core::ActivatedAbilityKeyword::ClassLevel(_) => "level",
+                ironsmith_core::ActivatedAbilityKeyword::Cycling => "cycling",
+                ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
+                ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
+                ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+            };
+            if *filter == crate::target::ObjectFilter::default() {
+                format!("{keyword} abilities can't be activated")
+            } else {
+                format!("{keyword} abilities of {} can't be activated", filter.description())
+            }
+        }
         crate::effect::Restriction::CastSpellsMatching(filter, spell_filter) => format!(
             "{} can't cast {}",
             describe_player_set_filter(filter),
@@ -5747,6 +5768,21 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             player,
             spells,
             maximum,
+            beyond_spells_already_cast: true,
+        } => {
+            let spell = describe_cast_limit_spell_filter(spells);
+            format!(
+                "{} can cast only {} more {}",
+                describe_player_set_filter(player),
+                if *maximum == 1 { "one".to_string() } else { maximum.to_string() },
+                if *maximum == 1 { spell } else { pluralize_cast_spell_description(&spell) }
+            )
+        }
+        crate::effect::Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+            beyond_spells_already_cast: false,
         } => format!(
             "{} can cast no more than {} {} each turn",
             describe_player_set_filter(player),
@@ -5879,6 +5915,27 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             } else {
                 format!("damage that would be dealt to {recipient} can't be prevented")
+            }
+        }
+        crate::effect::Restriction::PreventDamageFromTo {
+            sources,
+            recipients,
+            or_redirected,
+        } => {
+            let source = if let Some(surface) = sources.source_surface.as_ref() {
+                describe_source_reference_surface_text(surface)
+            } else {
+                sources.description()
+            };
+            let recipient = recipients.description();
+            if *or_redirected {
+                format!(
+                    "if {source} would deal damage to {recipient}, that damage can't be prevented or dealt instead to another permanent or player"
+                )
+            } else {
+                format!(
+                    "if {source} would deal damage to {recipient}, that damage can't be prevented"
+                )
             }
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
@@ -6225,6 +6282,24 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 counter_type.description(),
                 filter.description()
             )
+        }
+        crate::effect::Restriction::DamageSourcesAreColorless(filter) => {
+            let colors = filter
+                .colors
+                .map(|colors| {
+                    crate::color::Color::ALL
+                        .into_iter()
+                        .filter(|color| colors.contains(*color))
+                        .map(|color| color.name().to_ascii_lowercase())
+                        .collect::<Vec<_>>()
+                        .join(" and/or ")
+                })
+                .unwrap_or_default();
+            if colors.is_empty() {
+                "Permanents and spells are colorless sources of damage".to_string()
+            } else {
+                format!("{colors} permanents and spells are colorless sources of damage")
+            }
         }
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())

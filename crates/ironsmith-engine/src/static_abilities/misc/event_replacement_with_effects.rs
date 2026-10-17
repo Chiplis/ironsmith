@@ -138,6 +138,10 @@ pub struct ReplacedEventMatcher {
 }
 
 fn damage_source_matches(source: ObjectId, filter: &ObjectFilter, ctx: &EventContext) -> bool {
+    // Shared damage-source color hook (Ghostly Flame).
+    if let Some(colorless) = ctx.game.damage_source_color_snapshot(source, ctx.event_source_snapshot) {
+        return filter.matches_snapshot(&colorless, &ctx.filter_ctx, ctx.game);
+    }
     if !ctx.game.is_phased_out(source)
         && let Some(object) = ctx.game.object(source)
     {

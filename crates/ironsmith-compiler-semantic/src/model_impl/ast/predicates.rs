@@ -256,6 +256,8 @@ pub enum TurnHistoryPredicateAst {
     TriggeringPlayerAttackedControllerLastTurn,
     /// "they attacked you that turn": the active player attacked you this turn.
     ActivePlayerAttackedControllerThisTurn,
+    /// "a player attacked you during their last turn" (Avenge).
+    OpponentAttackedControllerDuringTheirLastTurn,
     PlayerLostLifeLastTurn(PlayerAst),
     PlayerWasDealtNoncombatDamageLastTurn(PlayerAst),
     TriggeringPlayersTurn {

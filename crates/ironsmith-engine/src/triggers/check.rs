@@ -430,6 +430,9 @@ pub struct DelayedTrigger {
     pub bound_extra_turn_index: Option<usize>,
     /// Collection-scoped lifetime captured when the trigger was registered.
     pub while_any_tagged_object_in_zone: Option<(crate::tag::TagKey, crate::zone::Zone)>,
+    /// "For as long as this creature remains tapped": the registration ends
+    /// once this permanent untaps or leaves the battlefield (CR 611.2b).
+    pub while_source_tapped: Option<ObjectId>,
     /// Specific objects this trigger targets.
     pub target_objects: Vec<ObjectId>,
     /// Optional source object to use for the triggered ability when it fires.
@@ -457,6 +460,16 @@ pub struct DelayedTrigger {
     /// Prevention shield whose accumulated prevented damage supplies the
     /// numeric value for this delayed ability.
     pub prevention_shield: Option<crate::prevention::PreventionShieldId>,
+}
+
+/// Whether a "for as long as this permanent remains tapped" delayed
+/// registration is still live: the same object is on the battlefield, not
+/// phased out, and tapped.
+pub(crate) fn delayed_source_remains_tapped(game: &GameState, source: ObjectId) -> bool {
+    game.object(source)
+        .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
+        && !game.is_phased_out(source)
+        && game.is_tapped(source)
 }
 
 impl DelayedTrigger {
@@ -3871,6 +3884,13 @@ pub(crate) fn take_delayed_untap_step_actions(
             continue;
         }
         if delayed
+            .while_source_tapped
+            .is_some_and(|source| !delayed_source_remains_tapped(game, source))
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if delayed
             .not_before_turn
             .is_some_and(|min_turn| game.turn.turn_number < min_turn)
             || delayed.bound_extra_turn_index.is_some()
@@ -4002,6 +4022,13 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                 tag,
                 *zone,
             )
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if delayed
+            .while_source_tapped
+            .is_some_and(|source| !delayed_source_remains_tapped(game, source))
         {
             to_remove.push(idx);
             continue;

@@ -1994,7 +1994,9 @@ use per_graveyard::parse_choose_each_graveyard_then_owner_shuffle_bundle;
 
 #[path = "effect_composition/delayed_collections.rs"]
 mod delayed_collections;
-use delayed_collections::parse_exile_collection_each_upkeep_return_bundle;
+use delayed_collections::{
+    parse_exile_collection_each_upkeep_return_bundle, parse_retained_spell_copy_bundle,
+};
 
 #[cfg(test)]
 #[path = "effect_composition_inline_tests.rs"]

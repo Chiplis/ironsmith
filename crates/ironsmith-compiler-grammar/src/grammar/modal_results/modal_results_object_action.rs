@@ -83,6 +83,15 @@ pub fn parse_if_result_predicate_lexed_tokens(
         }
     }
 
+    // "When/If you remove a counter this way" (Immard, the Stormcleaver)
+    // after "put a counter on it or remove one from it": the removal
+    // happened. The modal gate keeps the follow-up on the removal mode.
+    if matches!(
+        words.as_slice(),
+        ["you", "remove" | "removed", .., "counter" | "counters", "this", "way"]
+    ) {
+        return Some(IfResultPredicate::Did);
+    }
     // "Pay any amount of {E}. If you paid one or more {E} this way, ..."
     // (Vault 112: Sadistic Simulation): a threshold on the amount of energy
     // the immediately preceding payment removed. The payment's outcome is the

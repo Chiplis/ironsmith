@@ -155,3 +155,117 @@ pub(super) fn read_each_player_opponent_excludes(
     ]);
     Ok(Some(effects))
 }
+
+/// "Exile cards from the top of your library until you exile two nonland
+/// cards with mana value 4 or less. You may cast one of those two cards
+/// without paying its mana cost. Put one of them into your hand. Then put the
+/// other cards exiled this way on the bottom of your library in a random
+/// order." (Invasion of Alara): the cast chooses up to one of the matched
+/// cards; the hand pick then chooses among the matched cards still in exile
+/// (the other one when a card was cast, CR 608.2c); every remaining exiled
+/// card goes to the bottom.
+pub(super) fn read_cast_one_then_hand_one(
+    sentences: &[SentenceInput],
+    index: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(first), Some(cast), Some(hand), Some(rest)) = (
+        sentences.get(index),
+        sentences.get(index + 1),
+        sentences.get(index + 2),
+        sentences.get(index + 3),
+    ) else {
+        return Ok(None);
+    };
+    let words = |sentence: &SentenceInput| {
+        crate::lexer::parser_token_word_refs(sentence.lowered())
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let cast_words = words(cast);
+    let cast_words = cast_words.iter().map(String::as_str).collect::<Vec<_>>();
+    if !matches!(
+        cast_words.as_slice(),
+        ["you", "may", "cast", "one", "of", "those", "two", "cards" | "spells", "without", "paying", "its", "mana", "cost"]
+            | ["you", "may", "cast", "one", "of", "those", "cards", "without", "paying", "its", "mana", "cost"]
+            | ["you", "may", "cast", "one", "of", "them", "without", "paying", "its", "mana", "cost"]
+    ) {
+        return Ok(None);
+    }
+    let hand_words = words(hand);
+    let hand_words = hand_words.iter().map(String::as_str).collect::<Vec<_>>();
+    if !matches!(
+        hand_words.as_slice(),
+        ["put", "one", "of", "them", "into", "your", "hand"]
+            | ["put", "one", "of", "those", "cards", "into", "your", "hand"]
+    ) {
+        return Ok(None);
+    }
+    let rest_words = words(rest);
+    let rest_words = rest_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let rest_words = rest_words.strip_prefix(&["then"]).unwrap_or(&rest_words);
+    let order = match rest_words {
+        [
+            "put", "the", "other" | "rest" | "remaining", "cards", "exiled", "this", "way", "on",
+            "the", "bottom", "of", "your", "library", "in", "a", "random", "order",
+        ] => crate::cards::builders::LibraryBottomOrderAst::Random,
+        [
+            "put", "the", "other" | "rest" | "remaining", "cards", "exiled", "this", "way", "on",
+            "the", "bottom", "of", "your", "library", "in", "any", "order",
+        ] => crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+        _ => return Ok(None),
+    };
+    let first_tokens = crate::lexer::trim_lexed_commas(first.lowered());
+    let Some(parts) = super::super::consult_family::parse_consult_traversal_sentence(first_tokens)?
+    else {
+        return Ok(None);
+    };
+    if parts.player != PlayerAst::You {
+        return Ok(None);
+    }
+    let chosen = crate::util::helper_tag_for_tokens(cast.lowered(), "cast_from_consulted");
+    let kept = crate::util::helper_tag_for_tokens(hand.lowered(), "kept_from_consulted");
+    let mut effects = parts.effects;
+    effects.extend([
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: ObjectFilter::tagged(parts.match_tag.clone()).in_zone(Zone::Exile),
+            count: ChoiceCount::up_to(1),
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(chosen.clone()),
+            zone: Zone::Exile,
+        }),
+        EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+            tag: crate::tag::TagRef::of(chosen),
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                PlayerAst::You,
+                false,
+                false,
+                true,
+                None,
+            )],
+        }),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+            filter: ObjectFilter::tagged(parts.match_tag.clone()).in_zone(Zone::Exile),
+            count: ChoiceCount::exactly(1),
+            player: PlayerAst::You,
+            tag: crate::tag::TagRef::of(kept.clone()),
+            zone: Zone::Exile,
+        }),
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(crate::tag::TagRef::of(kept), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            crate::tag::TagRef::of(parts.all_tag.clone()),
+            None,
+            order,
+            PlayerAst::You,
+        ),
+    ]);
+    Ok(Some(effects))
+}

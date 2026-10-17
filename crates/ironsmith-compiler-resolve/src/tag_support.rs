@@ -44,6 +44,21 @@ pub fn is_sentence_helper_consult_match_tag(tag: &TagKey) -> bool {
 pub fn player_loop_exported_exile_collection(effects: &[EffectAst]) -> Option<TagKey> {
     let mut found: Option<TagKey> = None;
     for effect in effects {
+        // "each opponent who has three or more poison counters exiles ..."
+        // (Ixhel): the accumulating exile sits inside the member's condition.
+        if let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+            if_true, if_false, ..
+        }) = effect
+        {
+            for branch in [if_true, if_false] {
+                if let Some(key) = player_loop_exported_exile_collection(branch)
+                    && found.replace(key).is_some()
+                {
+                    return None;
+                }
+            }
+            continue;
+        }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
@@ -1578,6 +1593,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
             amount, ..
         })
@@ -1977,6 +1993,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterDamageMultiplier {
             ..
         })
+        | SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterTokenCreationMultiplier { .. })
         | SubjectVerbActionAst::Replacements(
             ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
         )
@@ -2520,7 +2537,9 @@ pub fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter,
                 ..
             })
-            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+                filter, ..
+            })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 filter,
                 ..
@@ -2835,6 +2854,19 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
     if let Restriction::BeCounteredFrom(targets, sources) = restriction {
         return [targets, sources].into_iter().any(|filter| filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == tag));
     }
+    if let Restriction::PreventDamageFromTo {
+        sources,
+        recipients,
+        ..
+    } = restriction
+    {
+        return [sources, recipients].into_iter().any(|filter| {
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == tag)
+        });
+    }
     let maybe_filter = match restriction {
         Restriction::PreventDamageFrom {
             sources: filter, ..
@@ -2845,6 +2877,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::PlayLandsMatching(_, filter)
         | Restriction::CastSpellsMatching(_, filter)
         | Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        | Restriction::ActivateKeywordAbilitiesOf { filter, .. }
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
@@ -2862,6 +2895,7 @@ pub fn restriction_references_tag(restriction: &crate::effect::Restriction, tag:
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::HaveCounterTypeRemoved(filter, _)
+        | Restriction::DamageSourcesAreColorless(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)

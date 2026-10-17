@@ -4894,6 +4894,9 @@ pub(super) fn describe_exile_top_then_play(
         }
         crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => "Until your next end step",
         crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => "During your next turn",
+        crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
+            "Until end of combat on your next turn"
+        }
         _ => return None,
     };
 

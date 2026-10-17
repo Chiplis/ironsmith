@@ -846,6 +846,10 @@ fn declare_blockers_internal(
     enforce_requirements: bool,
     requirement_player: Option<PlayerId>,
 ) -> Result<(), CombatError> {
+    // Blocks forced by a random pile division (Camouflage) replace the
+    // declaration; blocking requirements don't choose them (CR 509.1c).
+    let enforce_requirements =
+        enforce_requirements && !game.blockers_declared_by_random_piles_this_turn();
     let all_effects = game.all_continuous_effects_arc();
 
     // Group blockers by attacker for menace validation
@@ -1114,6 +1118,16 @@ fn declare_blockers_internal(
     }
 
     Ok(())
+}
+
+/// How many attackers `blocker_id` may block at once (CR 509.1a): one, plus
+/// each "can block an additional creature", or any number.
+pub(crate) fn max_attackers_blocker_can_block(
+    game: &GameState,
+    blocker_id: ObjectId,
+    effects: &[crate::continuous::ContinuousEffect],
+) -> usize {
+    max_attackers_this_blocker_can_block(game, blocker_id, effects)
 }
 
 fn max_attackers_this_blocker_can_block(

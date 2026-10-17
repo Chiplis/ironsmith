@@ -1192,6 +1192,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// random rather than by the controller.
         #[cfg_attr(feature = "serde", serde(default))]
         at_random: bool,
+        /// "As this creature enters, each player chooses war or peace"
+        /// (Archangel of Strife): every player makes the choice, in APNAP
+        /// order, and each player's option is recorded on the permanent
+        /// ("players who chose war"). Appended with a serde default.
+        #[cfg_attr(feature = "serde", serde(default))]
+        each_player: bool,
     },
     ChoosePowerToughnessAsEntersOrTurnsFaceUp {
         options: Vec<PowerToughnessChoiceOption<T, E, C, Cond, ICond>>,
@@ -1607,6 +1613,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         condition: Option<ICond>,
         #[cfg_attr(feature = "serde", serde(default))]
         display: String,
+        /// How many different kinds are chosen, each receiving `count`
+        /// counters ("your choice of two different counters on it from
+        /// among ...", Grimdancer). Ordinary single choices are 1. Appended
+        /// last for serialized-field compatibility.
+        #[cfg_attr(feature = "serde", serde(default = "one_counter_choice_kind"))]
+        kinds: u32,
     },
     EntersTappedForFilter(ObjectFilter),
     EntersUntappedForFilter(ObjectFilter),
@@ -1783,6 +1795,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// spell face down is unaffected. Appended to preserve published payload
     /// ordinals.
     MorphCostIncrease { generic_increase: u32 },
+    /// "Unlock costs you pay cost {1} less." (Inquisitive Glimmer): the
+    /// controller's unlock-a-door special action (CR 709.5c) costs
+    /// `generic_reduction` less generic mana. Appended to preserve published
+    /// payload ordinals.
+    UnlockCostReduction { generic_reduction: u32 },
     /// "As long as the top card of your graveyard is a creature card, this
     /// creature has the full text of that card and has the text "{2}:
     /// Discard a card."" (Volrath's Shapeshifter): while the top card of the
@@ -1813,6 +1830,80 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// (Damping Engine). Appended to preserve published payload ordinals.
     PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
         player: PlayerFilter,
+        display: String,
+    },
+    /// "You can't choose an untapped creature as this spell's target as you
+    /// cast it." (Enthralling Hold): while this spell's targets are announced
+    /// (CR 601.2c), no object matching `forbidden` may be chosen. It is not a
+    /// targeting requirement, so the resolution recheck (CR 608.2b) ignores
+    /// it. Appended to preserve published payload variant ordinals.
+    CastTargetRestriction {
+        forbidden: ObjectFilter,
+        display: String,
+    },
+    /// "As this Equipment enters, choose a creature you control it could be
+    /// attached to. If you do, it enters attached to that creature."
+    /// (Grifter's Blade): as this non-Aura enters, its controller chooses a
+    /// battlefield object matching `filter` it could be attached to, and it
+    /// enters attached to that object. Appended to preserve published
+    /// payload variant ordinals.
+    EntersAttachedToChosenObject {
+        filter: ObjectFilter,
+        display: String,
+    },
+    /// "Spells cost an additional \"Sacrifice a Swamp\" to cast for each
+    /// black mana symbol in their mana costs." / "Activated abilities cost an
+    /// additional ... to activate for each black mana symbol in their
+    /// activation costs." (Drought): each `symbol` in the spell's mana cost
+    /// (or the ability's activation cost) adds one sacrifice of a `sacrifice`
+    /// permanent its payer controls to the total cost (CR 601.2f, 602.2b).
+    /// Appended to preserve published payload variant ordinals.
+    AdditionalSacrificePerManaSymbol {
+        activated_abilities: bool,
+        symbol: crate::mana::ManaSymbol,
+        sacrifice: ObjectFilter,
+        display: String,
+    },
+    /// "If a spell or ability you control would counter a spell, instead
+    /// exile that spell and you may play that card without paying its mana
+    /// cost." (Guile): every spell counter performed by a spell or ability
+    /// this permanent's controller controls exiles the spell instead and
+    /// grants `permission`. Appended to preserve published payload ordinals.
+    ControllerCounterExilePermission {
+        permission: crate::effect::CounterExilePermission,
+        display: String,
+    },
+    /// "The attacking player chooses how each creature blocks each combat."
+    /// (Invasion Plans): while this permanent is on the battlefield, the
+    /// attacking (active) player makes every blocking declaration (CR 509.1).
+    /// Appended to preserve published payload ordinals.
+    AttackingPlayerChoosesBlocks {
+        display: String,
+    },
+    /// "Its controller may exile three cards from their graveyard for that
+    /// player to ignore this effect until end of turn." (Lost in Thought):
+    /// a priority special action for the controller of the object this Aura
+    /// is attached to; paying `cost` makes that player ignore this source's
+    /// static restrictions until end of turn. Appended to preserve published
+    /// payload ordinals.
+    AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn {
+        cost: TotalCost<C>,
+        display: String,
+    },
+    /// "As this enchantment enters, choose two basic land types."
+    /// (Illusionary Terrain): `count` distinct basic land types, recorded in
+    /// choice order on the entering permanent. Appended to preserve published
+    /// payload ordinals.
+    ChooseBasicLandTypesAsEnters {
+        display: String,
+        count: u32,
+    },
+    /// "Basic lands of the first chosen type are the second chosen type."
+    /// (Illusionary Terrain): objects matching `filter` that have the first
+    /// chosen basic land type have their land types set to the second
+    /// (CR 305.7). Appended to preserve published payload ordinals.
+    FirstChosenLandTypeBecomesSecond {
+        filter: ObjectFilter,
         display: String,
     },
 }
@@ -2041,6 +2132,9 @@ where
                 }
                 DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction } => {
                     DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
+                }
+                DerivedAlternativeCast::PlotFromCardManaCost => {
+                    DerivedAlternativeCast::PlotFromCardManaCost
                 }
                 DerivedAlternativeCast::ZoneCastFromCardManaCost {
                     zone,
@@ -2736,6 +2830,12 @@ where
             StaticAbilityPayload::SourceLandIsChosenType(display) => {
                 StaticAbilityPayload::SourceLandIsChosenType(display)
             }
+            StaticAbilityPayload::ChooseBasicLandTypesAsEnters { display, count } => {
+                StaticAbilityPayload::ChooseBasicLandTypesAsEnters { display, count }
+            }
+            StaticAbilityPayload::FirstChosenLandTypeBecomesSecond { filter, display } => {
+                StaticAbilityPayload::FirstChosenLandTypeBecomesSecond { filter, display }
+            }
             StaticAbilityPayload::AttachedIsCopyOfChosenObject(display) => {
                 StaticAbilityPayload::AttachedIsCopyOfChosenObject(display)
             }
@@ -2778,6 +2878,9 @@ where
             StaticAbilityPayload::MorphCostIncrease { generic_increase } => {
                 StaticAbilityPayload::MorphCostIncrease { generic_increase }
             }
+            StaticAbilityPayload::UnlockCostReduction { generic_reduction } => {
+                StaticAbilityPayload::UnlockCostReduction { generic_reduction }
+            }
             StaticAbilityPayload::OpponentDiscardThisToBattlefieldWithCounters {
                 counter_type,
                 count,
@@ -2815,6 +2918,36 @@ where
                 display,
             } => StaticAbilityPayload::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn {
                 player,
+                display,
+            },
+            StaticAbilityPayload::CastTargetRestriction { forbidden, display } => {
+                StaticAbilityPayload::CastTargetRestriction { forbidden, display }
+            }
+            StaticAbilityPayload::AdditionalSacrificePerManaSymbol {
+                activated_abilities,
+                symbol,
+                sacrifice,
+                display,
+            } => StaticAbilityPayload::AdditionalSacrificePerManaSymbol {
+                activated_abilities,
+                symbol,
+                sacrifice,
+                display,
+            },
+            StaticAbilityPayload::EntersAttachedToChosenObject { filter, display } => {
+                StaticAbilityPayload::EntersAttachedToChosenObject { filter, display }
+            }
+            StaticAbilityPayload::ControllerCounterExilePermission { permission, display } => {
+                StaticAbilityPayload::ControllerCounterExilePermission { permission, display }
+            }
+            StaticAbilityPayload::AttackingPlayerChoosesBlocks { display } => {
+                StaticAbilityPayload::AttackingPlayerChoosesBlocks { display }
+            }
+            StaticAbilityPayload::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn {
+                cost,
+                display,
+            } => StaticAbilityPayload::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn {
+                cost: map_total_cost(cost, map_cost)?,
                 display,
             },
             StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
@@ -3107,10 +3240,12 @@ where
                 options,
                 display,
                 at_random,
+                each_player,
             } => StaticAbilityPayload::ChooseNamedOptionAsEnters {
                 options,
                 display,
                 at_random,
+                each_player,
             },
             StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
@@ -3766,11 +3901,13 @@ where
             StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                kinds,
                 condition,
                 display,
             } => StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                kinds,
                 condition: condition.map(|condition| map_intervening(condition)).transpose()?,
                 display,
             },
@@ -4595,6 +4732,97 @@ impl<
     /// use the stack.
     /// "That player may sacrifice a permanent of their choice for that player
     /// to ignore this effect until end of turn." (Damping Engine)
+    /// "You can't choose <forbidden> as this spell's target as you cast it."
+    /// "As this Equipment enters, choose <filter> it could be attached to.
+    /// If you do, it enters attached to that <object>." (Grifter's Blade)
+    pub fn enters_attached_to_chosen_object(
+        filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EntersAttachedToChosenObject),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EntersAttachedToChosenObject { filter, display },
+        }
+    }
+
+    /// "<Spells|Activated abilities> cost an additional \"Sacrifice a
+    /// <filter>\" ... for each <color> mana symbol in their <mana|activation>
+    /// costs." (Drought)
+    pub fn additional_sacrifice_per_mana_symbol(
+        activated_abilities: bool,
+        symbol: crate::mana::ManaSymbol,
+        sacrifice: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AdditionalSacrificePerManaSymbol),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AdditionalSacrificePerManaSymbol {
+                activated_abilities,
+                symbol,
+                sacrifice,
+                display,
+            },
+        }
+    }
+
+    /// "If a spell or ability you control would counter a spell, instead
+    /// exile that spell and you may play that card without paying its mana
+    /// cost." (Guile)
+    pub fn controller_counter_exile_permission(
+        permission: crate::effect::CounterExilePermission,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ControllerCounterExilePermission),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ControllerCounterExilePermission { permission, display },
+        }
+    }
+
+    /// "The attacking player chooses how each creature blocks each combat."
+    /// (Invasion Plans)
+    pub fn attacking_player_chooses_blocks(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AttackingPlayerChoosesBlocks),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AttackingPlayerChoosesBlocks { display },
+        }
+    }
+
+    /// "Its controller may exile three cards from their graveyard for that
+    /// player to ignore this effect until end of turn." (Lost in Thought)
+    pub fn attached_controller_may_pay_cost_to_ignore_source_effect_until_end_of_turn(
+        cost: TotalCost<C>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(
+                StaticAbilityId::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn,
+            ),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn {
+                cost,
+                display,
+            },
+        }
+    }
+
+    pub fn cast_target_restriction(forbidden: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ThisSpellCastRestriction),
+            label: display.clone(),
+            payload: StaticAbilityPayload::CastTargetRestriction { forbidden, display },
+        }
+    }
+
     pub fn player_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
         player: PlayerFilter,
         display: impl Into<String>,
@@ -4754,6 +4982,16 @@ impl<
         Self::identified(
             StaticAbilityId::CanAttackAsThoughHaste,
             "can attack as though haste",
+        )
+    }
+
+    /// "All creatures can attack your opponents and planeswalkers your
+    /// opponents control as though those creatures had haste." (Frenzied
+    /// Saddlebrute)
+    pub fn creatures_can_attack_opponents_as_though_haste() -> Self {
+        Self::identified(
+            StaticAbilityId::CreaturesCanAttackOpponentsAsThoughHaste,
+            "All creatures can attack your opponents and planeswalkers your opponents control as though those creatures had haste",
         )
     }
 
@@ -5533,6 +5771,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn creatures_cant_attack_players_inactive_last_turn() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CreaturesCantAttackPlayersInactiveLastTurn),
+            label: "creatures cant attack a player unless that player cast a spell or put a nontoken permanent onto the battlefield during their last turn".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn cant_attack_player_already_attacked_this_turn() -> Self {
         Self {
             id: Some(StaticAbilityId::CantAttackPlayerAlreadyAttackedThisTurn),
@@ -5941,6 +6186,16 @@ impl<
             payload: StaticAbilityPayload::MorphCostIncrease { generic_increase },
         }
     }
+    /// "Unlock costs you pay cost {N} less." (Inquisitive Glimmer).
+    /// Unlocking a door is a special action (CR 116.2m, 709.5c), so this
+    /// shares the special-action-modifier id with the morph/foretell ones.
+    pub fn unlock_cost_reduction(generic_reduction: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ForetellSpecialActionModifier),
+            label: format!("Unlock costs you pay cost {{{generic_reduction}}} less."),
+            payload: StaticAbilityPayload::UnlockCostReduction { generic_reduction },
+        }
+    }
     pub fn devotion_increase(amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::DevotionIncrease),
@@ -6018,10 +6273,20 @@ impl<
             "vote additional time while voting",
         )
     }
+    /// The label is the noted card family's name.
+    pub fn must_attack_draft_noted_players(card_name: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::MustAttackDraftNotedPlayers, card_name)
+    }
     pub fn may_discard_source_any_time_you_could_cast_instant() -> Self {
         Self::identified(
             StaticAbilityId::MayDiscardSourceAnyTimeYouCouldCastInstant,
             "you may discard this card any time you could cast an instant",
+        )
+    }
+    pub fn may_plot_nonland_cards_from_top_of_library() -> Self {
+        Self::identified(
+            StaticAbilityId::MayPlotNonlandCardsFromTopOfLibrary,
+            "you may plot nonland cards from the top of your library",
         )
     }
     pub fn source_loyalty_abilities_twice_each_turn() -> Self {
@@ -6269,6 +6534,12 @@ impl<
                 card_types,
             ),
         }
+    }
+    pub fn cant_be_blocked_unless_attacking_owner_or_owners_permanent() -> Self {
+        Self::identified(
+            StaticAbilityId::CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent,
+            "can't be blocked unless it's attacking its owner or a permanent its owner controls",
+        )
     }
     pub fn cant_be_blocked_while_defending_player_controls_most_creatures() -> Self {
         Self::identified(
@@ -6562,6 +6833,25 @@ impl<
             payload: StaticAbilityPayload::ChooseBasicLandTypeAsEnters(display),
         }
     }
+    pub fn choose_basic_land_types_as_enters(display: impl Into<String>, count: u32) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseBasicLandTypeAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseBasicLandTypesAsEnters { display, count },
+        }
+    }
+    pub fn first_chosen_land_type_becomes_second(
+        filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SetLandSubtypes),
+            label: display.clone(),
+            payload: StaticAbilityPayload::FirstChosenLandTypeBecomesSecond { filter, display },
+        }
+    }
     pub fn choose_land_type_as_enters(display: impl Into<String>) -> Self {
         let display = display.into();
         Self {
@@ -6678,6 +6968,26 @@ impl<
                 options,
                 display,
                 at_random: false,
+                each_player: false,
+            },
+        }
+    }
+
+    /// "As this enters, each player chooses <A> or <B>": every player
+    /// chooses, and each player's option is recorded on the permanent.
+    pub fn each_player_chooses_named_option_as_enters(
+        options: Vec<String>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseNamedOptionAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseNamedOptionAsEnters {
+                options,
+                display,
+                at_random: false,
+                each_player: true,
             },
         }
     }
@@ -6694,6 +7004,7 @@ impl<
                 options,
                 display,
                 at_random: true,
+                each_player: false,
             },
         }
     }
@@ -7513,6 +7824,17 @@ impl<
     }
     /// "If this creature is unblocked, you may have it assign its combat
     /// damage to a creature defending player controls." (Cunning Giant)
+    /// "You may assign this creature's combat damage divided as you choose
+    /// among defending player and/or any number of creatures they control."
+    /// (Butcher Orgg)
+    pub fn may_divide_combat_damage_among_defending_player_and_creatures() -> Self {
+        Self {
+            id: Some(StaticAbilityId::MayDivideCombatDamageAmongDefendingPlayerAndCreatures),
+            label: "may divide combat damage among defending player and creatures they control"
+                .into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn may_assign_unblocked_damage_to_defending_creature() -> Self {
         Self {
             id: Some(StaticAbilityId::MayAssignUnblockedDamageToDefendingCreature),
@@ -8996,6 +9318,27 @@ impl<
             payload: StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                kinds: 1,
+                condition: None,
+                display: String::new(),
+            },
+        }
+    }
+
+    /// "enters with your choice of two different counters on it from among
+    /// A, B, and C" (Grimdancer): `kinds` different kinds, `count` of each.
+    pub fn enters_with_distinct_counter_choice(
+        counter_types: Vec<CounterType>,
+        count: Value,
+        kinds: u32,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterWithCounters),
+            label: "enters with counter choice".to_string(),
+            payload: StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+                kinds,
                 condition: None,
                 display: String::new(),
             },
@@ -9015,6 +9358,7 @@ impl<
             payload: StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                kinds: 1,
                 condition: Some(condition),
                 display,
             },
@@ -9179,6 +9523,12 @@ pub fn one_chosen_color() -> u32 {
     1
 }
 
+/// Serde default for `EntersWithCounterChoice::kinds`: payloads written
+/// before multi-kind choices choose one counter kind.
+pub fn one_counter_choice_kind() -> u32 {
+    1
+}
+
 #[cfg(feature = "serde")]
 fn static_implied_words_are_false(value: &bool) -> bool { !*value }
 
@@ -9193,6 +9543,7 @@ mod entry_counter_choice_serde_tests {
         let payload = Payload::EntersWithCounterChoice {
             counter_types: vec![crate::CounterType::Flying],
             count: crate::Value::Fixed(1),
+            kinds: 1,
             condition: None,
             display: String::new(),
         };

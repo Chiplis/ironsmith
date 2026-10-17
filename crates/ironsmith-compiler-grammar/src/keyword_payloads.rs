@@ -214,6 +214,36 @@ pub(super) fn parse_additional_cost(
         return Ok(None);
     };
     let words = crate::lexer::parser_token_word_refs(effect_tokens);
+    // "As an additional cost to cast this spell, choose a number between 0
+    // and 5." (Liquid Fire): the number is announced while the spell is cast
+    // (CR 601.2b), exactly an X announcement bounded by the printed range.
+    // The body's "the chosen number" reads that announced X.
+    if let ["choose", "a", "number", "between", low, "and", high] = words.as_slice()
+        && let (Ok(low), Ok(high)) = (low.parse::<i32>(), high.parse::<i32>())
+        && low <= high
+    {
+        let display = format!(
+            "{}.",
+            crate::lexer::render_token_slice(crate::util::trim_edge_punctuation_tokens(tokens))
+                .trim_end_matches('.')
+        );
+        return Ok(ast(LineAst::Multiple(vec![
+            LineAst::StaticAbility(
+                crate::static_abilities::StaticAbility::this_spell_x_maximum(
+                    Value::Fixed(high),
+                    display.clone(),
+                )
+                .into(),
+            ),
+            LineAst::StaticAbility(
+                crate::static_abilities::StaticAbility::this_spell_x_minimum(
+                    Value::Fixed(low),
+                    display,
+                )
+                .into(),
+            ),
+        ])));
+    }
     if matches!(words.as_slice(), ["you", "may", "collect", "evidence", _]) {
         let collect = effect_tokens
             .iter()

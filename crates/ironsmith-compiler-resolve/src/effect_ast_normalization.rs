@@ -642,6 +642,7 @@ fn durational_anaphoric_restriction_grant_to_cant(effect: &mut EffectAst) {
                 recipients: filter, ..
             }
             | Restriction::ActivateLoyaltyAbilitiesOf(filter)
+            | Restriction::ActivateKeywordAbilitiesOf { filter, .. }
             | Restriction::MustAttack(filter)
             | Restriction::MustBlock(filter)
             | Restriction::Attack(filter)

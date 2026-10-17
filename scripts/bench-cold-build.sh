@@ -315,6 +315,8 @@ for ((run_number = 1; run_number <= RUNS; run_number += 1)); do
   export CARGO_TARGET_DIR="$run_target"
   export CARGO_INCREMENTAL=0
   unset RUSTC_WRAPPER CARGO_BUILD_RUSTC_WRAPPER SCCACHE_DIR
+  # An empty override disables the wrapper configured in .cargo/config.toml.
+  export RUSTC_WRAPPER=
 
   cp "$FIXTURE_CARDS" "$fixture_dir/cards.json"
 
@@ -443,6 +445,7 @@ PY
   cp "$ROOT_DIR/npm/ironsmith-wasm/package.template.json" "$package_dir/package.json"
   cp "$ROOT_DIR/npm/ironsmith-wasm/split-facade.js" "$package_dir/ironsmith.js"
   cp "$ROOT_DIR/npm/ironsmith-wasm/split-facade.d.ts" "$package_dir/ironsmith.d.ts"
+  node "$ROOT_DIR/scripts/prepare-exact-build-snapshots.mjs" "$package_dir"
   smoke_started="$(date +%s)"
   time_command "$run_dir/smoke-time.txt" \
     node --input-type=module - \

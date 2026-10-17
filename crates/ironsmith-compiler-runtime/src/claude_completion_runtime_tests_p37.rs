@@ -162,3 +162,27 @@ fn maddening_imp_forces_non_wall_attacks_and_punishes_non_attackers() {
     assert!(compact.contains("Wall"), "the non-Wall exclusion survives: {compact}");
     assert!(compact.contains("didnt_attack_this_turn:true") || compact.contains("AttackedThisTurn"), "{compact}");
 }
+
+#[test]
+fn luxior_equips_planeswalkers_and_turns_them_into_creatures() {
+    let definition = p37_definition(
+        "Luxior, Giada's Gift",
+        "Mana cost: {1}\nType: Legendary Artifact — Equipment\nEquipped creature gets +1/+1 for each counter on it.\nEquipped permanent isn't a planeswalker and is a creature in addition to its other types. (Loyalty abilities can still be activated.)\nEquip planeswalker {1}\nEquip {3}",
+    );
+    let compact = p37_compact(&definition);
+    assert!(compact.contains("RemoveCardTypesForFilter"), "{compact}");
+    assert!(compact.contains("card_types:[Planeswalker]"), "{compact}");
+    assert!(compact.matches("keyword:Some(Equip)").count() >= 2, "two equip abilities: {compact}");
+}
+
+#[test]
+fn lynde_moves_a_curse_on_you_to_an_opponent() {
+    let definition = p37_definition(
+        "Lynde, Cheerful Tormentor",
+        "Mana cost: {1}{U}{B}{R}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 2/4\nDeathtouch\nWhenever a Curse is put into your graveyard from the battlefield, return it to the battlefield attached to you at the beginning of the next end step.\nAt the beginning of your upkeep, you may attach a Curse attached to you to one of your opponents. If you do, draw two cards.",
+    );
+    let compact = p37_compact(&definition);
+    assert!(compact.contains("attached_to_player:Some(You)"), "{compact}");
+    assert!(compact.contains("Curse"), "{compact}");
+    assert!(compact.contains("Opponent"), "{compact}");
+}

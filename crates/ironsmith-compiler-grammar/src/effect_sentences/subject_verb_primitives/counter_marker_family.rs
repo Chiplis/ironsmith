@@ -92,6 +92,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::HaveCounterTypeRemoved(filter, _)
+        | Restriction::DamageSourcesAreColorless(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)

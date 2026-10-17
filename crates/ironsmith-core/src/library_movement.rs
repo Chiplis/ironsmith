@@ -397,7 +397,8 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
     if let Some(e) = payload.downcast_ref::<ConsultTopOfLibraryEffect>() {
         context.bind_tag(e.all_tag.clone(), (true, true));
         context.bind_tag(e.match_tag.clone(), (true, true));
-        return Some(e.mode == LibraryConsultMode::Exile);
+        // Exiled and milled consulted cards leave the library.
+        return Some(e.mode != LibraryConsultMode::Reveal);
     }
     if let Some(e) = payload.downcast_ref::<ReturnAllToBattlefieldEffect>() {
         return Some(context.filter_selects_library(&e.filter));

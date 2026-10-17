@@ -360,6 +360,10 @@ pub enum TriggerKind {
         source: ObjectFilter,
         target: ObjectFilter,
         source_surface: DamageSourceSurface,
+        /// The damaged object must be a target of the damage source's
+        /// resolving spell or ability ("deals damage to that creature").
+        #[cfg_attr(feature = "serde", serde(default))]
+        recipient_is_source_target: bool,
     },
     DealsDamageToPlayer {
         source: ObjectFilter,
@@ -1536,6 +1540,20 @@ impl Trigger {
                 source,
                 target,
                 source_surface,
+                recipient_is_source_target: false,
+            },
+        )
+    }
+    /// "Whenever <source> that targets only <object> deals damage to that
+    /// <object>": the recipient is one of the source's own targets.
+    pub fn deals_damage_to_source_target(source: ObjectFilter, target: ObjectFilter) -> Self {
+        Self::typed(
+            "deals_damage_to",
+            TriggerKind::DealsDamageTo {
+                source,
+                target,
+                source_surface: DamageSourceSurface::Filter,
+                recipient_is_source_target: true,
             },
         )
     }

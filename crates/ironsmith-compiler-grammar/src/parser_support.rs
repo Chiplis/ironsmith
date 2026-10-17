@@ -73,6 +73,18 @@ pub fn spell_card_prefers_resolution_line_merge(card: &crate::card::CardBuilder)
 pub fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_delayed_next_turn_intro_lexed(tokens)
         || looks_like_reflexive_followup_intro_lexed(tokens)
+        || looks_like_each_of_that_players_upkeeps_intro_lexed(tokens)
+}
+
+/// "At the beginning of each of that player's upkeeps, ..." (Ertai's
+/// Meddling): a spell's recurring delayed trigger about the player its
+/// earlier instruction named, so it belongs to that spell's resolution.
+fn looks_like_each_of_that_players_upkeeps_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens);
+    words.parses_any_prefix(&[
+        &["at", "the", "beginning", "of", "each", "of", "that", "player's", "upkeeps"],
+        &["at", "the", "beginning", "of", "each", "of", "that", "players", "upkeeps"],
+    ])
 }
 
 pub fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {

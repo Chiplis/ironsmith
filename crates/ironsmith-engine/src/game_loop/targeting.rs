@@ -2107,6 +2107,53 @@ fn retain_targets_satisfying_announcement_condition(
     });
 }
 
+/// "You can't choose an untapped creature as this spell's target as you cast
+/// it." (Enthralling Hold): the spell's own static restriction applies only
+/// while its targets are announced (CR 601.2c). It is not part of the target
+/// specification, so the resolution recheck (CR 608.2b) never reads it, and a
+/// permanent source (whose abilities are not this spell's) is unaffected.
+fn retain_targets_allowed_by_cast_target_restrictions(
+    game: &GameState,
+    caster: PlayerId,
+    source_id: Option<ObjectId>,
+    legal_targets: &mut Vec<Target>,
+) {
+    use crate::filter::ObjectFilterExt as _;
+    let Some(source) = source_id.and_then(|id| game.object(id)) else {
+        return;
+    };
+    if source.zone == crate::zone::Zone::Battlefield {
+        return;
+    }
+    let forbidden: Vec<&ObjectFilter> = source
+        .abilities
+        .iter()
+        .filter_map(|ability| {
+            let AbilityKind::Static(ability) = &ability.kind else {
+                return None;
+            };
+            match &ability.compiled_model()?.payload {
+                ironsmith_core::StaticAbilityPayload::CastTargetRestriction {
+                    forbidden, ..
+                } => Some(forbidden),
+                _ => None,
+            }
+        })
+        .collect();
+    if forbidden.is_empty() {
+        return;
+    }
+    let context = game.filter_context_for(caster, Some(source.id));
+    legal_targets.retain(|target| match target {
+        Target::Object(id) => game.object(*id).is_none_or(|object| {
+            !forbidden
+                .iter()
+                .any(|filter| filter.matches(object, &context, game))
+        }),
+        Target::Player(_) => true,
+    });
+}
+
 fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     game: &GameState,
     effect: &Effect,
@@ -2244,6 +2291,12 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
             retain_targets_satisfying_announcement_condition(
                 game,
                 effect,
+                caster,
+                source_id,
+                &mut legal_targets,
+            );
+            retain_targets_allowed_by_cast_target_restrictions(
+                game,
                 caster,
                 source_id,
                 &mut legal_targets,
@@ -2595,6 +2648,12 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         retain_targets_satisfying_announcement_condition(
             game,
             effect,
+            caster,
+            source_id,
+            &mut legal_targets,
+        );
+        retain_targets_allowed_by_cast_target_restrictions(
+            game,
             caster,
             source_id,
             &mut legal_targets,
@@ -3332,11 +3391,13 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
             filter,
             fewer,
             as_you_activate,
+            minimum_difference,
         } => PlayerFilter::OpponentWithMoreControlledObjectsThan {
             player: Box::new(specialize_iterated_player_filter(compared, player)),
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),
             fewer: *fewer,
             as_you_activate: *as_you_activate,
+            minimum_difference: *minimum_difference,
         },
         PlayerFilter::ControlsMost { filter } => PlayerFilter::ControlsMost {
             filter: Box::new(specialize_iterated_player_object_filter(filter, player)),

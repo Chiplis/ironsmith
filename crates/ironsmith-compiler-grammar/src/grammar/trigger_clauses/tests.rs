@@ -1317,6 +1317,7 @@ fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
         source,
         target,
         source_surface,
+        ..
     } = *object
     else {
         panic!("expected object damage branch");

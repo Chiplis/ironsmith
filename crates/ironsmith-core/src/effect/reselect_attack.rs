@@ -81,16 +81,41 @@ impl ReselectAttackTargetEffect {
 /// trade the attackers they block, provided each could legally block every
 /// creature the other blocks. Neither is declared as a blocker again, so no
 /// block triggers fire, and every blocked attacker stays blocked (CR 509.1h).
+///
+/// With `between_attackers` (General Jarkeld) the pair are two blocked
+/// attacking creatures instead: if each could be blocked by all creatures the
+/// other is blocked by, every creature blocking exactly one of them stops
+/// blocking it and blocks the other. Appended with a serde default; omitted
+/// from Debug when false.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+#[derive(Clone, PartialEq, TagKeyWalk)]
 pub struct ExchangeBlocksEffect {
-    /// The two blocking creatures.
+    /// The two blocking creatures (or blocked attackers).
     pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub between_attackers: bool,
+}
+
+impl std::fmt::Debug for ExchangeBlocksEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("ExchangeBlocksEffect");
+        debug.field("target", &self.target);
+        if self.between_attackers {
+            debug.field("between_attackers", &true);
+        }
+        debug.finish()
+    }
 }
 
 impl ExchangeBlocksEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, between_attackers: false }
+    }
+
+    /// The pair are blocked attackers that trade their blockers.
+    pub fn between_attackers(mut self) -> Self {
+        self.between_attackers = true;
+        self
     }
 }
 

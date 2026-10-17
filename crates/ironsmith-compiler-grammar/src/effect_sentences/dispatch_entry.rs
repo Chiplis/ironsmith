@@ -2738,6 +2738,27 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += consumed;
             continue;
         }
+        // "<Exile cost>: Copy those exiled cards. You may cast up to three of
+        // the copies ..." (Baron Helmut Zemo): the cost-exiled cards.
+        if effects.is_empty()
+            && let Some((program, consumed)) =
+                super::copy_cast_procedure::cost_exiled_cards_copy_cast(&sentences, sentence_idx)
+        {
+            effects.extend(program);
+            carried_context = None;
+            sentence_idx += consumed;
+            continue;
+        }
+        // "Copy a card you exiled with cards named Arcane Savant. You may
+        // cast the copy without paying its mana cost." (Arcane Savant).
+        if let Some((program, consumed)) =
+            super::copy_cast_procedure::chosen_filtered_card_copy_cast(&sentences, sentence_idx)
+        {
+            effects.extend(program);
+            carried_context = None;
+            sentence_idx += consumed;
+            continue;
+        }
         // "Copy the enchanted instant card. You may cast the copy without
         // paying its mana cost." (Spellweaver Volute).
         if let Some((cast, consumed)) =
@@ -4545,6 +4566,9 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
         return Ok(Some(effect));
     }
     if let Some(effect) = super::uncontrolled_land_mana_permission::parse(tokens)? {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = super::stored_die_result_reroll::parse(tokens)? {
         return Ok(Some(effect));
     }
     // A relative player subject remains the actor of its simple action.
@@ -6803,6 +6827,46 @@ fn parse_temporary_counter_placement_replacement(tokens: &[OwnedLexToken]) -> Op
     )
 }
 
+/// "Until end of turn, if one or more tokens would be created under your
+/// control, twice that many of those tokens are created instead." (Kaya,
+/// Geist Hunter): a resolving, duration-bound token-creation multiplier
+/// (CR 611.2a, 614.1a), the temporary form of Parallel Lives.
+fn parse_temporary_token_creation_multiplier(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let (mode, rest) = if let Some(rest) = words.strip_prefix(&["until", "end", "of", "turn"][..]) {
+        (crate::effects::ReplacementApplyMode::UntilEndOfTurn, rest)
+    } else if let Some(rest) = words.strip_prefix(&["until", "your", "next", "turn"][..]) {
+        (crate::effects::ReplacementApplyMode::UntilYourNextTurn, rest)
+    } else {
+        return None;
+    };
+    let rest = rest.strip_prefix(
+        &[
+            "if", "one", "or", "more", "tokens", "would", "be", "created", "under", "your",
+            "control",
+        ][..],
+    )?;
+    let (factor, rest) = match rest {
+        ["twice", rest @ ..] => (2, rest),
+        ["three", "times", rest @ ..] => (3, rest),
+        _ => return None,
+    };
+    if rest != ["that", "many", "of", "those", "tokens", "are", "created", "instead"] {
+        return None;
+    }
+    Some(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterTokenCreationMultiplier {
+            spec: ironsmith_core::RegisterTokenCreationMultiplierEffect::new(
+                PlayerFilter::You,
+                factor,
+                mode,
+            ),
+        }),
+    ))
+}
+
 /// Finalize value ownership for whole-body readers that bypass the sentence
 /// loop. A unique, unquoted where-X clause in one sentence owns its values.
 pub(crate) fn bind_single_outer_where_x(
@@ -7183,11 +7247,227 @@ fn parse_named_control_condition_then_attach_those(
     Ok(Some(effects))
 }
 
+/// The body of the last per-target-player loop in `effects`, looking through
+/// source-sentence wrappers.
+fn last_target_player_loop_body_mut(effects: &mut [EffectAst]) -> Option<&mut Vec<EffectAst>> {
+    match effects.last_mut()? {
+        EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. }) => {
+            Some(effects)
+        }
+        EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+            filter: PlayerFilter::Target(_),
+            effects,
+            ..
+        }) => Some(effects),
+        EffectAst::SourceSentence { effects, .. } => last_target_player_loop_body_mut(effects),
+        _ => None,
+    }
+}
+
+/// "<any number of> target opponents each discard a card. For each of those
+/// opponents who didn't discard a <filter> card, <effect>." (Hollow
+/// Marauder): the consequence is checked once per targeted player against the
+/// card that player discarded, inside the same per-player loop, and an
+/// opponent who discarded nothing also "didn't discard" such a card. The
+/// consequence's implicit actor stays the ability's controller.
+fn parse_for_each_of_those_players_who_didnt_discard(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() < 2 {
+        return Ok(None);
+    }
+    let last = sentences[sentences.len() - 1];
+    let Some(comma) = last.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    let head_words = crate::lexer::token_word_refs(&last[..comma]);
+    let [
+        "for",
+        "each",
+        "of",
+        "those",
+        "opponents" | "players",
+        "who",
+        "didn't" | "didnt",
+        "discard",
+        ..,
+    ] = head_words.as_slice()
+    else {
+        return Ok(None);
+    };
+    let Some(discard_idx) = last[..comma].iter().position(|token| token.is_word("discard")) else {
+        return Ok(None);
+    };
+    let filter_tokens = &last[discard_idx + 1..comma];
+    let effect_tokens = trim_edge_punctuation(&last[comma + 1..]);
+    if filter_tokens.is_empty() || effect_tokens.is_empty() {
+        return Ok(None);
+    }
+    let start = (last.as_ptr() as usize).saturating_sub(tokens.as_ptr() as usize)
+        / std::mem::size_of::<OwnedLexToken>();
+    if start == 0 || start > tokens.len() {
+        return Ok(None);
+    }
+    let mut filter = crate::object_filters::parse_object_filter(filter_tokens, false)?;
+    if filter.zone == Some(Zone::Battlefield)
+        && filter_tokens
+            .iter()
+            .any(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        filter.zone = None;
+    }
+    let mut effects = parse_effect_sentences_lexed(&tokens[..start])?;
+    let Some(body) = last_target_player_loop_body_mut(&mut effects) else {
+        return Ok(None);
+    };
+    if !body.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Discard { .. }),
+                ..
+            })
+        )
+    }) {
+        return Ok(None);
+    }
+    let first_span = effect_tokens
+        .first()
+        .map(|token| token.span())
+        .unwrap_or_else(crate::cards::builders::TextSpan::synthetic);
+    let starts_with_actor = effect_tokens.first().is_some_and(|token| token.is_word("you"));
+    let mut consequence_tokens = Vec::with_capacity(effect_tokens.len() + 1);
+    if !starts_with_actor {
+        consequence_tokens.push(OwnedLexToken::word("you".to_string(), first_span));
+    }
+    consequence_tokens.extend(effect_tokens.iter().cloned());
+    let consequence = super::chain_carry::parse_effect_chain(&consequence_tokens)?;
+    body.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::Not(Box::new(PredicateAst::Player(
+            crate::cards::builders::PlayerPredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::That,
+                tag: crate::tag::CompilerReferenceTag::It.bind(),
+                filter,
+                mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
+            },
+        ))),
+        if_true: consequence,
+        if_false: Vec::new(),
+    }));
+    Ok(Some(effects))
+}
+
+/// The last "put a counter on it or remove one from it" choice in `effects`,
+/// looking through source-sentence wrappers.
+fn last_put_or_remove_counters_mut(effects: &mut [EffectAst]) -> Option<&mut EffectAst> {
+    match effects.last_mut()? {
+        effect @ EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters { .. }),
+            ..
+        }) => Some(effect),
+        EffectAst::SourceSentence { effects, .. } => last_put_or_remove_counters_mut(effects),
+        _ => None,
+    }
+}
+
+/// "Put a charge counter on it or remove one from it. When you remove a
+/// counter this way, <reflexive>." (Immard, the Stormcleaver): the reflexive
+/// trigger belongs to the removal branch only, so the choice becomes two
+/// explicit modes and the follow-up is a "when you do" of the removal.
+fn parse_put_or_remove_then_when_removed_this_way(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() < 2 {
+        return Ok(None);
+    }
+    let last = sentences[sentences.len() - 1];
+    let Some(comma) = last.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    let head_words = crate::lexer::token_word_refs(&last[..comma]);
+    if !head_words.starts_with(&["when", "you", "remove"])
+        || !head_words.ends_with(&["this", "way"])
+        || !head_words.iter().any(|word| matches!(*word, "counter" | "counters"))
+    {
+        return Ok(None);
+    }
+    let start = (last.as_ptr() as usize).saturating_sub(tokens.as_ptr() as usize)
+        / std::mem::size_of::<OwnedLexToken>();
+    if start == 0 || start > tokens.len() {
+        return Ok(None);
+    }
+    let mut effects = parse_effect_sentences_lexed(&tokens[..start])?;
+    let Some(choice) = last_put_or_remove_counters_mut(&mut effects) else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Counters(CounterActionAst::PutOrRemoveCounters {
+                put_counter_type,
+                put_count,
+                remove_counter_type,
+                remove_count,
+                put_mode_text,
+                remove_mode_text,
+                target,
+                target_count,
+            }),
+        ..
+    }) = choice
+    else {
+        return Ok(None);
+    };
+    let span = last[0].span();
+    let mut rewritten = vec![
+        OwnedLexToken::word("when".to_string(), span),
+        OwnedLexToken::word("you".to_string(), span),
+        OwnedLexToken::word("do".to_string(), span),
+    ];
+    rewritten.extend(last[comma..].iter().cloned());
+    let followup = parse_effect_sentences_lexed(&rewritten)?;
+    let mut remove_effects = vec![EffectAst::subject_verb_remove_up_to_any_counters(
+        remove_count.clone(),
+        target.clone(),
+        Some(*remove_counter_type),
+        false,
+    )];
+    remove_effects.extend(followup);
+    let modes = vec![
+        crate::cards::builders::ChooseOneModeAst {
+            description: put_mode_text.clone(),
+            effects: vec![EffectAst::subject_verb_put_counters(
+                *put_counter_type,
+                put_count.clone(),
+                target.clone(),
+                *target_count,
+                false,
+            )],
+        },
+        crate::cards::builders::ChooseOneModeAst {
+            description: remove_mode_text.clone(),
+            effects: remove_effects,
+        },
+    ];
+    *choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+        chooser: PlayerFilter::You,
+        modes,
+    });
+    Ok(Some(effects))
+}
+
 pub fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(normalized) = normalize_owner_of_serial_target_subject(tokens) {
         return parse_effect_sentences_lexed(&normalized);
+    }
+    if let Some(effects) = parse_put_or_remove_then_when_removed_this_way(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_for_each_of_those_players_who_didnt_discard(tokens)? {
+        return Ok(effects);
     }
     if let Some(effects) = parse_named_control_condition_then_attach_those(tokens)? {
         return Ok(effects);
@@ -7313,6 +7593,9 @@ pub fn parse_effect_sentences_lexed(
             .or(scoped_damage_multiplier::parse(tokens)?)
             .or(destruction_damage_shield::parse(tokens)?)
     {
+        return Ok(vec![effect]);
+    }
+    if let Some(effect) = parse_temporary_token_creation_multiplier(tokens) {
         return Ok(vec![effect]);
     }
     if let Some(effect) = parse_temporary_counter_placement_replacement(tokens) {
@@ -9274,6 +9557,7 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { .. })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaColorsAmong { .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaEqualToManaCost { .. })
@@ -13837,6 +14121,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                 amount,
                 ..
@@ -14314,7 +14599,8 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. },
+                ReplacementActionAst::RegisterDamageMultiplier { .. }
+                | ReplacementActionAst::RegisterTokenCreationMultiplier { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },

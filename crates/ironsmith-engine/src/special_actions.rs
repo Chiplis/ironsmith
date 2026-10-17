@@ -382,6 +382,61 @@ fn morph_cost_increase(game: &GameState) -> u32 {
     total
 }
 
+/// Total generic reduction from "Unlock costs you pay cost {N} less."
+/// statics (Inquisitive Glimmer) controlled by `player` (CR 709.5c).
+fn unlock_cost_reduction(game: &GameState, player: PlayerId) -> u32 {
+    let mut total = 0u32;
+    for id in game.battlefield.iter().copied() {
+        if game.is_phased_out(id) || game.controller_of_id(id) != Some(player) {
+            continue;
+        }
+        let Some(characteristics) = game.current_characteristics(id) else {
+            continue;
+        };
+        for ability in characteristics.static_abilities.iter() {
+            if let Some(model) = ability.compiled_model()
+                && let ironsmith_core::StaticAbilityPayload::UnlockCostReduction {
+                    generic_reduction,
+                } = &model.payload
+            {
+                total = total.saturating_add(*generic_reduction);
+            }
+        }
+    }
+    total
+}
+
+/// Removes up to `reduction` generic mana from the first mana component of a
+/// special-action cost (each branch of a choice of costs separately).
+fn reduce_total_cost_generic(
+    total_cost: &crate::cost::TotalCost,
+    reduction: u32,
+) -> crate::cost::TotalCost {
+    match total_cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => {
+            let mut applied = false;
+            crate::cost::TotalCost::from_costs(
+                costs
+                    .iter()
+                    .map(|cost| match cost.mana_cost_ref() {
+                        Some(mana_cost) if !applied => {
+                            applied = true;
+                            crate::costs::Cost::mana(mana_cost.reduce_generic(reduction))
+                        }
+                        _ => cost.clone(),
+                    })
+                    .collect(),
+            )
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => crate::cost::TotalCost::one_of(
+            branches
+                .iter()
+                .map(|branch| reduce_total_cost_generic(branch, reduction))
+                .collect(),
+        ),
+    }
+}
+
 /// Adds `increase` generic mana to a turn-face-up cost: to its mana
 /// component when it has one, otherwise as an extra mana component
 /// (a non-mana morph cost still costs {N} more).
@@ -499,6 +554,40 @@ fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
         .find_map(|method| method.plot_cost().cloned())
 }
 
+/// The card's plot cost: printed, or granted in its current zone ("The top
+/// card of your library has plot. The plot cost is equal to its mana cost.",
+/// Fblthp, Lost on the Range).
+fn plot_cost_for(
+    game: &GameState,
+    player: PlayerId,
+    object: &crate::object::Object,
+) -> Option<crate::mana::ManaCost> {
+    plot_cost(object).or_else(|| {
+        game.effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(game, object.id, object.zone, player)
+            .into_iter()
+            .find_map(|granted| granted.method.plot_cost().cloned())
+    })
+}
+
+/// CR 702.170a with Fblthp, Lost on the Range: the top card of `player`'s
+/// own library may be plotted when it is nonland and a permanent they
+/// control lets them plot nonland cards from the top of their library.
+fn plots_from_top_of_library(
+    game: &GameState,
+    player: PlayerId,
+    object: &crate::object::Object,
+) -> bool {
+    object.zone == Zone::Library
+        && object.owner == player
+        && game
+            .player(player)
+            .is_some_and(|state| state.library.last() == Some(&object.id))
+        && !object.is_land()
+        && game.player_may_plot_nonland_from_top_of_library(player)
+}
+
 /// The plot special action's cost (CR 702.170a): the card's plot cost,
 /// reduced by "Plotting cards from your hand costs {N} less" statics of
 /// permanents the plotting player controls.
@@ -508,7 +597,11 @@ fn plot_special_action_cost(
     card_id: ObjectId,
 ) -> Result<crate::mana::ManaCost, ActionError> {
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    let cost = plot_cost(object).ok_or(ActionError::NoSuchAbility)?;
+    let cost = plot_cost_for(game, player, object).ok_or(ActionError::NoSuchAbility)?;
+    // "Plotting cards from your hand costs {N} less" reads only hand plots.
+    if object.zone != Zone::Hand {
+        return Ok(cost);
+    }
     let checked =
         game.continuous_query_snapshot()
             .map_err(|error| ActionError::ExecutionFailure {
@@ -1369,6 +1462,49 @@ fn ignore_attached_restriction_cost() -> crate::cost::TotalCost {
     ))
 }
 
+/// The authored cost of an attached-object ignore permission ("exile three
+/// cards from their graveyard", Lost in Thought), when it has one.
+fn authored_ignore_attached_restriction_cost(
+    game: &GameState,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> Option<crate::cost::TotalCost> {
+    let ability = game.object(source_id)?.abilities.get(ability_index)?;
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    match &static_ability.compiled_model()?.payload {
+        ironsmith_core::StaticAbilityPayload::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn {
+            cost,
+            ..
+        } => Some(cost.clone()),
+        _ => None,
+    }
+}
+
+/// The cost of [`SpecialAction::IgnoreAttachedRestriction`]: the authored
+/// cost, or a sacrificed permanent for the original wording.
+pub(crate) fn ignore_attached_restriction_total_cost(
+    game: &GameState,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> crate::cost::TotalCost {
+    authored_ignore_attached_restriction_cost(game, source_id, ability_index)
+        .unwrap_or_else(ignore_attached_restriction_cost)
+}
+
+/// Oracle rendering of the cost paid to ignore an attached restriction, for
+/// the [`SpecialAction::IgnoreAttachedRestriction`] label.
+pub fn ignore_attached_restriction_cost_display(
+    game: &GameState,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> String {
+    authored_ignore_attached_restriction_cost(game, source_id, ability_index)
+        .map(|cost| cost.display())
+        .unwrap_or_else(|| "Sacrifice a permanent".to_string())
+}
+
 fn can_ignore_attached_restriction(
     game: &GameState,
     player: PlayerId,
@@ -1397,8 +1533,11 @@ fn can_ignore_attached_restriction(
         return Err(ActionError::NoSuchAbility);
     };
     if !ability.functions_in(&Zone::Battlefield)
-        || static_ability.id()
-            != crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+        || !matches!(
+            static_ability.id(),
+            crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+                | crate::static_abilities::StaticAbilityId::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn
+        )
         || !static_ability.is_active(game, source_id)
     {
         return Err(ActionError::NoSuchAbility);
@@ -2287,6 +2426,12 @@ fn adjusted_room_unlock_cost(
     door: RoomDoor,
 ) -> Result<crate::cost::TotalCost, ActionError> {
     let cost = room_unlock_cost(game, room_id, door).ok_or(ActionError::NoSuchAbility)?;
+    let reduction = unlock_cost_reduction(game, player);
+    let cost = if reduction > 0 {
+        reduce_total_cost_generic(&cost, reduction)
+    } else {
+        cost
+    };
     Ok(adjust_total_cost_mana_components_for_reason(
         game,
         player,
@@ -2725,7 +2870,7 @@ fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(),
     has_sorcery_speed_special_action_timing(game, player)?;
 
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    if object.zone != Zone::Hand {
+    if object.zone != Zone::Hand && !plots_from_top_of_library(game, player, object) {
         return Err(ActionError::WrongZone {
             expected: Zone::Hand,
             actual: object.zone,
@@ -2735,7 +2880,7 @@ fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(),
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some(_cost) = plot_cost(object) else {
+    let Some(_cost) = plot_cost_for(game, player, object) else {
         return Err(ActionError::NoSuchAbility);
     };
 

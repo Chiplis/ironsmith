@@ -5949,6 +5949,23 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             "the number of times {} was dealt excess damage this turn",
             filter.description()
         ),
+        TurnHistoryCount::PlayerCountersRemoved {
+            player,
+            counter_type,
+        } => {
+            let noun = match counter_type {
+                Some(ironsmith_core::CounterType::Energy) => "{E}".to_string(),
+                Some(kind) => format!("{} counters", kind.description()),
+                None => "counters".to_string(),
+            };
+            match player {
+                PlayerFilter::You => format!("the amount of {noun} you've paid or lost this turn"),
+                _ => format!(
+                    "the amount of {noun} {} paid or lost this turn",
+                    describe_player_filter(player)
+                ),
+            }
+        }
         TurnHistoryCount::LandsPlayed(player) => match player {
             PlayerFilter::You => "the number of lands you've played this turn".to_string(),
             _ => format!(
@@ -6433,6 +6450,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::VoteCount(option) => format!("the number of {} votes", option.to_ascii_lowercase()),
+        Value::GreatestEqualStoredDieResultsOnSource => {
+            "the greatest number of stored results on it of the same value".to_string()
+        }
+        Value::IteratedPlayerChosenNumber => "the number they chose".to_string(),
+        Value::GreatestManaValueExiledThisTurnSinceSourceEntered => {
+            "the greatest number noted for it this turn".to_string()
+        }
         Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => "the number of spells and abilities that caused one or more players to guess or to group cards or permanents into a pile this turn".to_string(),
         Value::PlayersChosenNumberExtreme { highest, guess } => match (*guess, *highest) {
             (true, _) => "the number they guessed".to_string(),
@@ -7425,6 +7449,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of loyalty counters removed to activate it".to_string()
         }
         Value::EventValue(EventValueSpec::LifePaidToActivate) => "that much".to_string(),
+        Value::EventValue(EventValueSpec::PermanentsSacrificedToActivate) => {
+            "the number of permanents sacrificed to activate it".to_string()
+        }
         Value::EventValue(EventValueSpec::ExcessDamage) => "that excess damage".to_string(),
         Value::EventValue(EventValueSpec::DieBatchTotal) => "the total result of those dice".to_string(),
         Value::EventValue(EventValueSpec::DieResultsAtLeast(minimum)) => format!("the number of those die results of {minimum} or higher"),

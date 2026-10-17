@@ -188,6 +188,7 @@ fn u037_scheduler_skips_end_combat_triggers_and_defers_procedure_triggers() {
         expires_at_end_of_combat: true,
         bound_extra_turn_index: None,
         while_any_tagged_object_in_zone: None,
+        while_source_tapped: None,
         target_objects: Vec::new(),
         ability_source: Some(source),
         ability_source_stable_id: None,

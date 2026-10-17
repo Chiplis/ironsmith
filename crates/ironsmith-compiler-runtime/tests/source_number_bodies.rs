@@ -487,7 +487,7 @@ fn delayed_numeric_match_keeps_the_admitted_host_acquisition_and_latest_departur
         g.effect_store.delayed_triggers.push(ironsmith::triggers::DelayedTrigger{
             linked_exile_owner:None,source_number_owner:Some(owner.clone()),trigger:ability.trigger.clone(),effects:ability.effects.clone(),
             one_shot:false,x_value:None,not_before_turn:None,expires_at_turn:None,expires_before_controller_turn_after:None,expires_after_controller_turn_after:None,
-            expires_at_end_of_combat:false,bound_extra_turn_index:None,while_any_tagged_object_in_zone:None,
+            expires_at_end_of_combat:false,bound_extra_turn_index:None,while_any_tagged_object_in_zone:None,while_source_tapped:None,
             target_objects:vec![watched],ability_source:Some(source),ability_source_stable_id:Some(snapshot.stable_id),
             ability_source_name:Some(snapshot.name.clone()),ability_source_snapshot:Some(snapshot),controller:A,
             choices:ability.choices.clone(),tagged_objects:Default::default(),tagged_players:Default::default(),

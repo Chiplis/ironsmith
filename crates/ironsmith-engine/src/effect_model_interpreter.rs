@@ -517,6 +517,9 @@ where
             ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurnEnd => {
                 converted.until_controller_next_turn_end()
             }
+            ironsmith_core::DelayedTriggerDuration::WhileSourceTapped => {
+                converted.until_source_untaps()
+            }
         };
         // Backward compatibility for compiler effects authored before the
         // typed duration field was introduced.
@@ -544,6 +547,7 @@ where
                 payload.duration.clone(),
             );
         converted.activated_from = payload.activated_from.clone();
+        converted.activated_from_symbol_as_any_color = payload.activated_from_symbol_as_any_color;
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -739,6 +743,11 @@ where
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::AddManaEqualToManaCostEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::AddManaLostThisWayEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1200,6 +1209,8 @@ where
             convert_effects(payload.winner_effects.iter().cloned(), hooks)?,
         );
         converted.target = payload.target.clone();
+        converted.opponent = payload.opponent.clone();
+        converted.controller_must_win = payload.controller_must_win;
         return Ok(Effect::new(converted));
     }
     if let Some(converted) = hooks.runtime_external_model_effect_hook(&effect)? {
@@ -1648,6 +1659,8 @@ where
         }
         grant.spell_cost_increase_unless_targets = payload.spell_cost_increase_unless_targets.clone();
         grant.spell_cost_reduction_per_opponent = payload.spell_cost_reduction_per_opponent;
+        grant.during_your_turns = payload.during_your_turns;
+        grant.alternative_cost_x_is_mana_value = payload.alternative_cost_x_is_mana_value;
         grant = grant.with_lands_enter_tapped(payload.lands_enter_tapped);
         return Ok(Effect::new(grant));
     }
@@ -1884,6 +1897,11 @@ where
         return Ok(converted);
     }
     if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterTokenCreationMultiplierEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterCounterPlacementReplacementEffect>(&effect)
     {
         return Ok(converted);
@@ -2034,6 +2052,24 @@ where
         return Ok(Effect::new(payload.clone()));
     }
     if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(payload.clone()));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::RollAndStoreDieResultsEffect>(&effect)
+    {
+        return Ok(Effect::new(payload.clone()));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::DeclareBlockersByRandomPilesThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(*payload));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::RerollStoredDieResultsEffect>(&effect)
+    {
+        return Ok(Effect::new(payload.clone()));
+    }
+    if let Some(payload) =
         M::downcast_ref::<ironsmith_core::MustAttackPlayerThisTurnEffect>(&effect)
     {
         return Ok(Effect::new(
@@ -2095,6 +2131,7 @@ where
         runtime.excluded_subtypes = payload.excluded_subtypes.clone();
         runtime.allowed_subtypes = payload.allowed_subtypes.clone();
         runtime.secretly = payload.secretly;
+        runtime.note_for_source = payload.note_for_source;
         return Ok(Effect::new(runtime));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FlipCoinEffect>(&effect) {
@@ -2510,9 +2547,13 @@ where
         crate::effects::TagPlayersEffect,
         crate::effects::KeepGreatestManaValuePlayersEffect,
         crate::effects::RollDieKeepHighestPlayersEffect,
+        crate::effects::RetainSpellChoicesEffect,
+        crate::effects::PutRetainedSpellCopyOntoStackEffect,
         crate::effects::PayEnergyEffect,
         crate::effects::PayLifeEffect,
         crate::effects::RedistributeLifeTotalsEffect,
+        crate::effects::CoinFlipLifeStakesEffect,
+        crate::effects::RedirectEnteringSourceEffect,
         crate::effects::PayManaEffect,
         crate::effects::PopulateEffect,
         crate::effects::PutCountersEffect,
@@ -2526,6 +2567,7 @@ where
         crate::effects::UnblockSoleBlockedAttackersEffect,
         crate::effects::BlockAttackerOfChoiceEffect,
         crate::effects::PlayWithHandRevealedEffect,
+        crate::effects::RevealSourceInHandUntilOwnersNextTurnEffect,
         crate::effects::ChooseFriendsOrFoesEffect,
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
@@ -2551,6 +2593,7 @@ where
         crate::effects::NoteCountersEffect,
         crate::effects::AddManaOfColorsAmongEffect,
         crate::effects::AddManaEqualToManaCostEffect,
+        crate::effects::AddManaLostThisWayEffect,
         crate::effects::AddOneManaOfAnyColorAmongEffect,
         crate::effects::mana::AddManaOfImprintedColorsEffect,
         crate::effects::AddScaledManaEffect,

@@ -31,6 +31,8 @@ enum CollectionMarker {
     OwnedExiledWith,
     ExiledWith,
     FromYourGraveyard,
+    /// "from your graveyard and/or hand" (Invoke Calamity).
+    FromYourGraveyardOrHand,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +47,9 @@ enum Collection {
     SourceLinked { owned_by_you: bool },
     /// The caster's graveyard.
     YourGraveyard,
+    /// The caster's graveyard and hand together: each chosen card may come
+    /// from either zone.
+    YourGraveyardOrHand,
     /// Cards the caster owns outside the game (the sideboard, CR 400.11).
     OwnedOutsideGame,
 }
@@ -58,6 +63,13 @@ fn collection_marker<'a>(
         primitives::phrase(&["you", "own", "exiled", "with"])
             .value(CollectionMarker::OwnedExiledWith),
         primitives::phrase(&["exiled", "with"]).value(CollectionMarker::ExiledWith),
+        primitives::any_phrase(&[
+            &["from", "your", "graveyard", "and/or", "hand"],
+            &["from", "your", "graveyard", "or", "hand"],
+            &["from", "your", "hand", "and/or", "graveyard"],
+            &["from", "your", "hand", "or", "graveyard"],
+        ])
+        .value(CollectionMarker::FromYourGraveyardOrHand),
         primitives::phrase(&["from", "your", "graveyard"])
             .value(CollectionMarker::FromYourGraveyard),
     ))
@@ -220,6 +232,27 @@ fn parse_tagged_collection(tokens: &[OwnedLexToken]) -> Option<Collection> {
 /// [`parse_cast_or_play_tagged_clause`] for "you may cast ..." clauses,
 /// reached only when every established permission shape declined.
 pub(crate) fn parse_collection_cast_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    // "cast an artifact spell from your hand or graveyard by paying life
+    // equal to its mana value rather than paying its mana cost" (Anrakyr the
+    // Traveller): the price replaces the chosen card's mana cost.
+    let priced_tokens = trim_commas(tokens);
+    if let Some((body, price)) =
+        super::effect_cast_prices::replacement_price_suffix(&priced_tokens)?
+    {
+        let Some(mut effect) = parse_unpriced_collection_cast_clause(body)? else {
+            return Ok(None);
+        };
+        if super::effect_cast_prices::attach_price(&mut effect, &price) != 1 {
+            return Ok(None);
+        }
+        return Ok(Some(effect));
+    }
+    parse_unpriced_collection_cast_clause(tokens)
+}
+
+fn parse_unpriced_collection_cast_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed = trim_commas(tokens);
@@ -394,6 +427,12 @@ pub(crate) fn parse_collection_cast_clause(
             }
             Collection::YourGraveyard
         }
+        CollectionMarker::FromYourGraveyardOrHand => {
+            if !reference_tokens.is_empty() {
+                return Ok(None);
+            }
+            Collection::YourGraveyardOrHand
+        }
         CollectionMarker::ManaValue => return Ok(None),
     };
 
@@ -455,6 +494,20 @@ pub(crate) fn parse_collection_cast_clause(
         Collection::YourGraveyard => {
             filter.zone = Some(Zone::Graveyard);
             filter.owner = Some(PlayerFilter::You);
+        }
+        Collection::YourGraveyardOrHand => {
+            // One candidate pool spanning both zones: a union whose
+            // branches each carry the authored characteristics and a zone.
+            let mut graveyard = filter.clone();
+            graveyard.zone = Some(Zone::Graveyard);
+            graveyard.owner = Some(PlayerFilter::You);
+            let mut hand = filter.clone();
+            hand.zone = Some(Zone::Hand);
+            hand.owner = Some(PlayerFilter::You);
+            filter = ObjectFilter {
+                any_of: vec![graveyard, hand],
+                ..ObjectFilter::default()
+            };
         }
         Collection::OwnedOutsideGame => {
             filter.zone = Some(Zone::OutsideGame);

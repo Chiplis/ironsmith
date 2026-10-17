@@ -347,8 +347,8 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             _ => None,
         }
     {
-        let mut effect = parse_put_counters(&choice.object_tokens)?;
-        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        if let Ok(mut effect) = parse_put_counters(&choice.object_tokens)
+            && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
                     target,

@@ -30,7 +30,16 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
         if spec_names_player(&self.target) {
             return grant_player_protections(self, game, ctx);
         }
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
+        // "Each Horror you control gains all activated abilities of target
+        // artifact" (Grell Philosopher): every recipient in the set fixed at
+        // resolution (CR 611.2c) receives the same frozen copies.
+        let recipients = if self.activated_from.is_some()
+            && matches!(self.target.base(), ChooseSpec::All(_))
+        {
+            crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?
+        } else {
+            vec![resolve_single_object_for_effect(game, ctx, &self.target)?]
+        };
         if self.abilities.is_empty() && self.activated_from.is_none() {
             return Ok(EffectOutcome::resolved());
         }
@@ -44,18 +53,62 @@ impl EffectExecutor for GrantAbilitiesTargetEffect {
             // abilities later does not change this resolving grant.
             let copied = game.current_abilities(source_id).unwrap_or_default()
                 .into_iter().filter(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_)))
+                .map(|ability| match self.activated_from_symbol_as_any_color {
+                    Some(symbol) => with_symbol_paying_any_color(ability, symbol),
+                    None => ability,
+                })
                 .collect::<Vec<_>>();
             modifications.extend(copied.into_iter().map(Modification::AddAbilityGeneric));
         }
         modifications.extend(abilities.into_iter().map(Modification::AddAbility));
-        crate::effects::continuous::apply_captured_modifications(
-            game, ctx, EffectTarget::Specific(target_id), None, modifications, self.duration.clone(),
-        )
+        let mut outcome = EffectOutcome::resolved();
+        for target_id in recipients {
+            outcome = crate::effects::continuous::apply_captured_modifications(
+                game, ctx, EffectTarget::Specific(target_id), None, modifications.clone(), self.duration.clone(),
+            )?;
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
     }
+}
+
+/// "You may spend blue mana as though it were mana of any color to activate
+/// those abilities" (CR 609.4b): in the copied activation costs, every
+/// colored symbol may also be paid with mana of `symbol`. Only these copies
+/// change, so the permission covers exactly "those abilities".
+fn with_symbol_paying_any_color(
+    mut ability: crate::ability::Ability,
+    symbol: crate::mana::ManaSymbol,
+) -> crate::ability::Ability {
+    use crate::mana::ManaSymbol;
+    let crate::ability::AbilityKind::Activated(activated) = &mut ability.kind else {
+        return ability;
+    };
+    let widen = |cost: &crate::mana::ManaCost| -> Option<crate::mana::ManaCost> {
+        let mut changed = false;
+        let pips = cost.pips().iter().map(|pip| {
+            let colored = pip.iter().any(|alternative| matches!(alternative,
+                ManaSymbol::White | ManaSymbol::Blue | ManaSymbol::Black | ManaSymbol::Red | ManaSymbol::Green));
+            let mut pip = pip.clone();
+            if colored && !pip.contains(&symbol) {
+                pip.push(symbol);
+                changed = true;
+            }
+            pip
+        }).collect::<Vec<_>>();
+        changed.then(|| crate::mana::ManaCost::from_pips(pips))
+    };
+    activated.mana_cost = activated.mana_cost.clone().try_map(|cost| {
+        let widened = cost.mana_cost_ref().and_then(|mana| widen(mana));
+        Ok::<_, std::convert::Infallible>(match widened {
+            Some(widened) => crate::costs::Cost::mana(widened),
+            None => cost,
+        })
+    }).unwrap_or_else(|never| match never {});
+    ability
 }
 
 /// "Target creature gains landwalk of each of the land types of the

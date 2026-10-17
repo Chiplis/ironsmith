@@ -97,10 +97,32 @@ pub enum EffectAst {
     /// "If each of those creatures could block all creatures that the other
     /// is blocking, remove both of them from combat. Each one then blocks all
     /// creatures the other was blocking." (Sorrow's Path)
-    ExchangeBlocks { blockers: TargetAst },
+    ///
+    /// With `attackers`, the pair are blocked attacking creatures that trade
+    /// the creatures blocking exactly one of them (General Jarkeld).
+    ExchangeBlocks { blockers: TargetAst, attackers: bool },
+    /// "Flip a coin. If you win the flip, you gain N life and target opponent
+    /// loses N life, and you decide whether to flip again. If you lose the
+    /// flip, you lose N life and that opponent gains N life, and that player
+    /// decides whether to flip again. Double the life stakes with each flip."
+    /// (Game of Chaos)
+    CoinFlipLifeStakes { opponent: TargetAst, initial_stakes: u32 },
     /// "Creatures it was blocking that had become blocked by only this
     /// creature this combat become unblocked." (Ydwen Efreet)
     UnblockSoleBlockedAttackers(ironsmith_core::UnblockSoleBlockedAttackersEffect),
+    /// "Until end of turn, any time you could activate a mana ability, you may
+    /// pay 1 life. If you do, add {C}." (Channel): a player-owned mana ability
+    /// for the rest of the turn (CR 605.1a).
+    GrantPayLifeManaAbilityUntilEndOfTurn(ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect),
+    /// "roll five six-sided dice and store those results on it" (Centaur of
+    /// Attention).
+    RollAndStoreDieResults(ironsmith_core::RollAndStoreDieResultsEffect),
+    /// "you may reroll any number of this creature's stored results".
+    RerollStoredDieResults(ironsmith_core::RerollStoredDieResultsEffect),
+    /// "This turn, instead of declaring blockers, each defending player ...
+    /// divides them into ... piles ... Each creature in a pile that can block
+    /// the creature that pile is assigned to does so." (Camouflage)
+    DeclareBlockersByRandomPilesThisTurn,
     /// "Creatures it was blocking that had become blocked by only that
     /// creature this combat become unblocked." (False Orders): the same
     /// unblocking, for a referenced creature instead of the source.
@@ -116,6 +138,9 @@ pub enum EffectAst {
     /// "<player> plays with their hand revealed for as long as this creature
     /// remains on the battlefield" (Stromgald Spy).
     PlayWithHandRevealed(ironsmith_core::PlayWithHandRevealedEffect),
+    /// "Until that player's next turn, that player plays with that card
+    /// revealed in their hand and can't play it." (Firestorm Phoenix)
+    RevealSourceInHandUntilOwnersNextTurn(ironsmith_core::RevealSourceInHandUntilOwnersNextTurnEffect),
     /// "the last red instant or sorcery spell that dealt damage to you this
     /// turn": tags that damage source's event-time snapshot.
     TagLastDamageSource(ironsmith_core::TagLastDamageSourceEffect),
@@ -137,6 +162,15 @@ pub enum EffectAst {
     /// Marvel, Bold Plagiarist): copies the triggering counter placement's
     /// kind and amount onto `target`.
     PutTriggeringCounterKind { target: TargetAst },
+    /// "Target spell's controller exiles it ..." (Ertai's Meddling): keep the
+    /// target spell's announced choices (targets, X, modes, optional costs)
+    /// with its card, by stable identity, before it leaves the stack.
+    RetainSpellChoices { target: TargetAst, controller_tag: TagRef },
+    /// "... the player puts it onto the stack as a copy of the original
+    /// spell" (Ertai's Meddling): put the card back onto the stack (not cast)
+    /// with the retained choices of the spell it was, under that spell's
+    /// controller (CR 707.10).
+    PutRetainedSpellCopyOntoStack { target: TargetAst },
     /// "for each 1 damage that would be dealt to you until your next upkeep,
     /// you remove an echo counter from this enchantment instead" (Soul
     /// Echo): a resolution-registered replacement of damage to `player`.
@@ -1667,6 +1701,7 @@ impl EffectAst {
                 until_next_end_step: false,
                 until_next_turn_start: false,
                 during_next_turn: false,
+                until_end_of_combat_next_turn: false,
                 spell_filter: None,
                 surface: None,
                 max_plays: None,
@@ -1693,6 +1728,7 @@ impl EffectAst {
                 until_next_end_step: true,
                 until_next_turn_start: false,
                 during_next_turn: false,
+                until_end_of_combat_next_turn: false,
                 spell_filter: None,
                 surface: None,
                 max_plays: None,
@@ -1858,6 +1894,10 @@ impl EffectAst {
                     allow_land,
                     allow_any_color_for_cast,
                     surface,
+                    max_plays: None,
+                    during_your_turns: false,
+                    alternative_cost: None,
+                    alternative_cost_x_is_mana_value: false,
                 },
             ),
         )
@@ -3089,6 +3129,22 @@ impl EffectAst {
                 target,
                 duration,
                 allow_multiple,
+                color_choice: None,
+            }),
+        )
+    }
+
+    /// "<target> becomes that color": the color of an exact earlier local
+    /// color decision, bound during reference resolution.
+    pub fn subject_verb_become_that_color(target: TargetAst, duration: Until) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+                target,
+                duration,
+                allow_multiple: false,
+                color_choice: Some(ironsmith_core::ColorChoiceReference::Pending),
             }),
         )
     }
@@ -4777,6 +4833,14 @@ impl EffectAst {
         )
     }
 
+    pub fn subject_verb_add_mana_lost_this_way(player: PlayerAst, amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount }),
+        )
+    }
+
     pub fn subject_verb_add_mana_noted_type(player: PlayerAst, amount: Value) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
@@ -5060,7 +5124,26 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter }),
+            SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+                filter,
+                pay_life_equal_to_mana_value: false,
+            }),
+        )
+    }
+
+    /// "Rather than pay the mana cost of the next spell you cast this turn,
+    /// you may pay life equal to that spell's mana value."
+    pub fn subject_verb_pay_life_for_next_spell_this_turn(
+        player: PlayerAst,
+        filter: ObjectFilter,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+                filter,
+                pay_life_equal_to_mana_value: true,
+            }),
         )
     }
 
@@ -5739,6 +5822,7 @@ impl EffectAst {
                 secretly: false,
                 excluded_subtypes,
                 family: SubtypeFamily::Creature,
+                note_for_source: false,
             }),
         )
     }
@@ -5756,6 +5840,22 @@ impl EffectAst {
                 secretly,
                 excluded_subtypes: Vec::new(),
                 family: SubtypeFamily::Creature,
+                note_for_source: false,
+            }),
+        )
+    }
+
+    /// "Note a creature type that hasn't been noted for this Saga."
+    pub fn subject_verb_note_unnoted_creature_type(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Chooser,
+            player,
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCreatureType {
+                allowed_subtypes: Vec::new(),
+                secretly: false,
+                excluded_subtypes: Vec::new(),
+                family: SubtypeFamily::Creature,
+                note_for_source: true,
             }),
         )
     }
@@ -5769,6 +5869,7 @@ impl EffectAst {
                 secretly: false,
                 excluded_subtypes: Vec::new(),
                 family,
+                note_for_source: false,
             }),
         )
     }

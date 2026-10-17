@@ -425,6 +425,21 @@ fn parse_note(
     {
         return Ok(EffectAst::NoteTriggeringCreatureType);
     }
+    // "Note a creature type that hasn't been noted for this Saga" (Long
+    // List of the Ents): any creature type the source hasn't noted yet; it
+    // becomes the source's noted and chosen ("that") type.
+    if let ["a", "creature", "type", "that", rest @ ..] = words.as_slice()
+        && let Some(noted_at) = rest
+            .windows(3)
+            .position(|window| window == ["been", "noted", "for"])
+        && noted_at > 0
+        && rest[..noted_at]
+            .iter()
+            .all(|word| matches!(*word, "hasn't" | "hasnt" | "has" | "not" | "n't"))
+        && noted_at + 3 < rest.len()
+    {
+        return Ok(EffectAst::subject_verb_note_unnoted_creature_type(PlayerAst::You));
+    }
     // "note the number and kind of counters that were on that creature"
     // (Tawnos's Coffin): the referenced object's last-known counters, read
     // back by a later "with the noted number and kind of counters on it".
@@ -1156,12 +1171,34 @@ pub fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
 pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let target_tokens = trim_commas(tokens);
     if resource_grammar::parse_suspect_triggering_group_choice_shape(&target_tokens) {
-        // This definite event subset cannot bind to the source antecedent of
-        // an intervening-if. Keep the whole body unsupported until the counted
-        // event-set choice also proves that suspecting is possible.
-        return Err(CardTextError::ParseError(
-            "suspect-triggering-group-choice requires exact event-set selection and action feasibility".into(),
-        ));
+        // "you may suspect one of the other creatures" (Frantic Scapegoat,
+        // after "Whenever one or more other creatures you control enter"):
+        // choose exactly one member of the triggering entry batch, never the
+        // source antecedent of the intervening-if. Suspecting reports zero
+        // when the chosen creature is already suspected, so a following
+        // "If you do" sees whether it actually became suspected.
+        let group_tag = crate::util::helper_tag_for_tokens(&target_tokens, "suspect_group_choice");
+        let filter = ObjectFilter::creature()
+            .in_zone(crate::zone::Zone::Battlefield)
+            .match_tagged(
+                ironsmith_core::ZONE_CHANGE_GROUP_TAG,
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                    filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::You,
+                    tag: crate::tag::TagRef::of(group_tag.clone()),
+                }),
+                EffectAst::subject_verb_suspect(TargetAst::Tagged(
+                    crate::tag::TagRef::of(group_tag),
+                    span_from_tokens(&target_tokens),
+                )),
+            ],
+        });
     }
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(

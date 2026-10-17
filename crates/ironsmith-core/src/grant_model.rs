@@ -76,6 +76,10 @@ pub enum DerivedAlternativeCast<C> {
     /// foretell. Its foretell cost is equal to its mana cost reduced by
     /// {2}.", Dream Devourer; CR 702.143a). Appended for wire compatibility.
     ForetellFromCardManaCostReducedBy { reduction: u32 },
+    /// Plot whose cost is the card's mana cost ("The top card of your
+    /// library has plot. The plot cost is equal to its mana cost.", Fblthp,
+    /// Lost on the Range; CR 702.170a). Appended for wire compatibility.
+    PlotFromCardManaCost,
 }
 
 impl<C> DerivedAlternativeCast<C> {
@@ -93,6 +97,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
             Self::MadnessFromCardManaCost => "Madness",
             Self::ForetellFromCardManaCostReducedBy { .. } => "Foretell",
+            Self::PlotFromCardManaCost => "Plot",
             Self::ZoneCastFromCardManaCost { .. } => "Cast with additional cost",
         }
     }
@@ -153,6 +158,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::ForetellFromCardManaCostReducedBy { reduction } => {
                 DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction }
             }
+            Self::PlotFromCardManaCost => DerivedAlternativeCast::PlotFromCardManaCost,
             Self::ZoneCastFromCardManaCost {
                 zone,
                 additional_costs,
@@ -2100,6 +2106,14 @@ where
             return format!(
                 "Each {filter_desc} has emerge. The emerge cost is equal to its mana cost"
             );
+        }
+        if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::PlotFromCardManaCost) =
+            &self.grantable
+            && self.zone == Zone::Library
+            && self.top_card_only
+        {
+            return "The top card of your library has plot. The plot cost is equal to its mana cost"
+                .to_string();
         }
         if let Grantable::DerivedAlternativeCast(
             DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction },

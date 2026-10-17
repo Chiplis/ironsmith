@@ -39,8 +39,19 @@ pub fn parse_cast_target_from_your_graveyard_this_turn_shape(
     if target_body.is_empty() {
         return None;
     }
+    // "target creature card in a graveyard" (any player's graveyard) reads
+    // through the same targeted-permission shape as "from your graveyard".
     primitives::split_lexed_once_before_suffix(target_tokens, 2, || {
-        (primitives::phrase(&["from", "your", "graveyard"]), eof).void()
+        (
+            alt((
+                primitives::phrase(&["from", "your", "graveyard"]),
+                primitives::phrase(&["from", "a", "graveyard"]),
+                primitives::phrase(&["in", "your", "graveyard"]),
+                primitives::phrase(&["in", "a", "graveyard"]),
+            )),
+            eof,
+        )
+            .void()
     })?;
     Some(CastTargetFromYourGraveyardThisTurnShape { target_tokens })
 }

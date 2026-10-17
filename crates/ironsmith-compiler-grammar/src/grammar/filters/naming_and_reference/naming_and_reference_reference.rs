@@ -121,6 +121,24 @@ pub(in super::super) fn apply_reference_and_tag_stage(
                 early_return: false,
             };
         }
+        // "a Curse attached to you" (Lynde, Cheerful Tormentor): an Aura
+        // enchanting the filter's controller-relative player.
+        if attached_to_words == ["you"] {
+            let trim_start = if attached_idx >= 2
+                && all_words[attached_idx - 2] == THAT_WORD
+                && word_is_any(all_words[attached_idx - 1], BE_VERB_WORDS)
+            {
+                attached_idx - 2
+            } else {
+                attached_idx
+            };
+            all_words.truncate(trim_start);
+            filter.attached_to_player = Some(PlayerFilter::You);
+            return ReferenceTagStageResult {
+                source_linked_exile_reference: false,
+                early_return: false,
+            };
+        }
         let references_it =
             words_start_with_any_phrase(attached_to_words, ATTACHED_TO_TAGGED_OBJECT_PREFIXES)
                 .is_some();
@@ -182,6 +200,20 @@ pub(in super::super) fn apply_reference_and_tag_stage(
     if let Some(relation_idx) = find_blocking_source_phrase(all_words) {
         filter.blocking = true;
         filter.in_combat_with_source = true;
+        all_words.truncate(relation_idx);
+    }
+
+    // "creature that hasn't been phased out with this Attraction" (Ferris
+    // Wheel): the source's phase-out history excludes the candidate.
+    if let Some(relation_idx) = find_not_phased_out_with_source_phrase(all_words) {
+        filter.not_phased_out_with_source = true;
+        let segment_words = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+        let segment_word_refs = segment_words.to_word_refs();
+        if let Some(segment_idx) = find_not_phased_out_with_source_phrase(&segment_word_refs)
+            && let Some(token_start) = segment_words.map_word_or_end_to_token_boundary(segment_idx)
+        {
+            segment_tokens.truncate(token_start);
+        }
         all_words.truncate(relation_idx);
     }
 

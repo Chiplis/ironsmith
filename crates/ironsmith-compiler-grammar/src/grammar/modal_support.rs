@@ -245,14 +245,15 @@ pub fn parse_modal_header(
         && let Some(comma_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Comma)
         && choose_idx > comma_idx
     {
-        let start_idx = if effect_start_idx > 0 {
-            effect_start_idx
-        } else if tokens.first().is_some_and(|token| {
+        // An ability-word label ("Trick Arrows — Whenever ...") moves the
+        // start past its dash; the trigger keyword still has to be skipped
+        // there, or the trigger subject absorbs it.
+        let start_idx = if tokens.get(effect_start_idx).is_some_and(|token| {
             token.is_word("whenever") || token.is_word("when") || token.is_word("at")
         }) {
-            1
+            effect_start_idx + 1
         } else {
-            0
+            effect_start_idx
         };
         if comma_idx > start_idx {
             let trigger_tokens = &tokens[start_idx..comma_idx];
@@ -622,6 +623,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                 amount,
                 ..
@@ -1013,7 +1015,8 @@ fn replace_modal_header_x_in_effect_ast(
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamageMultiplier { .. }
-                | ReplacementActionAst::RegisterDamageAddition { .. },
+                | ReplacementActionAst::RegisterDamageAddition { .. }
+                | ReplacementActionAst::RegisterTokenCreationMultiplier { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },

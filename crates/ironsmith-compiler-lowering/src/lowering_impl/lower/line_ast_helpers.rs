@@ -297,7 +297,8 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
             if increase.filter.source
     ) || match &static_ability.payload {
         ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
-        | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_) => true,
+        | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
+        | ironsmith_core::StaticAbilityPayload::CastTargetRestriction { .. } => true,
         ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
             ability.id == Some(crate::static_abilities::StaticAbilityId::Flash)
                 || uses_spell_only_functional_zones(ability)

@@ -1202,6 +1202,24 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
             })
     }
 
+    /// "This ability can't be copied." (Gogo, Master of Mimicry): copies of
+    /// this activated ability can't be created (CR 101.2: the prohibition
+    /// wins over an instruction to copy it). Kept on the ability as its
+    /// authored restriction surface.
+    pub fn ability_cant_be_copied(&self) -> bool {
+        self.additional_restrictions.iter().any(|restriction| {
+            let normalized = restriction
+                .trim()
+                .trim_end_matches('.')
+                .replace('’', "'")
+                .to_ascii_lowercase();
+            matches!(
+                normalized.as_str(),
+                "this ability can't be copied" | "this ability cant be copied"
+            )
+        })
+    }
+
     /// Minimum X announced for this activation. Oracle currently expresses
     /// this activated-ability constraint as the standalone sentence
     /// "X can't be 0."; keeping it on the ability lets the decision flow

@@ -196,6 +196,25 @@ const DOCUMENT_READINGS: &[Reading] = &[
         read: |document| document.outcome(read_effect_clause_with_trailing_if(document)),
     },
     Reading {
+        // "<effect> unless a player has this creature deal N damage to
+        // them" (Barbarian Bully): an any-player punisher choice.
+        id: RuleId::new("unless-any-player-has-source-deal-damage"),
+        head: HeadDiscriminator::Any,
+        read: |document| {
+            document.outcome(match document.sentences.as_slice() {
+                [sentence] if crate::lexer::parser_token_word_refs(sentence)
+                    .windows(3)
+                    .any(|words| words == ["unless", "a", "player"] || words == ["unless", "any", "player"]) =>
+                {
+                    super::subject_verb_primitives::parse_sentence_damage_unless_controller_has_source_deal_damage(
+                        super::subject_verb_primitives::SubjectVerbPrimitiveClause::new(sentence),
+                    )
+                }
+                _ => Ok(None),
+            })
+        },
+    },
+    Reading {
         id: RuleId::new("complete-get-pump"),
         head: HeadDiscriminator::Any,
         read: |document| document.outcome(read_complete_get_pump(document)),

@@ -274,3 +274,133 @@ fn dream_devourer_grants_hand_foretell_and_triggers_on_foretelling() {
         "lands are not granted foretell"
     );
 }
+
+const DONT_BLINK: &str = "Mana cost: {1}{U}\nType: Instant\nUntil end of turn, if one or more creatures would enter from exile or after being cast from exile, their owners shuffle them into their libraries instead.\nCycling {2} ({2}, Discard this card: Draw a card.)";
+
+#[test]
+fn dont_blink_registers_a_turn_long_exile_entry_shuffle_replacement() {
+    let definition = p43_compile("Don't Blink", DONT_BLINK);
+    let mut effects = Vec::new();
+    for effect in definition.spell_effect.as_ref().expect("spell effect").all_effects() {
+        p43_walk(effect, &mut effects);
+    }
+    let replacement = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ironsmith::effects::RegisterFutureZoneReplacementEffect>())
+        .expect("future zone replacement");
+    assert_eq!(replacement.replacement_zone, Zone::Library);
+    assert_eq!(replacement.to_zone, Some(Zone::Battlefield));
+    assert_eq!(replacement.filter.zone, Some(Zone::Exile), "entering from, or cast from, exile");
+    assert_eq!(replacement.filter.card_types, vec![ironsmith::CardType::Creature]);
+    assert_eq!(replacement.mode, ironsmith::effects::ReplacementApplyMode::UntilEndOfTurn);
+}
+
+const DRAIN_POWER: &str = "Mana cost: {U}{U}\nType: Sorcery\nTarget player activates a mana ability of each land they control. Then that player loses all unspent mana and you add the mana lost this way.";
+
+#[test]
+fn drain_power_adds_the_mana_its_target_lost() {
+    let definition = p43_compile("Drain Power", DRAIN_POWER);
+    let mut effects = Vec::new();
+    for effect in definition.spell_effect.as_ref().expect("spell effect").all_effects() {
+        p43_walk(effect, &mut effects);
+    }
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("ActivateManaAbilityOfEachLandEffect"), "{debug}");
+    assert!(debug.contains("EmptyManaPoolEffect"), "{debug}");
+    let add = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ironsmith::effects::AddManaLostThisWayEffect>())
+        .expect("add the mana lost this way");
+    assert!(
+        matches!(
+            add.amount,
+            ironsmith::effect::Value::PriorEffectMetric {
+                query: ironsmith::effect::PriorEffectMetricQuery {
+                    action: Some(ironsmith::effect::PriorEffectAction::ManaLost),
+                    ..
+                },
+                ..
+            }
+        ),
+        "the add reads the bound mana-loss producer: {:?}",
+        add.amount
+    );
+    assert_eq!(add.player, ironsmith::PlayerFilter::You);
+}
+
+const DILUVIAN_PRIMORDIAL: &str = "Mana cost: {5}{U}{U}\nType: Creature — Avatar\nPower/Toughness: 5/5\nFlying\nWhen this creature enters, for each opponent, you may cast up to one target instant or sorcery card from that player's graveyard without paying its mana cost. If a spell cast this way would be put into a graveyard, exile it instead.";
+
+#[test]
+fn diluvian_primordial_repeats_the_graveyard_cast_for_each_opponent() {
+    let definition = p43_compile("Diluvian Primordial", DILUVIAN_PRIMORDIAL);
+    let trigger = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Triggered(trigger) => Some(trigger),
+            _ => None,
+        })
+        .expect("enters trigger");
+    let mut effects = Vec::new();
+    for effect in trigger.effects.all_effects() {
+        p43_walk(effect, &mut effects);
+    }
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("filter: Opponent"), "{debug}");
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(debug.contains("Graveyard"), "{debug}");
+    let replacement = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ironsmith::effects::RegisterFutureZoneReplacementEffect>())
+        .expect("exile-instead replacement on the cast spell");
+    assert_eq!(replacement.replacement_zone, Zone::Exile);
+    assert_eq!(replacement.to_zone, Some(Zone::Graveyard));
+}
+
+const DREAM_LEASH: &str = "Mana cost: {3}{U}{U}\nType: Enchantment — Aura\nEnchant permanent\nYou can't choose an untapped permanent as this spell's target as you cast it.\nYou control enchanted permanent.";
+
+#[test]
+fn dream_leash_forbids_untapped_targets_only_while_cast() {
+    let definition = p43_compile("Dream Leash", DREAM_LEASH);
+    let abilities = format!("{:?}", definition.abilities);
+    assert!(abilities.contains("CastTargetRestriction"), "{abilities}");
+    // The enchant target itself stays "permanent": untapping before it
+    // resolves doesn't make the target illegal (CR 608.2b).
+    let attach = format!("{:?}", definition.aura_attach_filter);
+    assert!(!attach.contains("tapped: true"), "{attach}");
+}
+
+const DROUGHT: &str = "Mana cost: {2}{W}{W}\nType: Enchantment\nAt the beginning of your upkeep, sacrifice this enchantment unless you pay {W}{W}.\nSpells cost an additional \"Sacrifice a Swamp\" to cast for each black mana symbol in their mana costs.\nActivated abilities cost an additional \"Sacrifice a Swamp\" to activate for each black mana symbol in their activation costs.";
+
+#[test]
+fn drought_adds_a_swamp_sacrifice_per_black_symbol_to_spells_and_abilities() {
+    let definition = p43_compile("Drought", DROUGHT);
+    let payloads: Vec<_> = definition
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            ironsmith::ability::AbilityKind::Static(static_ability) => {
+                static_ability.compiled_model().map(|model| model.payload.clone())
+            }
+            _ => None,
+        })
+        .filter_map(|payload| match payload {
+            ironsmith_core::StaticAbilityPayload::AdditionalSacrificePerManaSymbol {
+                activated_abilities,
+                symbol,
+                sacrifice,
+                ..
+            } => Some((activated_abilities, symbol, sacrifice)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(payloads.len(), 2, "{:?}", definition.abilities);
+    for (activated, symbol, sacrifice) in &payloads {
+        assert_eq!(*symbol, ironsmith::mana::ManaSymbol::Black);
+        assert_eq!(sacrifice.controller, Some(ironsmith::PlayerFilter::You));
+        assert!(format!("{sacrifice:?}").contains("Swamp"), "{sacrifice:?} ({activated})");
+    }
+    assert!(payloads.iter().any(|(activated, ..)| *activated));
+    assert!(payloads.iter().any(|(activated, ..)| !*activated));
+}

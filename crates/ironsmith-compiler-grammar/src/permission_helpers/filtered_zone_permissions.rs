@@ -15,6 +15,9 @@ struct PermissionShape<'a> {
     top_only: bool,
     instant_timing: bool,
     usage: Option<crate::grant::GrantUsageLimit>,
+    /// "... from your graveyard with mana value less than or equal to the
+    /// number of quest counters on this creature" (Arcade Gannon).
+    mana_value: Option<&'a [OwnedLexToken]>,
 }
 pub(super) fn subject_before_from<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
     repeat_till(1.., any.void(), peek(primitives::kw("from").void()))
@@ -45,16 +48,27 @@ fn shape<'a>(input: &mut LexStream<'a>) -> WResult<PermissionShape<'a>> {
         && let Ok(instant_timing) = permission_end(&mut bare)
     {
         *input = bare;
-        return Ok(PermissionShape { play, subject: None, zone: Zone::Library, top_only: true, instant_timing, usage });
+        return Ok(PermissionShape { play, subject: None, zone: Zone::Library, top_only: true, instant_timing, usage, mana_value: None });
     }
     let subject = subject_before_from(input)?;
     primitives::kw("from").parse_next(input)?;
     let (zone, top_only) = alt((
         primitives::phrase(&["the", "top", "of", "your", "library"]).value((Zone::Library, true)),
+        // "cast instant and sorcery spells from the top of your graveyard"
+        // (Bösium Strip): only the topmost graveyard card qualifies.
+        primitives::phrase(&["the", "top", "of", "your", "graveyard"]).value((Zone::Graveyard, true)),
         primitives::phrase(&["your", "graveyard"]).value((Zone::Graveyard, false)),
     )).parse_next(input)?;
+    let mana_value = opt((
+        primitives::phrase(&["with", "mana", "value"]),
+        repeat_till(1.., any.void(), peek(primitives::sentence_end().void()))
+            .map(|((), ())| ())
+            .take(),
+    ))
+    .parse_next(input)?
+    .map(|(_, tokens)| tokens);
     let instant_timing = permission_end(input)?;
-    Ok(PermissionShape { play, subject: Some(subject), zone, top_only, instant_timing, usage })
+    Ok(PermissionShape { play, subject: Some(subject), zone, top_only, instant_timing, usage, mana_value })
 }
 fn action_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((primitives::kw("and"), primitives::kw("or"))).parse_next(input)?;
@@ -88,6 +102,80 @@ pub(super) fn parse_shared_hand_top_free_cast(tokens: &[OwnedLexToken]) -> Resul
     spec.additional_zones = vec![Zone::Library]; spec.top_card_only = true;
     spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns);
     spec.filtered_zone_surface = Some("Once during each of your turns, you may cast a spell from your hand or the top of your library without paying its mana cost".into());
+    Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
+}
+
+/// "Once each turn, you may cast a spell with mana value less than or equal
+/// to the number of Elves and Faeries you control from among cards exiled
+/// with Maralen this turn without paying its mana cost." (Maralen, Fae
+/// Ascendant): one free cast per turn from the source's linked exile pool,
+/// optionally limited to the cards you exiled with it this turn. The use
+/// budget belongs to this permission (CR 118.9).
+pub(super) fn parse_once_per_turn_source_exiled_free_cast(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    let Some(((usage, _, _, subject, _), rest)) = primitives::parse_prefix(tokens, (
+        alt((
+            primitives::phrase(&["once", "each", "turn"]).value(crate::grant::GrantUsageLimit::OnceEachTurn),
+            primitives::phrase(&["once", "during", "each", "of", "your", "turns"]).value(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns),
+        )),
+        primitives::comma(),
+        primitives::phrase(&["you", "may", "cast"]),
+        subject_before_from,
+        primitives::phrase(&["from", "among"]),
+    )) else { return Ok(None); };
+    let Some((_, tail)) =
+        crate::grammar::permission_facts::source_exiled::parse_cards_from_source_exiled_tokens(rest)
+    else { return Ok(None); };
+    let (this_turn, tail) = match primitives::parse_prefix(tail, primitives::phrase(&["this", "turn"])) {
+        Some((_, after)) => (true, after),
+        None => (false, tail),
+    };
+    let Some(()) = primitives::probe_all(tail, (
+        primitives::phrase(&["without", "paying", "its", "mana", "cost"]),
+        primitives::sentence_end(),
+    ).void(), "once-per-turn-source-exiled-free-cast") else { return Ok(None); };
+    let subject_words = crate::lexer::parser_token_word_refs(subject);
+    if !subject_words.iter().any(|word| matches!(*word, "spell" | "spells")) {
+        return Ok(None);
+    }
+    // "a spell with mana value <comparison>": the comparison may be dynamic.
+    let with_mana_value = subject_words
+        .windows(3)
+        .position(|window| window == ["with", "mana", "value"]);
+    let (noun_tokens, comparison_tokens) = match with_mana_value {
+        Some(word_index) => {
+            let view = crate::lexer::TokenWordView::new(subject);
+            let Some(split) = view.token_index_after_words(word_index) else { return Ok(None); };
+            let Some(after) = view.token_index_after_words(word_index + 3) else { return Ok(None); };
+            (&subject[..split], Some(&subject[after..]))
+        }
+        None => (subject, None),
+    };
+    let Some(mut filter) = card_filter(noun_tokens)? else { return Ok(None); };
+    exclude_lands_from_spell_filter(&mut filter);
+    if let Some(comparison_tokens) = comparison_tokens {
+        let Some((operator, rhs_tokens)) = crate::grammar::values::parse_value_comparison_tokens(comparison_tokens) else { return Ok(None); };
+        let Some((rhs_value, used)) = crate::grammar::values::parse_value_prefix_lexed(rhs_tokens) else { return Ok(None); };
+        if used != rhs_tokens.len() { return Ok(None); }
+        filter.mana_value = Some(super::mana_value_filter_comparison(comparison_tokens, operator, rhs_value));
+    }
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+        relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    });
+    if this_turn {
+        filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+            tag: ironsmith_core::tag::TagKey::from(ironsmith_core::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG).into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    }
+    let method = ironsmith_core::AlternativeCastingMethod::<EffectAst, crate::model::CompilerCost, ironsmith_core::ThisSpellCostCondition>::cast_from_zone_with_total_cost(
+        "Cast without paying mana cost", Zone::Exile, ironsmith_core::TotalCost::<crate::model::CompilerCost>::free(), None, false);
+    let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::AlternativeCast(method), filter, Zone::Exile);
+    spec.usage_limit = Some(usage);
+    let surface = crate::lexer::render_token_slice(tokens);
+    let surface = surface.trim().trim_end_matches('.');
+    let mut chars = surface.chars();
+    spec.filtered_zone_surface = chars.next().map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
     Ok(Some(PermissionClauseSpec::GrantBySpec {player: PlayerAst::You, spec, lifetime: PermissionLifetime::Static}))
 }
 
@@ -188,6 +276,12 @@ fn permission_from_shape(tokens: &[OwnedLexToken], shape: PermissionShape<'_>) -
         }
     } else { ObjectFilter::default() };
     filter.owner = Some(PlayerFilter::You);
+    if let Some(comparison_tokens) = shape.mana_value {
+        let Some((operator, rhs_tokens)) = crate::grammar::values::parse_value_comparison_tokens(comparison_tokens) else { return Ok(None); };
+        let Some((rhs_value, used)) = crate::grammar::values::parse_value_prefix_lexed(rhs_tokens) else { return Ok(None); };
+        if used != rhs_tokens.len() { return Ok(None); }
+        filter.mana_value = Some(super::mana_value_filter_comparison(comparison_tokens, operator, rhs_value));
+    }
     let mut spec = crate::model::CompilerGrantSpecCore::new(crate::model::CompilerGrantableCore::play_from(), filter, shape.zone);
     spec.usage_limit = shape.usage; spec.top_card_only = shape.top_only;
     spec.instant_timing = shape.instant_timing;
@@ -308,7 +402,13 @@ mod tests {
 /// A current-turn origin qualifier belongs to the proposed card incarnation,
 /// not to a source-wide condition or a generic count of cards milled.
 pub(super) fn parse_recent_graveyard_permission(tokens: &[OwnedLexToken]) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    fn recent<'a>(input: &mut LexStream<'a>) -> WResult<(PermissionShape<'a>, bool)> {
+    #[derive(Clone, Copy)]
+    enum Recent {
+        Milled,
+        FromLibrary,
+        NotFromBattlefield,
+    }
+    fn recent<'a>(input: &mut LexStream<'a>) -> WResult<(PermissionShape<'a>, Recent)> {
         primitives::phrase(&["once", "during", "each", "of", "your", "turns"]).parse_next(input)?;
         primitives::comma().parse_next(input)?;
         primitives::phrase(&["you", "may"]).parse_next(input)?;
@@ -316,16 +416,27 @@ pub(super) fn parse_recent_graveyard_permission(tokens: &[OwnedLexToken]) -> Res
         let subject = subject_before_from(input)?;
         primitives::phrase(&["from", "among", "cards", "in", "your", "graveyard", "that", "were"]).parse_next(input)?;
         let mill = alt((
-            primitives::phrase(&["milled", "this", "turn"]).value(true),
-            primitives::phrase(&["put", "there", "from", "your", "library", "this", "turn"]).value(false),
+            primitives::phrase(&["milled", "this", "turn"]).value(Recent::Milled),
+            primitives::phrase(&["put", "there", "from", "your", "library", "this", "turn"]).value(Recent::FromLibrary),
+            // "... that were put there from anywhere other than the
+            // battlefield this turn" (Banon, the Returners' Leader)
+            primitives::phrase(&[
+                "put", "there", "from", "anywhere", "other", "than", "the", "battlefield", "this", "turn",
+            ]).value(Recent::NotFromBattlefield),
         )).parse_next(input)?;
         primitives::sentence_end().parse_next(input)?;
         Ok((PermissionShape {play, subject: Some(subject), zone: Zone::Graveyard, top_only: false,
-            instant_timing: false, usage: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)}, mill))
+            instant_timing: false, usage: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns),
+            mana_value: None}, mill))
     }
     let Some((shape, mill)) = primitives::probe_all(tokens, recent, "recent-graveyard-play-permission") else { return Ok(None); };
     let Some(PermissionClauseSpec::GrantBySpec {player, mut spec, lifetime}) = permission_from_shape(tokens, shape)? else { return Ok(None); };
-    if mill { spec.filter.milled_into_graveyard_this_turn = true; }
-    else { spec.filter.entered_graveyard_from_library_this_turn = true; }
+    match mill {
+        Recent::Milled => spec.filter.milled_into_graveyard_this_turn = true,
+        Recent::FromLibrary => spec.filter.entered_graveyard_from_library_this_turn = true,
+        Recent::NotFromBattlefield => {
+            spec.filter.entered_graveyard_not_from_battlefield_this_turn = true;
+        }
+    }
     Ok(Some(PermissionClauseSpec::GrantBySpec {player, spec, lifetime}))
 }

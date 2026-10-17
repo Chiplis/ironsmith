@@ -167,7 +167,7 @@ def is_non_paper_print(card):
 
 def is_legal_in_supported_paper_format(card, formats=SUPPORTED_PAPER_FORMATS):
     legalities = card.get("legalities") or {}
-    return any(legalities.get(fmt) == "legal" for fmt in formats)
+    return any(legalities.get(fmt) in {"legal", "restricted"} for fmt in formats)
 
 
 def is_non_playable(card, type_line, oracle_text):

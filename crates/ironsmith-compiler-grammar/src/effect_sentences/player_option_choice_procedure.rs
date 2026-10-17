@@ -155,6 +155,9 @@ fn opening(sentence: &SentenceInput) -> Option<ChoosePlayerOptionEffect> {
         choice.exclude_source_history = exclude;
         return Some(choice);
     }
+    if let Some(choice) = hidden_items_opening(tokens) {
+        return Some(choice);
+    }
     // "Each opponent [secretly] chooses <options>[, then the choices are
     // revealed]": each participant chooses.
     let ((_, participants, secretly, _), rest) = primitives::parse_prefix(
@@ -188,6 +191,125 @@ fn opening(sentence: &SentenceInput) -> Option<ChoosePlayerOptionEffect> {
         ChoosePlayerOptionEffect::new(participants, options, PlayerOptionChooser::Participant)
             .with_secret(secret),
     )
+}
+
+/// "Each player hides at least one item[, then all players reveal them
+/// simultaneously]" (Goblin Game): each participant secretly picks how many
+/// items to hide, a number 1 or greater, and the numbers are revealed
+/// together. The choices are collected before any is recorded.
+fn hidden_items_opening(tokens: &[OwnedLexToken]) -> Option<ChoosePlayerOptionEffect> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let (participants, rest) = match words.as_slice() {
+        ["each", "player", rest @ ..] => (PlayerFilter::Any, rest),
+        ["each", "opponent", rest @ ..] => (PlayerFilter::Opponent, rest),
+        _ => return None,
+    };
+    let ["hides", "at", "least", "one", _noun, tail @ ..] = rest else {
+        return None;
+    };
+    if !matches!(
+        tail,
+        [] | ["then", "all", "players", "reveal", "them", "simultaneously"]
+    ) {
+        return None;
+    }
+    Some(
+        ChoosePlayerOptionEffect::numbers(participants, PlayerNumberChoice { min: 1, max: None })
+            .with_secret(true),
+    )
+}
+
+/// The index of "equal to the number of <noun> they revealed|chose|hid" in
+/// `tokens`: each participant's own number.
+fn own_number_phrase(tokens: &[OwnedLexToken]) -> Option<usize> {
+    (1..tokens.len()).find(|&idx| {
+        let words = crate::lexer::token_word_refs(&tokens[idx..]);
+        matches!(
+            words.as_slice(),
+            ["equal", "to", "the", "number", "of", _, "they", "revealed" | "chose" | "hid", ..]
+        ) && tokens.len() >= idx + 8
+            && tokens[idx..idx + 8].iter().all(|token| token.as_word().is_some())
+            && tokens[idx - 1].as_word().is_some()
+    })
+}
+
+/// "Each player loses life equal to the number of items they revealed."
+/// (Goblin Game): every participant's instruction reads that participant's
+/// own number.
+fn own_number_statement(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = trim(tokens);
+    let Some(idx) = own_number_phrase(tokens) else {
+        return Ok(None);
+    };
+    if !tokens.first().is_some_and(|token| token.is_word("each"))
+        || !tokens.get(1).is_some_and(|token| token.is_any_word(&["player", "opponent"]))
+    {
+        return Ok(None);
+    }
+    let mut rewritten = tokens[..idx - 1].to_vec();
+    rewritten.extend([synthetic("x"), tokens[idx - 1].clone()]);
+    rewritten.extend_from_slice(&tokens[idx + 8..]);
+    let mut effects = super::parse_effect_sentence_lexed(&rewritten)?;
+    if restrict_to_players(
+        &mut effects,
+        &PlayerFilter::TaggedPlayer(player_option_participants_tag()),
+    ) == 0
+    {
+        return Ok(None);
+    }
+    super::dispatch_entry::replace_unbound_x_in_effects_anywhere(
+        &mut effects,
+        &crate::effect::Value::IteratedPlayerChosenNumber,
+        &crate::lexer::render_token_slice(tokens),
+    )?;
+    Ok(Some(effects))
+}
+
+/// "The player who revealed the fewest items then <does X>": the player
+/// set with the lowest (fewest) or highest (most) number, and the statement
+/// rewritten to "each player <does X>".
+fn extreme_player_statement(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, bool)> {
+    let tokens = trim(tokens);
+    let words = crate::lexer::token_word_refs(tokens);
+    let (highest, consumed) = match words.as_slice() {
+        ["the", "player", "who", "revealed" | "chose" | "hid", "the", extreme, _noun, "then", ..] => {
+            (fewest_or_most(extreme)?, 8)
+        }
+        ["the", "player", "who", "revealed" | "chose" | "hid", "the", extreme, _noun, ..] => {
+            (fewest_or_most(extreme)?, 7)
+        }
+        _ => return None,
+    };
+    if tokens.len() <= consumed
+        || tokens[..consumed].iter().any(|token| token.as_word().is_none())
+    {
+        return None;
+    }
+    let mut rewritten = vec![synthetic("each"), synthetic("player")];
+    rewritten.extend_from_slice(&tokens[consumed..]);
+    Some((rewritten, highest))
+}
+
+fn fewest_or_most(word: &str) -> Option<bool> {
+    match word {
+        "fewest" | "lowest" | "least" => Some(false),
+        "most" | "highest" | "greatest" => Some(true),
+        _ => None,
+    }
+}
+
+/// "If two or more players are tied for fewest, each loses half their life,
+/// rounded up.": the extreme player set already holds every tied player, so
+/// this restates the preceding statement for ties.
+fn is_tie_restatement(tokens: &[OwnedLexToken], last_extreme: Option<bool>) -> bool {
+    let words = crate::lexer::token_word_refs(trim(tokens));
+    let [
+        "if", "two", "or", "more", "players", "are", "tied", "for", extreme, "each", ..
+    ] = words.as_slice()
+    else {
+        return false;
+    };
+    last_extreme.is_some() && fewest_or_most(extreme) == last_extreme
 }
 
 fn color_options() -> Vec<String> {
@@ -769,6 +891,8 @@ fn reads_choice(sentence: &SentenceInput, choice: &ChoosePlayerOptionEffect) -> 
     }
     if let Some(range) = choice.number {
         return rewrite_number_quantifier(tokens, None).is_some()
+            || own_number_phrase(tokens).is_some()
+            || extreme_player_statement(tokens).is_some()
             || split_lead(tokens).is_some_and(|(lead, rest)| {
                 lead.as_slice() == ["if", "you", "do"] && guess_statement(rest, range).is_some()
             });
@@ -902,6 +1026,35 @@ pub(super) fn continue_with(
                 if_false: Vec::new(),
             }));
             group.pending_conditions.clear();
+            group.consumed += 1;
+            return Ok(true);
+        }
+    }
+    if group.number {
+        if let Some(effects) = own_number_statement(tokens)? {
+            group.effects.extend(effects);
+            group.last_group = Some(PlayerFilter::TaggedPlayer(player_option_participants_tag()));
+            group.pending_conditions.clear();
+            group.consumed += 1;
+            return Ok(true);
+        }
+        if let Some((rewritten, highest)) = extreme_player_statement(tokens) {
+            let players = PlayerFilter::TaggedPlayer(player_number_extreme_tag(highest));
+            let mut effects = super::parse_effect_sentence_lexed(&rewritten)?;
+            if restrict_to_players(&mut effects, &players) == 0 {
+                return Err(CardTextError::ParseError(format!(
+                    "extreme-number statement did not read as a participant iteration (clause: '{}')",
+                    crate::lexer::render_token_slice(tokens)
+                )));
+            }
+            group.effects.extend(effects);
+            group.last_group = Some(players);
+            group.last_extreme = Some(highest);
+            group.pending_conditions.clear();
+            group.consumed += 1;
+            return Ok(true);
+        }
+        if is_tie_restatement(tokens, group.last_extreme) {
             group.consumed += 1;
             return Ok(true);
         }

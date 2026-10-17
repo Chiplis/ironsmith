@@ -308,10 +308,24 @@ pub fn parse_if_conditional_alternative_cost(
     let line = render_token_slice(line_tokens);
     let line = line.as_str();
     let clause_words = TokenWordView::new(tokens).word_refs();
-    if !permission_shapes::prefix_words(&clause_words, &["if"]) {
+    // "As long as you've discarded a card this turn, you may pay {B/R} to
+    // cast this spell." (Asmoranomardicadaistinaculdacar): an alternative
+    // cost whose condition is checked as the spell is cast, the same as an
+    // "if" condition (CR 118.9).
+    let as_long_as = permission_shapes::prefix_words(&clause_words, &["as", "long", "as"]);
+    if !as_long_as && !permission_shapes::prefix_words(&clause_words, &["if"]) {
         return Ok(None);
     }
-    let Some((condition_tokens, tail_tokens)) = split_condition_and_cost_tail(tokens) else {
+    let condition_source: Vec<OwnedLexToken> = if as_long_as {
+        let Some(start) = TokenWordView::new(tokens).token_start_indices().get(2).copied() else {
+            return Ok(None);
+        };
+        tokens[start..].to_vec()
+    } else {
+        tokens.to_vec()
+    };
+    let Some((condition_tokens, tail_tokens)) = split_condition_and_cost_tail(&condition_source)
+    else {
         return Ok(None);
     };
     // "If you control a Forest, rather than pay this spell's mana cost, you
@@ -319,6 +333,27 @@ pub fn parse_if_conditional_alternative_cost(
     // cost with the "rather than" clause leading.
     let reordered_tail = leading_rather_than_tail(tail_tokens);
     let tail_tokens = reordered_tail.as_deref().unwrap_or(tail_tokens);
+    // "you may pay {B/R} to cast this spell": the payment replaces the
+    // spell's mana cost.
+    let to_cast_tail = {
+        let view = TokenWordView::new(tail_tokens);
+        let words = view.word_refs();
+        let suffix = ["to", "cast", "this", "spell"];
+        if permission_shapes::prefix_words(&words, &["you", "may", "pay"])
+            && words.len() > suffix.len() + 3
+            && words.ends_with(&suffix)
+            && let Some(to_token) = view.token_start_indices().get(words.len() - suffix.len()).copied()
+        {
+            let mut rewritten = tail_tokens[..to_token].to_vec();
+            rewritten.extend(crate::lexer::synthetic_word_tokens([
+                "rather", "than", "pay", "this", "spell", "mana", "cost",
+            ]));
+            Some(rewritten)
+        } else {
+            None
+        }
+    };
+    let tail_tokens = to_cast_tail.as_deref().unwrap_or(tail_tokens);
     // "If this spell is ..., you may cast it without paying its mana cost":
     // `it` repeats the condition's own subject, this spell.
     let condition_names_this_spell = permission_shapes::prefix_words(

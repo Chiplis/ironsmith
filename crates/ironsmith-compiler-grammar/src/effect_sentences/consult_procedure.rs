@@ -664,6 +664,7 @@ pub(super) fn continue_with(
                         .in_zone(match mode {
                             LibraryConsultModeAst::Reveal => Zone::Library,
                             LibraryConsultModeAst::Exile => Zone::Exile,
+                            LibraryConsultModeAst::Mill => Zone::Graveyard,
                         });
                     if explicit_revealed_others {
                         remainder_filter.set_set_quantifier_surface(Some(

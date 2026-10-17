@@ -167,3 +167,58 @@ fn cover_of_winter_prevention_budget_is_shared_per_source() {
     assert!(debug.contains("combat_only: true"));
     assert!(debug.contains("target_player_filter: Some(You)"), "{debug}");
 }
+
+/// Circling Vultures: its owner may discard it from hand as a special action
+/// whenever they have priority, without using the stack.
+#[test]
+fn circling_vultures_discards_from_hand_as_a_special_action() {
+    let definition = compile_to_runtime_definition(
+        "Circling Vultures",
+        "Mana cost: {B}\nType: Creature — Bird\nPower/Toughness: 3/2\nFlying\nYou may discard this card any time you could cast an instant.\nAt the beginning of your upkeep, sacrifice this creature unless you exile the top creature card of your graveyard.",
+        false,
+    )
+    .expect("Circling Vultures compiles");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("MayDiscardSourceAnyTimeYouCouldCastInstant"), "{debug}");
+    assert!(debug.contains("top_only: true"), "the top creature card of the graveyard");
+
+    let alice = ironsmith::PlayerId::from_index(0);
+    let bob = ironsmith::PlayerId::from_index(1);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let card = game.create_object_from_definition(&definition, alice, ironsmith::Zone::Hand);
+    let action = ironsmith::special_actions::SpecialAction::DiscardFromHand { card_id: card };
+    game.turn.priority_player = Some(bob);
+    assert!(ironsmith::special_actions::can_perform_check(&action, &game, alice).is_err());
+    game.turn.priority_player = Some(alice);
+    ironsmith::special_actions::can_perform_check(&action, &game, alice).expect("legal with priority");
+    let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
+    ironsmith::special_actions::perform(action, &mut game, alice, &mut dm).expect("discard");
+    assert!(game.player(alice).unwrap().hand.is_empty());
+    assert_eq!(game.player(alice).unwrap().graveyard.len(), 1);
+    assert!(game.stack.is_empty(), "no stack object");
+}
+
+/// Cogwork Tracker: the passing player noted during the draft becomes an
+/// attack requirement for this creature.
+#[test]
+fn cogwork_tracker_must_attack_the_player_noted_while_drafting_it() {
+    let definition = compile_to_runtime_definition(
+        "Cogwork Tracker",
+        "Mana cost: {4}\nType: Artifact Creature — Dog Construct\nPower/Toughness: 4/2\nReveal this card as you draft it and note the player who passed it to you.\nThis creature attacks each combat if able.\nThis creature attacks a player you noted for cards named Cogwork Tracker each combat if able.",
+        false,
+    )
+    .expect("Cogwork Tracker compiles");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("MustAttackDraftNotedPlayers"), "{debug}");
+
+    let alice = ironsmith::PlayerId::from_index(0);
+    let bob = ironsmith::PlayerId::from_index(1);
+    let carol = ironsmith::PlayerId::from_index(2);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+    let tracker = game.create_object_from_definition(&definition, alice, ironsmith::Zone::Battlefield);
+    assert!(game.required_attack_players_this_turn(tracker).next().is_none(), "nothing noted");
+    game.record_draft_noted_player(alice, "Cogwork Tracker", carol);
+    let required = game.required_attack_players_this_turn(tracker).collect::<Vec<_>>();
+    assert_eq!(required, vec![carol]);
+    assert!(!required.contains(&bob));
+}

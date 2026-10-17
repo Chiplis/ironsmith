@@ -395,8 +395,43 @@ fn per_object_face_destroy(
     Ok(Some(effects))
 }
 
+/// "Flip a coin. If you win the flip, you gain N life and target opponent
+/// loses N life, and you decide whether to flip again. If you lose the flip,
+/// you lose N life and that opponent gains N life, and that player decides
+/// whether to flip again. Double the life stakes with each flip." (Game of
+/// Chaos): one repeated-flip process whose winner decides whether it goes on
+/// and whose life stakes double each flip.
+fn life_stakes_flip_process(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [flip, won, lost, double] = sentences else { return Ok(None) };
+    let (flip, won, lost, double): (&[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken]) =
+        (flip, won, lost, double);
+    let view = |tokens: &[OwnedLexToken]| crate::lexer::TokenWordView::new(tokens)
+        .word_refs().into_iter().map(str::to_string).collect::<Vec<_>>();
+    if view(flip) != ["flip", "a", "coin"]
+        || view(double) != ["double", "the", "life", "stakes", "with", "each", "flip"] { return Ok(None); }
+    let won_words = view(won);
+    let lost_words = view(lost);
+    let stake_at = |words: &[String], index: usize| words.get(index).and_then(|word| word.parse::<u32>().ok());
+    let expected_won = ["if", "you", "win", "the", "flip", "you", "gain", "#", "life", "and", "target", "opponent",
+        "loses", "#", "life", "and", "you", "decide", "whether", "to", "flip", "again"];
+    let expected_lost = ["if", "you", "lose", "the", "flip", "you", "lose", "#", "life", "and", "that", "opponent",
+        "gains", "#", "life", "and", "that", "player", "decides", "whether", "to", "flip", "again"];
+    let shape = |words: &[String], expected: &[&str]| words.len() == expected.len()
+        && words.iter().zip(expected).all(|(word, expected)| *expected == "#" || word == expected);
+    if !shape(won_words.as_slice(), &expected_won) || !shape(lost_words.as_slice(), &expected_lost) { return Ok(None); }
+    let stakes = [stake_at(won_words.as_slice(), 7), stake_at(won_words.as_slice(), 13),
+        stake_at(lost_words.as_slice(), 7), stake_at(lost_words.as_slice(), 13)];
+    let Some(initial_stakes) = stakes[0] else { return Ok(None) };
+    if stakes.iter().any(|stake| *stake != Some(initial_stakes)) { return Ok(None); }
+    let Some(target) = won.iter().position(|token| token.is_word("target")) else { return Ok(None) };
+    let Some(opponent_tokens) = won.get(target..target + 2) else { return Ok(None) };
+    let opponent = crate::util::parse_target_phrase(opponent_tokens)?;
+    Ok(Some(vec![EffectAst::CoinFlipLifeStakes { opponent, initial_stakes }]))
+}
+
 pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
+    if let Some(effects) = life_stakes_flip_process(&sentences)? { return Ok(Some(effects)); }
     if let Some(effects) = paired_face_repeat(&sentences)? { return Ok(Some(effects)); }
     if let Some(effects) = per_object_face_destroy(&sentences)? { return Ok(Some(effects)); }
     // The explicit loss cancels the remaining consequence program, including

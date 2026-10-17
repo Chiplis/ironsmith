@@ -13,6 +13,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if let Some(effect) = parse_during_target_players_next_turn(tokens)? {
         return Ok(Some(effect));
     }
+    if let Some(effect) = parse_target_attacks_during_its_controllers_next_turn(tokens)? {
+        return Ok(Some(effect));
+    }
     if let Some(effect) = parse_during_that_players_next_turn_referenced_attack(tokens) {
         return Ok(Some(effect));
     }
@@ -20,6 +23,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(Some(effect));
     }
     if let Some(effect) = parse_referenced_combat_requirement(tokens) {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = parse_filtered_creatures_block_this_turn(tokens)? {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = parse_only_typed_creatures_act_that_combat(tokens) {
         return Ok(Some(effect));
     }
     let (duration, body) = if let Some(prefix) =
@@ -72,6 +81,82 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     Ok(Some(EffectAst::subject_verb_cant(
         Restriction::must_attack(filter),
         duration,
+        None,
+    )))
+}
+
+/// "After this phase, there is an additional combat phase. Only land
+/// creatures can attack during that combat phase." (Bumi, Unleashed): during
+/// the combat phase the same instruction added, creatures without the named
+/// card type can't attack (or block). Same rule start as the chosen-creatures
+/// form (Last Night Together).
+fn parse_only_typed_creatures_act_that_combat(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    use crate::effect::RestrictionStart;
+    let body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(body);
+    let ["only", type_words @ .., "creatures", "can", action @ ("attack" | "block"), "during", "that", "combat", "phase"] =
+        words.as_slice()
+    else {
+        return None;
+    };
+    let [type_word] = type_words else {
+        return None;
+    };
+    let card_type = crate::util::parse_card_type(type_word)?;
+    if card_type == crate::types::CardType::Creature {
+        return None;
+    }
+    let others = crate::target::ObjectFilter::creature().without_type(card_type);
+    let restriction = if *action == "attack" {
+        Restriction::attack(others)
+    } else {
+        Restriction::block(others)
+    };
+    Some(EffectAst::subject_verb_cant_starting(
+        restriction,
+        Until::EndOfCombat,
+        RestrictionStart::LastAddedCombatPhase,
+        None,
+    ))
+}
+
+/// "Creatures your opponents control block this turn if able" (Brutal
+/// Hordechief): a resolving blocking requirement (CR 509.1c) over a
+/// described creature set for the rest of this turn.
+fn parse_filtered_creatures_block_this_turn(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some((index, (), rest)) = crate::grammar::primitives::find_prefix(body, || {
+        use winnow::Parser;
+        winnow::combinator::alt((
+            crate::grammar::primitives::phrase(&["block", "this", "turn", "if", "able"]),
+            crate::grammar::primitives::phrase(&["blocks", "this", "turn", "if", "able"]),
+        ))
+        .void()
+    }) else {
+        return Ok(None);
+    };
+    if !crate::util::trim_edge_punctuation_tokens(rest).is_empty() || index == 0 {
+        return Ok(None);
+    }
+    let subject = &body[..index];
+    if subject.iter().any(|token| {
+        token.is_any_word(&["target", "that", "those", "it", "they", "them", "chosen"])
+    }) {
+        return Ok(None);
+    }
+    let Some(filter) =
+        crate::grammar::primitives::probe_shape(crate::object_filters::parse_object_filter(subject, false))
+    else {
+        return Ok(None);
+    };
+    if !filter.card_types.contains(&crate::types::CardType::Creature) {
+        return Ok(None);
+    }
+    Ok(Some(EffectAst::subject_verb_cant(
+        Restriction::must_block(filter),
+        Until::EndOfTurn,
         None,
     )))
 }
@@ -251,6 +336,89 @@ fn parse_during_target_players_next_turn(
                 },
                 Until::EndOfTurn,
                 RestrictionStart::NextTurn(targeted_player),
+                None,
+            ),
+        ],
+    }))
+}
+
+/// "Up to one target creature an opponent controls attacks Gideon during its
+/// controller's next turn if able." (Gideon, Battle-Forged): a requirement
+/// (CR 508.1d) on the target creature that begins with its controller's next
+/// turn and lasts until that turn ends. Naming a permanent after "attacks"
+/// requires it to attack that permanent; otherwise any defender satisfies it.
+/// The creature is this ability's target; its controller is read as the
+/// ability resolves.
+fn parse_target_attacks_during_its_controllers_next_turn(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    use crate::effect::RestrictionStart;
+    use crate::target::PlayerFilter;
+
+    let body = crate::util::trim_edge_punctuation_tokens(tokens);
+    let Some(during) = body.iter().rposition(|token| token.is_word("during")) else {
+        return Ok(None);
+    };
+    let tail = crate::lexer::parser_token_word_refs(&body[during + 1..]);
+    if !matches!(
+        tail.as_slice(),
+        ["its", "controllers" | "controller's", "next", "turn", "if", "able"]
+            | ["its", "controller", "s", "next", "turn", "if", "able"]
+    ) {
+        return Ok(None);
+    }
+    let head = &body[..during];
+    let Some(verb) = head
+        .iter()
+        .position(|token| token.is_word("attack") || token.is_word("attacks"))
+    else {
+        return Ok(None);
+    };
+    let subject = &head[..verb];
+    if subject.is_empty()
+        || !crate::activation_and_restrictions::starts_with_target_indicator(subject)
+    {
+        return Ok(None);
+    }
+    let target = crate::util::parse_target_phrase(subject)?;
+    let Some(mut attackers) =
+        crate::activation_and_restrictions::target_ast_to_object_filter(target.clone())
+    else {
+        return Ok(None);
+    };
+    if !attackers
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+    {
+        return Ok(None);
+    }
+    crate::activation_and_restrictions::activation_restriction_clauses::ensure_it_tagged_constraint(
+        &mut attackers,
+    );
+    let permanent_tokens = &head[verb + 1..];
+    let restriction = if permanent_tokens.is_empty() {
+        Restriction::must_attack(attackers)
+    } else {
+        if permanent_tokens.iter().any(|token| token.as_word().is_none()) {
+            return Ok(None);
+        }
+        let Ok(permanents) = crate::object_filters::parse_object_filter(permanent_tokens, false)
+        else {
+            return Ok(None);
+        };
+        Restriction::must_attack_permanents(attackers, permanents)
+    };
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_target_only(target),
+            EffectAst::subject_verb_cant_starting(
+                restriction,
+                Until::EndOfTurn,
+                RestrictionStart::NextTurn(PlayerFilter::ControllerOf(
+                    crate::filter::ObjectRef::Tagged(
+                        crate::tag::CompilerReferenceTag::It.bind().into(),
+                    ),
+                )),
                 None,
             ),
         ],

@@ -13,6 +13,10 @@ pub enum AlternativeCastKeyword {
     /// CR 702.190a sneak, a named alternative cost; appended for wire
     /// compatibility.
     Sneak,
+    /// CR 702.140a mutate, cast for its mutate cost; appended for wire
+    /// compatibility ("You may cast this card from your graveyard using its
+    /// mutate ability", Brokkos).
+    Mutate,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -259,6 +263,7 @@ where
             Self::Bestow { .. } => Some(AlternativeCastKeyword::Bestow),
             Self::Blitz { .. } => Some(AlternativeCastKeyword::Blitz),
             Self::Warp { .. } => Some(AlternativeCastKeyword::Warp),
+            Self::Mutate { .. } => Some(AlternativeCastKeyword::Mutate),
             // Sneak is a named composed alternative cost; its timing and
             // resolution are keyed to the same method name.
             Self::Composed { .. } if self.name().eq_ignore_ascii_case("Sneak") => {

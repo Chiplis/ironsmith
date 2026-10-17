@@ -4137,6 +4137,7 @@ pub fn parse_filter_has_granted_ability_line(
     crate::clause_support::validate_protection_static_line(tokens)?;
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
     if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
+    if let Some(abilities) = parse_complete_plot_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete comma-separated predicate list owns every clause and every
     // local condition; this family cannot suffix-match one of its `has` verbs.

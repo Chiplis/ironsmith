@@ -1641,6 +1641,11 @@ pub enum PlayerFilter {
         /// (CR 601.2c via 602.2b, 608.2b).
         #[cfg_attr(feature = "serde", serde(default))]
         as_you_activate: bool,
+        /// "who has at least two fewer creature cards in their graveyard than
+        /// you do" (Keeper of the Dead): the least margin of the comparison.
+        /// `0` (and `1`) is the plain strict comparison. Appended.
+        #[cfg_attr(feature = "serde", serde(default))]
+        minimum_difference: u32,
     },
     /// The unique in-game player who controls more objects matching `filter`
     /// than every other in-game player. No player matches when the lead is
@@ -2602,6 +2607,10 @@ pub struct ObjectFilter {
     /// by this creature this turn"). Read from the turn's crew history.
     #[cfg_attr(feature = "serde", serde(default))]
     pub crewed_by_source_this_turn: bool,
+    /// "that hasn't been phased out with this Attraction" (Ferris Wheel):
+    /// the candidate never phased out because of the current source.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub not_phased_out_with_source: bool,
     /// This creature either blocked an object matching the nested filter or
     /// was blocked by one this turn. Runtime matching uses the declaration
     /// event's object snapshots so the other creature can be checked using
@@ -2666,6 +2675,11 @@ pub struct ObjectFilter {
     /// The object moved from a library to a graveyard during the current turn.
     /// This is stable-identity history, not merely a present-zone qualifier.
     pub entered_graveyard_from_library_this_turn: bool,
+    /// This graveyard incarnation was put there this turn from anywhere other
+    /// than the battlefield ("cards in your graveyard that were put there
+    /// from anywhere other than the battlefield this turn", Banon). Appended.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub entered_graveyard_not_from_battlefield_this_turn: bool,
     /// This exact graveyard incarnation resulted from a mill instruction this turn.
     pub milled_into_graveyard_this_turn: bool,
     pub surveilled_this_turn: bool,
@@ -5666,6 +5680,9 @@ impl ObjectFilter {
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
+        if self.not_phased_out_with_source {
+            post_noun_qualifiers.push("that hasn't been phased out with this permanent".to_string());
+        }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
             let mut partner_description = combat_partner.description();
             if combat_partner.card_types.as_slice() == [CardType::Creature]
@@ -6720,6 +6737,13 @@ impl ObjectFilter {
 
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from their library this turn".to_string());
+        } else if self.entered_graveyard_not_from_battlefield_this_turn
+            && self.zone == Some(Zone::Graveyard)
+        {
+            parts.push(
+                "that was put there from anywhere other than the battlefield this turn"
+                    .to_string(),
+            );
         } else if self.entered_graveyard_from_battlefield_this_turn
             && self.zone == Some(Zone::Graveyard)
         {

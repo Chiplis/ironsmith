@@ -127,7 +127,8 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         with_attached_object, without_attached_object, could_enchant_object,
         controller_controls, nonattacking, enlist_eligible, blocking, nonblocking,
         blocked, blocked_by, blocked_by_source, blocked_source_this_turn,
-        crewed_by_source_this_turn, blocked_or_was_blocked_by_this_turn,
+        crewed_by_source_this_turn, not_phased_out_with_source,
+        blocked_or_was_blocked_by_this_turn,
         unblocked, is_target_object, in_combat_with_source, attacking_same_defender_as_source,
         could_be_enchanted_by_source, in_combat_with, entered_since_your_last_turn_ended,
         controlled_continuously_since_turn_began, didnt_enter_battlefield_this_turn,
@@ -135,6 +136,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         put_onto_battlefield_with_source, put_onto_battlefield_with_source_surface,
         created_with_source, created_with_source_surface, entered_graveyard_this_turn,
         entered_graveyard_from_battlefield_this_turn, entered_graveyard_from_library_this_turn,
+        entered_graveyard_not_from_battlefield_this_turn,
         milled_into_graveyard_this_turn, surveilled_this_turn, fought_this_turn, attacking_battle,
         counters_put_on_this_turn, counter_source_history, discarded_or_cycled_this_turn_by,
         was_dealt_damage_this_turn, dealt_damage_this_turn, dealt_damage_by_source_this_turn,
@@ -333,6 +335,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
                 | EventValueSpec::DieResultsAtLeast(_)
                 | EventValueSpec::LoyaltyCountersRemovedToActivate
                 | EventValueSpec::LifePaidToActivate
+                | EventValueSpec::PermanentsSacrificedToActivate
                 | EventValueSpec::ExcessDamage => {}
             }
         }
@@ -390,7 +393,10 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         | Value::CountersOnSource(_) | Value::CountersOnFilterCandidate(_) | Value::TaggedCount
         | Value::VoteCount(_) | Value::CasterManaSpentToCastTriggeringObject
         | Value::PlayersChosenNumberExtreme { .. }
-        | Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => {}
+        | Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn
+        | Value::GreatestEqualStoredDieResultsOnSource
+        | Value::GreatestManaValueExiledThisTurnSinceSourceEntered
+        | Value::IteratedPlayerChosenNumber => {}
     }
     Ok(rewritten)
 }
@@ -437,6 +443,7 @@ fn rewrite_turn_history_count_words(count: &TurnHistoryCount, change: TextChange
         | TurnHistoryCount::PlayersDiscarded(player) | TurnHistoryCount::PlayersDealtDamage(player)
         | TurnHistoryCount::DiscardedOrCycled(player) | TurnHistoryCount::Cycled(player)
         | TurnHistoryCount::LandsPlayed(player)
+        | TurnHistoryCount::PlayerCountersRemoved { player, .. }
         | TurnHistoryCount::CardsDrawn(player) | TurnHistoryCount::PlayersLostLife(player)
         | TurnHistoryCount::UntappedLandsAtTurnStart(player) | TurnHistoryCount::Descended(player)
         | TurnHistoryCount::KeywordActionsPerformed { player, .. }
@@ -505,6 +512,7 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor
         | TurnHistoryCondition::TriggeringSacrificePaidEmergeCost
         | TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn
+        | TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn
         | TurnHistoryCondition::TriggeringObjectEnteredFromZone(_) => {}
     }
     Ok(rewritten)
@@ -553,6 +561,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::PlayerHasLessLifeThanYou { player } | Condition::PlayerHasMoreLifeThanYou { player }
         | Condition::PlayerHasNoOpponentWithMoreLifeThan { player }
         | Condition::PlayerHasMoreLifeThanEachOtherPlayer { player } | Condition::PlayerIsMonarch { player }
+        | Condition::PlayerHasMoreLifeThanAnotherOpponent { player }
         | Condition::PlayerHasInitiative { player } | Condition::PlayerHasCitysBlessing { player }
         | Condition::PlayerHasEnduringStory { player } | Condition::SourceIsRingBearer { player }
         | Condition::PlayerRingTemptedThisGameOrMore { player, .. } | Condition::PlayerCommittedCrimeThisTurn { player }

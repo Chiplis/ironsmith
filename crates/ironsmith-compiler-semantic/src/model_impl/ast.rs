@@ -364,6 +364,9 @@ pub enum TriggerSpec {
         source: ObjectFilter,
         target: ObjectFilter,
         source_surface: crate::triggers::DamageSourceSurface,
+        /// "... deals damage to that creature": the damaged object must be a
+        /// target of the damage source's resolving spell or ability (CR 115.1).
+        recipient_is_source_target: bool,
     },
     DealsDamageToPlayer {
         source: ObjectFilter,

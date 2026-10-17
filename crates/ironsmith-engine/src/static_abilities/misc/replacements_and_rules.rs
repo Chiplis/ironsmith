@@ -244,7 +244,13 @@ fn damage_source_shares_color_with_recipient(
             recipient, ctx.game,
         )
         .colors;
-    let source_colors = if let Some(source) = ctx
+    let source_colors = if ctx
+        .game
+        .damage_source_is_colorless(damage.source, ctx.event_source_snapshot)
+    {
+        // A colorless source of damage (Ghostly Flame) shares no color.
+        crate::color::ColorSet::COLORLESS
+    } else if let Some(source) = ctx
         .game
         .object(damage.source)
         .filter(|_| !ctx.game.is_phased_out(damage.source))
@@ -317,6 +323,19 @@ impl DamageAmountReplacementMatcher {
         // Use LKI only when the source no longer exists. A still-live source
         // may have changed controller or types since its ability was put on
         // the stack; an older snapshot cannot make it match again.
+        // Shared damage-source color hook (Ghostly Flame): a colorless source
+        // of damage is matched with no colors.
+        if let Some(colorless) = ctx
+            .game
+            .damage_source_color_snapshot(damage.source, ctx.event_source_snapshot)
+        {
+            let filter_ctx = if colorless.zone == Zone::Stack {
+                ctx.filter_ctx.clone().with_caster(Some(colorless.controller))
+            } else {
+                ctx.filter_ctx.clone()
+            };
+            return self.source_filter.matches_snapshot(&colorless, &filter_ctx, ctx.game);
+        }
         if let Some(source) = ctx.game.object(damage.source).filter(|_| !ctx.game.is_phased_out(damage.source)) {
             let filter_ctx = if source.zone == Zone::Stack {
                 ctx.filter_ctx

@@ -39,6 +39,42 @@ impl EffectExecutor for BecomeColorChoiceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        if let Some(reference) = self.color_from {
+            // "becomes that color": read the exact earlier local color
+            // decision (a chosen color, or the single color of mana just
+            // added). No new choice is made here.
+            let ironsmith_core::ColorChoiceReference::Effect(color_id) = reference else {
+                return Err(ExecutionError::UnresolvableValue(
+                    "unbound local color choice".into(),
+                ));
+            };
+            let colors = ctx
+                .get_outcome(color_id)
+                .map(|outcome| {
+                    outcome
+                        .instruction_result()
+                        .execution_facts
+                        .iter()
+                        .filter_map(|fact| match fact {
+                            crate::effect::ExecutionFact::ChosenColor(color) => Some(*color),
+                            _ => None,
+                        })
+                        .collect::<crate::color::ColorSet>()
+                })
+                .unwrap_or_default();
+            if colors.is_empty() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            return crate::effect::Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+                self.target.clone(),
+                Modification::SetColors(colors),
+                self.duration.clone(),
+            ))
+            .0
+            .execute_child_with_outputs(game, ctx);
+        }
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
         let options = color_options()

@@ -61,6 +61,9 @@ pub enum DivvySequenceShape {
     LandPiles,
     ExilePermanentCardsPile,
     RevealTopPiles,
+    /// The Fact or Fiction split whose other pile goes on the bottom of the
+    /// library in any order (Jace, Architect of Thought).
+    RevealTopPilesOtherOnBottom,
     ExileCreatureCardsFromGraveyards,
     ChooseOneOfThem,
     SearchFourDifferentNames {
@@ -493,6 +496,24 @@ pub fn parse_divvy_sequence_shape(sentences: &[&[OwnedLexToken]]) -> Option<Divv
         )
     {
         return Some(DivvySequenceShape::RevealTopPiles);
+    }
+
+    if prefix(first, &["reveal", "the", "top"])
+        && sequence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
+        && sequence_has_phrase(
+            &sentence_words,
+            &["an", "opponent", "separates", "those", "cards", "into", "two", "piles"],
+        )
+        && sequence_has_phrase(&sentence_words, &["put", "one", "pile", "into", "your", "hand"])
+        && sequence_has_phrase(
+            &sentence_words,
+            &[
+                "the", "other", "on", "the", "bottom", "of", "your", "library", "in", "any",
+                "order",
+            ],
+        )
+    {
+        return Some(DivvySequenceShape::RevealTopPilesOtherOnBottom);
     }
 
     if exact_sequence(

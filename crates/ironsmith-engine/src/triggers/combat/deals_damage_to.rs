@@ -15,6 +15,9 @@ pub struct DealsDamageToTrigger {
     pub target_filter: ObjectFilter,
     pub combat_only: bool,
     pub source_surface: DamageSourceSurface,
+    /// The damaged object must be a target of the spell or ability whose
+    /// resolution deals the damage ("deals damage to that creature").
+    pub recipient_is_source_target: bool,
 }
 
 impl DealsDamageToTrigger {
@@ -32,6 +35,14 @@ impl DealsDamageToTrigger {
             target_filter,
             combat_only: false,
             source_surface,
+            recipient_is_source_target: false,
+        }
+    }
+
+    pub fn source_target_recipient(source_filter: ObjectFilter, target_filter: ObjectFilter) -> Self {
+        Self {
+            recipient_is_source_target: true,
+            ..Self::new(source_filter, target_filter)
         }
     }
 
@@ -41,6 +52,7 @@ impl DealsDamageToTrigger {
             target_filter,
             combat_only: true,
             source_surface: DamageSourceSurface::Filter,
+            recipient_is_source_target: false,
         }
     }
 
@@ -87,6 +99,15 @@ impl TriggerMatcher for DealsDamageToTrigger {
         let DamageTarget::Object(target_id) = damage.target else {
             return false;
         };
+        // CR 115.1: "that creature" is the damage source's own target, read
+        // from the resolving spell or ability that caused the damage.
+        if self.recipient_is_source_target
+            && ((damage.cause.source != Some(damage.source)
+                && damage.cause.resolving_spell != Some(damage.source))
+                || !damage.cause.targeted_objects.contains(&target_id))
+        {
+            return false;
+        }
         if !super::damage_object_matches_filter(
             target_id,
             damage.target_snapshot.as_ref(),
@@ -134,7 +155,13 @@ impl TriggerMatcher for DealsDamageToTrigger {
     }
 
     fn display(&self) -> String {
-        let target = damage_target_description(&self.target_filter);
+        let target = if self.recipient_is_source_target {
+            let mut noun = self.target_filter.clone();
+            noun.set_union_one_or_more(false);
+            format!("that {}", noun.description())
+        } else {
+            damage_target_description(&self.target_filter)
+        };
         let source = if self.source_surface == DamageSourceSurface::Source {
             super::deals_damage::generic_source_description(&self.source_filter)
         } else {

@@ -83,6 +83,8 @@ pub enum DirectCantFact {
     SourceCantAttackItsOwner,
     /// Port Razer.
     SourceCantAttackPlayerAlreadyAttacked,
+    /// Arboria.
+    CreaturesCantAttackPlayersInactiveLastTurn,
     /// Ogre Enforcer.
     SourceLethalDamageMustBeFromSingleSource,
     PermanentsYouControlCantBeSacrificed,
@@ -239,6 +241,16 @@ fn parse_other_global_direct_cant_fact<'a>(input: &mut LexStream<'a>) -> WResult
             ]),
         )
             .value(DirectCantFact::SourceCantAttackPlayerAlreadyAttacked),
+        (
+            primitives::kw("creatures"),
+            parse_cant,
+            primitives::phrase(&[
+                "attack", "a", "player", "unless", "that", "player", "cast", "a", "spell", "or",
+                "put", "a", "nontoken", "permanent", "onto", "the", "battlefield", "during",
+                "their", "last", "turn",
+            ]),
+        )
+            .value(DirectCantFact::CreaturesCantAttackPlayersInactiveLastTurn),
         (
             primitives::phrase(&["this", "creature"]),
             parse_cant,

@@ -72,6 +72,8 @@ pub enum DirectClauseShape {
     OnlyChosenCanAttack,
     OnlyChosenCanBlock,
     CastNonlandTaggedThisWay,
+    /// "You can cast only one more spell this turn." (Irencrag Feat)
+    CastOnlyMoreSpellsThisTurn(u32),
 }
 
 fn exact<'a, P>(tokens: &'a [OwnedLexToken], parser: P) -> bool
@@ -216,6 +218,16 @@ fn exact_shape(tokens: &[OwnedLexToken]) -> Option<DirectClauseShape> {
             "exiled", "this", "way", "without", "paying", "their", "mana", "costs",
         ])
         .value(DirectClauseShape::CastNonlandTaggedThisWay),
+        alt((
+            primitives::phrase(&[
+                "you", "can", "cast", "only", "one", "more", "spell", "this", "turn",
+            ])
+            .value(DirectClauseShape::CastOnlyMoreSpellsThisTurn(1)),
+            primitives::phrase(&[
+                "you", "can", "cast", "only", "two", "more", "spells", "this", "turn",
+            ])
+            .value(DirectClauseShape::CastOnlyMoreSpellsThisTurn(2)),
+        )),
     ));
     crate::grammar::primitives::probe_all(
         tokens,

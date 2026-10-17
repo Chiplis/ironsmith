@@ -1042,7 +1042,8 @@ impl StaticAbilityModelInterpreter {
         Some(match &model.payload {
             ironsmith_core::StaticAbilityPayload::Enchant(_)
             | ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
-            | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_) => return None,
+            | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
+            | ironsmith_core::StaticAbilityPayload::CastTargetRestriction { .. } => return None,
             ironsmith_core::StaticAbilityPayload::CommanderTaxLifeSubstitution { .. } => {
                 return None;
             }
@@ -1532,6 +1533,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SourceLandIsChosenType(display) => {
                 StaticAbility::source_land_is_chosen_type(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypesAsEnters {
+                display,
+                ..
+            } => StaticAbility::choose_basic_land_type_as_enters(display.clone()),
+            ironsmith_core::StaticAbilityPayload::FirstChosenLandTypeBecomesSecond {
+                filter,
+                display,
+            } => StaticAbility::first_chosen_land_type_becomes_second(
+                filter.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::AddChosenCreatureType {
                 filter,
                 display,
@@ -1845,8 +1857,14 @@ impl StaticAbilityModelInterpreter {
                 options,
                 display,
                 at_random,
+                each_player,
             } => {
-                if *at_random {
+                if *each_player {
+                    StaticAbility::each_player_chooses_named_option_as_enters(
+                        options.clone(),
+                        display.clone(),
+                    )
+                } else if *at_random {
                     StaticAbility::choose_named_option_at_random_as_enters(
                         options.clone(),
                         display.clone(),
@@ -2513,17 +2531,18 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EntersWithCounterChoice {
                 counter_types,
                 count,
+                kinds,
                 condition,
                 display,
-            } => match condition {
-                Some(condition) => StaticAbility::enters_with_counter_choice_if_condition(
-                    counter_types.clone(),
-                    count.clone(),
-                    condition.clone(),
-                    display.clone(),
-                ),
-                None => StaticAbility::enters_with_counter_choice(counter_types.clone(), count.clone()),
-            },
+            } => {
+                let mut choice =
+                    super::misc::EntersWithCounterChoice::new(counter_types.clone(), count.clone())
+                        .with_kinds(*kinds);
+                if let Some(condition) = condition {
+                    choice = choice.with_condition(condition.clone(), display.clone());
+                }
+                StaticAbility::new(choice)
+            }
             ironsmith_core::StaticAbilityPayload::EntersUnderChosenControl(players) => {
                 StaticAbility::new(super::misc::EntersUnderChosenControl(players.clone()))
             }
@@ -2793,6 +2812,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             set_quantifier_surface,
         } = &self.model.payload
         {
+            if keyword.kind == ironsmith_core::GrantedSpellKeywordKind::AnyAmountOfManaForEntryCounters {
+                let mut subject_filter = filter.clone();
+                subject_filter.cast_by = None;
+                return format!(
+                    "As an additional cost to cast {}, you may pay any amount of mana. If you do, that creature enters with that many additional +1/+1 counters on it.",
+                    super::cost_modifiers::describe_spell_filter(&subject_filter)
+                );
+            }
             let (subject, singular) =
                 super::continuous::grant_subject_with_set_quantifier(filter, *set_quantifier_surface);
             let verb = if singular { "has" } else { "have" };
@@ -3681,8 +3708,19 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         matches!(
             self.payload(),
             ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypeAsEnters(_)
+                | ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypesAsEnters { .. }
         )
         .then_some(super::ChooseBasicLandTypeAsEntersSpec)
+    }
+
+    fn basic_land_type_choice_count_as_enters(&self) -> u32 {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypeAsEnters(_) => 1,
+            ironsmith_core::StaticAbilityPayload::ChooseBasicLandTypesAsEnters { count, .. } => {
+                *count
+            }
+            _ => 0,
+        }
     }
 
     fn land_type_choice_as_enters(&self) -> Option<super::ChooseLandTypeAsEntersSpec> {
@@ -3706,10 +3744,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChooseNamedOptionAsEnters {
                 options,
                 at_random,
+                each_player,
                 ..
             } => Some(super::ChooseNamedOptionAsEntersSpec {
                 options: options.clone(),
                 at_random: *at_random,
+                each_player: *each_player,
             }),
             _ => None,
         }

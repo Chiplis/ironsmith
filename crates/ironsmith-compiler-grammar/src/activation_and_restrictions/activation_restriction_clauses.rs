@@ -312,6 +312,27 @@ fn player_negated_restriction_from_tail(
         )));
     }
 
+    // "Players can't pay life to cast spells or to activate abilities that
+    // aren't mana abilities." (Karn's Sylex): a life-payment prohibition on
+    // casting and non-mana activation (CR 119.4, 605).
+    if let ["pay", "life", "to", "cast", "spells", "or", rest @ ..] = words
+        && let Some(exempt_mana_abilities) =
+            match rest.strip_prefix(&["to"][..]).unwrap_or(rest) {
+                ["activate", "abilities"] => Some(false),
+                ["activate", "abilities", "that", "aren't" | "arent", "mana", "abilities"] => {
+                    Some(true)
+                }
+                _ => None,
+            }
+    {
+        return Some(Restriction::CastOrActivatePayments {
+            player,
+            pay_life: true,
+            sacrifice: None,
+            exempt_mana_abilities,
+        });
+    }
+
     if let Some(spell_filter) = parse_cast_restriction_tail_filter(words) {
         Some(Restriction::cast_spells_matching(player, spell_filter))
     } else {
@@ -342,6 +363,47 @@ fn player_negated_restriction_from_tail(
             },
         )
     }
+}
+
+/// "<player> can't be attacked except by creatures with flying and/or
+/// islandwalk" (Island Sanctuary): creatures lacking every listed keyword
+/// can't attack that player (CR 508.1b); planeswalkers stay attackable.
+fn player_be_attacked_except_by_restriction(
+    words: &[&str],
+    player: PlayerFilter,
+) -> Option<crate::effect::Restriction> {
+    use crate::grammar::filters::FilterTailDecoration as Decoration;
+    let rest = words.strip_prefix(&["be", "attacked", "except", "by"][..])?;
+    // "with A and/or B" admits a creature with either keyword.
+    let mut normalized: Vec<&str> = Vec::with_capacity(rest.len());
+    let mut idx = 0usize;
+    while idx < rest.len() {
+        if rest[idx] == "and/or" {
+            normalized.push("or");
+            idx += 1;
+        } else if rest[idx] == "and" && rest.get(idx + 1) == Some(&"or") {
+            normalized.push("or");
+            idx += 2;
+        } else {
+            normalized.push(rest[idx]);
+            idx += 1;
+        }
+    }
+    let split = crate::grammar::filters::parse_filter_tail_decoration_split_words(&normalized)?;
+    if !matches!(split.base_words, ["creatures"] | ["creature"]) {
+        return None;
+    }
+    let disallowed = match split.decoration {
+        Decoration::WithKeyword(keyword) => Decoration::WithoutKeyword(keyword),
+        Decoration::WithEitherKeyword(first, second) => {
+            Decoration::WithoutEitherKeyword(first, second)
+        }
+        Decoration::WithAnyKeyword(keywords) => Decoration::WithoutAnyKeyword(keywords),
+        _ => return None,
+    };
+    let mut attackers = ObjectFilter::creature();
+    crate::grammar::filters::apply_filter_tail_decoration(&mut attackers, disallowed);
+    Some(crate::effect::Restriction::attack_player(attackers, player))
 }
 
 fn damage_cause_life_loss_restriction_from_tail(
@@ -1322,6 +1384,28 @@ pub fn parse_negated_object_restriction_clause(
         return Ok(None);
     }
 
+    // "Power-up abilities can't be activated" (Kang the Conqueror): every
+    // permanent's activated abilities with that keyword (CR 602.5).
+    if crate::lexer::token_word_refs(&trim_commas(&tokens[neg_end..])) == ["be", "activated"] {
+        let keyword = match crate::lexer::token_word_refs(&subject_tokens).as_slice() {
+            ["power-up", "abilities"] | ["power", "up", "abilities"] => {
+                Some(ironsmith_core::ActivatedAbilityKeyword::PowerUp)
+            }
+            ["boast", "abilities"] => Some(ironsmith_core::ActivatedAbilityKeyword::Boast),
+            ["equip", "abilities"] => Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
+            ["exhaust", "abilities"] => Some(ironsmith_core::ActivatedAbilityKeyword::Exhaust),
+            _ => None,
+        };
+        if let Some(keyword) = keyword {
+            return Ok(Some(ParsedCantRestriction {
+                restriction: Restriction::activate_keyword_abilities_of(
+                    ObjectFilter::default(),
+                    keyword,
+                ),
+                target: None,
+            }));
+        }
+    }
     // "Counters can't be put on artifacts, creatures, enchantments, or lands."
     // (Solemnity): the counters are the grammatical subject; the permanents
     // after "put on" are what the restriction protects.
@@ -1497,6 +1581,14 @@ pub fn parse_negated_object_restriction_clause(
         // an untap-step limit, owned by the static untap-limit rule.
         if remainder_words.starts_with(&["untap", "more", "than"]) {
             return Ok(None);
+        }
+        if let Some(restriction) =
+            player_be_attacked_except_by_restriction(&remainder_words, player.clone())
+        {
+            return Ok(Some(ParsedCantRestriction {
+                restriction,
+                target: None,
+            }));
         }
         let Some(restriction) = player_negated_restriction_from_tail(&remainder_words, player)
         else {

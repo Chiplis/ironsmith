@@ -44,7 +44,8 @@ mod subject_shapes;
 mod tail_static_shapes;
 
 pub use clause_shapes::{
-    AnthemPrefixConditionKind, AnthemTailShape, parse_fixed_prefix_condition_shape,
+    AnthemPrefixConditionKind, AnthemTailShape, leading_condition_boundary_comma,
+    parse_fixed_prefix_condition_shape,
     parse_modifier_shape, parse_prefix_condition_shape, parse_tail_shape,
     parse_word_token_candidates, split_trailing_modifier_maximum,
 };

@@ -44,6 +44,10 @@ pub struct AbilityActivatedEvent {
     /// Life the activator paid while paying this activation's costs ("if
     /// life was paid to activate it", Verrak, Warped Sengir).
     pub life_paid_to_activate: u32,
+    /// Permanents the activator sacrificed while paying this activation's
+    /// costs ("if one or more permanents were sacrificed to activate it",
+    /// Ashnod the Uncaring).
+    pub permanents_sacrificed_to_activate: u32,
     /// The targets chosen for this activation (CR 602.2b), for cost
     /// conditions that ask whether an earlier activation targeted something.
     pub targets: Vec<crate::game_state::Target>,
@@ -62,6 +66,20 @@ fn life_paid_by<'a>(
             (paid.player == payer && seen.insert(event.occurrence_key())).then_some(paid.amount)
         })
         .fold(0u32, u32::saturating_add)
+}
+
+/// Permanents sacrificed among the receipts of one activation payment.
+fn permanents_sacrificed_in<'a>(
+    events: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
+) -> u32 {
+    let mut seen = std::collections::HashSet::new();
+    events
+        .into_iter()
+        .filter(|event| {
+            event.downcast::<crate::events::SacrificeEvent>().is_some()
+                && seen.insert(event.occurrence_key())
+        })
+        .count() as u32
 }
 
 /// Immutable acquisition for one announced activation. Native payment frames
@@ -147,8 +165,13 @@ impl ActivationDeclaration {
             outputs.iter().flat_map(|outputs| &outputs.outcome.events),
             self.0.activation.activator,
         );
-        self.finish_payment(paid_x, evidence)
-            .map(|activation| activation.with_life_paid_to_activate(life))
+        let sacrificed =
+            permanents_sacrificed_in(outputs.iter().flat_map(|outputs| &outputs.outcome.events));
+        self.finish_payment(paid_x, evidence).map(|activation| {
+            activation
+                .with_life_paid_to_activate(life)
+                .with_permanents_sacrificed_to_activate(sacrificed)
+        })
     }
 
     pub(crate) fn with_published_payment(
@@ -170,8 +193,16 @@ impl ActivationDeclaration {
                 .flat_map(|outputs| &outputs.instruction_outcome().events),
             self.0.activation.activator,
         );
-        self.finish_payment(paid_x, evidence)
-            .map(|activation| activation.with_life_paid_to_activate(life))
+        let sacrificed = permanents_sacrificed_in(
+            outputs
+                .iter()
+                .flat_map(|outputs| &outputs.instruction_outcome().events),
+        );
+        self.finish_payment(paid_x, evidence).map(|activation| {
+            activation
+                .with_life_paid_to_activate(life)
+                .with_permanents_sacrificed_to_activate(sacrificed)
+        })
     }
 }
 
@@ -193,6 +224,7 @@ impl AbilityActivatedEvent {
             mana_spent_total: 0,
             mana_spend_evidence: None,
             life_paid_to_activate: 0,
+            permanents_sacrificed_to_activate: 0,
             targets: Vec::new(),
         }
     }
@@ -349,6 +381,11 @@ impl AbilityActivatedEvent {
 
     pub fn with_life_paid_to_activate(mut self, life: u32) -> Self {
         self.life_paid_to_activate = life;
+        self
+    }
+
+    pub fn with_permanents_sacrificed_to_activate(mut self, count: u32) -> Self {
+        self.permanents_sacrificed_to_activate = count;
         self
     }
 }

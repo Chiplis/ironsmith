@@ -821,7 +821,12 @@ pub(super) fn compute_spell_cast_x_bounds_with_reduction(
     non_mana_costs.extend(spell.additional_non_mana_costs());
 
     let costs_need_x = non_mana_costs.iter().any(cost_references_x);
-    let needs_x = printed_has_x || pay_has_x || costs_need_x;
+    // "As an additional cost to cast this spell, choose a number between 0
+    // and 5" (Liquid Fire): a bounded number announced while casting is an X
+    // announcement (CR 601.2b) even with no X in any cost; its bounds are the
+    // spell's own X maximum/minimum statics.
+    let announces_bounded_number = max_x_from_static_abilities(game, caster, stack_id).is_some();
+    let needs_x = printed_has_x || pay_has_x || costs_need_x || announces_bounded_number;
     if !needs_x {
         return (false, 0, 0);
     }
@@ -5732,6 +5737,19 @@ pub(super) fn continue_to_mana_payment(
             if surcharge > 0 {
                 append_activation_cost_steps_from_components(
                     &[crate::costs::Cost::life(surcharge)],
+                    &mut pending.remaining_cost_steps,
+                );
+            }
+            // "Spells cost an additional \"Sacrifice a Swamp\" ... for each
+            // black mana symbol in their mana costs." (Drought)
+            let sacrifices = crate::decision::battlefield_sacrifice_surcharges_for_mana_cost(
+                game,
+                false,
+                spell.mana_cost_owned().as_ref(),
+            );
+            if !sacrifices.is_empty() {
+                append_activation_cost_steps_from_components(
+                    &sacrifices,
                     &mut pending.remaining_cost_steps,
                 );
             }

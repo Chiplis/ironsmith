@@ -2811,6 +2811,9 @@ enum SpecialActionRef {
     PerformRepeatableManaPaymentAction {
         action_index: usize,
     },
+    DiscardFromHand {
+        card_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -4909,6 +4912,8 @@ pub struct WasmGame {
     /// Timing breakdown for the most recent dispatch-like engine call.
     last_dispatch_perf: Option<DispatchPerfMetrics>,
     snapshot_object_view_cache: Box<SnapshotObjectViewCache>,
+    /// Hidden cards each player has seen, for presentation only.
+    hidden_card_memory: HiddenCardMemory,
     #[cfg(target_arch = "wasm32")]
     snapshot_js_encoding_cache: SnapshotJsEncodingCache,
     manabrew_game_id: String,
@@ -5794,6 +5799,8 @@ impl PregameState {
 
 mod wasm_game_impl;
 mod static_top_visibility;
+mod hidden_card_memory;
+use hidden_card_memory::HiddenCardMemory;
 use static_top_visibility::StaticLibraryTopVisibilityWindow;
 use wasm_game_impl::*;
 

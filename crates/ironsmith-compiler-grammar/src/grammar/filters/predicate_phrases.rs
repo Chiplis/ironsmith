@@ -60,6 +60,10 @@ const CARDS_IN_YOUR_GRAVEYARD_SCOPE_PHRASES: &[&[&str]] = &[
     &["cards", "in", "your", "graveyard"],
 ];
 const SACRIFICED_PERMANENTS_SCOPE_PHRASES: &[&[&str]] = &[
+    // "among the sacrificed permanents" (Baba Lysaga, Night Witch) when the
+    // article survives into the scope words.
+    &["the", "sacrificed", "permanent"],
+    &["the", "sacrificed", "permanents"],
     &["sacrificed"],
     &["sacrificed_0"],
     &["sacrificed", "permanent"],
@@ -3775,6 +3779,38 @@ fn parse_active_this_way_put_into_graveyard_predicate(
     ))
 }
 
+/// "one or more creature cards were put into that graveyard this way" (Helm
+/// of Obedience): the cards the prior instruction put into a graveyard.
+fn parse_passive_this_way_put_into_graveyard_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    const SUFFIXES: &[&[&str]] = &[
+        &["were", "put", "into", "that", "graveyard", "this", "way"],
+        &["was", "put", "into", "that", "graveyard", "this", "way"],
+        &["were", "put", "into", "their", "graveyard", "this", "way"],
+        &["was", "put", "into", "their", "graveyard", "this", "way"],
+        &["were", "put", "into", "a", "graveyard", "this", "way"],
+        &["was", "put", "into", "a", "graveyard", "this", "way"],
+    ];
+    let object_tokens = SUFFIXES
+        .iter()
+        .find_map(|suffix| primitives::strip_lexed_suffix_phrase(tokens, suffix))?;
+    let object_tokens =
+        primitives::strip_lexed_prefix_phrase(object_tokens, &["one", "or", "more"])
+            .unwrap_or(object_tokens);
+    if object_tokens.is_empty() {
+        return None;
+    }
+    let mut filter = parse_this_way_object_filter_clause(LexedClause::new(object_tokens))?;
+    filter.set_prior_effect_action_surface(Some(
+        ironsmith_core::PriorEffectAction::PutIntoGraveyard,
+    ));
+    Some(PredicateAst::TaggedMatches(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        filter,
+    ))
+}
+
 fn parse_passive_this_way_tagged_object_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -3782,6 +3818,9 @@ fn parse_passive_this_way_tagged_object_predicate(
         return Ok(Some(predicate));
     }
     if let Some(predicate) = parse_active_this_way_put_into_graveyard_predicate(tokens) {
+        return Ok(Some(predicate));
+    }
+    if let Some(predicate) = parse_passive_this_way_put_into_graveyard_predicate(tokens) {
         return Ok(Some(predicate));
     }
     let clause = LexedClause::new(tokens);

@@ -438,6 +438,7 @@ pub(super) fn lower(
                         until_next_end_step: duration == ExilePlayDuration::UntilYourNextEndStep,
                         until_next_turn_start: duration == ExilePlayDuration::UntilYourNextTurn,
                         during_next_turn: false,
+                        until_end_of_combat_next_turn: false,
                         spell_filter: None,
                         surface: None,
                         max_plays: None,

@@ -25,6 +25,8 @@ pub enum ChoiceActionAst {
         secretly: bool,
         excluded_subtypes: Vec<Subtype>,
         family: SubtypeFamily,
+        /// "Note a creature type that hasn't been noted for this Saga."
+        note_for_source: bool,
     },
     ChooseLandType {
         exclude_basic: bool,

@@ -286,6 +286,7 @@ impl WasmGame {
             self.static_library_top_visibility_window(),
         );
         self.include_payment_disclosure_views(&mut snap);
+        self.apply_hidden_card_memory(&mut snap);
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -1540,6 +1541,7 @@ impl WasmGame {
             dispatch_advance_until_decision_perfs: Vec::new(),
             last_dispatch_perf: None,
             snapshot_object_view_cache: Box::default(),
+            hidden_card_memory: HiddenCardMemory::default(),
             #[cfg(target_arch = "wasm32")]
             snapshot_js_encoding_cache: SnapshotJsEncodingCache::default(),
             manabrew_game_id: "ironsmith-uninitialized".to_string(),
@@ -3572,6 +3574,7 @@ impl WasmGame {
             self.static_library_top_visibility_window(),
         );
         self.include_payment_disclosure_views(&mut snap);
+        self.apply_hidden_card_memory(&mut snap);
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();

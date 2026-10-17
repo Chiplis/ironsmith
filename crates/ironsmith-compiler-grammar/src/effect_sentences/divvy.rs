@@ -817,6 +817,72 @@ fn try_parse_divvy_sentence_sequence_program(
         return Ok(Some(effects));
     }
 
+    // As the Fact or Fiction split below, but the pile not put into your
+    // hand goes on the bottom of your library in an order you choose.
+    if shape == DivvySequenceShape::RevealTopPilesOtherOnBottom {
+        let source = crate::tag::CompilerReferenceTag::DivvySource.bind();
+        let pile = crate::tag::CompilerReferenceTag::DivvyPile.bind();
+        let to_hand = |tag: crate::tag::TagRef| {
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(tag, None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+        };
+        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        effects.extend(vec![
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+                vec![Zone::Library],
+                source.clone(),
+            ),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
+                filter: ObjectFilter::tagged(source.clone()),
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: pile.clone(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            }),
+            EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
+                player: PlayerAst::You,
+                effects: vec![
+                    to_hand(pile.clone()),
+                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                        source.clone(),
+                        Some(pile.clone()),
+                        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+                        PlayerAst::You,
+                    ),
+                ],
+                alternative: vec![
+                    EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                        tag: source.clone(),
+                        effects: vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(
+                                crate::tag::CompilerReferenceTag::DivvyPile,
+                            ),
+                            if_true: Vec::new(),
+                            if_false: vec![to_hand(crate::tag::CompilerReferenceTag::It.bind())],
+                        })],
+                    }),
+                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                        pile,
+                        None,
+                        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+                        PlayerAst::You,
+                    ),
+                ],
+            }),
+        ]);
+        return Ok(Some(effects));
+    }
+
     if shape == DivvySequenceShape::RevealTopPiles {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![

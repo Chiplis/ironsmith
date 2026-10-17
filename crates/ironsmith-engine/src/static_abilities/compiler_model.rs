@@ -115,6 +115,9 @@ impl StaticAbility {
             Some(StaticAbilityId::CantAttackPlayerAlreadyAttackedThisTurn) => {
                 Self::cant_attack_player_already_attacked_this_turn()
             }
+            Some(StaticAbilityId::CreaturesCantAttackPlayersInactiveLastTurn) => {
+                Self::creatures_cant_attack_players_inactive_last_turn()
+            }
             Some(StaticAbilityId::CantBeCopied) => Self::cant_be_copied(),
             Some(StaticAbilityId::CantBeCountered) => Self::cant_be_countered_ability(),
             Some(StaticAbilityId::CanBlockFlying) => Self::can_block_flying(),
@@ -137,6 +140,9 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBeBlockedByLowerPowerThanSource) => {
                 Self::cant_be_blocked_by_lower_power_than_source()
             }
+            Some(StaticAbilityId::CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent) => {
+                Self::cant_be_blocked_unless_attacking_owner_or_owners_permanent()
+            }
             Some(StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures) => {
                 Self::cant_be_blocked_while_defending_player_controls_most_creatures()
             }
@@ -144,11 +150,17 @@ impl StaticAbility {
                 Self::can_attack_as_though_no_defender()
             }
             Some(StaticAbilityId::CanAttackAsThoughHaste) => Self::can_attack_as_though_haste(),
+            Some(StaticAbilityId::CreaturesCanAttackOpponentsAsThoughHaste) => {
+                Self::creatures_can_attack_opponents_as_though_haste()
+            }
             Some(StaticAbilityId::MayAssignDamageAsUnblocked) => {
                 Self::may_assign_damage_as_unblocked()
             }
             Some(StaticAbilityId::AssignsDamageAsUnblocked) => {
                 Self::assigns_damage_as_unblocked()
+            }
+            Some(StaticAbilityId::MayDivideCombatDamageAmongDefendingPlayerAndCreatures) => {
+                Self::may_divide_combat_damage_among_defending_player_and_creatures()
             }
             Some(StaticAbilityId::MayAssignUnblockedDamageToDefendingCreature) => {
                 Self::may_assign_unblocked_damage_to_defending_creature()
@@ -190,8 +202,14 @@ impl StaticAbility {
                 Self::opponents_face_villainous_choice_additional_time()
             }
             Some(StaticAbilityId::LoseLifeForUnspentMana) => Self::lose_life_for_unspent_mana(),
+            Some(StaticAbilityId::MustAttackDraftNotedPlayers) => {
+                Self::must_attack_draft_noted_players(label)
+            }
             Some(StaticAbilityId::MayDiscardSourceAnyTimeYouCouldCastInstant) => {
                 Self::may_discard_source_any_time_you_could_cast_instant()
+            }
+            Some(StaticAbilityId::MayPlotNonlandCardsFromTopOfLibrary) => {
+                Self::may_plot_nonland_cards_from_top_of_library()
             }
             Some(StaticAbilityId::SourceLoyaltyAbilitiesTwiceEachTurn) => {
                 Self::source_loyalty_abilities_twice_each_turn()

@@ -386,6 +386,12 @@ pub fn resolve_condition_from_predicate(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerHasMoreLifeThanAnotherOpponent {
+            player,
+        }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerHasMoreLifeThanAnotherOpponent { player }
+        }
         PredicateAst::CountParity {
             count,
             even,
@@ -1092,6 +1098,9 @@ pub fn resolve_condition_from_predicate(
             }
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn => {
                 ironsmith_core::TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn
+            }
+            TurnHistoryPredicateAst::OpponentAttackedControllerDuringTheirLastTurn => {
+                ironsmith_core::TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn
             }
             TurnHistoryPredicateAst::ActivePlayerAttackedControllerThisTurn => {
                 ironsmith_core::TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn

@@ -1640,11 +1640,41 @@
     if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>() {
         let player = describe_player_filter(&consult.player);
         let library_owner = if player == "you" { "your" } else { "their" };
+        if consult.mode == crate::effects::consult_helpers::LibraryConsultMode::Mill {
+            // "Target opponent mills a card, then repeats this process until
+            // a creature card or X cards have been put into their graveyard
+            // this way, whichever comes first." (Helm of Obedience)
+            let selection = ensure_indefinite_article(&describe_single_search_filter_in_zone(
+                &consult.filter,
+                Zone::Library,
+            ));
+            let stop_text = match consult.max_exposed.as_ref() {
+                Some(max_exposed) => format!(
+                    "{selection} or {} cards have been put into {library_owner} graveyard this way, whichever comes first",
+                    describe_value(max_exposed)
+                ),
+                None => format!(
+                    "{selection} has been put into {library_owner} graveyard this way"
+                ),
+            };
+            let mill_verb = player_verb(&player, "mill", "mills");
+            let repeat_verb = player_verb(&player, "repeat", "repeats");
+            if player == "you" {
+                return format!(
+                    "{} a card, then {repeat_verb} this process until {stop_text}",
+                    capitalize_first(mill_verb)
+                );
+            }
+            return format!(
+                "{player} {mill_verb} a card, then {repeat_verb} this process until {stop_text}"
+            );
+        }
         let (subject_verb, followup_verb) = match consult.mode {
             crate::effects::consult_helpers::LibraryConsultMode::Reveal => {
                 (player_verb(&player, "reveal", "reveals"), "reveal")
             }
-            crate::effects::consult_helpers::LibraryConsultMode::Exile => {
+            crate::effects::consult_helpers::LibraryConsultMode::Exile
+            | crate::effects::consult_helpers::LibraryConsultMode::Mill => {
                 (player_verb(&player, "exile", "exiles"), "exile")
             }
         };
@@ -1983,6 +2013,14 @@
         } else {
             (describe_value(&amass.amount), String::new())
         };
+        if let Some(player) = amass.player.as_ref() {
+            let subject = describe_player_filter(player);
+            let subtype = amass
+                .subtype
+                .map(|subtype| format!(" {}", pluralize_word(&subtype.to_string())))
+                .unwrap_or_default();
+            return format!("{subject} amasses{subtype} {amount}{where_x}");
+        }
         if let Some(subtype) = amass.subtype {
             let subtype_name = subtype.to_string();
             return format!("Amass {} {amount}{where_x}", pluralize_word(&subtype_name));
@@ -2146,6 +2184,56 @@
         let pronoun = if player == "you" { "you" } else { "they" };
         return format!(
             "Until end of turn, {player} may tap lands {pronoun} don't control for mana"
+        );
+    }
+    if let Some(roll) = effect.downcast_ref::<crate::effects::RollAndStoreDieResultsEffect>() {
+        let word = |n: u32| match n {
+            1 => "one".to_string(),
+            2 => "two".to_string(),
+            3 => "three".to_string(),
+            4 => "four".to_string(),
+            5 => "five".to_string(),
+            6 => "six".to_string(),
+            n => n.to_string(),
+        };
+        let player = describe_player_filter(&roll.player);
+        let verb = if player == "you" { "roll" } else { "rolls" };
+        let dice = if roll.count == 1 { "die" } else { "dice" };
+        let prefix = if player == "you" { String::new() } else { format!("{player} ") };
+        return format!(
+            "{prefix}{verb} {} {}-sided {dice} and store those results on it",
+            word(roll.count),
+            word(roll.sides)
+        );
+    }
+    if effect
+        .downcast_ref::<crate::effects::DeclareBlockersByRandomPilesThisTurnEffect>()
+        .is_some()
+    {
+        return "This turn, instead of declaring blockers, each defending player chooses any number of creatures they control and divides them into a number of piles equal to the number of attacking creatures for whom that player is the defending player. Creatures those players control that can block additional creatures may likewise be put into additional piles. Assign each pile to a different one of those attacking creatures at random. Each creature in a pile that can block the creature that pile is assigned to does so".to_string();
+    }
+    if let Some(reroll) = effect.downcast_ref::<crate::effects::RerollStoredDieResultsEffect>() {
+        let player = describe_player_filter(&reroll.player);
+        return format!(
+            "{player} may reroll any number of this creature's stored results"
+        );
+    }
+    if let Some(grant) =
+        effect.downcast_ref::<crate::effects::GrantPayLifeManaAbilityUntilEndOfTurnEffect>()
+    {
+        let player = describe_player_filter(&grant.player);
+        let does = if player == "you" { "do" } else { "does" };
+        let pronoun = if player == "you" { "you" } else { "that player" };
+        let mana = grant
+            .mana
+            .iter()
+            .copied()
+            .map(describe_mana_symbol)
+            .collect::<Vec<_>>()
+            .join("");
+        return format!(
+            "Until end of turn, any time {player} could activate a mana ability, {player} may pay {} life. If {pronoun} {does}, add {mana}",
+            grant.life_cost
         );
     }
     if let Some(allowance) =
@@ -2765,6 +2853,13 @@
         };
         return format!("{subject} all unspent mana");
     }
+    if let Some(stakes) = effect.downcast_ref::<crate::effects::CoinFlipLifeStakesEffect>() {
+        let n = stakes.initial_stakes;
+        let opponent = describe_choose_spec(&stakes.opponent);
+        return format!(
+            "Flip a coin. If you win the flip, you gain {n} life and {opponent} loses {n} life, and you decide whether to flip again. If you lose the flip, you lose {n} life and that opponent gains {n} life, and that player decides whether to flip again. Double the life stakes with each flip"
+        );
+    }
     if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>() {
         if let Value::Scaled(base, 2) = &set_life.amount
             && let Value::LifeTotal(player) = base.as_ref()
@@ -3128,6 +3223,12 @@
             "For each color among {}, add one mana of that color{}",
             pluralize_noun_phrase(&describe_for_each_filter(&add_colors_among.filter)),
             describe_add_mana_destination_suffix(&add_colors_among.player)
+        );
+    }
+    if let Some(add_lost) = effect.downcast_ref::<crate::effects::AddManaLostThisWayEffect>() {
+        return format!(
+            "Add the mana lost this way{}",
+            describe_add_mana_destination_suffix(&add_lost.player)
         );
     }
     if let Some(add_equal_to_cost) =
@@ -4324,6 +4425,12 @@
             return format!("Until the end of your next turn, {}, {delayed_text}",
                 lowercase_first(&trigger_text));
         }
+        if schedule.duration == ironsmith_core::DelayedTriggerDuration::WhileSourceTapped {
+            return format!(
+                "For as long as this creature remains tapped, {}, {delayed_text}",
+                lowercase_first(&trigger_text)
+            );
+        }
         if schedule.duration
             == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn
         {
@@ -5175,6 +5282,28 @@
         return format!("{prefix} {source} would deal {damage} to {recipient}{duration}, it deals that much damage plus {bonus} instead");
     }
     if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterTokenCreationMultiplierEffect>()
+    {
+        let prefix = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, if ",
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => "Until your next turn, if ",
+            crate::effects::ReplacementApplyMode::OneShot => "The next time ",
+            crate::effects::ReplacementApplyMode::Resolution => "If ",
+        };
+        let controller = match &register.controller {
+            PlayerFilter::You => "your control".to_string(),
+            player => format!("the control of {}", describe_player_filter(player)),
+        };
+        let many = match register.factor {
+            2 => "twice".to_string(),
+            3 => "three times".to_string(),
+            other => format!("{other} times"),
+        };
+        return format!(
+            "{prefix}one or more tokens would be created under {controller}, {many} that many of those tokens are created instead"
+        );
+    }
+    if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterCounterPlacementReplacementEffect>()
     {
         let counters = register
@@ -5598,6 +5727,16 @@
         return "Apply a replacement effect".to_string();
     }
     if let Some(become_color) = effect.downcast_ref::<crate::effects::BecomeColorChoiceEffect>() {
+        if become_color.color_from.is_some() {
+            let duration = match &become_color.duration {
+                Until::Forever => String::new(),
+                _ => format!(" {}", describe_until(&become_color.duration)),
+            };
+            return format!(
+                "{} becomes that color{duration}",
+                describe_choose_spec(&become_color.target)
+            );
+        }
         let choice = if become_color.allow_multiple {
             "color or colors"
         } else {
@@ -6314,6 +6453,9 @@
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn".to_string(),
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => "until your next turn".to_string(),
             crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => "during your next turn".to_string(),
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
+                "until end of combat on your next turn".to_string()
+            }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn".to_string()
             }
@@ -6593,6 +6735,9 @@
             crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => "until your next turn",
             crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn => "during your next turn",
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
+                "until end of combat on your next turn"
+            }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
                 "until the end of your next turn"
             }
@@ -6830,6 +6975,11 @@
             Until::EndOfTurn => "this turn".to_string(),
             _ => describe_until(&grant_next_spell_cost_reduction.duration),
         };
+        if grant_next_spell_cost_reduction.pay_life_equal_to_mana_value {
+            return format!(
+                "Rather than pay the mana cost of the next {spell_text} {player_text} cast {duration_text}, {player_text} may pay life equal to that spell's mana value",
+            );
+        }
         if grant_next_spell_cost_reduction.without_paying_mana_cost {
             return format!(
                 "The next {spell_text} {player_text} cast {duration_text} can be cast without paying its mana cost",

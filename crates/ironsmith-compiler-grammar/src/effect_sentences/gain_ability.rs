@@ -1840,11 +1840,14 @@ fn parse_activated_ability_snapshot_grant(tokens: &[OwnedLexToken]) -> Result<Op
         || !rest.iter().take(4).zip(["all", "activated", "abilities", "of"]).all(|(token, word)| token.is_word(word))
         || !rest[rest.len() - 4..].iter().zip(["until", "end", "of", "turn"]).all(|(token, word)| token.is_word(word))
     { return Ok(None); }
+    // "Each Horror you control gains ..." names every matching recipient,
+    // not one chosen among them.
+    let each_recipient = tokens[0].is_any_word(&["each", "all"]);
     let target = parse_target_phrase(&tokens[..gain])?;
     let source = parse_target_phrase(&rest[4..rest.len() - 4])?;
     Ok(Some(EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor, PlayerAst::You,
         SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantActivatedAbilitiesFrom {
-            target, source, duration: Until::EndOfTurn,
+            target, source, duration: Until::EndOfTurn, each_recipient, symbol_as_any_color: None,
         }),
     )))
 }

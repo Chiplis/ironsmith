@@ -439,6 +439,14 @@ pub fn parse_become_clause(
         return Ok(effect);
     }
 
+    // "This creature becomes that color until end of turn" (Foraging
+    // Wickermaw): the color completed by the exact earlier local color
+    // decision (a chosen color or the color of mana just added). Reference
+    // resolution binds the producer; an unbound reading fails in lowering.
+    if become_words == ["that", "color"] {
+        return Ok(EffectAst::subject_verb_become_that_color(target, duration));
+    }
+
     match become_surface.exact_kind {
         Some(become_grammar::BecomeExactKind::BasicLandTypeChoice) => {
             return Ok(EffectAst::subject_verb_become_basic_land_type_choice(

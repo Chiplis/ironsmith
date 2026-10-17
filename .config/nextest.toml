@@ -1,0 +1,8 @@
+# ts-rs synchronizes exports within a process, but nextest runs each test in
+# its own process. These generated tests share dependency output files.
+[test-groups.typescript-exports]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = 'package(manabrew-protocol) & test(export_bindings_)'
+test-group = 'typescript-exports'

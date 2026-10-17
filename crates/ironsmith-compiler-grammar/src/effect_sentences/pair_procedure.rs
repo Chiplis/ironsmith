@@ -85,10 +85,20 @@ mod each_opponent_consult_cast;
 mod controlled_player_plays_chosen;
 #[path = "pair_procedure/each_player_named_top_guess.rs"]
 mod each_player_named_top_guess;
+#[path = "pair_procedure/paired_top_reveal.rs"]
+mod paired_top_reveal;
+#[path = "pair_procedure/reveal_put_rest_do_same.rs"]
+pub(super) mod reveal_put_rest_do_same;
+#[path = "pair_procedure/greatest_exchange.rs"]
+mod greatest_exchange;
 #[path = "pair_procedure/next_cast_procedure_body.rs"]
 mod next_cast_procedure_body;
 #[path = "pair_procedure/mutual_turn_control.rs"]
 mod mutual_turn_control;
+#[path = "pair_procedure/copy_exiled_pile_cast.rs"]
+mod copy_exiled_pile_cast;
+#[path = "pair_procedure/two_slot_graveyard_free_cast.rs"]
+mod two_slot_graveyard_free_cast;
 
 pub(super) fn recognizes_scalar_self_replacement_sentence(tokens: &[crate::lexer::OwnedLexToken]) -> bool {
     life_gain::recognizes_replacement_sentence(tokens)
@@ -197,6 +207,24 @@ struct Shape {
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
     Shape {
+        id: RuleId::new("random-pile-blocker-declaration"),
+        head: HeadDiscriminator::words(&["this"]),
+        consumed: 4,
+        read: |sentences, index| statements(sentences, index, Ok(random_pile_blocks::read(sentences, index))),
+    },
+    Shape {
+        id: RuleId::new("random-pile-blocker-declaration-with-reminder"),
+        head: HeadDiscriminator::words(&["this"]),
+        consumed: 5,
+        read: |sentences, index| statements(sentences, index, Ok(random_pile_blocks::read_with_reminder(sentences, index))),
+    },
+    Shape {
+        id: RuleId::new("until-end-of-turn-player-mana-ability"),
+        head: HeadDiscriminator::words(&["until"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, player_mana_ability_grant::read(sentences, index)),
+    },
+    Shape {
         id: RuleId::new("round-robin-exiled-pool"),
         head: HeadDiscriminator::words(&["exile"]),
         consumed: 3,
@@ -281,6 +309,18 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("consult-cast-one-then-hand-one"),
+        head: HeadDiscriminator::words(&["exile", "reveal"]),
+        consumed: 4,
+        read: |sentences, index| {
+            statements(
+                sentences,
+                index,
+                each_opponent_consult_cast::read_cast_one_then_hand_one(sentences, index),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("each-opponent-consult-then-cast"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 2,
@@ -294,6 +334,22 @@ const PAIR_SHAPES: &[Shape] = &[
         consumed: 4,
         read: |sentences, index| {
             statements(sentences, index, controlled_player_plays_chosen::read(sentences, index))
+        },
+    },
+    Shape {
+        id: RuleId::new("two-slot-graveyard-free-cast-copy-each"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 4,
+        read: |sentences, index| {
+            statements(sentences, index, two_slot_graveyard_free_cast::read(sentences, index))
+        },
+    },
+    Shape {
+        id: RuleId::new("copy-exiled-pile-then-cast-each-copy"),
+        head: HeadDiscriminator::words(&["then", "that", "the", "you"]),
+        consumed: 2,
+        read: |sentences, index| {
+            statements(sentences, index, copy_exiled_pile_cast::read(sentences, index))
         },
     },
     Shape {
@@ -1080,6 +1136,38 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("reveal-put-rest-do-the-same-fight"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, reveal_put_rest_do_same::read(sentences, sentence_idx, true))
+        },
+    },
+    Shape {
+        id: RuleId::new("reveal-put-rest-do-the-same"),
+        head: HeadDiscriminator::words(&["target"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, reveal_put_rest_do_same::read(sentences, sentence_idx, false))
+        },
+    },
+    Shape {
+        id: RuleId::new("greatest-mana-value-exchange-same-way"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, greatest_exchange::read(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("paired-top-reveal-cross-reference"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, paired_top_reveal::read(sentences, sentence_idx))
+        },
+    },
+    Shape {
         id: RuleId::new("each-player-named-top-card-guess"),
         head: HeadDiscriminator::words(&["then", "each"]),
         consumed: 3,
@@ -1304,6 +1392,51 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("source-recipient-damage-rider"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 2).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let effects = match window {
+                Some(window) => super::source_recipient_damage_rider::read(&window),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
+        id: RuleId::new("exiled-pool-exchange-cast"),
+        head: HeadDiscriminator::Any,
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 2).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let effects = match window {
+                Some(window) => super::exiled_pool_exchange_cast::read(&window),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
+        id: RuleId::new("guessed-card-name-in-hand"),
+        head: HeadDiscriminator::words(&["choose"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| {
+            let window = sentences.get(sentence_idx..sentence_idx + 4).map(|window| {
+                window.iter().map(SentenceInput::lowered).collect::<Vec<_>>()
+            });
+            let effects = match window {
+                Some(window) => super::guessed_card_name_in_hand::read(&window),
+                None => Ok(None),
+            };
+            statements(sentences, sentence_idx, effects)
+        },
+    },
+    Shape {
         id: RuleId::new("guessed-top-card-kind"),
         head: HeadDiscriminator::Any,
         consumed: 5,
@@ -1356,6 +1489,14 @@ const PAIR_SHAPES: &[Shape] = &[
         consumed: 5,
         read: |sentences, sentence_idx| {
             statements(sentences, sentence_idx, life_bid::read(sentences, sentence_idx))
+        },
+    },
+    Shape {
+        id: RuleId::new("two-player-life-bid"),
+        head: HeadDiscriminator::words(&["you"]),
+        consumed: 6,
+        read: |sentences, sentence_idx| {
+            statements(sentences, sentence_idx, life_bid::read_two_player(sentences, sentence_idx))
         },
     },
     Shape {
@@ -1694,3 +1835,7 @@ mod chosen_basic_land_type_program_tests {
 
 #[path = "pair_procedure/life_payment_limit.rs"]
 pub(super) mod life_payment_limit;
+#[path = "pair_procedure/player_mana_ability_grant.rs"]
+mod player_mana_ability_grant;
+#[path = "pair_procedure/random_pile_blocks.rs"]
+mod random_pile_blocks;

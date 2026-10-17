@@ -449,6 +449,15 @@ impl<'a> ObjectSubject<'a> {
                         })
                     })
                     .or_else(|| game.stack.iter().find(|entry| entry.object_id == object_id))
+                    // CR 608.2: a resolving spell's entry was popped for
+                    // resolution while the spell stays on the stack; its
+                    // cast record keeps the entry (targets, kind).
+                    .or_else(|| {
+                        (self.is_live() && self.zone() == Zone::Stack)
+                            .then(|| game.turn_store.cast_spell_lki.get(&object_id))
+                            .flatten()
+                            .map(|lki| &lki.1)
+                    })
             }
         } else {
             None

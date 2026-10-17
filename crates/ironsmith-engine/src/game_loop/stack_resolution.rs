@@ -2460,6 +2460,7 @@ fn resolve_stack_entry_full_inner(
                             expires_at_end_of_combat: false,
                             bound_extra_turn_index: None,
                             while_any_tagged_object_in_zone: None,
+                            while_source_tapped: None,
                             target_objects: vec![exiled_id],
                             ability_source: None,
                             ability_source_stable_id: None,

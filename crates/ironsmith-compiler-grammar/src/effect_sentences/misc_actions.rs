@@ -297,6 +297,28 @@ pub fn parse_roll(
             crate::cards::builders::ForEachEffectAst::RepeatThisProcess,
         ));
     }
+    // "roll five six-sided dice and store those results on it" (Centaur of
+    // Attention): the results are kept on the source for later rerolls and
+    // characteristic values.
+    if matches!(player, PlayerAst::Implicit | PlayerAst::You)
+        && let Some((Value::Fixed(count), used)) = parse_value(tokens)
+        && count > 0
+        && used < tokens.len()
+        && let Some(dice) = misc_action_shapes::parse_roll_die_prefix_tokens(&tokens[used..])
+        && matches!(
+            crate::lexer::token_word_refs(&tokens[used + dice.consumed..]).as_slice(),
+            ["and", "store", "those", "results", "on", "it" | "this"]
+                | ["and", "store", "those", "results", "on", "this", "creature" | "permanent"]
+        )
+    {
+        return Ok(EffectAst::RollAndStoreDieResults(
+            ironsmith_core::RollAndStoreDieResultsEffect::new(
+                PlayerFilter::You,
+                count as u32,
+                dice.sides,
+            ),
+        ));
+    }
     // "roll X d6" / "roll two six-sided dice": several dice rolled at once,
     // whose results are read back as their total (CR 706.2).
     if let Some((count, used)) = parse_value(tokens)
@@ -1068,7 +1090,7 @@ pub fn parse_scry(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let (count, used) = parse_value(tokens).ok_or_else(|| {
+    let (count, used) = parse_counted_library_action_amount(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing scry count (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")
@@ -1089,7 +1111,7 @@ pub fn parse_surveil(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
-    let (count, used) = parse_value(tokens).ok_or_else(|| {
+    let (count, used) = parse_counted_library_action_amount(tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing surveil count (clause: '{}')",
             crate::lexer::token_word_refs(tokens).join(" ")
@@ -1104,6 +1126,26 @@ pub fn parse_surveil(
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { count }),
     );
     finish_counted_library_action(effect, &tokens[used..], player)
+}
+
+/// "scry a number of cards equal to the result" (Boing!): the amount follows
+/// "a number of cards equal to"; a bare `parse_value` would read the article
+/// as one and silently drop the rest.
+fn parse_counted_library_action_amount(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+    const PREFIX: [&str; 6] = ["a", "number", "of", "cards", "equal", "to"];
+    if tokens.len() > PREFIX.len()
+        && PREFIX
+            .iter()
+            .zip(tokens.iter())
+            .all(|(word, token)| token.is_word(word))
+    {
+        let (value, used) = parse_value(&tokens[PREFIX.len()..])?;
+        return Some((
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+            PREFIX.len() + used,
+        ));
+    }
+    parse_value(tokens)
 }
 
 fn finish_counted_library_action(

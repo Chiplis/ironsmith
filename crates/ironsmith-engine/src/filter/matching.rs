@@ -227,6 +227,24 @@ pub(super) fn matches_subject(
         return false;
     }
 
+    if subject.is_live()
+        && filter.entered_graveyard_not_from_battlefield_this_turn
+        && (subject.zone() != Zone::Graveyard
+            || !game
+                .turn_store
+                .turn_history
+                .graveyard_incarnation_entered_this_turn(subject.object_id(), None)
+            || game
+                .turn_store
+                .turn_history
+                .graveyard_incarnation_entered_this_turn(
+                    subject.object_id(),
+                    Some(Zone::Battlefield),
+                ))
+    {
+        return false;
+    }
+
     if filter.milled_into_graveyard_this_turn
         && (subject.zone() != Zone::Graveyard
             || !game.turn_store.turn_history.graveyard_incarnation_was_milled_this_turn(subject.object_id()))
@@ -1180,6 +1198,15 @@ pub(super) fn matches_subject(
             return false;
         };
         if !game.creature_was_blocked_by_this_turn(source_id, subject.object_id()) {
+            return false;
+        }
+    }
+    // "that hasn't been phased out with this Attraction" (Ferris Wheel).
+    if filter.not_phased_out_with_source {
+        let Some(source_id) = ctx.source else {
+            return false;
+        };
+        if game.was_phased_out_with_source(source_id, subject.object_id()) {
             return false;
         }
     }

@@ -13,6 +13,17 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             card_name: words[draft_offset + draft_prefix.len()..].join(" "),
         }, words.len()));
     }
+    // "the greatest number of stored results on it of the same value"
+    // (Centaur of Attention): the largest group of equal die results stored
+    // on the source.
+    for surface in [
+        &["the", "greatest", "number", "of", "stored", "results", "on", "it", "of", "the", "same", "value"][..],
+        &["the", "greatest", "number", "of", "stored", "results", "on", "this", "creature", "of", "the", "same", "value"][..],
+    ] {
+        if words.starts_with(surface) {
+            return Some((Value::GreatestEqualStoredDieResultsOnSource, surface.len()));
+        }
+    }
     // "2ˣ" (Mathemagics): the lexer keeps the superscript exponent as its own
     // word piece.
     if words.get(..2) == Some(&["2", "ˣ"][..]) {

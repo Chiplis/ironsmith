@@ -344,6 +344,14 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(target_tokens),
                 )
+            } else if matches!(
+                crate::lexer::token_word_refs(target_tokens).as_slice(),
+                ["one", "of", "your", "opponents"] | ["an", "opponent"]
+            ) {
+                // "attach a Curse attached to you to one of your opponents"
+                // (Lynde, Cheerful Tormentor): an untargeted opponent chosen
+                // as the effect resolves.
+                TargetAst::Player(crate::target::PlayerFilter::Opponent, None)
             } else {
                 parse_target_phrase(target_tokens)?
             };
@@ -570,6 +578,35 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
         let mut effects = vec![parse_deal_damage(&tokens[..and])?];
         effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
         return Ok(EffectAst::Sequence { effects });
+    }
+    // "deals 1 damage to any target of an opponent's choice" (Karplusan
+    // Minotaur): an opponent announces the target (CR 115.4, 601.2c). The
+    // delegated declaration precedes the damage, which reuses that same
+    // declared target (the Pandemonium delegated-chooser shape).
+    if let Some(to_idx) = tokens.iter().rposition(|token| token.is_word("to"))
+        && tokens[to_idx + 1..].iter().any(|token| token.is_word("target"))
+        && let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(
+            &tokens[to_idx + 1..],
+        )
+        && choice.actor == crate::grammar::choices::PossessiveObjectChoiceActor::Opponent
+    {
+        let target = parse_target_phrase(&choice.object_tokens)?;
+        let mut damage_tokens = tokens[..=to_idx].to_vec();
+        damage_tokens.extend_from_slice(&choice.object_tokens);
+        let damage = parse_deal_damage(&damage_tokens)?;
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::Chooser,
+                    crate::cards::builders::PlayerAst::Opponent,
+                    crate::cards::builders::SubjectVerbActionAst::TargetOnly {
+                        target,
+                        explicit_declaration: false,
+                    },
+                ),
+                damage,
+            ],
+        });
     }
     // "deals 2 damage to any target and 3 damage to itself" inside a granted
     // quoted ability (Psionic Sliver): the reflexive recipient is the damage

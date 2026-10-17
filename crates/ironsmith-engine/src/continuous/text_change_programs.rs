@@ -499,6 +499,9 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.filter = rewrite_filter_words(&model.filter, change)?;
         model.player = rewrite_player_filter_words(&model.player, change)?;
     });
+    visit!(AddManaLostThisWayEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+    });
     visit!(AddManaEqualToManaCostEffect, model, {
         model.filter = rewrite_filter_words(&model.filter, change)?;
         model.player = rewrite_player_filter_words(&model.player, change)?;

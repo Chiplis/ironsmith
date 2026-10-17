@@ -194,6 +194,29 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         ["lose", "life"] => Some(ReplacedEventSpec::LifeLoss {
             player: player_subject(subject)?,
         }),
+        // "If an opponent would put a land onto the battlefield" (Land
+        // Equilibrium): a matching object's entry for that player. The
+        // putting player is read as the entering card's owner; "that player"
+        // in the program is the affected player.
+        ["put", "a" | "an", object @ .., "onto", "the", "battlefield"] if !object.is_empty() => {
+            let player = player_subject(subject)?;
+            let start = 1 + subject.len() + 2;
+            let object_tokens = header.get(start..start + 1 + object.len())?;
+            if words_of(object_tokens)[1..] != *object {
+                return None;
+            }
+            let mut filter =
+                crate::object_filters::parse_object_filter_lexed(object_tokens, false).ok()?;
+            if filter == ObjectFilter::default() || filter.source {
+                return None;
+            }
+            filter.owner = Some(player);
+            Some(ReplacedEventSpec::ZoneChange {
+                object: filter,
+                from: None,
+                to: Some(Zone::Battlefield),
+            })
+        }
         // "If enchanted land would be destroyed" (CR 701.8).
         ["be", "destroyed"] => Some(ReplacedEventSpec::Destroy {
             target: object_subject(header, subject)?,
@@ -354,6 +377,60 @@ fn parse_did_not_transform_this_way_program(
     Some(effects)
 }
 
+/// "who controls at least as many lands as you do" after the player
+/// subject: the header without the qualifier, and the qualifier as a
+/// comparison of the affected player's ("that player's") matching
+/// permanents with yours.
+fn strip_relative_control_qualifier(
+    header: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, crate::cards::builders::PredicateAst)> {
+    let words = words_of(header);
+    let who = words.iter().position(|word| *word == "who")?;
+    let ["who", "controls", "at", "least", "as", "many", tail @ ..] = &words[who..] else {
+        return None;
+    };
+    let noun_len = tail.iter().position(|word| *word == "as")?;
+    if noun_len == 0 || tail.get(noun_len..noun_len + 3) != Some(&["as", "you", "do"][..]) {
+        return None;
+    }
+    let noun_start = who + 6;
+    let noun_tokens = header.get(noun_start..noun_start + noun_len)?;
+    let filter = crate::object_filters::parse_object_filter_lexed(noun_tokens, false).ok()?;
+    if filter == ObjectFilter::default() || filter.source {
+        return None;
+    }
+    let mut stripped = header[..who].to_vec();
+    stripped.extend_from_slice(header.get(noun_start + noun_len + 3..)?);
+    let theirs = filter.clone().controlled_by(PlayerFilter::IteratedPlayer);
+    let yours = filter.controlled_by(PlayerFilter::You);
+    Some((
+        stripped,
+        crate::cards::builders::PredicateAst::ValueComparison {
+            left: crate::effect::Value::Count(theirs),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Count(yours),
+        },
+    ))
+}
+
+/// "that player instead puts ...": the length of the actor phrase the
+/// leading "instead" follows.
+fn leading_actor_before_instead(body: &[OwnedLexToken]) -> Option<usize> {
+    let words = words_of(body);
+    let actor_len = match words.as_slice() {
+        ["that", "player" | "opponent", "instead", ..]
+        | ["its", "controller" | "owner", "instead", ..] => 2,
+        ["they", "instead", ..] => 1,
+        _ => return None,
+    };
+    // Header words and tokens coincide only when no punctuation precedes it.
+    body[..=actor_len]
+        .iter()
+        .all(|token| token.as_word().is_some())
+        .then_some(actor_len)
+        .filter(|&len| body[len].is_word("instead"))
+}
+
 pub fn parse_if_event_would_happen_instead_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -365,9 +442,28 @@ pub fn parse_if_event_would_happen_instead_line(
     if header.iter().any(|token| token.as_word().is_none()) {
         return Ok(None);
     }
+    // "an opponent who controls at least as many lands as you do": the
+    // subject's relative-count qualifier gates the program on the affected
+    // player ("that player") as the replacement applies.
+    let (qualified_header, player_qualifier) = match strip_relative_control_qualifier(header) {
+        Some((stripped, predicate)) => (Some(stripped), Some(predicate)),
+        None => (None, None),
+    };
+    let header = qualified_header.as_deref().unwrap_or(header);
     let Some(event) = replaced_event(header) else {
         return Ok(None);
     };
+    if player_qualifier.is_some()
+        && !matches!(
+            event,
+            ReplacedEventSpec::ZoneChange {
+                to: Some(Zone::Battlefield),
+                ..
+            }
+        )
+    {
+        return Ok(None);
+    }
     // "If this creature would be destroyed, regenerate it.": regeneration is
     // the destruction replacement itself (CR 701.19a), not a shield created
     // after the destruction was replaced.
@@ -385,10 +481,14 @@ pub fn parse_if_event_would_happen_instead_line(
     let mut body: Vec<OwnedLexToken> = tokens[comma + 1..].to_vec();
     // Exactly one "instead": leading the program, or closing its first
     // sentence ("..., exile that many cards from your graveyard instead. If
-    // you can't, you lose the game.").
-    let leading = body.first().is_some_and(|token| token.is_word("instead"));
+    // you can't, you lose the game."). "That player instead puts ..." (Land
+    // Equilibrium) leads the program after its actor.
+    let mut leading = body.first().is_some_and(|token| token.is_word("instead"));
     if leading {
         body.remove(0);
+    } else if let Some(actor_len) = leading_actor_before_instead(&body) {
+        body.remove(actor_len);
+        leading = true;
     }
     let sentence_end = body
         .iter()
@@ -477,6 +577,24 @@ pub fn parse_if_event_would_happen_instead_line(
     if effects.is_empty() {
         return Ok(None);
     }
+    // A player-qualified entry: when the affected player doesn't qualify,
+    // the entry they were making simply proceeds.
+    let effects = match player_qualifier {
+        Some(predicate) => {
+            let proceed = crate::lexer::lex_line("that player puts it onto the battlefield", 0)?;
+            let Ok(proceed) = crate::clause_support::parse_effect_sentences_lexed(&proceed) else {
+                return Ok(None);
+            };
+            vec![crate::cards::builders::EffectAst::Conditionals(
+                crate::cards::builders::ConditionalEffectAst::Conditional {
+                    predicate,
+                    if_true: effects,
+                    if_false: proceed,
+                },
+            )]
+        }
+        None => effects,
+    };
     let display = crate::lexer::render_token_slice(tokens);
     Ok(Some(if optional {
         StaticAbility::optional_event_replacement_with_effects(event, effects, display)

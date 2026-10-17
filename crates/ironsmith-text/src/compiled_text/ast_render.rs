@@ -15905,6 +15905,7 @@ mod relative_player_target_consult_program_tests {
                     filter: Box::new(ObjectFilter::creature()),
                     fewer: false,
                     as_you_activate: false,
+                    minimum_difference: 0,
                 },
             )))
             .with_chooser(PlayerFilter::Active),

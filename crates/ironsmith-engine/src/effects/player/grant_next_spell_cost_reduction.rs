@@ -33,11 +33,25 @@ impl EffectExecutor for GrantNextSpellCostReductionEffect {
                         filter,
                         crate::zone::Zone::Hand,
                         player,
-                        crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
-                            "Without paying its mana cost",
-                            None,
-                            vec![],
-                        ),
+                        if self.pay_life_equal_to_mana_value {
+                            // The spell being cast is the payment's source,
+                            // so its mana value is the life paid.
+                            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                                "Pay life equal to its mana value",
+                                None,
+                                vec![crate::costs::Cost::effect(crate::effects::PayLifeEffect::you(
+                                    crate::effect::Value::ManaValueOf(Box::new(
+                                        crate::target::ChooseSpec::Source,
+                                    )),
+                                ))],
+                            )
+                        } else {
+                            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                                "Without paying its mana cost",
+                                None,
+                                vec![],
+                            )
+                        },
                         crate::grant_registry::GrantSource::Effect {
                             source_id: ctx.source,
                             expires_end_of_turn: game.turn.turn_number,

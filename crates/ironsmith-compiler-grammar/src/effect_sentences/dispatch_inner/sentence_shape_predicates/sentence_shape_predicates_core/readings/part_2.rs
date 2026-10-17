@@ -334,6 +334,38 @@ pub(super) fn read_delayed_schedule_sentence(
     input: &Sentence<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
+    // "If you control a Wizard, add ... at the beginning of your next main
+    // phase" (Mana Sculpt): the leading condition is checked as the spell
+    // resolves and wraps the schedule; only the consequent is delayed.
+    if tokens.first().is_some_and(|token| token.is_word("if"))
+        && effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+            .is_some()
+        && let Some(effects) = parse_conditional_sentence_family_lexed(
+            tokens,
+            parse_trailing_delayed_schedule_consequent,
+        )?
+    {
+        return Ok(Some(effects));
+    }
+    delayed_schedule_sentence_from_tokens(tokens)
+}
+
+/// The consequent of a leading-if sentence whose body carries a trailing
+/// main-phase delay: the schedule reading owns it when it matches.
+fn parse_trailing_delayed_schedule_consequent(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(effects) = delayed_schedule_sentence_from_tokens(tokens)?
+    {
+        return Ok(effects);
+    }
+    parse_effect_chain_lexed(tokens)
+}
+
+fn delayed_schedule_sentence_from_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(schedule) =
         effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
     {

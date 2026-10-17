@@ -8,11 +8,11 @@ cd "$ROOT"
 mkdir -p reports/bench
 
 echo "Running native scale criterion benches..."
-cargo bench -p ironsmith-runtime --features bench-support --bench scale
+cargo bench -p ironsmith-engine --features bench-support --bench scale
 
 if [[ "$BUILD_WASM" != "0" ]]; then
   echo "Building release WASM for scale snapshot bench..."
-  ./rebuild-wasm.sh
+  ./rebuild-wasm.sh --release
 fi
 
 echo "Running WASM scale snapshot bench..."

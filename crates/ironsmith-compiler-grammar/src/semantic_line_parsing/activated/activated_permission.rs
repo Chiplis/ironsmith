@@ -169,7 +169,9 @@ pub(super) fn parse_activated_line_impl(
         restrictions,
         mana_restrictions,
         x_cant_be_zero,
+        ability_cant_be_copied,
         x_spending_rules,
+        creature_tap_payment,
     } = split_rewrite_activated_effect_text(original_effect_parse_tokens);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -183,6 +185,11 @@ pub(super) fn parse_activated_line_impl(
         x_definition_value,
     );
     let normalized_cost = crate::consumer_mana::constrain_activation_cost(normalized_cost, &x_spending_rules);
+    let normalized_cost = if creature_tap_payment {
+        crate::consumer_mana::allow_creature_tap_payment(normalized_cost)
+    } else {
+        normalized_cost
+    };
     let normalized_cost = if line.presentation_kind
         == Some(crate::ir::ActivatedPresentationKind::PowerUp)
     {
@@ -265,6 +272,9 @@ pub(super) fn parse_activated_line_impl(
         };
     if let Some(display) = presentation_display.as_deref() {
         additional_activation_restrictions.push(format!("__ironsmith_activation_label:{display}"));
+    }
+    if ability_cant_be_copied {
+        additional_activation_restrictions.push("This ability can't be copied.".to_string());
     }
     if x_cant_be_zero {
         additional_activation_restrictions.push("X can't be 0.".to_string());

@@ -1725,10 +1725,21 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                     .flatten()
             });
         if let Some(spec) = state_split {
-            let effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
+            let mut effects_tokens = rewrite_attached_controller_trigger_effect_tokens_lexed(
                 spec.trigger_tokens,
                 spec.effects_tokens,
             );
+            let leading_intro = usize::from(
+                spec.trigger_tokens
+                    .first()
+                    .is_some_and(|token| token.is_any_word(&["when", "whenever"])),
+            );
+            let condition_tokens = &spec.trigger_tokens[leading_intro..];
+            if crate::grammar::structure::is_source_controlled_by_non_owner_condition(
+                crate::lexer::trim_lexed_commas(condition_tokens),
+            ) {
+                effects_tokens = rewrite_non_owner_controller_player_tokens(&effects_tokens);
+            }
             let effects = match state_trigger_controllers_sacrifice_them(
                 &spec.predicate,
                 &effects_tokens,
@@ -2094,4 +2105,38 @@ mod tests {
             "{parsed:#?}"
         );
     }
+}
+
+/// "When a player other than this creature's owner controls it, that player
+/// sacrifices it. If the player does, this creature deals 7 damage to the
+/// player." (Bronze Bombshell): the player is the source's controller, which
+/// a state trigger names as "you".
+fn rewrite_non_owner_controller_player_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut idx = 0;
+    while idx < tokens.len() {
+        if tokens[idx].is_any_word(&["that", "the"])
+            && tokens.get(idx + 1).is_some_and(|token| token.is_word("player"))
+        {
+            out.push(OwnedLexToken::word("you", tokens[idx].span));
+            idx += 2;
+            if let Some(next) = tokens.get(idx).and_then(|token| token.as_word()) {
+                let fixed = match next {
+                    "does" => Some("do".to_string()),
+                    "sacrifices" | "loses" | "gains" | "draws" | "discards" => {
+                        Some(next.trim_end_matches('s').to_string())
+                    }
+                    _ => None,
+                };
+                if let Some(fixed) = fixed {
+                    out.push(OwnedLexToken::word(fixed, tokens[idx].span));
+                    idx += 1;
+                }
+            }
+            continue;
+        }
+        out.push(tokens[idx].clone());
+        idx += 1;
+    }
+    out
 }

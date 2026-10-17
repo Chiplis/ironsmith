@@ -37,6 +37,30 @@ pub fn parse_combat_damage_target_shape_lexed(
     {
         let leading_tokens = trim_lexed_commas(&target_tokens[..unless_idx]);
         let predicate_tokens = trim_lexed_commas(predicate_tokens);
+        // "deals 2 damage to that player unless one of their opponents was
+        // dealt damage this turn" (Antagonism): at the beginning of a
+        // player's own step, "their" opponents are the active player's.
+        if parser_token_word_refs(leading_tokens) == ["that", "player"]
+            && matches!(
+                parser_token_word_refs(predicate_tokens).as_slice(),
+                ["one", "of", "their", "opponents", "was", "dealt", "damage", "this", "turn"]
+                    | [
+                        "one", "of", "their", "opponents", "has", "been", "dealt", "damage",
+                        "this", "turn"
+                    ]
+            )
+        {
+            return Ok(CombatDamageTargetShape::TrailingUnless {
+                target_tokens: leading_tokens,
+                predicate: PredicateAst::ValueComparison {
+                    left: crate::effect::Value::DamageDealtToPlayersThisTurn(
+                        PlayerFilter::OpponentOf(Box::new(PlayerFilter::Active)),
+                    ),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                    right: crate::effect::Value::Fixed(0),
+                },
+            });
+        }
         if !leading_tokens.is_empty()
             && !predicate_tokens.is_empty()
             && let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)

@@ -371,6 +371,11 @@ fn damage_source_matches_filter(source: ObjectId, filter: &ObjectFilter, ctx: &c
     if filter.specific.is_some_and(|id| id != source) || (filter.source && ctx.source != Some(source)) {
         return false;
     }
+    // Shared damage-source color hook (Ghostly Flame): a colorless source of
+    // damage is matched with no colors.
+    if let Some(colorless) = ctx.game.damage_source_color_snapshot(source, ctx.event_source_snapshot) {
+        return filter.matches_snapshot(&colorless, &ctx.filter_ctx, ctx.game);
+    }
     if !ctx.game.is_phased_out(source) {
         if let Some(object) = ctx.game.object(source) {
             return filter.matches(object, &ctx.filter_ctx, ctx.game);

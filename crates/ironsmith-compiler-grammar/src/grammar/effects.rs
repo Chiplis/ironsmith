@@ -1808,6 +1808,12 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     ) {
         return Ok(effects);
     }
+    if let Some(effects) = leading_condition_targets::leading_definite_reference_condition(
+        tokens,
+        parse_effect_chain_lexed,
+    ) {
+        return Ok(effects);
+    }
     // A result-memory gate and a live state gate can be alternatives. Test
     // the live gate first and consult the prior result only in its false arm,
     // so the consequence executes once even when both alternatives are true.

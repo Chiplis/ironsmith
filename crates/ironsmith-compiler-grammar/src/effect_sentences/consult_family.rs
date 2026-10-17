@@ -169,6 +169,7 @@ pub(crate) fn parse_consult_traversal_sentence_with_player(
         match mode {
             LibraryConsultModeAst::Reveal => "revealed",
             LibraryConsultModeAst::Exile => "exiled",
+            LibraryConsultModeAst::Mill => "milled",
         },
     );
     let match_tag = helper_tag_for_tokens(tokens, "consult_match");

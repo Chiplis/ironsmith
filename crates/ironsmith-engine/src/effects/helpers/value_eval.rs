@@ -1760,6 +1760,14 @@ pub(crate) fn resolve_wide(
                 }
             }
         }
+        Value::GreatestEqualStoredDieResultsOnSource => Ok(i64::from(
+            game.greatest_equal_stored_die_result_count(context.source),
+        )),
+        Value::GreatestManaValueExiledThisTurnSinceSourceEntered => Ok(i64::from(
+            game.turn_store
+                .turn_history
+                .greatest_mana_value_exiled_this_turn_since_entry(context.source),
+        )),
         // CR 700.3: one per distinct spell or ability that made players guess
         // or group cards or permanents into piles this turn.
         Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn => Ok(i64::try_from(
@@ -1769,6 +1777,24 @@ pub(crate) fn resolve_wide(
                 .len(),
         )
         .unwrap_or(i64::MAX)),
+        Value::IteratedPlayerChosenNumber => {
+            let ctx = context.require_execution(
+                value,
+                "a participant's chosen number requires a resolving per-player number choice",
+            );
+            let player = ctx.iterated_player;
+            Ok(ctx
+                .secret_choice_results
+                .get(&ctx.source)
+                .and_then(|result| {
+                    result
+                        .number_choices
+                        .iter()
+                        .find(|(chooser, _)| Some(*chooser) == player)
+                        .map(|(_, number)| i64::from(*number))
+                })
+                .unwrap_or(0))
+        }
         Value::PlayersChosenNumberExtreme { highest, guess } => {
             let ctx = context.require_execution(
                 value,
@@ -1938,6 +1964,18 @@ fn resolve_event_value(
                     )
                 })?;
             Ok(i64::from(damage.excess_damage))
+        }
+        EventValueSpec::PermanentsSacrificedToActivate => {
+            let activation = ctx
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::AbilityActivatedEvent>())
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "sacrifice cost count requires its ability-activated event".into(),
+                    )
+                })?;
+            Ok(i64::from(activation.permanents_sacrificed_to_activate))
         }
         EventValueSpec::LifePaidToActivate => {
             let activation = ctx

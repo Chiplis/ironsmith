@@ -466,6 +466,26 @@ fn normalize_restriction_for_resolution(
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        // "You can cast only one more spell this turn" (Irencrag Feat): the
+        // spells already cast this turn, this one included, are counted now
+        // and the limit becomes absolute for the named player.
+        Restriction::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum,
+            beyond_spells_already_cast: true,
+        } => match crate::effects::helpers::resolve_player_filter(game, player, ctx) {
+            Ok(resolved) => Restriction::cast_more_than_n_spells_each_turn(
+                crate::target::PlayerFilter::Specific(resolved),
+                spells.clone(),
+                maximum.saturating_add(
+                    crate::decision::spells_cast_this_turn_matching_filter(
+                        game, resolved, spells,
+                    ),
+                ),
+            ),
+            Err(_) => restriction.clone(),
+        },
         Restriction::MustBeBlockedByAtLeast { attacker, minimum } => {
             Restriction::must_be_blocked_by_at_least(
                 collapse_filter_to_current_matching_objects(attacker, ctx, game),

@@ -1712,6 +1712,9 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::PlayersChosenNumberExtreme { .. }
         | Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn
+        | Value::GreatestEqualStoredDieResultsOnSource
+        | Value::GreatestManaValueExiledThisTurnSinceSourceEntered
+        | Value::IteratedPlayerChosenNumber
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)
@@ -2174,6 +2177,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::PlayerHasMoreLifeThanYou { .. }
         | C::PlayerHasNoOpponentWithMoreLifeThan { .. }
         | C::PlayerHasMoreLifeThanEachOtherPlayer { .. }
+        | C::PlayerHasMoreLifeThanAnotherOpponent { .. }
         | C::PlayerIsMonarch { .. }
         | C::PlayerWasMonarchAtTurnStart { .. }
         | C::PlayerIsYou { .. }
@@ -2401,6 +2405,9 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
         | Value::SourceChosenNumber { .. } | Value::LastNotedLifeTotal
         | Value::PlayersChosenNumberExtreme { .. }
         | Value::SpellsOrAbilitiesThatMadePilesOrGuessesThisTurn
+        | Value::GreatestEqualStoredDieResultsOnSource
+        | Value::GreatestManaValueExiledThisTurnSinceSourceEntered
+        | Value::IteratedPlayerChosenNumber
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)

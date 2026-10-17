@@ -239,6 +239,23 @@ pub fn parse_add_mana(
     if facts.imprinted_colors {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
+    // "you add the mana lost this way" (Drain Power): the types of the mana
+    // the preceding instruction made a player lose.
+    if matches!(
+        clause_words.as_slice(),
+        ["the", "mana", "lost", "this", "way"] | ["all", "mana", "lost", "this", "way"]
+    ) {
+        return Ok(EffectAst::subject_verb_add_mana_lost_this_way(
+            player,
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::ManaLost),
+            ),
+        ));
+    }
     if let Some(filter) = parse_add_mana_equal_to_mana_cost_filter(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_equal_to_mana_cost(
             player, filter,

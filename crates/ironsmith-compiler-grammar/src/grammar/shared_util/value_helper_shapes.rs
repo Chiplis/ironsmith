@@ -292,6 +292,10 @@ pub fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAction, u
         (&["exiled"], PriorEffectAction::Exiled),
         (&["goaded"], PriorEffectAction::Goaded),
         (&["milled"], PriorEffectAction::Milled),
+        // "for each card manifested this way" (Kozilek, the Broken Reality):
+        // manifesting puts each card onto the battlefield face down
+        // (CR 701.40a), so the count is the cards that entry actually moved.
+        (&["manifested"], PriorEffectAction::PutOntoBattlefield),
         (&["prevented"], PriorEffectAction::Prevented),
         (&["removed"], PriorEffectAction::Removed),
         (

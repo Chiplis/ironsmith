@@ -70,6 +70,9 @@ pub enum KeywordMechanicShape<'a> {
         /// "phases out until this enchantment leaves the battlefield": the
         /// printed source reference ("this enchantment").
         until_source_leaves: Option<&'a [OwnedLexToken]>,
+        /// "phases out until you roll a 3 or less while rolling to visit
+        /// your Attractions" (Ferris Wheel): the highest releasing result.
+        until_visit_roll_at_most: Option<u32>,
     },
     PhaseExchange {
         phase_in: &'a [OwnedLexToken],
@@ -109,6 +112,14 @@ pub enum KeywordMechanicShape<'a> {
         player: ManifestPlayerShape,
     },
     ManifestFromHand,
+    /// "manifest two cards from your hand" / "that player manifests two
+    /// cards from their hand(s)" (Kozilek, the Broken Reality): the actor
+    /// chooses that many cards in their own hand and manifests them
+    /// (CR 701.40a).
+    ManifestCardsFromHand {
+        that_player: bool,
+        count_tokens: &'a [OwnedLexToken],
+    },
     OpenAttractions {
         count: u32,
     },
@@ -419,6 +430,22 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
     } else {
         None
     };
+    let until_visit_roll_at_most = if direction == PhaseDirectionShape::Out
+        && until_source_leaves.is_none()
+    {
+        opt(|input: &mut LexStream<'a>| -> WResult<u32> {
+            primitives::phrase(&["until", "you", "roll", "a"]).parse_next(input)?;
+            let max_result = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
+            primitives::phrase(&[
+                "or", "less", "while", "rolling", "to", "visit", "your", "attractions",
+            ])
+            .parse_next(input)?;
+            Ok(max_result)
+        })
+        .parse_next(input)?
+    } else {
+        None
+    };
     // A restated replacement ("... phases out instead") carries its
     // `instead` marker; the conditional reading owns that surface.
     opt(primitives::kw("instead")).parse_next(input)?;
@@ -434,6 +461,7 @@ fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a
         direction,
         subject,
         until_source_leaves,
+        until_visit_roll_at_most,
     })
 }
 
@@ -627,6 +655,25 @@ fn parse_manifest_from_hand<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMec
     primitives::phrase(&["manifest", "a", "card", "from", "your", "hand"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::ManifestFromHand)
+}
+
+fn parse_manifest_cards_from_hand<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<KeywordMechanicShape<'a>> {
+    let that_player = opt(primitives::phrase(&["that", "player"]))
+        .parse_next(input)?
+        .is_some();
+    alt((primitives::kw("manifest"), primitives::kw("manifests"))).parse_next(input)?;
+    let count_tokens = tokens_before(input, 1, primitives::kw("cards").void())?;
+    primitives::kw("cards").parse_next(input)?;
+    primitives::kw("from").parse_next(input)?;
+    alt((primitives::kw("your"), primitives::kw("their"))).parse_next(input)?;
+    alt((primitives::kw("hand"), primitives::kw("hands"))).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(KeywordMechanicShape::ManifestCardsFromHand {
+        that_player,
+        count_tokens,
+    })
 }
 
 fn parse_manifest_top_that_player<'a>(

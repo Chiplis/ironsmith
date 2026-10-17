@@ -539,6 +539,58 @@ pub enum StaticAbilityId {
     /// (Circling Vultures): a special action from its owner's hand that does
     /// not use the stack (CR 116.2); appended for wire compatibility.
     MayDiscardSourceAnyTimeYouCouldCastInstant,
+    /// "All creatures can attack your opponents and planeswalkers your
+    /// opponents control as though those creatures had haste." (Frenzied
+    /// Saddlebrute): a battlefield-wide attack permission scoped to defenders
+    /// who are opponents of this source's controller; appended for wire
+    /// compatibility.
+    CreaturesCanAttackOpponentsAsThoughHaste,
+    /// "This creature attacks a player you noted for cards named <name> each
+    /// combat if able." (Cogwork Tracker): an attack requirement (CR 508.1d)
+    /// toward the players its controller noted while drafting cards of that
+    /// name. The label is the card name; appended for wire compatibility.
+    MustAttackDraftNotedPlayers,
+    /// "You may plot nonland cards from the top of your library." (Fblthp,
+    /// Lost on the Range): its controller may take the plot special action
+    /// (CR 702.170a) for the top card of their library if that card has plot;
+    /// appended for wire compatibility.
+    MayPlotNonlandCardsFromTopOfLibrary,
+    /// "As this Equipment enters, choose a creature you control it could be
+    /// attached to. If you do, it enters attached to that creature."
+    /// (Grifter's Blade): a non-Aura's own entry choice of its host;
+    /// appended for wire compatibility.
+    EntersAttachedToChosenObject,
+    /// Extra "Sacrifice a <permanent>" costs per mana symbol of a color in
+    /// spells' mana costs or activated abilities' costs (Drought); appended
+    /// for wire compatibility.
+    AdditionalSacrificePerManaSymbol,
+    /// "If a spell or ability you control would counter a spell, instead
+    /// exile that spell and you may play that card without paying its mana
+    /// cost." (Guile): appended for wire compatibility.
+    ControllerCounterExilePermission,
+    /// "The attacking player chooses how each creature blocks each combat."
+    /// (Invasion Plans): appended for wire compatibility.
+    AttackingPlayerChoosesBlocks,
+    /// "Its controller may exile three cards from their graveyard for that
+    /// player to ignore this effect until end of turn." (Lost in Thought):
+    /// the attached object's controller's special action with an authored
+    /// cost; appended for wire compatibility.
+    AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn,
+    /// "Can't be blocked unless it's attacking its owner or a permanent its
+    /// owner controls." (Become the Pilot): evasion that lapses only while
+    /// the attack target is the attacker's owner or a permanent that owner
+    /// controls (CR 509.1b); appended for wire compatibility.
+    CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent,
+    /// "Creatures can't attack a player unless that player cast a spell or
+    /// put a nontoken permanent onto the battlefield during their last turn."
+    /// (Arboria): a global per-defending-player attack restriction;
+    /// appended for wire compatibility.
+    CreaturesCantAttackPlayersInactiveLastTurn,
+    /// "You may assign this creature's combat damage divided as you choose
+    /// among defending player and/or any number of creatures they control."
+    /// (Butcher Orgg): an optional free division with no lethal-damage
+    /// ordering (CR 510.1); appended for wire compatibility.
+    MayDivideCombatDamageAmongDefendingPlayerAndCreatures,
 }
 
 impl StaticAbilityId {
@@ -575,6 +627,7 @@ impl StaticAbilityId {
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
             | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
+            | CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent
             | Bloodthirst
             | Tribute
             | Daybound
@@ -642,6 +695,7 @@ impl StaticAbilityId {
             | GoadMatching
             | ConditionalAttackRequirement
             | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+            | AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn
             | AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
             | PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
@@ -650,6 +704,7 @@ impl StaticAbilityId {
             | CantAttack
             | CantAttackItsOwner
             | CantAttackPlayerAlreadyAttackedThisTurn
+            | CreaturesCantAttackPlayersInactiveLastTurn
             | LethalDamageMustBeFromSingleSource
             | CantAttackUnlessControllerCastCreatureSpellThisTurn
             | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
@@ -663,6 +718,7 @@ impl StaticAbilityId {
             | MayAssignDamageAsUnblocked
             | AssignsDamageAsUnblocked
             | MayAssignUnblockedDamageToDefendingCreature
+            | MayDivideCombatDamageAmongDefendingPlayerAndCreatures
             | YouAssignCombatDamageOfCreaturesAttackingYou
             | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
@@ -770,6 +826,12 @@ impl StaticAbilityId {
             | MaySkipTurnWhileSourceTappedThenUntap
             | MaySkipDrawStepWithFollowup
             | MayDiscardSourceAnyTimeYouCouldCastInstant
+            | MayPlotNonlandCardsFromTopOfLibrary
+            | EntersAttachedToChosenObject
+            | ControllerCounterExilePermission
+            | AttackingPlayerChoosesBlocks
+            | MustAttackDraftNotedPlayers
+            | CreaturesCanAttackOpponentsAsThoughHaste
             | OpponentsAttackWithAtLeastOneCreature
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
@@ -945,7 +1007,8 @@ impl StaticAbilityId {
             | ForetellSpecialActionModifier
             | NativeAlternativeCastFromZone
             | GrantSpellKeyword
-            | AlternativeCastFromZoneForFilter => {}
+            | AlternativeCastFromZoneForFilter
+            | AdditionalSacrificePerManaSymbol => {}
         }
     }
 
@@ -1039,6 +1102,7 @@ impl StaticAbilityId {
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
                 | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
+                | CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent
         )
     }
 
@@ -1084,8 +1148,10 @@ impl StaticAbilityId {
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
                 | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
+                | CantBeBlockedUnlessAttackingOwnerOrOwnersPermanent
                 | CanAttackAsThoughNoDefender
                 | CanAttackAsThoughHaste
+                | CreaturesCanAttackOpponentsAsThoughHaste
                 | ActivateAbilitiesAsThoughHaste
                 | MustAttack
                 | ConditionalAttackRequirement
@@ -1093,6 +1159,7 @@ impl StaticAbilityId {
                 | CantAttack
                 | CantAttackItsOwner
                 | CantAttackPlayerAlreadyAttackedThisTurn
+                | CreaturesCantAttackPlayersInactiveLastTurn
                 | CantAttackUnlessControllerCastCreatureSpellThisTurn
                 | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
                 | CantAttackUnlessCondition
@@ -1105,6 +1172,7 @@ impl StaticAbilityId {
                 | MayAssignDamageAsUnblocked
                 | AssignsDamageAsUnblocked
                 | MayAssignUnblockedDamageToDefendingCreature
+                | MayDivideCombatDamageAmongDefendingPlayerAndCreatures
                 | YouAssignCombatDamageOfCreaturesAttackingYou
                 | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness

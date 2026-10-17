@@ -6,6 +6,7 @@ pub fn try_merge_modal_into_remove_mode(
     effects: &mut crate::resolution::ResolutionProgram,
     modal_effect: crate::effect::Effect,
     predicate: crate::effect::EffectPredicate,
+    reflexive: bool,
 ) -> bool {
     let Some(last_effect) = effects.pop() else {
         return false;
@@ -44,11 +45,19 @@ pub fn try_merge_modal_into_remove_mode(
             gate_id.0,
             last_remove_effect,
         ));
-        remove_mode.effects.push(crate::effect::Effect::if_then(
-            gate_id,
-            predicate,
-            vec![modal_effect],
-        ));
+        // "When you remove a counter this way, choose one —" (Immard, the
+        // Stormcleaver) is a reflexive trigger of the removal; "If you
+        // remove ..." resolves the modes inline.
+        remove_mode.effects.push(if reflexive {
+            crate::effect::Effect::reflexive_trigger(
+                gate_id,
+                predicate,
+                vec![modal_effect],
+                Vec::new(),
+            )
+        } else {
+            crate::effect::Effect::if_then(gate_id, predicate, vec![modal_effect])
+        });
     } else {
         remove_mode.effects.push(modal_effect);
     }
@@ -465,7 +474,16 @@ pub fn lower_parsed_modal(
 
     let mut combined_effects = prefix_effects;
     if let Some(modal_gate) = modal_gate {
-        if modal_gate.reflexive {
+        if modal_gate.reflexive
+            && modal_gate.remove_mode_only
+            && try_merge_modal_into_remove_mode(
+                &mut combined_effects,
+                modal_effect.clone(),
+                modal_gate.predicate.clone(),
+                true,
+            )
+        {
+        } else if modal_gate.reflexive {
             if let Some(last_effect) = combined_effects.pop() {
                 let gate_id = crate::effect::EffectId(1_000_000_000);
                 combined_effects.push(crate::effect::Effect::with_id(gate_id.0, last_effect));
@@ -483,6 +501,7 @@ pub fn lower_parsed_modal(
                 &mut combined_effects,
                 modal_effect.clone(),
                 modal_gate.predicate.clone(),
+                false,
             )
         {
         } else if let Some(last_effect) = combined_effects.pop() {

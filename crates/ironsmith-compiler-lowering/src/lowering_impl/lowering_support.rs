@@ -244,6 +244,7 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     ..
                 })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount: count })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                     amount: count,
                     ..

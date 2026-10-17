@@ -624,6 +624,7 @@ fn read_blitz_from_graveyard(
             "bestow" => AlternativeCastKeyword::Bestow,
             "blitz" => AlternativeCastKeyword::Blitz,
             "warp" => AlternativeCastKeyword::Warp,
+            "mutate" => AlternativeCastKeyword::Mutate,
             _ => return Ok(None),
         };
         let ability = crate::model::CompilerStaticAbilityCore::native_alternative_cast_from_zone(

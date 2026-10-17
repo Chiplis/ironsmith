@@ -279,10 +279,16 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChoosePlayerOption(_) => {}
         EffectAst::TagSplicedCards { .. } => {}
         EffectAst::ExchangeBlocks { .. } => {}
+        EffectAst::CoinFlipLifeStakes { .. } => {}
         EffectAst::UnblockSoleBlockedAttackers(_) => {}
+        EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(_) => {}
+        EffectAst::RollAndStoreDieResults(_) => {}
+        EffectAst::RerollStoredDieResults(_) => {}
+        EffectAst::DeclareBlockersByRandomPilesThisTurn => {}
         EffectAst::UnblockSoleBlockedAttackersOf { .. } => {}
         EffectAst::BlockAttackerOfChoice { .. } => {}
         EffectAst::PlayWithHandRevealed(_) => {}
+        EffectAst::RevealSourceInHandUntilOwnersNextTurn(_) => {}
         EffectAst::TagLastDamageSource(_) => {}
         EffectAst::ControlVotesThisTurn => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
@@ -290,6 +296,8 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::NoteTriggeringCreatureType => {}
         EffectAst::NoteCounters { .. } => {}
         EffectAst::PutTriggeringCounterKind { .. } => {}
+        EffectAst::RetainSpellChoices { .. } => {}
+        EffectAst::PutRetainedSpellCopyOntoStack { .. } => {}
         EffectAst::RegisterDamageCounterReplacement { .. } => {}
         EffectAst::ChooseFriendsOrFoes { .. } => {}
         EffectAst::GrantLoyaltyActivationAllowance { .. } => {}

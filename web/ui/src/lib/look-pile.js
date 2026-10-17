@@ -50,3 +50,59 @@ export function mergeLookCards(...groups) {
     ...card, face_down: false, is_face_down: false,
   }])).values()];
 }
+
+const playerKey = (player) => String(player?.id ?? player?.index ?? "");
+
+// The zone a looked-at card sits in now. Snapshots from older WASM bundles
+// carry no zone, so a temporary view falls back to the zone it looked at.
+function lookedCardZone(card, fallback = null) {
+  return String(card?.zone ?? fallback ?? "").toLowerCase();
+}
+
+// Every card this perspective has looked at that is still in `player`'s
+// `zone`: the live view plus what the engine remembers. Library cards come
+// ordered top first; other zones keep no order of their own.
+export function lookedZoneCards(state, player, zone) {
+  const owner = playerKey(player);
+  const view = temporaryLookView(state);
+  const fromView = view && String(view.subject) === owner
+    ? (view.cards || []).filter((card) => lookedCardZone(card, view.zone) === zone)
+    : [];
+  const remembered = (player?.persistent_look_cards || [])
+    .filter((card) => lookedCardZone(card) === zone);
+  const cards = mergeLookCards(remembered, fromView);
+  if (zone === "library") {
+    cards.sort((left, right) => (left.position ?? Infinity) - (right.position ?? Infinity));
+  }
+  return cards;
+}
+
+// Whether the live view (not yet acknowledged) put cards into this zone.
+export function freshLookInZone(state, player, zone) {
+  const view = temporaryLookView(state);
+  if (!view || view.acknowledged) return false;
+  return String(view.subject) === playerKey(player)
+    && (view.cards || []).some((card) => lookedCardZone(card, view.zone) === zone);
+}
+
+// Known identities of face-down permanents, keyed by object id.
+export function knownFaceDownNames(state) {
+  const names = new Map();
+  for (const player of state?.players || []) {
+    for (const card of player.persistent_look_cards || []) {
+      if (lookedCardZone(card) === "battlefield" && visibleName(card)) names.set(String(card.id), card.name);
+    }
+  }
+  return names;
+}
+
+// Hand cards this perspective can name: an open hand, or ones it saw before
+// (a Thoughtseize look) that are still in that hand.
+export function knownHandCards(player) {
+  const known = new Map();
+  for (const card of [...(player?.hand_cards || []),
+    ...(player?.persistent_look_cards || []).filter((card) => lookedCardZone(card) === "hand")]) {
+    if (visibleName(card)) known.set(String(card.id), card);
+  }
+  return [...known.values()];
+}

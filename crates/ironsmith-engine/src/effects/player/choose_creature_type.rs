@@ -19,6 +19,9 @@ pub struct ChooseCreatureTypeEffect {
     /// Restrict the choice to these subtypes; empty means every type in the family.
     pub allowed_subtypes: Vec<Subtype>,
     pub secretly: bool,
+    /// "Note a creature type that hasn't been noted for this Saga": exclude
+    /// the source's noted types and add the choice to them.
+    pub note_for_source: bool,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -29,6 +32,7 @@ impl ChooseCreatureTypeEffect {
             allowed_subtypes: Vec::new(),
             secretly: false,
             family: SubtypeFamily::Creature,
+            note_for_source: false,
         }
     }
 
@@ -39,15 +43,17 @@ impl ChooseCreatureTypeEffect {
             allowed_subtypes: Vec::new(),
             secretly: false,
             family,
+            note_for_source: false,
         }
     }
 
-    fn subtype_options(&self) -> Vec<Subtype> {
+    fn subtype_options(&self, noted: &[Subtype]) -> Vec<Subtype> {
         self.family
             .all_subtypes()
             .iter()
             .copied()
             .filter(|subtype| !self.excluded_subtypes.contains(subtype))
+            .filter(|subtype| !noted.contains(subtype))
             .filter(|subtype| {
                 self.allowed_subtypes.is_empty() || self.allowed_subtypes.contains(subtype)
             })
@@ -61,7 +67,12 @@ impl ChooseCreatureTypeEffect {
     ) -> Result<Option<Subtype>, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let subtype_options = self.subtype_options();
+        let noted = if self.note_for_source {
+            game.noted_creature_types_for_source(ctx.source).to_vec()
+        } else {
+            Vec::new()
+        };
+        let subtype_options = self.subtype_options(&noted);
         if subtype_options.is_empty() {
             return Ok(None);
         }
@@ -117,11 +128,14 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
         } else {
             game.set_chosen_subtype(ctx.source, chosen);
         }
+        if self.note_for_source {
+            game.note_creature_type_for_source(ctx.source, chosen);
+        }
         Ok(EffectOutcome::count(1))
     }
 
     fn supports_simultaneous_player_action(&self) -> bool {
-        !self.secretly
+        !self.secretly && !self.note_for_source
     }
 
     fn prepare_simultaneous_player_action(

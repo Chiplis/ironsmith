@@ -73,7 +73,17 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
                         let original = ctx.controller;
                         let mut high_bidder = original;
                         let mut high_bid = amount;
-                        let players = active_players_in_turn_order(game, original);
+                        let mut players = active_players_in_turn_order(game, original);
+                        // "You and target spell's controller bid life"
+                        // (Mages' Contest): only those two bid, in turn order.
+                        if let Some(opponent) = &self.opponent {
+                            let other = crate::effects::helpers::resolve_player_filter(
+                                game, opponent, ctx,
+                            )?;
+                            players.retain(|&player_id| {
+                                player_id == original || player_id == other
+                            });
+                        }
                         if players.len() > 1 {
                             let mut index = players
                                 .iter()
@@ -145,6 +155,13 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
                     ));
                 }
 
+                // "If you win the bidding, counter that spell."
+                if self.controller_must_win && high_bidder != ctx.controller {
+                    return Ok(CompletedEffectOutputs::from_children(
+                        outcomes,
+                        EffectOutcome::aggregate,
+                    ));
+                }
                 let winner_result = super::execute_with_source::with_actor_binding(
                     ctx,
                     high_bidder,

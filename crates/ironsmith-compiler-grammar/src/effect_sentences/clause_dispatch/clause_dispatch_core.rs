@@ -228,6 +228,28 @@ pub(super) fn parse_effect_clause_unstacked(
     } else {
         tokens
     };
+    // "That creature phases out until you roll a 3 or less while rolling to
+    // visit your Attractions" (Ferris Wheel): the duration names a roll, so
+    // the generic verb search would otherwise read "roll" as the action.
+    {
+        let mut terminated = tokens.to_vec();
+        if !terminated.last().is_some_and(|token| token.is_period()) {
+            terminated.push(OwnedLexToken::period(TextSpan::synthetic()));
+        }
+        if matches!(
+            crate::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
+                &terminated
+            ),
+            Some(crate::grammar::effects::clause_pattern_shapes::KeywordMechanicShape::Phase {
+                until_visit_roll_at_most: Some(_),
+                ..
+            })
+        ) && let Some(effect) =
+            super::super::clause_pattern_helpers::parse_keyword_mechanic_clause(&terminated)?
+        {
+            return Ok(effect);
+        }
+    }
     // "the owner of each card exiled with this Saga puts that card on the
     // bottom of their library": the whole source-exiled set moves, whatever
     // procedure (a vote result, a condition) reached this clause.

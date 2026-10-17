@@ -272,6 +272,12 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     cost: mana_cost.reduce_generic(*reduction),
                 })
             }
+            // CR 702.170a: the plot cost is the card's own mana cost; the
+            // plot special action decides where the card may be plotted from.
+            Self::PlotFromCardManaCost => {
+                let mana_cost = card.mana_cost_owned()?;
+                Some(AlternativeCastingMethod::Plot { cost: mana_cost })
+            }
         }
     }
 }

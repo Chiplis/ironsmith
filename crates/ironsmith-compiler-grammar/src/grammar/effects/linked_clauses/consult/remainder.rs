@@ -60,6 +60,7 @@ pub fn parse_consult_bottom_remainder_shape(
     let mode_word = match mode {
         LibraryConsultModeAst::Reveal => "revealed",
         LibraryConsultModeAst::Exile => "exiled",
+        LibraryConsultModeAst::Mill => "milled",
     };
     if !permission_shapes::contains_tokens(tokens, &[mode_word]) {
         return None;

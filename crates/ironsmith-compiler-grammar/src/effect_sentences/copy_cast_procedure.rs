@@ -805,6 +805,112 @@ pub(super) fn enchanted_card_copy_cast(
     Some((build_may_cast_tagged_effect(&cast), 2))
 }
 
+/// "Exile any number of black cards from your graveyard ...: Copy those
+/// exiled cards. You may cast up to three of the copies without paying their
+/// mana costs." (Baron Helmut Zemo): the cards the activation cost exiled
+/// are copied (CR 707.12); up to the authored number of copies are cast.
+pub(super) fn cost_exiled_cards_copy_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(Vec<EffectAst>, usize)> {
+    let sentence = sentences.get(sentence_idx)?;
+    let next = sentences.get(sentence_idx + 1)?;
+    let words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        sentence.lowered(),
+    ));
+    if !matches!(
+        words.as_slice(),
+        ["copy", "those", "exiled", "cards"] | ["copy", "the", "exiled", "cards"]
+    ) {
+        return None;
+    }
+    let cast_words = crate::lexer::parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(
+        next.lowered(),
+    ));
+    let rest = cast_words.strip_prefix(&["you", "may", "cast"][..])?;
+    let (count, rest) = match rest {
+        ["up", "to", count, "of", rest @ ..] => {
+            (ChoiceCount::up_to(crate::util::parse_number_word_u32(count)? as usize), rest)
+        }
+        ["any", "number", "of", rest @ ..] => (ChoiceCount::any_number(), rest),
+        rest => (ChoiceCount::any_number(), rest),
+    };
+    let without_paying_mana_cost = match rest {
+        ["the", "copies"] => false,
+        ["the", "copies", "without", "paying", "their", "mana", "costs" | "cost"] => true,
+        _ => return None,
+    };
+    let exiled = crate::tag::CompilerCostObjectTag::Exile.key(0);
+    let chosen = helper_tag_for_tokens(sentence.lowered(), "copied");
+    let cast = MayCastTaggedSpec {
+        tag: CompilerReferenceTag::It.bind().key.clone(),
+        alternative_cost: None,
+        player: PlayerAst::Implicit,
+        verb: crate::activation_and_restrictions::trigger_subject_filters::MayCastItVerb::Cast,
+        as_copy: true,
+        without_paying_mana_cost,
+        copy_instruction_surface: Some(CopyInstructionSurface::SeparateThatCard),
+        predicate: None,
+        cost_reduction: None,
+    };
+    Some((
+        vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter: ObjectFilter::tagged(exiled).in_zone(Zone::Exile),
+                count,
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen.clone(),
+            }),
+            EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+                tag: chosen,
+                effects: vec![build_may_cast_tagged_effect(&cast)],
+            }),
+        ],
+        2,
+    ))
+}
+
+/// "Copy a card you exiled with cards named Arcane Savant. You may cast the
+/// copy without paying its mana cost." (Arcane Savant): "a <card>" names one
+/// card outside the battlefield by a filter; the controller chooses which one
+/// when several match (CR 707.12), then may cast its copy.
+pub(super) fn chosen_filtered_card_copy_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Option<(Vec<EffectAst>, usize)> {
+    let sentence = sentences.get(sentence_idx)?;
+    let next = sentences.get(sentence_idx + 1)?;
+    let tokens = crate::util::trim_edge_punctuation_tokens(sentence.lowered());
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["copy", "a" | "an", _, ..]) {
+        return None;
+    }
+    let start = crate::lexer::TokenWordView::new(tokens)
+        .token_span_for_words(0, 1)?
+        .end;
+    let filter_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[start..]);
+    let filter = crate::object_filters::parse_object_filter(filter_tokens, false).ok()?;
+    filter.zone.filter(|zone| *zone != Zone::Battlefield)?;
+    let mut cast = cast_statement(next)?;
+    let chosen = helper_tag_for_tokens(sentence.lowered(), "copied");
+    cast.tag = chosen.key.clone();
+    cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    Some((
+        vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen,
+            }),
+            build_may_cast_tagged_effect(&cast),
+        ],
+        2,
+    ))
+}
+
 /// "You may copy the other. If you do, you may cast the copy without paying
 /// its mana cost." (Spellweaver Helix): "the other" is a card exiled with
 /// this source other than the one sharing the triggering card's name; when

@@ -3430,6 +3430,7 @@ pub(crate) fn player_filter_matches_game(
             player: reference_filter,
             filter: object_filter,
             fewer,
+            minimum_difference,
             ..
         } => {
             if ctx
@@ -3454,10 +3455,11 @@ pub(crate) fn player_filter_matches_game(
                         controlled_matching_object_count(game, player, object_filter, ctx);
                     let reference_count =
                         controlled_matching_object_count(game, reference.id, object_filter, ctx);
+                    let margin = (*minimum_difference).max(1) as usize;
                     if *fewer {
-                        candidate_count < reference_count
+                        reference_count >= candidate_count + margin
                     } else {
-                        candidate_count > reference_count
+                        candidate_count >= reference_count + margin
                     }
                 })
         }
@@ -4138,6 +4140,35 @@ impl ObjectFilterExt for ObjectFilter {
                 // "a creature it's paired with" in a trigger or static
                 // filter: the source object is always known from the filter
                 // context even when no resolution tag has been captured.
+                // "that dealt damage to this creature this turn" (Giant
+                // Albatross): the recipient is the source, live or by its
+                // last-known incarnation after it left the battlefield.
+                if constraint.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
+                    && let TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } =
+                        constraint.relation
+                {
+                    let recipients = ctx
+                        .source
+                        .into_iter()
+                        .chain(ctx.source_snapshot.as_ref().map(|snapshot| snapshot.object_id))
+                        .collect::<Vec<_>>();
+                    let dealer = subject.subject_object_id();
+                    let dealt = game.turn_store.turn_history.projected_records().any(|record| {
+                        let Some(damage) = record.event.downcast::<crate::events::DamageEvent>()
+                        else {
+                            return false;
+                        };
+                        damage.amount > 0
+                            && (!combat_only || damage.is_combat)
+                            && damage.source == dealer
+                            && matches!(damage.target, crate::events::DamageTarget::Object(recipient)
+                                if recipients.contains(&recipient))
+                    });
+                    if !dealt {
+                        return false;
+                    }
+                    continue;
+                }
                 if constraint.tag.as_str() == crate::tag::SOURCE_OBJECT_TAG
                     && constraint.relation == TaggedOpbjectRelation::BandedWithTagged
                 {
@@ -4372,10 +4403,19 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        // CR 608.2: a resolving spell is still on the stack, but its entry was
+        // popped for resolution; its targets are read from the cast record.
+        let resolving_spell_entry = || {
+            game.object(object_id)
+                .filter(|object| object.zone == Zone::Stack)
+                .and_then(|_| game.turn_store.cast_spell_lki.get(&object_id))
+                .map(|lki| &lki.1)
+        };
         // Targeting checks (spell/ability targets on the stack)
         if self.targets_player.is_some() || self.targets_object.is_some() {
-            let Some(entry) =
-                stack_entry.or_else(|| game.stack.iter().find(|e| e.object_id == object_id))
+            let Some(entry) = stack_entry
+                .or_else(|| game.stack.iter().find(|e| e.object_id == object_id))
+                .or_else(resolving_spell_entry)
             else {
                 return false;
             };
@@ -4415,8 +4455,9 @@ impl ObjectFilterExt for ObjectFilter {
             || self.targets_only_player.is_some()
             || self.targets_only_object.is_some()
         {
-            let Some(entry) =
-                stack_entry.or_else(|| game.stack.iter().find(|e| e.object_id == object_id))
+            let Some(entry) = stack_entry
+                .or_else(|| game.stack.iter().find(|e| e.object_id == object_id))
+                .or_else(resolving_spell_entry)
             else {
                 return false;
             };
@@ -5536,6 +5577,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.crewed_by_source_this_turn {
             post_noun_qualifiers.push("crewed by this creature this turn".to_string());
         }
+        if self.not_phased_out_with_source {
+            post_noun_qualifiers.push("that hasn't been phased out with this permanent".to_string());
+        }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
             let mut partner_description = combat_partner.description();
             if combat_partner.card_types.as_slice() == [CardType::Creature]
@@ -6488,6 +6532,13 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.entered_graveyard_from_library_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from their library this turn".to_string());
+        } else if self.entered_graveyard_not_from_battlefield_this_turn
+            && self.zone == Some(Zone::Graveyard)
+        {
+            parts.push(
+                "that was put there from anywhere other than the battlefield this turn"
+                    .to_string(),
+            );
         } else if self.entered_graveyard_from_battlefield_this_turn
             && self.zone == Some(Zone::Graveyard)
         {

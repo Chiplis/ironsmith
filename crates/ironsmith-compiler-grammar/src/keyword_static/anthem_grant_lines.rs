@@ -627,6 +627,56 @@ pub fn parse_subject_cant_be_blocked_while_defending_player_controls_most_creatu
     Ok(Some(ability))
 }
 
+/// The words before "can't be blocked unless it's attacking its owner or a
+/// permanent its owner controls", when the line ends with that rule. An
+/// empty subject is the bare predicate of a coordinated component.
+pub fn cant_be_blocked_unless_attacking_owner_subject_len(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    const TAIL: &[&str] = &[
+        "be", "blocked", "unless", "its", "attacking", "its", "owner", "or", "a", "permanent",
+        "its", "owner", "controls",
+    ];
+    let normalized = words
+        .iter()
+        .map(|word| match *word {
+            "cant" | "cannot" => "can't",
+            "it's" => "its",
+            other => other,
+        })
+        .collect::<Vec<_>>();
+    let before = normalized.strip_suffix(TAIL)?;
+    let subject = before.strip_suffix(&["can't"][..])?;
+    Some(subject.len())
+}
+
+/// "Enchanted creature can't be blocked unless it's attacking its owner or a
+/// permanent its owner controls." (Become the Pilot)
+pub fn parse_subject_cant_be_blocked_unless_attacking_owner_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(subject_len) = cant_be_blocked_unless_attacking_owner_subject_len(tokens) else {
+        return Ok(None);
+    };
+    if subject_len == 0 {
+        return Ok(None);
+    }
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let subject_tokens = &tokens[..subject_len];
+    let subject = first_spell_each_turn_subject(subject_tokens)
+        .map(Ok)
+        .unwrap_or_else(|| parse_anthem_subject(subject_tokens))?;
+    let unblockable = StaticAbility::cant_be_blocked_unless_attacking_owner_or_owners_permanent();
+    Ok(Some(match subject {
+        AnthemSubjectAst::Source => StaticAbilityAst::Static(unblockable),
+        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(unblockable)),
+            condition: None,
+        },
+    }))
+}
+
 fn simple_card_types_from_control_filter(mut filter: ObjectFilter) -> Option<Vec<CardType>> {
     let mut card_types = if filter.all_card_types.is_empty() {
         Vec::new()
@@ -1343,6 +1393,42 @@ fn parse_complete_foretell_cost_grant_line(
     Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
 }
 
+/// "The top card of your library has plot. The plot cost is equal to its
+/// mana cost." (Fblthp, Lost on the Range; CR 702.170a): the library's top
+/// card has plot with a cost derived from its own mana cost. Plotting it from
+/// the library still needs a separate permission.
+fn parse_complete_plot_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::grammar::primitives::split_lexed_slices_on_period(tokens);
+    let sentences = sentences.into_iter().filter(|sentence| !sentence.is_empty()).collect::<Vec<_>>();
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let first = trim_edge_punctuation(first);
+    let second = trim_edge_punctuation(second);
+    if crate::lexer::token_word_refs(&first)
+        != ["the", "top", "card", "of", "your", "library", "has", "plot"]
+    {
+        return Ok(None);
+    }
+    if !matches!(
+        crate::lexer::token_word_refs(&second).as_slice(),
+        ["the" | "its", "plot", "cost", "is", "equal", "to", "its", "mana", "cost"]
+    ) {
+        return Ok(None);
+    }
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::DerivedAlternativeCast(
+            ironsmith_core::DerivedAlternativeCast::PlotFromCardManaCost,
+        ),
+        ObjectFilter::default(),
+        Zone::Library,
+    );
+    spec.top_card_only = true;
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::grants(spec))]))
+}
+
 pub fn parse_granted_keyword_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -1439,6 +1525,7 @@ fn parse_granted_keyword_static_line_inner(
     }
     if let Some(abilities) = parse_complete_miracle_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
     if let Some(abilities) = parse_complete_foretell_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
+    if let Some(abilities) = parse_complete_plot_cost_grant_line(tokens)? { return Ok(Some(abilities)); }
 
     // A complete as-entry characteristic replacement is not a keyword grant
     // to the descriptor at its tail (for example a Dinosaur creature).
@@ -4128,7 +4215,55 @@ fn parse_conjoined_static_condition_clause(tokens: &[OwnedLexToken]) -> Option<P
             return Some(PredicateAst::And(Box::new(left), Box::new(right)));
         }
     }
-    None
+    parse_subject_elided_serial_static_condition(tokens)
+}
+
+/// "Kosei is enchanted, equipped, and has a counter on it": one subject
+/// shared by a serial list of state arms. Each arm without its own verb
+/// inherits the previous arm's verb ("equipped" reads "Kosei is equipped");
+/// every arm must read as a complete condition on that subject, and the
+/// whole list holds only when every arm does.
+fn parse_subject_elided_serial_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    const VERBS: &[&str] = &["is", "are", "has", "have"];
+    let tokens = trim_edge_punctuation(tokens);
+    let verb = tokens.iter().position(|token| token.is_any_word(VERBS))?;
+    if verb == 0 {
+        return None;
+    }
+    let subject = &tokens[..verb];
+    let mut arms: Vec<Vec<OwnedLexToken>> = vec![Vec::new()];
+    for token in &tokens[verb..] {
+        if token.kind == TokenKind::Comma || token.is_word("and") {
+            if !arms.last().is_some_and(Vec::is_empty) {
+                arms.push(Vec::new());
+            }
+            continue;
+        }
+        arms.last_mut()?.push(token.clone());
+    }
+    if arms.last().is_some_and(Vec::is_empty) {
+        arms.pop();
+    }
+    if arms.len() < 2 || arms.iter().any(Vec::is_empty) {
+        return None;
+    }
+    let mut current_verb: Option<OwnedLexToken> = None;
+    let mut predicate: Option<PredicateAst> = None;
+    for arm in arms {
+        let mut clause = subject.to_vec();
+        if arm[0].is_any_word(VERBS) {
+            current_verb = Some(arm[0].clone());
+        } else {
+            clause.push(current_verb.clone()?);
+        }
+        clause.extend(arm);
+        let arm_predicate = parse_static_condition_clause(&clause).ok()?;
+        predicate = Some(match predicate {
+            None => arm_predicate,
+            Some(left) => PredicateAst::And(Box::new(left), Box::new(arm_predicate)),
+        });
+    }
+    predicate
 }
 
 fn parse_cards_drawn_this_turn_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

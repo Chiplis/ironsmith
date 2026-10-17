@@ -452,3 +452,75 @@ fn last_unbounded_x_payment_maximum_mut(
     }
     None
 }
+
+/// "You may spend blue mana as though it were mana of any color to activate
+/// those abilities." (Grell Philosopher): the color whose mana may pay the
+/// abilities the preceding sentence copied.
+fn spend_symbol_for_those_abilities(tokens: &[OwnedLexToken]) -> Option<crate::mana::ManaSymbol> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let [
+        "you", "may", "spend", color, "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "activate", "those", "abilities",
+    ] = words.as_slice()
+    else {
+        return None;
+    };
+    match *color {
+        "white" => Some(crate::mana::ManaSymbol::White),
+        "blue" => Some(crate::mana::ManaSymbol::Blue),
+        "black" => Some(crate::mana::ManaSymbol::Black),
+        "red" => Some(crate::mana::ManaSymbol::Red),
+        "green" => Some(crate::mana::ManaSymbol::Green),
+        _ => None,
+    }
+}
+
+fn set_copied_abilities_spend_symbol(effect: &mut EffectAst, symbol: crate::mana::ManaSymbol) -> bool {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Grants(
+                crate::cards::builders::GrantActionAst::GrantActivatedAbilitiesFrom {
+                    symbol_as_any_color,
+                    ..
+                },
+            ),
+        ..
+    }) = effect
+    {
+        if symbol_as_any_color.is_some() {
+            return false;
+        }
+        *symbol_as_any_color = Some(symbol);
+        return true;
+    }
+    let mut applied = false;
+    crate::effect_ast_traversal::for_each_nested_effects_mut(effect, true, |effects| {
+        for nested in effects.iter_mut() {
+            applied |= set_copied_abilities_spend_symbol(nested, symbol);
+        }
+    });
+    applied
+}
+
+/// The mana exception belongs to the preceding activated-ability copy grant
+/// and covers only the copied abilities.
+pub(super) fn pre_rule_spend_symbol_for_copied_abilities_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some(symbol) = spend_symbol_for_those_abilities(sentence_tokens) else {
+        return Ok(None);
+    };
+    let Some(last) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if !set_copied_abilities_spend_symbol(last, symbol) {
+        return Ok(None);
+    }
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: None,
+    }))
+}

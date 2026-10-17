@@ -1107,6 +1107,9 @@ impl GameState {
                 .chosen_land_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .chosen_basic_land_type_sequences
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .secret_chosen_subtypes
                 .retain(|source, _| !removed_ids.contains(source));
             choices
@@ -1129,6 +1132,9 @@ impl GameState {
                 .retain(|source, _| !removed_ids.contains(source));
             choices
                 .chosen_named_options
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
+                .chosen_player_named_options
                 .retain(|source, _| !removed_ids.contains(source));
             choices.numeric_acquisitions.retain(|owner,_|!removed_ids.contains(&owner.host));
             choices
@@ -1386,6 +1392,48 @@ impl GameState {
 
     pub(crate) fn clear_forecast_revealed_hand_cards(&mut self) {
         self.turn_store.forecast_revealed_hand_cards.clear();
+    }
+
+    /// Firestorm Phoenix: keep `card` (in `owner`'s hand) publicly revealed
+    /// until `owner`'s next turn begins; with `cant_play`, `owner` can't cast
+    /// it or play it meanwhile.
+    pub fn reveal_hand_card_until_owners_next_turn(
+        &mut self,
+        card: ObjectId,
+        owner: PlayerId,
+        cant_play: bool,
+    ) -> bool {
+        if !self
+            .object(card)
+            .is_some_and(|object| object.zone == Zone::Hand)
+        {
+            return false;
+        }
+        self.turn_store
+            .hand_cards_revealed_until_owners_next_turn
+            .insert(card, (owner, cant_play));
+        self.mark_hidden_cards_publicly_revealed(&[card]);
+        true
+    }
+
+    pub fn is_hand_card_revealed_until_owners_next_turn(&self, card: ObjectId) -> bool {
+        self.turn_store
+            .hand_cards_revealed_until_owners_next_turn
+            .contains_key(&card)
+            && self
+                .object(card)
+                .is_some_and(|object| object.zone == Zone::Hand)
+    }
+
+    /// "... and can't play it" (Firestorm Phoenix).
+    pub fn hand_card_cant_be_played_until_owners_next_turn(&self, card: ObjectId) -> bool {
+        self.turn_store
+            .hand_cards_revealed_until_owners_next_turn
+            .get(&card)
+            .is_some_and(|(_, cant_play)| *cant_play)
+            && self
+                .object(card)
+                .is_some_and(|object| object.zone == Zone::Hand)
     }
 
     /// How many turns `player` has taken this game, counting the current one
@@ -1713,6 +1761,10 @@ impl GameState {
         self.turn_store.no_combat_damage_this_turn.clear();
         self.turn_store.no_combat_damage_this_combat.clear();
         self.clear_forecast_revealed_hand_cards();
+        // "Until that player's next turn" ends as that player's turn begins.
+        self.turn_store
+            .hand_cards_revealed_until_owners_next_turn
+            .retain(|_, (owner, _)| *owner != next_player);
         self.set_planar_controller(next_player);
         self.reset_planar_rolls_for_turn();
 
@@ -2350,6 +2402,19 @@ impl GameState {
             });
     }
 
+    /// "This turn, instead of declaring blockers, each defending player
+    /// chooses any number of creatures they control and divides them into
+    /// piles ..." (Camouflage): this turn's blocks come from a random pile
+    /// assignment.
+    pub fn declare_blockers_by_random_piles_this_turn(&mut self) {
+        let current_turn = self.turn.turn_number;
+        self.auxiliary_tracking_mut().random_pile_block_turn = Some(current_turn);
+    }
+
+    pub fn blockers_declared_by_random_piles_this_turn(&self) -> bool {
+        self.auxiliary_tracking.random_pile_block_turn == Some(self.turn.turn_number)
+    }
+
     fn combat_choice_controller_for(&self, choose_attackers: bool) -> Option<PlayerId> {
         let mut best: Option<&CombatChoiceControlEffect> = None;
         for effect in &self.auxiliary_tracking.combat_choice_control_effects {
@@ -2366,7 +2431,24 @@ impl GameState {
                 best = Some(effect);
             }
         }
-        best.map(|effect| effect.controller)
+        if let Some(effect) = best {
+            return Some(effect.controller);
+        }
+        // "The attacking player chooses how each creature blocks each
+        // combat." (Invasion Plans): a standing rule while such a permanent
+        // is on the battlefield; the attacking player is the active player
+        // (CR 506.2).
+        if !choose_attackers
+            && self.battlefield.iter().any(|&id| {
+                self.object_has_static_ability_id(
+                    id,
+                    crate::static_abilities::StaticAbilityId::AttackingPlayerChoosesBlocks,
+                )
+            })
+        {
+            return Some(self.turn.active_player);
+        }
+        None
     }
 
     pub fn combat_choice_controller_for_attackers(&self) -> Option<PlayerId> {
@@ -3902,6 +3984,16 @@ impl GameState {
                     chosen_players,
                 );
             }
+            // "players who chose war" (Archangel of Strife): the players
+            // whose recorded option for this source is that option.
+            for (player, option) in self.player_named_option_choices(source_id) {
+                let players: &mut Vec<PlayerId> = tagged_players
+                    .entry(ironsmith_core::player_option_choice_tag(option))
+                    .or_default();
+                if !players.contains(player) {
+                    players.push(*player);
+                }
+            }
             if let Some(attached_target) = source_obj.attached_to {
                 match attached_target {
                     AttachmentTarget::Object(attached_id) => {
@@ -4188,6 +4280,11 @@ impl GameState {
             !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
         });
         let removed_goad = self.effect_store.goad_effects.len() != goad_count;
+        // "For as long as this creature remains tapped" delayed registrations
+        // (Giant Oyster) end as their source untaps (CR 611.2b).
+        self.effect_store
+            .delayed_triggers
+            .retain(|delayed| delayed.while_source_tapped != Some(id));
 
         if removed_continuous || removed_restrictions || removed_goad {
             self.mark_continuous_state_dirty();

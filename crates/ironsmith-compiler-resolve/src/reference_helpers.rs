@@ -1586,6 +1586,15 @@ pub fn resolve_restriction_it_tag(
             recipients: resolve_it_tag(recipients, refs)?,
             or_redirected: *or_redirected,
         },
+        Restriction::PreventDamageFromTo {
+            sources,
+            recipients,
+            or_redirected,
+        } => Restriction::PreventDamageFromTo {
+            sources: resolve_it_tag(sources, refs)?,
+            recipients: resolve_it_tag(recipients, refs)?,
+            or_redirected: *or_redirected,
+        },
         Restriction::AdditionalLandPlays(player, count) => Restriction::additional_land_plays(
             resolve_contextual_player_filter(player, refs)?,
             *count,
@@ -1616,6 +1625,9 @@ pub fn resolve_restriction_it_tag(
         ),
         Restriction::ActivateLoyaltyAbilitiesOf(filter) => {
             Restriction::ActivateLoyaltyAbilitiesOf(resolve_it_tag(filter, refs)?)
+        }
+        Restriction::ActivateKeywordAbilitiesOf { filter, keyword } => {
+            Restriction::activate_keyword_abilities_of(resolve_it_tag(filter, refs)?, *keyword)
         }
         Restriction::CastSpellsMatching(player, filter) => Restriction::cast_spells_matching(
             resolve_contextual_player_filter(player, refs)?,
@@ -1776,6 +1788,9 @@ pub fn resolve_restriction_it_tag(
         }
         Restriction::HaveCounterTypeRemoved(filter, counter_type) => {
             Restriction::have_counter_type_removed(resolve_it_tag(filter, refs)?, *counter_type)
+        }
+        Restriction::DamageSourcesAreColorless(filter) => {
+            Restriction::DamageSourcesAreColorless(resolve_it_tag(filter, refs)?)
         }
         Restriction::BeTargeted(filter) => Restriction::be_targeted(resolve_it_tag(filter, refs)?),
         Restriction::BeCounteredFrom(filter, sources) => Restriction::be_countered_from(
@@ -2087,6 +2102,37 @@ fn demonstrative_superseded_antecedent(
         .map(|(_, previous)| previous.clone())
 }
 
+/// The antecedent a source subject superseded, for a counted pronoun set
+/// ("one of them") that would otherwise fall back to the source.
+fn counted_pronoun_superseded_antecedent(
+    inner: &ChooseSpec,
+    refs: &ReferenceEnv,
+) -> Option<TagKey> {
+    fn names_it(spec: &ChooseSpec) -> bool {
+        let it = crate::tag::CompilerReferenceTag::It.as_str();
+        match spec {
+            ChooseSpec::SurfaceHinted { spec, .. } => names_it(spec),
+            ChooseSpec::Tagged(tag) => tag.as_str() == it,
+            ChooseSpec::Object(filter) => filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == it),
+            _ => false,
+        }
+    }
+    if !names_it(inner)
+        || refs.known_last_object_tag().is_some()
+        || !refs.has_source_object_antecedent()
+    {
+        return None;
+    }
+    let alias = source_superseded_antecedent_alias();
+    refs.snapshot_tag_aliases
+        .iter()
+        .find(|(existing, _)| existing == &alias)
+        .map(|(_, previous)| previous.clone())
+}
+
 pub fn resolve_choose_spec_it_tag(
     spec: &ChooseSpec,
     refs: &ReferenceEnv,
@@ -2231,14 +2277,22 @@ fn resolve_choose_spec_it_tag_preserving_selection(
                 Ok(ChooseSpec::Target(Box::new(resolved)))
             }
         }
-        ChooseSpec::WithCount(inner, count) => Ok(ChooseSpec::WithCount(
-            Box::new(resolve_choose_spec_it_tag_preserving_selection(
+        ChooseSpec::WithCount(inner, count) => {
+            let resolved = resolve_choose_spec_it_tag_preserving_selection(
                 inner,
                 refs,
                 preserve_selection,
-            )?),
-            *count,
-        )),
+            )?;
+            // "sacrifice this artifact and put one of them onto the
+            // battlefield" (Helm of Obedience): a counted pronoun set never
+            // names the lone source; it names the set the source subject
+            // superseded.
+            let resolved = match (&resolved, counted_pronoun_superseded_antecedent(inner, refs)) {
+                (ChooseSpec::Source, Some(previous)) => ChooseSpec::Tagged(previous),
+                _ => resolved,
+            };
+            Ok(ChooseSpec::WithCount(Box::new(resolved), *count))
+        }
         ChooseSpec::WithCountValue(inner, count, value) => Ok(ChooseSpec::WithCountValue(
             Box::new(resolve_choose_spec_it_tag_preserving_selection(
                 inner,
@@ -2558,6 +2612,13 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
                 TurnHistoryCount::LandsPlayed(player) => {
                     TurnHistoryCount::LandsPlayed(resolve_contextual_player_filter(player, refs)?)
                 }
+                TurnHistoryCount::PlayerCountersRemoved {
+                    player,
+                    counter_type,
+                } => TurnHistoryCount::PlayerCountersRemoved {
+                    player: resolve_contextual_player_filter(player, refs)?,
+                    counter_type: *counter_type,
+                },
                 TurnHistoryCount::KeywordActionsPerformed { player, actions } => {
                     TurnHistoryCount::KeywordActionsPerformed {
                         player: resolve_contextual_player_filter(player, refs)?,

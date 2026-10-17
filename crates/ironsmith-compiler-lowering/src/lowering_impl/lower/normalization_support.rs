@@ -143,6 +143,13 @@ fn spell_costs_have_announced_x(items: &[ParsedCardItem]) -> bool {
                 method.mana_cost().is_some_and(crate::mana::ManaCost::has_x)
                     || method.total_cost().is_some_and(crate::model::costs::cost_has_announced_x)
             }
+            // "As an additional cost to cast this spell, choose a number
+            // between 0 and 5" (Liquid Fire) announces a bounded X while the
+            // spell is cast; its body's "the chosen number" reads that X.
+            LineAst::StaticAbility(StaticAbilityAst::Static(ability)) => matches!(
+                ability.payload,
+                ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { .. }
+            ),
             // A separate ability has its own X scope, even on an X spell.
             _ => false,
         }

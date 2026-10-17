@@ -139,6 +139,7 @@ pub use combat::{
     PreventAllDamageToTargetEffect, PreventDamageEffect, RemoveFromCombatEffect,
     ReselectAttackTargetEffect, ExchangeBlocksEffect, SetBasePowerToughnessEffect,
     UnblockSoleBlockedAttackersEffect, BlockAttackerOfChoiceEffect,
+    DeclareBlockersByRandomPilesThisTurnEffect,
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BidLifeEffect,
@@ -202,10 +203,11 @@ pub use life::{
 pub use mana::{
     ActivateManaAbilityOfEachLandEffect, AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
-    AddManaEqualToManaCostEffect, AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect,
+    AddManaEqualToManaCostEffect, AddManaLostThisWayEffect, AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect,
     AddManaOfNotedTypeEffect,
     AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect, DoubleManaPoolEffect,
-    EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, ManaTypeSource,
+    EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect,
+    GrantPayLifeManaAbilityUntilEndOfTurnEffect, ManaTypeSource,
     NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, PayManaEffect,
     RetainManaUntilEndOfTurnEffect,
 };
@@ -233,17 +235,17 @@ pub use player::{
     DrawTheGameEffect, EndCombatPhaseEffect, EndTurnEffect, EnergyCountersEffect,
     ExileInsteadOfGraveyardEffect, ExileThenGrantPlayEffect, ExileUntilMatchCastEffect,
     ExileUntilMatchGrantPlayEffect, ExperienceCountersEffect, ExtraTurnAfterNextTurnEffect,
-    ExtraTurnEffect, FlipCoinEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
+    ExtraTurnEffect, FlipCoinEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, GrantBySpecEffect, GrantEffect, GrantNextSpellAbilityEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     IncreaseSpeedEffect, LoseTheGameEffect, GrantLoyaltyActivationAllowanceEffect,
-    GrantTapUncontrolledLandsForManaEffect,
+    GrantTapUncontrolledLandsForManaEffect, RerollStoredDieResultsEffect, RollAndStoreDieResultsEffect,
     LoyaltyActivationAllowance, LoyaltyActivationScope, MayCastForMadnessCostEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
     RadiationEffect, ReduceSpeedEffect, RestartGameEffect, RevealChosenSubtypeEffect,
     ReverseTurnOrderEffect, RingTemptsYouEffect, RippleEffect, RollDiceChooseResultEffect,
-    RollDieEffect, RollPlanarDieEffect, RollToVisitAttractionsEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, PlayWithHandRevealedEffect,
+    RollDieEffect, RollPlanarDieEffect, RollToVisitAttractionsEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, PlayWithHandRevealedEffect, RevealSourceInHandUntilOwnersNextTurnEffect,
     SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipScheduledEffect,
     SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect,
     WinTheGameEffect,
@@ -261,6 +263,7 @@ pub use restrictions::CantEffect;
 pub(crate) use stack::{CastStoredCardCopyEffect, EpicSpellCopyEffect};
 pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
+    PutRetainedSpellCopyOntoStackEffect, RetainSpellChoicesEffect,
     NewTargetRestriction, RetargetMode, RetargetStackObjectEffect, ScaleXValueEffect,
     VariableCasualtyPlaneswalkerCopyEffect,
 };
@@ -283,6 +286,7 @@ pub use zones::{
 pub use damage::DealDamageToRecipientsEffect;
 pub use replacement::RegisterDamageAdditionEffect;
 pub use replacement::RegisterDamageMultiplierEffect;
+pub use replacement::RegisterTokenCreationMultiplierEffect;
 pub use replacement::{RegisterDamageCounterReplacementEffect, RegisteredReplacementExpiry};
 
 pub(crate) use composition::{

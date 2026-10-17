@@ -1,7 +1,7 @@
 import useUiText from "@/i18n/useUiText";
 import PlayerZonePiles from "./PlayerZonePiles";
 import { PILE_ZONES, pileZonesFor } from "@/lib/zone-piles";
-import ZoneCountIcon from "./ZoneCountIcon";
+import OpponentHandFan from "./OpponentHandFan";
 import { useCastPlayerHovered, useCastTargeting } from "@/context/DragContext";
 import { useCallback, useEffect, useState } from "react";
 import BattlefieldRow from "./BattlefieldRow";
@@ -85,26 +85,6 @@ function shouldShowZoneBody(player, entry, activity = null, pileZones = PILE_ZON
   return entry.count > 0 || (entry.cards || []).length > 0;
 }
 
-function zoneCounts(player) {
-  const exileCards = Array.isArray(player.exile_cards) ? player.exile_cards : [];
-  const commandCards = Array.isArray(player.command_cards) ? player.command_cards : [];
-  const anteCards = Array.isArray(player.ante_cards) ? player.ante_cards : [];
-  const battlefieldCount = (player.battlefield || []).reduce((total, card) => {
-    const count = Number(card.count);
-    return total + (Number.isFinite(count) && count > 1 ? count : 1);
-  }, 0);
-
-  return [
-    { title: "Battlefield", zone: "battlefield", count: battlefieldCount },
-    { title: "Hand", zone: "hand", count: player.hand_size ?? 0 },
-    { title: "Graveyard", zone: "graveyard", count: player.graveyard_size ?? 0 },
-    { title: "Library", zone: "library", count: player.library_size ?? 0 },
-    { title: "Exile", zone: "exile", count: exileCards.length },
-    { title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
-    { title: "Ante", zone: "ante", count: player.ante_size ?? anteCards.length },
-  ];
-}
-
 function isBaseVisibleZone(zone, zoneViews, count) {
   const baseViews = normalizeZoneViews(zoneViews);
   if (!baseViews.includes(zone)) return false;
@@ -151,64 +131,6 @@ function buildActivatableMap(decision, perspective) {
   }
 
   return activatableMap;
-}
-
-function ZoneCountInline({ player, onOpenDecklist = null }) {
-  const ui = useUiText();
-  // Ante only matters in ante games; an empty one would just crowd the header.
-  const counts = zoneCounts(player).filter((entry) => entry.zone !== "ante" || entry.count > 0);
-  const libraryTopName = player?.can_view_library_top ? String(player?.library_top || "Empty") : "";
-  return (
-    <span className="battlefield-counts flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#8ea8c8] whitespace-nowrap">
-      {counts.map((entry) => {
-        const showLibraryTop = entry.zone === "library" && libraryTopName;
-        const deckEntry = entry.zone === "library" && typeof onOpenDecklist === "function";
-        const content = (
-          <>
-            <ZoneCountIcon zone={entry.zone} className="battlefield-count-icon" />
-            <span className="text-[#d6e6fb] font-semibold">{entry.count}</span>
-            {showLibraryTop && (
-              <span className="battlefield-count-top text-[#f0dfba] font-semibold">({libraryTopName})</span>
-            )}
-          </>
-        );
-        if (deckEntry) {
-          return (
-            <button
-              key={entry.zone}
-              type="button"
-              className={cn(
-                "battlefield-count-item cursor-pointer text-left transition-colors hover:border-[#6d8ead] hover:text-[#e5f2ff]",
-                showLibraryTop && "battlefield-count-item--with-top"
-              )}
-              title={ui("Open decklist")}
-              aria-label={`${ui(entry.title)}: ${entry.count}. ${ui("Open decklist")}`}
-              data-zone-anchor={entry.zone}
-              data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onOpenDecklist(player);
-              }}
-            >
-              {content}
-            </button>
-          );
-        }
-        return (
-          <span
-            key={entry.zone}
-            className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
-            title={ui(showLibraryTop ? `Top card: ${libraryTopName}` : entry.title)}
-            data-zone-anchor={entry.zone}
-            data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
-          >
-            {content}
-          </span>
-        );
-      })}
-    </span>
-  );
 }
 
 function ZoneCardNameRows({
@@ -613,9 +535,9 @@ function OpponentSlot({
                 </span>
                 {zoneName && <span className="text-muted-foreground">{ui(zoneName)}</span>}
               </span>
-              <ZoneCountInline player={player} onOpenDecklist={onOpenDecklist} />
             </span>
-            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+            <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 self-stretch">
+              <OpponentHandFan player={player} />
               {headerControls}
             </div>
           </div>
@@ -686,7 +608,8 @@ function OpponentSlot({
           data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
           data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
         >
-          <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds} />
+          <PlayerZonePiles player={player} onCardClick={handleCardClick} legalTargetObjectIds={legalTargetObjectIds}
+            onOpenDecklist={onOpenDecklist} />
         {(denseSupportLayout && battlefieldZoneEntry
           ? [battlefieldZoneEntry]
           : boardZoneEntries

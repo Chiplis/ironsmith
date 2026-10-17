@@ -61,6 +61,32 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
             words.len(),
         ));
     }
+    // "for each {E} you've paid or lost this turn" (Blaster Hulk): energy
+    // removed from you this turn, whether paid or lost.
+    if let ["for", "each", "e", "youve" | "you've", "paid" | "lost", rest @ ..] = words
+        && matches!(rest, ["or", "lost" | "paid", "this", "turn"] | ["this", "turn"])
+    {
+        return Some((
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayerCountersRemoved {
+                player: PlayerFilter::You,
+                counter_type: Some(crate::object::CounterType::Energy),
+            })
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            words.len(),
+        ));
+    }
+    // "for each kind of counter on it" (Blitzball Stadium's granted trigger):
+    // the number of distinct counter kinds on the source object.
+    if let ["for", "each", "kind", "of", "counter", "on", source @ ..] = words
+        && !source.is_empty()
+        && (source == ["it"] || crate::util::is_source_reference_words(source))
+    {
+        return Some((
+            Value::DistinctCounterTypesAmong(ObjectFilter::source())
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            words.len(),
+        ));
+    }
     // "for each name sticker on it" (_____ _____ _____ Trespasser): stickers
     // of one kind on the source object.
     if let ["for", "each", tail @ ..] = words
@@ -130,6 +156,18 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
         return Some((Value::TurnHistoryCount(
             ironsmith_core::TurnHistoryCount::PlayersAttackedThisCombat(PlayerFilter::You),
         ).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach), words.len()));
+    }
+    // "Whenever one or more Pirates you control deal damage to your
+    // opponents, you create a Treasure token for each opponent dealt damage"
+    // (Malcolm, Keen-Eyed Navigator): with no "this turn", the players the
+    // triggering damage was dealt to. Each damaged opponent is its own
+    // trigger occurrence, so this counts that occurrence's damaged player.
+    if matches!(words, ["for", "each", "opponent" | "player", "dealt", "damage"]) {
+        return Some((
+            Value::CountPlayers(PlayerFilter::DamagedPlayer)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            words.len(),
+        ));
     }
     // "for each of the chosen colors it is" (Tablet of the Guilds): the
     // referenced object's colors among the source's chosen colors.

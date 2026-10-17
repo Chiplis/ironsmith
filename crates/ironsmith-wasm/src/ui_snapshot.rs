@@ -96,6 +96,7 @@ struct PermanentObjectView {
     tapped: bool,
     damage: u32,
     lane: BattlefieldLane,
+    face_down: bool,
     characteristic_signature: String,
     counter_signature: String,
     mana_cost: Option<String>,
@@ -227,12 +228,24 @@ struct CombinedLookCards {
     exile: Arc<Vec<Arc<ViewedCardSnapshot>>>,
     output: Arc<Vec<Arc<ViewedCardSnapshot>>>,
 }
-fn viewed_card_snapshot(object: &ironsmith::object::Object) -> ViewedCardSnapshot {
+/// Cards above `object` in its owner's library; `None` outside a library.
+pub(super) fn library_position(game: &GameState, object: &ironsmith::object::Object) -> Option<usize> {
+    if object.zone != Zone::Library {
+        return None;
+    }
+    let library = &game.player(object.owner)?.library;
+    let index = library.iter().position(|id| *id == object.id)?;
+    Some(library.len() - 1 - index)
+}
+
+pub(super) fn viewed_card_snapshot(object: &ironsmith::object::Object) -> ViewedCardSnapshot {
     ViewedCardSnapshot {
         id: object.id.0,
         stable_id: object.stable_id.0.0,
         name: object.name.to_string(),
         oracle_text: object.compiled_card_text.to_string(),
+        zone: Some(super::decision_zone_name(object.zone)),
+        position: None,
     }
 }
 
@@ -553,7 +566,7 @@ impl IncrementalBattlefieldGroups {
                 characteristic_signature: view.characteristic_signature.clone(),
                 counter_signature: view.counter_signature.clone(),
                 token: view.token,
-                force_single_object: protected.contains(&id).then_some(id.0),
+                force_single_object: (protected.contains(&id) || view.face_down).then_some(id.0),
             };
             self.membership.insert(id, (player, key.clone(), label));
             let group = (player, key);
@@ -981,6 +994,7 @@ impl SnapshotObjectViewCache {
             tapped,
             damage,
             lane: battlefield_lane_for_card_types(current_card_types),
+            face_down: key.face_down,
             characteristic_signature: object_characteristic_signature(game, obj, true),
             counter_signature,
             mana_cost: obj.mana_cost.as_ref().map(|mc| mc.to_oracle()),
@@ -1969,8 +1983,10 @@ fn grouped_battlefield_for_ids(
         };
         total += 1;
 
-        let force_single = protected_ids.contains(&obj.id).then_some(obj.id.0);
         let view = object_view_cache.battlefield_view(game, obj);
+        // A face-down permanent may be known to this perspective while an
+        // identical-looking one is not, so each stays its own entry.
+        let force_single = (protected_ids.contains(&obj.id) || view.face_down).then_some(obj.id.0);
         let key = BattlefieldGroupKey {
             lane: view.lane,
             name: view.name.clone(),
@@ -2050,6 +2066,7 @@ fn grouped_battlefield_for_ids(
                 stable_id,
                 name,
                 token: key.token,
+                face_down: representative.is_some_and(|view| view.face_down),
                 tapped: key.tapped,
                 damage: key.damage,
                 count: member_ids.len().max(1),
@@ -2302,6 +2319,8 @@ pub(super) struct PermanentSnapshot {
     pub(super) stable_id: u64,
     pub(super) name: String,
     pub(super) token: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(super) face_down: bool,
     pub(super) tapped: bool,
     pub(super) damage: u32,
     pub(super) count: usize,
@@ -2757,6 +2776,12 @@ pub(super) struct ViewedCardSnapshot {
     pub(super) stable_id: u64,
     pub(super) name: String,
     pub(super) oracle_text: String,
+    /// The zone the card is in now, so the UI can mark that zone as looked at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) zone: Option<String>,
+    /// Library cards only: how many cards sit above it (0 is the top).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) position: Option<usize>,
 }
 
 fn resolve_viewed_card(
@@ -3457,11 +3482,14 @@ impl GameSnapshot {
                         .map(|(index, id)| {
                             let (current_id, stable_id, name, oracle_text) =
                                 resolve_viewed_card(game, *id, view.stable_id_at(index, *id));
+                            let object = game.object(current_id);
                             ViewedCardSnapshot {
                                 id: current_id.0,
                                 stable_id,
                                 name,
                                 oracle_text,
+                                zone: object.map(|object| super::decision_zone_name(object.zone)),
+                                position: object.and_then(|object| library_position(game, object)),
                             }
                         })
                         .collect(),

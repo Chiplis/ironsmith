@@ -171,7 +171,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         }
         K::BecomesTargetedObjectByStackObject { target, source }
         | K::BecomesTargetedByAbilitySource { target, source }
-        | K::DealsDamageTo { source, target, source_surface: _ }
+        | K::DealsDamageTo { source, target, source_surface: _, recipient_is_source_target: _ }
         | K::DealsCombatDamageTo { source, target } => {
             *source = rewrite_filter_words(source, change)?;
             *target = rewrite_filter_words(target, change)?;
@@ -629,6 +629,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     } else {
         K::DealsDamageTo {
             source: n.source_filter.clone(), target: n.target_filter.clone(), source_surface: n.source_surface,
+            recipient_is_source_target: n.recipient_is_source_target,
         }
     });
     exact!(DealsExactDamageToObjectOrPlayerTrigger, n, K::DealsExactDamageToObjectOrPlayer {

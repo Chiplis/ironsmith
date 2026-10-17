@@ -632,6 +632,13 @@ pub enum TurnHistoryCount {
     /// last-known information matches the filter, one per damage event.
     /// Appended to preserve existing serialized enum ordinals.
     DealtExcessDamage(ObjectFilter),
+    /// Counters of the requested kind removed from matching players this
+    /// turn, summed — paid or lost alike ("for each {E} you've paid or lost
+    /// this turn", Blaster Hulk). Appended to preserve serialized ordinals.
+    PlayerCountersRemoved {
+        player: PlayerFilter,
+        counter_type: Option<CounterType>,
+    },
 }
 
 impl TurnHistoryCount {
@@ -1038,6 +1045,22 @@ pub enum Value {
     /// toxic ability it has (CR 702.164c): "draw cards equal to its total
     /// toxic value" (Goliath Hatchery). Appended.
     TotalToxicValueOf(Box<ChooseSpec>),
+    /// The greatest number of die results stored on the source object that
+    /// share one value ("the greatest number of stored results on it of the
+    /// same value", Centaur of Attention); 0 with no stored results.
+    /// Appended.
+    GreatestEqualStoredDieResultsOnSource,
+    /// "Note the mana value of each card as it's put into exile. ... the
+    /// greatest number noted for it this turn" (Bell Borca, Spectral
+    /// Sergeant): the greatest mana value among cards put into exile this
+    /// turn while the source object was on the battlefield; 0 with none.
+    /// Appended.
+    GreatestManaValueExiledThisTurnSinceSourceEntered,
+    /// The number the iterated participant chose in this resolution's
+    /// per-player number choice ("Each player loses life equal to the number
+    /// of items they revealed", Goblin Game); 0 when that player chose none.
+    /// Appended.
+    IteratedPlayerChosenNumber,
 }
 
 impl Value {
@@ -1392,6 +1415,12 @@ pub enum Restriction {
         player: PlayerFilter,
         spells: ObjectFilter,
         maximum: u32,
+        /// "You can cast only one more spell this turn" (Irencrag Feat): a
+        /// resolving restriction whose `maximum` counts spells beyond those
+        /// the player already cast this turn. Resolution freezes it into an
+        /// absolute maximum for that player.
+        #[cfg_attr(feature = "serde", serde(default))]
+        beyond_spells_already_cast: bool,
     },
     /// "You draw cards from the bottom of your library rather than the top."
     /// (River Song): a lasting player rule changing which card a draw takes
@@ -1428,6 +1457,10 @@ pub enum Restriction {
         player: PlayerFilter,
         pay_life: bool,
         sacrifice: Option<ObjectFilter>,
+        /// "... or to activate abilities that aren't mana abilities" (Karn's
+        /// Sylex): mana-ability payments stay unrestricted (CR 605).
+        #[cfg_attr(feature = "serde", serde(default))]
+        exempt_mana_abilities: bool,
     },
     /// Source-filtered prohibition on countering a spell. Appended for wire stability.
     BeCounteredFrom(ObjectFilter, ObjectFilter),
@@ -1498,6 +1531,32 @@ pub enum Restriction {
         attacker: ObjectFilter,
         minimum: usize,
     },
+    /// "During that turn, power-up abilities can't be activated" (Kang the
+    /// Conqueror): matching permanents' activated abilities with this
+    /// keyword can't be activated (CR 602.5). Appended for wire stability.
+    ActivateKeywordAbilitiesOf {
+        filter: ObjectFilter,
+        keyword: crate::ActivatedAbilityKeyword,
+    },
+    /// "If Lava Burst would deal damage to a creature, that damage can't be
+    /// prevented or dealt instead to another permanent or player." (Lava
+    /// Burst): keyed on both the damage source and its recipient object.
+    /// Prevention effects (CR 615) can't apply to damage a matching source
+    /// would deal to a matching object, and with `or_redirected`
+    /// redirection replacements (CR 614.9) can't move that damage either.
+    /// Both filters are read in the restriction host's context. Appended for
+    /// wire stability.
+    PreventDamageFromTo {
+        sources: ObjectFilter,
+        recipients: ObjectFilter,
+        or_redirected: bool,
+    },
+    /// "Black and/or red permanents and spells are colorless sources of
+    /// damage." (Ghostly Flame): a permanent or spell matching the filter is
+    /// colorless as the source of damage only (protection, prevention and
+    /// other damage-source color checks); its colors are otherwise
+    /// unchanged. Appended for wire stability.
+    DamageSourcesAreColorless(ObjectFilter),
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -2022,6 +2081,13 @@ impl Restriction {
         Self::MustBeBlockedByAtLeast { attacker, minimum }
     }
 
+    pub fn activate_keyword_abilities_of(
+        filter: ObjectFilter,
+        keyword: crate::ActivatedAbilityKeyword,
+    ) -> Self {
+        Self::ActivateKeywordAbilitiesOf { filter, keyword }
+    }
+
     pub fn block_alone(filter: ObjectFilter) -> Self {
         Self::BlockAlone(filter)
     }
@@ -2070,6 +2136,18 @@ impl Restriction {
             player,
             spells,
             maximum,
+            beyond_spells_already_cast: false,
+        }
+    }
+
+    /// "[player] can cast only N more [matching] spells this turn" (Irencrag
+    /// Feat), counted from when the restriction is created.
+    pub fn cast_only_n_more_spells(player: PlayerFilter, spells: ObjectFilter, more: u32) -> Self {
+        Self::CastMoreThanNSpellsEachTurn {
+            player,
+            spells,
+            maximum: more,
+            beyond_spells_already_cast: true,
         }
     }
 
@@ -2303,6 +2381,10 @@ pub enum TurnHistoryCondition {
     /// controlled was declared as an attacker against this condition's
     /// controller during the current turn (CR 508.1).
     ActivePlayerAttackedControllerThisTurn,
+    /// Append-only. "if a player attacked you during their last turn"
+    /// (Avenge): some other player declared an attacker against this
+    /// condition's controller during that player's most recent turn.
+    OpponentAttackedControllerDuringTheirLastTurn,
     /// Append-only. "If it entered from your library" (Fblthp, the Lost):
     /// the triggering battlefield entry moved the object from this zone.
     TriggeringObjectEnteredFromZone(Zone),
@@ -2923,6 +3005,13 @@ pub enum Condition {
     SourceChosenColorMostCommonAmong {
         filter: ObjectFilter,
         strict: bool,
+    },
+    /// "that opponent has more life than another of your opponents" (Breena,
+    /// the Demagogue): some opponent of the controller other than the
+    /// matched player has less life than that player. Appended for
+    /// serialized discriminant stability.
+    PlayerHasMoreLifeThanAnotherOpponent {
+        player: PlayerFilter,
     },
 }
 

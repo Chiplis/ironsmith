@@ -2,10 +2,15 @@ use super::*;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PreparedEtbChoices {
+    /// An entry program put the entering object into this zone instead of
+    /// onto the battlefield (Frankenstein's Monster).
+    pub(crate) entry_redirect: Option<Zone>,
     pub(crate) chosen_color: Option<crate::color::Color>,
     /// "choose two colors": the chosen colors, recorded together.
     pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
     pub(crate) chosen_basic_land_type: Option<crate::types::Subtype>,
+    /// "choose two basic land types": every chosen type, in choice order.
+    pub(crate) chosen_basic_land_type_sequence: Option<Vec<crate::types::Subtype>>,
     pub(crate) chosen_land_type: Option<crate::types::Subtype>,
     pub(crate) chosen_creature_type: Option<crate::types::Subtype>,
     pub(crate) chosen_card_type: Option<crate::types::CardType>,
@@ -13,6 +18,8 @@ pub(crate) struct PreparedEtbChoices {
     /// "choose two players": the chosen players, in choice order.
     pub(crate) chosen_player_set: Option<Vec<PlayerId>>,
     pub(crate) chosen_named_option: Option<String>,
+    /// "each player chooses <A> or <B>": every player's option.
+    pub(crate) player_named_options: Vec<(PlayerId, String)>,
     pub(crate) noted_life_total: Option<i32>,
     pub(crate) power_toughness_choices:
         Vec<crate::static_abilities::PowerToughnessChoiceOption>,
@@ -149,6 +156,8 @@ fn ability_retains_counters_moving_to(
 struct AsEntersProgramExecution {
     outputs: Vec<crate::effects::CompletedEffectOutputs>,
     ran: bool,
+    /// "put this into its owner's graveyard instead of onto the battlefield".
+    entry_redirect: Option<Zone>,
     continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
@@ -511,7 +520,14 @@ impl GameState {
                 .collect();
             let awaiting_choice = context.decision_maker.awaiting_choice();
             merge_retained_tagged_objects(&mut execution.tagged_objects, &context.tagged_objects);
+            if let Some(destination) = context.replacement.entry_redirect.take() {
+                execution.entry_redirect = Some(destination);
+            }
             if awaiting_choice {
+                return Ok(execution);
+            }
+            if execution.entry_redirect.is_some() {
+                // The object no longer enters; later entry programs don't run.
                 return Ok(execution);
             }
         }
@@ -603,6 +619,7 @@ impl GameState {
             .ok_or(crate::effects::ExecutionError::InvalidTarget)?
             .counters = before;
         Ok(Some(PreparedEtbChoices {
+            entry_redirect: execution.entry_redirect,
             as_enters_counters: counters,
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
@@ -678,6 +695,7 @@ impl GameState {
                     decision_maker,
                 )?;
                 combined.ran |= execution.ran;
+                combined.entry_redirect = combined.entry_redirect.or(execution.entry_redirect);
                 combined
                     .continuous_effects
                     .extend(execution.continuous_effects.iter().copied());
@@ -1220,6 +1238,9 @@ impl GameState {
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
+        self.turn_store
+            .hand_cards_revealed_until_owners_next_turn
+            .remove(&old_id);
         let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
         if hidden_card_info.is_some()
             && old_object.zone.is_public()
@@ -2291,6 +2312,24 @@ impl GameState {
             }
             choices
         };
+        // "put this creature into its owner's graveyard instead of onto the
+        // battlefield" (Frankenstein's Monster): an entry program redirected
+        // the entering object (CR 614.1c). Its completed actions stand.
+        if let Some(destination) = program_choices.entry_redirect.take() {
+            result.prevented = true;
+            result.new_destination = Some(destination);
+            return Ok(Some(PreparedEtbEntry {
+                result,
+                choices: program_choices,
+                zone_entry_lookback: None,
+                entry_definition: None,
+                physical_components: Vec::new(),
+                linked_face_mana_cost: None,
+                entry_attachment: None,
+                entry_attachment_requires_aura: false,
+                entry_attachment_filter: None,
+            }));
+        }
 
         let battle_protector = if prospective_card_types.contains(&crate::types::CardType::Battle) {
             let legal = self.legal_battle_protectors_for(
@@ -2405,36 +2444,54 @@ impl GameState {
                 }
             }
             if static_ability.basic_land_type_choice_as_enters().is_some() {
-                let options = [
+                // "choose two basic land types" (Illusionary Terrain) records
+                // distinct types in choice order; a single choice keeps the
+                // ordinary chosen-basic-land-type record.
+                let choice_count = static_ability.basic_land_type_choice_count_as_enters().max(1);
+                let mut options = vec![
                     crate::types::Subtype::Plains,
                     crate::types::Subtype::Island,
                     crate::types::Subtype::Swamp,
                     crate::types::Subtype::Mountain,
                     crate::types::Subtype::Forest,
                 ];
-                let display_options = options
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, subtype)| {
-                        crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
-                    })
-                    .collect::<Vec<_>>();
-                let choice_spec =
-                    crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
-                let mut chosen = crate::decisions::make_decision(
-                    self,
-                    decision_maker,
-                    prospective_controller,
-                    Some(old_id),
-                    choice_spec,
-                );
-                if decision_maker.awaiting_choice() {
-                    return Ok(None);
+                let mut sequence = Vec::new();
+                for _ in 0..choice_count {
+                    if options.is_empty() {
+                        break;
+                    }
+                    let display_options = options
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, subtype)| {
+                            crate::decisions::spec::DisplayOption::new(idx, subtype.to_string())
+                        })
+                        .collect::<Vec<_>>();
+                    let choice_spec =
+                        crate::decisions::specs::ChoiceSpec::single(old_id, display_options);
+                    let mut chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        prospective_controller,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    let Some(subtype) = chosen
+                        .pop()
+                        .filter(|idx| *idx < options.len())
+                        .map(|idx| options.remove(idx))
+                    else {
+                        break;
+                    };
+                    sequence.push(subtype);
                 }
-                choices.chosen_basic_land_type = chosen
-                    .pop()
-                    .filter(|idx| *idx < options.len())
-                    .map(|idx| options[idx]);
+                choices.chosen_basic_land_type = sequence.first().copied();
+                if choice_count > 1 {
+                    choices.chosen_basic_land_type_sequence = Some(sequence);
+                }
             }
             if static_ability.land_type_choice_as_enters().is_some() {
                 let options = crate::types::Subtype::all_land_types();
@@ -2824,6 +2881,44 @@ impl GameState {
                 self.shuffle_slice(&mut indices);
                 if let Some(option) = indices.first().map(|idx| spec.options[*idx].clone()) {
                     choices.chosen_named_option = Some(option);
+                }
+            } else if let Some(spec) = static_ability.named_option_choice_as_enters()
+                && spec.each_player
+                && !spec.options.is_empty()
+            {
+                // "As this creature enters, each player chooses war or
+                // peace": every player chooses in APNAP order (CR 101.4),
+                // and each player's option is recorded on the permanent.
+                let display_options = spec
+                    .options
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, option)| {
+                        crate::decisions::spec::DisplayOption::new(idx, option.clone())
+                    })
+                    .collect::<Vec<_>>();
+                for player in self.team_apnap_player_order() {
+                    let choice_spec = crate::decisions::specs::ChoiceSpec::single(
+                        old_id,
+                        display_options.clone(),
+                    );
+                    let mut chosen = crate::decisions::make_decision(
+                        self,
+                        decision_maker,
+                        player,
+                        Some(old_id),
+                        choice_spec,
+                    );
+                    if decision_maker.awaiting_choice() {
+                        return Ok(None);
+                    }
+                    if let Some(option) = chosen
+                        .pop()
+                        .filter(|idx| *idx < spec.options.len())
+                        .map(|idx| spec.options[idx].clone())
+                    {
+                        choices.player_named_options.push((player, option));
+                    }
                 }
             } else if let Some(spec) = static_ability.named_option_choice_as_enters()
                 && !spec.options.is_empty()
@@ -3473,6 +3568,11 @@ impl GameState {
             if let Some(land_type) = choice_store.chosen_land_types.remove(&old_id) {
                 choice_store.chosen_land_types.insert(new_id, land_type);
             }
+            if let Some(land_types) = choice_store.chosen_basic_land_type_sequences.remove(&old_id) {
+                choice_store
+                    .chosen_basic_land_type_sequences
+                    .insert(new_id, land_types);
+            }
             if let Some(creature_type) = choice_store.chosen_creature_types.remove(&old_id) {
                 choice_store
                     .chosen_creature_types
@@ -3497,6 +3597,11 @@ impl GameState {
             }
             if let Some(names) = choice_store.chosen_named_options.remove(&old_id) {
                 choice_store.chosen_named_options.insert(new_id, names);
+            }
+            if let Some(choices) = choice_store.chosen_player_named_options.remove(&old_id) {
+                choice_store
+                    .chosen_player_named_options
+                    .insert(new_id, choices);
             }
             let numeric = choice_store
                 .numeric_acquisitions
@@ -3787,6 +3892,9 @@ impl GameState {
         if let Some(subtype) = choices.chosen_basic_land_type {
             self.set_chosen_basic_land_type(new_id, subtype);
         }
+        if let Some(subtypes) = choices.chosen_basic_land_type_sequence.clone() {
+            self.set_chosen_basic_land_type_sequence(new_id, subtypes);
+        }
         if let Some(subtype) = choices.chosen_land_type {
             self.set_chosen_land_type(new_id, subtype);
         }
@@ -3804,6 +3912,9 @@ impl GameState {
         }
         if let Some(option) = choices.chosen_named_option.clone() {
             self.set_chosen_named_option(new_id, option);
+        }
+        if !choices.player_named_options.is_empty() {
+            self.set_player_named_option_choices(new_id, choices.player_named_options.clone());
         }
         if let Some(life_total) = choices.noted_life_total {
             self.set_noted_life_total_for_source(new_id, life_total);
@@ -4065,6 +4176,78 @@ impl GameState {
             }
         }
 
+        // "As this Equipment enters, choose a creature you control it could
+        // be attached to. If you do, it enters attached to that creature."
+        // (Grifter's Blade): a non-Aura's own entry choice of its host. With
+        // no legal host it simply enters unattached.
+        if entry_attachment.is_none()
+            && !prospective_aura_entry
+            && let Some(attach_filter) = self.object(new_id).and_then(|object| {
+                object.abilities.iter().find_map(|ability| {
+                    let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
+                        return None;
+                    };
+                    match &ability.compiled_model()?.payload {
+                        ironsmith_core::StaticAbilityPayload::EntersAttachedToChosenObject {
+                            filter,
+                            ..
+                        } => Some(filter.clone()),
+                        _ => None,
+                    }
+                })
+            })
+            && self
+                .object(new_id)
+                .is_some_and(|object| object.attached_to.is_none())
+        {
+            let chooser = self
+                .object(new_id)
+                .map(|object| self.controller_of(object))
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(new_id))?;
+            let filter_ctx = self.filter_context_for(chooser, Some(new_id));
+            let mut candidates = Vec::new();
+            for id in self.battlefield.clone() {
+                if id == new_id || self.is_phased_out(id) {
+                    continue;
+                }
+                let Some(candidate) = self.object(id) else {
+                    continue;
+                };
+                if attach_filter.matches(candidate, &filter_ctx, self)
+                    && !crate::targeting::has_protection_from_source(self, id, new_id)
+                {
+                    candidates.push(crate::decisions::context::SelectableObject::new(
+                        id,
+                        candidate.name.to_string(),
+                    ));
+                }
+            }
+            candidates.sort_by_key(|candidate| candidate.id);
+            if !candidates.is_empty() {
+                let fallback_target = candidates.first().map(|candidate| candidate.id);
+                let ctx = crate::decisions::context::SelectObjectsContext::new(
+                    chooser,
+                    Some(new_id),
+                    "Choose a creature for it to enter attached to",
+                    candidates,
+                    1,
+                    Some(1),
+                );
+                if let Some(host) = decision_maker
+                    .decide_objects(self, &ctx)
+                    .first()
+                    .copied()
+                    .or(fallback_target)
+                {
+                    crate::effects::permanents::attach_battlefield_object_to_target(
+                        self,
+                        new_id,
+                        AttachmentTarget::Object(host),
+                    );
+                }
+            }
+        }
+
         if let Some(target) = entry_attachment
             && (!entry_attachment_requires_aura
                 || self.calculated_subtypes(new_id).contains(&Subtype::Aura))
@@ -4172,6 +4355,7 @@ impl GameState {
         }
         self.object_annotations_mut().noted_life_totals.remove(&id);
         self.object_annotations_mut().noted_creature_types.remove(&id);
+        self.object_annotations_mut().stored_die_results.remove(&id);
         if self
             .object(id)
             .is_some_and(|object| object.zone == Zone::Battlefield)

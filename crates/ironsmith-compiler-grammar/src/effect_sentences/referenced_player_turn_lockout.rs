@@ -76,10 +76,39 @@ fn parse_lockout_with_hand_reveal(words: &[&str]) -> Option<Vec<EffectAst>> {
     Some(effects)
 }
 
+/// "Until that player's next turn, that player plays with that card revealed
+/// in their hand and can't play it." (Firestorm Phoenix, after "return it to
+/// its owner's hand instead"): the returned source card stays revealed in its
+/// owner's hand, and unplayable, until that player's next turn.
+fn parse_source_card_revealed_until_owners_next_turn(words: &[&str]) -> Option<Vec<EffectAst>> {
+    let words: Vec<&str> = words.iter().copied().filter(|word| *word != ",").collect();
+    let rest = words
+        .strip_prefix(&["until", "that", "player's", "next", "turn"][..])
+        .or_else(|| words.strip_prefix(&["until", "that", "players", "next", "turn"][..]))?;
+    let rest = rest.strip_prefix(&["that", "player", "plays", "with", "that", "card", "revealed", "in"][..])?;
+    let rest = match rest {
+        ["their" | "his" | "her", "hand", rest @ ..] => rest,
+        ["that", "player's" | "players", "hand", rest @ ..] => rest,
+        ["his", "or", "her", "hand", rest @ ..] => rest,
+        _ => return None,
+    };
+    let cant_play = match rest {
+        [] => false,
+        ["and", "cant" | "can't", "play", "it"] => true,
+        _ => return None,
+    };
+    Some(vec![EffectAst::RevealSourceInHandUntilOwnersNextTurn(
+        ironsmith_core::RevealSourceInHandUntilOwnersNextTurnEffect::new(cant_play),
+    )])
+}
+
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(tokens);
     if let Some(effects) = parse_lockout_with_hand_reveal(&words) {
+        return Ok(Some(effects));
+    }
+    if let Some(effects) = parse_source_card_revealed_until_owners_next_turn(&words) {
         return Ok(Some(effects));
     }
     // The whole bundle shares one authored turn bound.

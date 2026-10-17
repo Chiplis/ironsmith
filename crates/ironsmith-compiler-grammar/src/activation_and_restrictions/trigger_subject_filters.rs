@@ -738,6 +738,48 @@ pub fn parse_spell_activity_trigger(
             from_not_hand: false,
         }));
     }
+    // "Whenever a player casts an instant or sorcery card" (Eye of the
+    // Storm): the typed spell reading, restricted to spells that are cards
+    // (CR 707.12: casting a copy of a card doesn't trigger it).
+    if let Some(cast) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "cast" | "casts"))
+        && cast > 0
+        && clause_words.last() == Some(&"card")
+        && clause_words.len() > cast + 2
+        && !clause_words[cast + 1..clause_words.len() - 1]
+            .iter()
+            .any(|word| matches!(*word, "spell" | "spells" | "card" | "cards"))
+        && let Some(card_index) = tokens.iter().rposition(|token| token.is_word("card"))
+    {
+        let mut rewritten = tokens.to_vec();
+        rewritten[card_index] = OwnedLexToken::word("spell".to_string(), tokens[card_index].span);
+        if let Some(TriggerSpec::SpellCast {
+            filter,
+            mana_source_filter,
+            caster,
+            timing,
+            during_turn,
+            min_spells_this_turn,
+            exact_spells_this_turn,
+            from_not_hand,
+        }) = parse_spell_activity_trigger(&rewritten)?
+        {
+            let mut filter = filter.unwrap_or_default();
+            filter.physical_card = true;
+            return Ok(Some(TriggerSpec::SpellCast {
+                filter: Some(filter),
+                mana_source_filter,
+                caster,
+                timing,
+                during_turn,
+                min_spells_this_turn,
+                exact_spells_this_turn,
+                from_not_hand,
+            }));
+        }
+        return Ok(None);
+    }
     let activity_facts = trigger_subject_grammar::parse_spell_activity_surface_facts(&clause_words);
     if !activity_facts.has_spell_noun {
         return Ok(None);

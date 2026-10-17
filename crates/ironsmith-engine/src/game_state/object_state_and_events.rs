@@ -1725,6 +1725,75 @@ impl GameState {
             .phase_out_holds_by_source
             .values()
             .any(|held| held.contains(&permanent))
+            || self
+                .battlefield_flags
+                .phase_out_holds_until_visit_roll
+                .contains_key(&permanent)
+    }
+
+    /// Keep a directly phased-out permanent phased out until `player` rolls
+    /// `max_result` or less while rolling to visit their Attractions
+    /// (Ferris Wheel). It doesn't phase in during untap steps meanwhile.
+    pub fn hold_phased_out_until_visit_roll(
+        &mut self,
+        permanent: ObjectId,
+        player: PlayerId,
+        max_result: u32,
+    ) {
+        if !self.is_phased_out(permanent) {
+            return;
+        }
+        self.battlefield_flags_mut()
+            .phase_out_holds_until_visit_roll
+            .insert(permanent, (player, max_result));
+    }
+
+    /// CR 701.52a with Ferris Wheel: `player`'s completed visit roll of
+    /// `result` phases in every permanent held until they roll that low.
+    pub fn release_visit_roll_phase_out_holds(&mut self, player: PlayerId, result: u32) {
+        if self.battlefield_flags.phase_out_holds_until_visit_roll.is_empty() {
+            return;
+        }
+        let mut released = self
+            .battlefield_flags
+            .phase_out_holds_until_visit_roll
+            .iter()
+            .filter(|(_, (holder, max_result))| *holder == player && result <= *max_result)
+            .map(|(permanent, _)| *permanent)
+            .collect::<Vec<_>>();
+        if released.is_empty() {
+            return;
+        }
+        released.sort();
+        for permanent in &released {
+            self.battlefield_flags_mut()
+                .phase_out_holds_until_visit_roll
+                .remove(permanent);
+        }
+        let still_held = released
+            .iter()
+            .copied()
+            .filter(|permanent| self.is_phase_out_held(*permanent))
+            .collect::<Vec<_>>();
+        released.retain(|permanent| !still_held.contains(permanent));
+        self.phase_in_simultaneously(&released);
+    }
+
+    /// Record that `source` phased `permanent` out.
+    pub fn record_phased_out_with_source(&mut self, source: ObjectId, permanent: ObjectId) {
+        self.battlefield_flags_mut()
+            .phased_out_with_source
+            .entry(source)
+            .or_default()
+            .insert(permanent);
+    }
+
+    /// Whether `source` (this incarnation) has phased `permanent` out.
+    pub fn was_phased_out_with_source(&self, source: ObjectId, permanent: ObjectId) -> bool {
+        self.battlefield_flags
+            .phased_out_with_source
+            .get(&source)
+            .is_some_and(|phased| phased.contains(&permanent))
     }
 
     /// Release every permanent held phased out by a source that is leaving.
@@ -2126,16 +2195,26 @@ impl GameState {
             flags
                 .phase_out_holds_by_source
                 .retain(|_, held| !held.is_empty());
+            flags.phase_out_holds_until_visit_roll.remove(&id);
+            flags.phased_out_with_source.remove(&id);
+            for phased in flags.phased_out_with_source.values_mut() {
+                phased.remove(&id);
+            }
+            flags
+                .phased_out_with_source
+                .retain(|_, phased| !phased.is_empty());
         }
         self.exile_tracking_mut().imprinted_cards.remove(&id);
         self.object_annotations_mut().noted_life_totals.remove(&id);
         self.object_annotations_mut().noted_creature_types.remove(&id);
+        self.object_annotations_mut().stored_die_results.remove(&id);
         {
             let choices = self.choice_store_mut();
             choices.chosen_colors.remove(&id);
             choices.chosen_color_sets.remove(&id);
             choices.chosen_basic_land_types.remove(&id);
             choices.chosen_land_types.remove(&id);
+            choices.chosen_basic_land_type_sequences.remove(&id);
             choices.chosen_creature_types.remove(&id);
             choices.secret_chosen_subtypes.remove(&id);
             choices.chosen_creature_type_sets.remove(&id);
@@ -2144,6 +2223,7 @@ impl GameState {
             choices.chosen_player_sets.remove(&id);
             choices.chosen_objects.remove(&id);
             choices.chosen_named_options.remove(&id);
+            choices.chosen_player_named_options.remove(&id);
             choices.numbers_chosen_by_source.remove(&id);
             choices
                 .numeric_acquisitions
@@ -2587,6 +2667,29 @@ impl GameState {
             .copied()
     }
 
+    /// Record the basic land types a permanent chose in order.
+    pub fn set_chosen_basic_land_type_sequence(
+        &mut self,
+        permanent_id: ObjectId,
+        subtypes: Vec<crate::types::Subtype>,
+    ) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_basic_land_type_sequences
+            .insert(permanent_id, subtypes);
+    }
+
+    /// The basic land types a permanent chose in order, if any.
+    pub fn chosen_basic_land_type_sequence(
+        &self,
+        permanent_id: ObjectId,
+    ) -> Option<&[crate::types::Subtype]> {
+        self.choice_store
+            .chosen_basic_land_type_sequences
+            .get(&permanent_id)
+            .map(Vec::as_slice)
+    }
+
     // === Chosen land type helpers ===
 
     /// Record a chosen land type for a permanent.
@@ -2748,6 +2851,28 @@ impl GameState {
     }
 
     // === Chosen named option helpers ===
+
+    /// Record every player's named option for a permanent ("each player
+    /// chooses war or peace").
+    pub fn set_player_named_option_choices(
+        &mut self,
+        permanent_id: ObjectId,
+        choices: Vec<(PlayerId, String)>,
+    ) {
+        self.mark_continuous_state_dirty();
+        self.choice_store_mut()
+            .chosen_player_named_options
+            .insert(permanent_id, choices);
+    }
+
+    /// Every player's named option recorded for a permanent, in choice order.
+    pub fn player_named_option_choices(&self, permanent_id: ObjectId) -> &[(PlayerId, String)] {
+        self.choice_store
+            .chosen_player_named_options
+            .get(&permanent_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 
     /// Record a chosen named option for a permanent.
     pub fn set_chosen_named_option(&mut self, permanent_id: ObjectId, option: String) {

@@ -248,6 +248,12 @@ const READINGS: &[Reading] = &[
         read: |input| input.outcome(read_exile_collection_each_upkeep_return(input)),
     },
     Reading {
+        id: RuleId::new("retained-spell-copy-each-upkeep"),
+        head: HeadDiscriminator::Any,
+        admits: |input| input.sentences.len() == 3,
+        read: |input| input.outcome(read_retained_spell_copy_each_upkeep(input)),
+    },
+    Reading {
         id: RuleId::new("choose-each-graveyard-then-owner-shuffle"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -738,6 +744,15 @@ fn read_exile_collection_each_upkeep_return(
             parse_exile_collection_each_upkeep_return_bundle(sentences[0], sentences[1])
     {
         return Ok(Some(effects));
+    }
+    Ok(None)
+}
+fn read_retained_spell_copy_each_upkeep(
+    input: &Bundle<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentences = &input.sentences;
+    if sentences.len() == 3 {
+        return parse_retained_spell_copy_bundle(sentences[0], sentences[1], sentences[2]);
     }
     Ok(None)
 }

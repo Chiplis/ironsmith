@@ -135,6 +135,16 @@ pub fn parse_possessive_object_choice_tokens(
             &["of", "an", "opponents", "choice"][..],
             PossessiveObjectChoiceActor::Opponent,
         ),
+        // Normalized clauses can arrive with the article elided ("any
+        // target of opponents choice", Karplusan Minotaur).
+        (
+            &["of", "opponent's", "choice"][..],
+            PossessiveObjectChoiceActor::Opponent,
+        ),
+        (
+            &["of", "opponents", "choice"][..],
+            PossessiveObjectChoiceActor::Opponent,
+        ),
         (
             &["of", "defending", "player's", "choice"][..],
             PossessiveObjectChoiceActor::DefendingPlayer,

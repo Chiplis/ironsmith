@@ -451,6 +451,38 @@ fn read_energy_amount(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTe
     }
     Ok(None)
 }
+/// "target nonland permanent's mana value": the mana value of an object
+/// target chosen with the ability.
+fn parse_target_object_mana_value_amount(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let len = tokens.len();
+    if len < 4
+        || !tokens[0].is_word("target")
+        || !tokens[len - 2].is_word("mana")
+        || !tokens[len - 1].is_word("value")
+    {
+        return Ok(None);
+    }
+    let Some(noun) = tokens[len - 3]
+        .as_word()
+        .and_then(|word| word.strip_suffix("'s").or_else(|| word.strip_suffix("’s")))
+        .map(str::to_string)
+    else {
+        return Ok(None);
+    };
+    let mut filter_tokens = tokens[1..len - 3].to_vec();
+    filter_tokens.push(OwnedLexToken::word(
+        noun,
+        crate::cards::TextSpan::synthetic(),
+    ));
+    let filter = crate::object_filters::parse_object_filter(&filter_tokens, false)?;
+    Ok(Some(Value::ManaValueOf(Box::new(crate::target::ChooseSpec::target(
+        crate::target::ChooseSpec::Object(filter),
+    )))))
+}
+
 fn read_energy_count_clause(input: &PayClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
     let player = input.player;
@@ -466,6 +498,11 @@ fn read_energy_count_clause(input: &PayClause<'_>) -> Result<Option<EffectAst>, 
                 return Ok(Some(EffectAst::subject_verb_pay_energy(player, amount)));
             }
             if let Some(amount) = parse_dynamic_cost_modifier_value(amount_tokens)? {
+                return Ok(Some(EffectAst::subject_verb_pay_energy(player, amount)));
+            }
+            // "pay an amount of {E} equal to target nonland permanent's mana
+            // value" (Behemoth of Vault 0): the amount names an object target.
+            if let Some(amount) = parse_target_object_mana_value_amount(amount_tokens)? {
                 return Ok(Some(EffectAst::subject_verb_pay_energy(player, amount)));
             }
         }

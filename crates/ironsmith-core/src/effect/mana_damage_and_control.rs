@@ -89,6 +89,24 @@ pub struct AddManaEqualToManaCostEffect {
     pub colored_symbols_only: bool,
 }
 
+/// "you add the mana lost this way" (Drain Power): adds exactly the unspent
+/// mana a preceding lose-all-unspent-mana instruction removed, by type.
+/// `amount` is that producer's mana-lost metric
+/// (`Value::PriorEffectMetric` with `PriorEffectAction::ManaLost`); it names
+/// the producer, and its events supply the types.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct AddManaLostThisWayEffect {
+    pub amount: Value,
+    pub player: PlayerFilter,
+}
+
+impl AddManaLostThisWayEffect {
+    pub fn new(amount: Value, player: PlayerFilter) -> Self {
+        Self { amount, player }
+    }
+}
+
 impl AddManaEqualToManaCostEffect {
     pub fn new(filter: ObjectFilter, player: PlayerFilter) -> Self {
         Self {
@@ -567,6 +585,10 @@ pub enum PhaseOutDuration {
     /// this artifact becomes untapped or leaves the battlefield, that
     /// permanent phases in." (The Pandorica)
     UntilSourceUntapsOrLeaves,
+    /// "phases out until you roll a 3 or less while rolling to visit your
+    /// Attractions" (Ferris Wheel): held phased out until the effect's
+    /// controller's visit roll (CR 701.52a) is at most this result.
+    UntilVisitRollAtMost(u32),
 }
 
 impl PhaseOutDuration {
@@ -1180,6 +1202,17 @@ pub struct GrantPlayTaggedEffect<C> {
     /// (CR 702.125a, 601.2f). Appended; absent in older artifacts.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_u32_is_zero"))]
     pub spell_cost_reduction_per_opponent: u32,
+    /// "you may cast the exiled card during your turn": the permission is
+    /// usable only while its player is the active player. Appended; absent
+    /// in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub during_your_turns: bool,
+    /// "by waterbending {X} rather than paying its mana cost, where X is its
+    /// mana value" (Hama, the Bloodbender): each X in `alternative_cost` is
+    /// bound to the granted card's mana value when the permission is created.
+    /// Appended; absent in older artifacts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "serialized_bool_is_false"))]
+    pub alternative_cost_x_is_mana_value: bool,
 }
 
 #[cfg(feature = "serde")]
@@ -1231,6 +1264,8 @@ impl<C> GrantPlayTaggedEffect<C> {
             during_turns_attacked_with: None,
             during_turns_cast_another_spell: false,
             spell_cost_reduction_per_opponent: 0,
+            during_your_turns: false,
+            alternative_cost_x_is_mana_value: false,
         }
     }
 
@@ -1477,6 +1512,35 @@ impl RegisterCounterPlacementReplacementEffect {
             filter,
             counter_type,
             additional,
+            mode,
+        }
+    }
+}
+
+/// "Until end of turn, if one or more tokens would be created under your
+/// control, twice that many of those tokens are created instead." (Kaya,
+/// Geist Hunter): a resolved replacement effect (CR 611.2a, 614.1a) that
+/// multiplies each matching token creation by `factor` for its duration,
+/// independent of the source remaining on the battlefield.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterTokenCreationMultiplierEffect {
+    /// Whose token creations are multiplied, relative to the effect's
+    /// controller ("under your control").
+    pub controller: crate::filter_model::PlayerFilter,
+    pub factor: u32,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterTokenCreationMultiplierEffect {
+    pub fn new(
+        controller: crate::filter_model::PlayerFilter,
+        factor: u32,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            controller,
+            factor,
             mode,
         }
     }
@@ -2300,6 +2364,11 @@ pub struct ChooseCreatureTypeEffect {
     pub allowed_subtypes: Vec<Subtype>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub secretly: bool,
+    /// "Note a creature type that hasn't been noted for this Saga" (Long
+    /// List of the Ents): types already noted for the source are excluded,
+    /// and the choice is added to the source's noted set.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub note_for_source: bool,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -2310,6 +2379,7 @@ impl ChooseCreatureTypeEffect {
             allowed_subtypes: Vec::new(),
             secretly: false,
             family: crate::types::SubtypeFamily::Creature,
+            note_for_source: false,
         }
     }
 
@@ -2320,6 +2390,7 @@ impl ChooseCreatureTypeEffect {
             allowed_subtypes: Vec::new(),
             secretly: false,
             family,
+            note_for_source: false,
         }
     }
 }
@@ -2533,6 +2604,25 @@ impl EndTurnEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct EndCombatPhaseEffect;
+
+/// "This turn, instead of declaring blockers, each defending player chooses
+/// any number of creatures they control and divides them into a number of
+/// piles equal to the number of attacking creatures for whom that player is
+/// the defending player. Creatures those players control that can block
+/// additional creatures may likewise be put into additional piles. Assign
+/// each pile to a different one of those attacking creatures at random. Each
+/// creature in a pile that can block the creature that pile is assigned to
+/// does so." (Camouflage): this turn's declare-blockers step (CR 509.1) is
+/// replaced by that procedure.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct DeclareBlockersByRandomPilesThisTurnEffect;
+
+impl DeclareBlockersByRandomPilesThisTurnEffect {
+    pub const fn new() -> Self {
+        Self
+    }
+}
 
 impl EndCombatPhaseEffect {
     pub const fn new() -> Self {
@@ -2792,6 +2882,40 @@ impl DieResultModifier {
 
     pub fn value_mut(&mut self) -> &mut Value {
         match self { Self::Add(value) | Self::Subtract(value) => value }
+    }
+}
+
+/// "roll five six-sided dice and store those results on it" (Centaur of
+/// Attention): `player` rolls `count` dice with `sides` sides at once
+/// (CR 706.1) and the results are kept on the source object for as long as it
+/// remains that object (CR 400.7).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RollAndStoreDieResultsEffect {
+    pub player: PlayerFilter,
+    pub count: u32,
+    pub sides: u32,
+}
+
+impl RollAndStoreDieResultsEffect {
+    pub fn new(player: PlayerFilter, count: u32, sides: u32) -> Self {
+        Self { player, count, sides }
+    }
+}
+
+/// "you may reroll any number of this creature's stored results" (Centaur of
+/// Attention): `player` chooses any number of the results stored on the
+/// source, rolls that many dice of the stored size at once and the new
+/// results replace the chosen ones.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RerollStoredDieResultsEffect {
+    pub player: PlayerFilter,
+}
+
+impl RerollStoredDieResultsEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
     }
 }
 
@@ -5386,6 +5510,10 @@ pub enum LibraryRemainderSurface {
 pub enum LibraryConsultMode {
     Reveal,
     Exile,
+    /// "<player> mills a card, then repeats this process until ..." (Helm
+    /// of Obedience): each step is an ordinary one-card mill; the cards put
+    /// into a graveyard this way are the consulted cards (CR 701.13a).
+    Mill,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5743,6 +5871,17 @@ pub struct BidLifeEffect<E> {
     pub target: Option<ChooseSpec>,
     pub starting_bid: LifeBidStart,
     pub winner_effects: Vec<E>,
+    /// "You and target spell's controller bid life" (Mages' Contest): the
+    /// only other bidder. `None` means every player bids.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub opponent: Option<PlayerFilter>,
+    /// "If you win the bidding, ..." (Mages' Contest): the winner effects
+    /// run only when the controller is the high bidder.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub controller_must_win: bool,
 }
 
 impl<E> BidLifeEffect<E> {
@@ -5751,6 +5890,8 @@ impl<E> BidLifeEffect<E> {
             target: Some(target),
             starting_bid,
             winner_effects,
+            opponent: None,
+            controller_must_win: false,
         }
     }
 
@@ -5759,6 +5900,8 @@ impl<E> BidLifeEffect<E> {
             target: None,
             starting_bid,
             winner_effects,
+            opponent: None,
+            controller_must_win: false,
         }
     }
 }
@@ -6402,6 +6545,30 @@ pub struct GrantTapUncontrolledLandsForManaEffect {
 impl GrantTapUncontrolledLandsForManaEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self { player }
+    }
+}
+
+/// "Until end of turn, any time you could activate a mana ability, you may
+/// pay 1 life. If you do, add {C}." (Channel): for the rest of this turn
+/// `player` has a mana ability of their own, not tied to any permanent
+/// (CR 605.1a), whose cost is `life_cost` life and which adds `mana`. It can
+/// be activated whenever that player could activate a mana ability, including
+/// while paying a cost (CR 605.3a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct GrantPayLifeManaAbilityUntilEndOfTurnEffect {
+    pub player: PlayerFilter,
+    pub life_cost: u32,
+    pub mana: Vec<crate::mana::ManaSymbol>,
+}
+
+impl GrantPayLifeManaAbilityUntilEndOfTurnEffect {
+    pub fn new(player: PlayerFilter, life_cost: u32, mana: Vec<crate::mana::ManaSymbol>) -> Self {
+        Self {
+            player,
+            life_cost,
+            mana,
+        }
     }
 }
 

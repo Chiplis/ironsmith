@@ -1870,6 +1870,7 @@ pub(super) fn compile_subject_verb_middle(
             until_next_end_step,
             until_next_turn_start,
             during_next_turn,
+            until_end_of_combat_next_turn,
             spell_filter,
             surface,
             max_plays,
@@ -1893,7 +1894,9 @@ pub(super) fn compile_subject_verb_middle(
             let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter,
-                if *during_next_turn {
+                if *until_end_of_combat_next_turn {
+                    crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn
+                } else if *during_next_turn {
                     crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn
                 } else if *until_next_turn_start {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
@@ -2035,6 +2038,10 @@ pub(super) fn compile_subject_verb_middle(
                 allow_land,
                 allow_any_color_for_cast,
                 surface,
+                max_plays,
+                during_your_turns,
+                alternative_cost,
+                alternative_cost_x_is_mana_value,
             },
         ) => {
             let player_filter =
@@ -2058,10 +2065,18 @@ pub(super) fn compile_subject_verb_middle(
                 crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
                 *allow_land,
                 *allow_any_color_for_cast,
-            );
+            )
+            .with_max_plays(*max_plays);
             if let Some(surface) = surface {
                 grant_play = grant_play.with_surface(surface.clone());
             }
+            grant_play.during_your_turns = *during_your_turns;
+            grant_play.alternative_cost = alternative_cost.as_ref().map(|cost| {
+                let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
+                resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
+            }).transpose()?;
+            grant_play.alternative_cost_x_is_mana_value =
+                *alternative_cost_x_is_mana_value && grant_play.alternative_cost.is_some();
             if is_sentence_helper_exiled_collection_tag(&resolved_tag)
                 && ctx.last_exiled_collection_is_plural
             {
@@ -3407,12 +3422,23 @@ pub(super) fn compile_subject_verb_middle(
             target,
             duration,
             allow_multiple,
-        }) => compile_tagged_effect_for_target(target, ctx, "become_color_choice", |spec| {
-            Effect::new(
-                crate::effects::BecomeColorChoiceEffect::new(spec, duration.clone())
-                    .with_multiple_colors(*allow_multiple),
-            )
-        }),
+            color_choice,
+        }) => {
+            if *color_choice == Some(ironsmith_core::ColorChoiceReference::Pending) {
+                return Err(CardTextError::ParseError(
+                    "\"becomes that color\" requires its exact local color producer".into(),
+                ));
+            }
+            let color_choice = *color_choice;
+            compile_tagged_effect_for_target(target, ctx, "become_color_choice", |spec| {
+                let effect = crate::effects::BecomeColorChoiceEffect::new(spec, duration.clone())
+                    .with_multiple_colors(*allow_multiple);
+                Effect::new(match color_choice {
+                    Some(reference) => effect.with_color_from(reference),
+                    None => effect,
+                })
+            })
+        }
         SubjectVerbActionAst::StatChanges(StatChangeActionAst::RemoveAbilitiesAll {
             mode,
             filter,
@@ -3659,6 +3685,9 @@ pub(super) fn compile_subject_verb_middle(
                 }
                 crate::cards::builders::LibraryConsultModeAst::Exile => {
                     crate::effects::consult_helpers::LibraryConsultMode::Exile
+                }
+                crate::cards::builders::LibraryConsultModeAst::Mill => {
+                    crate::effects::consult_helpers::LibraryConsultMode::Mill
                 }
             };
             if matches!(mode, crate::cards::builders::LibraryConsultModeAst::Reveal) {

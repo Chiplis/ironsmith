@@ -442,6 +442,9 @@ impl EnterBattlefieldEvent {
             if let Some(subtype) = choices.chosen_basic_land_type {
                 prospective.set_chosen_basic_land_type(self.object, subtype);
             }
+            if let Some(subtypes) = choices.chosen_basic_land_type_sequence.clone() {
+                prospective.set_chosen_basic_land_type_sequence(self.object, subtypes);
+            }
             if let Some(subtype) = choices.chosen_land_type {
                 prospective.set_chosen_land_type(self.object, subtype);
             }
@@ -459,6 +462,12 @@ impl EnterBattlefieldEvent {
             }
             if let Some(option) = &choices.chosen_named_option {
                 prospective.set_chosen_named_option(self.object, option.clone());
+            }
+            if !choices.player_named_options.is_empty() {
+                prospective.set_player_named_option_choices(
+                    self.object,
+                    choices.player_named_options.clone(),
+                );
             }
             for option in &choices.power_toughness_choices {
                 if let Some(object) = prospective.object_mut(self.object) {

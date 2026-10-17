@@ -46,3 +46,23 @@ impl PlayWithHandRevealedEffect {
         }
     }
 }
+
+/// "If this creature would die, return it to its owner's hand instead.
+/// Until that player's next turn, that player plays with that card revealed
+/// in their hand and can't play it." (Firestorm Phoenix): the effect's source
+/// card, now in its owner's hand, stays publicly revealed there until that
+/// player's next turn begins; with `cant_play`, that player can't cast it or
+/// play it as a land meanwhile. The state belongs to that hand object, so it
+/// ends as soon as the card leaves the hand (CR 400.7).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct RevealSourceInHandUntilOwnersNextTurnEffect {
+    /// "and can't play it".
+    pub cant_play: bool,
+}
+
+impl RevealSourceInHandUntilOwnersNextTurnEffect {
+    pub fn new(cant_play: bool) -> Self {
+        Self { cant_play }
+    }
+}

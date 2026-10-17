@@ -115,6 +115,9 @@ pub enum CharacteristicActionAst {
         target: TargetAst,
         duration: Until,
         allow_multiple: bool,
+        /// "becomes that color": an exact earlier local color decision
+        /// (`Pending` until reference resolution binds the producer).
+        color_choice: Option<ironsmith_core::ColorChoiceReference>,
     },
     BecomeCopy {
         target: TargetAst,

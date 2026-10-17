@@ -1169,6 +1169,18 @@ impl Trigger {
         ))
     }
 
+    /// "Whenever <source> deals damage to that <object>": the damaged object
+    /// must be one of the damage source's own targets (CR 115.1).
+    pub fn deals_damage_to_source_target(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+    ) -> Self {
+        Self::new(DealsDamageToTrigger::source_target_recipient(
+            source_filter,
+            target_filter,
+        ))
+    }
+
     pub fn deals_exact_damage_to_object_or_player_with_source_surface(
         source_filter: ObjectFilter,
         object_filter: ObjectFilter,

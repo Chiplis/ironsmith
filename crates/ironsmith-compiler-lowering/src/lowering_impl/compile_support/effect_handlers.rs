@@ -736,6 +736,7 @@ fn apply_delayed_trigger_duration(
         Until::EndOfCombat => Ok(delayed.until_end_of_combat()),
         Until::YourNextTurn => Ok(delayed.until_controller_next_turn()),
         Until::YourNextTurnEnd => Ok(delayed.until_controller_next_turn_end()),
+        Until::SourceUntaps => Ok(delayed.until_source_untaps()),
         Until::PlayersNextTurnEnd { player } => Ok(delayed
             .until_controller_next_turn_end()
             .with_duration_player(player.clone())),
@@ -2025,6 +2026,34 @@ pub(super) fn try_compile_timing_and_control_effect(
                         );
                         (vec![effect], choices)
                     }
+                }
+                // "When you cast it this turn": the spell filter names the
+                // preceding instruction's object by stable identity; bind
+                // that pronoun to the object captured with the trigger.
+                TriggerSpec::SpellCast {
+                    filter: Some(filter),
+                    ..
+                } if filter_references_tag(
+                    filter,
+                    crate::tag::CompilerReferenceTag::It.as_str(),
+                ) =>
+                {
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    let mut resolved_trigger = trigger.clone();
+                    if let TriggerSpec::SpellCast { filter: slot, .. } = &mut resolved_trigger {
+                        *slot = Some(resolved_filter);
+                    }
+                    let effect = Effect::new(
+                        crate::effects::ScheduleDelayedTriggerEffect::new(
+                            compile_delayed_trigger_spec(&resolved_trigger)?,
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .until_end_of_turn(),
+                    );
+                    (vec![effect], choices)
                 }
                 _ => {
                     let effect = Effect::new(

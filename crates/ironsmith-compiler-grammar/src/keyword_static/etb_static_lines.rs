@@ -226,6 +226,19 @@ pub fn parse_enters_with_counters_line(
         }
     }
 
+    if let Some((counter_types, kinds)) = parse_enters_with_distinct_counter_kinds(after_with) {
+        if condition.is_some() || !added_abilities.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported conditional self ETB distinct counter choice clause (clause: '{}')",
+                full_words.join(" ")
+            )));
+        }
+        return Ok(Some(vec![StaticAbility::enters_with_distinct_counter_choice(
+            counter_types,
+            Value::Fixed(1),
+            kinds,
+        )]));
+    }
     if let Some(choice) = etb_grammar::parse_enters_with_counter_choice_tokens(after_with) {
         // "escapes with your choice of a +1/+1 counter or a flying counter
         // on it" (Tizerus Charger): the choice applies only to an escaped
@@ -503,6 +516,46 @@ pub fn parse_enters_with_counters_line(
         counter_type,
         count,
     )]))
+}
+
+/// "your choice of two different counters on it from among menace,
+/// deathtouch, and lifelink" (Grimdancer): `kinds` distinct kinds chosen from
+/// the listed counter kinds, one counter of each.
+fn parse_enters_with_distinct_counter_kinds(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<CounterType>, u32)> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let ["your", "choice", "of", count, "different", "counters", "on", "it", "from", "among", ..] =
+        words.as_slice()
+    else {
+        return None;
+    };
+    let kinds = crate::util::parse_number_word_u32(count).filter(|kinds| *kinds >= 2)?;
+    let among = tokens.iter().position(|token| token.is_word("among"))?;
+    let rest = &tokens[among + 1..];
+    let mut counter_types: Vec<CounterType> = Vec::new();
+    let mut item_start = 0;
+    for idx in 0..=rest.len() {
+        let boundary = idx == rest.len()
+            || rest[idx].is_comma()
+            || rest[idx].is_word("and")
+            || rest[idx].is_word("or")
+            || rest[idx].kind == crate::lexer::TokenKind::Period;
+        if !boundary {
+            continue;
+        }
+        let item = &rest[item_start..idx];
+        item_start = idx + 1;
+        if item.is_empty() {
+            continue;
+        }
+        let counter_type = parse_counter_type_from_tokens(item)?;
+        if counter_types.contains(&counter_type) {
+            return None;
+        }
+        counter_types.push(counter_type);
+    }
+    (counter_types.len() > kinds as usize).then_some((counter_types, kinds))
 }
 
 fn parse_enters_with_counter_conjunction_tail_tokens(
@@ -939,6 +992,13 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         Some(["the", "life", "paid", "as", "this", "artifact" | "creature" | "permanent", "entered"])
         | Some(["the", "life", "paid", "as", "it", "entered"])) {
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
+    }
+    // "the greatest number of stored results on it of the same value"
+    // (Centaur of Attention): die results stored on the source.
+    if matches!(words.get(3..),
+        Some(["the", "greatest", "number", "of", "stored", "results", "on", "it" | "this", "of", "the", "same", "value"])
+        | Some(["the", "greatest", "number", "of", "stored", "results", "on", "this", "creature", "of", "the", "same", "value"])) {
+        return Some(Value::GreatestEqualStoredDieResultsOnSource);
     }
     // "... as you activate this ability": an activation-time sampling clause
     // on the whole binding, not part of the counted noun phrase.

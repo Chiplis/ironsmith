@@ -87,6 +87,22 @@ impl EffectExecutor for AmassEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        // Another player amasses: that player chooses or creates the Army
+        // under their own control (CR 701.47a).
+        if let Some(player) = &self.player {
+            let player = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let mut own = self.clone();
+            own.player = None;
+            if player != ctx.controller {
+                return crate::effects::composition::execute_with_source::with_actor_binding(
+                    ctx,
+                    player,
+                    None,
+                    |ctx| own.execute_with_outputs(game, ctx),
+                );
+            }
+            return own.execute_with_outputs(game, ctx);
+        }
         super::lifecycle::execute_token_instruction_with_pending_value(
             game,
             ctx,

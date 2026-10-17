@@ -1510,6 +1510,120 @@ pub(super) fn try_apply_counters_put_on_this_turn_clause(
     true
 }
 
+/// One counter-history clause: "that a mire counter was put onto with this
+/// artifact" (`removed == false`) or "that a mire counter has not been
+/// removed from with this artifact" (`removed == true`). Returns the counter
+/// kind, the source noun and the words consumed.
+fn parse_counter_source_history_clause_words<'a>(
+    words: &[&'a str],
+    removed: bool,
+) -> Option<(crate::object::CounterType, &'a str, usize)> {
+    // The filter stage reads article-free words, so the article is optional.
+    if words.first().copied() != Some("that") {
+        return None;
+    }
+    let kind_start = if matches!(words.get(1).copied(), Some("a" | "an")) { 2 } else { 1 };
+    let counter_noun =
+        words.iter().skip(kind_start).position(|word| *word == "counter")? + kind_start;
+    if counter_noun <= kind_start {
+        return None;
+    }
+    let counter_type = parse_counter_type_words(&words[kind_start..=counter_noun])?;
+    let tail = &words[counter_noun + 1..];
+    let verbs: &[&[&str]] = if removed {
+        &[
+            &["has", "not", "been", "removed", "from"],
+            &["hasnt", "been", "removed", "from"],
+            &["hasn't", "been", "removed", "from"],
+            &["hasn’t", "been", "removed", "from"],
+        ]
+    } else {
+        &[&["was", "put", "onto"], &["was", "put", "on"]]
+    };
+    let verb_len = verbs.iter().find(|verb| tail.starts_with(verb))?.len();
+    if !(matches!(tail.get(verb_len..), Some(["with", "this", _, ..]))) {
+        return None;
+    }
+    let ["with", "this", noun, ..] = &tail[verb_len..] else {
+        return None;
+    };
+    Some((counter_type, *noun, counter_noun + 1 + verb_len + 3))
+}
+
+/// "that a mire counter was put onto with this artifact [but that a mire
+/// counter has not been removed from with this artifact]" (Cyclopean Tomb):
+/// lasting per-source counter history of the exact object.
+fn parse_counter_source_history_words(
+    words: &[&str],
+) -> Option<(crate::target::CounterSourceHistoryConstraint, usize)> {
+    let (counter_type, noun, mut used, put_by_source, mut not_removed_by_source) =
+        if let Some((counter_type, noun, used)) =
+            parse_counter_source_history_clause_words(words, false)
+        {
+            (counter_type, noun, used, true, false)
+        } else {
+            let (counter_type, noun, used) =
+                parse_counter_source_history_clause_words(words, true)?;
+            (counter_type, noun, used, false, true)
+        };
+    if put_by_source
+        && matches!(words.get(used).copied(), Some("but" | "and"))
+        && let Some((removed_kind, removed_noun, removed_used)) =
+            parse_counter_source_history_clause_words(&words[used + 1..], true)
+        && removed_kind == counter_type
+        && removed_noun == noun
+    {
+        not_removed_by_source = true;
+        used += 1 + removed_used;
+    }
+    Some((
+        crate::target::CounterSourceHistoryConstraint {
+            counter_type,
+            put_by_source,
+            not_removed_by_source,
+            source_noun: Some(noun.to_string()),
+        },
+        used,
+    ))
+}
+
+pub(super) fn try_apply_counter_source_history_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, (constraint, consumed))) =
+        all_words.iter().enumerate().find_map(|(idx, _)| {
+            parse_counter_source_history_words(&all_words[idx..]).map(|matched| (idx, matched))
+        })
+    else {
+        return false;
+    };
+    let phrase_words = all_words[word_start..word_start + consumed].to_vec();
+    filter.counter_source_history = Some(constraint);
+    all_words.drain(word_start..word_start + consumed);
+    // The segment keeps its articles: "that a mire counter ...".
+    let with_article = |article: &'static str| {
+        let mut authored = Vec::with_capacity(phrase_words.len() + 2);
+        for (idx, word) in phrase_words.iter().enumerate() {
+            authored.push(*word);
+            if *word == "that"
+                && !matches!(phrase_words.get(idx + 1).copied(), Some("a" | "an"))
+            {
+                authored.push(article);
+            }
+        }
+        authored
+    };
+    let with_a = with_article("a");
+    let with_an = with_article("an");
+    drain_segment_matching_phrase(
+        segment_tokens,
+        &[with_a.as_slice(), with_an.as_slice(), phrase_words.as_slice()],
+    );
+    true
+}
+
 /// Active voice: "target creature that dealt damage this turn" — the object
 /// is the damage DEALER, not the recipient.
 pub(super) fn try_apply_dealt_damage_this_turn_clause(
@@ -1527,11 +1641,21 @@ pub(super) fn try_apply_dealt_damage_this_turn_clause(
                 else if rest.starts_with(&["that", "creature", "this", "turn"])
                     || rest.starts_with(&["that", "permanent", "this", "turn"]) { Some(2) }
                 else { None };
-            if let Some(reference_len) = reference_len {
+            // "that dealt damage to this creature this turn" (Giant
+            // Albatross): the recipient is the source itself, including its
+            // last-known incarnation once it has left the battlefield.
+            let source_reference = rest.starts_with(&["this", "creature", "this", "turn"])
+                || rest.starts_with(&["this", "permanent", "this", "turn"]);
+            if let Some(reference_len) = reference_len.or(source_reference.then_some(2)) {
                 let end = start + prefix.len() + reference_len + 2;
                 let phrase = all_words[start..end].to_vec();
+                let tag: crate::tag::TagKey = if source_reference {
+                    crate::tag::TagKey::from(ironsmith_core::SOURCE_OBJECT_TAG)
+                } else {
+                    crate::tag::CompilerReferenceTag::It.bind().into()
+                };
                 filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
-                    tag: crate::tag::CompilerReferenceTag::It.bind().into(),
+                    tag,
                     relation: crate::target::TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only },
                 });
                 drain_segment_matching_phrase(segment_tokens, &[phrase.as_slice()]);

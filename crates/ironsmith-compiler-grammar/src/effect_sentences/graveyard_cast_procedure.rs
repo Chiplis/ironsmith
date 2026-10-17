@@ -32,6 +32,10 @@ pub(super) struct GraveyardCastGroup {
     /// "Target opponent mills nine cards, then you may cast ..." (Sorcerous
     /// Squall): the instruction before ", then", read as its own clause.
     leading_effects: Vec<EffectAst>,
+    /// "For each opponent, you may cast up to one target instant or sorcery
+    /// card from that player's graveyard ..." (Diluvian Primordial): the
+    /// whole permission-and-rider program repeats for each opponent.
+    for_each_opponent: bool,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -68,6 +72,20 @@ pub(super) fn open(
         };
     let mut leading_effects = Vec::new();
     let mut permission = permission;
+    let mut for_each_opponent = false;
+    if !when_result
+        && crate::word_primitives::parse_sequence_prefix(
+            &crate::lexer::token_word_refs(&permission),
+            &["for", "each", "opponent", "you", "may", "cast"],
+        )
+    {
+        let you = permission
+            .iter()
+            .position(|token| token.is_word("you"))
+            .unwrap_or(0);
+        permission = crate::util::trim_commas(&permission[you..]);
+        for_each_opponent = true;
+    }
     if !when_result
         && effect_grammar::parse_graveyard_cast_permission_shape(&permission).is_none()
         && let Some(then) = (1..permission.len()).find(|&index| {
@@ -139,6 +157,7 @@ pub(super) fn open(
         surcharge_pending: surcharge.is_some(),
         surcharge,
         leading_effects,
+        for_each_opponent,
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -198,6 +217,13 @@ pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
             predicate: IfResultPredicate::Did,
             effects,
         })]
+    } else {
+        effects
+    };
+    let effects = if group.for_each_opponent {
+        vec![EffectAst::ForEach(
+            crate::cards::builders::ForEachEffectAst::ForEachOpponent { effects },
+        )]
     } else {
         effects
     };

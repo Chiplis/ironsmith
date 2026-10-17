@@ -239,6 +239,73 @@ pub fn execute_library_consult_with_outputs(
                         }
                     }
                 }
+                LibraryConsultMode::Mill => {
+                    // CR 701.13a: each step mills one card through the
+                    // ordinary mill instruction (its replacements and mill
+                    // events apply); only cards that reach a graveyard count
+                    // as "put into their graveyard this way".
+                    let mill = crate::effect::Effect::mill_player(
+                        1,
+                        crate::target::PlayerFilter::Specific(player),
+                    );
+                    loop {
+                        let Some(top_card_id) = game
+                            .player(player)
+                            .and_then(|library_owner| library_owner.library.last().copied())
+                        else {
+                            break;
+                        };
+                        let milled = crate::effects::execute_effect_with_outputs(game, &mill, ctx)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(LibraryConsultResult::default());
+                        }
+                        let milled_ids = match &milled.outcome.value {
+                            crate::effect::OutcomeValue::Objects(ids) => ids.clone(),
+                            _ => Vec::new(),
+                        };
+                        result.operation_outcomes.push(milled);
+                        let mut stop = false;
+                        for milled_id in milled_ids {
+                            let Some(object) = game
+                                .object(milled_id)
+                                .filter(|object| object.zone == Zone::Graveyard)
+                            else {
+                                continue;
+                            };
+                            let snapshot = ObjectSnapshot::from_object(object, game);
+                            let mana_value = object
+                                .mana_cost
+                                .as_ref()
+                                .map_or(0, |cost| cost.mana_value());
+                            let matched = is_match(object, game);
+                            result.exposed_object_ids.push(milled_id);
+                            result.exposed_snapshots.push(snapshot.clone());
+                            if matched {
+                                result.matched_snapshots.push(snapshot);
+                                matched_mana_value = matched_mana_value.saturating_add(mana_value);
+                                stop |= result.matched_snapshots.len() >= required_matches
+                                    || matches!(stop_rule, LibraryConsultStopRule::TotalManaValue(threshold) if matched_mana_value >= threshold);
+                            }
+                        }
+                        if stop {
+                            break;
+                        }
+                        if max_exposed
+                            .is_some_and(|maximum| result.exposed_snapshots.len() >= maximum)
+                        {
+                            break;
+                        }
+                        // A prevented mill leaves the same top card: the
+                        // process cannot progress, so it ends.
+                        if game
+                            .player(player)
+                            .and_then(|library_owner| library_owner.library.last().copied())
+                            == Some(top_card_id)
+                        {
+                            break;
+                        }
+                    }
+                }
                 LibraryConsultMode::Exile => {
                     loop {
                         let Some(top_card_id) = game

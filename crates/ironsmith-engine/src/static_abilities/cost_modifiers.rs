@@ -1290,7 +1290,7 @@ fn is_anywhere_other_than_hand_filter(filter: &ObjectFilter) -> bool {
         })
 }
 
-fn describe_spell_filter(filter: &ObjectFilter) -> String {
+pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
     // A disjunction of otherwise-unqualified spell origins shares the outer
     // spell characteristics and caster. Render those facts once.
     if filter.zone.is_none() && !filter.any_of.is_empty() {

@@ -350,6 +350,7 @@ fn restriction_references_identity(
                     .is_some_and(|source| object_filter_references_identity(source, identity))
         }
         Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        | Restriction::ActivateKeywordAbilitiesOf { filter, .. }
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
         | Restriction::ActivateNonManaAbilitiesOf(filter)
@@ -377,6 +378,7 @@ fn restriction_references_identity(
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::HaveCounterTypeRemoved(filter, _)
+        | Restriction::DamageSourcesAreColorless(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)
@@ -391,6 +393,14 @@ fn restriction_references_identity(
         Restriction::PreventDamageFrom { sources, .. }
         | Restriction::PreventDamageTo { recipients: sources, .. } => {
             object_filter_references_identity(sources, identity)
+        }
+        Restriction::PreventDamageFromTo {
+            sources,
+            recipients,
+            ..
+        } => {
+            object_filter_references_identity(sources, identity)
+                || object_filter_references_identity(recipients, identity)
         }
         Restriction::AttackTax(rule) => object_filter_references_identity(&rule.attackers, identity),
         Restriction::PreventDamage

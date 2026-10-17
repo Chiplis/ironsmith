@@ -34,6 +34,10 @@ fn bind(effects: &mut Vec<EffectAst>, sentence: &SentenceInput) -> bool {
             effects,
             sentence.lowered(),
         )
+        || super::discarded_keyword_entry_counters::bind_discarded_keyword_entry_counter(
+            effects,
+            sentence.lowered(),
+        )
 }
 
 /// Open at a statement whose next sentence binds back to it.

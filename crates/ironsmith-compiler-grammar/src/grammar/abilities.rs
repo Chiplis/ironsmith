@@ -899,7 +899,10 @@ pub fn split_as_long_as_condition_prefix_lexed(
     if parsed.intro != super::leaf::ConditionIntro::AsLongAs {
         return None;
     }
-    let (condition_tokens, remainder_tokens) = primitives::split_lexed_once_on_comma(parsed.rest)?;
+    // A serial list of condition arms keeps its inner commas.
+    let boundary = super::anthem_grants::leading_condition_boundary_comma(parsed.rest)?;
+    let (condition_tokens, remainder_tokens) =
+        (&parsed.rest[..boundary], &parsed.rest[boundary + 1..]);
     let condition_tokens = trim_lexed_commas(condition_tokens);
     let remainder_tokens = trim_lexed_commas(remainder_tokens);
     if condition_tokens.is_empty() || remainder_tokens.is_empty() {
@@ -1262,6 +1265,20 @@ pub fn is_you_have_shroud_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_exact_phrase_line_lexed(tokens, &["you", "have", "shroud"])
 }
 
+/// "All creatures can attack your opponents and planeswalkers your opponents
+/// control as though those creatures had haste." (Frenzied Saddlebrute)
+pub fn is_creatures_can_attack_opponents_as_though_haste_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    matches_exact_phrase_line_lexed(
+        tokens,
+        &[
+            "all", "creatures", "can", "attack", "your", "opponents", "and", "planeswalkers",
+            "your", "opponents", "control", "as", "though", "those", "creatures", "had", "haste",
+        ],
+    )
+}
+
 fn parse_creatures_without_flying_cant_attack_line<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {
@@ -1569,6 +1586,35 @@ pub fn is_unblocked_may_assign_damage_to_defending_creature_line_lexed(
 ) -> bool {
     primitives::parse_prefix(tokens, parse_unblocked_may_assign_damage_to_defending_creature_line)
         .is_some()
+}
+
+/// "You may assign this creature's combat damage divided as you choose among
+/// defending player and/or any number of creatures they control." (Butcher
+/// Orgg)
+pub fn is_may_divide_combat_damage_among_defending_player_and_creatures_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens));
+    let words = words
+        .iter()
+        .flat_map(|word| match *word {
+            "creature's" | "creatures'" => vec!["creature", "s"],
+            "and/or" => vec!["and", "or"],
+            other => vec![other],
+        })
+        .collect::<Vec<_>>();
+    let rest = match words.as_slice() {
+        ["you", "may", "assign", "this", "creature", "s", rest @ ..]
+        | ["you", "may", "assign", "this", "creatures", rest @ ..] => rest,
+        _ => return false,
+    };
+    matches!(
+        rest,
+        [
+            "combat", "damage", "divided", "as", "you", "choose", "among", "defending", "player",
+            "and", "or", "any", "number", "of", "creatures", "they", "control"
+        ]
+    )
 }
 
 fn parse_source_doesnt_untap_during_your_untap_step_prefix<'a>(

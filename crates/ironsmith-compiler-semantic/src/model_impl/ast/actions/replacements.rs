@@ -88,6 +88,12 @@ pub enum ReplacementActionAst {
     RegisterDamageAddition {
         spec: ironsmith_core::RegisterDamageAdditionEffect,
     },
+    /// "Until end of turn, if one or more tokens would be created under your
+    /// control, twice that many of those tokens are created instead." (Kaya,
+    /// Geist Hunter)
+    RegisterTokenCreationMultiplier {
+        spec: ironsmith_core::RegisterTokenCreationMultiplierEffect,
+    },
     RegisterManaRewrite {
         rule: ironsmith_core::ManaOutputRewrite,
         target: Option<TargetAst>,

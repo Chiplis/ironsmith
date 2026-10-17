@@ -247,6 +247,7 @@ fn describe_damage_to_object_and_player_union(
                     source,
                     target,
                     source_surface,
+                    recipient_is_source_target: false,
                 },
                 TriggerSpec::DealsDamageToPlayer {
                     source: player_source,
@@ -271,6 +272,7 @@ fn describe_damage_to_object_and_player_union(
                     source,
                     target,
                     source_surface,
+                    recipient_is_source_target: false,
                 },
             ) => (
                 source,
@@ -652,7 +654,14 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             source,
             target,
             source_surface,
-        } => Trigger::deals_damage_to_with_source_surface(source, target, source_surface),
+            recipient_is_source_target,
+        } => {
+            if recipient_is_source_target {
+                Trigger::deals_damage_to_source_target(source, target)
+            } else {
+                Trigger::deals_damage_to_with_source_surface(source, target, source_surface)
+            }
+        }
         TriggerSpec::DealsDamageToPlayer {
             source,
             player,
@@ -1691,7 +1700,9 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
         EventValueSpec::CastSpell(quantity) => {
             ironsmith_compiler_semantic::trigger_references::trigger_cast_event_quantity(trigger) == Some(*quantity)
         }
-        EventValueSpec::LoyaltyCountersRemovedToActivate | EventValueSpec::LifePaidToActivate => match trigger {
+        EventValueSpec::LoyaltyCountersRemovedToActivate
+        | EventValueSpec::LifePaidToActivate
+        | EventValueSpec::PermanentsSacrificedToActivate => match trigger {
             TriggerSpec::WithIntro { trigger, .. }
             | TriggerSpec::ConditionQualified { trigger, .. } => {
                 trigger_supports_event_value(trigger, spec)

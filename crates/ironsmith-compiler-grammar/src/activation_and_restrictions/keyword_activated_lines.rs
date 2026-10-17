@@ -403,7 +403,11 @@ pub fn parse_equip_line(tokens: &[OwnedLexToken]) -> Result<Option<ParsedAbility
             exact_mana_cost: _,
         } => {
             let total_cost = parse_compiler_activation_cost(cost_tokens)?;
-            let mut target_filter = ObjectFilter::creature().you_control();
+            let mut target_filter = if qualifier.planeswalker {
+                ObjectFilter::planeswalker().you_control()
+            } else {
+                ObjectFilter::creature().you_control()
+            };
             target_filter.subtypes = qualifier.subtypes;
             if qualifier.legendary {
                 target_filter

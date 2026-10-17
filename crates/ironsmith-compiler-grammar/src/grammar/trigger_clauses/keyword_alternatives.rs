@@ -37,6 +37,53 @@ pub fn parse_shared_keyword_action_alternatives(
     })
 }
 
+/// Three or more keyword-action verbs in one serial list sharing a subject:
+/// "you waterbend, earthbend, firebend, or airbend" (Avatar Aang). Returns
+/// the subject's token range and the listed actions in order.
+pub fn parse_shared_keyword_action_list(
+    tokens: &[OwnedLexToken],
+) -> Option<(Range<usize>, Vec<KeywordActionKind>)> {
+    let mut end = tokens.len();
+    while end > 0 && tokens[end - 1].is_period() {
+        end -= 1;
+    }
+    let tokens = &tokens[..end];
+    let action_at = |index: usize| {
+        tokens
+            .get(index)
+            .and_then(|token| token.as_word())
+            .and_then(KeywordActionKind::from_trigger_word)
+    };
+    'start: for start in 1..tokens.len() {
+        let Some(first) = action_at(start) else {
+            continue;
+        };
+        let mut actions = vec![first];
+        let mut index = start + 1;
+        loop {
+            if tokens.get(index).is_some_and(|token| token.is_comma()) {
+                index += 1;
+            }
+            let last = tokens.get(index).is_some_and(|token| token.is_word("or"));
+            if last {
+                index += 1;
+            }
+            let Some(action) = action_at(index) else {
+                continue 'start;
+            };
+            actions.push(action);
+            index += 1;
+            if last {
+                break;
+            }
+        }
+        if index == tokens.len() && actions.len() >= 3 {
+            return Some((0..start, actions));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

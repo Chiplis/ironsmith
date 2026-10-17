@@ -36,7 +36,6 @@ use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueS
 use crate::cards::builders::SubjectVerbRoleAst;
 #[cfg(test)]
 use crate::cards::builders::{ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst};
-#[cfg(test)]
 use crate::filter::Comparison;
 
 use super::compile_support::{
@@ -1342,6 +1341,15 @@ fn resolve_definite_object_references_in_effect(
                 target,
                 ..
             }) => {
+                resolve_definite_object_target_from_bindings(target, bindings);
+            }
+            // "If the creature you control entered this turn, ..." (Malamet
+            // Battle Glyph): a non-declaring reference to one earlier target
+            // that makes it the antecedent of the condition and its `it`.
+            SubjectVerbActionAst::TargetOnly {
+                target,
+                explicit_declaration: false,
+            } => {
                 resolve_definite_object_target_from_bindings(target, bindings);
             }
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. })
@@ -3758,10 +3766,16 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ChoosePlayerOption(_)
         | EffectAst::TagSplicedCards { .. }
         | EffectAst::ExchangeBlocks { .. }
+        | EffectAst::CoinFlipLifeStakes { .. }
         | EffectAst::UnblockSoleBlockedAttackers(_)
+        | EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(_)
+        | EffectAst::RollAndStoreDieResults(_)
+        | EffectAst::RerollStoredDieResults(_)
+        | EffectAst::DeclareBlockersByRandomPilesThisTurn
         | EffectAst::UnblockSoleBlockedAttackersOf { .. }
         | EffectAst::BlockAttackerOfChoice { .. }
         | EffectAst::PlayWithHandRevealed(_)
+        | EffectAst::RevealSourceInHandUntilOwnersNextTurn(_)
         | EffectAst::TagLastDamageSource(_)
         | EffectAst::ControlVotesThisTurn
         | EffectAst::GrantTapUncontrolledLandsForMana
@@ -3771,6 +3785,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::NoteTriggeringCreatureType
         | EffectAst::NoteCounters { .. }
         | EffectAst::PutTriggeringCounterKind { .. }
+        | EffectAst::RetainSpellChoices { .. }
+        | EffectAst::PutRetainedSpellCopyOntoStack { .. }
         | EffectAst::RegisterDamageCounterReplacement { .. }
         | EffectAst::ChooseFriendsOrFoes { .. }
         | EffectAst::GrantLoyaltyActivationAllowance { .. }
@@ -4938,7 +4954,7 @@ fn maybe_assign_effect_result_id(
     let exact_choice_producer = [local_random_result_bindings::Family::Number,
         local_random_result_bindings::Family::Color, local_random_result_bindings::Family::Reveal]
         .into_iter().any(|family| family.compatible(effect)
-            && (remaining.is_empty()
+            && ((remaining.is_empty() && !family.only_exported_for_visible_consumer(effect))
                 || if family == local_random_result_bindings::Family::Reveal {
                     family.exported_for(remaining)
                 } else {
@@ -6213,6 +6229,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount: count })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count, .. })
+        | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount: count, .. })
         | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
             amount: count,
             ..
@@ -6397,6 +6414,21 @@ fn resolve_effect_references_in_effect(
     id_gen: &mut IdGenContext,
     state: EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
+    // "<object> becomes that color": bind the exact newest local color
+    // producer (a color choice, or mana of a chosen color just added).
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeColorChoice {
+                color_choice,
+                ..
+            }),
+        ..
+    }) = effect
+        && *color_choice == Some(ironsmith_core::ColorChoiceReference::Pending)
+        && let Some(id) = state.color_result_producers.last().copied().flatten()
+    {
+        *color_choice = Some(ironsmith_core::ColorChoiceReference::Effect(id));
+    }
     if let EffectAst::Coordination(coordination) = effect
         && coordination.kind != crate::model::CoordinationKindAst::Disjunction
     {
@@ -7486,6 +7518,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
             | SubjectVerbActionAst::DamagePrevention(
                 DamagePreventionActionAst::RedirectNextDamageFromSourceToTarget { amount, .. },
             )
@@ -7838,7 +7871,8 @@ fn resolve_effect_result_values_in_fields(
                 ReplacementActionAst::RegisterCounterPlacementReplacement { .. },
             )
             | SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterDamageMultiplier { .. },
+                ReplacementActionAst::RegisterDamageMultiplier { .. }
+                | ReplacementActionAst::RegisterTokenCreationMultiplier { .. },
             )
             | SubjectVerbActionAst::Replacements(
                 ReplacementActionAst::RegisterDamagedBySourceZoneReplacement { .. },
@@ -9268,6 +9302,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyColorAmong { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaDraftChosenColors { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaCommanderIdentity { amount })
@@ -9331,7 +9366,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ReplacementActionAst::RegisterFutureZoneReplacement { filter, .. },
             ) => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::Replacements(
-                ReplacementActionAst::RegisterManaSpendPermission { .. },
+                ReplacementActionAst::RegisterManaSpendPermission { .. }
+                | ReplacementActionAst::RegisterTokenCreationMultiplier { .. },
             ) => 0,
             SubjectVerbActionAst::Replacements(ReplacementActionAst::RegisterManaRewrite {
                 rule,
@@ -9471,7 +9507,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 filter,
                 ..
             })
-            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn { filter })
+            | SubjectVerbActionAst::Stack(StackActionAst::FreeCastNextSpellThisTurn {
+                filter, ..
+            })
             | SubjectVerbActionAst::Stack(StackActionAst::ReduceMatchingSpellCostThisTurn {
                 filter,
                 ..
@@ -10427,6 +10465,7 @@ fn bind_unresolved_it_in_restriction(
         }
         | Restriction::PlayLandsMatching(_, filter)
         | Restriction::ActivateLoyaltyAbilitiesOf(filter)
+        | Restriction::ActivateKeywordAbilitiesOf { filter, .. }
         | Restriction::Attack(filter)
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
@@ -10444,6 +10483,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::HaveCountersPlaced(filter)
         | Restriction::HaveCounterTypePlaced(filter, _)
         | Restriction::HaveCounterTypeRemoved(filter, _)
+        | Restriction::DamageSourcesAreColorless(filter)
         | Restriction::BeTargeted(filter)
         | Restriction::BeCountered(filter)
         | Restriction::TurnFaceUp(filter)

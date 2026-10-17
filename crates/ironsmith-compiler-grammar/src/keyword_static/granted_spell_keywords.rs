@@ -91,6 +91,9 @@ pub fn parse_granted_spell_keyword_line(
     if verb_idx == 0 {
         return Ok(None);
     }
+    if tokens.get(verb_idx + 1).is_some_and(|token| token.is_word("evoke")) {
+        return parse_granted_hand_evoke(&tokens, verb_idx);
+    }
     // "Creature spells you cast have sticker kicker {1}." (Wicker Picker)
     let sticker_kicker = tokens.get(verb_idx + 1).is_some_and(|token| token.is_word("sticker"))
         && tokens.get(verb_idx + 2).is_some_and(|token| token.is_word("kicker"));
@@ -149,6 +152,86 @@ pub fn parse_granted_spell_keyword_line(
         set_quantifier_surface,
         display,
     )))
+}
+
+/// "Elemental permanent spells you cast from your hand gain evoke {4} as you
+/// cast them." (Ashling, the Limitless): an alternative cost (CR 702.74a)
+/// for matching hand cards; a permanent cast this way gets "When this
+/// permanent enters, sacrifice it." (the evoke sacrifice trigger).
+fn parse_granted_hand_evoke(
+    tokens: &[OwnedLexToken],
+    verb_idx: usize,
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let mut tail = &tokens[verb_idx + 2..];
+    if tokens[verb_idx].is_any_word(&["gain", "gains"]) {
+        let Some(stripped) = strip_as_you_cast_tail(tail) else {
+            return Ok(None);
+        };
+        tail = stripped;
+    }
+    let Some(mana) = parse_leaf_mana_cost_prefix_tokens(tail) else {
+        return Ok(None);
+    };
+    if !parser_token_word_refs(&tail[mana.consumed..]).is_empty() {
+        return Ok(None);
+    }
+    let subject = &tokens[..verb_idx];
+    let view = crate::lexer::TokenWordView::new(subject);
+    let words = view.word_refs();
+    const SUFFIX: &[&str] = &["you", "cast", "from", "your", "hand"];
+    if !words.ends_with(SUFFIX) || words.len() <= SUFFIX.len() {
+        return Ok(None);
+    }
+    let Some(span) = view.token_span_for_words(0, words.len() - SUFFIX.len()) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter_lexed(&subject[span], false)?;
+    filter.zone = None;
+    filter.stack_kind = None;
+    filter.cast_by = None;
+    filter.owner = Some(crate::target::PlayerFilter::You);
+    if !filter.excluded_card_types.contains(&crate::types::CardType::Land) {
+        filter.excluded_card_types.push(crate::types::CardType::Land);
+    }
+    let rider_tokens = crate::lexer::lex_line("When this permanent enters, sacrifice it.", 0)?;
+    let rider_words = parser_token_word_refs(&rider_tokens);
+    let Some(rider) = crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(
+        &rider_tokens,
+        &rider_words,
+    )?
+    else {
+        return Ok(None);
+    };
+    let rider = crate::static_ability_helpers::compiler_granted_ability_ast_to_object_ability(&rider)?;
+    let method = ironsmith_core::AlternativeCastingMethod::<
+        crate::cards::builders::EffectAst,
+        crate::model::CompilerCost,
+        ironsmith_core::ThisSpellCostCondition,
+    >::cast_from_zone_with_total_cost(
+        "Evoke",
+        Zone::Hand,
+        ironsmith_core::TotalCost::mana(mana.cost),
+        None,
+        false,
+    );
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::AlternativeCast(method),
+        filter,
+        Zone::Hand,
+    );
+    spec.permanent_this_way_grants.push(
+        crate::model::CompilerStaticAbilityCore::grant_object_ability_for_filter(
+            ObjectFilter::source(),
+            rider,
+            "When this permanent enters, sacrifice it",
+        ),
+    );
+    let display = crate::lexer::render_token_slice(tokens)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    spec.filtered_zone_surface = Some(display);
+    Ok(Some(StaticAbility::grants(spec)))
 }
 
 /// The typed grant for a "<subject> has conspire|demonstrate" line already

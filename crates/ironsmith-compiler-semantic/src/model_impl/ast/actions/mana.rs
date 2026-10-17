@@ -27,6 +27,11 @@ pub enum ManaActionAst {
     AddManaNotedType {
         amount: Value,
     },
+    /// "you add the mana lost this way" (Drain Power): `amount` is the
+    /// preceding mana-loss metric; the lost mana's types are added.
+    AddManaLostThisWay {
+        amount: Value,
+    },
     AddManaFromLandCouldProduce {
         amount: Value,
         land_filter: ObjectFilter,

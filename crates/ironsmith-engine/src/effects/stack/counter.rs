@@ -199,7 +199,12 @@ fn counter_one_stack_object_of_kind_inner(
                                 | crate::types::CardType::Battle | crate::types::CardType::Creature
                                 | crate::types::CardType::Enchantment | crate::types::CardType::Planeswalker))),
                 }
-            });
+            })
+            // "If a spell or ability you control would counter a spell,
+            // instead exile that spell and you may play that card without
+            // paying its mana cost." (Guile): the counter's controller's
+            // static replaces this spell counter the same way.
+            .or_else(|| controller_counter_exile_permission(game, ctx.controller));
             let mut additional_effects = ctx.additional_replacement_effects_snapshot();
             if eligible_permission.is_some() {
                 // This replacement exists only during this one counter event.
@@ -309,6 +314,36 @@ fn counter_one_stack_object_of_kind_inner(
             EffectOutcome::target_invalid()
         },
     )
+}
+
+/// A battlefield static of `controller`'s that replaces every spell counter
+/// performed by a spell or ability they control with exile plus a free play
+/// permission (Guile).
+fn controller_counter_exile_permission(
+    game: &GameState,
+    controller: crate::ids::PlayerId,
+) -> Option<ironsmith_core::CounterExilePermission> {
+    game.battlefield.iter().find_map(|id| {
+        let object = game.object(*id)?;
+        if game.controller_of(object) != controller {
+            return None;
+        }
+        let abilities = game
+            .current_abilities(*id)
+            .unwrap_or_else(|| object.abilities_vec());
+        abilities.iter().find_map(|ability| {
+            let AbilityKind::Static(ability) = &ability.kind else {
+                return None;
+            };
+            match &ability.compiled_model()?.payload {
+                ironsmith_core::StaticAbilityPayload::ControllerCounterExilePermission {
+                    permission,
+                    ..
+                } => Some(*permission),
+                _ => None,
+            }
+        })
+    })
 }
 
 /// Consume only the committed original counter arrival, before receipt

@@ -4,6 +4,7 @@ import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { prepareExactBuildSnapshots } from './prepare-exact-build-snapshots.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const crateDir = resolve(root, "crates/ironsmith-wasm");
@@ -89,6 +90,8 @@ if (!skipBuild) {
   await cp(resolve(templateDir, "split-facade.js"), resolve(outDir, "ironsmith.js"));
   await cp(resolve(templateDir, "split-facade.d.ts"), resolve(outDir, "ironsmith.d.ts"));
 }
+
+await prepareExactBuildSnapshots(outDir);
 
 const requiredFiles = [
   "ironsmith.js",

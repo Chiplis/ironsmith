@@ -70,6 +70,9 @@ pub struct ChoiceObjectReferenceFacts {
     pub references_it: bool,
     pub references_container_it: bool,
     pub explicit_container_reference: bool,
+    /// "from among them": the container is a previously referenced group of
+    /// objects (exiled, milled, revealed), never a player's hand.
+    pub references_object_group: bool,
     pub excludes_chosen_this_way: bool,
     /// "a creature at random this Aura can enchant" (Infectious Rage): the
     /// chosen object must be a legal host for the source Aura.
@@ -190,6 +193,9 @@ pub fn parse_choice_object_clause_tokens(
         references.references_it = true;
         references.references_container_it = true;
         references.explicit_container_reference = true;
+        if suffix == ContainerReferenceSuffix::FromAmongThem {
+            references.references_object_group = true;
+        }
     }
 
     let refs = string_word_refs(&words);
@@ -750,6 +756,7 @@ fn parse_opponent_controlled_count_tail_lexed(input: &mut LexStream<'_>) -> WRes
         filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
         fewer: false,
         as_you_activate: false,
+        minimum_difference: 0,
     })
 }
 
@@ -813,6 +820,7 @@ fn target_opponent_with_more_controlled_as_you_activate_lexed(
             filter: Box::new(crate::ObjectFilter::default().with_type(card_type)),
             fewer: false,
             as_you_activate: true,
+            minimum_difference: 0,
         },
     )))
 }
@@ -826,6 +834,53 @@ pub fn parse_target_opponent_with_more_controlled_as_you_activate_tokens(
     target_opponent_with_more_controlled_as_you_activate_lexed
         .parse(LexStream::new(tokens))
         .ok()
+        .or_else(|| {
+            target_opponent_with_graveyard_margin_as_you_activate_lexed
+                .parse(LexStream::new(tokens))
+                .ok()
+        })
+}
+
+/// "target opponent who has at least two fewer creature cards in their
+/// graveyard than you do as you activate this ability" (Keeper of the Dead):
+/// each player's count is the matching cards they own in that graveyard; the
+/// margin and comparison are checked as the target is chosen.
+fn target_opponent_with_graveyard_margin_as_you_activate_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<PlayerFilter> {
+    primitives::phrase(&["target", "opponent", "who", "has"]).parse_next(input)?;
+    let margin = opt((primitives::phrase(&["at", "least"]), primitives::number_token))
+        .map(|margin| margin.map_or(0, |(_, margin)| margin))
+        .parse_next(input)?;
+    let fewer = alt((
+        primitives::kw("fewer").value(true),
+        primitives::kw("more").value(false),
+    ))
+    .parse_next(input)?;
+    let card_type = alt((
+        primitives::kw("creature").value(CardType::Creature),
+        primitives::kw("land").value(CardType::Land),
+        primitives::kw("artifact").value(CardType::Artifact),
+        primitives::kw("enchantment").value(CardType::Enchantment),
+        primitives::kw("instant").value(CardType::Instant),
+        primitives::kw("sorcery").value(CardType::Sorcery),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&["cards", "in", "their", "graveyard", "than", "you"]).parse_next(input)?;
+    opt(primitives::kw("do")).parse_next(input)?;
+    primitives::phrase(&["as", "you", "activate", "this", "ability"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    let mut filter = crate::ObjectFilter::default().with_type(card_type);
+    filter.zone = Some(crate::Zone::Graveyard);
+    Ok(PlayerFilter::Target(Box::new(
+        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player: Box::new(PlayerFilter::You),
+            filter: Box::new(filter),
+            fewer,
+            as_you_activate: true,
+            minimum_difference: margin,
+        },
+    )))
 }
 
 fn parse_choice_player_filter_tail_lexed<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {

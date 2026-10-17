@@ -976,6 +976,37 @@ pub fn compile_result_followup(
             "result follow-up is missing its antecedent effect",
         )?;
     }
+    // "When this ability resolves for the third time this turn, ..." (Gimli,
+    // Mournful Avenger): the antecedent is a bare state gate, and the result
+    // the follow-up reads is whether that gate matched as it was checked.
+    if predicate == IfResultPredicate::ConditionMatched
+        && matches!(
+            first,
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, if_false, .. })
+                if if_true.is_empty() && if_false.is_empty()
+        )
+    {
+        fn capture_gate(effect: &mut Effect) -> bool {
+            if let Some(gate) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+                *effect = Effect::new(gate.clone().with_condition_result(true));
+                return true;
+            }
+            if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+                let mut inner = (*with_id.effect).clone();
+                let id = with_id.id;
+                if capture_gate(&mut inner) {
+                    *effect = Effect::with_id(id.0, inner);
+                    return true;
+                }
+            }
+            false
+        }
+        if !first_effects.last_mut().is_some_and(capture_gate) {
+            return Err(CardTextError::InvariantViolation(
+                "a state-gated follow-up requires its conditional gate".into(),
+            ));
+        }
+    }
 
     let (inner_effects, inner_choices) = with_preserved_lowering_context(
         ctx,

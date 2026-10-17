@@ -703,6 +703,7 @@ pub fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaAnyOneColor { amount })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, .. })
+            | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount, .. })
             | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                 amount,
                 ..

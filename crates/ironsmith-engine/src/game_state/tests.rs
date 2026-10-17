@@ -2996,6 +2996,7 @@ fn scoped_cast_activation_payment_restrictions_filter_objects_and_refresh_when_d
         .card_types(vec![CardType::Enchantment])
         .with_ability(Ability::static_ability(StaticAbility::restriction(Restriction::CastOrActivatePayments {
             player: PlayerFilter::Opponent, pay_life: true, sacrifice: Some(ObjectFilter::creature()),
+            exempt_mana_abilities: false,
         }, "Opponent casting and activation payment restriction".to_string()))).build();
     let lock = game.create_object_from_definition(&lock, alice, Zone::Battlefield);
     let card = |types| CardDefinitionBuilder::new(CardId::new(), "Cost subject").card_types(types).build();
@@ -3026,6 +3027,7 @@ fn scoped_cast_activation_payment_restrictions_filter_objects_and_refresh_when_d
     crate::effect::RestrictionExt::apply(&Restriction::CastOrActivatePayments {
         player: PlayerFilter::Any, pay_life: false,
         sacrifice: Some(ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer)),
+        exempt_mana_abilities: false,
     }, &mut game, &mut tracker, alice, None, Some(bob));
     game.effect_store.cant_effects.merge(tracker);
     assert!(game.player_cant_sacrifice_object_to_cast_or_activate(bob,land_creature), "retain the generating iteration's binding");

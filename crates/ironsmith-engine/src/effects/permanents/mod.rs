@@ -244,6 +244,15 @@ pub(crate) fn attachment_can_attach_to_target(
                 .object(target_id)
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game)));
         }
+        // "Equip planeswalker {1}" (Luxior, Giada's Gift): an Equipment whose
+        // own equip ability targets planeswalkers can attach to one; its
+        // static then makes the equipped permanent a creature.
+        if let AttachmentTarget::Object(target_id) = target
+            && game.object_has_card_type(target_id, CardType::Planeswalker)
+            && equipment_equips_planeswalkers(game, attachment_id)
+        {
+            return true;
+        }
         return matches!(target, AttachmentTarget::Object(target_id) if game.object_has_card_type(target_id, CardType::Creature));
     }
 
@@ -255,6 +264,28 @@ pub(crate) fn attachment_can_attach_to_target(
     }
 
     false
+}
+
+fn equipment_equips_planeswalkers(game: &GameState, attachment_id: ObjectId) -> bool {
+    let targets_planeswalkers = |spec: &crate::target::ChooseSpec| {
+        matches!(spec.base(), crate::target::ChooseSpec::Object(filter)
+            if filter.card_types.contains(&CardType::Planeswalker))
+    };
+    game.calculated_characteristics(attachment_id)
+        .is_some_and(|chars| {
+            chars.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Activated(activated)
+                if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip)
+                    && activated.effects.iter().any(|effect| {
+                        effect
+                            .downcast_ref::<crate::effects::AttachToEffect>()
+                            .is_some_and(|attach| targets_planeswalkers(&attach.target))
+                            || effect
+                                .downcast_ref::<crate::effects::AttachObjectsEffect>()
+                                .is_some_and(|attach| targets_planeswalkers(&attach.target))
+                    }))
+            })
+        })
 }
 
 fn attachment_has_reconfigure_ability(game: &GameState, attachment_id: ObjectId) -> bool {

@@ -39,7 +39,7 @@ impl SpecialAction {
                 let source = game.face_up_planar_objects().first().copied().ok_or(ActionError::InvalidTiming)?;
                 (source, TotalCost::mana(planar_die_cost(game.planar_die_roll_cost(player).ok_or(ActionError::InvalidTiming)?)), PaymentReason::Other)
             }
-            Self::IgnoreAttachedRestriction { source_id, .. } => (source_id, ignore_attached_restriction_cost(), PaymentReason::Other),
+            Self::IgnoreAttachedRestriction { source_id, ability_index } => (source_id, ignore_attached_restriction_total_cost(game, source_id, ability_index), PaymentReason::Other),
             Self::IgnoreSourceEffect { source_id, ability_index } => (source_id, ignore_source_effect_total_cost(game, source_id, ability_index)?, PaymentReason::Other),
             Self::PayDelayedTrigger { delayed_trigger_index } => {
                 let payment = delayed_trigger_prepayment(game, delayed_trigger_index)?;

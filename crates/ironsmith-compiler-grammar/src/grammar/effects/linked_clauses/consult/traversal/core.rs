@@ -1,6 +1,9 @@
 use super::*;
 
 pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalShape> {
+    if let Some(shape) = parse_mill_repeat_traversal_shape(tokens) {
+        return Some(shape);
+    }
     let (prefix, consult) = split_prefix_and_consult(tokens)?;
     let (verb, mode) = consult_verb(consult)?;
     if crate::grammar::effects::for_each_shapes::parse_for_each_object_effect_shape(consult)
@@ -53,5 +56,49 @@ pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<Consult
         stop,
         where_x,
         trailing_effect,
+    })
+}
+
+/// "<player> mills a card, then repeats this process until a creature card or
+/// X cards have been put into their graveyard this way, whichever comes
+/// first" (Helm of Obedience): a mill-mode consult traversal whose exposed
+/// cards are the ones each one-card mill put into a graveyard (CR 701.13a).
+fn parse_mill_repeat_traversal_shape(tokens: &[OwnedLexToken]) -> Option<ConsultTraversalShape> {
+    let tokens = trim_commas(tokens);
+    let mill = find_phrase_span(tokens, &[&["mills", "a", "card"], &["mill", "a", "card"]])?;
+    let repeat = find_phrase_span(
+        tokens,
+        &[
+            &["then", "repeats", "this", "process", "until"],
+            &["then", "repeat", "this", "process", "until"],
+        ],
+    )?;
+    if repeat.start < mill.end || !trim_commas(&tokens[mill.end..repeat.start]).is_empty() {
+        return None;
+    }
+    let player = if mill.start == 0 {
+        ConsultTraversalPlayerShape::ImpliedByPrefixOrYou
+    } else if permission_shapes::exact_tokens(&tokens[..mill.start], &["they"]) {
+        ConsultTraversalPlayerShape::ThatPlayer
+    } else {
+        ConsultTraversalPlayerShape::Subject(trim_commas(&tokens[..mill.start]).to_vec())
+    };
+    let mut stop_tokens = trim_commas(&tokens[repeat.end..]);
+    let mut trailing: &[OwnedLexToken] = &[];
+    if let Some(comma) = first_consult_trailing_comma(stop_tokens) {
+        trailing = trim_commas(&stop_tokens[comma + 1..]);
+        stop_tokens = trim_commas(&stop_tokens[..comma]);
+    }
+    let stop = parse_matching_filter_or_exposed_count_stop(stop_tokens, LibraryConsultModeAst::Mill)?;
+    if !permission_shapes::exact_tokens(trailing, &["whichever", "comes", "first"]) {
+        return None;
+    }
+    Some(ConsultTraversalShape {
+        prefix: None,
+        player,
+        mode: LibraryConsultModeAst::Mill,
+        stop,
+        where_x: None,
+        trailing_effect: Vec::new(),
     })
 }

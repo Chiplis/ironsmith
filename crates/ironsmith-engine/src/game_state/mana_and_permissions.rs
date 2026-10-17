@@ -111,7 +111,13 @@ impl GameState {
         // Other zones retain their printed/granted source abilities.
         for effect in effects {
             let decline = effect.optional_decline_effect();
-            for alternative in effect.token_template_alternatives() {
+            let game: &Self = self;
+            let alternatives: Vec<_> = effect
+                .token_template_alternatives()
+                .into_iter()
+                .flat_map(|alternative| alternative.token_copy_choice_alternatives(game))
+                .collect();
+            for alternative in alternatives {
                 self.effect_store
                     .replacement_effects
                     .add_static_ability_effect(alternative);
@@ -947,8 +953,7 @@ impl GameState {
         reason: crate::costs::PaymentReason,
     ) -> bool {
         self.player_can_pay_black_with_life(payer, source)
-            && (!reason.is_cast_or_ability_payment()
-                || !self.player_cant_pay_life_to_cast_or_activate(payer))
+            && !self.player_cant_pay_life_for_payment_reason(payer, reason)
     }
 
     pub fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
@@ -977,6 +982,40 @@ impl GameState {
                 .with_iterated_player(rule.iterated_player).with_tagged_objects(&rule.tagged_objects);
             filter.matches(subject, &context, self)
         }))
+    }
+
+    /// Whether a life-payment prohibition on casting/activating also covers
+    /// mana abilities: every one does except "to activate abilities that
+    /// aren't mana abilities" (Karn's Sylex).
+    pub fn player_cant_pay_life_for_mana_abilities(&self, player: PlayerId) -> bool {
+        if self.scoped_cast_or_activate_payment_restrictions().is_none_or(|rules| {
+            rules.iter().any(|rule| {
+                rule.payer == player && rule.pay_life && !rule.exempt_mana_abilities
+            })
+        }) {
+            return true;
+        }
+        if self.player(player).is_none() || !self.may_have_cast_or_activate_payment_restriction() {
+            return false;
+        }
+        self.with_active_battlefield_static_abilities(|_, _, ability| {
+            ability
+                .forbids_paying_life_for_cast_or_activate()
+                .then_some(true)
+        })
+        .unwrap_or(false)
+    }
+
+    /// Whether `player` can't pay life for a payment of this kind (casting,
+    /// activating, and, unless exempt, mana abilities).
+    pub fn player_cant_pay_life_for_payment_reason(
+        &self,
+        player: PlayerId,
+        reason: crate::costs::PaymentReason,
+    ) -> bool {
+        reason.is_cast_or_ability_payment()
+            && self.player_cant_pay_life_to_cast_or_activate(player)
+            && (!reason.is_mana_ability() || self.player_cant_pay_life_for_mana_abilities(player))
     }
 
     pub fn player_cant_pay_life_to_cast_or_activate(&self, player: PlayerId) -> bool {
@@ -1366,6 +1405,19 @@ impl GameState {
         })
     }
 
+    /// CR 702.170a (Fblthp, Lost on the Range): whether `player` controls an
+    /// active permanent letting them plot nonland cards from the top of their
+    /// library.
+    pub fn player_may_plot_nonland_from_top_of_library(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|_, controller, ability| {
+            (controller == player
+                && ability.id()
+                    == crate::static_abilities::StaticAbilityId::MayPlotNonlandCardsFromTopOfLibrary)
+                .then_some(())
+        })
+        .is_some()
+    }
+
     fn may_have_player_skips_upkeep_static_ability(&self) -> bool {
         use crate::ability::AbilityKind;
         use crate::static_abilities::StaticAbilityId;
@@ -1642,7 +1694,7 @@ impl GameState {
         // the actual life-payment owner once X and other operands are known.
         let known_positive_life = life_amount.map_or(cost.is_life_cost(), |amount|
             matches!(amount.unhinted(), crate::effect::Value::Fixed(value) if *value > 0));
-        if known_positive_life && self.player_cant_pay_life_to_cast_or_activate(payer) {
+        if known_positive_life && self.player_cant_pay_life_for_payment_reason(payer, reason) {
             return Err(crate::cost::CostPaymentError::InsufficientLife);
         }
 
@@ -1683,9 +1735,7 @@ impl GameState {
 
         let mut pips = cost.pips().to_vec();
 
-        if reason.is_cast_or_ability_payment()
-            && self.player_cant_pay_life_to_cast_or_activate(payer)
-        {
+        if self.player_cant_pay_life_for_payment_reason(payer, reason) {
             for pip in &mut pips {
                 pip.retain(|symbol| !matches!(symbol, ManaSymbol::Life(_)));
             }

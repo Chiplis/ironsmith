@@ -700,6 +700,42 @@ pub fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
 
+    // "When you cast it this turn, ..." (Havengul Lich): the watched card
+    // becomes a new object as it moves to the stack (CR 400.7, 601.2a), so
+    // the delayed trigger follows its stable identity rather than the
+    // incarnation the preceding instruction named.
+    let core_words = crate::lexer::token_word_refs(trigger_core_tokens);
+    if matches!(
+        core_words.as_slice(),
+        ["you", "cast", "it"] | ["you", "cast", "that", "card"]
+    ) {
+        let delayed_effects = parse_effect_chain(shape.effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed cast-it effect clause (clause: '{}')",
+                clause_display.trim()
+            )));
+        }
+        return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+            trigger: TriggerSpec::SpellCast {
+                filter: Some(ObjectFilter::default().same_stable_id_as_tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                )),
+                mana_source_filter: None,
+                caster: PlayerFilter::You,
+                timing: None,
+                during_turn: None,
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            },
+            effects: delayed_effects,
+            one_shot: true,
+            until_end_of_combat: false,
+            attach_to_previous_ability: false,
+        })]));
+    }
+
     let delayed_target_shape =
         delayed_shapes::parse_delayed_target_dies_subject(trigger_core_tokens)
             .map(|subject| (subject, false))

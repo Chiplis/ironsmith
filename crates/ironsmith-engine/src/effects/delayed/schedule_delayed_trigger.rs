@@ -185,6 +185,15 @@ impl ScheduleDelayedTriggerEffect {
         self
     }
 
+    /// "For as long as this creature remains tapped": the registration ends
+    /// once the ability's source untaps or leaves the battlefield.
+    pub fn until_source_untaps(mut self) -> Self {
+        self.duration = ironsmith_core::DelayedTriggerDuration::WhileSourceTapped;
+        self.until_end_of_turn = false;
+        self.until_end_of_combat = false;
+        self
+    }
+
     pub fn with_leading_duration_surface(mut self) -> Self {
         self.leading_duration_surface = true;
         self
@@ -352,6 +361,16 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         {
             return Ok(EffectOutcome::count(0));
         }
+        // CR 611.2b: a "for as long as this remains tapped" registration whose
+        // source already untapped (or left) does nothing.
+        let while_source_tapped = (self.duration
+            == ironsmith_core::DelayedTriggerDuration::WhileSourceTapped)
+            .then_some(ability_source);
+        if while_source_tapped.is_some_and(|source| {
+            !crate::triggers::check::delayed_source_remains_tapped(game, source)
+        }) {
+            return Ok(EffectOutcome::count(0));
+        }
 
         if let Some(tag) = &self.target_tag {
             let Some(tagged) = tagged_objects.get(tag) else {
@@ -409,6 +428,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                         .flatten(),
                 )
                 .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
+                .while_source_tapped(while_source_tapped)
                 .with_tagged_objects(delayed_tagged_objects)
                 .with_tagged_players(tagged_players.clone())
                 .with_defending_player_reference(defending_player_reference)
@@ -468,6 +488,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .flatten(),
         )
         .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
+        .while_source_tapped(while_source_tapped)
         .with_tagged_objects(tagged_objects)
         .with_tagged_players(tagged_players)
         .with_defending_player_reference(defending_player_reference)

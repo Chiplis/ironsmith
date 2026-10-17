@@ -1648,6 +1648,11 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
     spell: &crate::object::Object,
     ignore_source: Option<ObjectId>,
 ) -> bool {
+    // "... plays with that card revealed in their hand and can't play it"
+    // (Firestorm Phoenix): that exact hand card.
+    if game.hand_card_cant_be_played_until_owners_next_turn(spell.id) {
+        return true;
+    }
     let Some(filters) = game
         .effect_store
         .cant_effects
@@ -6524,6 +6529,60 @@ fn paid_buyback_cost_reduction(spell: &crate::object::Object, amount: u32) -> i3
     i32::try_from(amount.min(paid_buyback_generic)).unwrap_or(i32::MAX)
 }
 
+/// "Spells cost an additional \"Sacrifice a Swamp\" to cast for each black
+/// mana symbol in their mana costs." / "Activated abilities cost an
+/// additional ... to activate for each black mana symbol in their activation
+/// costs." (Drought): the sacrifice costs battlefield permanents add to a
+/// spell (`activated == false`) or activated ability whose mana cost is
+/// `mana_cost`, one per matching mana symbol (CR 601.2f, 602.2b).
+pub(crate) fn battlefield_sacrifice_surcharges_for_mana_cost(
+    game: &GameState,
+    activated: bool,
+    mana_cost: Option<&crate::mana::ManaCost>,
+) -> Vec<crate::costs::Cost> {
+    let Some(mana_cost) = mana_cost else {
+        return Vec::new();
+    };
+    let mut costs = Vec::new();
+    for &permanent in &game.battlefield {
+        if game.is_phased_out(permanent) {
+            continue;
+        }
+        let Some(abilities) = game.current_abilities(permanent) else {
+            continue;
+        };
+        for ability in &abilities {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            let Some(model) = static_ability.compiled_model() else {
+                continue;
+            };
+            let ironsmith_core::StaticAbilityPayload::AdditionalSacrificePerManaSymbol {
+                activated_abilities,
+                symbol,
+                sacrifice,
+                ..
+            } = &model.payload
+            else {
+                continue;
+            };
+            if *activated_abilities != activated || !static_ability.is_active(game, permanent) {
+                continue;
+            }
+            let count = mana_cost
+                .pips()
+                .iter()
+                .filter(|pip| pip.contains(symbol))
+                .count();
+            for _ in 0..count {
+                costs.push(crate::costs::Cost::sacrifice(sacrifice.clone()));
+            }
+        }
+    }
+    costs
+}
+
 /// Total life surcharge from battlefield permanents whose "cost an additional
 /// N life to cast" static abilities match `spell` (Terror of the Peaks).
 pub(crate) fn battlefield_life_cost_increase_for_spell(
@@ -7966,8 +8025,7 @@ pub(crate) fn can_pay_mana_cost_with_available_sources(
         .any(|symbol| matches!(symbol, ManaSymbol::Life(_)));
     let max_life_payment = if has_life_payment_option
         && game.can_lose_life(player)
-        && (!reason.is_cast_or_ability_payment()
-            || !game.player_cant_pay_life_to_cast_or_activate(player))
+        && !game.player_cant_pay_life_for_payment_reason(player, reason)
     {
         u32::try_from(player_obj.life).unwrap_or(0)
     } else {

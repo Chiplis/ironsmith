@@ -583,6 +583,7 @@ pub fn parse_consult_match_move_and_bottom_remainder(
     let remainder_zone = match mode {
         LibraryConsultModeAst::Reveal => Zone::Library,
         LibraryConsultModeAst::Exile => Zone::Exile,
+        LibraryConsultModeAst::Mill => Zone::Graveyard,
     };
 
     let (stripped, gate_on_result) = strip_leading_if_you_do_sentence(second);
