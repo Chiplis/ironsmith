@@ -774,7 +774,7 @@ pub(super) fn compile_subject_verb_early(
             Ok((vec![Effect::bolster_value(amount)], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { amount }) => {
-            Ok((vec![Effect::support(*amount)], Vec::new()))
+            Ok((vec![Effect::support_value(resolve_value_it_tag(amount, &current_reference_env(ctx))?)], Vec::new()))
         }
         SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { amount }) => {
             Ok((vec![Effect::adapt(*amount)], Vec::new()))

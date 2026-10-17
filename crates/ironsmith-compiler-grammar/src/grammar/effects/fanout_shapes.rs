@@ -123,6 +123,7 @@ pub enum DamagePartShape {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompoundDamageShape {
+    pub right_is_each: bool,
     pub source_tokens: Vec<OwnedLexToken>,
     pub amount: Value,
     pub left_tokens: Vec<OwnedLexToken>,
@@ -866,11 +867,26 @@ pub fn parse_compound_damage_shape(tokens: &[OwnedLexToken]) -> Option<CompoundD
             (amount, targets.to_vec())
         };
     let target_tokens = strip_trailing_where(&target_tokens);
-    let (left_tokens, right_tokens) = split_on_phrase(&target_tokens, &["and", "each"])
-        .or_else(|| split_on_phrase(&target_tokens, &["and", "all"]))?;
+    let (left_tokens, right_tokens, right_is_each) =
+        if let Some((left, right)) = split_on_phrase(&target_tokens, &["and", "each"])
+            .or_else(|| split_on_phrase(&target_tokens, &["and", "all"]))
+        {
+            (left, right, true)
+        } else {
+            let (left, right) = split_on_phrase(&target_tokens, &["and"])?;
+            // A fixed recipient plus one explicitly announced recipient is
+            // one shared damage instruction, not an elided second action.
+            if !exact_phrase(trimmed(left), &["you"])
+                || !exact_phrase(trimmed(right), &["any", "target"])
+            {
+                return None;
+            }
+            (left, right, false)
+        };
     let left_tokens = trimmed(left_tokens).to_vec();
     let right_tokens = trimmed(right_tokens).to_vec();
     (!left_tokens.is_empty() && !right_tokens.is_empty()).then_some(CompoundDamageShape {
+        right_is_each,
         source_tokens,
         amount,
         left_tokens,

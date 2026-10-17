@@ -12716,6 +12716,7 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::CollectEvidence { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmpowerJace { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Amass { amount, .. })
+            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Monstrosity { amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Discover { count: amount })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fateseal { count: amount })
@@ -12729,10 +12730,6 @@ pub fn replace_unbound_x_in_effect_anywhere(
             })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Connive {
                 count: amount,
-                ..
-            })
-            | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
-                amount,
                 ..
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEach { amount, .. })
@@ -12813,6 +12810,13 @@ pub fn replace_unbound_x_in_effect_anywhere(
                 ..
             }) => {
                 replace_value(amount, replacement, clause)?;
+            }
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                source, amount, target, ..
+            }) => {
+                replace_value(amount, replacement, clause)?;
+                replace_in_target(source, replacement, clause)?;
+                replace_in_target(target, replacement, clause)?;
             }
             SubjectVerbActionAst::KeywordActions(KeywordActionAst::Incubate { amount, count }) => {
                 replace_value(amount, replacement, clause)?;
@@ -12987,7 +12991,6 @@ pub fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::EmitKeywordAction {
                 ..
             })
-            | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Support { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Adapt { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Airbend { .. })
             | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Explore { .. })

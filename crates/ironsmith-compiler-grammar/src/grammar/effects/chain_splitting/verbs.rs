@@ -6,7 +6,24 @@ use super::super::super::super::lexer::{OwnedLexToken, parser_token_word_refs};
 use super::{ChainVerbKind, ChainVerbMatch};
 
 pub fn find_chain_verb_tokens(tokens: &[OwnedLexToken]) -> Option<ChainVerbMatch> {
-    find_chain_verb_words(&parser_token_word_refs(tokens))
+    if !tokens.iter().any(OwnedLexToken::is_quote) {
+        return find_chain_verb_words(&parser_token_word_refs(tokens));
+    }
+    // Quoted rules belong to their granted ability. Mask their words while
+    // retaining original word positions for callers' token-boundary mapping.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let mut words = view.to_word_refs();
+    let mut inside = false;
+    let quoted = tokens.iter().map(|token| {
+        if token.is_quote() { inside = !inside; }
+        inside
+    }).collect::<Vec<_>>();
+    for (index, word) in words.iter_mut().enumerate() {
+        if view.map_word_to_token_start(index).is_some_and(|token| quoted[token]) {
+            *word = "";
+        }
+    }
+    find_chain_verb_words(&words)
 }
 
 pub fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
@@ -166,5 +183,29 @@ mod noted_life_dispatch_tests {
                 "{text}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod quoted_scope_tests {
+    use super::*;
+    use crate::lexer::lex_line;
+    #[test]
+    fn quoted_rule_words_remain_in_their_own_lexical_scope() {
+        let tokens = lex_line("\"Whenever this creature deals combat damage to a player, scry 1.\"",0).unwrap();
+        assert!(find_chain_verb_tokens(&tokens).is_none());
+        let tokens = lex_line("\"draw a card\" and target player gains 2 life",0).unwrap();
+        assert_eq!(find_chain_verb_tokens(&tokens),Some(ChainVerbMatch{kind:ChainVerbKind::Gain,word_index:6}));
+        let tokens = lex_line("They become 3/3 blue Bird creatures with flying, hexproof, and \"Whenever this creature deals combat damage to a player, scry 1.\"",0).unwrap();
+        assert_eq!(super::super::split_rules::split_effect_chain_on_and_tokens(&tokens,true).len(),1);
+        let body = &tokens[2..];
+        let words = parser_token_word_refs(body);
+        let shape = crate::grammar::effects::become_shapes::parse_become_leading_pt_shape(&words,body).unwrap();
+        assert_eq!(words[shape.creature_word_index.unwrap()],"creatures");
+        let tokens = lex_line("3/3 blue Bird with \"Whenever this creature attacks, draw a card.\"",0).unwrap();
+        let words = parser_token_word_refs(&tokens);
+        assert!(crate::grammar::effects::become_shapes::parse_become_leading_pt_shape(&words,&tokens).unwrap().creature_word_index.is_none());
+        let tokens = lex_line("They gain \"Whenever this creature attacks, draw a card.\" and draw a card.",0).unwrap();
+        assert_eq!(super::super::split_rules::split_effect_chain_on_and_tokens(&tokens,true).len(),2);
     }
 }

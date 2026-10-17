@@ -2443,6 +2443,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 all_kinds,
                 fixed_counter_type,
                 optional_action,
+                alternative_put_counter,
                 put_only,
                 choose_target_per_kind,
             }) => f
@@ -2452,6 +2453,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("all_kinds", all_kinds)
                 .field("fixed_counter_type", fixed_counter_type)
                 .field("optional_action", optional_action)
+                .field("alternative_put_counter", alternative_put_counter)
                 .field("put_only", put_only)
                 .field("choose_target_per_kind", choose_target_per_kind)
                 .finish(),

@@ -8362,6 +8362,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
             Value::SourceChosenNumber { .. } => "the chosen number".to_string(),
+            Value::DraftNotedHighestNumber { card_name } => {
+                format!("the highest number you noted for cards named {card_name}")
+            }
             // "Choose a number ... with power greater than or equal to the
             // chosen number" (Expel the Interlopers).
             Value::PriorEffectMetric { query, .. }

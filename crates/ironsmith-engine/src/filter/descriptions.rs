@@ -1283,6 +1283,9 @@ pub(crate) fn describe_comparison(cmp: &Comparison) -> String {
         match value {
             Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
+            Value::DraftNotedHighestNumber { card_name } => {
+                format!("the highest number you noted for cards named {card_name}")
+            }
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
             Value::CountScaled(filter, factor) => {

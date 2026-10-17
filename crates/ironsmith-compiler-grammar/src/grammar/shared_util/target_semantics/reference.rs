@@ -1,4 +1,5 @@
 use super::*;
+use winnow::Parser;
 
 pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
@@ -9,6 +10,18 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return Err(CardTextError::ParseError(
             "missing target phrase".to_string(),
         ));
+    }
+
+    // `each of` distributes the action over an explicitly counted target
+    // declaration; it does not introduce a separate object-filter domain.
+    if let Some(((), rest)) = primitives::parse_prefix(
+        tokens, primitives::phrase(&["each", "of"]).void(),
+    ) && rest.iter().any(|token| token.is_any_word(&["target", "targets"]))
+    {
+        let target = parse_target_phrase_inner(rest)?;
+        if matches!(&target, TargetAst::WithCount(..) | TargetAst::WithCountValue(..)) {
+            return Ok(target);
+        }
     }
 
     if matches!(
@@ -30,7 +43,11 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
 
     if let Some(dynamic) = parse_dynamic_target_count_prefix(tokens) {
-        let target = parse_target_phrase_inner(dynamic.target_tokens)?;
+        let target = if crate::lexer::parser_token_word_refs(dynamic.target_tokens) == ["targets"] {
+            TargetAst::AnyTarget(token_slice_span(dynamic.target_tokens))
+        } else {
+            parse_target_phrase_inner(dynamic.target_tokens)?
+        };
         return Ok(TargetAst::WithCountValue(
             Box::new(target),
             dynamic.count,

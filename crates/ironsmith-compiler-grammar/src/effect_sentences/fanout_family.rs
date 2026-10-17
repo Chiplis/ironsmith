@@ -1112,7 +1112,12 @@ pub fn parse_compound_damage_fanout_sentence(
         return Ok(None);
     };
     let right_context = target_context_for_damage_part(&left);
-    let Some(right) = parse_each_damage_part(&shape.right_tokens, right_context)? else {
+    let right = if shape.right_is_each {
+        parse_each_damage_part(&shape.right_tokens, right_context)?
+    } else {
+        parse_damage_part(&shape.right_tokens, right_context)?
+    };
+    let Some(right) = right else {
         return Ok(None);
     };
 
@@ -1124,7 +1129,7 @@ pub fn parse_compound_damage_fanout_sentence(
         CompoundDamagePart::EachObject(filter) if filter.other
     ) || matches!(&right, CompoundDamagePart::EachObject(filter) if filter.other);
     let mut effects = compound_damage_effects(shape.amount, left, right);
-    if excludes_damage_source
+    if (excludes_damage_source || !shape.right_is_each)
         && crate::word_primitives::parse_sequence_complete(&source_words, &["it"])
     {
         // The recipients are dealt damage simultaneously. Deal the player

@@ -40,6 +40,12 @@ pub fn split_effect_chain_on_and_tokens(
         if preserve_and_reason(current, remaining, extended).is_some() {
             continue;
         }
+        // A quoted grant after `and` is another attribute of the current
+        // action, not an executable outer statement.
+        if remaining.first().is_some_and(OwnedLexToken::is_quote) {
+            continue;
+        }
+
         // "create a tapped and attacking token" (CR 508.4): the conjunction
         // joins two entry states of one token, never two actions.
         if current_words.last() == Some(&"tapped")

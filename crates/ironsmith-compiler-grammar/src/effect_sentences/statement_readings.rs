@@ -483,6 +483,11 @@ fn read_deal_damage_equal_to_power(
     input: &Statement<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence = input.sentence;
+    if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(sentence).is_some()
+        && effect_grammar::clause_primitive_shapes::parse_power_damage_shape(sentence)?.is_some()
+    {
+        return super::dispatch_inner::parse_effect_sentence_with_where_x_lexed(sentence).map(Some);
+    }
     if effect_grammar::clause_dispatch_shapes::parse_leading_may_shape(sentence).is_none()
         && let Some(effect) =
             super::clause_primitives::parse_deal_damage_equal_to_power_clause(sentence)?

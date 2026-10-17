@@ -1642,6 +1642,7 @@ where
             all_kinds: payload.all_kinds,
             fixed_counter_type: payload.fixed_counter_type,
             optional_action: payload.optional_action,
+            alternative_put_counter: payload.alternative_put_counter,
             put_only: payload.put_only,
             choose_target_per_kind: payload.choose_target_per_kind,
         };
@@ -1914,8 +1915,8 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SupportEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::SupportEffect::new(
-            payload.amount,
+        return Ok(Effect::new(crate::effects::SupportEffect::with_value(
+            payload.value(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ConniveEffect>(&effect) {

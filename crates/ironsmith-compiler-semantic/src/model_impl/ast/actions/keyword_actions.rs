@@ -44,7 +44,7 @@ pub enum KeywordActionAst {
         amount: Value,
     },
     Support {
-        amount: u32,
+        amount: Value,
     },
     Adapt {
         amount: u32,

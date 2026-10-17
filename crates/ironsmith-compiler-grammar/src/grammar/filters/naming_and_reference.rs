@@ -494,6 +494,14 @@ where
     let Some(named_idx) = word_index_for_exact(all_words.as_slice(), NAMED_WORD) else {
         return Ok(false);
     };
+    // This name identifies the draft-note scalar's group. It is not a
+    // name restriction on the creature whose characteristic is compared.
+    let draft_scalar = &["highest", "number", "you", "noted", "for", "cards"];
+    if named_idx >= draft_scalar.len()
+        && all_words[named_idx - draft_scalar.len()..named_idx] == draft_scalar[..]
+    {
+        return Ok(false);
+    }
     let (name, name_end) = extract_name_clause_text(
         all_words.as_slice(),
         all_words_with_articles,

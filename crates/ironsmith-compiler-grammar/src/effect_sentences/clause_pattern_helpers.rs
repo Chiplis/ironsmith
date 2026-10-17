@@ -3001,6 +3001,7 @@ pub fn parse_keyword_mechanic_clause(
             let result_name = crate::lexer::token_word_refs(result_name_tokens).join(" ");
             EffectAst::subject_verb_meld(result_name, false, false)
         }
+        clause_shapes::KeywordMechanicShape::SupportX => EffectAst::subject_verb_support(Value::X),
         clause_shapes::KeywordMechanicShape::Numeric { keyword, amount } => match keyword {
             clause_shapes::NumericKeywordShape::Bolster => EffectAst::subject_verb_bolster(amount),
             clause_shapes::NumericKeywordShape::Support => EffectAst::subject_verb_support(amount),

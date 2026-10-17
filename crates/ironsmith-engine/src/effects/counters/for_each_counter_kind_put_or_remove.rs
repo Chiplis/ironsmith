@@ -17,6 +17,7 @@ pub struct ForEachCounterKindPutOrRemoveEffect {
     pub all_kinds: bool,
     pub fixed_counter_type: Option<CounterType>,
     pub optional_action: bool,
+    pub alternative_put_counter: Option<CounterType>,
     pub put_only: bool,
     pub choose_target_per_kind: bool,
 }
@@ -30,6 +31,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -42,6 +44,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -58,6 +61,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: Some(counter_type),
             optional_action,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -70,6 +74,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: true,
+            alternative_put_counter: None,
             choose_target_per_kind: true,
         }
     }
@@ -78,7 +83,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
         super::kind_selection::counter_label(counter_type)
     }
 
-    fn put_another_of_each_kind_on_players(
+    fn put_another_of_selected_kinds_on_players(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -89,7 +94,16 @@ impl ForEachCounterKindPutOrRemoveEffect {
             let Some(player) = game.player(*player_id) else {
                 continue;
             };
-            for counter_type in player.counter_types_with_counters() {
+            let mut kinds = player.counter_types_with_counters();
+            kinds.sort_by_key(|kind| format!("{kind:?}"));
+            if kinds.is_empty() { continue; }
+            let kinds = if self.all_kinds { kinds } else {
+                super::kind_selection::choose_kind(game, ctx, &kinds).into_iter().collect()
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+            }
+            for counter_type in kinds {
                 requests.push(
                     crate::events::Event::put_player_counters(
                         *player_id,
@@ -143,7 +157,6 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                 // another counter of that kind" puts one more of every kind the
                 // chosen player has.
                 if self.put_only
-                    && self.all_kinds
                     && self.counter_source.is_none()
                     && self.fixed_counter_type.is_none()
                     && self.target.is_target()
@@ -158,7 +171,7 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                         ctx,
                     );
                     if !players.is_empty() {
-                        return self.put_another_of_each_kind_on_players(game, ctx, &players);
+                        return self.put_another_of_selected_kinds_on_players(game, ctx, &players);
                     }
                 }
 
@@ -257,10 +270,11 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                         let label = Self::counter_label(counter_type);
                         let mut options = vec![
                             (0, format!("Put one {label} counter on it")),
-                            (1, format!("Remove one {label} counter from it")),
+                            (1, self.alternative_put_counter.map(|kind| format!("Put one {} counter on it", Self::counter_label(kind)))
+                                .unwrap_or_else(|| format!("Remove one {label} counter from it"))),
                         ];
                         if self.optional_action {
-                            options.push((2, format!("Don't add or remove a {label} counter")));
+                            options.push((2, if self.alternative_put_counter.is_some() { "Don't put a counter".to_string() } else { format!("Don't add or remove a {label} counter") }));
                         }
                         let Some(choice) = super::kind_selection::choose_binding(
                             game,
@@ -279,7 +293,10 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                         }
 
                         let spec = ChooseSpec::SpecificObject(target_id);
-                        let outcome = if choice == 1 {
+                        let outcome = if choice == 1 && self.alternative_put_counter.is_some() {
+                            PutCountersEffect::new(self.alternative_put_counter.unwrap(), 1, spec)
+                                .execute_child_with_outputs(game, ctx)?
+                        } else if choice == 1 {
                             RemoveCountersEffect::new(counter_type, 1, spec)
                                 .execute_child_with_outputs(game, ctx)?
                         } else {
@@ -314,6 +331,59 @@ mod tests {
     use crate::types::CardType;
     use crate::zone::Zone;
     use std::collections::HashMap;
+
+    #[test]
+    fn alternative_counter_put_freezes_distinct_kinds_and_preserves_declining() {
+        struct Pick { index: usize, calls: usize, options: usize }
+        impl crate::decision::DecisionMaker for Pick {
+            fn decide_options(&mut self, _: &GameState, ctx: &crate::decisions::context::SelectOptionsContext) -> Vec<usize> {
+                self.calls += 1;
+                assert_eq!(ctx.options.len(), self.options);
+                if self.options == 3 { assert!(ctx.options.iter().all(|option| !option.description.contains("Remove"))); }
+                vec![self.index]
+            }
+        }
+        for choice in [1, 2] {
+            let mut game = crate::tests::test_helpers::setup_two_player_game();
+            let alice = PlayerId::from_index(0);
+            let origin = creature(&mut game, "Counter source", alice);
+            let duplicate = creature(&mut game, "Duplicate kind source", alice);
+            let destination = creature(&mut game, "Counter recipient", alice);
+            game.object_mut(origin).unwrap().counters.insert(CounterType::Charge, 4);
+            game.object_mut(origin).unwrap().counters.insert(CounterType::Flying, 3);
+            game.object_mut(duplicate).unwrap().counters.insert(CounterType::Charge, 7);
+            let mut filter = crate::target::ObjectFilter::permanent();
+            filter.controller = Some(crate::target::PlayerFilter::You);
+            let mut effect = ForEachCounterKindPutOrRemoveEffect::new(ChooseSpec::SpecificObject(destination));
+            effect.counter_source = Some(ChooseSpec::All(filter));
+            effect.optional_action = true;
+            effect.alternative_put_counter = Some(CounterType::PlusOnePlusOne);
+            let mut dm = Pick { index: choice, calls: 0, options: 3 };
+            let outcome = {
+                let mut ctx = ExecutionContext::new(destination, alice, &mut dm);
+                effect.execute(&mut game, &mut ctx).unwrap()
+            };
+            assert_eq!(dm.calls, 2, "new kinds on the recipient cannot extend the captured iteration");
+            assert_eq!(game.counter_count(destination, CounterType::PlusOnePlusOne), if choice == 1 { 2 } else { 0 });
+            assert_eq!(game.counter_count(origin, CounterType::Charge), 4);
+            assert_eq!(game.counter_count(origin, CounterType::Flying), 3);
+            assert_eq!(outcome.as_count(), if choice == 1 { Some(2) } else { None }, "declining every action returns the ordinary resolved outcome");
+        }
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = creature(&mut game, "Ordinary counter action", alice);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Charge, 4);
+        game.object_mut(source).unwrap().counters.insert(CounterType::Flying, 3);
+        let ordinary = ForEachCounterKindPutOrRemoveEffect::new(ChooseSpec::SpecificObject(source));
+        let mut dm = Pick { index: 1, calls: 0, options: 2 };
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+            ordinary.execute(&mut game, &mut ctx).unwrap();
+        }
+        assert_eq!(dm.calls, 2);
+        assert_eq!(game.counter_count(source, CounterType::Charge), 3);
+        assert_eq!(game.counter_count(source, CounterType::Flying), 2);
+    }
 
     fn creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
         let id = game.new_object_id();

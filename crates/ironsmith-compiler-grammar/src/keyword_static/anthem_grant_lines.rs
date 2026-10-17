@@ -6000,7 +6000,7 @@ mod combat_sibling_tests {
         assert_eq!(grants.len(), 2, "{grants:?}");
         let StaticAbilityAst::GrantKeywordAction { filter, condition, .. } = &grants[0] else { panic!("{grants:?}") };
         let StaticAbilityAst::Static(ability) = &grants[1] else { panic!("the equipment owns the rule: {grants:?}") };
-        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition: other_condition } = &ability.payload else { panic!("{ability:?}") };
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition: other_condition, .. } = &ability.payload else { panic!("{ability:?}") };
         assert_eq!(condition.as_ref(), Some(other_condition));
         let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, .. } = &ability.payload else { panic!("{ability:?}") };
         let crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } = restriction else { panic!("{restriction:?}") };

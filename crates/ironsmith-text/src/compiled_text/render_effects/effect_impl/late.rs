@@ -1208,7 +1208,11 @@
         return format!("Bolster {}", bolster.amount);
     }
     if let Some(support) = effect.downcast_ref::<crate::effects::SupportEffect>() {
-        return format!("Support {}", support.amount);
+        return match support.value().unhinted() {
+            Value::Fixed(amount) => format!("Support {amount}"),
+            Value::X => "Support X".to_string(),
+            _ => format!("Support X, where X is {}", describe_value(&support.value())),
+        };
     }
     if let Some(adapt) = effect.downcast_ref::<crate::effects::AdaptEffect>() {
         return format!("Adapt {}", adapt.amount);
@@ -5537,6 +5541,12 @@
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
     {
+        if let (Some(source), Some(alternative)) = (&for_each_counter_kind.counter_source, for_each_counter_kind.alternative_put_counter) {
+            let source = describe_choose_spec(source);
+            let source = source.strip_prefix("all ").unwrap_or(&source);
+            return format!("For each kind of counter on {source}, you {}put your choice of a {} counter or a counter of that kind on {}",
+                if for_each_counter_kind.optional_action { "may " } else { "" }, alternative.description(), describe_choose_spec(&for_each_counter_kind.target));
+        }
         if for_each_counter_kind.fixed_counter_type == Some(crate::object::CounterType::Time)
             && for_each_counter_kind.optional_action
             && is_time_travel_object_set(&for_each_counter_kind.target)
@@ -5616,6 +5626,9 @@
     }
     if let Some(chosen_kind) = effect.downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
     {
+        if matches!(chosen_kind.target.base(), ChooseSpec::ObjectOrPlayer(..)) {
+            return format!("Choose a counter on {}. Give that permanent or player another counter of that kind", describe_choose_spec(&chosen_kind.target));
+        }
         if matches!(&chosen_kind.target, ChooseSpec::Target(_)) {
             return "Choose a counter on target permanent. Put an additional counter of that kind on that permanent".to_string();
         }

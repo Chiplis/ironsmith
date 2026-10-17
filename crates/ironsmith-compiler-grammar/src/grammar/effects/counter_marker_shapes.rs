@@ -53,6 +53,8 @@ pub struct SacrificeAtEndOfCombatShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ForEachCounterKindShape<'a> {
     pub target_tokens: &'a [OwnedLexToken],
+    pub counter_source_tokens: Option<&'a [OwnedLexToken]>,
+    pub alternative_put_counter: Option<CounterType>,
     /// "give that permanent or player another counter of that kind": only
     /// the put half, with no put-or-remove choice.
     pub put_only: bool,
@@ -510,7 +512,34 @@ fn parse_for_each_counter_kind_lexed<'a>(
     primitives::sentence_end().parse_next(input)?;
     Ok(ForEachCounterKindShape {
         target_tokens,
+        counter_source_tokens: None,
+        alternative_put_counter: None,
         put_only,
+    })
+}
+
+fn parse_for_each_counter_kind_alternative_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ForEachCounterKindShape<'a>> {
+    primitives::phrase(&["for", "each", "kind", "of", "counter", "on"]).parse_next(input)?;
+    let source = repeat_till(1.., any.void(), peek(primitives::comma()))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&["you", "may", "put", "your", "choice", "of"]).parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let counter_tokens = repeat_till(1.., any.void(), peek(primitives::kw("counter")))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    let alternative = filters::parse_counter_type_from_tokens(counter_tokens)
+        .ok_or_else(|| winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))?;
+    primitives::phrase(&["counter", "or", "a", "counter", "of", "that", "kind", "on"]).parse_next(input)?;
+    let target_tokens = repeat_till(1.., any.void(), peek(primitives::sentence_end()))
+        .map(|((), _)| ()).take().parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(ForEachCounterKindShape {
+        target_tokens,
+        counter_source_tokens: Some(source),
+        alternative_put_counter: Some(alternative),
+        put_only: false,
     })
 }
 
@@ -519,7 +548,7 @@ pub fn parse_for_each_counter_kind_tokens(
 ) -> Option<ForEachCounterKindShape<'_>> {
     crate::grammar::primitives::probe_all(
         tokens,
-        parse_for_each_counter_kind_lexed,
+        alt((parse_for_each_counter_kind_alternative_lexed, parse_for_each_counter_kind_lexed)),
         "for each counter kind",
     )
 }

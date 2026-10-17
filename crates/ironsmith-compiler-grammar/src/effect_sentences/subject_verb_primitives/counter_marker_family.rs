@@ -313,6 +313,24 @@ pub fn parse_sentence_for_each_counter_kind_put_or_remove(
         return Ok(None);
     };
     let target = parse_target_phrase(shape.target_tokens)?;
+    if let (Some(source), Some(alternative)) = (shape.counter_source_tokens, shape.alternative_put_counter) {
+        return Ok(Some(vec![EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            crate::cards::builders::SubjectVerbActionAst::Counters(
+                crate::cards::builders::CounterActionAst::ForEachCounterKindPutOrRemove {
+                    target,
+                    counter_source: Some(parse_target_phrase(source)?),
+                    all_kinds: true,
+                    fixed_counter_type: None,
+                    optional_action: true,
+                    alternative_put_counter: Some(alternative),
+                    put_only: false,
+                    choose_target_per_kind: false,
+                },
+            ),
+        )]));
+    }
     if shape.put_only {
         return Ok(Some(vec![
             EffectAst::subject_verb_for_each_counter_kind_put_another(target),

@@ -72,6 +72,7 @@ pub enum CounterActionAst {
         all_kinds: bool,
         fixed_counter_type: Option<CounterType>,
         optional_action: bool,
+        alternative_put_counter: Option<CounterType>,
         put_only: bool,
         choose_target_per_kind: bool,
     },

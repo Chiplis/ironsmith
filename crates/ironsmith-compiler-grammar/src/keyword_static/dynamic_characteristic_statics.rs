@@ -157,7 +157,7 @@ mod tests {
         for (index, ability) in parsed.iter().enumerate() {
             let StaticAbilityAst::Static(ability) = ability else { panic!("typed setting"); };
             assert_eq!(ability.id, Some(crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter));
-            let StaticAbilityPayload::Conditional { condition, ability } = &ability.payload
+            let StaticAbilityPayload::Conditional { condition, ability, .. } = &ability.payload
                 else { panic!("each assignment retains its own condition"); };
             assert_eq!(condition, &if index == 0 { PredicateAst::YourTurn }
                 else { PredicateAst::Not(Box::new(PredicateAst::YourTurn)) });

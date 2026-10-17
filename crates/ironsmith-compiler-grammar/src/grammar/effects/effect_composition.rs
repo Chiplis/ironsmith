@@ -559,7 +559,9 @@ pub fn parse_chosen_counter_bundle_shape<'a>(
             "on",
             "it",
         ],
-    ) {
+    ) || exact_surface(second, &[
+        "give", "that", "permanent", "or", "player", "another", "counter", "of", "that", "kind",
+    ]) {
         ChosenCounterAction::PutAdditional
     } else {
         return None;

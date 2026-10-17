@@ -2182,6 +2182,9 @@ fn resolve_filter_comparison_rhs_value(
             }
         }
         Value::Fixed(value) => Some(i64::from(*value)),
+        Value::DraftNotedHighestNumber { card_name } => Some(i64::from(
+            game.draft_noted_highest_number(ctx.you?, card_name),
+        )),
         Value::X => resolve_x_value(game, ctx, stack_entry),
         Value::XTimes(multiplier) => {
             resolve_x_value(game, ctx, stack_entry).map(|value| value * i64::from(*multiplier))

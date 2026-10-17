@@ -764,7 +764,10 @@ fn parse_inline_token_granted_abilities(
             // discard a trailing `and equip` clause outside its quotes. Do
             // not merge keywords from a nested token rule into this token.
             token_definition_grammar::merge_authored_token_definition_facts(definition, &outer_reminder);
-            continue;
+            // Merged presentation/reminder facts alone do not prove that an
+            // entire triggered rule has an executable blueprint owner. The
+            // granted parser checks that owner before retaining a fallback.
+            if !starts_triggered_rule { continue; }
         }
         if !conflicting_combat_restriction
             && append_inline_token_embedded_rule(definition, rule_tokens)

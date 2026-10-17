@@ -2020,6 +2020,7 @@ pub(super) fn compile_subject_verb_late(
             all_kinds,
             fixed_counter_type,
             optional_action,
+            alternative_put_counter,
             put_only,
             choose_target_per_kind,
         }) => {
@@ -2055,10 +2056,10 @@ pub(super) fn compile_subject_verb_late(
             }
             let mut effect = if *put_only
                 && *choose_target_per_kind
-                && let Some(counter_source_spec) = counter_source_spec
+                && let Some(counter_source_spec) = counter_source_spec.as_ref()
             {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::put_each_kind_from(
-                    counter_source_spec,
+                    counter_source_spec.clone(),
                     spec,
                 )
             } else if let Some(counter_type) = fixed_counter_type {
@@ -2072,7 +2073,13 @@ pub(super) fn compile_subject_verb_late(
             } else {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(spec)
             };
+            effect.counter_source = counter_source_spec;
+            effect.all_kinds = *all_kinds;
+            effect.fixed_counter_type = *fixed_counter_type;
+            effect.optional_action = *optional_action;
+            effect.alternative_put_counter = *alternative_put_counter;
             effect.put_only = *put_only;
+            effect.choose_target_per_kind = *choose_target_per_kind;
             Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::Counters(CounterActionAst::NextAdaptIgnoresCounters { target }) => {

@@ -23,7 +23,7 @@ export default function MobileArenaCardFace({ card, name, artUrl, pending, prima
       <LoadingCardArt src={cardArtCropUrl(artUrl)} sourceKey={artUrl} pending={pending}
         colors={cardArtColors(card)} variant="battlefield" alt="" draggable={false} />
     </div>
-    <div className="arena-permanent-name" title={name || card.name}>{name || card.name}</div>
+    {!token && <div className="arena-permanent-name" title={name || card.name}>{name || card.name}</div>}
     {statistic && <span className={kind === 'creature'
       ? ['arena-permanent-pt', 'battlefield-pt-badge',
         card.pt_modified_by_effect && 'battlefield-pt-badge--modified',

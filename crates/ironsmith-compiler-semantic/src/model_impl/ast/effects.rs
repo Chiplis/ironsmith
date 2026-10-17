@@ -4269,7 +4269,8 @@ impl EffectAst {
         )
     }
 
-    pub fn subject_verb_support(amount: u32) -> Self {
+    pub fn subject_verb_support(amount: impl Into<Value>) -> Self {
+        let amount = amount.into();
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -5956,6 +5957,7 @@ impl EffectAst {
                 fixed_counter_type: None,
                 optional_action: false,
                 put_only: true,
+                alternative_put_counter: None,
                 choose_target_per_kind: false,
             }),
         )
@@ -5980,6 +5982,7 @@ impl EffectAst {
                 fixed_counter_type: Some(counter_type),
                 optional_action,
                 put_only: false,
+                alternative_put_counter: None,
                 choose_target_per_kind: false,
             }),
         )
@@ -5999,6 +6002,7 @@ impl EffectAst {
                 fixed_counter_type: None,
                 optional_action: false,
                 put_only: true,
+                alternative_put_counter: None,
                 choose_target_per_kind: true,
             }),
         )
@@ -6015,6 +6019,7 @@ impl EffectAst {
                 fixed_counter_type: None,
                 optional_action: false,
                 put_only: false,
+                alternative_put_counter: None,
                 choose_target_per_kind: false,
             }),
         )

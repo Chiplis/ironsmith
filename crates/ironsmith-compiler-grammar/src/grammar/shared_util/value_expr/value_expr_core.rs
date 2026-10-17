@@ -4,6 +4,15 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.is_empty() {
         return None;
     }
+    let draft_offset = usize::from(words.first() == Some(&"the"));
+    let draft_prefix = &["highest", "number", "you", "noted", "for", "cards", "named"];
+    if words.get(draft_offset..draft_offset + draft_prefix.len()) == Some(draft_prefix)
+        && words.len() > draft_offset + draft_prefix.len()
+    {
+        return Some((Value::DraftNotedHighestNumber {
+            card_name: words[draft_offset + draft_prefix.len()..].join(" "),
+        }, words.len()));
+    }
     // "2ˣ" (Mathemagics): the lexer keeps the superscript exponent as its own
     // word piece.
     if words.get(..2) == Some(&["2", "ˣ"][..]) {

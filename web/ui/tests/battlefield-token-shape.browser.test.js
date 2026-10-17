@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
-test('token tiles retain an arched silhouette and readable name bar on desktop and mobile', async () => {
+test('token tiles retain an arched silhouette without a name bar on desktop and mobile', async () => {
   const vite = await createServer({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
   await vite.listen();
   const browser = await chromium.launch();
@@ -39,15 +39,12 @@ test('token tiles retain an arched silhouette and readable name bar on desktop a
       await token.waitFor();
       assert.equal(await token.evaluate(el => getComputedStyle(el).borderTopLeftRadius), '48%');
       assert.equal(await ordinary.evaluate(el => getComputedStyle(el).borderTopLeftRadius), '4px');
-      assert.equal(await token.locator('.arena-permanent-name').innerText(), 'Llanowar Elves');
+      assert.equal(await token.locator('.arena-permanent-name').count(), 0);
       const tapped = page.locator('.battlefield-arena-card.tapped');
       const transforms = await tapped.evaluate(el => ['.game-card-surface', '.battlefield-group-stack'].map(selector => getComputedStyle(el.querySelector(selector)).transform));
       assert.notEqual(transforms[0], 'none');
       assert.equal(transforms[0], transforms[1], 'backing cards and front face tap together');
       assert.equal(await tapped.locator('.arena-permanent').evaluate(el => getComputedStyle(el).transform), 'none', 'face must not rotate twice');
-      const bounds = await token.boundingBox(), title = await token.locator('.arena-permanent-name').boundingBox();
-      assert.ok(title.y > bounds.y && title.y + title.height < bounds.y + bounds.height);
-      assert.ok(title.x > bounds.x && title.x + title.width < bounds.x + bounds.width);
     }
     await page.screenshot({path:'/tmp/token-silhouettes.png'});
   } finally { await browser.close(); await vite.close(); }

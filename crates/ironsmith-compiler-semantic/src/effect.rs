@@ -1357,6 +1357,10 @@ impl Effect {
         Self::new(crate::effects::SupportEffect::new(amount))
     }
 
+    pub fn support_value(amount: Value) -> Self {
+        Self::new(crate::effects::SupportEffect::with_value(amount))
+    }
+
     pub fn adapt(amount: u32) -> Self {
         Self::new(crate::effects::AdaptEffect::new(amount))
     }

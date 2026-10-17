@@ -35,7 +35,11 @@ impl EffectExecutor for PutCounterOfChosenKindEffect {
     }
 
     fn target_description(&self) -> &'static str {
-        "target permanent"
+        if matches!(self.target.base(), ChooseSpec::ObjectOrPlayer(..)) {
+            "target permanent or player"
+        } else {
+            "target permanent"
+        }
     }
 }
 

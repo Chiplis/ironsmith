@@ -5,7 +5,7 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until};
+use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::permanents::face_down_entry::{
@@ -2168,6 +2168,7 @@ impl EffectExecutor for AmplifyEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SupportEffect {
     pub amount: u32,
+    pub amount_value: Option<Value>,
     pub target: ChooseSpec,
 }
 
@@ -2175,10 +2176,29 @@ impl SupportEffect {
     pub fn new(amount: u32) -> Self {
         Self {
             amount,
+            amount_value: None,
             target: ChooseSpec::target(ChooseSpec::Object(
                 crate::target::ObjectFilter::creature().other(),
             )),
         }
+    }
+}
+
+impl SupportEffect {
+    pub fn with_value(value: Value) -> Self {
+        if let Value::Fixed(amount) = &value
+            && let Ok(amount) = u32::try_from(*amount)
+        { return Self::new(amount); }
+        let mut effect = Self::new(0);
+        effect.target = ChooseSpec::WithCountValue(
+            Box::new(effect.target), ChoiceCount::up_to_dynamic_x(), value.clone(),
+        );
+        effect.amount_value = Some(value);
+        effect
+    }
+
+    pub fn value(&self) -> Value {
+        self.amount_value.clone().unwrap_or_else(|| self.amount.into())
     }
 }
 
@@ -2199,11 +2219,11 @@ impl EffectExecutor for SupportEffect {
     fn canonical_program(&self) -> Option<Effect> {
         Some(Effect::new(super::KeywordCompletionProgram {
             action: KeywordActionKind::Support,
-            amount: self.amount.into(),
+            amount: self.value(),
             player: PlayerFilter::You,
             body: Effect::new(crate::effects::PutCountersEffect::new(
                 CounterType::PlusOnePlusOne, 1, self.target.clone(),
-            ).with_target_count(ChoiceCount::up_to(self.amount as usize))),
+            ).with_target_count(if self.amount_value.is_some() { ChoiceCount::up_to_dynamic_x() } else { ChoiceCount::up_to(self.amount as usize) })),
         }))
     }
 
@@ -2218,7 +2238,7 @@ impl EffectExecutor for SupportEffect {
     }
 
     fn get_target_count(&self) -> Option<ChoiceCount> {
-        Some(ChoiceCount::up_to(self.amount as usize))
+        Some(if self.amount_value.is_some() { ChoiceCount::up_to_dynamic_x() } else { ChoiceCount::up_to(self.amount as usize) })
     }
 
     fn target_description(&self) -> &'static str {

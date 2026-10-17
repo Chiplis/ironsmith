@@ -111,8 +111,12 @@ pub fn parse_become_leading_pt_shape<'a>(
     }
     let (power, toughness, used) = parse_pt_value_words(&words[offset..])?;
     let value_word_count = offset + used;
-    let creature_word_index = permission_shapes::find_words(words, &["creature"])
-        .or_else(|| permission_shapes::find_words(words, &["creatures"]));
+    // The descriptor's first creature noun owns the animation. A singular
+    // `this creature` inside a later quoted grant cannot beat a plural outer
+    // noun, and ability/name tails cannot supply a missing descriptor noun.
+    let creature_word_index = words.iter()
+        .take_while(|word| !matches!(**word, "with" | "named"))
+        .position(|word| matches!(*word, "creature" | "creatures"));
     let suffix_tokens = if creature_word_index.is_some() {
         primitives::find_prefix(body_tokens, || {
             alt((

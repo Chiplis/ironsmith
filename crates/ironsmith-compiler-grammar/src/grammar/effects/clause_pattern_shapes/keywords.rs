@@ -121,6 +121,7 @@ pub enum KeywordMechanicShape<'a> {
         keyword: NumericKeywordShape,
         amount: u32,
     },
+    SupportX,
     Fateseal {
         count_tokens: &'a [OwnedLexToken],
     },
@@ -685,6 +686,13 @@ fn parse_numeric_keyword<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechan
         primitives::kw("adapt").value(NumericKeywordShape::Adapt),
     ))
     .parse_next(input)?;
+    if matches!(keyword, NumericKeywordShape::Support)
+        && input.first().is_some_and(|token| token.is_word("x"))
+    {
+        primitives::kw("x").parse_next(input)?;
+        primitives::sentence_end().parse_next(input)?;
+        return Ok(KeywordMechanicShape::SupportX);
+    }
     let amount = leaf::parse_leaf_number_prefix_lexed.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::Numeric { keyword, amount })

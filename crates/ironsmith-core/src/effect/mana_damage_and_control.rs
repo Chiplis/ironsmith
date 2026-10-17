@@ -437,6 +437,8 @@ pub struct ForEachCounterKindPutOrRemoveEffect {
     pub all_kinds: bool,
     pub fixed_counter_type: Option<crate::counter::CounterType>,
     pub optional_action: bool,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_put_counter: Option<crate::counter::CounterType>,
     /// Put one counter without offering the ordinary put-or-remove choice.
     pub put_only: bool,
     /// Choose one object from `target` independently for every counter kind.
@@ -452,6 +454,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -464,6 +467,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -480,6 +484,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: Some(counter_type),
             optional_action,
             put_only: false,
+            alternative_put_counter: None,
             choose_target_per_kind: false,
         }
     }
@@ -492,6 +497,7 @@ impl ForEachCounterKindPutOrRemoveEffect {
             fixed_counter_type: None,
             optional_action: false,
             put_only: true,
+            alternative_put_counter: None,
             choose_target_per_kind: true,
         }
     }

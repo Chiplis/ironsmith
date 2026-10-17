@@ -4492,11 +4492,24 @@ impl ManifestCardFromHandEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct SupportEffect {
     pub amount: u32,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub amount_value: Option<Value>,
 }
 
 impl SupportEffect {
     pub fn new(amount: u32) -> Self {
-        Self { amount }
+        Self { amount, amount_value: None }
+    }
+
+    pub fn with_value(value: Value) -> Self {
+        if let Value::Fixed(amount) = &value
+            && let Ok(amount) = u32::try_from(*amount)
+        { return Self::new(amount); }
+        Self { amount: 0, amount_value: Some(value) }
+    }
+
+    pub fn value(&self) -> Value {
+        self.amount_value.clone().unwrap_or_else(|| self.amount.into())
     }
 }
 

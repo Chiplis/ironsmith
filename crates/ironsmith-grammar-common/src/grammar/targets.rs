@@ -54,18 +54,20 @@ fn parse_dynamic_target_count_prefix_lexed<'a>(
     let up_to = opt(primitives::phrase(&["up", "to"]))
         .parse_next(input)?
         .is_some();
-    let multiplier = alt((
+    let multiplier = opt(alt((
         primitives::kw("twice").value(2i32),
         (
             parse_leaf_number_prefix_lexed.verify_map(|amount| crate::util::narrowed_i32(amount)),
             alt((primitives::kw("time"), primitives::kw("times"))),
         )
             .map(|(amount, _)| amount),
-    ))
-    .parse_next(input)?;
+    )))
+    .parse_next(input)?
+    .unwrap_or(1);
     primitives::kw("x").parse_next(input)?;
     peek(alt((
         primitives::kw("target").void(),
+        primitives::kw("targets").void(),
         primitives::phrase(&["other", "target"]).void(),
     )))
     .parse_next(input)?;
@@ -453,6 +455,24 @@ mod tests {
             words(parsed.target_tokens),
             ["other", "target", "creatures"]
         );
+    }
+
+    #[test]
+    fn plain_dynamic_target_prefix_retains_plural_target_declarations() {
+        for (text, up_to, multiplier) in [
+            ("up to X targets", true, 1),
+            ("X target creatures", false, 1),
+            ("up to twice X targets", true, 2),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_dynamic_target_count_prefix(&tokens).unwrap();
+            assert_eq!(shape.count.is_up_to_dynamic_x(), up_to);
+            assert_eq!(shape.value, Value::XTimes(multiplier));
+            assert!(shape.target_tokens[0].is_any_word(&["target", "targets"]));
+        }
+        for text in ["up to X creatures", "X", "up to targets", "twice target creatures"] {
+            assert!(parse_dynamic_target_count_prefix(&lex_line(text, 0).unwrap()).is_none(), "{text}");
+        }
     }
 
     #[test]

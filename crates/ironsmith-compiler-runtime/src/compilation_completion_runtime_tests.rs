@@ -1430,3 +1430,696 @@ fn wrecking_crew_x_entry_and_optional_modal_trigger_cover_every_mode_subset() {
         }
     }
 }
+
+#[test]
+fn kicked_counter_entries_grant_recipient_owned_damage_triggers_with_exact_paid_costs() {
+    let cards = [
+        ("Necravolver", "Mana cost: {2}{B}\nType: Creature — Volver\nPower/Toughness: 2/2\nKicker {1}{G} and/or {W} (You may pay an additional {1}{G} and/or {W} as you cast this spell.)\nIf this creature was kicked with its {1}{G} kicker, it enters with two +1/+1 counters on it and with trample.\nIf this creature was kicked with its {W} kicker, it enters with a +1/+1 counter on it and with \"Whenever this creature deals damage, you gain that much life.\"", 1usize, ironsmith::static_abilities::StaticAbilityId::Trample),
+        ("Rakavolver", "Mana cost: {2}{R}\nType: Creature — Volver\nPower/Toughness: 2/2\nKicker {1}{W} and/or {U} (You may pay an additional {1}{W} and/or {U} as you cast this spell.)\nIf this creature was kicked with its {1}{W} kicker, it enters with two +1/+1 counters on it and with \"Whenever this creature deals damage, you gain that much life.\"\nIf this creature was kicked with its {U} kicker, it enters with a +1/+1 counter on it and with flying.", 0usize, ironsmith::static_abilities::StaticAbilityId::Flying),
+    ];
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1); let carol = PlayerId::from_index(2);
+    for (name,text,life_index,keyword) in cards {
+        let definition = compile_to_runtime_definition(name,text,false).unwrap();
+        assert!(definition.spell_effect.is_none(),"entry replacements remain entry rules");
+        assert_eq!(definition.optional_costs.len(),2,"independent kicker choices");
+        for mask in 0..4usize {
+            for case in ["noncombat","combat","control change","source leaves","blink"] {
+                let mut game = ironsmith::GameState::new(vec!["Alice".into(),"Bob".into(),"Carol".into()],20);
+                let spell = game.create_object_from_definition(&definition,alice,Zone::Stack);
+                let mut paid = ironsmith::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
+                for index in 0..2 {if mask & (1usize << index) != 0 {paid.pay(index);}}
+                game.object_mut(spell).unwrap().optional_costs_paid = paid.clone();
+                game.push_to_stack(ironsmith::game_state::StackEntry::new(spell,alice).with_optional_costs_paid(paid));
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                let mut source = *game.battlefield.iter().find(|id|game.object(**id).unwrap().name == name).unwrap();
+                let count = 2 * u32::from(mask & 1 != 0) + u32::from(mask & 2 != 0);
+                assert_eq!(game.counter_count(source,ironsmith::object::CounterType::PlusOnePlusOne),count,"{name}, mask={mask}, {case}");
+                assert_eq!(game.calculated_power(source),Some(2+count as i32));
+                assert_eq!(game.current_has_static_ability_id(source,keyword),mask & (1usize << (1-life_index)) != 0);
+                assert!(!game.current_has_static_ability_id(source,ironsmith::static_abilities::StaticAbilityId::Lifelink),"life gain is triggered, not immediate lifelink");
+                if case == "blink" {
+                    let exile = game.move_object_by_effect(source,Zone::Exile).unwrap();
+                    source = game.move_object_by_effect(exile,Zone::Battlefield).unwrap();
+                    assert_eq!(game.counter_count(source,ironsmith::object::CounterType::PlusOnePlusOne),0,"new entry has no kicker payments");
+                    assert!(!game.current_has_static_ability_id(source,keyword));
+                }
+                if case == "control change" {game.set_current_controller(source,bob).unwrap();}
+                let controller = if case == "control change" {bob} else {alice};
+                let mut queue = ironsmith::triggers::TriggerQueue::new();
+                ironsmith::game_loop::drain_pending_trigger_events(&mut game,&mut queue);
+                assert!(queue.entries.is_empty(),"entry itself is not a damage trigger");
+                let amount = if case == "combat" {game.calculated_power(source).unwrap()} else {3};
+                let damage = Effect::new(ironsmith::effects::DealDamageEffect::new(amount,ChooseSpec::SpecificPlayer(carol)).with_combat(case == "combat"));
+                game.push_to_stack(ironsmith::game_state::StackEntry::ability(source,controller,vec![damage]));
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                assert_eq!(game.player(carol).unwrap().life,20-amount);
+                assert_eq!(game.player(alice).unwrap().life,20,"gain waits for the trigger to resolve");
+                assert_eq!(game.player(bob).unwrap().life,20);
+                ironsmith::game_loop::drain_pending_trigger_events(&mut game,&mut queue);
+                let triggers = case != "blink" && mask & (1usize << life_index) != 0;
+                assert_eq!(queue.entries.len(),usize::from(triggers),"{name}, mask={mask}, {case}: only exact life kicker grants the trigger");
+                if case == "source leaves" {game.move_object_by_effect(source,Zone::Graveyard).unwrap();}
+                ironsmith::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
+                while !game.stack.is_empty() {ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();}
+                for player in [alice,bob] {assert_eq!(game.player(player).unwrap().life,20+if triggers && player==controller {amount} else {0},"{name}, mask={mask}, {case}: controller at damage gets the actual amount");}
+            }
+        }
+    }
+}
+
+#[test]
+fn quoted_recipients_phoenix_token_targets_named_cards_and_preserves_resolution_dependencies() {
+    struct Targets { preferred: ironsmith::ObjectId, seen: Vec<ironsmith::ObjectId> }
+    impl ironsmith::decision::DecisionMaker for Targets {
+        fn decide_targets(&mut self, _: &ironsmith::GameState, context: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            assert_eq!(context.requirements.len(),1);
+            let requirement = &context.requirements[0];
+            self.seen = requirement.legal_targets.iter().filter_map(|t| match t {ironsmith::game_state::Target::Object(id)=>Some(*id),_=>None}).collect();
+            assert!(requirement.legal_targets.contains(&ironsmith::game_state::Target::Object(self.preferred)));
+            vec![ironsmith::game_state::Target::Object(self.preferred)]
+        }
+    }
+    let definition = compile_to_runtime_definition("Rekindling Phoenix", "Mana cost: {2}{R}{R}\nType: Creature — Phoenix\nPower/Toughness: 4/3\nFlying\nWhen this creature dies, create a 0/1 red Elemental creature token with \"At the beginning of your upkeep, sacrifice this token and return target card named Rekindling Phoenix from your graveyard to the battlefield. It gains haste until end of turn.\"",false).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for case in ["normal","new controller","target gone","token left"] {
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(),"Bob".into()],20);
+        let phoenix = game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+        assert!(game.current_has_static_ability_id(phoenix,ironsmith::static_abilities::StaticAbilityId::Flying));
+        game.push_to_stack(ironsmith::game_state::StackEntry::ability(phoenix,alice,vec![Effect::destroy(ChooseSpec::SpecificObject(phoenix))]));
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        ironsmith::game_loop::drain_pending_trigger_events(&mut game,&mut queue);
+        assert_eq!(queue.entries.len(),1,"death trigger");
+        ironsmith::game_loop::put_triggers_on_stack(&mut game,&mut queue).unwrap();
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        let token = *game.battlefield.iter().find(|id|game.object(**id).unwrap().kind == ironsmith::object::ObjectKind::Token).unwrap();
+        assert_eq!(game.calculated_power(token),Some(0)); assert_eq!(game.calculated_toughness(token),Some(1));
+        assert!(game.current_subtypes(token).unwrap().contains(&Subtype::Elemental));
+        assert_eq!(game.current_colors(token),Some(ironsmith::color::ColorSet::RED));
+        assert!(!game.current_has_static_ability_id(token,ironsmith::static_abilities::StaticAbilityId::Flying));
+        let controller = if case == "new controller" {bob} else {alice};
+        if controller == bob {game.set_current_controller(token,bob).unwrap();}
+        let first = game.create_object_from_definition(&definition,controller,Zone::Graveyard);
+        let preferred = game.create_object_from_definition(&definition,controller,Zone::Graveyard);
+        let foreign = game.create_object_from_definition(&definition,if controller==alice {bob} else {alice},Zone::Graveyard);
+        let unrelated = CardBuilder::new(CardId::new(),"Unrelated creature").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1,1)).build();
+        let unrelated = game.create_object_from_card(&unrelated,controller,Zone::Graveyard);
+        let event = ironsmith::triggers::TriggerEvent::new(ironsmith::events::phase::BeginningOfUpkeepEvent::new(controller),ironsmith::ProvNodeId::default());
+        for trigger in ironsmith::triggers::check_triggers(&game,&event) {queue.add(trigger);}
+        assert_eq!(queue.entries.len(),1,"token owns the upkeep trigger");
+        let mut dm = Targets{preferred,seen:vec![]};
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
+        assert_eq!(game.stack.len(),1,"{case}: a named graveyard target must be legal");
+        assert!(dm.seen.contains(&first) && dm.seen.contains(&preferred),"any copy with that name");
+        assert!(!dm.seen.contains(&foreign) && !dm.seen.contains(&unrelated),"only your named cards");
+        if case == "target gone" {game.move_object_by_effect(preferred,Zone::Exile).unwrap();}
+        if case == "token left" {game.move_object_by_effect(token,Zone::Exile).unwrap();}
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+        if case == "target gone" {assert!(game.object(token).is_some_and(|o|o.zone==Zone::Battlefield),"illegal only target stops the whole ability before sacrifice");}
+        else {
+            assert!(game.object(token).is_none_or(|o|o.zone!=Zone::Battlefield));
+            let returned = *game.battlefield.iter().find(|id|game.object(**id).unwrap().name == "Rekindling Phoenix").unwrap();
+            assert_eq!(game.controller_of_id(returned),Some(controller));
+            assert!(game.current_has_static_ability_id(returned,ironsmith::static_abilities::StaticAbilityId::Haste));
+            game.effect_store.continuous_effects.cleanup_end_of_turn();
+            game.refresh_continuous_state().unwrap();
+            assert!(!game.current_has_static_ability_id(returned,ironsmith::static_abilities::StaticAbilityId::Haste));
+        }
+    }
+}
+
+#[test]
+fn quoted_recipients_sparkshaper_animation_grants_owned_combat_scry_and_expires() {
+    struct Answers { selected: Vec<ironsmith::ObjectId>, viewers: Vec<PlayerId>, targets: usize }
+    impl ironsmith::decision::DecisionMaker for Answers {
+        fn decide_targets(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            self.targets += 1;
+            assert_eq!(ctx.requirements.len(),1);
+            let requirement = &ctx.requirements[0];
+            assert_eq!(requirement.min_targets,0);
+            assert!(self.selected.iter().all(|id|requirement.legal_targets.contains(&ironsmith::game_state::Target::Object(*id))));
+            self.selected.iter().map(|id|ironsmith::game_state::Target::Object(*id)).collect()
+        }
+        fn view_cards(&mut self, _: &ironsmith::GameState, player: PlayerId, _: &[ironsmith::ObjectId], _: &ironsmith::decisions::context::ViewCardsContext) {self.viewers.push(player);}
+    }
+    let definition = compile_to_runtime_definition("Sparkshaper Visionary", "Mana cost: {2}{U}\nType: Creature — Human Wizard\nPower/Toughness: 0/5\nAt the beginning of combat on your turn, choose any number of target planeswalkers you control. Until end of turn, they become 3/3 blue Bird creatures with flying, hexproof, and \"Whenever this creature deals combat damage to a player, scry 1.\" (They're no longer planeswalkers. Loyalty abilities can still be activated.)",false).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1); let carol = PlayerId::from_index(2);
+    let mut loyalty = ironsmith::ability::Ability::activated_with_timing(
+        ironsmith::cost::TotalCost::from_cost(ironsmith::costs::Cost::remove_counters(ironsmith::object::CounterType::Loyalty,1)),
+        vec![Effect::draw(1)],ironsmith::ability::ActivationTiming::SorcerySpeed,
+    );
+    let ironsmith::ability::AbilityKind::Activated(activated) = &mut loyalty.kind else {unreachable!()}; activated.is_loyalty_ability = true;
+    let walker = ironsmith::cards::builders::CardDefinitionBuilder::new(CardId::new(),"Walker fixture").card_types(vec![CardType::Planeswalker]).with_ability(loyalty).build();
+    for case in ["normal","source leaves","recipient control","parent damage","noncombat","end turn","zero targets"] {
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(),"Bob".into(),"Carol".into()],20);
+        let source = game.create_object_from_definition(&definition,alice,Zone::Battlefield);
+        let first = game.create_object_from_definition(&walker,alice,Zone::Battlefield);
+        let second = game.create_object_from_definition(&walker,alice,Zone::Battlefield);
+        let foreign = game.create_object_from_definition(&walker,bob,Zone::Battlefield);
+        for id in [first,second,foreign] {game.add_counters(id,ironsmith::object::CounterType::Loyalty,4);}
+        let library = CardBuilder::new(CardId::new(),"Scry fixture").card_types(vec![CardType::Land]).build();
+        for player in [alice,bob] {game.create_object_from_card(&library,player,Zone::Library);}
+        let event = |player| ironsmith::triggers::TriggerEvent::new(ironsmith::events::phase::BeginningOfCombatEvent::new(player),ironsmith::ProvNodeId::default());
+        assert!(ironsmith::triggers::check_triggers(&game,&event(bob)).is_empty(),"your turn");
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        for trigger in ironsmith::triggers::check_triggers(&game,&event(alice)) {queue.add(trigger);}
+        assert_eq!(queue.entries.len(),1);
+        let selected = if case == "zero targets" {vec![]} else {vec![first,second]};
+        let mut dm = Answers{selected:selected.clone(),viewers:vec![],targets:0};
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
+        assert_eq!(dm.targets,1,"targets are announced with the trigger");
+        assert_eq!(game.stack[0].targets,selected.iter().map(|id|ironsmith::game_state::Target::Object(*id)).collect::<Vec<_>>());
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        assert_eq!(game.current_card_types(foreign),Some(vec![CardType::Planeswalker]));
+        assert_eq!(game.calculated_power(source),Some(0),"grant does not animate its source");
+        for id in selected {
+            assert_eq!(game.current_card_types(id),Some(vec![CardType::Creature]));
+            assert_eq!(game.calculated_power(id),Some(3)); assert_eq!(game.calculated_toughness(id),Some(3));
+            assert_eq!(game.current_colors(id),Some(ironsmith::color::ColorSet::BLUE));
+            assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Bird));
+            for keyword in [ironsmith::static_abilities::StaticAbilityId::Flying,ironsmith::static_abilities::StaticAbilityId::Hexproof] {assert!(game.current_has_static_ability_id(id,keyword));}
+            assert_eq!(game.counter_count(id,ironsmith::object::CounterType::Loyalty),4);
+            assert!(game.current_abilities(id).unwrap().iter().any(|a|matches!(&a.kind,ironsmith::ability::AbilityKind::Activated(a) if a.is_loyalty_ability())));
+        }
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        assert!(ironsmith::decision::compute_legal_actions(&game,alice).unwrap().iter().any(|a|matches!(a,ironsmith::decision::LegalAction::ActivateAbility{source,..} if *source==first)),"loyalty activation remains legal on a creature");
+        if case == "source leaves" {game.move_object_by_effect(source,Zone::Graveyard).unwrap();}
+        if case == "recipient control" {game.set_current_controller(first,bob).unwrap();}
+        if case == "end turn" {game.effect_store.continuous_effects.cleanup_end_of_turn();game.refresh_continuous_state().unwrap();assert_eq!(game.current_card_types(first),Some(vec![CardType::Planeswalker]));}
+        if case == "zero targets" {assert_eq!(game.current_card_types(first),Some(vec![CardType::Planeswalker]));continue;}
+        let damager = if case == "parent damage" {source} else {first};
+        let controller = if case == "recipient control" {bob} else {alice};
+        let damage = Effect::new(ironsmith::effects::DealDamageEffect::new(3,ChooseSpec::SpecificPlayer(carol)).with_combat(case != "noncombat"));
+        game.push_to_stack(ironsmith::game_state::StackEntry::ability(damager,controller,vec![damage]));
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();
+        ironsmith::game_loop::drain_pending_trigger_events(&mut game,&mut queue);
+        let triggers = !matches!(case,"parent damage"|"noncombat"|"end turn");
+        assert_eq!(queue.entries.len(),usize::from(triggers),"{case}: only the recipient's combat damage");
+        if triggers {assert_eq!(queue.entries[0].controller,controller);}
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game,&mut queue,&mut dm).unwrap();
+        while !game.stack.is_empty() {ironsmith::game_loop::resolve_stack_entry_with(&mut game,&mut dm).unwrap();}
+        assert_eq!(dm.viewers,if triggers {vec![controller]} else {vec![]},"{case}: recipient controller scries");
+    }
+}
+
+#[test]
+fn attack_damage_swordjack_counts_live_artifacts_and_keeps_the_attacked_recipient() {
+    use ironsmith::events::combat::{AttackEventTarget, CreatureAttackedEvent};
+    let definition = compile_to_runtime_definition("Fathom Fleet Swordjack", "Mana cost: {3}{R}\nType: Creature — Orc Pirate\nPower/Toughness: 4/3\nWhenever this creature attacks, it deals damage to the player or planeswalker it's attacking equal to the number of artifacts you control.\nEncore {5}{R} ({5}{R}, Exile this card from your graveyard: For each opponent, create a token copy that attacks that opponent this turn if able. They gain haste. Sacrifice them at the beginning of the next end step. Activate only as a sorcery.)", false).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1); let carol = PlayerId::from_index(2);
+    for count in [0, 1, 3] {
+        for case in ["player", "walker", "battle", "source leaves", "artifact changes", "walker leaves"] {
+            let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            let artifact = CardBuilder::new(CardId::new(), "Count fixture").card_types(vec![CardType::Artifact]).build();
+            for _ in 0..count { game.create_object_from_card(&artifact, alice, Zone::Battlefield); }
+            for _ in 0..4 { game.create_object_from_card(&artifact, carol, Zone::Battlefield); }
+            game.create_object_from_card(&artifact, alice, Zone::Hand);
+            let walker = CardBuilder::new(CardId::new(), "Attacked fixture").card_types(vec![CardType::Planeswalker]).build();
+            let walker = game.create_object_from_card(&walker, bob, Zone::Battlefield);
+            game.add_counters(walker, ironsmith::object::CounterType::Loyalty, 10);
+            let battle = CardBuilder::new(CardId::new(), "Battle fixture").card_types(vec![CardType::Battle]).build();
+            let battle = game.create_object_from_card(&battle, bob, Zone::Battlefield);
+            let attacked = match case {
+                "walker" | "walker leaves" => AttackEventTarget::Planeswalker(walker),
+                "battle" => AttackEventTarget::Battle(battle),
+                _ => AttackEventTarget::Player(bob),
+            };
+            let event = ironsmith::triggers::TriggerEvent::new(CreatureAttackedEvent::new(source, attacked), ironsmith::ProvNodeId::default());
+            let mut queue = ironsmith::triggers::TriggerQueue::new();
+            for trigger in ironsmith::triggers::check_triggers(&game, &event) { queue.add(trigger); }
+            assert_eq!(queue.entries.len(), 1);
+            ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+            assert!(game.stack[0].targets.is_empty(), "attacked recipient is not a target choice");
+            if case == "source leaves" { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+            if case == "artifact changes" { game.create_object_from_card(&artifact, alice, Zone::Battlefield); }
+            if case == "walker leaves" { game.move_object_by_effect(walker, Zone::Graveyard).unwrap(); }
+            ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            let amount = count + i32::from(case == "artifact changes");
+            assert_eq!(game.player(alice).unwrap().life, 20);
+            assert_eq!(game.player(carol).unwrap().life, 20);
+            assert_eq!(game.player(bob).unwrap().life, 20 - if matches!(case, "player" | "source leaves" | "artifact changes") { amount } else { 0 }, "{case}, {count}");
+            if case != "walker leaves" { assert_eq!(game.counter_count(walker, ironsmith::object::CounterType::Loyalty), (10 - if case == "walker" { amount } else { 0 }) as u32, "{case}, {count}"); }
+        }
+    }
+}
+
+#[test]
+fn attack_damage_ian_announces_one_target_and_checks_modified_at_both_times() {
+    struct Answers { target: ironsmith::game_state::Target, accept: bool, declarations: usize }
+    impl ironsmith::decision::DecisionMaker for Answers {
+        fn decide_targets(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            self.declarations += 1;
+            assert_eq!(ctx.requirements.len(), 1);
+            assert!(ctx.requirements[0].legal_targets.contains(&self.target));
+            vec![self.target]
+        }
+        fn decide_boolean(&mut self, _: &ironsmith::GameState, _: &ironsmith::decisions::context::BooleanContext) -> bool { self.accept }
+    }
+    let definition = compile_to_runtime_definition("Ian the Reckless", "Mana cost: {1}{R}\nType: Legendary Creature — Human Warrior\nPower/Toughness: 2/1\nWhenever Ian the Reckless attacks, if it's modified, you may have it deal damage equal to its power to you and any target. (Equipment, Auras you control, and counters are modifications.)", false).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for case in ["normal", "unmodified", "removed counters", "power changes", "decline", "self player", "creature", "target gone"] {
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        if case != "unmodified" { game.add_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 1); }
+        let card = CardBuilder::new(CardId::new(), "Damage recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(0, 10)).build();
+        let recipient = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let target = match case {
+            "self player" => ironsmith::game_state::Target::Player(alice),
+            "creature" | "target gone" => ironsmith::game_state::Target::Object(recipient),
+            _ => ironsmith::game_state::Target::Player(bob),
+        };
+        let event = ironsmith::triggers::TriggerEvent::new(ironsmith::events::combat::CreatureAttackedEvent::new(source, ironsmith::events::combat::AttackEventTarget::Player(bob)), ironsmith::ProvNodeId::default());
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        for trigger in ironsmith::triggers::check_triggers(&game, &event) { queue.add(trigger); }
+        assert_eq!(queue.entries.len(), usize::from(case != "unmodified"), "intervening if at trigger time");
+        if case == "unmodified" { continue; }
+        let mut dm = Answers { target, accept: case != "decline", declarations: 0 };
+        ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        assert_eq!(dm.declarations, 1, "announce the explicit target before the may decision");
+        assert_eq!(game.stack[0].targets, vec![target]);
+        if case == "removed counters" { game.remove_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 1, Some(source), Some(alice)).unwrap(); }
+        if case == "power changes" { game.add_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 2); }
+        if case == "target gone" { game.move_object_by_effect(recipient, Zone::Exile).unwrap(); }
+        ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        let amount = if matches!(case, "removed counters" | "decline" | "target gone") { 0 } else if case == "power changes" { 5 } else { 3 };
+        assert_eq!(game.player(alice).unwrap().life, 20 - amount * if case == "self player" { 2 } else { 1 }, "{case}: fixed recipient and explicit recipient share the amount");
+        assert_eq!(game.player(bob).unwrap().life, 20 - if matches!(case, "normal" | "power changes") { amount } else { 0 }, "{case}");
+        if case == "creature" { assert_eq!(game.damage_on(recipient), amount as u32); }
+    }
+}
+
+#[test]
+fn draft_number_references_read_the_controllers_named_group_and_recheck_targets() {
+    let fire = compile_to_runtime_definition("Garbage Fire", "Mana cost: {2}{R}\nType: Instant\nReveal this card as you draft it and note how many cards you've drafted this draft round, including this card.\nGarbage Fire deals damage to target creature equal to the highest number you noted for cards named Garbage Fire.", false).unwrap();
+    let keeper = compile_to_runtime_definition("Custodi Peacekeeper", "Mana cost: {2}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/3\nReveal this card as you draft it and note how many cards you've drafted this draft round, including this card.\n{W}, {T}: Tap target creature with power less than or equal to the highest number you noted for cards named Custodi Peacekeeper.", false).unwrap();
+    let activation = keeper.abilities.iter().find_map(|a| match &a.kind { ironsmith::ability::AbilityKind::Activated(a) => Some(a), _ => None }).unwrap();
+    assert!(ironsmith_text::compiled_text::compiled_text_lines(&keeper).join(" ").contains("highest number you noted for cards named"));
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for (definition, is_fire) in [(&fire, true), (&keeper, false)] {
+        for case in ["normal", "no notes", "notes change", "target changes", "different controller"] {
+            let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            let name = if is_fire { "Garbage Fire" } else { "Custodi Peacekeeper" };
+            if case != "no notes" { game.set_draft_noted_highest_number(alice, name.to_uppercase(), 3); }
+            game.set_draft_noted_highest_number(bob, name, 1);
+            game.set_draft_noted_highest_number(alice, "Other draft group", 50);
+            let source = game.create_object_from_definition(definition, alice, if is_fire { Zone::Stack } else { Zone::Battlefield });
+            let controller = if case == "different controller" { bob } else { alice };
+            if controller == bob { game.set_current_controller(source, bob).unwrap(); }
+            let note = if controller == bob { 1 } else if case == "no notes" { 0 } else { 3 };
+            let mut fixtures = Vec::new();
+            for power in [-1, 0, 1, 3, 4, 7] {
+                let card = CardBuilder::new(CardId::new(), format!("Ordinary creature {power}")).card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(power, 20)).build();
+                let id = game.create_object_from_card(&card, bob, Zone::Battlefield);
+                fixtures.push((power, id));
+            }
+            let program = if is_fire { definition.spell_effect.as_ref().unwrap() } else { &activation.effects };
+            let requirements = ironsmith::game_loop::extract_target_requirements_from_program_with_modes(&game, program, controller, Some(source), None);
+            assert_eq!(requirements.len(), 1, "{name}, {case}: {program:#?}");
+            for (power, id) in &fixtures {
+                assert_eq!(requirements[0].legal_targets.contains(&ironsmith::game_state::Target::Object(*id)), is_fire || *power <= note, "{name}, {case}, power={power}: the draft group is not the target's name");
+            }
+            let recipient = fixtures.iter().find(|(power, _)| *power == note).unwrap().1;
+            let entry = if is_fire { ironsmith::game_state::StackEntry::new(source, controller) } else { ironsmith::game_state::StackEntry::ability(source, controller, program.clone()) };
+            game.push_to_stack(entry.with_targets(vec![ironsmith::game_state::Target::Object(recipient)]));
+            if case == "notes change" { game.set_draft_noted_highest_number(controller, name, 7); }
+            if case == "target changes" {
+                if is_fire { game.object_mut(recipient).unwrap().card_types = vec![CardType::Land].into(); }
+                else { game.add_counters(recipient, ironsmith::object::CounterType::PlusOnePlusOne, 4); }
+            }
+            ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+            if is_fire {
+                let amount = if case == "target changes" { 0 } else if case == "notes change" { 7 } else { note };
+                assert_eq!(game.damage_on(recipient), amount as u32, "{name}, {case}: use the ability controller's own named history");
+            } else {
+                assert_eq!(game.is_tapped(recipient), case != "target changes", "{case}: target legality is checked again at resolution");
+                if case == "notes change" {
+                    let fresh = ironsmith::game_loop::extract_target_requirements_from_program_with_modes(&game, program, controller, Some(source), None);
+                    assert!(fixtures.iter().all(|(_, id)| fresh[0].legal_targets.contains(&ironsmith::game_state::Target::Object(*id))));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn multikicker_damage_batroc_announces_up_to_kick_count_and_deals_current_power_to_each() {
+    struct Answers { selected: Vec<ironsmith::game_state::Target>, budget: usize }
+    impl ironsmith::decision::DecisionMaker for Answers {
+        fn decide_targets(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            assert_eq!(ctx.requirements.len(), 1);
+            assert_eq!(ctx.requirements[0].min_targets, 0);
+            assert_eq!(ctx.requirements[0].max_targets, Some(self.budget));
+            assert!(self.selected.iter().all(|target| ctx.requirements[0].legal_targets.contains(target)));
+            self.selected.clone()
+        }
+    }
+    let definition = compile_to_runtime_definition("Batroc the Leaper", "Mana cost: {1}{R}\nType: Legendary Creature — Human Villain\nPower/Toughness: 2/2\nMultikicker {2} (You may pay an additional {2} any number of times as you cast this spell.)\nBatroc enters with a +1/+1 counter on him for each time he was kicked.\nWhen Batroc enters, he deals damage equal to his power to each of up to X targets, where X is the number of times he was kicked.", false).unwrap();
+    assert_eq!(definition.optional_costs.len(), 1);
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1); let carol = PlayerId::from_index(2);
+    for kicks in 0..=3u32 {
+        for chosen in 0..=kicks as usize {
+            for case in ["normal", "power changes", "source leaves", "target gone"] {
+                let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+                let card = CardBuilder::new(CardId::new(), "Damage fixture").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(0, 20)).build();
+                let recipient = game.create_object_from_card(&card, bob, Zone::Battlefield);
+                let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+                let mut paid = ironsmith::cost::OptionalCostsPaid::from_costs(&definition.optional_costs);
+                paid.pay_times(0, kicks);
+                assert_eq!(paid.kick_count(), kicks);
+                game.object_mut(spell).unwrap().optional_costs_paid = paid.clone();
+                game.push_to_stack(ironsmith::game_state::StackEntry::new(spell, alice).with_optional_costs_paid(paid));
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                let source = *game.battlefield.iter().find(|id| game.object(**id).unwrap().name == "Batroc the Leaper").unwrap();
+                assert_eq!(game.counter_count(source, ironsmith::object::CounterType::PlusOnePlusOne), kicks);
+                let mut queue = ironsmith::triggers::TriggerQueue::new();
+                ironsmith::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+                assert_eq!(queue.entries.len(), 1);
+                let options = [ironsmith::game_state::Target::Object(recipient), ironsmith::game_state::Target::Player(bob), ironsmith::game_state::Target::Player(carol)];
+                let mut dm = Answers { selected: options[..chosen].to_vec(), budget: kicks as usize };
+                ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+                assert_eq!(game.stack[0].targets, dm.selected, "targets are announced when the trigger is stacked");
+                if case == "power changes" { game.add_counters(source, ironsmith::object::CounterType::PlusOnePlusOne, 2); }
+                if case == "source leaves" { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+                if case == "target gone" { game.move_object_by_effect(recipient, Zone::Exile).unwrap(); }
+                ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+                let amount = 2 + kicks as i32 + if case == "power changes" { 2 } else { 0 };
+                assert_eq!(game.player(alice).unwrap().life, 20);
+                assert_eq!(game.player(bob).unwrap().life, 20 - if chosen >= 2 { amount } else { 0 }, "kicks={kicks}, chosen={chosen}, {case}");
+                assert_eq!(game.player(carol).unwrap().life, 20 - if chosen >= 3 { amount } else { 0 }, "kicks={kicks}, chosen={chosen}, {case}");
+                if case != "target gone" { assert_eq!(game.damage_on(recipient), if chosen >= 1 { amount as u32 } else { 0 }, "kicks={kicks}, chosen={chosen}, {case}: each recipient gets the full power"); }
+                if kicks == 3 && chosen == 0 && case == "normal" {
+                    let exile = game.move_object_by_effect(source, Zone::Exile).unwrap();
+                    let returned = game.move_object_by_effect(exile, Zone::Battlefield).unwrap();
+                    assert_eq!(game.counter_count(returned, ironsmith::object::CounterType::PlusOnePlusOne), 0);
+                    ironsmith::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+                    assert_eq!(queue.entries.len(), 1);
+                    dm.budget = 0;
+                    ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+                    assert!(game.stack[0].targets.is_empty(), "a fresh noncast entry cannot reuse kicker payments");
+                    ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn dynamic_support_crowd_uses_cast_x_assist_payments_and_snapshot_trample_recipients() {
+    use ironsmith::decision::{DecisionMaker, LegalAction};
+    use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm, apply_decision_context_with_dm};
+    use ironsmith::mana::ManaSymbol;
+    struct Answers { x: u32, help: u32, selected: Vec<ironsmith::game_state::Target> }
+    impl DecisionMaker for Answers {
+        fn decide_number(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::NumberContext) -> u32 {
+            assert_eq!(ctx.player, PlayerId::from_index(0), "the caster chooses X");
+            assert!(ctx.is_x_value);
+            self.x
+        }
+        fn decide_options(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            let index = if ctx.description.starts_with("Choose another player to assist") {
+                assert_eq!(ctx.player, PlayerId::from_index(0));
+                usize::from(self.help > 0)
+            } else if ctx.description.starts_with("Choose how much generic mana") {
+                assert_eq!(ctx.player, PlayerId::from_index(1));
+                self.help as usize
+            } else if ctx.description.starts_with("Confirm mana payment for") { 1 }
+            else { return ctx.options.iter().find(|option| option.legal).map(|option| vec![option.index]).unwrap_or_default(); };
+            assert!(ctx.options.iter().any(|option| option.index == index && option.legal), "{}: index={index}", ctx.description);
+            vec![index]
+        }
+        fn decide_targets(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            assert_eq!(ctx.requirements.len(), 1);
+            assert_eq!(ctx.requirements[0].min_targets, 0);
+            assert_eq!(ctx.requirements[0].max_targets, Some(self.x as usize));
+            assert!(self.selected.iter().all(|target| ctx.requirements[0].legal_targets.contains(target)));
+            self.selected.clone()
+        }
+    }
+    let (artifact, direct) = super::compile_to_artifact("The Crowd Goes Wild", "Mana cost: {X}{G}\nType: Sorcery\nAssist (Another player can pay up to {X} of this spell's cost. You choose the value of X.)\nSupport X. (Put a +1/+1 counter on each of up to X target creatures.)\nEach creature with a +1/+1 counter on it gains trample until end of turn.", false).unwrap();
+    let restored: ironsmith_compiled_artifact::CompiledCardArtifact = serde_json::from_slice(&serde_json::to_vec(&artifact).unwrap()).unwrap();
+    restored.validate().unwrap();
+    let roundtrip = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for definition in [direct, roundtrip] {
+        for x in 0..=3u32 {
+            for help in 0..=x {
+                for chosen in 0..=x as usize {
+                    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                    game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+                    game.turn.step = None;
+                    game.turn.active_player = alice;
+                    game.turn.priority_player = Some(alice);
+                    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Green, 1);
+                    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, x - help);
+                    game.player_mut(bob).unwrap().mana_pool.add(ManaSymbol::Colorless, help);
+                    let fixture = CardBuilder::new(CardId::new(), "Support recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 4)).build();
+                    let mut creatures = Vec::new();
+                    for (player, counters) in [(alice, 0), (bob, 0), (alice, 1), (bob, 1), (bob, 0)] {
+                        let id = game.create_object_from_card(&fixture, player, Zone::Battlefield);
+                        if counters > 0 { game.add_counters(id, ironsmith::object::CounterType::PlusOnePlusOne, counters); }
+                        creatures.push((id, counters));
+                    }
+                    let other = CardBuilder::new(CardId::new(), "Noncreature counter recipient").card_types(vec![CardType::Artifact]).build();
+                    let other = game.create_object_from_card(&other, alice, Zone::Battlefield);
+                    game.add_counters(other, ironsmith::object::CounterType::PlusOnePlusOne, 1);
+                    let hand = game.create_object_from_definition(&definition, alice, Zone::Hand);
+                    let stable = game.object(hand).unwrap().stable_id;
+                    assert!(game.current_has_static_ability_id(hand, ironsmith::static_abilities::StaticAbilityId::Assist));
+                    let action = LegalAction::CastSpell { spell_id: hand, from_zone: Zone::Hand, casting_method: ironsmith::alternative_cast::CastingMethod::Normal };
+                    assert!(ironsmith::decision::compute_legal_actions(&game, alice).unwrap().contains(&action), "Assist makes the announced generic cost payable");
+                    let mut dm = Answers { x, help, selected: creatures[..chosen].iter().map(|(id, _)| ironsmith::game_state::Target::Object(*id)).collect() };
+                    let mut state = PriorityLoopState::new(game.players.len());
+                    let mut queue = ironsmith::triggers::TriggerQueue::new();
+                    let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+                    for _ in 0..60 {
+                        if state.pending_cast.is_none() && state.pending_method_selection.is_none() { break; }
+                        let ironsmith::GameProgress::NeedsDecisionCtx(context) = progress else { panic!("pending cast without decision"); };
+                        progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &context, &mut dm).unwrap();
+                    }
+                    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
+                    let cast = game.find_object_by_stable_id(stable).unwrap();
+                    assert_eq!(game.object(cast).unwrap().x_value, Some(x));
+                    assert_eq!(game.object(cast).unwrap().mana_spent_to_cast.total(), x + 1);
+                    assert_eq!(game.object(cast).unwrap().caster_mana_spent_to_cast, Some(x - help + 1));
+                    assert_eq!(game.player(alice).unwrap().mana_pool.total(), 0);
+                    assert_eq!(game.player(bob).unwrap().mana_pool.total(), 0);
+                    assert_eq!(game.stack[0].targets, dm.selected);
+                    ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+                    for (index, (id, before)) in creatures.iter().enumerate() {
+                        let count = before + u32::from(index < chosen);
+                        assert_eq!(game.counter_count(*id, ironsmith::object::CounterType::PlusOnePlusOne), count);
+                        assert_eq!(game.current_has_static_ability_id(*id, ironsmith::static_abilities::StaticAbilityId::Trample), count > 0, "x={x}, help={help}, chosen={chosen}, index={index}: includes opponents' creatures with existing counters");
+                    }
+                    assert!(!game.current_has_static_ability_id(other, ironsmith::static_abilities::StaticAbilityId::Trample));
+                    let late = creatures[4].0;
+                    game.add_counters(late, ironsmith::object::CounterType::PlusOnePlusOne, 1);
+                    assert!(!game.current_has_static_ability_id(late, ironsmith::static_abilities::StaticAbilityId::Trample), "the resolving grant samples recipients once");
+                    game.effect_store.continuous_effects.cleanup_end_of_turn();
+                    game.refresh_continuous_state().unwrap();
+                    assert!(creatures.iter().all(|(id, _)| !game.current_has_static_ability_id(*id, ironsmith::static_abilities::StaticAbilityId::Trample)));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn dynamic_support_legacy_payload_preserves_fixed_target_metadata() {
+    let legacy: ironsmith_core::SupportEffect = serde_json::from_str(r#"{"amount":2}"#).unwrap();
+    assert!(legacy.amount_value.is_none());
+    assert_eq!(serde_json::to_value(&legacy).unwrap(), serde_json::json!({"amount":2}));
+    let native = ironsmith::effects::SupportEffect::with_value(legacy.value());
+    assert_eq!(ironsmith::effects::EffectExecutor::get_target_count(&native), Some(ironsmith::effect::ChoiceCount::up_to(2)));
+    let ironsmith::target::ChooseSpec::Target(inner) = &native.target else { panic!("fixed target declaration"); };
+    let ironsmith::target::ChooseSpec::Object(filter) = inner.as_ref() else { panic!("creature filter"); };
+    assert!(filter.other);
+    assert_eq!(filter.card_types, [CardType::Creature]);
+}
+
+#[test]
+fn counter_kinds_animation_module_selects_one_existing_kind_on_objects_or_players() {
+    use ironsmith::game_loop::*;
+    use ironsmith::object::CounterType;
+    struct Answers { target: ironsmith::game_state::Target, kind: CounterType, choices: usize, kinds: usize, accept: bool }
+    impl ironsmith::decision::DecisionMaker for Answers {
+        fn decide_targets(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::TargetsContext) -> Vec<ironsmith::game_state::Target> {
+            assert_eq!(ctx.requirements.len(), 1);
+            assert!(ctx.requirements[0].legal_targets.contains(&self.target));
+            if matches!(self.target, ironsmith::game_state::Target::Player(_)) { assert!(ctx.requirements[0].description.contains("player")); }
+            vec![self.target]
+        }
+        fn decide_options(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            if ctx.description == "Choose a counter kind" {
+                self.choices += 1;
+                assert_eq!(ctx.options.len(), self.kinds, "choose only among the target's existing kinds");
+                let label = format!("{:?}", self.kind).to_ascii_lowercase();
+                return vec![ctx.options.iter().find(|o| o.description.contains(&label)).expect("only a present counter kind can be chosen").index];
+            }
+            if ctx.description.starts_with("Confirm mana payment for") { return vec![1]; }
+            ctx.options.iter().find(|o| o.legal).map(|o| vec![o.index]).unwrap_or_default()
+        }
+        fn decide_boolean(&mut self, _: &ironsmith::GameState, _: &ironsmith::decisions::context::BooleanContext) -> bool { self.accept }
+    }
+    let definition = compile_to_runtime_definition("Animation Module", "Mana cost: {1}\nType: Artifact\nWhenever one or more +1/+1 counters are put on a permanent you control, you may pay {1}. If you do, create a 1/1 colorless Servo artifact creature token.\n{3}, {T}: Choose a counter on target permanent or player. Give that permanent or player another counter of that kind.", false).unwrap();
+    let index = definition.abilities.iter().position(|a| matches!(&a.kind, ironsmith::ability::AbilityKind::Activated(_))).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for case in ["own permanent", "opponent permanent", "own player", "opponent player", "no object counters", "no player counters", "one kind", "source leaves", "target gone", "decline token"] {
+        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.turn.priority_player = Some(alice);
+        game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Colorless, 4);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let fixture = CardBuilder::new(CardId::new(), "Counter recipient").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 4)).build();
+        let object = game.create_object_from_card(&fixture, if case == "opponent permanent" { bob } else { alice }, Zone::Battlefield);
+        let is_player = matches!(case, "own player" | "opponent player" | "no player counters");
+        let player = if case == "own player" { alice } else { bob };
+        let absent = matches!(case, "no object counters" | "no player counters");
+        if is_player && !absent {
+            game.add_player_counters_with_source(player, CounterType::Energy, 2, None, None).unwrap();
+            game.add_player_counters_with_source(player, CounterType::Poison, 3, None, None).unwrap();
+        } else if !absent {
+            game.object_mut(object).unwrap().counters.insert(CounterType::Charge, 3);
+            if case != "one kind" { game.object_mut(object).unwrap().counters.insert(CounterType::PlusOnePlusOne, 2); }
+        }
+        let kind = match case {
+            "own player" => CounterType::Energy,
+            "opponent player" => CounterType::Poison,
+            "own permanent" | "opponent permanent" | "decline token" => CounterType::PlusOnePlusOne,
+            _ => CounterType::Charge,
+        };
+        let target = if is_player { ironsmith::game_state::Target::Player(player) } else { ironsmith::game_state::Target::Object(object) };
+        let mut dm = Answers { target, kind, choices: 0, kinds: if case == "one kind" { 1 } else { 2 }, accept: case != "decline token" };
+        let mut state = PriorityLoopState::new(2);
+        let mut queue = ironsmith::triggers::TriggerQueue::new();
+        let action = ironsmith::decision::LegalAction::ActivateAbility { source, ability_index: index };
+        assert!(ironsmith::decision::compute_legal_actions(&game, alice).unwrap().contains(&action), "{case}: a counterless recipient is still a legal target");
+        let mut progress = apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::PriorityAction(action), &mut dm).unwrap();
+        for _ in 0..40 {
+            if state.pending_activation.is_none() && !game.stack.is_empty() { break; }
+            let ironsmith::GameProgress::NeedsDecisionCtx(ctx) = progress else { break; };
+            progress = apply_decision_context_with_dm(&mut game, &mut queue, &mut state, &ctx, &mut dm).unwrap();
+        }
+        assert!(state.pending_activation.is_none());
+        assert_eq!(game.stack.len(), 1);
+        assert_eq!(game.stack[0].targets, vec![target]);
+        assert!(game.is_tapped(source));
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), 1);
+        if case == "source leaves" { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
+        if case == "target gone" { game.move_object_by_effect(object, Zone::Exile).unwrap(); }
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert_eq!(dm.choices, usize::from(!absent && case != "target gone"), "{case}: choose one kind at resolution, never every kind");
+        if is_player {
+            for (counter, before) in [(CounterType::Energy, 2), (CounterType::Poison, 3)] {
+                assert_eq!(game.player(player).unwrap().counter_count(counter), if absent { 0 } else { before + u32::from(counter == kind) });
+            }
+        } else if case != "target gone" {
+            for (counter, before) in [(CounterType::Charge, 3), (CounterType::PlusOnePlusOne, if case == "one kind" { 0 } else { 2 })] {
+                assert_eq!(game.counter_count(object, counter), if absent { 0 } else { before + u32::from(counter == kind) }, "{case}: add exactly one of the chosen kind");
+            }
+        }
+        drain_pending_trigger_events(&mut game, &mut queue);
+        let trigger = matches!(case, "own permanent" | "decline token");
+        assert_eq!(queue.entries.len(), usize::from(trigger), "{case}: only your permanent receiving a +1/+1 counter triggers");
+        put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut dm).unwrap();
+        while !game.stack.is_empty() { resolve_stack_entry_with(&mut game, &mut dm).unwrap(); }
+        let tokens = game.battlefield.iter().copied().filter(|id| game.object(*id).unwrap().kind == ironsmith::object::ObjectKind::Token).collect::<Vec<_>>();
+        assert_eq!(tokens.len(), usize::from(case == "own permanent"));
+        if let Some(token) = tokens.first() {
+            assert_eq!(game.calculated_power(*token), Some(1)); assert_eq!(game.calculated_toughness(*token), Some(1));
+            assert_eq!(game.current_colors(*token), Some(ironsmith::color::ColorSet::default()));
+            assert!(game.current_subtypes(*token).unwrap().contains(&Subtype::Servo));
+            let types = game.current_card_types(*token).unwrap();
+            assert!(types.contains(&CardType::Artifact) && types.contains(&CardType::Creature));
+        }
+        assert_eq!(game.player(alice).unwrap().mana_pool.total(), if case == "own permanent" { 0 } else { 1 });
+    }
+}
+
+#[test]
+fn counter_kinds_bribe_taker_captures_each_distinct_kind_and_chooses_independently() {
+    use ironsmith::object::CounterType;
+    struct Answers { mask: usize, kinds: Vec<CounterType>, seen: usize }
+    impl ironsmith::decision::DecisionMaker for Answers {
+        fn decide_options(&mut self, _: &ironsmith::GameState, ctx: &ironsmith::decisions::context::SelectOptionsContext) -> Vec<usize> {
+            assert_eq!(ctx.player, PlayerId::from_index(0), "the queued ability controller chooses");
+            assert_eq!(ctx.options.len(), 3);
+            assert!(ctx.options.iter().all(|o| !o.description.contains("Remove")));
+            let expected = format!("Choose for {:?} counter", self.kinds[self.seen]).to_ascii_lowercase();
+            assert_eq!(ctx.description.to_ascii_lowercase(), expected);
+            let choice = self.mask / 3usize.pow(self.seen as u32) % 3;
+            self.seen += 1;
+            vec![choice]
+        }
+    }
+    let (artifact, direct) = super::compile_to_artifact("Bribe Taker", "Mana cost: {5}{G}\nType: Creature — Rhino Warrior\nPower/Toughness: 6/6\nTrample\nWhen this creature enters, for each kind of counter on permanents you control, you may put your choice of a +1/+1 counter or a counter of that kind on this creature.", false).unwrap();
+    let restored: ironsmith_compiled_artifact::CompiledCardArtifact = serde_json::from_slice(&serde_json::to_vec(&artifact).unwrap()).unwrap();
+    restored.validate().unwrap();
+    let roundtrip = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap();
+    let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+    for definition in [direct, roundtrip] {
+        let trigger = definition.abilities.iter().find_map(|a| match &a.kind { ironsmith::ability::AbilityKind::Triggered(t) => Some(t), _ => None }).unwrap();
+        let kernel = trigger.effects.all_effects().into_iter().find_map(|e| e.downcast_ref::<ironsmith::effects::ForEachCounterKindPutOrRemoveEffect>()).unwrap();
+        assert_eq!(kernel.alternative_put_counter, Some(CounterType::PlusOnePlusOne));
+        assert!(kernel.all_kinds && kernel.optional_action);
+        assert!(!kernel.put_only && !kernel.choose_target_per_kind);
+        assert!(kernel.counter_source.as_ref().is_some_and(|spec| matches!(spec.base(), ChooseSpec::All(filter) if filter.controller == Some(ironsmith::target::PlayerFilter::You))));
+        for case in ["normal", "controller changes", "new kind", "no kinds", "sources change", "source leaves"] {
+            let masks = if matches!(case, "normal" | "controller changes") { 27 } else { 1 };
+            for ordinal in 0..masks {
+                let mask = if case == "new kind" { 13 } else { ordinal };
+                let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+                let artifact = CardBuilder::new(CardId::new(), "Counter source artifact").card_types(vec![CardType::Artifact]).build();
+                let first = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+                game.object_mut(first).unwrap().counters.insert(CounterType::Age, 2);
+                game.object_mut(first).unwrap().counters.insert(CounterType::Charge, 4);
+                game.object_mut(first).unwrap().counters.insert(CounterType::Vigilance, 0);
+                let creature = CardBuilder::new(CardId::new(), "Duplicate counter kind source").card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(1, 4)).build();
+                let second = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+                game.object_mut(second).unwrap().counters.insert(CounterType::Charge, 7);
+                if case != "new kind" { game.object_mut(second).unwrap().counters.insert(CounterType::PlusOnePlusOne, 1); }
+                let foreign = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+                game.object_mut(foreign).unwrap().counters.insert(CounterType::Energy, 9);
+                let exiled = game.create_object_from_card(&artifact, alice, Zone::Exile);
+                game.object_mut(exiled).unwrap().counters.insert(CounterType::Deathtouch, 3);
+                game.add_player_counters_with_source(alice, CounterType::Poison, 2, None, None).unwrap();
+                if case == "no kinds" { game.object_mut(first).unwrap().counters.clear(); game.object_mut(second).unwrap().counters.clear(); }
+                let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+                game.push_to_stack(ironsmith::game_state::StackEntry::new(spell, alice));
+                ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
+                let source = *game.battlefield.iter().find(|id| game.object(**id).unwrap().name == "Bribe Taker").unwrap();
+                assert!(game.current_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Trample));
+                let mut queue = ironsmith::triggers::TriggerQueue::new();
+                ironsmith::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+                assert_eq!(queue.entries.len(), 1);
+                ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+                assert!(game.stack[0].targets.is_empty());
+                if case == "controller changes" { game.set_current_controller(source, bob).unwrap(); }
+                if case == "sources change" { game.object_mut(first).unwrap().counters.clear(); }
+                let graveyard = if case == "source leaves" { Some(game.move_object_by_effect(source, Zone::Graveyard).unwrap()) } else { None };
+                let kinds = match case {
+                    "no kinds" | "source leaves" => vec![],
+                    "new kind" => vec![CounterType::Age, CounterType::Charge],
+                    "sources change" => vec![CounterType::Charge, CounterType::PlusOnePlusOne],
+                    _ => vec![CounterType::Age, CounterType::Charge, CounterType::PlusOnePlusOne],
+                };
+                let mut dm = Answers { mask, kinds: kinds.clone(), seen: 0 };
+                ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+                assert_eq!(dm.seen, kinds.len(), "{case}, mask={mask}: quantities, duplicates, zero counts, foreign permanents and player counters do not add iterations");
+                let mut expected = std::collections::BTreeMap::new();
+                for (index, kind) in kinds.iter().enumerate() {
+                    let choice = mask / 3usize.pow(index as u32) % 3;
+                    if choice != 2 { *expected.entry(if choice == 1 { CounterType::PlusOnePlusOne } else { *kind }).or_insert(0u32) += 1; }
+                }
+                if let Some(graveyard) = graveyard { assert!(game.object(graveyard).unwrap().counters.is_empty(), "the new graveyard incarnation cannot receive these counters"); }
+                else {
+                    for kind in [CounterType::Age, CounterType::Charge, CounterType::PlusOnePlusOne, CounterType::Vigilance, CounterType::Energy, CounterType::Deathtouch, CounterType::Poison] {
+                        assert_eq!(game.counter_count(source, kind), *expected.get(&kind).unwrap_or(&0), "{case}, mask={mask}, kind={kind:?}");
+                    }
+                }
+                assert_eq!(game.counter_count(foreign, CounterType::Energy), 9);
+                assert_eq!(game.player(alice).unwrap().counter_count(CounterType::Poison), 2);
+            }
+        }
+    }
+}
