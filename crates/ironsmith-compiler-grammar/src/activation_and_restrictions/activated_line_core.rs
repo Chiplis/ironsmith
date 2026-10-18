@@ -62,7 +62,7 @@ fn parse_direct_controller_sacrifice_draw_program(
         return Ok(None);
     };
     let action_tokens = &tokens[..period_idx];
-    let timing_tokens = &tokens[period_idx + 1..];
+    let timing_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[period_idx + 1..]);
     if timing_tokens.len() != 5
         || !timing_tokens
             .iter()
@@ -111,9 +111,39 @@ fn parse_direct_controller_sacrifice_draw_program(
     {
         return Ok(None);
     }
+    // A named possessive identifies the sacrificed object, even inside a
+    // granted ability where the source will become the enchanted permanent.
+    // Preserve that name so lowering can bind it to the granting object.
+    let named_source = crate::grammar::source_surface_shapes::parse_named_surface(
+        &sacrifice_tokens[..sacrifice_idx - 1],
+    ).or_else(|| {
+        // Document preprocessing lowercases quoted rule tokens. An explicit
+        // possessive name still identifies the granting object in that view.
+        let name_tokens = &sacrifice_tokens[..sacrifice_idx - 1];
+        if name_tokens.first().is_none_or(|token| token.is_any_word(&[
+            "this", "that", "its", "their", "your", "the", "a", "an",
+            "each", "target", "enchanted", "equipped",
+        ])) {
+            return None;
+        }
+        let name = render_token_slice(name_tokens);
+        (name.ends_with("'s") || name.ends_with("’s"))
+            .then_some(crate::target::SourceReferenceSurface::FullName(name))
+    }).and_then(|mut surface| {
+        let name = match &mut surface {
+            crate::target::SourceReferenceSurface::FullName(name)
+            | crate::target::SourceReferenceSurface::ShortName(name) => name,
+            _ => return None,
+        };
+        let bare = name.strip_suffix("'s").or_else(|| name.strip_suffix("’s"))?;
+        *name = bare.to_string();
+        Some(surface)
+    });
+    let filter = named_source.map(ObjectFilter::source_with_surface)
+        .unwrap_or_else(|| ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()));
     let sacrifice = EffectAst::subject_verb_sacrifice(
         PlayerAst::ItsController,
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
+        filter,
         1,
         None,
     );

@@ -216,8 +216,9 @@ fn parse_granted_hand_evoke(
     // The granted trigger has no antecedent context for "it", which the
     // granted-ability reader would read as "a permanent you control"; name
     // the evoked permanent itself (CR 702.74a).
-    let rider_tokens =
-        crate::lexer::lex_line("When this permanent enters, sacrifice this permanent.", 0)?;
+    let mut rider_tokens = crate::lexer::synthetic_word_tokens(["when", "this", "permanent", "enters"]);
+    rider_tokens.push(OwnedLexToken::synthetic_comma());
+    rider_tokens.extend(crate::lexer::synthetic_word_tokens(["sacrifice", "this", "permanent"]));
     let rider_words = parser_token_word_refs(&rider_tokens);
     let Some(rider) = crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(
         &rider_tokens,

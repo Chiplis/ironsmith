@@ -9,6 +9,28 @@ use ironsmith_compiler::ParseCardText;
 use ironsmith_compiler_lowering::CardDefinitionBuilder;
 
 #[test]
+fn serial_grant_recipients_keep_their_independent_type_constraints() {
+    let tokens = tokenize_line(
+        "Auras, Equipment, and modified creatures you control gain hexproof until end of turn.",
+        0,
+    );
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+    let [EffectAst::SubjectVerb(subject)] = effects.as_slice() else {
+        panic!("expected a single grant: {effects:?}");
+    };
+    let SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesAll { filter, .. }) = &subject.action else {
+        panic!("expected a grant to every recipient: {subject:?}");
+    };
+    assert_eq!(filter.any_of.len(), 3);
+    assert_eq!(filter.any_of[0].subtypes, vec![crate::types::Subtype::Aura]);
+    assert!(filter.any_of[0].card_types.is_empty());
+    assert_eq!(filter.any_of[1].subtypes, vec![crate::types::Subtype::Equipment]);
+    assert!(filter.any_of[1].card_types.is_empty());
+    assert_eq!(filter.any_of[2].card_types, vec![crate::types::CardType::Creature]);
+    assert!(filter.any_of[2].modified);
+}
+
+#[test]
 fn quoted_source_relative_restriction_remains_a_temporary_static_grant() {
     for text in [
         "Until end of turn, this creature gains \"Creatures dealt damage by this creature this turn can't be regenerated this turn.\"",

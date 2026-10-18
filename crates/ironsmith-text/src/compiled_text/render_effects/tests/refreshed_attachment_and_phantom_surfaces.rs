@@ -111,7 +111,11 @@ fn coordinated_attachment_grants_share_the_trailing_duration() {
 
     fn collect_durations(effect: &Effect, durations: &mut Vec<crate::effect::Until>) {
         if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
-            durations.push(apply.until.clone());
+            for modification in apply.modification.iter().chain(&apply.additional_modifications) {
+                if matches!(modification, crate::continuous::Modification::AddAbility(_)) {
+                    durations.push(apply.until.clone());
+                }
+            }
         }
         effect.visit_child_effects(&mut |child| collect_durations(child, durations));
     }

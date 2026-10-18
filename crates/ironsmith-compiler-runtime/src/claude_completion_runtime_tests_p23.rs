@@ -37,10 +37,10 @@ fn tawnos_coffin_returns_the_host_tapped_with_its_noted_counters_and_reattaches_
     let coffin = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
     let bear = CardBuilder::new(CardId::new(), "Coffin bear").card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2)).build();
-    let charm = CardBuilder::new(CardId::new(), "Coffin charm").card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura]).build();
+    let charm = compile_to_runtime_definition("Coffin charm",
+        "Type: Enchantment — Aura\nEnchant creature", false).unwrap();
     let creature = game.create_object_from_card(&bear, bob, Zone::Battlefield);
-    let aura = game.create_object_from_card(&charm, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&charm, bob, Zone::Battlefield);
     assert!(game.attach_object_to_target(aura, AttachmentTarget::Object(creature)));
     game.add_counters(creature, CounterType::PlusOnePlusOne, 2);
     let creature_stable = game.object(creature).unwrap().stable_id;

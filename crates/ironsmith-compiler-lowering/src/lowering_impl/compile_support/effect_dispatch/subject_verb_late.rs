@@ -1584,13 +1584,18 @@ pub(super) fn compile_subject_verb_late(
             ));
 
             let tagged_target = ChooseSpec::Tagged(target_tag);
-            let target_exile = if *face_down {
-                Effect::new(
-                    crate::effects::ExileEffect::with_spec(tagged_target).with_face_down(true),
-                )
-            } else {
-                Effect::move_to_zone(tagged_target, Zone::Exile, true)
-            };
+            // Export the host under the identity reserved by reference
+            // analysis. Its last-known counters are needed after exile, and
+            // later singular references must not select an attached Aura.
+            let mut target_exile = Effect::new(
+                crate::effects::ExileEffect::with_spec(tagged_target).with_face_down(*face_down),
+            );
+            if let Some(tag) = ctx.take_reserved_object_result_tag("affected")
+                .or_else(|| ctx.auto_tag_object_targets.then(|| ctx.next_tag("affected")))
+            {
+                target_exile = target_exile.tag(tag.clone());
+                ctx.last_object_tag = Some(tag);
+            }
             prelude.push(target_exile);
             Ok((prelude, choices))
         }

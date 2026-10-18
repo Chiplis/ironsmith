@@ -5731,6 +5731,18 @@ pub(crate) fn lower_compiler_static_ability_core(
 ) -> Result<StaticAbility, CardTextError> {
     let crate::model::CompilerStaticAbilityCore { id, label, payload } = ability;
     match payload {
+        crate::model::CompilerStaticAbilityPayloadCore::AddSubtypesAndGrantAbilities {
+            filter, subtypes, abilities, display,
+        } => Ok(StaticAbility {
+            id, label,
+            payload: crate::static_abilities::StaticAbilityPayload::AddSubtypesAndGrantAbilities {
+                filter, subtypes, display,
+                // Granted activated abilities own their announced choices.
+                // Lower the complete ability, not each child effect in isolation.
+                abilities: abilities.into_iter().map(lower_compiler_ability_core_in_own_trigger_context)
+                    .collect::<Result<Vec<_>, _>>()?,
+            },
+        }),
         crate::model::CompilerStaticAbilityPayloadCore::KeywordActionReplacement {
             action,
             source_filter,

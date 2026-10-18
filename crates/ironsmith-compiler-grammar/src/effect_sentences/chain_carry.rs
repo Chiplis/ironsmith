@@ -400,12 +400,22 @@ pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -
         return Ok(None);
     }
     let start = view.token_index_after_words(prefix.len()).unwrap_or(tokens.len());
-    let mut effects = parse_effect_chain_lexed(&tokens[start..])?;
+    // A trailing condition belongs to the instruction after "then", not
+    // to the copy that produces the condition's result.
+    let body = &tokens[start..];
+    let mut effects = if let Some(then) = body.iter().position(|token| token.is_word("then")) {
+        let mut effects = parse_effect_chain_lexed(crate::util::trim_edge_punctuation_tokens(&body[..then]))?;
+        effects.extend(parse_effect_chain_lexed(&body[then + 1..])?);
+        effects
+    } else {
+        parse_effect_chain_lexed(body)?
+    };
     let mut found = false;
     let mut bind_copy = |effects: &mut Vec<EffectAst>| {
         for effect in effects {
             if let EffectAst::SubjectVerb(subject) = effect {
-                if let SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { player, .. }) = &mut subject.action {
+                if let SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { player, .. }
+                    | crate::cards::builders::TokenActionAst::CreateTokenCopyFromSource { player, .. }) = &mut subject.action {
                     *player = PlayerAst::That;
                     subject.subject.player = PlayerAst::That;
                     found = true;
@@ -427,7 +437,65 @@ pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -
         EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May { effects })]))
 }
 
+pub(crate) fn parse_coordinated_delayed_followup(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "at", "unless"])) {
+        return Ok(None);
+    }
+    let mut quoted = false;
+    for index in 0..tokens.len().saturating_sub(3) {
+        if tokens[index].kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
+        if !quoted && tokens[index].is_word("and") && tokens[index + 1].is_word("at")
+            && tokens[index + 2].is_word("the") && tokens[index + 3].is_any_word(&["beginning", "end"])
+        {
+            let leading = crate::util::trim_edge_punctuation_tokens(&tokens[..index]);
+            let Some(requirement) = super::temporary_attack_requirement::parse(leading)? else {
+                continue;
+            };
+            let mut effects = vec![requirement];
+            effects.extend(super::parse_effect_sentences_lexed(&tokens[index + 1..])?);
+            return Ok(Some(effects));
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_coordinated_loyalty_action(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if crate::grammar::structure::split_leading_numeric_result_prefix_lexed(tokens).is_some() {
+        if let Some(prefix) = split_leading_result_prefix_lexed(tokens)
+            && let Some(effects) = parse_coordinated_loyalty_action(prefix.trailing_tokens)?
+        {
+            return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate, effects,
+            })]));
+        }
+        return Ok(None);
+    }
+    if tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "at", "unless"])) {
+        return Ok(None);
+    }
+    // Signed loyalty symbols are complete actions. Preserve their punctuation
+    // before coordination materializes inherited subject/verb clauses.
+    for comma in tokens.iter().enumerate().filter_map(|(i, token)| token.is_comma().then_some(i)) {
+        let mut tail = &tokens[comma + 1..];
+        if tail.first().is_some_and(|token| token.is_any_word(&["then", "and"])) { tail = &tail[1..]; }
+        if let Some(effect) = super::clause_dispatch::parse_inline_loyalty_symbol_clause(tail) {
+            let mut effects = parse_effect_chain_lexed(&tokens[..comma])?;
+            effects.push(effect);
+            return Ok(Some(vec![EffectAst::CommaThen { effects }]));
+        }
+        if let Some(effect) = super::clause_dispatch::parse_inline_loyalty_symbol_clause(&tokens[..comma]) {
+            let mut effects = vec![effect];
+            effects.extend(parse_effect_chain_lexed(tail)?);
+            return Ok(Some(vec![EffectAst::CommaThen { effects }]));
+        }
+    }
+    Ok(None)
+}
+
 pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = super::loyalty_activation_allowance::parse(tokens)? { return Ok(vec![effect]); }
+    if let Some(effects) = parse_coordinated_delayed_followup(tokens)? { return Ok(effects); }
+    if let Some(effects) = parse_coordinated_loyalty_action(tokens)? { return Ok(effects); }
     if let Some(effects) = parse_optional_other_player_token_copy(tokens)? { return Ok(effects); }
     crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     super::pair_procedure::validate_discard_replacements(tokens)?;
@@ -1118,7 +1186,7 @@ fn parse_for_each_object_effect_chain_shape(
 /// base power, put a number of +1/+1 counters on that creature equal to the
 /// difference" (Sovereign Okinec Ahau): the difference is the iterated
 /// object's power minus its base power.
-fn bind_iterated_base_power_difference(effects: &mut [EffectAst]) {
+pub(crate) fn bind_iterated_base_power_difference(effects: &mut [EffectAst]) {
     for effect in effects {
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
@@ -1311,6 +1379,11 @@ pub fn parse_or_action_clause_lexed(
         let first_starts_effect = find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
             || has_effect_head_without_verb_lexed(first);
         let second_gain_effect = parse_simple_gain_ability_clause_lexed(second)?;
+        if crate::lexer::token_word_refs(first).contains(&"target")
+            && crate::grammar::effects::coordination::starts_modified_type_filter_arm(second, false)
+        {
+            continue;
+        }
         // "exile up to one target legendary artifact card or legendary land
         // card from a graveyard and put a counter on it" (Lara Croft): the
         // `or` joins two nouns of one object phrase. A second branch that
@@ -1802,6 +1875,37 @@ fn parse_effect_chain_inner_lexed_unstacked(
         Some(shape) => (shape.rest, Some(shape.duration.clone())),
         None => (tokens, None),
     };
+    // The type categories in a type-count quantity form a noun list, not
+    // separate actions. Parse the complete pump before comma coordination.
+    if effect_chain_tokens.iter().any(|token| token.is_any_word(&["get", "gets"]))
+        && super::for_each_helpers::parse_get_for_each_count_value(effect_chain_tokens)
+            .ok().flatten().is_some_and(|value| matches!(value.unhinted(), Value::TypeCountOf(_)))
+    {
+        let mut effect = super::parse_effect_clause_lexed(effect_chain_tokens)?;
+        if let Some(duration) = &leading_duration {
+            apply_carried_effect_duration(&mut effect, duration);
+        }
+        return Ok(vec![effect]);
+    }
+    // Commas before a grant verb delimit its recipient groups, not actions.
+    // Preserve them for the object-filter reader before coordination expands
+    // elided clauses ("Auras, Equipment, and modified creatures ... gain").
+    if matches!(find_verb(effect_chain_tokens), Some((Verb::Gain, _)))
+        && effect_chain_tokens.iter().take_while(|token| !token.is_any_word(&["gain", "gains"]))
+            .any(OwnedLexToken::is_comma)
+        // A prohibition before the comma is an earlier action, not another
+        // recipient in the grant's noun list.
+        && !effect_chain_tokens.iter().take_while(|token| !token.is_any_word(&["gain", "gains"]))
+            .any(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+        && let Some(mut grant) = super::gain_ability::parse_gain_ability_sentence(effect_chain_tokens)?
+    {
+        if let Some(duration) = &leading_duration {
+            for effect in &mut grant {
+                apply_carried_effect_duration(effect, duration);
+            }
+        }
+        return Ok(grant);
+    }
     let coordination_reference_facts =
         super::super::grammar::effects::coordination::recognize_coordination_reference_facts(
             effect_chain_tokens,
@@ -1992,6 +2096,11 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let mut after_where_x_binding = false;
     for segment in segments {
         let mut segment = segment;
+        if let Some(effect) = super::clause_dispatch::parse_inline_loyalty_symbol_clause(&segment) {
+            effects.push(effect);
+            previous_segment = Some(segment);
+            continue;
+        }
         let segment_carry_facts =
             super::super::grammar::effects::coordination::recognize_coordination_clause_facts(
                 &segment,
@@ -2173,6 +2282,18 @@ fn parse_effect_chain_inner_lexed_unstacked(
             }
             continue;
         }
+        if carry_leading_duration
+            && let Some(duration) = &carried_duration
+            && let Some(segment_effects) = parse_carried_cant_effects(&segment, duration)?
+        {
+            effects.extend(
+                segment_effects
+                    .into_iter()
+                    .map(|effect| bind_source_exiled_effect(effect, bind_source_exiled)),
+            );
+            previous_segment = Some(segment);
+            continue;
+        }
         if let Some(segment_effects) = parse_cant_effect_sentence_lexed(&segment)? {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
@@ -2197,18 +2318,6 @@ fn parse_effect_chain_inner_lexed_unstacked(
             }
             continue;
         }
-        if carry_leading_duration
-            && let Some(duration) = &carried_duration
-            && let Some(segment_effects) = parse_carried_cant_effects(&segment, duration)?
-        {
-            effects.extend(
-                segment_effects
-                    .into_iter()
-                    .map(|effect| bind_source_exiled_effect(effect, bind_source_exiled)),
-            );
-            previous_segment = Some(segment);
-            continue;
-        }
         if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(&segment) {
             if let Some(effect) = super::for_each_helpers::parse_for_each_graveyard_effect(
                 shape.filter_tokens, shape.effect_tokens,
@@ -2219,7 +2328,10 @@ fn parse_effect_chain_inner_lexed_unstacked(
             }
             let filter =
                 super::for_each_helpers::parse_for_each_object_filter(shape.filter_tokens)?;
-            let nested_effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+            let mut nested_effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+            if filter.power_greater_than_base_power {
+                bind_iterated_base_power_difference(&mut nested_effects);
+            }
             if nested_effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "for-each object sentence missing effect payload".to_string(),
@@ -2682,6 +2794,19 @@ fn expand_bare_tap_state_verb_shared_object_lexed(
 pub(super) fn parse_inline_looked_card_partition_chain(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    // The general chain splitter deliberately preserves a looked-card
+    // procedure as one operand. Prove both halves here before claiming its
+    // authored `then` boundary, including CST views without the comma.
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_word("then")
+            && let Some(effects) =
+                super::sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_inline_look_at_top_then_counted_partition(
+                    &tokens[..index], &tokens[index + 1..],
+                )
+        {
+            return Some(vec![EffectAst::CommaThen { effects }]);
+        }
+    }
     let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
     let effects = if let [look_tokens, partition_tokens] = comma_then_segments.as_slice()
         && let Some(effects) =
@@ -3809,10 +3934,9 @@ pub fn bind_each_card_exiled_this_way_gains_suspend(
             }
         });
     }
-    let Ok(body_tokens) = crate::lexer::lex_line("if it doesn't have suspend, it gains suspend.", 0)
-    else {
-        return false;
-    };
+    let mut body_tokens = crate::lexer::synthetic_word_tokens(["if", "it", "doesn't", "have", "suspend"]);
+    body_tokens.push(OwnedLexToken::synthetic_comma());
+    body_tokens.extend(crate::lexer::synthetic_word_tokens(["it", "gains", "suspend"]));
     let Ok(body) = super::parse_effect_sentence_lexed(
         crate::util::trim_edge_punctuation_tokens(&body_tokens),
     ) else {
@@ -4328,6 +4452,7 @@ fn set_ability_modifier_target(effect: &mut EffectAst, subject: TargetAst) {
 
 mod extremum_choice;
 pub(crate) use extremum_choice::bind as bind_extremum_choice_followup;
+pub(crate) use extremum_choice::is_per_player_tie_clarification;
 
 /// Rewrite the player pronouns inside an "until that player's next turn"
 /// scope ("they" -> "that player", "their" -> "that player's") so each arm
@@ -4397,11 +4522,16 @@ pub(crate) fn parse_duration_goaded_and_restricted_sentence(
         }
         let mut restriction_tokens = crate::lexer::synthetic_word_tokens(["it"]);
         restriction_tokens.extend(item.iter().cloned());
-        let parsed = match super::parse_cant_effect_sentence_lexed(&restriction_tokens) {
+        let parsed = match crate::activation_and_restrictions::parse_cant_restrictions(&restriction_tokens) {
             Ok(Some(parsed)) => parsed,
             Ok(None) | Err(_) => return Ok(None),
         };
-        restrictions.extend(parsed);
+        for parsed in parsed {
+            if let Some(target) = parsed.target {
+                restrictions.push(EffectAst::subject_verb_explicit_target_only(target));
+            }
+            restrictions.push(EffectAst::subject_verb_cant(parsed.restriction, shape.duration.clone(), None));
+        }
     }
     if restrictions.is_empty() {
         return Ok(None);

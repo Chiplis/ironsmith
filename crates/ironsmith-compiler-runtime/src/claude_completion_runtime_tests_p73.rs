@@ -50,7 +50,7 @@ fn monument_to_perfection_searches_basic_sphere_or_locus_lands() {
     assert!(debug.contains("Sphere"), "Sphere is a land subtype in the land-quality list: {debug}");
     assert!(debug.contains("Locus"), "{debug}");
     assert!(debug.contains("Basic"), "{debug}");
-    assert!(debug.contains("distinct_names: true"), "the activation gate counts distinct names: {debug}");
+    assert!(debug.contains("activation_condition: Some(ValueComparison { left: DistinctNames("), "the activation gate counts distinct names: {debug}");
 }
 
 #[test]

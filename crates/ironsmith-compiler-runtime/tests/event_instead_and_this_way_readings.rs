@@ -96,8 +96,8 @@ fn this_way_results_read_the_producing_instruction() {
         ("Transcendent Archaic", &["PriorEffectMetric", "Drawn"]),
         ("Mr. Foxglove", &["Not(", "PriorEffectMetric", "Drawn"]),
         ("Blitzwing, Cruel Tormentor // Blitzwing, Adaptive Assailant", &["PriorEffectMetric", "LifeLost"]),
-        ("Rulik Mons, Warren Chief", &["Not(", "PlayerTaggedObjectMatches"]),
-        ("Break Out", &["Not(", "PlayerTaggedObjectMatches"]),
+        ("Rulik Mons, Warren Chief", &["Not(", "TaggedObjectMatches", "PutOntoBattlefield"]),
+        ("Break Out", &["Not(", "TaggedObjectMatches", "PutOntoBattlefield"]),
     ]);
 }
 

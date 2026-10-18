@@ -118,6 +118,8 @@ pub(super) fn parse_die_result_document(
     let has_result_followup = sentences.iter().any(|sentence| {
         let words = crate::lexer::token_word_refs(sentence);
         if earlier_roll && (words.starts_with(&head)
+            || words.starts_with(&["for", "each", "odd", "result"])
+            || words.starts_with(&["for", "each", "even", "result"])
             || words.ends_with(&["for", "each", "even", "result"])) {
             return true;
         }
@@ -168,7 +170,14 @@ pub(super) fn parse_die_result_document(
                 continue;
             }
         }
-        if rolled && words.starts_with(&head) {
+        let leading_metric = if words.starts_with(&head) {
+            Some(EffectMetric::DistinctDieResults)
+        } else if words.starts_with(&["for", "each", "odd", "result"]) {
+            Some(EffectMetric::OddDieResults)
+        } else if words.starts_with(&["for", "each", "even", "result"]) {
+            Some(EffectMetric::EvenDieResults)
+        } else { None };
+        if let Some(metric) = leading_metric.filter(|_| rolled) {
             let start = view
                 .map_word_to_token_start(head.len())
                 .ok_or_else(|| CardTextError::ParseError("die-result quantifier has no action".into()))?;
@@ -177,7 +186,7 @@ pub(super) fn parse_die_result_document(
             }
             let effects = parse_effect_sentences_lexed(&sentence[start..])?;
             let value = Value::PendingPriorEffectMetric(
-                PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::DistinctDieResults)
+                PriorEffectMetricQuery::new(EffectMetricSource::Outcome, metric)
                     .with_action(PriorEffectAction::Rolled),
             );
             parsed.extend(quantified_effect_by(effects, value));
@@ -536,7 +545,15 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
             if coin_head { opponent_loss_tag = None; }
             receipt_consumer(sentence)?
         };
-        recognized |= effects.is_some();
+        // A plain called flip already belongs to the ordinary sentence
+        // dispatcher, which also owns nested optional-action continuations.
+        // Only take over when a grouped instruction or receipt consumer
+        // actually needs this document reader.
+        let ordinary_flip = kind == CoinFlipKind::Called && matches!(words.as_slice(),
+            ["flip", "a" | "one", "coin"] | ["you", "flip", "a" | "one", "coin"]);
+        let has_optional_continuation = sentences.iter().any(|sentence|
+            sentence.iter().any(|token| token.is_word("may")));
+        recognized |= effects.is_some() && !(ordinary_flip && has_optional_continuation);
         parsed.push(effects);
     }
     if !recognized { return Ok(None); }

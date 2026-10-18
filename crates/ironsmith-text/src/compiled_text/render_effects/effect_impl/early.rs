@@ -93,6 +93,9 @@ if filter.zone == Some(Zone::Hand)
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if let Some(text) = effect_lists::describe_where_x_commander_mana_value_choice(&sequence.effects) {
+            return text;
+        }
         let members: Vec<&Effect> = sequence.effects.iter().collect();
         if let [draw, reveal] = sequence.effects.as_slice()
             && let Some(text) = effect_lists::describe_draw_then_reveal_drawn(draw, reveal)

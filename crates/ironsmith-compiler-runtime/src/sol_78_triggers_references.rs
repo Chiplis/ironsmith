@@ -178,7 +178,7 @@ fn stack_insert_receipt_names_independent_ability_and_is_queued_on_insertion() {
 
 #[test]
 fn stack_insertion_single_target_random_reselection_compiles() {
-    let definition = compile_to_runtime_definition("Random selection",
+    let definition = compile_to_runtime_definition("Retargeting example",
         "Mana cost: {5}{R}\nType: Enchantment\nWhenever a spell or ability is put onto the stack, if it has a single target, reselect its target at random. (Select from among all legal targets.)", false).unwrap();
     let debug = format!("{definition:?}");
     assert!(debug.contains("StackObjectAdded"), "{debug}");

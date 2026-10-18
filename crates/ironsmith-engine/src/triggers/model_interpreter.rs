@@ -1160,6 +1160,12 @@ impl super::Trigger {
                 loyalty_only,
                 activation_cost_has_tap,
             ),
+            ironsmith_core::DelayedTriggerSpec::KeywordAction { action, player, source_filter, during_your_turn } => match (source_filter, during_your_turn) {
+                (Some(filter), true) => Self::keyword_action_matching_object_during_your_turn(action, player, filter),
+                (Some(filter), false) => Self::keyword_action_matching_object(action, player, filter),
+                (None, true) => Self::keyword_action_during_your_turn(action, player),
+                (None, false) => Self::keyword_action(action, player),
+            },
             ironsmith_core::DelayedTriggerSpec::Either(left, right) => Self::either(
                 Self::from_delayed_trigger_spec(*left),
                 Self::from_delayed_trigger_spec(*right),

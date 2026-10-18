@@ -784,10 +784,13 @@ pub(super) fn post_rule_consult_remainder_reference(
             })
         };
     }
-    for effect in sentence_effects {
+    let original = sentence_effects.clone();
+    for effect in sentence_effects.iter_mut() {
         rewrite(effect, &all_tag, &match_tag, consult_player);
     }
-    Ok(Some(PostParseFollowupResult::Annotated))
+    // A consult earlier in the program is not by itself a matching rider.
+    // Claim only sentences whose remainder reference was actually rebound.
+    Ok((sentence_effects != &original).then_some(PostParseFollowupResult::Annotated))
 }
 
 pub(super) fn bind_targeted_leaves_filter(

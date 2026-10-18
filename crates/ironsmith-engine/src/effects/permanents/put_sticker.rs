@@ -315,6 +315,7 @@ mod tests {
     fn put_sticker_effect_emits_sticker_action_for_chosen_object() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);
+        game.add_accessible_art_sticker(alice);
         let source_id = game.create_object_from_card(
             &crate::card::CardBuilder::new(CardId::from_raw(1), "Sticker Source")
                 .card_types(vec![crate::types::CardType::Artifact])
@@ -345,8 +346,11 @@ mod tests {
             outcome.value.objects().expect("sticker target outcome"),
             &[target_id]
         );
-        let events_debug = format!("{:?}", outcome.events);
-        assert!(events_debug.contains("put a sticker"), "{events_debug}");
-        assert!(events_debug.contains("KeywordAction"), "{events_debug}");
+        let action = outcome.events.iter()
+            .find_map(|event| event.downcast::<crate::events::KeywordActionEvent>())
+            .expect("placing the available art sticker emits its keyword action");
+        assert_eq!(action.action, KeywordActionKind::ArtSticker);
+        assert_eq!(action.player, alice);
+        assert_eq!(action.amount, 1);
     }
 }

@@ -52,8 +52,8 @@ fn two_slot_cast(words: &[&str]) -> Option<TwoSlots> {
     let (first_start, first_end) = slot(rest)?;
     let after_first = &rest[first_end + 1..];
     let conjunction = match after_first {
-        ["and/or", ..] => 1,
         ["and", "or", ..] => 2,
+        ["and/or" | "and", ..] => 1,
         _ => return None,
     };
     let second_rest = &after_first[conjunction..];

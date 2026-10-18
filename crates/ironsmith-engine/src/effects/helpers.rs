@@ -173,6 +173,16 @@ pub(crate) fn resolve_tagged_object_id(
     game.object(snapshot.object_id).map(|_| snapshot.object_id)
 }
 
+/// Locate an iterated card for a physical action while retaining its tagged
+/// snapshot for characteristic and controller queries.
+fn resolve_iterated_object_id(game: &GameState, ctx: &ExecutionContext) -> Option<ObjectId> {
+    let id = ctx.iteration.iterated_object?;
+    ctx.get_tagged_all(&crate::tag::TagKey::from("__it__"))
+        .and_then(|snapshots| snapshots.iter().find(|snapshot| snapshot.object_id == id))
+        .and_then(|snapshot| resolve_tagged_object_id(game, ctx, snapshot))
+        .or(Some(id))
+}
+
 /// Context-free variant of [`resolve_tagged_object_id`] for value readers
 /// that only project a tagged snapshot's current zone.
 pub(crate) fn resolve_tagged_object_id_unscoped(
@@ -753,7 +763,7 @@ fn resolve_effect_metric(
     }
     // "For each different result" (Circuits Act): the retained dice live in
     // the roll's completion child, so read the aggregated outcome's events.
-    if matches!(metric, EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::DieResultsEqual(_)) {
+    if matches!(metric, EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::OddDieResults | EffectMetric::DieResultsEqual(_)) {
         let Some(outcome) = ctx.get_outcome(effect_id) else {
             return Ok(0);
         };
@@ -764,6 +774,7 @@ fn resolve_effect_metric(
         return Ok(match metric {
             EffectMetric::DistinctDieResults => results.collect::<std::collections::BTreeSet<_>>().len() as i64,
             EffectMetric::EvenDieResults => results.filter(|result| result % 2 == 0).count() as i64,
+            EffectMetric::OddDieResults => results.filter(|result| result % 2 != 0).count() as i64,
             EffectMetric::DieResultsEqual(face) => results.filter(|result| *result == face).count() as i64,
             _ => unreachable!("guarded numeric die metric"),
         });
@@ -782,7 +793,7 @@ fn resolve_effect_metric(
         | EffectMetric::CoinFlipsLost
         | EffectMetric::CoinHeads
         | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
-        EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::DieResultsEqual(_) => {
+        EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::OddDieResults | EffectMetric::DieResultsEqual(_) => {
             unreachable!("die-result metrics handled before generic outcomes")
         }
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
@@ -1927,7 +1938,7 @@ pub(crate) fn preview_object_ids_for_choose_spec(
                 })
                 .unwrap_or_default(),
         ),
-        ChooseSpec::Iterated => ctx.iteration.iterated_object.map(|id| vec![id]),
+        ChooseSpec::Iterated => resolve_iterated_object_id(game, ctx).map(|id| vec![id]),
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
         | ChooseSpec::PlayerOrPlaneswalker(_)
@@ -4448,9 +4459,7 @@ pub fn resolve_objects_from_spec(
         }
 
         // Iterated object (ForEach loops)
-        ChooseSpec::Iterated => ctx
-            .iteration
-            .iterated_object
+        ChooseSpec::Iterated => resolve_iterated_object_id(game, ctx)
             .map(|id| vec![id])
             .ok_or_else(|| {
                 ExecutionError::UnresolvableValue(
@@ -6366,6 +6375,27 @@ mod tests {
             Some(returned_id),
             "tagged object helper should follow the current object after a round trip"
         );
+    }
+
+    #[test]
+    fn iterated_physical_actions_follow_exile_without_replacing_last_known_memory() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(5006), "Iterated card")
+            .card_types(vec![CardType::Creature]).build();
+        let original = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(original).unwrap(), &game);
+        let exiled = game.move_object_by_effect(original, Zone::Exile).unwrap();
+        let mut ctx = ExecutionContext::new_default(original, alice);
+        ctx.resolution_object_id_floor = Some(exiled);
+        ctx.iteration.iterated_object = Some(original);
+        ctx.set_tagged_objects(crate::tag::TagKey::from("__it__"), vec![snapshot]);
+
+        assert_eq!(resolve_objects_from_spec(&game, &ChooseSpec::Iterated, &ctx).unwrap(), vec![exiled]);
+        assert_eq!(preview_object_ids_for_choose_spec(&game, &ChooseSpec::Iterated, &ctx), Some(vec![exiled]));
+        let remembered = &ctx.get_tagged_all(&crate::tag::TagKey::from("__it__")).unwrap()[0];
+        assert_eq!(remembered.object_id, original);
+        assert_eq!(remembered.zone, Zone::Battlefield);
     }
 
     #[test]

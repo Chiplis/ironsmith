@@ -55,6 +55,7 @@ fn accumulate_exiles(effects: &mut [EffectAst], tag: &crate::tag::TagRef) -> boo
             EffectAst::Permissions(PermissionEffectAst::May { effects })
             | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             | EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
             | EffectAst::SourceSentence { effects, .. } => {
                 found |= accumulate_exiles(effects, tag);
             }
@@ -73,6 +74,7 @@ fn look_tag(effects: &[EffectAst]) -> Option<crate::tag::TagRef> {
         EffectAst::Permissions(PermissionEffectAst::May { effects })
         | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
         | EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
         | EffectAst::SourceSentence { effects, .. } => look_tag(effects),
         _ => None,
     })
@@ -97,11 +99,14 @@ fn retag_looks(effects: &mut [EffectAst], tag: &crate::tag::TagRef) -> bool {
             EffectAst::Permissions(PermissionEffectAst::May { effects })
             | EffectAst::Permissions(PermissionEffectAst::MayByPlayer { effects, .. })
             | EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
             | EffectAst::SourceSentence { effects, .. }
             | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. }) => {
                 found |= retag_looks(effects, tag);
             }
-            _ => {}
+            _ => crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                found |= retag_looks(nested, tag);
+            }),
         }
     }
     found
@@ -135,9 +140,15 @@ fn open_after_look(
         return Ok(None);
     };
     let mut effects = super::parse_effect_sentence_lexed(look_sentence.lowered())?;
-    let Some(tag) = look_tag(&effects) else {
+    let Some(_) = look_tag(&effects) else {
         return Ok(None);
     };
+    // A shared explicit binding survives reference resolution. The generic
+    // `it` placeholder would allocate a different result tag for each look.
+    let tag: crate::tag::TagRef = crate::util::helper_tag_for_tokens(
+        look_sentence.lowered(), "repeated_look",
+    ).into();
+    retag_looks(&mut effects, &tag);
     if !retag_looks(&mut group.effects, &tag) {
         return Ok(None);
     }

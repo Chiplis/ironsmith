@@ -81,7 +81,7 @@ pub(super) fn read_leading_may_additional_land_plays(
         // chooses the target. Declare the target with that player as its
         // chooser ahead of the optional action, which then reuses it.
         let mut delegated_target_declaration = None;
-        let mut effect_tokens = shape.effect_tokens;
+        let mut effect_tokens = crate::util::trim_edge_punctuation_tokens(shape.effect_tokens);
         if let clause_grammar::LeadingMayActorShape::Player(player) = shape.actor
             && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
         {

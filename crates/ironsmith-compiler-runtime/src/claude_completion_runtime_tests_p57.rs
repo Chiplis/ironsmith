@@ -124,10 +124,13 @@ fn channel_grants_a_repeatable_pay_life_mana_ability_until_end_of_turn() {
 
     // While paying a cost: the planner activates it as often as needed.
     let cost = ironsmith::mana::ManaCost::from_pips(vec![vec![ironsmith::mana::ManaSymbol::Generic(3)]]);
-    assert!(game.can_pay_mana_cost_with_reason(alice, Some(source), &cost, 0,
-        ironsmith::costs::PaymentReason::CastSpell));
-    assert!(game.try_pay_mana_cost_with_reason(alice, Some(source), &cost, 0,
-        ironsmith::costs::PaymentReason::CastSpell).unwrap());
+    let request = ironsmith::mana_payment::ManaPaymentRequest::new(
+        alice, source, ironsmith::costs::PaymentReason::CastSpell, cost,
+    );
+    let plan = ironsmith::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
+    ironsmith::mana_payment::execute_mana_payment_plan(
+        &mut game, &request, &plan, &mut ironsmith::decision::SelectFirstDecisionMaker,
+    ).unwrap();
     assert_eq!(game.player(alice).unwrap().life, 17, "two more activations pay the rest");
     assert_eq!(game.player(alice).unwrap().mana_pool.total_wide(), 0);
 

@@ -1241,11 +1241,12 @@ pub(super) fn noted_target_face_down_program(sentences: &[SentenceInput]) -> Res
     let and = positions.get(words.len() - 8).map(|(index, _)| *index).unwrap();
     let target_start = positions[4].0;
     let target = crate::util::parse_target_phrase(&tokens[target_start..and])?;
-    let original = helper_tag_for_tokens(tokens, "noted_target_card");
     let noted = CompilerReferenceTag::NotedCardName.bind();
+    // The granted ability is compiled in its own reference scope. Materialize
+    // its stable name reference, rather than a compiler-only snapshot alias.
     let mut effects = vec![EffectAst::TagAffected {
-        effect: Box::new(EffectAst::subject_verb_target_only(target)), tag: original,
-    }, EffectAst::SnapshotLastObjectTag { into: noted.clone() }];
+        effect: Box::new(EffectAst::subject_verb_target_only(target)), tag: noted.clone(),
+    }];
     let mut movement = super::parse_effect_sentence_lexed(&tokens[and + 1..])?;
     fn retain(effects: &mut [EffectAst], tag: &crate::tag::TagRef) {
         for effect in effects {

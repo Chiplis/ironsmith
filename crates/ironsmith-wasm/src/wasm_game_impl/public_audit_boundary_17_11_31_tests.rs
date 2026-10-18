@@ -8,7 +8,7 @@ use ironsmith_core::{ChooseSpec, CounterExileGate, CounterExilePermission,
     ObjectFilter, ResolutionProgram};
 
 #[test]
-fn digest11_checkpoint_distinguishes_exact_counter_rider_shape_and_values() {
+fn digest12_checkpoint_distinguishes_exact_counter_rider_shape_and_values() {
     let _ids = crate::test_id_counter_guard();
     let mut wasm = WasmGame::new();
     wasm.initialize_empty_match(vec!["A".into(), "B".into()], 20, 1);
@@ -41,7 +41,7 @@ fn digest11_checkpoint_distinguishes_exact_counter_rider_shape_and_values() {
         assert_eq!(effects[0].payload().get("exile_permission").is_some(), permission.is_some());
         let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         assert_eq!(PUBLIC_AUDIT_VERSION, 12);
-        assert_eq!(checkpoint["version"], 11);
+        assert_eq!(checkpoint["version"], PUBLIC_AUDIT_VERSION);
         assert_eq!(checkpoint, serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap());
         assert!(projections.iter().all(|old| old != &checkpoint));
         projections.push(checkpoint);
@@ -70,12 +70,12 @@ fn public_known_identity_keeps_materialized_canonical_counter_text() {
 }
 
 #[test]
-fn fresh_wasm_constructor_projects_digest11_without_match_initialization() {
+fn fresh_wasm_constructor_projects_digest12_without_match_initialization() {
     // Source-authored native gate for the genuine constructor. This does not
     // require damaged current state to export before authenticated recovery.
     let _ids = crate::test_id_counter_guard();
     let wasm = WasmGame::new();
     let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-    assert_eq!(checkpoint["version"], 11);
+    assert_eq!(checkpoint["version"], PUBLIC_AUDIT_VERSION);
     assert_eq!(checkpoint, serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap());
 }

@@ -481,7 +481,9 @@ fn recognize_statement_line_general(
         .tokens
         .first()
         .is_some_and(|token| token.is_word("create"))
-        || parse_create_head_tokens(&line.tokens).is_some();
+        || parse_create_head_tokens(&line.tokens).is_some()
+        || crate::grammar::effects::for_each_shapes::parse_for_each_object_effect_shape(&line.tokens)
+            .is_some_and(|shape| shape.effect_tokens.first().is_some_and(|token| token.is_word("create")));
     let typed_energy_payment_threshold =
         super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(&line.tokens).is_some();
     let typed_counter_linked_land_subtype = super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(&line.tokens)
@@ -586,7 +588,7 @@ fn recognize_statement_line_general(
             parsed_effects: None,
         }));
     }
-    if matches!(
+    if !typed_create_statement && matches!(
         structure::classify_static_line_family_lexed(&line.tokens),
         Some(
             structure::StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep

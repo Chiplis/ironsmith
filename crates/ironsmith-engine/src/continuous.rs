@@ -1465,6 +1465,18 @@ impl ContinuousEffectManager {
     }
 
     /// Remove all effects from a specific source.
+    /// Retire descriptors that require this exact source instance. Resolved
+    /// effects and explicitly retained lingering statics keep their duration.
+    pub(crate) fn remove_source_bound_static_effects(&mut self, source: ObjectId) {
+        let ids: Vec<_> = self.effects.iter()
+            .filter(|effect| effect.has_source_controller_context()
+                && effect.source_controller_context_host() == source)
+            .map(|effect| effect.id).collect();
+        for id in ids {
+            self.remove_effect(id);
+        }
+    }
+
     pub fn remove_effects_from_source(&mut self, source: ObjectId) {
         let effects = Arc::make_mut(&mut self.effects);
         let removed_ids: Vec<_> = effects
@@ -5186,6 +5198,10 @@ fn resolution_effect_zone_applies(effect: &ContinuousEffect, zone: Zone) -> bool
         // graveyard gains ...") applies to them there; a zone change makes a
         // new object (CR 400.7), which the lock never names.
         || matches!(&effect.applies_to, EffectTarget::Filter(filter) if filter.zone == Some(zone))
+        // A targeted card can receive a resolving effect in any zone (for
+        // example, granting embalm in a graveyard). Its exact object identity
+        // already prevents the effect from surviving a zone change.
+        || matches!(&effect.applies_to, EffectTarget::Specific(_))
 }
 
 fn affected_objects_for_effect(
@@ -5466,7 +5482,7 @@ fn continuous_effect_duration_is_active(
             let Some(_guard) = DurationPredicateEvaluationGuard::enter(effect.id) else {
                 return true;
             };
-            let active = continuous_duration_predicate_matches(predicate, game);
+            let active = continuous_duration_predicate_matches_excluding(predicate, game, Some(effect.id));
             if !active {
                 manager.expire_latched_duration(effect.id);
             }
@@ -5507,13 +5523,21 @@ pub(crate) fn continuous_duration_predicate_matches(
     predicate: &ironsmith_core::ContinuousDurationPredicate,
     game: &crate::game_state::GameState,
 ) -> bool {
+    continuous_duration_predicate_matches_excluding(predicate, game, None)
+}
+
+fn continuous_duration_predicate_matches_excluding(
+    predicate: &ironsmith_core::ContinuousDurationPredicate,
+    game: &crate::game_state::GameState,
+    skipped_effect: Option<ContinuousEffectId>,
+) -> bool {
     let _tap_reads = game.derived_tap_read_scope();
     use ironsmith_core::ContinuousDurationPredicate as Predicate;
 
     match predicate {
         Predicate::All(predicates) => predicates
             .iter()
-            .all(|predicate| continuous_duration_predicate_matches(predicate, game)),
+            .all(|predicate| continuous_duration_predicate_matches_excluding(predicate, game, skipped_effect)),
         Predicate::ObjectOnBattlefield(object) => continuous_duration_object_id(object)
             .is_some_and(|id| continuous_duration_object_is_visible(game, id)),
         Predicate::ObjectInZone { object, zone } => continuous_duration_object_id(object)
@@ -5526,7 +5550,7 @@ pub(crate) fn continuous_duration_predicate_matches(
         }
         Predicate::ObjectControlledBy { object, player } => continuous_duration_object_id(object)
             .zip(continuous_duration_player_id(player))
-            .is_some_and(|(object, player)| game.current_controller(object) == Some(player)),
+            .is_some_and(|(object, player)| game.current_controller_excluding_change_effect(object, skipped_effect) == Some(player)),
         Predicate::ObjectHasCounter {
             object,
             counter_type,

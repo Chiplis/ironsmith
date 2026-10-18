@@ -2164,7 +2164,8 @@ pub(super) fn rewrite_lexed_activation_condition_parser_handles_control_and_grav
             player: crate::cards::builders::PlayerAst::You,
             count: 2,
             filter,
-        })) if filter.card_types == vec![CardType::Artifact, CardType::Creature]
+        })) if filter.all_card_types == vec![CardType::Artifact, CardType::Creature]
+            && filter.card_types.is_empty()
     ));
 }
 

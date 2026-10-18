@@ -497,6 +497,7 @@ enum ReferencedCombatRule {
     CantAttackYouThatCombat,
     /// "... block(s) this turn if able" (CR 509.1c).
     MustBlockThisTurn,
+    MustAttackThisTurn,
 }
 
 /// A subject naming the creatures the preceding instruction affected:
@@ -507,6 +508,9 @@ fn is_referenced_creatures_subject(subject: &[OwnedLexToken]) -> bool {
     matches!(
         words.as_slice(),
         ["they"]
+            | ["it"]
+            | ["the", "creature"]
+            | ["that", "creature"]
             | ["those", "creatures"]
             | ["each", "of", "those", "creatures"]
             | ["each", "of", "them"]
@@ -518,7 +522,7 @@ fn is_referenced_creatures_subject(subject: &[OwnedLexToken]) -> bool {
 /// you or planeswalkers you control that combat." and "They block this turn
 /// if able.": a combat requirement or restriction over exactly the creatures
 /// the preceding instruction named.
-fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub(super) fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     use crate::effect::RestrictionStart;
     use crate::grammar::primitives;
     use winnow::Parser;
@@ -548,6 +552,11 @@ fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> Option<Effec
                 primitives::phrase(&["blocks", "this", "turn", "if", "able"]),
             ))
             .value(ReferencedCombatRule::MustBlockThisTurn),
+            alt((
+                primitives::phrase(&["attack", "this", "turn", "if", "able"]),
+                primitives::phrase(&["attacks", "this", "turn", "if", "able"]),
+            ))
+            .value(ReferencedCombatRule::MustAttackThisTurn),
         ))
     })?;
     if index == 0 || !crate::util::trim_edge_punctuation_tokens(rest).is_empty() {
@@ -574,6 +583,11 @@ fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> Option<Effec
             ),
             Until::EndOfCombat,
             RestrictionStart::LastAddedCombatPhase,
+            None,
+        ),
+        ReferencedCombatRule::MustAttackThisTurn => EffectAst::subject_verb_cant(
+            Restriction::must_attack(creatures),
+            Until::EndOfTurn,
             None,
         ),
         ReferencedCombatRule::MustBlockThisTurn => EffectAst::subject_verb_cant(

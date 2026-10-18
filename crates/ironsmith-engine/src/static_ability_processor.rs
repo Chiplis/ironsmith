@@ -362,7 +362,10 @@ fn assign_inferred_static_effect_groups(
             continue;
         }
 
-        let group = next_static_effect_group_id(source, next_group_ordinal);
+        let mut group = next_static_effect_group_id(source, next_group_ordinal);
+        while effects.iter().any(|effect| effect.group == Some(group)) {
+            group = next_static_effect_group_id(source, next_group_ordinal);
+        }
         for idx in group_indices {
             effects[idx].group = Some(group);
             assigned[idx] = true;
@@ -465,6 +468,12 @@ fn generate_direct_static_effects(
         }
         effects.extend(ability_effects);
     }
+    // Discover granted static abilities with the same multilayer grouping used
+    // by the final calculation. A type-changing branch can make its original
+    // filter false before the ability-granting branch is visited.
+    assign_inferred_static_effect_groups(
+        &mut effects, object_id, &static_group_roots(abilities), &mut 1,
+    );
     effects
 }
 
@@ -2431,6 +2440,9 @@ fn spell_resolution_discovery_error_preserves_stack_and_game_state() {
     game.object_mut(spell).unwrap().spell_effect = Some(
         crate::resolution::ResolutionProgram::from_effects(vec![crate::Effect::gain_life(1)]).into());
     game.push_to_stack(crate::game_state::StackEntry::new(spell, bob));
+    // Stack insertion publishes its own event; this assertion concerns only
+    // events produced by the failed resolution below.
+    game.take_pending_trigger_events();
     let missing = ObjectId::from_raw(999_998);
     game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(missing, alice,
         EffectTarget::AllCreatures, Modification::AddAbility(StaticAbility::flying()))

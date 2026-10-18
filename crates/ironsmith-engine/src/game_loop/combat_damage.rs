@@ -292,7 +292,7 @@ fn apply_combat_damage_step_with_dm_and_first_step_snapshot(
             dm,
         );
     }
-    if is_unblocked_player_damage_batch(combat) {
+    if is_unblocked_player_damage_batch(game, combat) {
         return execute_unblocked_player_damage_batch_path(
             game,
             combat,
@@ -911,16 +911,20 @@ fn can_use_unblocked_player_damage_fast_path(game: &GameState, combat: &CombatSt
     game.effect_store.replacement_effects.effects().is_empty()
         && game.effect_store.prevention_effects.shields().is_empty()
         && game.effect_store.pending_replacement_choice.is_none()
-        && is_unblocked_player_damage_batch(combat)
+        && is_unblocked_player_damage_batch(game, combat)
 }
 
-fn is_unblocked_player_damage_batch(combat: &CombatState) -> bool {
+fn is_unblocked_player_damage_batch(game: &GameState, combat: &CombatState) -> bool {
     // CR 509.1h / 506.4: an attacker stays blocked after its blockers are
     // removed, so remembered blocks must take the general path.
     combat.blockers.values().all(Vec::is_empty)
         && combat.attackers.iter().all(|attacker| {
             matches!(attacker.target, AttackTarget::Player(_))
                 && !is_blocked(combat, attacker.creature)
+                && !game.object_has_static_ability_id(
+                    attacker.creature,
+                    crate::static_abilities::StaticAbilityId::MayAssignUnblockedDamageToDefendingCreature,
+                )
         })
 }
 
@@ -1206,7 +1210,8 @@ pub(super) fn combat_power_as_though_positive(game: &GameState, creature: Object
     });
     let positive = abilities.iter().any(|ability| match &ability.kind {
         AbilityKind::Static(static_ability)
-            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker =>
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                && static_ability.is_active(game, creature) =>
         {
             static_ability
                 .display()

@@ -4807,9 +4807,12 @@ impl GameState {
         {
             event = event.with_simultaneous_batch(batch);
         }
-        self.turn_store
-            .turn_history
-            .remove_staged_event(initial_provenance);
+        // Completed receipts keep their original provenance when queued.
+        // Removing their staged row here would leave only the archive copy;
+        // refreshing that archive cannot restore the current turn's history.
+        if event.completed_action_provenance().is_none() {
+            self.turn_store.turn_history.remove_staged_event(initial_provenance);
+        }
         self.stage_turn_history_event(&event);
         if !self.effect_store.instruction_result_records.is_empty() {
             let facts = crate::effects::outcome_recording::event_facts(self, &event);
@@ -5116,7 +5119,7 @@ impl GameState {
         };
         use crate::effects::EffectExecutor;
         let mut ctx = crate::effects::ExecutionContext::new(object, controller, dm);
-        crate::effects::permanents::TurnFaceUpEffect::new(crate::target::ChooseSpec::Source)
+        let outcome = crate::effects::permanents::TurnFaceUpEffect::new(crate::target::ChooseSpec::Source)
             .execute(self, &mut ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(false);
@@ -5125,6 +5128,9 @@ impl GameState {
             return Err(crate::effects::ExecutionError::Impossible(
                 "required face-up transition could not complete".into(),
             ));
+        }
+        for event in outcome.events {
+            self.queue_trigger_event(event.provenance(), event);
         }
         self.object_annotations_mut().turn_face_up_before_action.remove(&object);
         Ok(true)

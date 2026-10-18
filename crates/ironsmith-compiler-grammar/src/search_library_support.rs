@@ -192,6 +192,17 @@ pub fn parse_restriction_duration_lexed(
         return Ok(None);
     }
 
+    // An exception can follow the duration: "can't be blocked this turn
+    // except by ...". Retain that exception when removing the time clause.
+    if let Some(at) = tokens.windows(3).position(|part|
+        part[0].is_word("this") && part[1].is_word("turn") && part[2].is_word("except"))
+        && tokens[..at].iter().any(|token| token.is_word("blocked"))
+    {
+        let mut body = tokens[..at].to_vec();
+        body.extend_from_slice(&tokens[at + 2..]);
+        return Ok(Some((Until::EndOfTurn, body)));
+    }
+
     if let Some((duration, rest)) = parse_simple_restriction_duration_prefix(tokens) {
         return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
     }

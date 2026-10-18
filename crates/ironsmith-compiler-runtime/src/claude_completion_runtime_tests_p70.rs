@@ -116,7 +116,7 @@ fn shamans_trance_restricts_others_and_grants_you_their_graveyards() {
     let debug = compact_debug(&definition);
     assert!(debug.contains("PlayLandsMatching"), "{debug}");
     assert!(debug.contains("CastSpellsMatching"), "{debug}");
-    assert!(debug.contains("owner:Some(NotYou)"), "the grant covers other players' graveyards: {debug}");
+    assert!(debug.contains("owner:Some(NotYou,)"), "the grant covers other players' graveyards: {debug}");
 }
 
 /// The copy lasts only while Vesuvan stays face up.
@@ -136,7 +136,7 @@ fn face_yourself_creates_hasty_copies_with_conditional_end_step_sacrifice() {
         "Mana cost: {5}{R}{R}\nType: Sorcery\nFor each creature target player controls, create a token that's a copy of that creature, except it has haste and \"At the beginning of the end step, if you don't control a planeswalker, sacrifice this creature.\"");
     assert!(definition.spell_effect.is_some());
     let debug = compact_debug(&definition);
-    assert!(debug.contains("Haste"), "{debug}");
+    assert!(debug.contains("has_haste:true"), "{debug}");
     assert!(debug.contains("Planeswalker"), "{debug}");
 }
 

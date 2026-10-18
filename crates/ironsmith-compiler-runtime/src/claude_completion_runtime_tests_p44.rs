@@ -132,11 +132,7 @@ fn eriette_steals_permanents_whose_mana_value_fits_under_the_attached_aura() {
     let bob = PlayerId::from_index(1);
     let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-    let aura_card = CardBuilder::new(CardId::new(), "Two-drop Aura")
-        .card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura])
-        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
-        .build();
+    let aura_card = p44_compile("Two-drop Aura", "Mana cost: {2}\nType: Enchantment — Aura\nEnchant creature");
     let creature = |name: &str, generic: u8| {
         CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Creature])
@@ -146,8 +142,8 @@ fn eriette_steals_permanents_whose_mana_value_fits_under_the_attached_aura() {
     };
     let big = game.create_object_from_card(&creature("Three-drop", 3), bob, Zone::Battlefield);
     let small = game.create_object_from_card(&creature("Two-drop", 2), bob, Zone::Battlefield);
-    let big_aura = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
-    let small_aura = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
+    let big_aura = game.create_object_from_definition(&aura_card, alice, Zone::Battlefield);
+    let small_aura = game.create_object_from_definition(&aura_card, alice, Zone::Battlefield);
     game.refresh_continuous_state().unwrap();
 
     let mut queue = ironsmith::triggers::TriggerQueue::new();
@@ -201,6 +197,8 @@ fn enduring_angel_replaces_a_lethal_life_reduction() {
     assert!(debug.contains("LifeReducedToZeroOrLess"), "{debug}");
     assert!(debug.contains("TransformEffect"), "{debug}");
     assert!(debug.contains("LoseTheGameEffect"), "{debug}");
+    assert!(debug.find("SetLifeTotalEffect").unwrap() < debug.find("LoseTheGameEffect").unwrap(),
+        "life is set before testing the transform failure: {debug}");
 
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);

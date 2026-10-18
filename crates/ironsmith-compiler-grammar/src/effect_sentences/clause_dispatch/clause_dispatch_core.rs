@@ -152,35 +152,47 @@ fn parse_reduce_speed_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
 /// "[+2]" / "[−1]" as an instruction inside a resolving loyalty ability
 /// (Comet, Stellar Pup's die rows): the printed loyalty symbol adds or removes
 /// that many loyalty counters on the source (CR 606.4 symbols used as text).
-fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub(crate) fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     use crate::lexer::TokenKind;
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let [open, sign, amount, close] = tokens else {
-        return None;
+    let tokens = match tokens {
+        [open, inner @ .., close]
+            if open.kind == TokenKind::LBracket && close.kind == TokenKind::RBracket => inner,
+        other => other,
     };
-    if open.kind != TokenKind::LBracket
-        || close.kind != TokenKind::RBracket
-        || amount.kind != TokenKind::Number
-    {
-        return None;
-    }
-    let amount = amount.parser_text().parse::<i32>().ok().filter(|amount| *amount > 0)?;
+    // The lexer retains a signed number as one word. Document bracket
+    // processing can also pass the symbol's contents without its brackets.
+    let (positive, amount) = match tokens {
+        [token] => {
+            let text = token.parser_text();
+            let (positive, digits) = if let Some(digits) = text.strip_prefix('+') {
+                (true, digits)
+            } else {
+                (false, text.strip_prefix('-').or_else(|| text.strip_prefix('−'))?)
+            };
+            (positive, digits.parse::<i32>().ok()?)
+        }
+        [sign, amount] if matches!(sign.kind, TokenKind::Plus | TokenKind::Dash) => {
+            (sign.kind == TokenKind::Plus, amount.parser_text().parse::<i32>().ok()?)
+        }
+        _ => return None,
+    };
+    if amount <= 0 { return None; }
     let source = crate::cards::builders::TargetAst::Source(None);
-    match sign.kind {
-        TokenKind::Plus => Some(EffectAst::subject_verb_put_counters(
+    match positive {
+        true => Some(EffectAst::subject_verb_put_counters(
             crate::object::CounterType::Loyalty,
             crate::effect::Value::Fixed(amount),
             source,
             None,
             false,
         )),
-        TokenKind::Dash => Some(EffectAst::subject_verb_remove_up_to_any_counters(
+        false => Some(EffectAst::subject_verb_remove_up_to_any_counters(
             crate::effect::Value::Fixed(amount),
             source,
             Some(crate::object::CounterType::Loyalty),
             false,
         )),
-        _ => None,
     }
 }
 

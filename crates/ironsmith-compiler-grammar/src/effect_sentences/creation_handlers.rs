@@ -949,6 +949,15 @@ fn merge_inline_copy_granted_ability(
     true
 }
 
+fn has_quoted_end_of_combat_exile(tokens: &[OwnedLexToken]) -> bool {
+    parse_inline_copy_granted_abilities(tokens).is_empty()
+        && double_quoted_rule_bodies(tokens).into_iter().any(|body| {
+            matches!(crate::lexer::parser_token_word_refs(body).as_slice(),
+                ["at", "end", "of", "combat", "exile", "this", "token" | "creature"]
+                | ["at", "the", "end", "of", "combat", "exile", "this", "token" | "creature"])
+        })
+}
+
 fn attach_inline_token_granted_abilities_to_effect(
     effect: &mut EffectAst,
     tokens: &[OwnedLexToken],
@@ -956,18 +965,24 @@ fn attach_inline_token_granted_abilities_to_effect(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &mut subject_verb.action {
             SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 sacrifice_at_next_end_step_ability_surface,
                 granted_abilities,
                 ..
             })
             | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource {
+                exile_at_end_of_combat,
                 sacrifice_at_next_end_step,
                 sacrifice_at_next_end_step_ability_surface,
                 granted_abilities,
                 ..
             }) => {
                 let mut attached = false;
+                if has_quoted_end_of_combat_exile(tokens) {
+                    *exile_at_end_of_combat = true;
+                    attached = true;
+                }
                 if *sacrifice_at_next_end_step
                     && sacrifice_at_next_end_step_ability_surface.is_none()
                 {
@@ -1633,7 +1648,20 @@ pub fn parse_create(
     let mut attached_to_target: Option<TargetAst> = None;
     if let Some(attached) = creation_grammar::parse_attachment_clause_tokens(&tail_tokens) {
         attached_to_target = Some(match parse_target_phrase(attached.target_tokens) {
-            Ok(target) => target,
+            Ok(target) => {
+                // Contextual source names have already become `this ...`.
+                // A remaining proper name names the created permanent, not
+                // the source of this creation instruction.
+                if matches!(&target, TargetAst::Object(filter, ..)
+                    if filter.source && matches!(filter.source_surface,
+                        Some(crate::target::SourceReferenceSurface::FullName(_)
+                            | crate::target::SourceReferenceSurface::ShortName(_))))
+                {
+                    named_permanent_reference_target(attached.target_tokens).unwrap_or(target)
+                } else {
+                    target
+                }
+            }
             Err(err) => named_permanent_reference_target(attached.target_tokens).ok_or(err)?,
         });
         tail_tokens = attached.prefix_tokens.to_vec();
@@ -1874,15 +1902,7 @@ pub fn parse_create(
             // Wild Mage): when no granted-trigger reading claims the quoted
             // rule, it is the copy's end-of-combat exile (otherwise the rule
             // was silently dropped and the token stayed forever).
-            let quoted_exile_at_end_of_combat = parse_inline_copy_granted_abilities(&tail_tokens)
-                .is_empty()
-                && double_quoted_rule_bodies(&tail_tokens).into_iter().any(|body| {
-                    matches!(
-                        token_word_refs(body).as_slice(),
-                        ["at", "end", "of", "combat", "exile", "this", "token" | "creature"]
-                            | ["at", "the", "end", "of", "combat", "exile", "this", "token" | "creature"]
-                    )
-                });
+            let quoted_exile_at_end_of_combat = has_quoted_end_of_combat_exile(&tail_tokens);
             let token_modifier_words = tail_surface
                 .location(CreateWord::Token)
                 .map(|idx| &tail_words[..idx])

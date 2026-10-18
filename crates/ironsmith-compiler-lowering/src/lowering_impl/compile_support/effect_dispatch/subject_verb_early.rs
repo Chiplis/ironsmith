@@ -3893,7 +3893,13 @@ pub(super) fn compile_subject_verb_early(
                 crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => effect.to_source_controller(),
                 crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
                     let destination_target = destination_target.as_ref().ok_or_else(|| CardTextError::ParseError("missing redirected-next-time damage destination target".into()))?;
-                    let (spec, destination_choices) = resolve_target_spec_with_choices(destination_target, &refs)?;
+                    // A named result of a separate target announcement is
+                    // consumed by identity, not announced a second time.
+                    let (spec, destination_choices) = if matches!(destination_target, TargetAst::Tagged(..)) {
+                        resolve_attach_object_spec(destination_target, &refs)?
+                    } else {
+                        resolve_target_spec_with_choices(destination_target, &refs)?
+                    };
                     for choice in destination_choices { push_choice(&mut choices, choice); }
                     effect.to_target(spec)
                 }

@@ -184,6 +184,7 @@ fn tahngarth_joins_the_attack_on_something_that_opponent_is_attacking() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    game.turn.active_player = bob;
     game.turn.phase = ironsmith::game_state::Phase::Combat;
     game.turn.step = Some(ironsmith::game_state::Step::DeclareAttackers);
     let attacker = p16_creature(&mut game, "Bob's attacker", bob);

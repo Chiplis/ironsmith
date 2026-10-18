@@ -2715,6 +2715,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::AttachedToSourceMatches(filter) => {
+            let mut without_orientation = filter.clone();
+            without_orientation.face_down = None;
+            if let Some(face_down) = filter.face_down
+                && without_orientation == ObjectFilter::default()
+            {
+                return format!("enchanted permanent is face {}", if face_down { "down" } else { "up" });
+            }
             let mut enchanted_creature_power = ObjectFilter::creature();
             enchanted_creature_power.power =
                 Some(crate::filter::Comparison::GreaterThanOrEqual(4));
@@ -3155,7 +3162,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 && simple_type_identity_condition_filter(filter)
                 && (!filter.card_types.is_empty() || !filter.all_card_types.is_empty())
             {
-                let description = ensure_indefinite_article(&filter.description());
+                let mut identity = filter.clone();
+                // Printed-card identity excludes tokens implicitly; the card
+                // noun below already conveys that constraint.
+                if identity.use_face_up_characteristics {
+                    identity.nontoken = false;
+                }
+                let description = ensure_indefinite_article(&identity.description());
                 let card_description = if description.ends_with(" card") {
                     description
                 } else {
@@ -3191,7 +3204,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     return "any of those cards shares a card type with that spell".to_string();
                 }
             }
-            let desc = filter.description();
+            let desc = if tagged_condition_is_known_card_reference(tag) {
+                let mut card_filter = filter.clone();
+                card_filter.set_explicit_card_noun(true);
+                card_filter.description()
+            } else {
+                filter.description()
+            };
             if filter.shares_creature_type_with_source
                 && filter.zone.is_none()
                 && filter.controller.is_none()
@@ -3790,9 +3809,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_possessive_player_filter(player),
                 );
             }
-            if let Some(action) = tag_action_from_name(tag.as_str())
-                .or_else(|| sacrifice_result.then_some("sacrificed"))
-            {
+            let action = tag_action_from_name(tag.as_str())
+                .or_else(|| sacrifice_result.then_some("sacrificed"));
+            if filter.zone == Some(Zone::Hand) && action.is_none_or(|action| action == "put") {
+                // "If you put an artifact card into your hand this way"
+                // (Chrome Courier, Town Greeter): the remembered card set is
+                // checked for a member that now is in that player's hand.
+                let object = describe_nonbattlefield_card_filter_without_zone(filter, Zone::Hand);
+                format!(
+                    "{} put {} into {} hand this way",
+                    describe_player_filter(player),
+                    with_indefinite_article(strip_leading_article(&object)),
+                    describe_possessive_player_filter(player),
+                )
+            } else if let Some(action) = action {
                 let object_text = describe_player_tagged_object_text(tag, filter);
                 let destination = if action == "put" && filter.zone == Some(Zone::Battlefield) {
                     " onto the battlefield"
@@ -3805,17 +3835,6 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     action,
                     object_text,
                     destination
-                )
-            } else if filter.zone == Some(Zone::Hand) {
-                // "If you put an artifact card into your hand this way"
-                // (Chrome Courier, Town Greeter): the remembered card set is
-                // checked for a member that now is in that player's hand.
-                let object = describe_nonbattlefield_card_filter_without_zone(filter, Zone::Hand);
-                format!(
-                    "{} put {} into {} hand this way",
-                    describe_player_filter(player),
-                    with_indefinite_article(strip_leading_article(&object)),
-                    describe_possessive_player_filter(player),
                 )
             } else {
                 format!(
@@ -6620,6 +6639,13 @@ pub(crate) fn tagged_condition_is_known_card_reference(tag: &crate::TagKey) -> b
 
 pub(crate) fn simple_type_identity_condition_filter(filter: &ObjectFilter) -> bool {
     let mut stripped = filter.clone();
+    // A printed-card identity uses face-up characteristics and excludes
+    // tokens; those constraints are expressed by the renderer's "card" noun.
+    if stripped.use_face_up_characteristics {
+        stripped.use_face_up_characteristics = false;
+        stripped.nontoken = false;
+    }
+    stripped.set_explicit_card_type_noun(None);
     stripped.card_types.clear();
     stripped.all_card_types.clear();
     stripped == ObjectFilter::default()

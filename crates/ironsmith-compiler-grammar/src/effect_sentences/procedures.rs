@@ -420,8 +420,14 @@ pub(super) fn recognize(
     let mut deferred: Option<CardTextError> = None;
     for mut procedure in opened {
         let mut continued = Ok(());
-        for (offset, sentence) in sentences[sentence_idx + 1..].iter().enumerate() {
-            let rest = sentences.get(sentence_idx + 2 + offset..).unwrap_or(&[]);
+        // A repeated look procedure opens with both the initial look and the
+        // repeated round already consumed. Resume at its next sentence.
+        let opened_count = match &procedure {
+            Procedure::RepeatChoice(group) => group.consumed,
+            _ => 1,
+        };
+        for (offset, sentence) in sentences[sentence_idx + opened_count..].iter().enumerate() {
+            let rest = sentences.get(sentence_idx + opened_count + 1 + offset..).unwrap_or(&[]);
             match continue_with(&mut procedure, sentence, rest) {
                 Ok(true) => {}
                 Ok(false) => break,

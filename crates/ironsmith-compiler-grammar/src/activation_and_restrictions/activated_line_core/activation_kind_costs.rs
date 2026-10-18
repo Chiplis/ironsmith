@@ -195,8 +195,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         && let Ok(life) = amount.parse::<u32>()
         && sentences.len() == 1
     {
-        let pay = crate::lexer::lex_line(&format!("pay {life} life"), 0)
-            .map_err(|_| error(tokens, "life surcharge"))?;
+        let pay = crate::lexer::synthetic_word_tokens(["pay", &life.to_string(), "life"]);
         let increase = parse_compiler_activation_cost(&pay)?;
         let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
         let mut ability = StaticAbility::increase_activated_ability_costs(filter, increase);

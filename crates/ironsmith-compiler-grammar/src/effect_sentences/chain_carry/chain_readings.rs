@@ -426,7 +426,10 @@ const CHAIN_COMPOSITION: &[Reading] = &[
     Reading {
         id: RuleId::new("player-may"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        // A trailing condition scopes whether the optional choice is offered.
+        // Its dedicated reading owns that shape; a second generic reading
+        // would instead place the condition inside the optional action.
+        admits: |input| split_trailing_if_clause_lexed(input.tokens).is_none(),
         read: |input| input.outcome(read_player_may(input)),
     },
     Reading {
@@ -1041,6 +1044,16 @@ fn read_trailing_if_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst
 fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
+        // The clause reader retains delegated target choice before parsing
+        // the optional body. Do not strip its actor here first.
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+            && words.ends_with(&["of", "their", "choice"])
+            && words.contains(&"target")
+        {
+            return super::super::clause_dispatch::parse_effect_clause(tokens)
+                .map(|effect| Some(vec![effect]));
+        }
         let mut stripped = remove_through_first_word(tokens);
         if let Some(rest) = chain_grammar::strip_leading_choose_to_tokens(&stripped) {
             stripped = rest.to_vec();

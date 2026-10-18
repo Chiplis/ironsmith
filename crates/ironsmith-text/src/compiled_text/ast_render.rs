@@ -21351,6 +21351,7 @@ pub(super) fn describe_resolution_program(
     let text = describe_resolution_program_inner(program);
     let flattened = program.flattened_default_effects();
     let text = super::render_effects::refer_back_to_declared_chosen_object(&flattened, text);
+    let text = super::render_effects::refer_back_to_declared_player(&flattened, text);
     // "Any number of target players each lose 2 life ... You add {B}{B} and
     // draw a card." (Priest of Forgotten Gods): after a sentence about other
     // players, the controller's mana production keeps its explicit subject.
@@ -26248,6 +26249,35 @@ fn describe_search_found_card_destination_self_replacement(
     ))
 }
 
+/// A reveal procedure can replace its damage amount while sharing the same
+/// final library disposition. Render that disposition once, after the choice.
+fn describe_revealed_damage_multiplier_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [branch] = segment.self_replacements.as_slice() else { return None; };
+    let [reveal, damage, bottom] = segment.default_effects.as_slice() else { return None; };
+    let [replacement, replacement_bottom] = branch.replacement_effects.as_slice() else { return None; };
+    let bottom_view = unwrap_basic_render_wrapper(bottom)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if Some(bottom_view) != unwrap_basic_render_wrapper(replacement_bottom)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>() {
+        return None;
+    }
+    let original = self_replacement_damage_view(damage)?;
+    let replacement = self_replacement_damage_view(replacement)?;
+    let Value::Scaled(amount, 2) = replacement.amount.unhinted() else { return None; };
+    if amount.unhinted() != original.amount.unhinted()
+        || replacement.target != original.target
+        || replacement.source_is_combat != original.source_is_combat
+        || replacement.unpreventable != original.unpreventable
+        || replacement.excess_to_controller != original.excess_to_controller
+    { return None; }
+    let lead = describe_effect_list(&[reveal.clone(), damage.clone()]);
+    let condition = super::normalize_common::describe_condition(&branch.condition);
+    let tail = describe_effect_list(&[bottom.clone()]);
+    Some(format!("{}. If {condition}, it deals double that damage instead. {tail}", lead.trim_end_matches('.')))
+}
+
 pub(crate) fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -26255,6 +26285,9 @@ pub(crate) fn describe_single_self_replacement_segment(
         return None;
     }
     let branch = &segment.self_replacements[0];
+    if let Some(rendered) = describe_revealed_damage_multiplier_replacement(segment) {
+        return Some(rendered);
+    }
     if let Some(rendered) =
         super::render_effects::describe_single_counter_target_self_replacement(segment)
     {
@@ -34050,6 +34083,9 @@ fn describe_triggering_card_type_exile_then_cast_permission(ability: &Ability) -
         }
         let mut remainder = filter.clone();
         remainder.card_types.clear();
+        remainder.set_explicit_card_type_noun(None);
+        remainder.use_face_up_characteristics = false;
+        remainder.nontoken = false;
         remainder == ObjectFilter::default()
     };
     let Condition::Or(left, right) = &conditional.condition else {

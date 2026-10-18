@@ -137,7 +137,10 @@ fn close_encounter_additional_cost_chooses_a_creature_or_warped_card() {
     .expect("Close Encounter compiles");
     let debug = format!("{definition:?}");
     assert!(debug.contains("warped: true"), "{debug}");
-    assert!(debug.contains("additional_cost_chosen_object"), "both options export one choice");
+    let cost = format!("{:?}", definition.additional_cost);
+    assert!(cost.contains("tag: TagKey(\"__it__\")")
+        && debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"),
+        "both object domains export the same choice read by the damage: {debug}");
     assert!(!debug.contains("ExileEffect"), "choosing is not exiling");
 
     let alice = ironsmith::PlayerId::from_index(0);

@@ -116,7 +116,7 @@ fn p53_jace_architect_of_thought_piles_and_ultimate() {
     let debug = format!("{definition:?}");
     // −2: an opponent splits; the other pile goes to the library bottom, not
     // the graveyard.
-    assert!(debug.contains("chooser: Opponent") || debug.contains("player: Opponent"), "{debug}");
+    assert!(debug.contains("ChoosePlayerEffect { chooser: You, filter: Opponent") && debug.contains("chooser: TaggedPlayer("), "{debug}");
     assert!(debug.contains("PutTaggedRemainderOnLibraryBottomEffect"), "{debug}");
     assert!(debug.contains("ChooserChooses"), "{debug}");
     // −8: any number of the exiled cards may be cast, each in turn.

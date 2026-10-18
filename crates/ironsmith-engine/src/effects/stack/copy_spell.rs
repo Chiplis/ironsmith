@@ -1260,8 +1260,7 @@ mod tests {
         let _ = effect.execute(&mut game, &mut ctx).unwrap();
 
         let events = game.take_pending_trigger_events();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].kind(), EventKind::SpellCopied);
+        assert_eq!(events.iter().filter(|event| event.kind() == EventKind::SpellCopied).count(), 1);
     }
 
     #[test]

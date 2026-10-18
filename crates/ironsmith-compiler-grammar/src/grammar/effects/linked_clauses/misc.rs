@@ -105,7 +105,8 @@ const INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES: &[&[&str]] = &[
     // of putting it into a graveyard as it resolves." (Rod of Absorption,
     // River Song's Diary): any player's spell, so any graveyard.
     &[
-        "instead", "of", "putting", "it", "into", "a", "graveyard", "as", "it", "resolves",
+        // The content-word matcher skips articles in the input.
+        "instead", "of", "putting", "it", "into", "graveyard", "as", "it", "resolves",
     ],
 ];
 const IF_YOU_DO_IT_BECOMES_PLOTTED: &[&str] = &["if", "you", "do", "it", "becomes", "plotted"];

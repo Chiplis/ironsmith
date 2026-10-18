@@ -70,6 +70,13 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = crate::effect_sentences::chain_carry::parse_coordinated_delayed_followup(tokens)? { return Ok(effects); }
+    if let Some(effects) = crate::effect_sentences::chain_carry::parse_coordinated_loyalty_action(tokens)? { return Ok(effects); }
+    // "That combat" starts in the phase just added by the resolving spell.
+    // Preserve the anchored rule before a general can't-clause drops its start.
+    if let Some(effect) = crate::effect_sentences::temporary_attack_requirement::parse_referenced_combat_requirement(tokens) {
+        return Ok(vec![effect]);
+    }
     // "Then for each card you put on top of your library, you draw a card
     // and you lose 3 life." (Starving Revenant): the whole coordinated body
     // repeats per card the preceding surveil kept on top. The and-split
@@ -1324,7 +1331,7 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
     // (Reap): a player named only inside the where-X value is still a target
     // the spell must choose before X can be read.
     if let Value::Count(filter) = where_value.unhinted()
-        && let Some(player @ PlayerFilter::Target(_)) = filter
+        && let Some(PlayerFilter::Target(player)) = filter
             .controller
             .as_ref()
             .or(filter.owner.as_ref())
@@ -1332,14 +1339,14 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
         // players" (Officious Interrogation) refers back to a target an
         // earlier sentence already declared.
         && primary_where_tokens.windows(2).any(|pair| {
-            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
+            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent", "player's", "opponent's", "players", "opponents"])
         })
         && !stripped.windows(2).any(|pair| {
             pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
         })
     {
         prelude_effects.push(EffectAst::subject_verb_target_only(TargetAst::Player(
-            player.clone(),
+            *player.clone(),
             None,
         )));
     }

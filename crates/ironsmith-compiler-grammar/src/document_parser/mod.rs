@@ -1425,6 +1425,15 @@ fn replace_named_source_alias_tokens(
             word_idx += 1;
             continue;
         }
+        // A keyword's component is rules vocabulary even when it also
+        // matches the source's short-name alias.
+        if alias_words.len() == 1
+            && alias_words[0] == "upkeep"
+            && word_idx.checked_sub(1).is_some_and(|previous| pieces[previous].text == "cumulative")
+        {
+            word_idx += 1;
+            continue;
+        }
         if alias_words.len() == 1
             && alias_words[0] == "excess"
             && pieces
@@ -1524,8 +1533,13 @@ fn replace_named_source_alias_tokens(
                         tokens[piece_tokens[end_word - 1] + 1..].iter().take_while(|token| token.kind != TokenKind::Quote)
                             .any(|token| token.kind == TokenKind::Colon))
             });
+        // A named possessive inside a quoted granted ability still refers to the
+        // attachment, whose controller may differ from the ability controller.
         let preserve_surface = attachment_replacement.is_none()
-            && (alias_is_strict_prefix_of_compound_subtype
+            && ((pieces[end_word - 1].possessive
+                    && tokens.iter().any(|token| token.kind == TokenKind::Quote)
+                    && attachment_grant_replacements.get(piece_tokens[word_idx]).is_some_and(Option::is_some))
+                || alias_is_strict_prefix_of_compound_subtype
                 || source_alias_occurrence_looks_like_effect_verb_lexed(
                     &pieces, word_idx, end_word,
                 )
@@ -1750,6 +1764,12 @@ fn source_alias_occurrence_is_rules_term_lexed(
     let matched_word = (end_word == start_word + 1)
         .then(|| pieces.get(start_word).map(|piece| piece.text))
         .flatten();
+
+    if (matched_word == Some("random") && previous_word == Some("at"))
+        || (matched_word == Some("upkeep") && previous_word == Some("cumulative"))
+    {
+        return true;
+    }
 
     // "turned face up/down" describes orientation, even when a short source
     // alias is Face-Up or Face-Down. Replacing it erases the history qualifier.
@@ -3144,7 +3164,10 @@ fn try_parse_labeled_line_dispatch(
     }
 
     let authored_body_tokens = authored_tokens_for_normalized_slice(line, body_tokens);
-    let body_line = rewrite_line_tokens(line, body_tokens);
+    // Labeled instructions have the same source identity as ordinary lines.
+    // Bind their named operands before entering context-free statement readers.
+    let contextual_body = normalize_named_source_tokens_for_builder(&preprocessed.card, body_tokens);
+    let body_line = rewrite_line_tokens(line, contextual_body.as_deref().unwrap_or(body_tokens));
     if label.eq_ignore_ascii_case("eminence")
         && let Some((trigger_with_intro, after_trigger)) =
             grammar::split_lexed_once_on_comma(&body_line.tokens)
@@ -3831,7 +3854,29 @@ fn rewrite_cleave_bracket_document(
 
         let mut depth = 0usize;
         let mut tokens = Vec::with_capacity(line.tokens.len());
+        // Signed loyalty instructions are executable symbols, not cleave
+        // text. Preserve their delimiters so a leading minus is not later
+        // mistaken for a list bullet.
+        let mut loyalty_spans = line.tokens.windows(4).enumerate().filter_map(|(start, span)| {
+            (!remove_bracketed_text
+                && span[0].kind == TokenKind::LBracket
+                && matches!(span[1].kind, TokenKind::Plus | TokenKind::Dash)
+                && span[2].kind == TokenKind::Number
+                && span[3].kind == TokenKind::RBracket)
+                .then_some(start..start + 4)
+        }).collect::<Vec<_>>();
+        if !remove_bracketed_text {
+            loyalty_spans.extend(line.tokens.windows(3).enumerate().filter_map(|(start, span)| {
+                (span[0].kind == TokenKind::LBracket && span[2].kind == TokenKind::RBracket
+                    && span[1].parser_text().starts_with(['+', '-'])
+                    && span[1].parser_text().parse::<i32>().is_ok()).then_some(start..start + 3)
+            }));
+        }
         for (index, token) in line.tokens.iter().enumerate() {
+            if loyalty_spans.iter().any(|span| span.contains(&index)) {
+                tokens.push(token.clone());
+                continue;
+            }
             match token.kind {
                 TokenKind::LBracket => {
                     // "deals X damage ... [X is the number of creatures you
@@ -4786,7 +4831,7 @@ fn try_merge_collection_cast_count_instead_of_one(
     lines: &mut [RecognizedLine],
     line: &PreprocessedLine,
 ) -> bool {
-    use crate::cards::builders::{ConditionalEffectAst, EffectAst, ForEachEffectAst, ObjectChoiceEffectAst};
+    use crate::cards::builders::{ConditionalEffectAst, EffectAst, ForEachEffectAst, ObjectChoiceEffectAst, SubjectVerbEffectAst, SubjectVerbActionAst, StackActionAst};
     // Preprocessing may already have moved the ability word off the parse
     // tokens; the authored tokens still carry it.
     let Some((_, _, body)) = split_label_prefix_lexed(&line.tokens)
@@ -4824,14 +4869,35 @@ fn try_merge_collection_cast_count_instead_of_one(
     let Ok(mut effects) = parse_effect_sentences_lexed(&previous.parse_tokens) else {
         return false;
     };
+    // Looked-card procedures retain an explicit-zone choice followed by a
+    // single-card cast. Promote that pair to the same collection program
+    // before restating its count, so every selected card is actually cast.
+    let mut index = 0;
+    while index + 1 < effects.len() {
+        let pair_tag = match (&effects[index], &effects[index + 1]) {
+            (EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, tag, .. }),
+             EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag: cast_tag, .. }), .. }))
+                if *count == crate::effect::ChoiceCount::up_to(1) && tag == cast_tag => Some(tag.clone()),
+            _ => None,
+        };
+        if let Some(tag) = pair_tag {
+            let mut cast = effects.remove(index + 1);
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }), .. }) = &mut cast {
+                *tag = crate::tag::CompilerReferenceTag::It.bind();
+            }
+            let choice = std::mem::replace(&mut effects[index], EffectAst::Sequence { effects: Vec::new() });
+            effects[index] = EffectAst::Sequence { effects: vec![choice, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects: vec![cast] })] };
+        }
+        index += 1;
+    }
     fn is_single_collection_cast(effect: &EffectAst) -> bool {
         let EffectAst::Sequence { effects } = effect else { return false };
         matches!(effects.as_slice(), [
-            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count, count_value: None, .. }),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count, count_value: None, .. } | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, .. }),
             EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. }),
         ] if *count == crate::effect::ChoiceCount::up_to(1))
     }
-    fn replace_one(effects: &mut Vec<EffectAst>, found: &mut usize, replace: &mut dyn FnMut(EffectAst) -> EffectAst) {
+    fn replace_one(effects: &mut [EffectAst], found: &mut usize, replace: &mut dyn FnMut(EffectAst) -> EffectAst) {
         for effect in effects.iter_mut() {
             if is_single_collection_cast(effect) {
                 *found += 1;
@@ -4839,8 +4905,8 @@ fn try_merge_collection_cast_count_instead_of_one(
                     let original = std::mem::replace(effect, EffectAst::Sequence { effects: Vec::new() });
                     *effect = replace(original);
                 }
-            } else if let EffectAst::Sequence { effects } = effect {
-                replace_one(effects, found, replace);
+            } else {
+                crate::model::visit::for_each_nested_effects_mut(effect, false, |effects| replace_one(effects, found, replace));
             }
         }
     }
@@ -4848,7 +4914,7 @@ fn try_merge_collection_cast_count_instead_of_one(
     replace_one(&mut effects, &mut found, &mut |original| {
         let mut restated = original.clone();
         if let EffectAst::Sequence { effects } = &mut restated
-            && let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count: choice, .. })) = effects.first_mut()
+            && let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count: choice, .. } | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count: choice, .. })) = effects.first_mut()
         {
             *choice = crate::effect::ChoiceCount::up_to(count as usize);
         }
@@ -7933,17 +7999,18 @@ mod tests {
         };
         assert!(matches!(
             ability.trigger_spec.as_deref(),
-            Some(crate::cards::builders::TriggerSpec::BeginningOfCombat(
-                crate::target::PlayerFilter::You
-            ))
+            Some(crate::cards::builders::TriggerSpec::WithIntro { intro: crate::model::ast::TriggerIntroSurfaceAst::At, trigger })
+                if matches!(trigger.as_ref(), crate::cards::builders::TriggerSpec::BeginningOfCombat(crate::target::PlayerFilter::You))
         ));
         assert!(matches!(
             ability.effects_ast.as_deref(),
             Some([crate::cards::builders::EffectAst::Conditionals(crate::cards::builders::ConditionalEffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceMatches(filter)),
+                predicate: crate::cards::builders::PredicateAst::Or(command, battlefield),
                 if_true,
                 ..
-            })]) if filter.any_of.len() == 2 && !if_true.is_empty()
+            })]) if matches!(command.as_ref(), crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceIsInZone(crate::Zone::Command)))
+                && matches!(battlefield.as_ref(), crate::cards::builders::PredicateAst::Source(SourcePredicateAst::SourceIsInZone(crate::Zone::Battlefield)))
+                && !if_true.is_empty()
         ));
     }
 

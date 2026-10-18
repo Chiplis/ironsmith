@@ -114,7 +114,7 @@ fn avatar_aang_transforms_only_after_all_four_bends() {
         .abilities
         .iter()
         .find_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(trigger) => Some(trigger),
+            AbilityKind::Triggered(trigger) if format!("{:?}", trigger.trigger).contains("Waterbend") => Some(trigger),
             _ => None,
         })
         .expect("bending trigger");

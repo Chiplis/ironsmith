@@ -86,7 +86,7 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
     let setup_effects = super::parse_effect_chain(setup)?;
     let right_effects = super::parse_effect_chain(right)?;
     let wrong_effects = super::parse_effect_chain(wrong)?;
-    let reveal_tokens = crate::lexer::lex_line("reveal the top card of your library", 0)?;
+    let reveal_tokens = crate::lexer::synthetic_word_tokens(["reveal", "the", "top", "card", "of", "your", "library"]);
     let reveal_effects = super::parse_effect_chain(&reveal_tokens)?;
 
     let kind_mode = |label: &str, filter: ObjectFilter| {

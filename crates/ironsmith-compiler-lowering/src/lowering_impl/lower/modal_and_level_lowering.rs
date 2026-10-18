@@ -275,6 +275,15 @@ pub fn lower_parsed_modal(
     } else {
         header_min
     };
+    // Modal counts are evaluated in the same trigger reference context as
+    // their bodies (for example, the number of modes of "that spell").
+    let mut count_context = EffectLoweringContext::new();
+    if let Some(trigger) = trigger.as_ref() {
+        count_context.last_object_tag = crate::lowering_support::default_trigger_last_object_tag(trigger);
+    }
+    let refs = count_context.reference_env();
+    let max = ironsmith_compiler_resolve::reference_helpers::resolve_value_it_tag(&max, &refs)?;
+    let min = ironsmith_compiler_resolve::reference_helpers::resolve_value_it_tag(&min, &refs)?;
     let is_fixed_one =
         |value: &crate::effect::Value| matches!(value, crate::effect::Value::Fixed(1));
     let compiled_conditional_mode_change = conditional_mode_change

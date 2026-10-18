@@ -171,7 +171,7 @@ fn enchanted_players_graveyard_replacement_reveals_and_bottoms_the_card() {
         .expect("Wheel of Sun and Moon should compile");
     let debug = format!("{:?}", definition.abilities);
     assert!(debug.contains("ZoneChange"), "zone-change replacement: {debug}");
-    assert!(debug.contains("\"enchanted\""), "only the enchanted player's cards: {debug}");
+    assert!(debug.contains(r#"owner: Some(TaggedPlayer(TagKey(\"enchanted\")))"#), "only the enchanted player's cards: {debug}");
     assert!(debug.contains("Reveal"), "the card is revealed: {debug}");
     assert!(debug.contains("Library") && !debug.contains("to_top: true"), "bottom of the library: {debug}");
 }

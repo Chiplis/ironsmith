@@ -620,6 +620,10 @@ pub(super) fn then_followup_facts(
                 &["discards", "that", "many"],
                 &["create", "that", "many"],
                 &["creates", "that", "many"],
+                &["exile", "that", "many"],
+                &["exiles", "that", "many"],
+                &["mill", "that", "many"],
+                &["mills", "that", "many"],
             ],
         );
     let allow_life_equal =

@@ -37,8 +37,8 @@ fn elvish_healer_green_creature_replaces_the_one_point_shield_with_two() {
     let compact = p30_compact(&definition);
     assert!(compact.contains("PreventDamageEffect{amount:Fixed(1"), "{compact}");
     assert!(compact.contains("PreventDamageEffect{amount:Fixed(2"), "{compact}");
-    assert!(compact.contains("Conditional"), "the larger shield replaces the default: {compact}");
-    assert!(compact.contains("required_colors:Some("), "the green-creature test: {compact}");
+    assert!(compact.contains("self_replacements:[SelfReplacement"), "the larger shield replaces the default: {compact}");
+    assert!(compact.contains("colors:Some(ColorSet(16"), "the green-creature test: {compact}");
 }
 
 #[test]
@@ -132,11 +132,10 @@ fn etrata_the_silencer_loss_checks_owned_exiled_hit_counter_cards() {
         .split_once("PlayerHasAtLeast{")
         .map(|(_, tail)| tail)
         .unwrap_or_else(|| panic!("owned exiled-card count gate: {compact}"));
-    let gate = &gate[..gate.len().min(2500)];
     assert!(gate.contains("Exile"), "{compact}");
     assert!(gate.contains("Hit"), "{compact}");
     assert!(gate.contains("count:3"), "{compact}");
-    assert!(compact.contains("LoseGame"), "{compact}");
+    assert!(compact.contains("LoseTheGameEffect"), "{compact}");
     assert!(compact.contains("ShuffleIntoLibrary") || compact.contains("Shuffle"), "{compact}");
 }
 
@@ -171,7 +170,6 @@ fn elspeth_conquers_death_taxes_opponents_noncreature_spells_until_your_next_tur
         .split_once("GrantNextSpellCostReductionEffect{")
         .map(|(_, tail)| tail)
         .unwrap_or_else(|| panic!("temporary spell tax: {compact}"));
-    let tax = &tax[..tax.len().min(4000)];
     assert!(tax.starts_with("player:Opponent"), "taxes the opponents' spells: {compact}");
     assert!(tax.contains("increases_cost:true"), "{compact}");
     assert!(tax.contains("duration:YourNextTurn"), "{compact}");
@@ -263,7 +261,7 @@ fn etrata_deadly_fugitive_grants_face_down_creatures_a_self_face_up_ability() {
         .unwrap_or_else(|| panic!("granted face-up ability: {compact}"));
     assert!(face_up.starts_with("target:Source"), "turns the creature with the ability: {compact}");
     assert!(compact.contains("face_down:Some(true"), "granted to face-down creatures: {compact}");
-    assert!(compact.contains("Cloak"), "{compact}");
+    assert!(compact.contains("ManifestTopCardOfLibraryEffect") && compact.contains("cloak:true"), "{compact}");
 }
 
 #[test]

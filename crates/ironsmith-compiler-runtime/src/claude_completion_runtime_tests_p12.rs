@@ -95,11 +95,10 @@ fn paragon_of_modernity_counts_colors_spent_to_activate() {
         let mut game = ironsmith::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = PlayerId::from_index(0);
         let paragon = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        let mut ctx = ironsmith::effects::EffectContext::new_default(paragon, alice)
-            .with_activation_mana_payment(payment);
-        for effect in activated.effects.all_effects() {
-            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
-        }
+        game.push_to_stack(ironsmith::game_state::StackEntry::ability(
+            paragon, alice, activated.effects.clone(),
+        ).with_mana_spent_on_activation(payment));
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert_eq!(
             game.counter_count(paragon, ironsmith::object::CounterType::PlusOnePlusOne),
             u32::from(expect_counter)

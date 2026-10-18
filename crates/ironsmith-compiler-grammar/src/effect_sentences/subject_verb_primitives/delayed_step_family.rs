@@ -2165,7 +2165,10 @@ fn each_player_sacrifices_chosen_unless_pays_its_mana_cost(
     ) {
         return None;
     }
-    let (filter_slot, inner) = match effects {
+    let already_in_player_loop = matches!(effects, [EffectAst::SubjectVerb(subject)]
+        if matches!(subject.subject.player, PlayerAst::That));
+    let (filter_slot, inner): (_, &[EffectAst]) = match effects {
+        [EffectAst::SubjectVerb(_)] if already_in_player_loop => (None, effects),
         [EffectAst::ForEach(ForEachEffectAst::ForEachPlayer { effects: inner })] => (None, inner),
         [EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             sequential,
@@ -2174,7 +2177,7 @@ fn each_player_sacrifices_chosen_unless_pays_its_mana_cost(
         })] => (Some((*sequential, filter.clone())), inner),
         _ => return None,
     };
-    let [EffectAst::SubjectVerb(subject_verb)] = inner.as_slice() else {
+    let [EffectAst::SubjectVerb(subject_verb)] = inner else {
         return None;
     };
     let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Sacrifice {
@@ -2211,6 +2214,9 @@ fn each_player_sacrifices_chosen_unless_pays_its_mana_cost(
         before_delayed_step: false,
     });
     let body = vec![choose, unless];
+    if already_in_player_loop {
+        return Some(EffectAst::Sequence { effects: body });
+    }
     Some(EffectAst::ForEach(match filter_slot {
         None => ForEachEffectAst::ForEachPlayer { effects: body },
         Some((sequential, filter)) => ForEachEffectAst::ForEachPlayersFiltered {

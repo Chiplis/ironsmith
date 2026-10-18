@@ -2424,7 +2424,7 @@ pub fn parse_each_creature_can_block_additional_creature_each_combat_line(
 
 pub fn parse_lose_all_abilities_and_transform_base_pt_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     fn title_case_words(words: &[&str]) -> String {
         words
             .iter()
@@ -2572,9 +2572,26 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
         abilities.push(StaticAbility::set_name(filter.clone(), name));
     }
     abilities.push(StaticAbility::set_base_power_toughness(
-        filter, power, toughness,
+        filter.clone(), power, toughness,
     ));
 
+    let mut abilities: Vec<StaticAbilityAst> = abilities.into_iter().map(Into::into).collect();
+    if let Some(open) = tokens.iter().position(OwnedLexToken::is_quote) {
+        let close = tokens.iter().rposition(OwnedLexToken::is_quote).unwrap();
+        if close <= open {
+            return Err(CardTextError::ParseError("unterminated quoted granted ability".into()));
+        }
+        let quoted = &tokens[open + 1..close];
+        let ability = parse_activated_line(quoted)?.ok_or_else(|| {
+            CardTextError::ParseError("unsupported quoted ability in characteristic-setting clause".into())
+        })?;
+        abilities.push(StaticAbilityAst::GrantObjectAbility {
+            filter,
+            ability,
+            display: display_text_for_tokens(quoted, false),
+            condition: None,
+        });
+    }
     Ok(Some(abilities))
 }
 

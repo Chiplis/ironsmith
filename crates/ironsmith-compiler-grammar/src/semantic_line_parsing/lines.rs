@@ -603,7 +603,7 @@ fn source_spell_cast_trigger_spec(
         return Ok(None);
     };
     let Some(clause_end) =
-        crate::slice_primitives::select_position(tokens, |token| token.kind == TokenKind::Comma)
+        crate::modal_support::first_trigger_boundary_comma(tokens, tokens.len())
     else {
         return Ok(None);
     };
@@ -1599,6 +1599,11 @@ fn parse_statement_to_chunks_impl(
     // authored production ahead of independent static sentence partitioning.
     let authored = &line.info.source_tokens;
     let authored_words = crate::lexer::token_word_refs(authored);
+    if let Some(abilities) =
+        crate::keyword_static::parse_as_long_as_attached_otherwise_source_keyword_line(authored)?
+    {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
     if authored_words.contains(&"cast")
         && authored_words.contains(&"instead")
         && let Ok(Some(abilities)) = parse_static_ability_ast_line_lexed(authored)
@@ -2171,6 +2176,7 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
     sentences.iter().skip(1).any(|sentence| {
         let sentence = sentence.as_ref();
         sentence_has_typed_become_copy_exception(sentence)
+            || matches!(crate::effect_sentences::parse_duration_goaded_and_restricted_sentence(sentence), Ok(Some(_)))
             || effect_grammar::followup_shapes::parse_moved_object_entry_followup_shape(sentence)
                 .is_some()
             || semantic_grammar::parse_temporary_static_followup_tokens(sentence).is_some_and(

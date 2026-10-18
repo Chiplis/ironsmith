@@ -161,7 +161,10 @@ pub(super) fn parse_activated_line_impl(
     line: &RewriteActivatedLine,
     original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<ParsedActivatedLine, CardTextError> {
-    let x_definition_value = activated_x_definition_value(original_effect_parse_tokens);
+    let linked_copy_effects = crate::effect_sentences::parse_linked_card_copy_with_announced_x(original_effect_parse_tokens)?;
+    let x_definition_value = if linked_copy_effects.is_some() { None } else {
+        activated_x_definition_value(original_effect_parse_tokens)
+    };
     let has_x_definition_value = x_definition_value.is_some();
     let SplitRewriteActivatedEffectText {
         effect_text,
@@ -419,11 +422,13 @@ pub(super) fn parse_activated_line_impl(
         )));
     }
 
-    let mut effects_ast = parse_activated_effects_lexed(
-        effect_text.as_str(),
-        &effect_parse_tokens,
-        line.info.line_index,
-    )?;
+    let mut effects_ast = if let Some(effects) = linked_copy_effects { effects } else {
+        parse_activated_effects_lexed(
+            effect_text.as_str(),
+            &effect_parse_tokens,
+            line.info.line_index,
+        )?
+    };
     recognize_named_source_action_surfaces(&line.info, &mut effects_ast);
     let functional_zones = infer_rewrite_activated_functional_zones(line)?;
     let reference_imports = compiler_activation_cost_reference_imports(&normalized_cost);

@@ -141,7 +141,8 @@ pub(super) fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec
         .into_iter()
         .filter_map(|ability| match ability.kind {
             AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::KeywordMarker =>
+                if static_ability.id() == StaticAbilityId::KeywordMarker
+                    && static_ability.is_active(game, object_id) =>
             {
                 Some(static_ability.display().to_ascii_lowercase())
             }

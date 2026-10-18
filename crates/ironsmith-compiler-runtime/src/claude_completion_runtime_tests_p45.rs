@@ -35,19 +35,17 @@ fn flame_discharge_reads_modified_creatures_frozen_as_the_spell_was_cast() {
         let mine = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         game.add_counters(mine, ironsmith::object::CounterType::PlusOnePlusOne, 1);
         let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
-        let mut ctx = EffectContext::new_default(source, alice)
-            .with_x(3)
-            .with_targets(vec![ResolvedTarget::Object(target)]);
+        let mut entry = ironsmith::game_state::StackEntry::ability(
+            source, alice, definition.spell_effect.clone().unwrap(),
+        ).with_x(3).with_targets(vec![ironsmith::game_state::Target::Object(target)]);
         let frozen = if cast_time_modified {
             vec![ObjectSnapshot::from_object_id(&game, mine).unwrap()]
         } else {
             Vec::new()
         };
-        ctx.set_tagged_objects(ironsmith_core::CAST_MODIFIED_CREATURES_TAG, frozen);
-        for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
-            execute_effect(&mut game, effect, &mut ctx).unwrap();
-        }
-        drop(ctx);
+        entry.tagged_objects.insert(ironsmith_core::CAST_MODIFIED_CREATURES_TAG.into(), frozen);
+        game.push_to_stack(entry);
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert_eq!(game.damage_on(target), if cast_time_modified { 5 } else { 3 });
     }
 }
@@ -71,6 +69,7 @@ fn fasting_offers_to_skip_the_draw_step_and_gains_life_if_you_do() {
     for accept in [true, false] {
         let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         game.turn.active_player = alice;
+        game.turn.turn_number = 2;
         for _ in 0..3 {
             game.create_object_from_card(&filler, alice, Zone::Library);
         }

@@ -1500,7 +1500,7 @@ pub fn split_if_clause_lexed(
             }
             if effect_tokens
                 .first()
-                .is_some_and(|token| token.is_word("search") || token.is_word("searches"))
+                .is_some_and(|token| token.is_any_word(&["search", "searches", "look", "reveal"]))
                 && let Ok(effects) =
                     parse_conditional_consequence(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()

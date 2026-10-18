@@ -495,7 +495,7 @@ fn filtered_graveyard_cast_with_life_cost_and_finality_rider() {
         "Mana cost: {1}{W}{U}{B}\nType: Legendary Creature — Human Noble\nPower/Toughness: 4/3\nLifelink\nYou may cast artifact spells from your graveyard by paying 3 life in addition to paying their other costs. If you cast a spell this way, that artifact enters with a finality counter on it.", false).unwrap();
     let debug = format!("{definition:?}");
     assert!(debug.contains("GraveyardCastFromCardManaCost"), "{debug}");
-    assert!(debug.contains("Life("), "{debug}");
+    assert!(debug.contains("PayLifeEffect { amount: Fixed(3)"), "{debug}");
     assert!(debug.contains("Finality"), "{debug}");
 }
 

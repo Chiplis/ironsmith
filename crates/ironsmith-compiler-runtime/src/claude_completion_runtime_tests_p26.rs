@@ -102,7 +102,7 @@ fn call_for_aid_forbids_attacking_the_target_and_sacrificing_the_stolen_creature
     assert!(debug.contains("BeSacrificed("), "{debug}");
     // The protected player is the targeted opponent, not an unbound iteration.
     let attack = &debug[debug.find("AttackPlayer {").unwrap()..];
-    assert!(attack.contains("player: Target(Opponent)"), "{attack}");
+    assert!(attack.contains("player: AliasedTarget(Opponent)"), "{attack}");
 }
 
 #[test]
@@ -114,8 +114,8 @@ fn celestial_reunion_gates_battlefield_on_paid_behold_and_chosen_type() {
     )
     .unwrap();
     let debug = format!("{definition:?}");
-    assert!(debug.contains("And("), "{debug}");
-    assert!(debug.to_lowercase().contains("chosen"), "{debug}");
+    assert!(debug.contains("ThisSpellPaidLabel") && debug.contains("LocalRewriteEffect"), "{debug}");
+    assert!(debug.contains("chosen_creature_type: true"), "{debug}");
     assert!(debug.contains("Battlefield"), "{debug}");
 }
 

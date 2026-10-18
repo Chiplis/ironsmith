@@ -1,6 +1,12 @@
 use super::*;
 const TEXT: &str = "This creature can't be blocked if you've cast a historic spell this turn.";
 
+fn is_unblockable(game: &mut crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
+    game.refresh_continuous_state().unwrap();
+    game.update_cant_effects();
+    !game.can_be_blocked(source)
+}
+
 fn definition() -> crate::cards::CardDefinition {
     crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Relic Runner")
         .card_types(vec![CardType::Creature])
@@ -66,10 +72,7 @@ fn historic_cast_block_condition_updates_after_cast_and_resets_each_turn() {
             );
             let expected = own_cast && kind != 3;
             assert_eq!(
-                game.current_has_static_ability_id(
-                    source,
-                    crate::static_abilities::StaticAbilityId::Unblockable
-                ),
+                is_unblockable(&mut game, source),
                 expected,
                 "kind={kind}, own_cast={own_cast}"
             );
@@ -83,17 +86,11 @@ fn historic_cast_block_condition_updates_after_cast_and_resets_each_turn() {
             );
             game.move_object_by_effect(spell, Zone::Graveyard).unwrap();
             assert_eq!(
-                game.current_has_static_ability_id(
-                    source,
-                    crate::static_abilities::StaticAbilityId::Unblockable
-                ),
+                is_unblockable(&mut game, source),
                 expected
             );
             game.next_turn();
-            assert!(!game.current_has_static_ability_id(
-                source,
-                crate::static_abilities::StaticAbilityId::Unblockable
-            ));
+            assert!(!is_unblockable(&mut game, source));
             assert!(crate::rules::combat::can_block(
                 game.object(source).unwrap(),
                 game.object(blocker).unwrap(),
@@ -128,23 +125,14 @@ fn conditional_unblockable_accepts_other_conditions_and_qualified_subjects() {
         let mut game = crate::game_state::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        assert!(!game.current_has_static_ability_id(
-            source,
-            crate::static_abilities::StaticAbilityId::Unblockable
-        ));
+        assert!(!is_unblockable(&mut game, source));
         let artifact = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Artifact Probe")
             .card_types(vec![CardType::Artifact])
             .build();
         let artifact = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
-        assert!(game.current_has_static_ability_id(
-            source,
-            crate::static_abilities::StaticAbilityId::Unblockable
-        ));
+        assert!(is_unblockable(&mut game, source));
         game.move_object_by_effect(artifact, Zone::Graveyard)
             .unwrap();
-        assert!(!game.current_has_static_ability_id(
-            source,
-            crate::static_abilities::StaticAbilityId::Unblockable
-        ));
+        assert!(!is_unblockable(&mut game, source));
     }
 }

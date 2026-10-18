@@ -27,7 +27,7 @@ impl Family {
                 && query.metric == EffectMetric::Count && query.color_choice.is_some();
         }
         let (action, metric) = match self {
-            Self::Die => (PriorEffectAction::Rolled, matches!(query.metric, EffectMetric::Count | EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::DieResultsEqual(_))),
+            Self::Die => (PriorEffectAction::Rolled, matches!(query.metric, EffectMetric::Count | EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::OddDieResults | EffectMetric::DieResultsEqual(_))),
             Self::Number => (PriorEffectAction::ChosenNumber, query.metric == EffectMetric::Count),
             Self::Color | Self::Reveal => unreachable!(),
             Self::Coin => (PriorEffectAction::Flipped, matches!(query.metric,

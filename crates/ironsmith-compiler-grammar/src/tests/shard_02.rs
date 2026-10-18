@@ -158,7 +158,7 @@ pub(super) fn rewrite_unblockable_line_keeps_full_attacking_alone_condition() {
         .expect("conditional unblockable line should be recognized");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("Unblockable"), "{debug}");
+    assert!(debug.contains("BeBlocked"), "{debug}");
     assert!(debug.contains("SourceIsAttacking"), "{debug}");
     assert!(debug.contains("CountComparison"), "{debug}");
     assert!(debug.contains("attacking: true"), "{debug}");
@@ -270,14 +270,11 @@ pub(super) fn rewrite_static_condition_parses_multicolor_devotion_comparison() {
 
     assert!(debug.contains("ValueComparison"), "{debug}");
     assert!(debug.contains("LessThan"), "{debug}");
-    assert!(
-        debug.contains("Devotion { player: You, color: Blue }"),
-        "{debug}"
-    );
-    assert!(
-        debug.contains("Devotion { player: You, color: Red }"),
-        "{debug}"
-    );
+    assert!(matches!(parsed, PredicateAst::ValueComparison {
+        left: Value::DevotionToColors { player: PlayerFilter::You, colors },
+        operator: crate::effect::ValueComparisonOperator::LessThan,
+        right: Value::Fixed(7),
+    } if colors == crate::color::ColorSet::BLUE.union(crate::color::ColorSet::RED)), "{debug}");
     assert!(debug.contains("Fixed(7)"), "{debug}");
 }
 

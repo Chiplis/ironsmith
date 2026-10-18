@@ -428,6 +428,17 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
         match super::super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;
+                // A temporary prohibition must retain its duration while the
+                // chain distinguishes restrictions from granted abilities.
+                if matches!(plan.structure, crate::grammar::effects::control_flow::RecognizedControlFlowAst::Duration(_))
+                    && plan.body_tokens.iter().any(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+                {
+                    let effects = parse_effect_chain_inner_lexed_unstacked(tokens, false)?;
+                    if let Some(control) = plan.into_ast(effects.clone()) {
+                        return Ok(Some(vec![EffectAst::ControlFlow(Box::new(control))]));
+                    }
+                    return Ok(Some(effects));
+                }
                 let prevention = prevention_body_under_leading_duration(&plan);
                 // "When you do, ~ deals damage ... unless that creature's
                 // controller has ~ deal that much damage to them" (Craig

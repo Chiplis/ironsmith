@@ -503,7 +503,7 @@ fn spec_is_it_tag(spec: &ChooseSpec) -> bool {
 /// Whether a value reads a characteristic of the pronoun `it` ("its power").
 fn value_names_it_characteristic(value: &Value) -> bool {
     match value {
-        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) | Value::TypeCountOf(spec) => {
             spec_is_it_tag(spec)
         }
         Value::SurfaceHinted { value, .. }
@@ -529,6 +529,7 @@ fn bind_it_characteristic_to_spec(value: &Value, target: &ChooseSpec) -> Value {
         Value::PowerOf(spec) => Value::PowerOf(bind(spec)),
         Value::ToughnessOf(spec) => Value::ToughnessOf(bind(spec)),
         Value::ManaValueOf(spec) => Value::ManaValueOf(bind(spec)),
+        Value::TypeCountOf(spec) => Value::TypeCountOf(bind(spec)),
         Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
             value: Box::new(bind_it_characteristic_to_spec(value, target)),
             hints: hints.clone(),
@@ -1240,7 +1241,7 @@ pub(super) fn compile_cant_action(
             crate::effect::Restriction::PhaseIn(_)
                 if matches!(condition, PredicateAst::Source(
                     crate::cards::builders::SourcePredicateAst::SourceIsTapped
-                )) && matches!(duration, crate::effect::Until::Forever) =>
+                )) && matches!(duration, crate::effect::Until::Forever | crate::effect::Until::SourceUntaps) =>
             {
                 // "can't phase in for as long as this remains tapped" is
                 // latched to the exact source incarnation, not an ongoing
@@ -3164,6 +3165,8 @@ pub(super) fn compile_subject_verb_middle(
             count,
             duration,
         }) => {
+            let bind_to_target = !matches!(target, TargetAst::Tagged(..) | TargetAst::Source(..))
+                && value_names_it_characteristic(count);
             let mut resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             if !ctx.iterated_player
                 && let Some(last_player_filter) = ctx.last_player_filter.as_ref()
@@ -3174,11 +3177,14 @@ pub(super) fn compile_subject_verb_middle(
                 );
             }
             compile_tagged_effect_for_target(target, ctx, "pumped", |spec| {
+                let count = if bind_to_target {
+                    bind_it_characteristic_to_spec(count, &spec)
+                } else { resolved_count.clone() };
                 Effect::pump_for_each(
                     spec,
                     *power_per,
                     *toughness_per,
-                    resolved_count.clone(),
+                    count,
                     duration.clone(),
                 )
             })

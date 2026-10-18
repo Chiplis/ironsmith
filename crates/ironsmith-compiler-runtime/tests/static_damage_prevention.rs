@@ -197,11 +197,19 @@ fn typed_source_and_combat_qualifiers_are_not_erased() {
 }
 
 #[test]
-fn unimplemented_optional_and_follow_up_prevention_stays_fail_closed() {
+fn prevention_follow_up_keeps_its_damage_trigger_and_amount() {
+    for definition in barrier("If damage would be dealt to this creature, prevent that damage. When damage is prevented this way, this creature deals that much damage to any other target.") {
+        let debug = format!("{:?}", definition.abilities);
+        assert!(debug.contains("PreventAllDamageToSelf"), "{debug}");
+        assert!(debug.contains("DamagePreventedBySourceTrigger"), "{debug}");
+        assert!(debug.contains("DealDamageEffect") && debug.contains("EventValue(Amount)"), "{debug}");
+    }
+}
+
+#[test]
+fn unimplemented_follow_up_prevention_stays_fail_closed() {
     for text in [
-        "If damage would be dealt to this creature, prevent that damage. When damage is prevented this way, this creature deals that much damage to any other target.",
         "If damage would be dealt to you, prevent that damage. You gain life equal to the damage prevented this way. Draw a card.",
-        "If a source would deal damage to a player, you may prevent X of that damage, where X is the number of Clerics you control.",
     ] {
         let (result, loss) = ironsmith_compiler::parse_loss::capture(|| {
             compile_to_artifact("Unclaimed follow-up", format!(
@@ -517,6 +525,32 @@ fn horde_complete_entry_count_and_prevention_keep_each_zone_and_controller() {
             let source = creature(&mut game, bob, Subtype::Warrior);
             assert_eq!(damage(&mut game, source, DamageTarget::Object(host), 3, false, false), (0, vec![(3, host, alice)]));
             assert_eq!(game.counter_count(host, CounterType::PlusOnePlusOne), expected - 1);
+        }
+    }
+}
+
+#[test]
+fn optional_dynamic_prevention_preserves_the_controllers_choice() {
+    struct PreventionChoice(bool);
+    impl ironsmith::decision::DecisionMaker for PreventionChoice {
+        fn decide_boolean(&mut self, _: &GameState, _: &ironsmith::decisions::context::BooleanContext) -> bool {
+            self.0
+        }
+    }
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for definition in barrier("If a source would deal damage to a player, you may prevent X of that damage, where X is the number of Clerics you control.") {
+        for accept in [false, true] {
+            let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+            game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            creature(&mut game, alice, Subtype::Cleric);
+            creature(&mut game, alice, Subtype::Cleric);
+            let source = creature(&mut game, bob, Subtype::Warrior);
+            let mut dm = PreventionChoice(accept);
+            let mut context = ExecutionContext::new(source, bob, &mut dm);
+            let outcome = DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(alice))
+                .execute(&mut game, &mut context).unwrap();
+            assert_eq!(outcome.count_or_zero(), if accept { 1 } else { 3 });
         }
     }
 }

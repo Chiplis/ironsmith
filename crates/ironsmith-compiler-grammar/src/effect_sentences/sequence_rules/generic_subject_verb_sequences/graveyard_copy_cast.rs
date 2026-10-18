@@ -123,7 +123,7 @@ pub(crate) fn exact_single_card_copy_tag(effect: &EffectAst) -> Option<TagKey> {
             SubjectVerbActionAst::Stack(StackActionAst::CopySpell {
                 target: TargetAst::Tagged(tag, _),
                 target_reference_kind: None,
-                target_reference_pronoun: true,
+                target_reference_pronoun: _,
                 all_matches: false,
                 count: Value::Fixed(1),
                 count_surface: None,

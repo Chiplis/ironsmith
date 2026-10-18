@@ -367,6 +367,9 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
 pub fn parse_power_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PowerDamageShape<'_>>, CardTextError> {
+    if super::chain_splitting::has_authored_comma_then_surface_tokens(tokens) {
+        return Ok(None);
+    }
     if tokens
         .iter()
         .filter(|token| token.is_any_word(&["deal", "deals"]))
@@ -407,6 +410,14 @@ pub fn parse_power_damage_shape(
     let after_equal = trim_shape_edges(after_equal);
     let power_words = TokenWordView::new(after_equal);
     let word_refs = power_words.to_word_refs();
+    // In "damage equal to <value> to <recipient>", the final "to"
+    // delimits the value. A counter-count object's permissive leaf must not
+    // swallow the recipient as part of the counted object's description.
+    let word_refs = if exact_phrase(pre_equal, &["damage"]) {
+        &word_refs[..word_refs.iter().rposition(|word| *word == "to").unwrap_or(word_refs.len())]
+    } else {
+        word_refs.as_slice()
+    };
     let (amount, used_words) = if crate::word_primitives::parse_any_sequence_prefix(
         &word_refs,
         &[

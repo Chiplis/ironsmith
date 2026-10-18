@@ -145,7 +145,7 @@ fn earthshape_compares_power_against_the_earthbent_land() {
     let definition = p43_compile("Earthshape", EARTHSHAPE);
     let effects = format!("{:?}", definition.spell_effect);
     assert!(effects.contains("Earthbend"), "{effects}");
-    assert!(effects.contains("LessThanOrEqualExpr(PowerOf("), "{effects}");
+    assert!(effects.contains("LessThanOrEqualExpr(") && effects.contains("PowerOf(Tagged(TagKey(\"earthbend_0\")))"), "{effects}");
     assert!(effects.contains("Indestructible"), "{effects}");
     assert!(effects.matches("Hexproof").count() >= 2, "{effects}");
 }
@@ -254,6 +254,7 @@ fn dream_devourer_grants_hand_foretell_and_triggers_on_foretelling() {
         .build();
     let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
     let land_id = game.create_object_from_card(&land, alice, Zone::Hand);
+    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
     game.refresh_continuous_state().unwrap();
     assert!(
         ironsmith::special_actions::can_perform_check(

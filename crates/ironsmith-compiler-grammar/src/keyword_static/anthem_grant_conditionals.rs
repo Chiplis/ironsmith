@@ -5595,7 +5595,7 @@ fn attached_combat_restrictions_preserve_quoted_ability_grants() {
         assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
         assert!(
             debug.contains("player: ItsController")
-                && debug.contains("__it__")
+                && debug.contains("source: true")
                 && debug.contains("Hold for Ransom"),
             "{debug}"
         );

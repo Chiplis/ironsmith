@@ -248,3 +248,14 @@ pub use zone_handlers::parse_destroy;
 pub(crate) use zone_handlers::apply_except_filter_exclusions;
 
 pub(crate) use bundle_rules::parse_consult_then_put_matches_battlefield_rest_bottom_bundle;
+
+/// An announced X constrains the linked card selected by this complete
+/// copy program; its second sentence is not a definition of the mana cost.
+pub(crate) fn parse_linked_card_copy_with_announced_x(
+    tokens: &[crate::lexer::OwnedLexToken],
+) -> Result<Option<Vec<crate::cards::builders::EffectAst>>, crate::cards::builders::CardTextError> {
+    let parts = crate::lexer::split_lexed_sentences(tokens);
+    if parts.len() != 2 { return Ok(None); }
+    let sentences = parts.iter().map(|part| dispatch_entry::SentenceInput::from_lexed(part)).collect::<Vec<_>>();
+    sequence_rules::generic_subject_verb_sequences::reference_linked_programs::parse_token_copy_of_chosen_card_with_x_mana_value(&sentences, 0)
+}

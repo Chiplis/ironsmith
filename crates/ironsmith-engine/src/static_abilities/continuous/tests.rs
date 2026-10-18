@@ -784,6 +784,17 @@ fn describe_static_condition_displays_x_value_threshold() {
 fn describe_static_condition_displays_devotion_value_comparison() {
     assert_eq!(
         describe_static_condition(&crate::ConditionExpr::ValueComparison {
+            left: Value::DevotionToColors {
+                player: PlayerFilter::You,
+                colors: crate::color::ColorSet::BLACK.union(crate::color::ColorSet::RED),
+            },
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Fixed(7),
+        }),
+        "as long as your devotion to black and red is less than seven"
+    );
+    assert_eq!(
+        describe_static_condition(&crate::ConditionExpr::ValueComparison {
             left: Value::Add(
                 Box::new(Value::Devotion {
                     player: PlayerFilter::You,
@@ -1903,7 +1914,7 @@ fn capped_creature_type_count_is_evaluated_per_affected_creature() {
 #[test]
 fn empty_land_subtype_reset_describes_type_loss() {
     let ability = SetLandSubtypesForFilter::new(ObjectFilter::land(), Vec::new());
-    assert_eq!(ability.display(), "lands lose all land types");
+    assert_eq!(ability.display(), "All lands lose all land types");
 }
 
 #[test]

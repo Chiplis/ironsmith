@@ -668,11 +668,10 @@ fn parse_predicate_demonstrative_negated_land_card_keeps_it_reference() -> Resul
         let tokens = lex_line(text, 0)?;
         let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::Not(Box::new(PredicateAst::ItIsLandCard)),
-            "{text}"
-        );
+        let PredicateAst::Not(inner) = parsed else { panic!("missing negation: {text}") };
+        let PredicateAst::ItMatches(filter) = *inner else { panic!("missing referenced-card predicate: {text}") };
+        assert_eq!(filter.card_types, [CardType::Land], "{text}");
+        assert!(filter.use_face_up_characteristics, "{text}");
     }
     Ok(())
 }
@@ -915,8 +914,7 @@ fn parse_predicate_time_lord_control_uses_distinct_compound_subtype() -> Result<
             player: PlayerAst::You,
             filter: ObjectFilter::default()
                 .with_subtype(Subtype::TimeLord)
-                .controlled_by(PlayerFilter::You)
-                .in_zone(Zone::Battlefield),
+                .controlled_by(PlayerFilter::You),
         })
     );
     Ok(())
@@ -4584,3 +4582,17 @@ fn named_cast_history_conjoins_with_the_current_spells_cast_origin() {
     }
 }
 
+
+#[test]
+fn coordinated_card_types_share_the_trailing_card_noun() {
+    let tokens = crate::lexer::lex_line("it is an instant or sorcery card", 0).unwrap();
+    let PredicateAst::Or(left, right) = parse_predicate(&tokens).unwrap() else {
+        panic!("expected two card-type alternatives");
+    };
+    for (branch, expected) in [(left, CardType::Instant), (right, CardType::Sorcery)] {
+        let PredicateAst::ItMatches(filter) = *branch else { panic!("expected object predicate"); };
+        assert_eq!(filter.card_types, vec![expected]);
+        assert!(filter.use_face_up_characteristics);
+        assert!(filter.nontoken);
+    }
+}

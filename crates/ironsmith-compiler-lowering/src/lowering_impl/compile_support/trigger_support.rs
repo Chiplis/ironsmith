@@ -1837,7 +1837,8 @@ pub fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
             // "Whenever damage that would be dealt to you is prevented, put
             // that many ..." (Selfless Squire): the prevented amount.
-            TriggerSpec::DamageToPlayerPrevented(_) => matches!(spec, EventValueSpec::Amount),
+            TriggerSpec::DamageToPlayerPrevented(_)
+            | TriggerSpec::DamagePreventedThisWay { .. } => matches!(spec, EventValueSpec::Amount),
             // "Whenever a mana ability of this creature resolves, ... equal
             // to the amount of mana this creature produced" (Tyvar).
             TriggerSpec::SourceManaAbilityResolves => matches!(spec, EventValueSpec::Amount),

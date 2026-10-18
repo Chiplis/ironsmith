@@ -256,10 +256,14 @@ fn coroner_unknown_payment_designation_is_incomplete_and_resolution_rolls_back()
 }
 
 #[test]
-fn unsupported_full_body_lifetimes_and_completed_losses_are_not_silently_dropped() {
+fn full_body_lifetimes_and_completed_losses_compile_on_both_routes() {
     let row = rows().into_iter().find(|row| row["name"] == "Hot Pursuit").unwrap();
     let text = format!("Mana cost: {}\nType: {}\n{}", row["mana_cost"].as_str().unwrap(), row["type_line"].as_str().unwrap(), row["oracle_text"].as_str().unwrap());
-    assert!(compile_to_artifact("Hot Pursuit", text, false).is_err());
+    compile_to_artifact("Hot Pursuit", &text, false).expect("battlefield lifetime and completed-player-loss predicate");
+    let definition = compile_to_runtime_definition("Hot Pursuit", &text, false).unwrap();
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("ForAsLongAs(ObjectOnBattlefield(Source))"), "{debug}");
+    assert!(debug.contains("PlayersLostGame"), "{debug}");
 }
 
 #[test]

@@ -3893,10 +3893,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     {
         let head_end = trigger_word_token_start(tokens, has).unwrap_or(tokens.len());
         let tail_start = trigger_word_token_start(tokens, has + 1).unwrap_or(tokens.len());
-        let tail_end = trigger_word_token_start(tokens, words.len() - 2).unwrap_or(tokens.len());
         let mut filter_tokens = tokens[..head_end].to_vec();
         filter_tokens.extend(crate::lexer::synthetic_word_tokens(["with"]));
-        filter_tokens.extend_from_slice(&tokens[tail_start..tail_end]);
+        // The counter-filter grammar owns `on it`; dropping that suffix
+        // discards the threshold and would trigger for every creature.
+        filter_tokens.extend_from_slice(&tokens[tail_start..]);
         let filter = parse_object_filter_lexed(&filter_tokens, false)?;
         return Ok(TriggerSpec::StateBasedObjects {
             filter, display: format!("Whenever {}", words.join(" ")),
@@ -4643,6 +4644,22 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             }
             if has_draw_except_first_in_draw_step_pattern(tail) {
                 return Ok(TriggerSpec::PlayerDrawsCardExceptFirstInDrawStep(player));
+            }
+            // Characteristics of the drawn card qualify the draw event;
+            // they are checked now, rather than again when the trigger resolves.
+            if tail.starts_with(&["a", "card", "with"])
+                && let Some(draw_token_idx) = trigger_word_token_start(tokens, draw_word_idx)
+                && let Ok(filter) = crate::object_filters::parse_object_filter(
+                    &tokens[draw_token_idx + 1..], false,
+                )
+            {
+                return Ok(TriggerSpec::ConditionQualified {
+                    trigger: Box::new(TriggerSpec::PlayerDrawsCard(player)),
+                    condition: crate::cards::builders::PredicateAst::TaggedMatches(
+                        crate::tag::CompilerReferenceTag::Triggering.bind(), filter,
+                    ),
+                    surface: tail[2..].join(" "),
+                });
             }
             let card_numbers = parse_draw_numbers_each_turn(tail);
             // "a player draws their second card during their turn" (The

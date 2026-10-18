@@ -335,9 +335,9 @@ fn rewrite_passive_zone_change_body(body: &mut Vec<OwnedLexToken>) {
 
 /// "<program>. Then if this creature didn't transform this way, <fallback>."
 /// (Enduring Angel): the fallback runs exactly when the program's own
-/// transform of the source did not happen, so the transform is lowered as the
-/// producer of an `IfEffectDidNotHappen` gate rather than read as a state
-/// predicate about the creature.
+/// transform of the source did not happen. Retain its affected-object
+/// snapshot across the remaining instructions, then test it at the authored
+/// fallback position; later life changes must execute before that test.
 fn parse_did_not_transform_this_way_program(
     body: &[OwnedLexToken],
 ) -> Option<Vec<crate::cards::builders::EffectAst>> {
@@ -389,13 +389,23 @@ fn parse_did_not_transform_this_way_program(
         return None;
     }
     let transform = effects.remove(index);
-    effects.insert(
-        index,
-        EffectAst::Conditionals(ConditionalEffectAst::IfEffectDidNotHappen {
-            effect: Box::new(transform),
-            otherwise,
-        }),
-    );
+    let transformed = crate::util::helper_tag_for_tokens(body, "transformed");
+    effects.insert(index, EffectAst::TagAffected {
+        effect: Box::new(transform),
+        tag: transformed.clone(),
+    });
+    effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: PredicateAst::ValueComparison {
+            left: Value::TaggedSnapshotCount {
+                tag: transformed.key.clone(),
+                filter: ObjectFilter::default(),
+            },
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        },
+        if_true: otherwise,
+        if_false: Vec::new(),
+    }));
     Some(effects)
 }
 
@@ -603,7 +613,7 @@ pub fn parse_if_event_would_happen_instead_line(
     // the entry they were making simply proceeds.
     let effects = match player_qualifier {
         Some(predicate) => {
-            let proceed = crate::lexer::lex_line("that player puts it onto the battlefield", 0)?;
+            let proceed = crate::lexer::synthetic_word_tokens(["that", "player", "puts", "it", "onto", "the", "battlefield"]);
             let Ok(proceed) = crate::clause_support::parse_effect_sentences_lexed(&proceed) else {
                 return Ok(None);
             };

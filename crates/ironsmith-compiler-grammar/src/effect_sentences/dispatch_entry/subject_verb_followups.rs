@@ -2380,7 +2380,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     ),
     pre_followup_rule!(
         "copy-and-cast",
-        &["copy", "that", "you", "the"],
+        &["copy", "that", "you", "the", "it"],
         pre_rule_copy_and_cast_followups
     ),
     pre_followup_rule!(
@@ -2633,7 +2633,7 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
     ),
     post_followup_rule!(
         "delayed-trigger-result-followup",
-        &["if", "when"],
+        &["if", "when", "it"],
         post_rule_delayed_trigger_result_followup
     ),
     post_followup_rule!(

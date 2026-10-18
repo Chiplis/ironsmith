@@ -159,11 +159,12 @@ fn p51_cyclopean_tomb_clears_one_land_it_mired_each_upkeep_forever() {
         .move_object(source, Zone::Graveyard, ironsmith::events::EventCause::effect())
         .expect("tomb goes to the graveyard");
     assert_eq!(game.object(in_graveyard).unwrap().stable_id, tomb_identity);
-    let mut ctx = ironsmith::effects::EffectContext::new_default(in_graveyard, alice);
-    for effect in leaves.effects.all_effects() {
-        ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+    let mut queue = ironsmith::triggers::TriggerQueue::new();
+    ironsmith::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+    ironsmith::game_loop::put_triggers_on_stack(&mut game, &mut queue).unwrap();
+    while !game.stack.is_empty() {
+        ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
     }
-    drop(ctx);
     assert_eq!(game.effect_store.delayed_triggers.len(), 1);
 
     let upkeep = |game: &mut ironsmith::GameState| {

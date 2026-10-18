@@ -719,16 +719,9 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
     let mut target = parse_counter_target_phrase(&target_tokens)?;
     if equal_to_difference {
-        let target_spec = crate::model::ast::choose_spec_for_target(&target);
-        count_value = Value::Add(
-            Box::new(Value::PowerOf(Box::new(ChooseSpec::Tagged(
-                (crate::tag::CompilerReferenceTag::It.bind()).into(),
-            )))),
-            Box::new(Value::Scaled(
-                Box::new(Value::PowerOf(Box::new(target_spec))),
-                -1,
-            )),
-        );
+        // The enclosing comparison supplies both operands. The counter
+        // recipient does not imply that either operand is its current power.
+        count_value = Value::PendingComparisonDifference;
     }
     let mut predicate = trailing_predicate.clone();
     if let Some(PredicateAst::ItMatches(filter)) = predicate.as_ref()

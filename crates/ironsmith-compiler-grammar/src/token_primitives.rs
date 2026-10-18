@@ -148,12 +148,21 @@ pub fn split_em_dash_label_prefix_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let mut inside_quotes = false;
+    let mut bracket_depth = 0usize;
     let split_idx = tokens.iter().enumerate().find_map(|(idx, token)| {
         if token.kind == TokenKind::Quote {
             inside_quotes = !inside_quotes;
             return None;
         }
-        (matches!(token.kind, TokenKind::Dash | TokenKind::EmDash) && !inside_quotes).then_some(idx)
+        if !inside_quotes {
+            match token.kind {
+                TokenKind::LBracket => bracket_depth += 1,
+                TokenKind::RBracket => bracket_depth = bracket_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        (matches!(token.kind, TokenKind::Dash | TokenKind::EmDash)
+            && !inside_quotes && bracket_depth == 0).then_some(idx)
     })?;
     let label_tokens = &tokens[..split_idx];
     let body_tokens = &tokens[split_idx + 1..];

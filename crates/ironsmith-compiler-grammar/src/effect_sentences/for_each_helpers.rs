@@ -460,7 +460,9 @@ pub fn parse_get_for_each_count_value(
         return Ok(Some(
             Value::TypeCountOf(Box::new(crate::target::ChooseSpec::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind().into(),
-            )))
+            ).with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType("it".into()),
+            ))))
             .with_surface_hint(ValueSurfaceHint::ForEach),
         ));
     }

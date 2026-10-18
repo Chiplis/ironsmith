@@ -103,7 +103,7 @@ fn p8_deck_of_many_things_rows_follow_the_zero_or_less_branch() {
     assert!(debug.contains("DiscardHand") || debug.contains("Discard"), "{debug}");
     assert_eq!(debug.matches("BetweenInclusive").count() + debug.matches("Equal(20)").count() >= 3, true,
         "three numeric rows on the roll: {debug}");
-    assert!(debug.contains("ScheduleDelayedTrigger") && debug.contains("Dies"),
+    assert!(debug.contains("ScheduleDelayedTrigger") && debug.contains("ZoneChangeTrigger { from: Specific(Battlefield), to: Specific(Graveyard)"),
         "the 20 row watches the returned creature dying: {debug}");
     assert!(debug.contains("LoseTheGame") || debug.contains("LoseGame"), "{debug}");
 }

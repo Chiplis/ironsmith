@@ -53,6 +53,9 @@ pub(super) fn subject(tokens: &[OwnedLexToken]) -> Option<(Axes, Vec<OwnedLexTok
         if bare && (after != words.len() || start == 0 || words[start - 1] == "base") {
             continue;
         }
+        if bare && words[..start].iter().any(|word| matches!(*word, "power" | "toughness")) {
+            continue;
+        }
         let (range, possessive) =
             if !bare && start <= 1 && words.get(after) == Some(&"of") && (start == 0 || words[0] == "the") {
                 (view.token_span_for_words(after + 1, words.len())?, false)
@@ -180,23 +183,27 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
     }
     let view = TokenWordView::new(rest);
     let words = view.word_refs();
+    // The become-body grammar removes a leading article. An explicit
+    // "equal to" retains it, so both forms reach this quantity reader.
+    let article = usize::from(words.first() == Some(&"the"));
+    let characteristic_words = &words[article..];
     let (axes, reference_range, possessive) =
-        if words.starts_with(&["the", "power", "and", "toughness", "of"]) {
+        if characteristic_words.starts_with(&["power", "and", "toughness", "of"]) {
             (
                 Axes::Both,
-                view.token_span_for_words(5, words.len())?,
+                view.token_span_for_words(article + 4, words.len())?,
                 false,
             )
-        } else if words.starts_with(&["the", "power", "of"]) {
+        } else if characteristic_words.starts_with(&["power", "of"]) {
             (
                 Axes::Power,
-                view.token_span_for_words(3, words.len())?,
+                view.token_span_for_words(article + 2, words.len())?,
                 false,
             )
-        } else if words.starts_with(&["the", "toughness", "of"]) {
+        } else if characteristic_words.starts_with(&["toughness", "of"]) {
             (
                 Axes::Toughness,
-                view.token_span_for_words(3, words.len())?,
+                view.token_span_for_words(article + 2, words.len())?,
                 false,
             )
         } else if words.ends_with(&["power", "and", "toughness"]) {
@@ -419,6 +426,11 @@ mod tests {
     fn dynamic_source_axis_and_separate_numeric_target_do_not_become_an_animation() {
         for (subject_text, rhs, expected) in [
             (
+                "this creature's power",
+                "the toughness of target creature blocking or being blocked by this creature minus 1 until end of turn",
+                "TargetOnly",
+            ),
+            (
                 "this creature's base power",
                 "equal to that creature's power until end of turn",
                 "SetBasePower",
@@ -457,7 +469,7 @@ mod tests {
         for rhs in [
             "equal to that creature's power plus mystery",
             "equal to its number of stickers",
-            "equal to 4 until the end of your next upkeep",
+            "equal to 4 until the end of your next mystery step",
         ] {
             assert!(
                 super::super::parse_become_clause(&lex("this creature's base power"), &lex(rhs))

@@ -416,7 +416,7 @@ fn colored_mana_symbol_aggregates_track_battlefield_and_graveyard_scopes() {
 }
 
 #[test]
-fn total_and_greatest_power_values_use_current_layered_characteristics() {
+fn characteristic_defining_power_aggregates_do_not_read_later_sublayers() {
     fn aggregate_game(value: Value) -> (GameState, ObjectId, ObjectId) {
         let mut game = dynamic_value_test_game();
         let alice = PlayerId::from_index(0);
@@ -454,7 +454,8 @@ fn total_and_greatest_power_values_use_current_layered_characteristics() {
             Until::Forever,
         ));
     assert_eq!(total_game.calculated_power(two_id), Some(6));
-    assert_eq!(total_game.calculated_power(total_id), Some(11));
+    // CR 613.4: the CDA reads power in layer 7a, before the pump in 7c.
+    assert_eq!(total_game.calculated_power(total_id), Some(7));
 
     let (mut greatest_game, greatest_id, two_id) = aggregate_game(Value::GreatestPower(filter));
     assert_eq!(greatest_game.calculated_power(greatest_id), Some(5));
@@ -469,7 +470,8 @@ fn total_and_greatest_power_values_use_current_layered_characteristics() {
             0,
             Until::Forever,
         ));
-    assert_eq!(greatest_game.calculated_power(greatest_id), Some(6));
+    assert_eq!(greatest_game.calculated_power(two_id), Some(6));
+    assert_eq!(greatest_game.calculated_power(greatest_id), Some(5));
 }
 
 #[test]

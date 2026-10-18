@@ -1041,6 +1041,14 @@ fn parse_conditional_damage_pair_sentence(
 pub fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Keep a coordinated recipient list intact before generic conjunction
+    // carry tries to turn its final target into a second damage clause.
+    if find_token_word_sequence_span(tokens, &["damage", "to", "each", "of"]).is_some()
+        && let Some(effect @ EffectAst::Coordinated { .. }) =
+            super::clause_primitives::parse_anaphoric_object_deals_damage_clause(tokens)?
+    {
+        return Ok(Some(vec![effect]));
+    }
     if let Some(effects) = chosen_amount_damage::parse(tokens)? {
         return Ok(Some(effects));
     }

@@ -439,8 +439,15 @@ fn attached_restrictions_with_ignore_clause_become_static_special_action_semanti
         .expect("static dispatcher should preserve the complete typed shape");
     assert_eq!(dispatched.len(), 3, "{dispatched:#?}");
 
+    let creature_cost = crate::lexer::lex_line(
+        "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a creature of their choice for that player to ignore this effect until end of turn.", 0).unwrap();
+    let abilities = parse_attached_restrictions_with_ignore_special_action_line(&creature_cost)
+        .unwrap().expect("the generic payment grammar supports a creature sacrifice");
+    assert_eq!(abilities.len(), 3);
+    let debug = format!("{abilities:?}");
+    assert!(debug.contains("AttachedControllerMayPayCost") && debug.contains("Sacrifice") && debug.contains("Creature"), "{debug}");
+
     for unsupported in [
-        "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a creature of their choice for that player to ignore this effect until end of turn.",
         "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of combat.",
     ] {
         let tokens = crate::lexer::lex_line(unsupported, 0).unwrap();

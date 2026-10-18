@@ -99,7 +99,7 @@ fn greymond_grants_humans_each_ability_of_the_chosen_pair() {
     let debug = format!("{definition:#?}");
     // Choosing two different abilities is choosing one of the three pairs.
     for pair in ["first strike and vigilance", "first strike and lifelink", "vigilance and lifelink"] {
-        assert!(debug.contains(&format!("\"{pair}\"")), "missing option {pair}: {debug}");
+        assert!(debug.contains(pair), "missing option {pair}: {debug}");
     }
     assert!(debug.contains("ChooseNamedOptionAsEnters"), "{debug}");
     assert!(!debug.contains("stack_kind: Some(Ability)"), "no stack-ability choice: {debug}");

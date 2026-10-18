@@ -60,7 +60,7 @@ fn p71_burning_of_xinye_target_opponent_chooses_lands() {
     assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
     assert!(debug.contains("Target(Opponent)"), "{debug}");
     assert!(!debug.contains("controller: Some(IteratedPlayer)"), "{debug}");
-    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    assert!(debug.contains("DealDamageEachEffect"), "{debug}");
 }
 
 /// "they draw a card": the attacking player, not an unbound loop player.

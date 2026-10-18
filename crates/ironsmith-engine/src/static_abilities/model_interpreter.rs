@@ -1179,6 +1179,7 @@ impl StaticAbilityModelInterpreter {
                     StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness
                         | StaticAbilityId::CreaturesAssignCombatDamageUsingToughness
                         | StaticAbilityId::CreaturesYouControlAssignCombatDamageUsingToughness
+                        | StaticAbilityId::KeywordMarker
                 ) {
                     return Some(converted);
                 }

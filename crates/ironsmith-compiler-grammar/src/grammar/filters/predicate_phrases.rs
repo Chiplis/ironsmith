@@ -4126,6 +4126,7 @@ fn parse_active_this_way_battlefield_predicate(
             false,
         )
         && quantity.consumed_tokens < filter_clause.tokens().len()
+        && !filter_clause.tokens().first().is_some_and(|token| token.is_any_word(&["a", "an"]))
     {
         let (operator, threshold) = match quantity.comparison {
             crate::effect::Comparison::GreaterThan(n) => {
@@ -4670,6 +4671,18 @@ fn parse_demonstrative_or_descriptor_predicate(
         Ok(filter)
     };
 
+    // A shared trailing card noun qualifies both type alternatives:
+    // "an instant or sorcery card" examines the card's face-up types.
+    let left_card_tokens;
+    let left_tokens = if left_tokens.len() == 1
+        && parse_card_type(left_tokens[0].parser_text()).is_some()
+        && parse_single_card_type_card_descriptor_tokens(right_tokens).is_some()
+    {
+        left_card_tokens = vec![left_tokens[0].clone(), right_tokens.last().unwrap().clone()];
+        left_card_tokens.as_slice()
+    } else {
+        left_tokens
+    };
     let left = parse_branch(left_tokens)?;
     let right = parse_branch(right_tokens)?;
     if left == ObjectFilter::default() || right == ObjectFilter::default() {

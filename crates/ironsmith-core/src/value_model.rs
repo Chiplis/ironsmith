@@ -94,6 +94,8 @@ pub enum EffectMetric {
     EvenDieResults,
     /// Number of retained numeric die results equal to a given face. Appended.
     DieResultsEqual(u32),
+    /// Number of retained numeric die results that are odd. Appended.
+    OddDieResults,
 }
 
 /// The authored action that produced a prior-effect metric query.

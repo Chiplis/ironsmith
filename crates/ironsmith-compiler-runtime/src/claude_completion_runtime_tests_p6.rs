@@ -642,7 +642,12 @@ fn noted_creature_types_are_counted_for_the_targeted_journal() {
     assert!(format!("{:?}", ability.effects).contains("NotedCreatureTypeCount"));
     let alice = PlayerId::from_index(0);
     let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-    let journal = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let volo = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let journal_card = ironsmith::CardBuilder::new(ironsmith::ids::CardId::new(), "Volo's Journal")
+        .card_types(vec![ironsmith::CardType::Artifact])
+        .subtypes(vec![Subtype::Book])
+        .build();
+    let journal = game.create_object_from_card(&journal_card, alice, Zone::Battlefield);
     for _ in 0..3 {
         game.create_object_from_definition(&definition, alice, Zone::Library);
     }
@@ -650,7 +655,7 @@ fn noted_creature_types_are_counted_for_the_targeted_journal() {
     assert!(game.note_creature_type_for_source(journal, Subtype::Wizard));
     assert!(!game.note_creature_type_for_source(journal, Subtype::Elf), "already noted");
     let before = game.player(alice).unwrap().hand.len();
-    let mut ctx = EffectContext::new_default(journal, alice).with_targets(vec![ResolvedTarget::Object(journal)]);
+    let mut ctx = EffectContext::new_default(volo, alice).with_targets(vec![ResolvedTarget::Object(journal)]);
     for effect in ability.effects.all_effects() {
         execute_effect(&mut game, effect, &mut ctx).unwrap();
     }

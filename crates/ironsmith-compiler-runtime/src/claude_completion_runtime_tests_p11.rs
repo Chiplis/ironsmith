@@ -500,10 +500,14 @@ fn p11_volcano_hellion_chosen_damage_to_you_and_target() {
     assert_eq!(damages.len(), 2, "{damages:?}");
     assert!(damages.iter().all(|damage| damage.unpreventable), "{damages:?}");
     assert_eq!(damages[0].amount, damages[1].amount, "one shared chosen amount");
+    fn chooses_number(effect: &Effect) -> bool {
+        let mut found = effect.downcast_ref::<ironsmith::effects::ChooseNumberEffect>().is_some();
+        effect.visit_child_effects(&mut |child| found |= chooses_number(child));
+        found
+    }
     let etb = definition.abilities.iter().find_map(|ability| match &ability.kind {
         ironsmith::ability::AbilityKind::Triggered(trigger)
-            if trigger.effects.all_effects().into_iter().any(|effect|
-                effect.downcast_ref::<ironsmith::effects::ChooseNumberEffect>().is_some()) => Some(trigger),
+            if trigger.effects.all_effects().into_iter().any(chooses_number) => Some(trigger),
         _ => None,
     }).expect("ETB trigger");
     struct Three;

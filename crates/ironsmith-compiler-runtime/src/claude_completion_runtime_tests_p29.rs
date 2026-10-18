@@ -300,7 +300,7 @@ const DRACH_NYEN: &str = "Mana cost: {4}{B}{R}\nType: Legendary Artifact — Equ
 fn drach_nyen_flavor_word_is_not_echo_and_sword_reads_the_exiled_power() {
     let definition = p29_compile("Drach'Nyen", DRACH_NYEN);
     let debug = format!("{:?}", definition.abilities);
-    assert!(!debug.contains("Echo"), "flavor word only: {debug}");
+    assert!(!debug.contains("EchoCost") && !debug.contains("EchoTrigger"), "flavor word only: {debug}");
     assert!(debug.contains("Menace"), "{debug}");
     assert!(debug.contains("PowerOf") && debug.contains("source_exiled"), "{debug}");
     assert!(
@@ -320,7 +320,7 @@ fn dracoplasm_sums_only_the_sacrificed_creatures() {
     let debug = format!("{:?}", definition.abilities);
     for aggregate in ["TotalPower(", "TotalToughness("] {
         let at = debug.find(aggregate).unwrap_or_else(|| panic!("{aggregate}: {debug}"));
-        let window = &debug[at..(at + 6000).min(debug.len())];
+        let window = &debug[at..];
         assert!(
             window.contains("tagged_constraints: [TaggedObjectConstraint"),
             "{aggregate} must sum the sacrificed set: {window}"

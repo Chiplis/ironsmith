@@ -353,7 +353,7 @@ fn hot_pursuit_goads_while_on_battlefield_and_steals_after_two_losses() {
     assert!(!tail.contains("YourNextTurn"), "{tail}");
     assert!(debug.contains("PlayersLostGame"), "{debug}");
     assert!(debug.contains("goaded: true") && debug.contains("suspected: true"), "{debug}");
-    assert!(debug.contains("GainControl") || debug.contains("ControlEffect"), "{debug}");
+    assert!(debug.contains("ChangeControllerToEffectController"), "{debug}");
 }
 
 #[test]

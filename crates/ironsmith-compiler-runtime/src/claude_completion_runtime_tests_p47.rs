@@ -51,7 +51,7 @@ fn conditional_free_play_this_way_regrants_the_prior_permission_for_free() {
         false,
     )
     .unwrap_or_else(|error| panic!("Ignite the Future should compile: {error:?}"));
-    let debug = format!("{:?}", definition.abilities);
+    let debug = format!("{:?}", definition.spell_effect);
     assert_eq!(debug.matches("GrantPlayTaggedEffect").count(), 2, "{debug}");
     assert!(debug.matches("UntilYourNextTurnEnd").count() >= 2, "{debug}");
     assert!(debug.contains("alternative_cost: Some"), "{debug}");

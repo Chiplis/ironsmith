@@ -492,6 +492,15 @@ pub fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerRe
     parse_trigger_control_tail(&words[prefix_words..])
 }
 
+pub(crate) fn comma_continues_characteristic_list(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let words = match words.as_slice() {
+        ["or" | "and" | "and/or", tail @ ..] => tail,
+        all => all,
+    };
+    matches!(words, ["power" | "toughness", ..] | ["mana", "value", ..])
+}
+
 pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvelope {
     let mut input = LexStream::new(tokens);
     let initial_len = input.len();
@@ -511,6 +520,7 @@ pub fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilterEnvel
         if token.is_period()
             || (token.is_comma()
                 && saw_spell_noun
+                && !comma_continues_characteristic_list(input.as_ref())
                 && !comma_continues_spell_color_list(input.as_ref()))
         {
             return SpellFilterEnvelope { end };

@@ -939,7 +939,13 @@ fn twice_negative_x_pump_preserves_both_stats_and_rad_followup() {
     let rad = format!("{:?}", effects[1]);
     assert!(rad.contains("RadCounters"), "{rad}");
     assert!(rad.contains("X"), "{rad}");
-    let invalid = lex_tail("Each creature gets twice -X/-X until end of turn unless you pay {2}.");
+    let conditional = lex_tail("Each creature gets twice -X/-X until end of turn unless you pay {2}.");
+    let conditional = crate::effect_sentences::parse_effect_sentences_lexed(&conditional).unwrap();
+    let [EffectAst::Conditionals(ConditionalEffectAst::UnlessPays { effects, player: PlayerAst::You, cost, .. })] = conditional.as_slice()
+        else { panic!("the payment must gate the entire pump: {conditional:?}") };
+    assert_eq!(effects.len(), 1);
+    assert_eq!(cost.mana_cost().unwrap().to_oracle(), "{2}");
+    let invalid = lex_tail("Each creature gets twice -X/-X until end of turn unless mystery.");
     assert!(crate::effect_sentences::parse_effect_sentences_lexed(&invalid).is_err());
 }
 

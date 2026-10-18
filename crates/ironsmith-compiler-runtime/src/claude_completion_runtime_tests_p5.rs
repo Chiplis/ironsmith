@@ -424,7 +424,7 @@ fn each_player_shuffles_hand_graveyard_and_permanents_into_library() {
     )
     .expect("Sway of the Stars should compile");
     let debug = format!("{definition:#?}");
-    assert!(debug.contains("Graveyard") && debug.contains("Hand") && debug.contains("Battlefield"), "{debug}");
+    assert!(debug.contains("ShuffleHandAndGraveyardIntoLibraryEffect") && debug.contains("include_owned_permanents: true"), "{debug}");
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
 }
 

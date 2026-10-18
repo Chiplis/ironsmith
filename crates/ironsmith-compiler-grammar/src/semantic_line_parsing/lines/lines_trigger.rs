@@ -278,6 +278,22 @@ pub(super) fn parse_triggered_line_impl(
             max_triggers_per_turn: None,
         });
     }
+    let effects = match &mut parsed {
+        LineAst::Triggered { effects, .. } => Some(effects),
+        LineAst::Ability(ability) => ability.effects_ast.as_mut(),
+        _ => None,
+    };
+    if let Some(effects) = effects {
+        // Both trigger routes can preserve the intervening condition: as a
+        // separate line fact or as the leading conditional in the body.
+        let predicate = line.intervening_if.clone().or_else(|| match effects.first() {
+            Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional { predicate, .. })) => Some(predicate.clone()),
+            _ => None,
+        });
+        if let Some(predicate) = predicate {
+            crate::clause_support::bind_intervening_life_gained_that_many(&predicate, effects);
+        }
+    }
     let Some(schedule) = delayed_schedule else {
         return Ok(parsed);
     };

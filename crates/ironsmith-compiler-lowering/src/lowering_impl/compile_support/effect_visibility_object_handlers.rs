@@ -321,8 +321,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let zone = if *zone == Zone::Library
                 && resolved_filter.tagged_constraints.iter().any(|constraint| {
                     matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
-                        && (constraint.tag.as_str().starts_with("__sentence_helper_exiled")
-                            || constraint.tag.as_str().starts_with("exiled_"))
+                        && ironsmith_compiler_resolve::tag_support::is_exiled_collection_tag(&constraint.tag)
                 }) {
                 Zone::Exile
             } else {

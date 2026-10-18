@@ -157,7 +157,7 @@ fn p56_burning_of_xinye_opponent_chooses_lands_to_destroy() {
     assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
     assert!(debug.contains("chooser: Target(Opponent)"), "{debug}");
     assert!(!debug.contains("controller: Some(IteratedPlayer)"), "{debug}");
-    assert!(debug.contains("DealDamageEffect"), "{debug}");
+    assert!(debug.contains("DealDamageEachEffect"), "{debug}");
 }
 
 /// "Until end of combat on your next turn, you may play that card."

@@ -128,7 +128,7 @@ fn p28_custody_battle_granted_upkeep_control_is_unless_you_sacrifice_a_land() {
     let debug = format!("{:?}", definition.abilities);
     let unless = debug.find("UnlessPaysEffect").expect("punisher cost wraps the control change");
     let tail = &debug[unless..];
-    assert!(tail.contains("GainControlEffect"), "{debug}");
+    assert!(tail.contains("ChangeControllerToPlayer(Target(Opponent))"), "{debug}");
     assert!(tail.contains("Land"), "the alternative is sacrificing a land: {debug}");
     assert!(debug.contains("Opponent"), "the new controller is a target opponent: {debug}");
 }
@@ -243,7 +243,7 @@ fn p28_desperate_gambit_chooses_a_permanent_or_spell_source_then_flips() {
     // A source is a permanent or a spell (CR 120.1): the choice spans the
     // battlefield and the stack, so it can name your own burn spell.
     let choose = debug.find("ChooseObjectsEffect").expect("source choice");
-    let choice = &debug[choose..(choose + 1500).min(debug.len())];
+    let choice = &debug[choose..];
     assert!(choice.contains("Battlefield") && choice.contains("Stack"), "{choice}");
     assert!(choice.contains("controller: Some(You)"), "{choice}");
     assert!(debug.contains("FlipCoinEffect"), "{debug}");

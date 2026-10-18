@@ -1204,6 +1204,11 @@ fn replace_names_with_map(
             .map(|scope| (GRANTING_SOURCE_SURFACE, scope.labeled))
     }
 
+    fn is_keyword_component(bytes: &[u8], idx: usize, len: usize) -> bool {
+        &bytes[idx..idx + len] == b"upkeep"
+            && previous_word(bytes, idx) == Some(b"cumulative".as_slice())
+    }
+
     let lower = line.to_ascii_lowercase();
     let bytes = lower.as_bytes();
     let full_bytes = full_name.text.as_bytes();
@@ -1271,6 +1276,7 @@ fn replace_names_with_map(
             && !is_starting_life_descriptor(bytes, idx, full_bytes.len())
             && !is_base_characteristic_descriptor(bytes, idx, full_bytes.len())
             && !is_turn_noun_usage(bytes, idx, full_bytes.len())
+            && !is_keyword_component(bytes, idx, full_bytes.len())
             && !is_subtype_descriptor_usage(bytes, idx, full_bytes.len())
             && !(preserve_source_surfaces
                 && should_preserve_source_surface_context(
@@ -1324,6 +1330,7 @@ fn replace_names_with_map(
             && !is_starting_life_descriptor(bytes, idx, short_bytes.len())
             && !is_base_characteristic_descriptor(bytes, idx, short_bytes.len())
             && !is_turn_noun_usage(bytes, idx, short_bytes.len())
+            && !is_keyword_component(bytes, idx, short_bytes.len())
             && (is_short_name_self_reference_context(bytes, idx, short_bytes.len())
                 || is_result_optional_companion_short_name_context(
                     bytes,
@@ -1778,19 +1785,24 @@ pub(super) fn rewrite_personal_pronouns_tokens(tokens: &[OwnedLexToken]) -> Vec<
 /// them"). Once the self reference has become `this` and the plural verb
 /// proves the name is plural, rewrite that line's plural pronouns onto the
 /// singular self reference the grammar reads.
-fn rewrite_plural_self_reference_line(text: &str) -> String {
-    const PLURAL_SELF_VERBS: &[&str] = &["this enter", "this attack", "this die", "this block"];
-    let Some(verb) = PLURAL_SELF_VERBS.iter().find(|verb| {
-        text.match_indices(*verb).any(|(index, _)| {
+fn rewrite_plural_self_reference_line(text: &str, subjects: &[&str]) -> String {
+    let verbs = subjects.iter().filter(|subject| !subject.trim().is_empty()).flat_map(|subject| {
+        ["enter", "attack", "die", "block"].map(|verb| format!("{} {verb}", subject.to_ascii_lowercase()))
+    }).collect::<Vec<_>>();
+    let Some(verb) = verbs.iter().find(|verb| {
+        text.match_indices(verb.as_str()).any(|(index, _)| {
             let end = index + verb.len();
-            !text[end..].starts_with(|ch: char| ch.is_ascii_alphabetic())
+            let preceding = text[..index].split_whitespace().last();
+            (index == 0 || !text[..index].ends_with(|ch: char| ch.is_ascii_alphabetic()))
+                && !matches!(preceding, Some("have" | "can" | "would" | "may" | "let" | "a" | "an"))
+                && !text[end..].starts_with(|ch: char| ch.is_ascii_alphabetic())
         })
     }) else {
         return text.to_string();
     };
     let singular = format!("{verb}s");
     let mut rewritten = Vec::new();
-    for word in text.replacen(verb, &singular, 1).split(' ') {
+    for word in text.replacen(verb.as_str(), &singular, 1).split(' ') {
         let trailing_len = word.len()
             - word
                 .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
@@ -2114,16 +2126,24 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
     }
 }
 
-fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
-    let target_len = normalized.chars().count();
-    if target_len == original_map.len() {
-        return original_map.to_vec();
-    }
-
-    let mut rewritten = original_map.to_vec();
-    let fill = original_map.last().copied().unwrap_or(0);
-    rewritten.resize(target_len, fill);
-    rewritten
+fn resized_char_map_for_rewrite(original_map: &[usize], previous: &str, normalized: &str) -> Vec<usize> {
+    let before: Vec<_> = previous.chars().collect();
+    let after: Vec<_> = normalized.chars().collect();
+    let mut prefix = 0;
+    while prefix < before.len().min(after.len()) && before[prefix] == after[prefix] { prefix += 1; }
+    let mut suffix = 0;
+    while suffix < before.len().min(after.len()) - prefix
+        && before[before.len() - suffix - 1] == after[after.len() - suffix - 1] { suffix += 1; }
+    let mut mapped = Vec::with_capacity(after.len());
+    mapped.extend_from_slice(&original_map[..prefix.min(original_map.len())]);
+    // Rewrites may insert or remove words in the middle of a line. The
+    // unchanged suffix retains its original source positions and spelling.
+    let middle_end = after.len() - suffix;
+    let fill = original_map.get(prefix).copied().or_else(|| original_map.last().copied()).unwrap_or(0);
+    mapped.resize(middle_end, fill);
+    let source_suffix = before.len() - suffix;
+    mapped.extend((source_suffix..before.len()).map(|i| original_map.get(i).copied().unwrap_or(fill)));
+    mapped
 }
 
 /// "If X is 4 or more, do all of the above." (Multiple Choice): the earlier
@@ -2399,7 +2419,8 @@ pub fn preprocess_document_with_provenance(
             rewrite_static_cast_the_exiled_card_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
         let expanded_normalized =
-            rewrite_plural_self_reference_line(expanded_normalized.as_str());
+            rewrite_plural_self_reference_line(expanded_normalized.as_str(),
+                &["this", typed_subject, full_name.text.as_str(), short_name.text.as_str()]);
         let expanded_normalized =
             rewrite_trailing_instead_if_spell_label_line(expanded_normalized.as_str());
         let expanded_normalized =
@@ -2412,7 +2433,7 @@ pub fn preprocess_document_with_provenance(
         // that the authored surface used two sentences.
         let normalized = if rewritten_normalized != normalized.normalized {
             let char_map =
-                resized_char_map_for_rewrite(&normalized.char_map, &rewritten_normalized);
+                resized_char_map_for_rewrite(&normalized.char_map, &normalized.normalized, &rewritten_normalized);
             NormalizedLine::from_char_map(normalized.original, rewritten_normalized, char_map)
         } else {
             normalized

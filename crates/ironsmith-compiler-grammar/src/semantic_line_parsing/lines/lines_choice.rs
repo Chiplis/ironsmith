@@ -208,13 +208,9 @@ fn try_parse_per_die_result_ability_table(
         if ability.is_empty() {
             return Ok(None);
         }
-        let grant = crate::lexer::lex_line(
-            &format!("this creature gains {ability} until end of turn."),
-            mode.info.line_index,
-        )
-        .map_err(|_| {
-            CardTextError::ParseError(format!("unsupported die-result ability row '{text}'"))
-        })?;
+        let mut grant = crate::lexer::synthetic_word_tokens(["this", "creature", "gains"]);
+        grant.extend(crate::lexer::synthetic_phrase_tokens(ability));
+        grant.extend(crate::lexer::synthetic_word_tokens(["until", "end", "of", "turn"]));
         rows.push((value, crate::effect_sentences::parse_effect_sentence_lexed(&grant)?));
     }
     let trigger = parse_trigger_clause_lexed(&tokens[..comma])?;

@@ -42,22 +42,14 @@ type ModalGate = ParsedModalGate;
 /// event's characteristic list ("a spell with power, toughness, or mana value
 /// 4", The Fantastic Four) continues the trigger, so a comma followed by
 /// another characteristic of that list is skipped.
-fn first_trigger_boundary_comma(tokens: &[OwnedLexToken], choose_idx: usize) -> Option<usize> {
-    let continues_characteristic_list = |rest: &[OwnedLexToken]| {
-        let words = crate::lexer::token_word_refs(rest);
-        let words = match words.as_slice() {
-            ["or" | "and" | "and/or", tail @ ..] => tail,
-            all => all,
-        };
-        matches!(words, ["power" | "toughness", ..] | ["mana", "value", ..])
-    };
+pub(crate) fn first_trigger_boundary_comma(tokens: &[OwnedLexToken], choose_idx: usize) -> Option<usize> {
     tokens
         .iter()
         .enumerate()
         .take(choose_idx)
         .filter(|(_, token)| token.kind == TokenKind::Comma)
         .map(|(idx, _)| idx)
-        .find(|idx| !continues_characteristic_list(&tokens[idx + 1..]))
+        .find(|idx| !crate::grammar::trigger_subjects::comma_continues_characteristic_list(&tokens[idx + 1..]))
         .or_else(|| locate_token_index(tokens, |token| token.kind == TokenKind::Comma))
 }
 

@@ -60,7 +60,7 @@ fn numeric_die_metrics_count_duplicate_faces_in_the_exact_receipt() {
     let roll = ironsmith::effects::RollDiceChooseResultEffect::new(PlayerFilter::You, 4, 6).with_total(None);
     let outcome = roll.execute(&mut game, &mut ctx).expect("roll resolves");
     ctx.store_outcome(EffectId(0), outcome);
-    for (metric, expected) in [(EffectMetric::EvenDieResults, 3), (EffectMetric::DieResultsEqual(6), 2), (EffectMetric::DistinctDieResults, 3)] {
+    for (metric, expected) in [(EffectMetric::EvenDieResults, 3), (EffectMetric::OddDieResults, 1), (EffectMetric::DieResultsEqual(6), 2), (EffectMetric::DistinctDieResults, 3)] {
         let value = Value::PriorEffectMetric { effect_id: EffectId(0), query: PriorEffectMetricQuery::new(EffectMetricSource::Outcome, metric) };
         assert_eq!(ironsmith::effects::helpers::resolve_value(&game, &value, &ctx).unwrap(), expected);
     }
@@ -252,7 +252,15 @@ fn untapped_source_protects_new_attachments_and_control_without_reverting_custod
     game.refresh_continuous_state().unwrap();
     assert_eq!(game.object(old_aura).unwrap().attached_to, Some(AttachmentTarget::Object(protected)));
     let new_aura = game.create_object_from_definition(&aura, b, Zone::Battlefield);
-    assert!(!game.attach_object_to_target(new_aura, AttachmentTarget::Object(protected)));
+    // Exercise attachment legality through the effect; the game-state
+    // transition method is the unchecked mutation used after validation.
+    use ironsmith::effects::{EffectExecutor, EffectContext, ResolvedTarget};
+    let mut attachment_ctx = EffectContext::new_default(new_aura, b)
+        .with_targets(vec![ResolvedTarget::Object(protected)]);
+    ironsmith::effects::AttachToEffect::new(ironsmith::target::ChooseSpec::target_permanent())
+        .execute(&mut game, &mut attachment_ctx).unwrap();
+    drop(attachment_ctx);
+    assert_eq!(game.object(new_aura).unwrap().attached_to, None);
     game.set_current_controller(protected, b).unwrap();
     assert_eq!(game.current_controller(protected), Some(a));
     game.tap(source);

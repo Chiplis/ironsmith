@@ -145,10 +145,13 @@ pub fn parse_sentence_unless_pays(
         let inner_clause = before_unless_clause
             .after_words(2)
             .unwrap_or_else(|| before_unless_clause.from(2));
-        if let Ok(inner_effects) = parse_effect_chain(inner_clause.tokens())
+        if let Ok(mut inner_effects) = parse_effect_chain(inner_clause.tokens())
             && !inner_effects.is_empty()
-            && let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)?
         {
+            for effect in &mut inner_effects {
+                crate::effect_sentences::chain_carry::bind_implicit_player_context(effect, PlayerAst::That);
+            }
+            let Some(unless_effect) = try_build_unless(inner_effects, clause, unless_idx)? else { return Ok(None); };
             let wrapper = match prefix_kind {
                 choice_shapes::ChoiceDamageScope::Opponent => {
                     EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {

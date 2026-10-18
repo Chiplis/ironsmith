@@ -497,10 +497,17 @@ mod tests {
 
     #[test]
     fn prevention_does_not_erase_optional_or_follow_up_effects() {
+        for (text, optional, shared) in [
+            ("If a source would deal damage to a player, you may prevent 1 of that damage.", true, false),
+            ("If a creature would deal combat damage to you and/or one or more creatures you control, prevent X of that damage, where X is the number of age counters on this enchantment.", false, true),
+            ("If a source would deal damage to one or more creatures you control, prevent 1 of that damage.", false, true),
+        ] {
+            let ability = parse_filtered_damage_prevention_line(&lex_line(text, 0).unwrap()).unwrap().unwrap();
+            let ironsmith_core::StaticAbilityPayload::PreventMatchingDamage(spec) = ability.payload else { panic!("{text}") };
+            assert_eq!(spec.optional_by_controller, optional, "{text}");
+            assert_eq!(matches!(spec.amount, StaticDamagePreventionAmount::SharedPerSource(_)), shared, "{text}");
+        }
         for text in [
-            "If a source would deal damage to a player, you may prevent 1 of that damage.",
-            "If a creature would deal combat damage to you and/or one or more creatures you control, prevent X of that damage, where X is the number of age counters on this enchantment.",
-            "If a source would deal damage to one or more creatures you control, prevent 1 of that damage.",
             "If a spell you control would deal damage to an opponent, prevent that damage. Create a token.",
             "If a source would deal damage to this creature, prevent that damage and draw a card.",
             "If a source would deal damage to equipped creature, prevent X of that damage, where X is the number of creatures you control. Draw a card.",

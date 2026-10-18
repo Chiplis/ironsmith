@@ -46,10 +46,15 @@ enum LandPlayEntryReceipt {
 }
 
 impl LandPlayEntryReceipt {
-    fn subject(&self, game: &GameState) -> Option<ObjectId> {
+    fn subject(&self, game: &GameState, original: ObjectId) -> Option<ObjectId> {
         let id = match self {
             Self::Root(receipt) => match &receipt.original {
                 EventOutcome::Proceed(entry) => entry.new_id,
+                // A redirected entry still completes the land play. Follow
+                // the committed zone-change receipt, without inventing an ETB.
+                EventOutcome::Replaced => game
+                    .current_object_id_after_zone_change(original)
+                    .filter(|id| *id != original)?,
                 _ => return None,
             },
             Self::Contextual(receipt) => match receipt.outcome {
@@ -307,7 +312,7 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                 _ => actual_from,
             };
             let completed_play = receipt
-                .subject(game)
+                .subject(game, card)
                 .map(|subject| {
                     let destination = game
                         .object(subject)

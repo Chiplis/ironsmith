@@ -291,7 +291,10 @@ pub(super) fn read_for_each_object_filter_effect(
         let filter = super::super::super::super::for_each_helpers::parse_for_each_object_filter(
             shape.filter_tokens,
         )?;
-        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        let mut effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        if filter.power_greater_than_base_power {
+            crate::effect_sentences::chain_carry::bind_iterated_base_power_difference(&mut effects);
+        }
         if effects.is_empty() {
             return Err(CardTextError::ParseError(
                 "for-each object sentence missing effect payload".to_string(),

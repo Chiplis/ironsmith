@@ -1768,6 +1768,12 @@ fn describe_static_condition_value(value: &Value) -> String {
                 describe_static_condition_value(right)
             )
         }
+        Value::DevotionToColors { player, colors } => format!(
+            "{} devotion to {}",
+            describe_static_possessive_player(player),
+            crate::color::Color::ALL.into_iter().filter(|color| colors.contains(*color))
+                .map(|color| color.name()).collect::<Vec<_>>().join(" and "),
+        ),
         Value::Devotion { player, color } => {
             format!(
                 "{} devotion to {}",

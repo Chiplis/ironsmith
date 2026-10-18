@@ -518,7 +518,7 @@ fn world_at_war_inserts_after_the_second_main_phase() {
         .expect("second-main-phase branch");
     assert_eq!(conditional.condition, ironsmith::effect::Condition::SecondMainPhaseOfTurn);
     let debug = format!("{definition:#?}");
-    assert!(debug.contains("BeginningOfPostcombatMainPhase"), "{debug}");
+    assert!(debug.contains("BeginningOfMainPhaseTrigger") && debug.contains("Postcombat"), "{debug}");
     assert!(debug.contains("BeginningOfCombat"), "that combat's untap rider: {debug}");
     assert!(effects.iter().any(|effect| effect.downcast_ref::<ironsmith::effects::AdditionalPhasesEffect>()
         .is_some_and(|phases| phases.phases == vec![ironsmith::effects::AdditionalPhase::Combat, ironsmith::effects::AdditionalPhase::Main])));

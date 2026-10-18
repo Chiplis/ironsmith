@@ -137,7 +137,7 @@ fn chroma_counts_symbols_in_the_revealed_cards_mana_costs() {
 fn dies_or_put_into_command_zone_shares_the_subject() {
     let debug = p4_debug("Reyhan, Last of the Abzan", "Type: Legendary Creature — Human Warrior\nReyhan enters with three +1/+1 counters on it.\nWhenever a creature you control dies or is put into the command zone, if it had one or more +1/+1 counters on it, you may put that many +1/+1 counters on target creature.\nPartner (You can have two commanders if both have partner.)");
     let compact = debug.split_whitespace().collect::<String>();
-    assert!(compact.contains("to:Some(Command)"), "command-zone arm must survive: {debug}");
+    assert!(compact.contains("to:Specific(Command)"), "command-zone arm must survive: {debug}");
     assert!(compact.contains("PutCountersEffect"), "{debug}");
 }
 
@@ -248,7 +248,7 @@ fn redistribute_life_totals_is_one_typed_instruction() {
 fn opponent_protects_it_reads_the_battle_protector() {
     let debug = p4_debug("Portent Tracker", "Type: Creature — Satyr Scout\n{T}: Untap target land.\n{T}: Choose target battle. If an opponent protects it, remove a defense counter from it. Otherwise, put a defense counter on it. Activate only as a sorcery.");
     let compact = debug.split_whitespace().collect::<String>();
-    assert!(compact.contains("protected_by:Some(Opponent)"), "{debug}");
+    assert!(compact.contains("protected_by:Some(Opponent,)"), "{debug}");
     assert!(compact.contains("RemoveCountersEffect") && compact.contains("PutCountersEffect"), "{debug}");
 }
 
@@ -323,7 +323,7 @@ fn damage_to_you_as_though_infect_while_at_zero_or_less_life() {
     let debug = p4_debug("Phyrexian Unlife", "Type: Enchantment\nYou don't lose the game for having 0 or less life.\nAs long as you have 0 or less life, all damage is dealt to you as though its source had infect. (Damage is dealt to you in the form of poison counters.)");
     let compact = debug.split_whitespace().collect::<String>();
     assert!(compact.contains("DamageAsThoughInfect(You)"), "{debug}");
-    assert!(compact.contains("condition:Some("), "the infect rule is conditional: {debug}");
+    assert!(compact.contains("condition:ValueComparison{left:LifeTotal(You),operator:LessThanOrEqual,right:Fixed(0)}"), "the infect rule is conditional: {debug}");
 }
 
 #[test]

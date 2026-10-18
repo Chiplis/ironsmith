@@ -123,10 +123,8 @@ fn try_parse_tiered_shared_body_block(
             return Ok(None);
         }
         let mut tokens = body.tokens[..open_at].to_vec();
-        tokens.extend(crate::lexer::lex_line(
-            &format!("base power and toughness {pt}"),
-            body.info.line_index,
-        )?);
+        tokens.extend(crate::lexer::synthetic_word_tokens(["base", "power", "and", "toughness"]));
+        tokens.extend_from_slice(crate::util::trim_edge_punctuation_tokens(&tier.tokens[body_first..]));
         tokens.extend_from_slice(&body.tokens[open_at + OPEN.len()..]);
         let effects_ast = parse_effect_sentences_lexed(&tokens)?;
         if effects_ast.is_empty() {
@@ -252,7 +250,8 @@ fn try_parse_chosen_keyword_cost_block(
     }
     let mut header_tokens = cost[..choose_idx - 1].to_vec();
     header_tokens.push(tokens[colon].clone());
-    header_tokens.extend(crate::lexer::lex_line("choose one —", line.info.line_index)?);
+    header_tokens.extend(crate::lexer::synthetic_word_tokens(["choose", "one"]));
+    header_tokens.push(OwnedLexToken::new(TokenKind::EmDash, "—", tokens[colon].span()));
     Ok(Some((
         RecognizedLine::Modal(RecognizedModalBlock {
             header: line.info.clone(),

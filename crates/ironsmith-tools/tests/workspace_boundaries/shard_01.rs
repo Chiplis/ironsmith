@@ -797,6 +797,8 @@ pub(super) fn predicate_source_state_identity_keyword_use_predicate_tokens() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases.rs";
     let content = read_repo_file(&root, relative);
+    let content = format!("{content}\n{}", read_repo_file(&root,
+        "crates/ironsmith-compiler-grammar/src/grammar/filters/predicate_phrases/advanced/predicate_readings/part_3.rs"));
     let parser = function_source(
         &content,
         "fn parse_source_identity_predicate",

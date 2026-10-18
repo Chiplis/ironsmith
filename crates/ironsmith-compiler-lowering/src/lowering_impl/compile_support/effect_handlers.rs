@@ -359,6 +359,11 @@ pub fn compile_delayed_trigger_spec(
                 player: player.clone(),
             },
         ),
+        TriggerSpec::KeywordAction { action, player, source_filter, during_your_turn } =>
+            Ok(ironsmith_core::DelayedTriggerSpec::KeywordAction {
+                action: *action, player: player.clone(), source_filter: source_filter.clone(),
+                during_your_turn: *during_your_turn,
+            }),
         TriggerSpec::Either(left, right) => Ok(ironsmith_core::DelayedTriggerSpec::Either(
             Box::new(compile_delayed_trigger_spec(left)?),
             Box::new(compile_delayed_trigger_spec(right)?),

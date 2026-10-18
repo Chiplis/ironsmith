@@ -72,6 +72,9 @@ fn capture_effect_snapshots_with_provenance(
         |spec| vec![spec.clone()],
     );
     let mut snapshots = Vec::new();
+    let hints_require_selection = specs.iter().any(|spec| !matches!(
+        spec.base(), crate::target::ChooseSpec::Tagged(_) | crate::target::ChooseSpec::Source
+    ));
     for spec in specs {
         if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
             for snapshot in ctx.get_tagged_all(tag).into_iter().flatten() {
@@ -93,7 +96,7 @@ fn capture_effect_snapshots_with_provenance(
             }
         }
     }
-    let from_decision_hints = explicit_target_spec.is_none() && !snapshots.is_empty();
+    let from_decision_hints = explicit_target_spec.is_none() && hints_require_selection && !snapshots.is_empty();
     if snapshots.is_empty() && explicit_target_spec.is_none() {
         snapshots = capture_target_object_snapshots(game, ctx);
     }

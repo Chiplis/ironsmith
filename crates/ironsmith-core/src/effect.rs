@@ -846,6 +846,14 @@ pub enum DelayedTriggerSpec {
     BeginningOfDeclareAttackersStep(PlayerFilter),
     /// A delayed cast watcher linked to the preceding play grant.
     SpellCastThroughPreviousPermission,
+    /// Append-only. Keyword actions can be watched for a bounded duration,
+    /// including an exact captured object such as a visited Attraction.
+    KeywordAction {
+        action: crate::KeywordActionKind,
+        player: PlayerFilter,
+        source_filter: Option<ObjectFilter>,
+        during_your_turn: bool,
+    },
 }
 
 /// Lifetime policy for a delayed trigger registration.

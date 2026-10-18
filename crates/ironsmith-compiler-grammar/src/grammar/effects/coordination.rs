@@ -429,6 +429,14 @@ pub fn materialize_shared_subject_followup(
 }
 
 pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<CoordinationPlan<'_>> {
+    let whole = crate::util::trim_edge_punctuation_tokens(tokens);
+    if whole.first().is_some_and(|token| token.is_word("exile"))
+        && super::parse_attached_object_exile_shape(&whole[1..]).is_some()
+    {
+        // The host and its attachments must be collected before either
+        // leaves; independent exile instructions lose the attachment link.
+        return ParseOutcome::NoMatch;
+    }
     let tokens = trim_lexed_commas(tokens);
     let tokens = if tokens
         .first()
@@ -910,9 +918,20 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Or
+        && before.last().is_some_and(|token| token.is_any_word(&["activated", "triggered"]))
+        && after.first().is_some_and(|token| token.is_any_word(&["activated", "triggered"]))
+        && after.get(1).is_some_and(|token| token.is_any_word(&["ability", "abilities"]))
+    {
+        // The two ability kinds share the noun and its controller qualifier.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Or
         && (before.last().is_some_and(|token| token.is_word("blocking"))
-            && after.first().is_some_and(|token| token.is_word("blocked"))
-            && after.get(1).is_some_and(|token| token.is_word("by"))
+            && (after.first().is_some_and(|token| token.is_word("blocked"))
+                && after.get(1).is_some_and(|token| token.is_word("by"))
+                || after.first().is_some_and(|token| token.is_word("being"))
+                    && after.get(1).is_some_and(|token| token.is_word("blocked"))
+                    && after.get(2).is_some_and(|token| token.is_word("by")))
             || before.last().is_some_and(|token| token.is_word("blocked"))
                 && after
                     .first()
@@ -1292,6 +1311,7 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::Or
         && before.last().is_some_and(|token| {
             token_is_card_type_noun(token)
+                || token.is_any_word(&["card", "cards"])
                 || token
                     .as_word()
                     .and_then(crate::util::parse_subtype_word)
@@ -1645,7 +1665,7 @@ pub(crate) fn starts_card_type_list_arm(tokens: &[OwnedLexToken]) -> bool {
 /// filter grammar instead of maintaining another list of allowed adjectives.
 /// Only inspect through the first type noun; later `counters`, relative verbs,
 /// and coordinated actions must not decide whether this noun starts an effect.
-fn starts_modified_type_filter_arm(tokens: &[OwnedLexToken], allow_subtype: bool) -> bool {
+pub(crate) fn starts_modified_type_filter_arm(tokens: &[OwnedLexToken], allow_subtype: bool) -> bool {
     if tokens.first().is_some_and(|token| {
         token.is_any_word(&[
             "a", "an", "all", "another", "target", "this", "that", "each",

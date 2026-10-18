@@ -10067,6 +10067,13 @@ pub(crate) fn describe_static_ability_with_subject(
 ) -> String {
     if let Some(model) = static_ability.compiled_model() {
         match &model.payload {
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction: crate::effect::Restriction::BeBlocked(filter),
+                additional_restrictions,
+                ..
+            } if filter.source && additional_restrictions.is_empty() => {
+                return format!("{} can't be blocked", capitalize_first(subject));
+            }
             ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
                 if filter.source && !card_types.is_empty() =>
             {
@@ -10192,6 +10199,27 @@ pub(crate) fn describe_static_ability_with_subject(
                             }
                         }
                     }
+                }
+                if matches!(&ability.payload, ironsmith_core::StaticAbilityPayload::RuleRestriction { .. }) {
+                    let restriction_text = describe_static_ability_with_subject(&inner, subject);
+                    if matches!(condition, Condition::Not(_)) && restriction_text.contains(" unless ") {
+                        return restriction_text;
+                    }
+                    if let Condition::Not(positive) = condition
+                        && matches!(positive.as_ref(), Condition::SourceAttackedOrBlockedThisTurn)
+                    {
+                        let condition = describe_condition(positive);
+                        let condition = condition.strip_prefix(&format!("{subject} "))
+                            .map(|tail| format!("it {tail}")).unwrap_or(condition);
+                        return format!("{} unless {}",
+                            describe_static_ability_with_subject(&inner, subject),
+                            lowercase_first(&condition));
+                    }
+                    return format!(
+                        "As long as {}, {}",
+                        lowercase_first(&describe_condition(condition)),
+                        lowercase_first(&describe_static_ability_with_subject(&inner, subject))
+                    );
                 }
                 if let ironsmith_core::StaticAbilityPayload::LoyaltyAbilitiesAnyTime { filter } =
                     &ability.payload
@@ -14021,17 +14049,16 @@ fn describe_triggered_power_difference_counters(
     if tagger.tag != *tag || counters.distributed || counters.target_count.is_some() {
         return None;
     }
-    let Value::Add(left, right) = &counters.amount else {
-        return None;
-    };
-    let Value::PowerOf(dead) = left.as_ref() else {
-        return None;
-    };
-    let Value::Scaled(subtracted, -1) = right.as_ref() else {
-        return None;
-    };
-    if !matches!(dead.base(), ChooseSpec::Tagged(dead_tag) if dead_tag == tag)
-        || subtracted.as_ref() != threshold.as_ref()
+    let dead_power = Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.clone())));
+    let difference = Value::Add(
+        Box::new(dead_power.clone()),
+        Box::new(Value::Scaled(threshold.clone(), -1)),
+    );
+    // Under the greater-than condition, the absolute difference and the
+    // directed subtraction denote the same correlated counter amount.
+    let absolute = Value::absolute_difference(dead_power, threshold.as_ref().clone());
+    if counters.amount.unhinted() != &difference
+        && counters.amount.unhinted() != absolute.unhinted()
     {
         return None;
     }

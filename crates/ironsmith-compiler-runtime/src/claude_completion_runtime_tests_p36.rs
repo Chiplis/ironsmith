@@ -77,7 +77,7 @@ fn lich_knights_conquest_sacrifices_from_one_serial_and_or_noun_list() {
     let definition = p36_compile("Lich-Knights' Conquest",
         "Mana cost: {4}{B}\nType: Sorcery\nSacrifice any number of artifacts, enchantments, and/or tokens. Return that many creature cards from your graveyard to the battlefield.");
     let debug = format!("{definition:?}");
-    assert_eq!(debug.matches("SacrificeEffect").count(), 1, "one sacrifice choice: {debug}");
+    assert_eq!(debug.matches("SacrificePlayerEffect").count(), 1, "one sacrifice choice: {debug}");
     assert!(debug.contains("Artifact") && debug.contains("Enchantment"), "{debug}");
     assert!(debug.contains("token"), "tokens are a third arm: {debug}");
 }
@@ -124,7 +124,7 @@ fn lethal_throwdown_draws_when_the_sacrificed_creature_was_modified() {
     let definition = p36_compile("Lethal Throwdown",
         "Mana cost: {B}\nType: Sorcery\nAs an additional cost to cast this spell, sacrifice a creature or sacrifice a modified creature. (Equipment, Auras you control, and counters are modifications.)\nDestroy target creature or planeswalker. If the modified creature was sacrificed, draw a card.");
     let debug = format!("{definition:?}");
-    assert!(debug.contains("TaggedMatchedLastKnown"), "{debug}");
+    assert!(debug.contains("TaggedObjectMatchedLastKnown"), "{debug}");
     assert!(debug.contains("modified: true"), "{debug}");
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
 }
@@ -145,7 +145,7 @@ fn kharn_prevents_damage_to_itself_and_hands_itself_to_an_opponent() {
         "Mana cost: {3}{R}\nType: Legendary Creature — Astartes Berserker\nPower/Toughness: 5/1\nBerzerker — Khârn the Betrayer attacks or blocks each combat if able.\nSigil of Corruption — When you lose control of Khârn the Betrayer, draw two cards.\nThe Betrayer — If damage would be dealt to Khârn the Betrayer, prevent that damage and an opponent of your choice gains control of it.");
     let debug = format!("{:?}", definition.abilities);
     assert!(debug.contains("PreventionFollowUp") || debug.contains("prevent"), "{debug}");
-    assert!(debug.contains("GainControl"), "control change follow-up: {debug}");
+    assert!(debug.contains("ChangeControllerToPlayer(Opponent)"), "control change follow-up: {debug}");
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn light_paws_searches_for_an_aura_no_costlier_than_the_entering_aura() {
     let definition = p36_compile("Light-Paws, Emperor's Voice",
         "Mana cost: {1}{W}\nType: Legendary Creature — Fox Advisor\nPower/Toughness: 2/2\nWhenever an Aura you control enters, if you cast it, you may search your library for an Aura card with mana value less than or equal to that Aura and with a different name than each Aura you control, put that card onto the battlefield attached to Light-Paws, then shuffle.");
     let debug = format!("{:?}", definition.abilities);
-    assert!(debug.contains("LessThanOrEqualExpr(ManaValueOf(Tagged("), "{debug}");
+    assert!(debug.contains("LessThanOrEqualExpr") && debug.contains("ManaValueOf(Tagged("), "{debug}");
     assert!(debug.contains("\"triggering\""), "{debug}");
 }
 

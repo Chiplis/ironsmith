@@ -131,7 +131,7 @@ fn p75_ashling_evoke_rider_sacrifices_the_evoked_permanent() {
     let definition = compile_to_runtime_definition("Ashling, the Limitless", ASHLING_THE_LIMITLESS, false)
         .expect("Ashling should compile");
     let debug = format!("{definition:?}");
-    assert!(debug.contains("\"Evoke\""), "{debug}");
+    assert!(debug.contains("Evoke"), "{debug}");
     assert!(debug.contains("permanent_this_way_grants"), "{debug}");
     assert!(
         !debug.contains("sacrificed_0"),

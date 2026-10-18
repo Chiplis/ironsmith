@@ -144,7 +144,7 @@ pub(super) fn sticker_sheet_ticket_marker_result(
 }
 
 fn sticker_sheet_ticket_marker_static_line(ctx: &LineDispatchContext<'_>) -> RecognizedStaticLine {
-    let marker = render_token_slice(&ctx.line.tokens).trim().to_string();
+    let marker = render_token_slice(&ctx.line.info.source_tokens).trim().to_string();
     RecognizedStaticLine {
         info: ctx.line.info.clone(),
         parse_tokens: ctx.line.tokens.clone(),
@@ -176,7 +176,8 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
     if !is_sticker_sheet {
         return false;
     }
-    line_grammar::parse_sticker_ticket_marker(&ctx.line.tokens).is_some()
+    line_grammar::parse_sticker_ticket_marker(&ctx.line.info.source_tokens).is_some()
+        || line_grammar::parse_sticker_ticket_marker(&ctx.line.tokens).is_some()
 }
 
 pub(super) fn run_triggered_line_family(

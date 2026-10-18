@@ -269,6 +269,11 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     if let EffectAst::ExchangeBlocks { blockers, .. } = effect {
         visit(blockers);
     }
+    if let EffectAst::UnblockSoleBlockedAttackersOf { blocker }
+        | EffectAst::BlockAttackerOfChoice { blocker, .. } = effect
+    {
+        visit(blocker);
+    }
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
@@ -2108,21 +2113,26 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                 || effects.iter().any(effect_references_event_derived_amount)
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            count_value: Some(count_value),
+            filter,
+            count_value,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
-            count_value: Some(count_value),
+            filter,
+            count_value,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
-            count_value: Some(count_value),
+            filter,
+            count_value,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
-            count_value: Some(count_value),
+            filter,
+            count_value,
             ..
-        }) => value_references_event_derived_amount(count_value),
+        }) => count_value.as_ref().is_some_and(value_references_event_derived_amount)
+            || filter_references_event_derived_amount(filter),
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action)
                 .is_some_and(value_references_event_derived_amount)

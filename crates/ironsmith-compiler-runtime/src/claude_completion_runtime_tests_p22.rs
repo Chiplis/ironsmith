@@ -23,8 +23,8 @@ fn p22_creature(game: &mut GameState, name: &str, owner: PlayerId, power: i32, t
     game.create_object_from_card(&card, owner, Zone::Battlefield)
 }
 
-/// Chooses every offered recipient, then puts the whole distributable amount
-/// on the last one.
+/// Chooses every recipient and gives the freely distributable counters to
+/// a recipient other than the source, regardless of candidate ordering.
 struct P22AllOnLast;
 
 impl DecisionMaker for P22AllOnLast {
@@ -41,7 +41,10 @@ impl DecisionMaker for P22AllOnLast {
         _game: &GameState,
         ctx: &ironsmith::decisions::context::DistributeContext,
     ) -> Vec<(ironsmith::game_state::Target, u32)> {
-        ctx.targets.last().map(|target| vec![(target.target, ctx.total)]).unwrap_or_default()
+        ctx.targets.iter()
+            .find(|target| Some(target.target) != ctx.source.map(ironsmith::game_state::Target::Object))
+            .or_else(|| ctx.targets.first())
+            .map(|target| vec![(target.target, ctx.total)]).unwrap_or_default()
     }
 }
 
@@ -86,7 +89,7 @@ fn p22_stumpsquall_hydra_always_gives_itself_a_counter_among_optional_commanders
 
     // With a commander, even a division favouring it leaves one on the Hydra.
     let commander = p22_creature(&mut game, "Commander", bob, 2, 2);
-    game.set_commander(commander);
+    game.set_as_commander(commander, bob);
     let bystander = p22_creature(&mut game, "Bystander", bob, 2, 2);
     let mut all_on_last = P22AllOnLast;
     let mut ctx = EffectContext::new_default(hydra, alice).with_decision_maker(&mut all_on_last);
@@ -153,9 +156,15 @@ fn p22_spoils_of_war_defines_x_as_the_chosen_opponents_graveyard_count() {
         }
     }
     let (maximum, minimum) = (maximum.expect("X upper bound"), minimum.expect("X lower bound"));
-    let put = definition.spell_effect.as_ref().unwrap().all_effects().into_iter()
-        .find_map(|effect| effect.downcast_ref::<ironsmith::effects::PutCountersEffect>().cloned())
-        .expect("distribution");
+    let mut put = None;
+    for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+        p22_visit(effect, &mut |effect| {
+            if let Some(found) = effect.downcast_ref::<ironsmith::effects::PutCountersEffect>() {
+                put = Some(found.clone());
+            }
+        });
+    }
+    let put = put.expect("distribution");
     assert!(put.distributed && put.target.is_target(), "{put:?}");
 
     let alice = PlayerId::from_index(0);

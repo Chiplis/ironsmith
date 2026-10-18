@@ -18,6 +18,8 @@ pub(super) fn parse_carried_cant_effects(
         if let Some(parsed_target) = parsed.target {
             if let Some(existing) = &target
                 && existing != &parsed_target
+                && !matches!((existing, &parsed_target),
+                    (TargetAst::Tagged(left, _), TargetAst::Tagged(right, _)) if left == right)
             {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported mixed carried restriction targets (clause: '{}')",

@@ -410,6 +410,12 @@ impl SequenceEffect {
 }
 
 impl EffectExecutor for SequenceEffect {
+    fn cost_description(&self) -> Option<String> {
+        let descriptions = self.effects.iter()
+            .map(|effect| effect.0.cost_description())
+            .collect::<Option<Vec<_>>>()?;
+        (!descriptions.is_empty()).then(|| descriptions.join(", then "))
+    }
     fn supports_damage_action_cohort(&self) -> bool {
         super::coordinated_damage::is_shared_clause(self)
     }

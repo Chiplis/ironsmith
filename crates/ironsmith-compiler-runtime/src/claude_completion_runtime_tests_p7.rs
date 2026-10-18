@@ -297,7 +297,7 @@ fn p7_repl_suffocation_reads_red_spell_damage_history_and_hits_its_controller() 
         "Mana cost: {1}{U}\nType: Instant\nCast this spell only if you were dealt damage this turn by a red instant or sorcery spell.\nSuffocation deals 4 damage to the controller of the last red instant or sorcery spell that dealt damage to you this turn.\nDraw a card at the beginning of the next turn's upkeep.", false)
         .expect("Suffocation should compile");
     let debug = format!("{definition:?}");
-    assert!(debug.contains("typed cast condition") && debug.contains("DamageHistory"),
+    assert!(debug.contains("ThisSpellCastRestriction") && debug.contains("DamageHistory"),
         "the cast restriction reads this turn's damage history: {debug}");
     assert!(debug.contains("TagLastDamageSourceEffect") && debug.contains("ControllerOf(Tagged("),
         "damage goes to the last matching source's controller: {debug}");

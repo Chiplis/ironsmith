@@ -59,6 +59,7 @@ fn spree_mode_source_text_excludes_the_cost_label() {
         })
         .expect("Spree should lower to a typed modal effect");
 
-    assert_eq!(modal.modes[0].source_text, "Counter target spell");
-    assert_eq!(modal.modes[1].source_text, "Draw two cards");
+    // The source body retains authored punctuation; only the cost label is removed.
+    assert_eq!(modal.modes[0].source_text, "Counter target spell.");
+    assert_eq!(modal.modes[1].source_text, "Draw two cards.");
 }

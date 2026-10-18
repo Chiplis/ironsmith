@@ -519,6 +519,26 @@ fn target_is_noun_demonstrative(target: &TargetAst) -> bool {
         ))
 }
 
+// Player iteration does not replace the surrounding object's identity.
+// Preserve that identity when the damage subject repeats the outer selector.
+fn bind_iterated_damage_source_in_player_loops(effects: &mut [EffectAst], filter: &ObjectFilter) {
+    for effect in effects {
+        match effect {
+            EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects }
+                | ForEachEffectAst::ForEachPlayer { effects }
+                | ForEachEffectAst::ForEachPlayersFiltered { effects, .. }) => {
+                bind_iterated_damage_source_in_player_loops(effects, filter);
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }), ..
+            }) if matches!(&*source, TargetAst::Object(source_filter, _, _) if source_filter == filter) => {
+                *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Lower an authored "`Each <object> deals ... equal to its ...`" source set
 /// as the damage-source loop. The target is resolved before entering that loop
 /// so a demonstrative such as "that permanent" keeps referring to the prior
@@ -1453,6 +1473,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let mut scoped_effects = effects.clone();
+            bind_iterated_damage_source_in_player_loops(&mut scoped_effects, filter);
             // In "for each permanent attached to it, copy that permanent
             // attached to that creature", the attachment destination is the
             // outer host. Bind it before the loop makes `it` its attachment.

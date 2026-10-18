@@ -153,7 +153,7 @@ fn frozen_full_definitions_preserve_printed_bodies_without_loss_on_both_routes()
             assert_eq!(definition.abilities.iter().filter(|a| matches!(&a.kind, AbilityKind::Activated(_))).count(), activated);
             let rendered = ironsmith::compiled_text::debug_compiled_lines(&definition).join("\n");
             assert!(!rendered.to_ascii_lowercase().contains("unsupported"), "{name}: {rendered}");
-            if name == "Karai, Future of the Foot" { assert!(rendered.contains("paid this turn"), "{rendered}"); }
+            if name == "Karai, Future of the Foot" { assert!(rendered.contains("cast using sneak this turn"), "{rendered}"); }
             if name == "Latchkey Faerie" { assert!(rendered.contains("Flying"), "{rendered}"); }
         }
     }

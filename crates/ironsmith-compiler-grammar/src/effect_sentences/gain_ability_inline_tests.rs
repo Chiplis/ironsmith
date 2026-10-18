@@ -1378,6 +1378,10 @@ fn target_controller_qualifier_does_not_hide_an_explicit_object_target() {
             coordinated.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly { target: TargetAst::Object(filter, ..), .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::StatChanges(
                         StatChangeActionAst::RemoveAbilitiesFromTarget { .. }
                     ),
@@ -1389,7 +1393,8 @@ fn target_controller_qualifier_does_not_hide_an_explicit_object_target() {
                     ),
                     ..
                 })
-            ]
+            ] if filter.controller == Some(PlayerFilter::Opponent)
+                && filter.card_types == [CardType::Creature]
         ),
         "explicit object target must remain targeted: {coordinated:#?}"
     );

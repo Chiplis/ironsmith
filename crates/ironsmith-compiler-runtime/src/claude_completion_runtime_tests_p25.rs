@@ -98,7 +98,8 @@ fn three_dog_copies_the_sacrificed_aura_onto_each_other_attacker() {
         .split_once("AttachObjectsEffect")
         .map(|(_, tail)| tail)
         .unwrap_or_else(|| panic!("copies are attached: {debug}"));
-    assert!(attach[..attach.len().min(600)].contains("created"), "attaches the created copies: {debug}");
+    let attached_objects = attach.split_once("target:").map_or(attach, |(objects, _)| objects);
+    assert!(attached_objects.contains("tagged_constraints:[TaggedObjectConstraint{tag:TagKey(\"created"), "attaches the created copies: {debug}");
     assert!(compact.contains("attacking:true") || compact.contains("Attacking"), "{debug}");
 }
 
@@ -127,8 +128,7 @@ fn stangg_copies_attachments_onto_the_named_twin_and_sacrifices_every_token() {
         .split_once("AttachObjectsEffect")
         .map(|(_, tail)| tail)
         .unwrap_or_else(|| panic!("copies attach to the Twin: {debug}"));
-    let attach = &attach[..attach.len().min(1500)];
-    assert!(attach.to_ascii_lowercase().contains("name:some(\"stanggtwin\")"), "{debug}");
+    assert!(attach.to_ascii_lowercase().contains("name:some(\"stanggtwin\","), "{debug}");
 }
 
 /// Pygmy Hippo / Drain Power building block: "<player> activates a mana

@@ -2679,6 +2679,11 @@ pub(super) fn parse_player_would_action_predicate(
 }
 
 pub(super) fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    // A remembered object's entry is checked by the demonstrative predicate,
+    // not by a query for any matching object that entered this turn.
+    if demonstrative_reference_kind(tokens).is_some() {
+        return None;
+    }
     // Both alternatives remain independent event-history queries.
     for (index, token) in tokens
         .iter()
@@ -6644,8 +6649,8 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         monarch_words.strip_prefix(&["if"]).unwrap_or(monarch_words.as_slice()),
         ["revealed" | "that", "card", "is", "chosen", "type"]
             | ["it", "is", "chosen", "type"]
-    ) && let Ok(rewritten) = crate::lexer::lex_line("it is of the chosen type", 0)
-    {
+    ) {
+        let rewritten = crate::lexer::synthetic_word_tokens(["it", "is", "of", "the", "chosen", "type"]);
         return parse_predicate(&rewritten);
     }
     // "this spell's additional cost was paid and the revealed card is the

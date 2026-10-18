@@ -2929,30 +2929,14 @@ fn advance_reference_frame_for_effect(
                     // same tag here so delayed "those objects" references and
                     // the lowering ID stream stay aligned.
                     if frame.auto_tag_object_targets || attached_to.is_some() {
-                        // "Put a card exiled with this artifact into ...": a
-                        // counted selection from the source's linked exile
-                        // moves only the chosen card. A later `it` names that
-                        // card, which lowering tags, not the whole linked set.
-                        // (A looked-at pool keeps its tag for "the rest".)
-                        let selects_from_tagged_set = matches!(
-                            &spec,
-                            ChooseSpec::WithCount(inner, count)
-                                if matches!(
-                                    inner.base(),
-                                    ChooseSpec::Tagged(tag)
-                                        if tag.as_str()
-                                            == crate::tag::CompilerReferenceTag::SourceExiled.as_str()
-                                ) && count.max.is_some()
-                        );
-                        let tag = if matches!(spec.base(), ChooseSpec::Source)
-                            || selects_from_tagged_set
+                        // Movement creates new object identities. Lowering tags
+                        // the destination objects, even when the input was an
+                        // existing tagged collection; subsequent pronouns must
+                        // consume that destination receipt.
+                        if choose_spec_targets_object(&spec)
+                            || matches!(spec.base(), ChooseSpec::All(_))
                         {
-                            Some(next_reference_tag(id_gen, "moved"))
-                        } else {
-                            propagated_or_generated_object_tag(&spec, id_gen, "moved")
-                        };
-                        if let Some(tag) = tag {
-                            frame.last_object_tag = Some(tag);
+                            frame.last_object_tag = Some(next_reference_tag(id_gen, "moved"));
                         }
                     }
                     track_target_player(target, frame);
@@ -3409,8 +3393,13 @@ fn advance_reference_frame_for_effect(
             // relative filter cannot capture an older player antecedent.
             // Re-track it afterward to keep that actor as the exported player.
             track_effect_player(*player, frame, true, true)?;
+            let player_choices_before = frame.recent_player_choice_tags.len();
             advance_effects_preserving_last_effect(effects, id_gen, frame)?;
-            track_effect_player(*player, frame, true, true)?;
+            // A player explicitly chosen by the optional instruction is the
+            // antecedent of its follow-up, rather than the choice's decider.
+            if frame.recent_player_choice_tags.len() == player_choices_before {
+                track_effect_player(*player, frame, true, true)?;
+            }
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUntapStep { player, effects })
         | EffectAst::Delayed(DelayedEffectAst::DelayedUntilNextUpkeep { player, effects })
@@ -3460,7 +3449,8 @@ fn advance_reference_frame_for_effect(
                         player @ (PlayerFilter::ControllerOf(_)
                         | PlayerFilter::AliasedControllerOf(_)
                         | PlayerFilter::OwnerOf(_)
-                        | PlayerFilter::AliasedOwnerOf(_)),
+                        | PlayerFilter::AliasedOwnerOf(_)
+                        | PlayerFilter::TaggedPlayer(_)),
                     ) = branch_player
                 {
                     frame.last_player_filter = Some(player);
@@ -3891,6 +3881,25 @@ pub fn predicate_comparison_operands(
 ) -> Option<(Value, Value)> {
     let mut values = match predicate {
         PredicateAst::ValueComparison { left, right, .. } => (left.clone(), right.clone()),
+        PredicateAst::ItMatchedLastKnown(filter) | PredicateAst::ItMatches(filter)
+            if filter.power.is_some() && filter.toughness.is_none() && filter.mana_value.is_none() =>
+        {
+            let right = match filter.power.as_ref()? {
+                Comparison::Equal(n) | Comparison::NotEqual(n)
+                | Comparison::LessThan(n) | Comparison::LessThanOrEqual(n)
+                | Comparison::GreaterThan(n) | Comparison::GreaterThanOrEqual(n) => Value::Fixed(*n),
+                Comparison::EqualExpr(value) | Comparison::NotEqualExpr(value)
+                | Comparison::LessThanExpr(value) | Comparison::LessThanOrEqualExpr(value)
+                | Comparison::GreaterThanExpr(value) | Comparison::GreaterThanOrEqualExpr(value) => (**value).clone(),
+                Comparison::OneOf(_) => return None,
+            };
+            let object = Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind().into()));
+            let left = match filter.power_reference {
+                ironsmith_core::PtReference::Effective => Value::PowerOf(object),
+                ironsmith_core::PtReference::Base => Value::BasePowerOf(object),
+            };
+            (left, right)
+        }
         // "When this creature dies, if it had one or more -1/-1 counters on
         // it, its owner draws that many cards" (Oft-Nabbed Goat): the tested
         // quantity is the triggering object's last-known counter count.
@@ -3921,6 +3930,9 @@ pub fn predicate_comparison_operands(
                     Comparison::GreaterThanOrEqual(_)
                         | Comparison::GreaterThan(_)
                         | Comparison::Equal(_)
+                        | Comparison::LessThan(_)
+                        | Comparison::LessThanOrEqual(_)
+                        | Comparison::NotEqual(_)
                 )
             ) && {
                 let mut rest = filter.clone();
@@ -3937,7 +3949,10 @@ pub fn predicate_comparison_operands(
                 Some(
                     Comparison::GreaterThanOrEqual(value)
                     | Comparison::GreaterThan(value)
-                    | Comparison::Equal(value),
+                    | Comparison::Equal(value)
+                    | Comparison::LessThan(value)
+                    | Comparison::LessThanOrEqual(value)
+                    | Comparison::NotEqual(value),
                 ) => value,
                 _ => return None,
             };
@@ -4471,6 +4486,26 @@ fn annotate_effect_sequence_with_env_internal(
             // discards two cards. Otherwise, that player discards a card.").
             if let Some(target_player) = gated_branch_declared_target_player(&gate.effect) {
                 resolution_env.last_player_filter = RefState::Known(target_player);
+            }
+            // A declined optional action never produced its moved/created
+            // object tag. The complement of "if a player does" must see the
+            // object that existed before the offer, not that absent result.
+            if let EffectAst::Conditionals(ConditionalEffectAst::ResolvedIfResult {
+                condition,
+                predicate: IfResultPredicate::Did,
+                ..
+            }) = &gate.effect
+                && let Some(offer) = annotated.iter().rev().find(|prior| {
+                    prior.assigned_effect_id == Some(*condition)
+                        && matches!(&prior.effect, EffectAst::Permissions(
+                            PermissionEffectAst::AnyPlayerMay { .. }
+                                | PermissionEffectAst::May { .. }
+                                | PermissionEffectAst::MayByPlayer { .. }
+                        ))
+                })
+            {
+                resolution_env.last_object_tag = offer.in_env.last_object_tag.clone();
+                resolution_env.source_object_antecedent = offer.in_env.source_object_antecedent;
             }
         }
         resolve_definite_object_references_in_effect(
@@ -5306,6 +5341,10 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::LoseLife { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
                 | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopyFromSource { .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { .. })
+                | SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenChoice { .. })
                 | SubjectVerbActionAst::TargetOnly { .. }
                 // "put a name sticker on it. ... unique vowels on that sticker"
                 | SubjectVerbActionAst::PutSticker { .. }
@@ -5377,7 +5416,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::MoveTaggedGroupToZone { .. }
         | EffectAst::RestartGame { .. }
         | EffectAst::PlaySubgame { .. } => true,
-        EffectAst::ControlFlow(_) => {
+        EffectAst::ControlFlow(_) | EffectAst::Coordination(_) => {
             let mut produces = false;
             crate::model::visit::for_each_nested_effects(effect, true, |nested| {
                 produces |= nested.iter().any(effect_can_supply_prior_effect_memory);
@@ -6068,22 +6107,26 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
         EffectAst::SubjectVerb(subject_verb) => {
             visit_subject_verb_action_values(&subject_verb.action, visit);
         }
-        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value, .. })
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count_value, filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             count_value,
+            filter,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsTopOfZone {
             count_value,
+            filter,
             ..
         })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             count_value,
+            filter,
             ..
         }) => {
             if let Some(count_value) = count_value {
                 visit(count_value);
             }
+            visit_filter_values(filter, visit);
         }
         EffectAst::Conditionals(
             ConditionalEffectAst::Conditional { predicate, .. }
@@ -6784,10 +6827,12 @@ fn resolve_effect_references_in_effect(
             predicate: PredicateAst::ValueComparison { left, right, .. }, ..
         }) | EffectAst::SelfReplacement {
             predicate: PredicateAst::ValueComparison { left, right, .. }, ..
-        } if matches!(left.unhinted(),
+        } if (matches!(left.unhinted(),
             Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. }
                 if life_amount_bindings::is_life_query(query) && query.player.is_some())
-            && matches!(right.unhinted(), Value::Fixed(0)) =>
+            && matches!(right.unhinted(), Value::Fixed(0)))
+            || (matches!(left.unhinted(), Value::CountersOn(..))
+                && matches!(right.unhinted(), Value::Fixed(_))) =>
         {
             Some((left.clone(), right.clone()))
         }
@@ -7101,7 +7146,8 @@ fn advance_reference_env_for_effect(
                                 player @ (PlayerFilter::ControllerOf(_)
                                 | PlayerFilter::AliasedControllerOf(_)
                                 | PlayerFilter::OwnerOf(_)
-                                | PlayerFilter::AliasedOwnerOf(_)),
+                                | PlayerFilter::AliasedOwnerOf(_)
+                                | PlayerFilter::TaggedPlayer(_)),
                             ),
                             RefState::Unknown,
                         ) => RefState::Known(player.clone()),
@@ -8408,7 +8454,15 @@ fn resolve_effect_result_value(
         }
         Value::PendingEffectMetric { source, metric } => {
             let producer_id = state.pinned_effect_metric_id.or(state.last_effect_id);
-            if state.allow_excess_damage_event_value
+            if state.pinned_effect_metric_id.is_none()
+                && matches!((*source, *metric), (EffectMetricSource::Outcome, EffectMetric::ExcessDamage))
+                && state.last_value_comparison.is_some_and(|(left, _)|
+                    matches!(left.unhinted(), Value::EventValue(EventValueSpec::ExcessDamage)))
+            {
+                // A condition testing the triggering event's excess establishes
+                // the quantity referenced by "that excess damage" in its body.
+                *value = Value::EventValue(EventValueSpec::ExcessDamage);
+            } else if state.allow_excess_damage_event_value
                 && state.pinned_effect_metric_id.is_none()
                 && matches!(
                     (*source, *metric),
@@ -8637,10 +8691,10 @@ fn resolve_effect_result_value(
         // instruction's result.
         Value::EventValue(EventValueSpec::Amount)
             if !state.allow_life_event_value
-                && state.pinned_effect_metric_id.is_none()
                 && state.last_value_comparison.is_some_and(|(left, right)| {
-                    matches!(left.unhinted(), Value::CountersOn(spec, Some(_)) | Value::ManaValueOf(spec)
-                        if matches!(spec.as_ref(), ChooseSpec::Tagged(_)))
+                    (matches!(left.unhinted(), Value::CountersOn(..))
+                        || matches!(left.unhinted(), Value::ManaValueOf(spec)
+                            if matches!(spec.base(), ChooseSpec::Tagged(_))))
                         && matches!(right.unhinted(), Value::Fixed(_))
                 }) =>
         {
@@ -13280,6 +13334,15 @@ mod excess_damage_binding_tests {
             resolve_effect_result_value(&mut value, state).unwrap();
             assert_eq!(value, Value::EventValue(EventValueSpec::Amount));
         }
+    }
+    #[test]
+    fn excess_event_comparison_binds_its_anaphoric_quantity() {
+        let comparison = (Value::EventValue(EventValueSpec::ExcessDamage), Value::Fixed(1));
+        let mut state = state();
+        state.last_value_comparison = Some(&comparison);
+        let mut value = bare();
+        resolve_effect_result_value(&mut value, state).unwrap();
+        assert_eq!(value, Value::EventValue(EventValueSpec::ExcessDamage));
     }
     #[test]
     fn explicit_this_way_and_result_branch_pin_to_their_damage_instruction() {

@@ -212,9 +212,24 @@ pub(super) fn post_rule_delayed_trigger_result_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
     _sentence_idx: usize,
-    _sentence_tokens: &[OwnedLexToken],
+    sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    if crate::lexer::parser_token_word_refs(sentence_tokens).windows(2).any(|words| words == ["that", "combat"])
+        && (crate::tag_support::effects_reference_it_tag(sentence_effects)
+            || crate::tag_support::effects_reference_tag(sentence_effects, crate::tag::CompilerReferenceTag::SourceExiled.as_str()))
+        && let Some(body) = state.effects.last_mut().and_then(super::super::trailing_delayed_return_body_mut)
+    {
+        for effect in sentence_effects.iter_mut() {
+            ironsmith_core::tag::TagKeyWalk::map_tag_keys(effect, &mut |key| {
+                if key.as_str() == crate::tag::CompilerReferenceTag::SourceExiled.as_str() {
+                    *key = crate::tag::CompilerReferenceTag::It.bind().into();
+                }
+            });
+        }
+        body.append(sentence_effects);
+        return Ok(Some(PostParseFollowupResult::Handled { consumed_sentences: 1 }));
+    }
     let [
         EffectAst::Conditionals(ConditionalEffectAst::IfResult { .. })
         | EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. }),

@@ -101,7 +101,7 @@ fn vesuvan_shapeshifter_copy_lasts_until_it_is_turned_face_down() {
         .expect("becomes-copy continuous effect");
     assert!(!apply.contains("__it__"), "the copier is this creature, not the chosen creature: {debug}");
     let choose = compact.split_once("ChooseObjectsEffect").map(|(_, tail)| tail).expect("choice");
-    let choose = choose.split_once("count:").map_or(choose, |(head, _)| head);
+    let choose = choose.split_once(",count:").map_or(choose, |(head, _)| head);
     assert!(choose.contains("other:true"), "'another creature' excludes this creature: {debug}");
 }
 

@@ -10070,6 +10070,11 @@ fn describe_choices_then_reveal_hand_count_gate(effects: &[Effect]) -> Option<St
 }
 
 pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> Option<String> {
+    // Hidden selections and their combined reveal form one instruction;
+    // rendering their individual clauses loses the shared choice sets.
+    if let Some(text) = describe_secret_own_and_other_choice_then_destroy(effects) {
+        return Some(text);
+    }
     if let Some(text) = describe_choices_then_reveal_hand_count_gate(effects) {
         return Some(text);
     }
@@ -13949,25 +13954,22 @@ fn describe_optional_return_with_base_pt_and_haste(effects: &[Effect]) -> Option
     {
         return None;
     }
-    let Some(crate::continuous::Modification::AddAbility(base_pt_ability)) = &base_pt.modification
-    else {
-        return None;
+    let (power, toughness) = match base_pt.modification.as_ref()? {
+        crate::continuous::Modification::SetPowerToughness { power, toughness, sublayer: crate::continuous::PtSublayer::Setting } => {
+            (describe_value(power), describe_value(toughness))
+        }
+        crate::continuous::Modification::AddAbility(ability) => {
+            let ironsmith_core::StaticAbilityPayload::SetBasePowerToughness { filter, power, toughness } = &ability.compiled_model()?.payload else { return None; };
+            if filter != &ObjectFilter::source() { return None; }
+            (power.to_string(), toughness.to_string())
+        }
+        _ => return None,
     };
-    let ironsmith_core::StaticAbilityPayload::SetBasePowerToughness {
-        filter,
-        power,
-        toughness,
-    } = &base_pt_ability.compiled_model()?.payload
-    else {
-        return None;
-    };
-    if filter != &ObjectFilter::source()
-        || !is_haste_until_eot_for_tag(
-            structural_unwrap_render_wrappers(haste_effect)
-                .downcast_ref::<crate::effects::ApplyContinuousEffect>()?,
-            returned_tag,
-        )
-    {
+    if !is_haste_until_eot_for_tag(
+        structural_unwrap_render_wrappers(haste_effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?,
+        returned_tag,
+    ) {
         return None;
     }
 
@@ -15053,7 +15055,25 @@ fn describe_optional_looked_choice_then_exile(
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     let text = describe_effect_list_inner(effects);
     let text = refer_back_to_declared_chosen_object(effects, text);
+    let text = refer_back_to_declared_player(effects, text);
     refer_back_to_declared_any_target(effects, text)
+}
+
+/// An explicit player declaration owns its complete qualification; later
+/// object-controller and owner references refer back to that same player.
+pub(in crate::compiled_text) fn refer_back_to_declared_player(effects: &[Effect], text: String) -> String {
+    let Some(first) = effects.first() else { return text; };
+    let Some(declared) = structural_unwrap_render_wrappers(first)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>() else { return text; };
+    if !declared.explicit_declaration || !matches!(declared.target.base(), ChooseSpec::Player(_)) {
+        return text;
+    }
+    let Some((head, tail)) = text.split_once(". ") else { return text; };
+    let target = describe_choose_spec(&declared.target);
+    if !head.eq_ignore_ascii_case(&format!("Choose {target}")) { return text; }
+    let tail = tail.replace(&format!("{target} controls"), "that player controls")
+        .replace(&format!("{target} owns"), "that player owns");
+    format!("{head}. {tail}")
 }
 
 /// "Choose target creature that's blocking equipped creature. Flip a coin.
@@ -15201,7 +15221,12 @@ fn describe_space_sculptor_sector_effects(effects: &[Effect]) -> Option<String> 
 /// "..., where X is the mana value of a commander you own on the battlefield
 /// or in the command zone" (Stinging Study): lowering chooses the commander
 /// first, then the X-consuming actions read that choice's mana value.
-fn describe_where_x_commander_mana_value_choice(effects: &[Effect]) -> Option<String> {
+pub(super) fn describe_where_x_commander_mana_value_choice(effects: &[Effect]) -> Option<String> {
+    if let [effect] = effects
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        return describe_where_x_commander_mana_value_choice(&sequence.effects);
+    }
     let (choose, rest) = effects.split_first()?;
     let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if choose.tag.as_str() != "__where_x_commander_mana_value"

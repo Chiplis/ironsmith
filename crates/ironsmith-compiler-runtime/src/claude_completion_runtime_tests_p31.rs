@@ -161,7 +161,7 @@ fn flamewar_puts_owned_intel_exiled_cards_into_hand() {
         AbilityKind::Activated(activated) => Some(format!("{:?}", activated.effects)),
         _ => None,
     }).collect();
-    let intel = activated.iter().find(|debug| debug.contains("Intel")).expect("intel ability");
+    let intel = activated.iter().find(|debug| debug.contains("intel")).expect("intel ability");
     assert!(intel.contains("Hand") && intel.contains("Exile"), "{intel}");
     assert!(!intel.contains("PutCounters"), "the counters only qualify the moved cards: {intel}");
 }

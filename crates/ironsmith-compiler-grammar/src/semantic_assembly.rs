@@ -143,7 +143,7 @@ fn assemble_triggered_line(
     triggered: RecognizedTriggeredLine,
 ) -> Result<RewriteSemanticItem, CardTextError> {
     let mut info = triggered.info;
-    let compiler_ability = *info
+    let mut compiler_ability = *info
         .semantic_facts
         .triggered_ability
         .compiler_ability
@@ -153,6 +153,14 @@ fn assemble_triggered_line(
                 "triggered CST reached lowering without compiler trigger facts".to_string(),
             )
         })?;
+    // The CST assembly path already owns parsed effects and does not run the
+    // legacy triggered-line parser. Bind amounts established by its condition
+    // before wrapping the body in that condition.
+    if let Some(predicate) = compiler_ability.intervening_if.as_ref() {
+        crate::clause_support::bind_intervening_life_gained_that_many(
+            predicate, &mut compiler_ability.effects,
+        );
+    }
     let chunk = crate::cards::builders::LineAst::Triggered {
         trigger: compiler_ability.event.semantics,
         effects: if triggered.presentation == Some(ironsmith_core::PresentationLabel::CaseToSolve) {

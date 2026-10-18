@@ -90,10 +90,9 @@ fn parses_each_other_player_as_filtered_participant_subject() {
     );
 
     let imperative = lex_line("For each other player, draw a card", 0).unwrap();
-    assert!(
-        parse_participant_clause_shape(&imperative).is_none(),
-        "the quantified-subject family must not claim imperative fanout"
-    );
+    let shape = parse_participant_clause_shape(&imperative).unwrap();
+    assert!(!shape.participant_is_actor);
+    assert_eq!(shape.scope, ForEachParticipantScope::PlayerExceptYou);
 }
 
 #[test]

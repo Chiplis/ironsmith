@@ -533,6 +533,8 @@ fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Eff
             PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
                 if tag == &consult.match_tag
                     || tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+                    || move_effect.downcast_ref::<crate::effects::TaggedEffect>()
+                        .is_some_and(|moved| &moved.tag == tag)
         );
     if !shuffle_uses_iterated_controller || shuffle.target_spec.is_some() {
         return compiled;
@@ -2510,6 +2512,24 @@ fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
     for segment in &mut lowered.effects.segments {
         for effect in &mut segment.default_effects {
             *effect = dedupe_synthetic_targets_in_sequence(effect);
+        }
+        for index in 1..segment.default_effects.len() {
+            let Some(announced) = segment.default_effects[index - 1]
+                .downcast_ref::<crate::effects::TargetOnlyEffect>() else { continue; };
+            let Some(repeat) = segment.default_effects[index]
+                .downcast_ref::<crate::effects::RepeatEffectsEffect>() else { continue; };
+            let Some(inner) = repeat.effects.first()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::TargetOnlyEffect>())
+                else { continue; };
+            if !inner.explicit_declaration && inner.chooser == announced.chooser
+                && same_target_domain(&inner.target, &announced.target)
+            {
+                // The repeated action reuses its announced player; it does
+                // not declare another target for each repetition.
+                let mut repeat = repeat.clone();
+                repeat.effects.remove(0);
+                segment.default_effects[index] = Effect::new(repeat);
+            }
         }
     }
     lowered.effects = crate::resolution::ResolutionProgram::new(lowered.effects.segments.clone());

@@ -184,7 +184,13 @@ pub(super) fn read_leading_result_prefix(
         } else {
             None
         };
-        let mut trailing_effects = if let Some(effects) = get_then_gain {
+        let mut trailing_effects = if let Some(effects) =
+            crate::effect_sentences::for_each_helpers::parse_result_consequence_for_each_object(
+                prefix.trailing_tokens,
+            )?
+        {
+            effects
+        } else if let Some(effects) = get_then_gain {
             effects
         } else if let Some(permission) = crate::permission_helpers::parse_cast_or_play_tagged_clause(prefix.trailing_tokens)? {
             // A result row owns the complete casting permission, including

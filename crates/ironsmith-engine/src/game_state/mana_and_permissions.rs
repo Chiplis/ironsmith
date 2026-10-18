@@ -209,6 +209,10 @@ impl GameState {
     pub fn continuous_query_snapshot(
         &self,
     ) -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        // Legacy restriction discovery evaluates dynamic values before the
+        // fallible static refresh. Reject out-of-range mana before entering
+        // that infallible adapter as well.
+        crate::static_ability_processor::validate_mana_scalar_domain(self)?;
         let mut snapshot = self.clone();
         snapshot.update_cant_effects();
         snapshot.update_static_ability_effects()?;

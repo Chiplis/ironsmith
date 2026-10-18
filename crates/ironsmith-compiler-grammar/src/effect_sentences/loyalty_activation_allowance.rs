@@ -22,7 +22,7 @@ fn is_authored_name(tokens: &[OwnedLexToken]) -> bool {
     !tokens.is_empty()
         && tokens.iter().all(|token| {
             matches!(token.kind, TokenKind::Word)
-                && token.slice.chars().next().is_some_and(char::is_uppercase)
+                && token.literal_surface().chars().next().is_some_and(char::is_uppercase)
         })
 }
 
@@ -79,7 +79,7 @@ fn parse_more_times_this_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let first_owner_token = tokens.iter().find(|token| token.kind == TokenKind::Word
         && !matches!(token.slice.to_ascii_lowercase().as_str(), "you" | "may" | "activate"));
     let named_source = first_owner_token
-        .is_some_and(|token| token.slice.chars().next().is_some_and(char::is_uppercase));
+        .is_some_and(|token| token.literal_surface().chars().next().is_some_and(char::is_uppercase));
     if owner.is_empty()
         || !(named_source || crate::util::is_source_reference_words(&owner))
     {

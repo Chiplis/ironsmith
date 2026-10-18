@@ -32,25 +32,21 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if qualifier.first().is_some_and(|word| *word != "with") || qualifier.contains(&"from") {
         return Ok(None);
     }
-    let mut text = String::from("if it's a land card or a nonland card");
-    for word in qualifier {
-        text.push(' ');
-        text.push_str(word);
+    let span = crate::util::span_from_tokens(tokens)
+        .unwrap_or_else(crate::cards::builders::TextSpan::synthetic);
+    let words_at_source = |words: &[&str]| words.iter()
+        .map(|word| OwnedLexToken::word(*word, span)).collect::<Vec<_>>();
+    let mut rewritten = words_at_source(&["if", "it's", "a", "land", "card", "or", "a", "nonland", "card"]);
+    // Retain the original qualifier tokens, including quantities and spans.
+    let view = crate::lexer::TokenWordView::new(tokens);
+    if let Some(range) = view.token_span_for_words(15, 15 + qualifier.len()) {
+        rewritten.extend_from_slice(&tokens[range]);
     }
-    text.push_str(", you may play it");
+    rewritten.push(OwnedLexToken::comma(span));
+    rewritten.extend(words_at_source(&["you", "may", "play", "it"]));
     if free {
-        text.push_str(" without paying its mana cost");
+        rewritten.extend(words_at_source(&["without", "paying", "its", "mana", "cost"]));
     }
-    text.push('.');
-    // Keep the authored offsets so helper tags stay unique within the line.
-    let (line, start) = tokens
-        .first()
-        .map(|token| (token.span.line, token.span.start))
-        .unwrap_or((0, 0));
-    let padded = format!("{}{}", " ".repeat(start), text);
-    let Ok(rewritten) = crate::lexer::lex_line(&padded, line) else {
-        return Ok(None);
-    };
     let effects = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
     Ok((!effects.is_empty()).then_some(effects))
 }

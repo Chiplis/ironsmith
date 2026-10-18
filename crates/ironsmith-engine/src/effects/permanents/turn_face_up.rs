@@ -756,13 +756,19 @@ mod mandatory_action_face_up_tests {
         let object = fixture(&mut game, Zone::Battlefield);
         let mut dm = crate::decision::SelectFirstDecisionMaker;
         let mut ctx = ExecutionContext::new(object, PlayerId::from_index(0), &mut dm);
-        crate::effects::permanents::TapEffect::with_spec(crate::target::ChooseSpec::Source)
+        let outcome = crate::effects::permanents::TapEffect::with_spec(crate::target::ChooseSpec::Source)
             .execute(&mut game, &mut ctx).unwrap();
         assert!(!game.is_face_down(object));
         assert!(game.is_tapped(object));
         assert!(!game.object_requires_turn_face_up_before_action(object));
         assert_eq!(game.calculated_power(object), Some(5));
-        let events = game.take_pending_trigger_events();
+        assert_eq!(game.turn_store.turn_history.event_kind_count(crate::events::EventKind::TurnedFaceUp), 1);
+        // The face-up completion matches triggers before the tap action. Its
+        // published receipt is therefore in history, no longer in the queue.
+        let mut events = game.turn_store.turn_history.projected_records()
+            .map(|record| record.event.clone()).collect::<Vec<_>>();
+        events.extend(game.take_pending_trigger_events());
+        events.extend(outcome.events);
         assert!(events.iter().any(|event| event.downcast::<crate::events::TurnedFaceUpEvent>().is_some()));
         assert!(events.iter().any(|event| event.downcast::<crate::events::PermanentTappedEvent>().is_some()));
     }

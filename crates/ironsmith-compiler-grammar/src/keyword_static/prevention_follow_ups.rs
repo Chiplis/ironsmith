@@ -18,6 +18,7 @@ pub fn parse_prevention_amount_follow_up_line(
     let (source_filter, recipient, combat_only, noncombat_only) =
         if let Some(shape) = keyword_static_lines::parse_filtered_damage_prevention_tokens(head) {
             if !matches!(shape.amount, keyword_static_lines::FilteredPreventionAmountShape::All)
+                || shape.optional_by_controller
                 || shape.maximum_damage.is_some()
                 || shape.repeated_spell_target_tokens.is_some()
             { return Ok(None); }
@@ -159,6 +160,7 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
     let (source_filter, recipient, combat_only, noncombat_only) =
         if let Some(shape) = keyword_static_lines::parse_filtered_damage_prevention_tokens(head) {
             if !matches!(shape.amount, keyword_static_lines::FilteredPreventionAmountShape::All)
+                || shape.optional_by_controller
                 || shape.maximum_damage.is_some()
                 || shape.repeated_spell_target_tokens.is_some()
             { return Ok(None); }

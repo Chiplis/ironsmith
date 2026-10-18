@@ -318,10 +318,17 @@ pub(super) fn rewrite_lose_all_transform_name_uses_parser_word_coordinates() {
             .expect("transform line should produce static abilities");
 
         assert!(abilities.iter().any(|ability| matches!(
-            &ability.payload,
-            crate::model::CompilerStaticAbilityPayloadCore::SetName { name, .. }
-                if name == expected_name
+            ability,
+            crate::cards::builders::StaticAbilityAst::Static(ability)
+                if matches!(&ability.payload,
+                    crate::model::CompilerStaticAbilityPayloadCore::SetName { name, .. }
+                        if name == expected_name)
         )));
+        if expected_name == "Humble Merchant" {
+            assert!(abilities.iter().any(|ability| matches!(ability,
+                crate::cards::builders::StaticAbilityAst::GrantObjectAbility { .. }
+            )), "the quoted mana ability must survive the characteristic changes");
+        }
     }
 }
 

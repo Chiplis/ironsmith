@@ -5025,3 +5025,16 @@ fn destroy_then_exile_keeps_order_target_zone_and_object_reference() {
         "exile reuses the object, not a new target"
     );
 }
+
+#[test]
+fn numeric_result_keeps_loyalty_and_followup_inside_the_same_branch() {
+    let tokens = crate::lexer::lex_line(
+        "3 — [−1], then return a card from your graveyard to your hand.", 0,
+    ).unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentences_lexed(&tokens).unwrap();
+    let [EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects, .. })] = effects.as_slice()
+        else { panic!("the whole row must be conditional: {effects:?}"); };
+    let [EffectAst::CommaThen { effects }] = effects.as_slice()
+        else { panic!("both actions must stay ordered in the row: {effects:?}"); };
+    assert_eq!(effects.len(), 2);
+}

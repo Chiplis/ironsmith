@@ -113,14 +113,14 @@ fn execute_transform_like_action_with_outputs(
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
     game.clear_pending_decision_controllers();
     crate::effects::composition::execute_transaction(
         game,
         ctx,
-        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved()),
+        || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         |game, ctx| execute_transform_like_action_inner(action, target, game, ctx),
     )
 }
@@ -141,7 +141,7 @@ fn execute_transform_like_action_inner(
             .is_some_and(|object| object.zone == Zone::Battlefield)
         {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::resolved(),
+                EffectOutcome::count(0),
             ));
         }
         ctx.source
@@ -159,30 +159,30 @@ fn execute_transform_like_action_inner(
 
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
 
     if source_transform_like_action_is_stale(game, ctx, target_id) {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
 
     if !game.can_transform(target_id) {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
 
     let Some(target) = game.object(target_id) else {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     };
     if target.zone != Zone::Battlefield {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
     // CR 702.145b/e: only a permanent that currently has daybound/nightbound
@@ -190,7 +190,7 @@ fn execute_transform_like_action_inner(
     // applies to both transform and convert.
     if game.permanent_has_day_or_nightbound(target_id) {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
 
@@ -199,7 +199,7 @@ fn execute_transform_like_action_inner(
         .map_err(ExecutionError::ContinuousDiscovery)?
     {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-            EffectOutcome::resolved(),
+            EffectOutcome::count(0),
         ));
     }
 
@@ -219,7 +219,7 @@ fn execute_transform_like_action_inner(
         })?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                EffectOutcome::resolved(),
+                EffectOutcome::count(0),
             ));
         }
         (children, observations)
@@ -233,7 +233,7 @@ fn execute_transform_like_action_inner(
         &mut events,
         &observations,
     )?;
-    let mut outcome = EffectOutcome::resolved();
+    let mut outcome = EffectOutcome::with_objects(vec![target_id]);
     outcome.events = events;
     let mut outputs = crate::effects::CompletedEffectOutputs::aggregate_only(outcome);
     outputs.retain_published_children(children);
@@ -305,6 +305,7 @@ impl EffectExecutor for ConvertEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::EffectPredicateRuntimeExt as _;
     use crate::card::{LinkedFaceLayout, PowerToughness};
     use crate::cards::{CardDefinition, CardDefinitionBuilder};
     use crate::effects::ExecutionContext;
@@ -599,6 +600,7 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("transform should execute");
 
+        assert!(crate::effect::EffectPredicate::Happened.evaluate_outcome(&outcome));
         assert_eq!(outcome.events.len(), 1);
         assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 1);
@@ -852,6 +854,7 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("non-dfc transform should resolve as a no-op");
 
+        assert!(crate::effect::EffectPredicate::DidNotHappen.evaluate_outcome(&outcome));
         assert!(outcome.events.is_empty());
         assert!(!game.is_face_down(source));
         assert_eq!(game.transform_count(source), 0);

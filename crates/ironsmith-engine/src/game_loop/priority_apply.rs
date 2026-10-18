@@ -915,9 +915,9 @@ pub(super) fn apply_admitted_priority_action(
                         if matches!(kind, crate::special_actions::LandPlayObservationKind::Entry) {
                             try_drain_pending_trigger_events(game, trigger_queue)?;
                         }
-                        for trigger in check_triggers(game, &event) {
-                            trigger_queue.add(trigger);
-                        }
+                        // Publish the completed occurrence through the same owner as
+                        // queued events, retaining history and capture receipts.
+                        queue_triggers_from_event(game, trigger_queue, event, true);
                         if matches!(
                             kind,
                             crate::special_actions::LandPlayObservationKind::Played

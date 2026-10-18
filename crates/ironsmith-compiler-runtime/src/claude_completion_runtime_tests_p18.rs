@@ -47,8 +47,15 @@ fn whispersteel_dagger_grants_one_any_color_cast_from_the_damaged_players_gravey
     let bobs = game.create_object_from_card(&creature, bob, Zone::Graveyard);
     let alices = game.create_object_from_card(&creature, alice, Zone::Graveyard);
     let source = game.create_object_from_card(&creature, alice, Zone::Battlefield);
-    let mut ctx = ironsmith::effects::EffectContext::new_default(source, alice);
-    ctx.iteration.iterated_player = Some(bob);
+    let event = ironsmith::triggers::TriggerEvent::new_with_provenance(
+        ironsmith::events::DamageEvent::with_cause(
+            source, ironsmith::events::DamageTarget::Player(bob), 1, true,
+            ironsmith::events::EventCause::from_effect(source, alice),
+        ),
+        ironsmith::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ironsmith::effects::EffectContext::new_default(source, alice)
+        .with_triggering_event(event);
     ironsmith::effects::execute_effect(&mut game, &Effect::new(grant.clone()), &mut ctx).unwrap();
     // The permission is locked to Bob: it survives the resolution context.
     assert!(!game.effect_store.grant_registry.granted_play_from_for_card(&game, bobs, Zone::Graveyard, alice).is_empty());
@@ -320,9 +327,16 @@ fn muldrotha_offers_one_graveyard_budget_per_permanent_type_and_lets_the_player_
     let both_methods = casts(&game, both);
     assert_eq!(both_methods.len(), 2, "{both_methods:#?}");
     assert!(both_methods.iter().all(|method| matches!(method, CastingMethod::ExactPermission { .. })), "{both_methods:#?}");
-    let artifact_grants = game.effect_store.grant_registry.granted_play_from_for_card(&game, artifact, Zone::Graveyard, alice);
-    assert_eq!(artifact_grants.len(), 1);
-    let artifact_budget = artifact_grants[0].permission_identity.clone().unwrap();
+    let artifact_methods = casts(&game, artifact);
+    assert_eq!(artifact_methods.len(), 1, "one artifact permission: {artifact_methods:#?}");
+    // A single matching budget uses the ordinary PlayFrom route. Only an
+    // ambiguous multi-type choice needs an ExactPermission wrapper.
+    let artifact_grants = game.effect_store.grant_registry.get_grants_for_card(
+        &game, artifact, Zone::Graveyard, alice,
+    );
+    let artifact_budget = artifact_grants.iter().find(|grant|
+        matches!(grant.grantable, ironsmith::grant::Grantable::PlayFrom))
+        .and_then(|grant| grant.permission_identity.clone()).expect("artifact budget identity");
     assert!(both_methods.iter().any(|method| matches!(method,
         CastingMethod::ExactPermission { permission, .. } if permission.identity == artifact_budget)));
     // Spending the artifact budget leaves the creature budget for the

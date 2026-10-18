@@ -216,6 +216,9 @@ impl EffectExecutor for ExileEffect {
         if matches!(self.spec.base(), ChooseSpec::Source) {
             return Some("Exile this source".to_string());
         }
+        if matches!(self.spec.base(), ChooseSpec::Tagged(_)) {
+            return Some("Exile those cards".to_string());
+        }
 
         if let Some((filter, count)) = exile_from_hand_cost_filter(self) {
             let color_prefix = filter

@@ -284,6 +284,7 @@ fn fblthp_lost_on_the_range_plots_the_top_card_of_the_library() {
         if with_fblthp {
             game.create_object_from_definition(&definition, alice, Zone::Battlefield);
         }
+        game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
         game.refresh_continuous_state().unwrap();
         (game, top)
     };
@@ -299,7 +300,6 @@ fn fblthp_lost_on_the_range_plots_the_top_card_of_the_library() {
 
     // Plotting pays the card's mana cost and exiles it plotted.
     let (mut game, top) = setup(true, false);
-    game.player_mut(alice).unwrap().mana_pool.add(ManaSymbol::Colorless, 2);
     let stable = game.object(top).unwrap().stable_id;
     let mut dm = SelectFirstDecisionMaker;
     let mut state = PriorityLoopState::new(game.players.len());
@@ -325,17 +325,17 @@ fn ferris_wheel_holds_its_target_phased_out_until_a_low_visit_roll() {
     use ironsmith::effects::{EffectContext, ResolvedTarget, execute_effect};
     let definition = p50_compile("Ferris Wheel",
         "Type: Artifact — Attraction\nVisit — Choose target creature that hasn't been phased out with this Attraction. That creature phases out until you roll a 3 or less while rolling to visit your Attractions.");
-    let trigger = definition.abilities.iter().find_map(|ability| match &ability.kind {
-        AbilityKind::Triggered(trigger) => Some(trigger),
-        _ => None,
-    }).expect("visit trigger");
-    let debug = format!("{:?}", trigger.effects);
-    assert!(debug.contains("UntilVisitRollAtMost(3)"), "{debug}");
-    assert!(debug.contains("not_phased_out_with_source: true"), "{debug}");
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
     let wheel = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let trigger = game.object(wheel).unwrap().abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Triggered(trigger) => Some(trigger.clone()),
+        _ => None,
+    }).expect("materialized visit trigger");
+    let debug = format!("{:?}", trigger.effects);
+    assert!(debug.contains("UntilVisitRollAtMost(3)"), "{debug}");
+    assert!(debug.contains("not_phased_out_with_source: true"), "{debug}");
     let creature = CardBuilder::new(CardId::new(), "Rider")
         .card_types(vec![CardType::Creature]).power_toughness(PowerToughness::fixed(2, 2)).build();
     let rider = game.create_object_from_card(&creature, bob, Zone::Battlefield);

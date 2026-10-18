@@ -375,12 +375,7 @@ fn x_binding_and_partial_target_legality_remain_owned_by_the_original_declaratio
 fn distinct_condition_owners_keep_their_current_support_boundary() {
     // These conditions now have dedicated lowering and gameplay regressions
     // in damage_amount_ownership and separate_line_instead_restatement.
-    for name in ["Surtland Flinger", "Slaying Fire", "Summary Judgment"] {
+    for name in ["Surtland Flinger", "Slaying Fire", "Summary Judgment", "Flame Discharge"] {
         definitions(name);
-    }
-    for name in ["Flame Discharge"] {
-        let text = card_text(name);
-        assert!(compile_to_runtime_definition(name, &text, false).is_err(), "held direct route: {name}");
-        assert!(compile_to_artifact(name, &text, false).is_err(), "held artifact route: {name}");
     }
 }

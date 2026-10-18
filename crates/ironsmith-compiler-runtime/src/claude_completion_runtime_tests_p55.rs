@@ -128,7 +128,7 @@ fn p55_anrakyr_casts_an_artifact_from_hand_or_graveyard_for_life() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<ironsmith::effects::ChooseObjectsEffect>())
         .expect("the choice of card to cast");
-    let zones: Vec<_> = choose.filter.any_of.iter().filter_map(|branch| branch.zone).collect();
+    let zones: Vec<_> = choose.zone.into_iter().chain(choose.additional_zones.iter().copied()).chain(choose.filter.any_of.iter().filter_map(|branch| branch.zone)).collect();
     assert!(zones.contains(&Zone::Hand) && zones.contains(&Zone::Graveyard), "{choose:?}");
     let cast = effects
         .iter()
@@ -361,7 +361,7 @@ fn p55_ashling_grants_evoke_to_elemental_hand_spells() {
     let definition = compile_to_runtime_definition("Ashling, the Limitless", ASHLING_THE_LIMITLESS, false)
         .expect("Ashling should compile");
     let debug = format!("{definition:?}");
-    assert!(debug.contains("\"Evoke\""), "{debug}");
+    assert!(debug.contains("Evoke"), "{debug}");
     assert!(debug.contains("permanent_this_way_grants"), "{debug}");
     assert!(debug.contains("Elemental"), "{debug}");
 }

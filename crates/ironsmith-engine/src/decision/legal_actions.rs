@@ -137,7 +137,7 @@ pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
 /// so each budget is offered as an exact permission rather than the engine's
 /// first match. An unlimited permission from that source spends no budget.
 pub(crate) fn is_limited_budget_choice(
-    game: &GameState, player: PlayerId, grants: &[crate::grant_registry::Grant],
+    _game: &GameState, _player: PlayerId, grants: &[crate::grant_registry::Grant],
     grant: &crate::grant_registry::Grant,
 ) -> bool {
     let source = grant.source.source_id();
@@ -155,8 +155,7 @@ pub(crate) fn is_limited_budget_choice(
     grants.iter().any(|candidate| plain(candidate)
         && candidate.usage_limit.is_some()
         && candidate.shared_usage_id.is_none()
-        && candidate.permission_identity != grant.permission_identity
-        && grant_usage_limit_allows(game, player, candidate.permission_identity.as_ref(), candidate.usage_limit))
+        && candidate.permission_identity != grant.permission_identity)
 }
 
 fn append_exact_permission_actions_for_card(

@@ -1718,6 +1718,7 @@ mod tests;
 #[path = "clause_dispatch/clause_dispatch_core.rs"]
 mod clause_dispatch_core_programs;
 pub use clause_dispatch_core_programs::parse_effect_clause_lexed;
+pub(crate) use clause_dispatch_core_programs::parse_inline_loyalty_symbol_clause;
 use clause_dispatch_core_programs::{parse_effect_clause_unstacked, parse_passive_goad_clause};
 #[path = "clause_dispatch/clause_dispatch_reference.rs"]
 mod clause_dispatch_reference_programs;

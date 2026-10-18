@@ -203,7 +203,7 @@ fn journey_to_the_lost_city_branches_read_the_exiled_cards() {
     let count = &wolf_branch[count..];
     let amount = &count[..count.find("target:").unwrap_or(count.len())];
     assert!(amount.contains("__sentence_helper_exiled"), "counted among the exiled cards: {amount}");
-    assert!(!amount.contains("created_"), "not the created Wolf: {amount}");
+    assert!(!amount.contains("TagKey(\"created_"), "not the created Wolf: {amount}");
 }
 
 /// Immortal Obligation: the duty-counter sentence continues the returned

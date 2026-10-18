@@ -126,7 +126,7 @@ fn loot_the_anomaly_assigns_negative_power_as_positive() {
         compact.contains("assignscombatdamageasthoughitspowerwerepositive"),
         "{compact}"
     );
-    assert!(compact.contains("Fixed(-2)"), "{compact}");
+    assert!(compact.contains("power:Fixed(-2,"), "{compact}");
 }
 
 #[test]
@@ -170,9 +170,9 @@ fn luxior_equips_planeswalkers_and_turns_them_into_creatures() {
         "Mana cost: {1}\nType: Legendary Artifact — Equipment\nEquipped creature gets +1/+1 for each counter on it.\nEquipped permanent isn't a planeswalker and is a creature in addition to its other types. (Loyalty abilities can still be activated.)\nEquip planeswalker {1}\nEquip {3}",
     );
     let compact = p37_compact(&definition);
-    assert!(compact.contains("RemoveCardTypesForFilter"), "{compact}");
+    assert!(compact.contains("RemoveCardTypes{"), "{compact}");
     assert!(compact.contains("card_types:[Planeswalker]"), "{compact}");
-    assert!(compact.matches("keyword:Some(Equip)").count() >= 2, "two equip abilities: {compact}");
+    assert!(compact.matches("keyword:Some(Equip,").count() >= 2, "two equip abilities: {compact}");
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn lynde_moves_a_curse_on_you_to_an_opponent() {
         "Mana cost: {1}{U}{B}{R}\nType: Legendary Creature — Human Warlock\nPower/Toughness: 2/4\nDeathtouch\nWhenever a Curse is put into your graveyard from the battlefield, return it to the battlefield attached to you at the beginning of the next end step.\nAt the beginning of your upkeep, you may attach a Curse attached to you to one of your opponents. If you do, draw two cards.",
     );
     let compact = p37_compact(&definition);
-    assert!(compact.contains("attached_to_player:Some(You)"), "{compact}");
+    assert!(compact.contains("attached_to_player:Some(You,"), "{compact}");
     assert!(compact.contains("Curse"), "{compact}");
     assert!(compact.contains("Opponent"), "{compact}");
 }

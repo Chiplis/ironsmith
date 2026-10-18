@@ -136,9 +136,6 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
         union.set_conjunctive_set_surface(true);
         return Ok(TargetAst::Object(union, None, None));
     }
-    if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
-        return Ok(target);
-    }
     // The complete typed counter-ability grammar also reads a controller or
     // source tail after a coordinated term ("activated or triggered ability
     // you don't control", Nimble Obstructionist). Without it the generic
@@ -158,6 +155,10 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
         return Ok(wrap_target_count(target, shape.target_count));
     }
 
+    if let Some(target) = parse_counter_ability_target_phrase(tokens)? {
+        return Ok(target);
+    }
+
     let words = TokenWordView::new(tokens).word_refs();
     if counter_has_any_choice(&words, COUNTER_ABILITY_MARKER_WORDS)
         && counter_has_any_choice(&words, COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_WORDS)
@@ -168,6 +169,10 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
         )));
     }
 
+    let anaphoric = crate::util::trim_edge_punctuation_tokens(tokens);
+    if crate::lexer::token_word_refs(anaphoric) == ["the", "spell"] {
+        return crate::effect_sentences::clause_pattern_helpers::parse_counter_target_phrase(anaphoric);
+    }
     let mut target = parse_target_phrase(tokens)?;
     preserve_spell_kind_on_counter_target(&mut target);
     Ok(target)

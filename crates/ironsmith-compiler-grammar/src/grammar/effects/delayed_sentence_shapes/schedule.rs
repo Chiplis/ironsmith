@@ -175,7 +175,9 @@ fn parse_trailing_main_phase_schedule_shape(
         }
         let ((step, player, start_next_turn), rest) =
             primitives::parse_prefix(&tokens[index..], delayed_schedule_header)?;
-        if !trimmed(rest).is_empty()
+        if !trimmed(rest).iter().all(|token| {
+            matches!(token.kind, crate::lexer::TokenKind::Period)
+        })
             || !matches!(
                 step,
                 DelayedScheduleStep::MainPhaseThisTurn

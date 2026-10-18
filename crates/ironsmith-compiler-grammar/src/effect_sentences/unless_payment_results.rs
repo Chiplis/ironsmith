@@ -39,13 +39,20 @@ pub(super) fn try_bind_unless_payment_result(
     if rest.is_empty() {
         return Ok(false);
     }
-    if !matches!(
-        effects.last(),
-        Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
+    fn ends_with_unless_payment(effect: &EffectAst) -> bool {
+        match effect {
+        EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             player: PlayerAst::You | PlayerAst::Implicit,
             ..
-        }))
-    ) {
+        }) => true,
+        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } =>
+            effects.last().is_some_and(ends_with_unless_payment),
+        EffectAst::Coordination(coordination) => coordination.members.last()
+            .and_then(|member| member.effects.last()).is_some_and(ends_with_unless_payment),
+        _ => false,
+        }
+    }
+    if !effects.last().is_some_and(ends_with_unless_payment) {
         return Ok(false);
     }
     let paid_effects = super::parse_effect_sentences_lexed(rest)?;

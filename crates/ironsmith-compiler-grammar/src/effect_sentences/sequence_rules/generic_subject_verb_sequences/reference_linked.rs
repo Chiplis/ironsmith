@@ -675,9 +675,7 @@ pub fn parse_token_copy_of_chosen_card_with_x_mana_value(
         return Ok(None);
     }
     filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(Value::X)));
-    let copy = crate::lexer::lex_line("create a token that's a copy of it.", 0).map_err(|_| {
-        CardTextError::ParseError("unsupported linked-exile token copy".to_string())
-    })?;
+    let copy = crate::lexer::synthetic_word_tokens(["create", "a", "token", "that's", "a", "copy", "of", "it"]);
     let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
         filter,
         count: ChoiceCount::exactly(1),
@@ -2170,6 +2168,16 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
     cast_this_way: bool,
     unless_targets_surcharge: Option<(crate::mana::ManaCost, ObjectFilter)>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Keep the participant binder around the entire target/cast/replacement
+    // procedure. Its target's "that player" is local to this iteration.
+    let view = crate::lexer::TokenWordView::new(first);
+    if view.word_refs().starts_with(&["for", "each", "opponent"]) {
+        let start = view.token_index_after_words(3).unwrap_or(first.len());
+        let body = trim_commas(&first[start..]);
+        return Ok(graveyard_cast_with_exile_replacement_and_surcharge(
+            &body, shape, cast_this_way, unless_targets_surcharge,
+        )?.map(|effects| vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]));
+    }
     // "... from your graveyard this turn": the trailing duration is not part
     // of the target description.
     let first = if shape.trailing_this_turn {

@@ -4043,10 +4043,8 @@ pub(super) fn rewrite_zone_counter_helpers_parse_difference_counter_amount() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PutCounters"), "{debug}");
-    assert!(debug.contains("Add(PowerOf(Tagged"), "{debug}");
-    assert!(debug.contains("Scaled(PowerOf"), "{debug}");
-    assert!(debug.contains("Source"), "{debug}");
-    assert!(debug.contains("-1"), "{debug}");
+    assert!(debug.contains("PendingComparisonDifference"), "{debug}");
+    assert!(debug.contains("source: true") || debug.contains("Source("), "{debug}");
 }
 
 #[test]

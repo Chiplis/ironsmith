@@ -1887,7 +1887,7 @@ pub(in super::super) fn parse_object_filter_inner(
             "nontoken" => filter.nontoken = true,
             "foretold" if !is_negated_word => filter.foretold = true,
             "warped" if !is_negated_word => filter.warped = true,
-            "other" => filter.other = true,
+            "other" | "another" => filter.other = true,
             "tapped" => filter.tapped = true,
             "untapped" => filter.untapped = true,
             "attacking" if !is_negated_word => filter.attacking = true,

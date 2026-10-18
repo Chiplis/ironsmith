@@ -1,6 +1,7 @@
 //! Completed keyword-cost payments, separate from instructions that pay costs.
 use super::*;
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    let tokens = crate::activation_and_restrictions::strip_leading_trigger_intro(tokens);
     let words = crate::lexer::token_word_refs(tokens);
     if let Some(prefix) = words
         .strip_suffix(&["pay", "life"])

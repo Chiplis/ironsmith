@@ -741,6 +741,7 @@ pub(super) const READINGS: &[Reading] = &[
             }))
                 // Readings ranked above this one that read the input read it.
                 && !input.read_by("implicit-subject-and-predicate")
+                && !input.read_by("repeated-if-or-predicate")
         },
         read: |input| input.outcome(read_repeated_and_predicate(input)),
     },

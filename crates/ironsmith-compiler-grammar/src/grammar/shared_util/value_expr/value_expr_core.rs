@@ -190,12 +190,6 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         return Some((rounded_half(base, Rounding::Down), used));
     }
 
-    // "where X is that excess damage" (Overclocked Electromancer): the
-    // excess in the triggering damage event (CR 120.10).
-    if let Some(used) = prefix_len(words, &[&["that", "excess", "damage"]]) {
-        return Some((Value::EventValue(EventValueSpec::ExcessDamage), used));
-    }
-
     if let Some((_, used)) = DAMAGE_EVENT_AMOUNT_PREFIXES
         .iter()
         .find(|(expected, _)| permission_shapes::prefix_words(words, expected))

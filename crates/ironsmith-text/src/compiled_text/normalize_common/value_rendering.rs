@@ -4998,6 +4998,7 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::DistinctDieResults => {
             "the number of different results".to_string()
         }
+        crate::effect::EffectMetric::OddDieResults => "the number of odd results".to_string(),
         crate::effect::EffectMetric::EvenDieResults => "the number of even results".to_string(),
         crate::effect::EffectMetric::DieResultsEqual(face) => format!("the number of results equal to {face}"),
     };

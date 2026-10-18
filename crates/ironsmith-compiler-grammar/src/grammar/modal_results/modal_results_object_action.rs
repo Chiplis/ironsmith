@@ -204,6 +204,20 @@ pub fn parse_if_result_predicate_lexed_tokens(
         .map(OwnedLexToken::parser_text)
         .collect::<Vec<_>>();
 
+    // A bare payment restatement reads the preceding optional payment,
+    // including when that payment was offered to another player.
+    let payment = words.strip_prefix(&["that", "player"])
+        .or_else(|| words.strip_prefix(&["you"]))
+        .or_else(|| words.strip_prefix(&["they"]));
+    if let Some(payment) = payment {
+        if matches!(payment, ["don't" | "dont" | "didn't" | "didnt" | "doesn't" | "doesnt", "pay"]
+            | ["do" | "did" | "does", "not", "pay"]) {
+            return Some(IfResultPredicate::DidNot);
+        }
+        if matches!(payment, ["pay" | "pays" | "paid"]) {
+            return Some(IfResultPredicate::Did);
+        }
+    }
     // "If you don't or can't make an exchange, ..." (Gilded Drake): the
     // restated action did not happen, whether declined or impossible.
     const DONT_OR_CANT: &[&[&str]] = &[

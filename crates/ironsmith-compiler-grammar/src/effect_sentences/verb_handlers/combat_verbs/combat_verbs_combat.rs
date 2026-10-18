@@ -435,13 +435,21 @@ pub fn parse_deal_damage_with_amount(
         }
         combat_grammar::CombatDamageTargetShape::OpponentWho { predicate_tokens } => {
             let predicate = parse_who_did_this_way_predicate(predicate_tokens)?;
+            let result_predicate = if predicate.is_none()
+                && crate::lexer::parser_token_word_refs(predicate_tokens)
+                    .ends_with(&["discarded", "their", "hand", "this", "way"])
+            {
+                IfResultPredicate::AcceptedChoice
+            } else {
+                IfResultPredicate::Did
+            };
             Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponentDid {
                 effects: vec![EffectAst::subject_verb_damage(
                     amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
                 predicate,
-                result_predicate: IfResultPredicate::Did,
+                result_predicate,
             }))
         }
         combat_grammar::CombatDamageTargetShape::PlayerWho { predicate_tokens } => {

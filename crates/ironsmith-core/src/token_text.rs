@@ -80,7 +80,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<&'static str> {
         Jellyfish=>"Jellyfish", Kavu=>"Kavu", Kirin=>"Kirin", Kithkin=>"Kithkin", Knight=>"Knight",
         Kobold=>"Kobold", Kor=>"Kor", Kraken=>"Kraken", Leech=>"Leech", Leviathan=>"Leviathan",
         Lhurgoyf=>"Lhurgoyf", Lizard=>"Lizard", Manticore=>"Manticore", Mercenary=>"Mercenary",
-        Merfolk=>"Merfolk", Minion=>"Minion", Minotaur=>"Minotaur", Mole=>"Mole", Monk=>"Monk",
+        Merfolk=>"Merfolk", Minion=>"Minion", Minotaur=>"Minotaur", Mite=>"Mite", Mole=>"Mole", Monk=>"Monk",
         Monkey=>"Monkey", Moonfolk=>"Moonfolk", Mount=>"Mount", Mouse=>"Mouse", Mutant=>"Mutant", Myr=>"Myr",
         Naga=>"Naga", Necron=>"Necron", Nightmare=>"Nightmare", Ninja=>"Ninja", Noble=>"Noble",
         Octopus=>"Octopus", Ogre=>"Ogre", Ooze=>"Ooze", Orb=>"Orb", Orc=>"Orc", Otter=>"Otter", Ouphe=>"Ouphe",
@@ -150,7 +150,7 @@ mod tests {
     fn canonical_word_table_covers_the_existing_token_subtype_vocabularies() {
         for subtype in Subtype::all_creature_types().iter().chain(Subtype::all_land_types())
             .chain(Subtype::all_artifact_types()).chain(Subtype::all_enchantment_types())
-        { assert!(token_subtype_rules_word(*subtype).is_some()); }
+        { assert!(token_subtype_rules_word(*subtype).is_some(), "missing canonical word for {subtype:?}"); }
         assert_eq!(subtype_derived_token_name(&[Subtype::Dwarf, Subtype::Berserker]).as_deref(), Some("Dwarf Berserker Token"));
         assert_eq!(subtype_derived_token_name(&[Subtype::AssemblyWorker, Subtype::TimeLord, Subtype::Ctan, Subtype::Shiar]).as_deref(),
             Some("Assembly-Worker Time Lord C'tan Shi'ar Token"));

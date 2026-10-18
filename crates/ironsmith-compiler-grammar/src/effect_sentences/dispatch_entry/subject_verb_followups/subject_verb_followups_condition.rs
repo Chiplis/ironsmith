@@ -937,8 +937,13 @@ pub(super) fn pre_rule_tap_as_it_phases_in_followup(
                 *duration = crate::effects::PhaseOutDuration::UntilSourceLeavesThenTapped;
                 true
             }
-            EffectAst::Sequence { effects } => effects.last_mut().is_some_and(mark),
-            _ => false,
+            _ => {
+                let mut found = false;
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    found |= nested.iter_mut().rev().any(mark);
+                });
+                found
+            }
         }
     }
     if !state.effects.last_mut().is_some_and(mark) {
@@ -969,20 +974,35 @@ pub(super) fn pre_rule_phase_in_while_source_tapped_followup(
         return Ok(None);
     };
     if source.first() != Some(&"this") {
-        return Ok(None);
+        let view = crate::lexer::TokenWordView::new(sentence_tokens);
+        let (Some(start), Some(end)) = (view.map_word_to_token_start(8), view.map_word_to_token_start(words.len() - 2))
+            else { return Ok(None); };
+        if !matches!(crate::util::parse_target_phrase(&sentence_tokens[start..end]),
+            Ok(TargetAst::Source(_)) | Ok(TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+        { return Ok(None); }
     }
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
     let next_words = crate::lexer::parser_token_word_refs(next.lexed());
-    let mut expected = vec!["when"];
-    expected.extend_from_slice(source);
-    expected.extend_from_slice(&[
-        "becomes", "untapped", "or", "leaves", "the", "battlefield", "that", "permanent",
-        "phases", "in",
-    ]);
-    if next_words != expected {
-        return Ok(None);
+    let Some(next_source) = next_words.strip_prefix(&["when"][..])
+        .and_then(|words| words.strip_suffix(&[
+            "becomes", "untapped", "or", "leaves", "the", "battlefield", "that", "permanent", "phases", "in",
+        ][..]))
+    else { return Ok(None); };
+    // Contextual self-reference normalization can spell one occurrence as
+    // "this" while retaining the authored name in the following trigger.
+    if next_source != source {
+        let view = crate::lexer::TokenWordView::new(next.lexed());
+        let (Some(start), Some(end)) = (view.map_word_to_token_start(1),
+            view.map_word_to_token_start(next_source.len() + 1))
+            else { return Ok(None); };
+        let next_subject = &next.lexed()[start..end];
+        if !matches!(crate::util::parse_target_phrase(next_subject),
+            Ok(TargetAst::Source(_)) | Ok(TargetAst::Object(ObjectFilter { source: true, .. }, ..)))
+            && !(source.first() == Some(&"this")
+                && crate::grammar::source_surface_shapes::parse_named_surface(next_subject).is_some())
+        { return Ok(None); }
     }
     fn mark(effect: &mut EffectAst) -> bool {
         match effect {
@@ -999,8 +1019,13 @@ pub(super) fn pre_rule_phase_in_while_source_tapped_followup(
                 *duration = crate::effects::PhaseOutDuration::UntilSourceUntapsOrLeaves;
                 true
             }
-            EffectAst::Sequence { effects } => effects.last_mut().is_some_and(mark),
-            _ => false,
+            _ => {
+                let mut found = false;
+                crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                    if let Some(last) = nested.last_mut() { found |= mark(last); }
+                });
+                found
+            }
         }
     }
     if !state.effects.last_mut().is_some_and(mark) {

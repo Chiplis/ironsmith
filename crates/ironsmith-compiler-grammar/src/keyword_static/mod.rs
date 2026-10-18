@@ -2569,6 +2569,11 @@ fn parse_source_attacks_player_each_combat_line(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // An otherwise branch may change its subject from the attachment's
+    // creature to the attachment itself. Keep both sentences under one owner.
+    if let Some(abilities) = parse_as_long_as_attached_otherwise_source_keyword_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if let Some(abilities) = parse_untapped_attachment_control_protection(tokens)? { return Ok(Some(abilities)); }
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
@@ -2940,14 +2945,8 @@ fn parse_source_has_unless_status_line(
         return Ok(None);
     }
     let condition = if let [first, second] = states.as_slice() {
-        let first = parse_static_condition_clause(&crate::lexer::lex_line(
-            &format!("it's {first}"),
-            0,
-        )?)?;
-        let second = parse_static_condition_clause(&crate::lexer::lex_line(
-            &format!("it's {second}"),
-            0,
-        )?)?;
+        let first = parse_static_condition_clause(&crate::lexer::synthetic_word_tokens(["it's", *first]))?;
+        let second = parse_static_condition_clause(&crate::lexer::synthetic_word_tokens(["it's", *second]))?;
         PredicateAst::Or(Box::new(first), Box::new(second))
     } else {
         parse_static_condition_clause(tail)?
@@ -4074,10 +4073,17 @@ pub(super) fn parse_as_long_as_attached_otherwise_source_keyword_line(
     else {
         return Ok(None);
     };
-    let Some(false_abilities) =
-        parse_static_ability_ast_line_lexed_single_without_leading_condition(&keyword_tokens)?
-    else {
-        return Ok(None);
+    let false_abilities = if let Some(actions) =
+        crate::clause_support::parse_ability_line_lexed(&keyword_tokens)
+    {
+        actions.into_iter().map(StaticAbilityAst::KeywordAction).collect::<Vec<_>>()
+    } else {
+        let Some(abilities) =
+            parse_static_ability_ast_line_lexed_single_without_leading_condition(&keyword_tokens)?
+        else {
+            return Ok(None);
+        };
+        abilities
     };
     if true_abilities.is_empty() || false_abilities.is_empty() {
         return Ok(None);
@@ -10064,7 +10070,7 @@ mod ward_counter_payment_dispatch_tests {
 fn parse_filtered_dynamic_equipment(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let is = match tokens.iter().position(|token| token.is_word("is")) { Some(index) => index, None => return Ok(None) };
     let where_at = match tokens.iter().rposition(|token| token.is_word("where")) { Some(index) => index, None => return Ok(None) };
-    let rhs = crate::lexer::token_word_refs(&tokens[where_at..]);
+    let rhs = crate::lexer::parser_token_word_refs(&tokens[where_at..]);
     if !matches!(rhs.as_slice(), ["where", "x", "is", "that", "artifact", "s", "mana", "value"]
         | ["where", "x", "is", "that", "artifact", "mana", "value"]
         | ["where", "x", "is", "that", "artifacts", "mana", "value"])
@@ -10072,13 +10078,14 @@ fn parse_filtered_dynamic_equipment(tokens: &[OwnedLexToken]) -> Result<Option<V
     let quote = tokens.iter().position(OwnedLexToken::is_quote).ok_or_else(|| CardTextError::ParseError("dynamic equipment grant requires a quoted equipped ability".into()))?;
     let close = tokens.iter().enumerate().skip(quote + 1).find_map(|(index, token)| token.is_quote().then_some(index))
         .ok_or_else(|| CardTextError::ParseError("unclosed equipped stat grant".into()))?;
-    if crate::lexer::token_word_refs(&tokens[quote + 1..close]).as_slice() != ["equipped", "creature", "gets", "x", "0"] {
+    if !crate::lexer::parser_token_word_refs(&tokens[quote + 1..close]).starts_with(&["equipped", "creature", "gets"]) {
         return Ok(None);
     }
     let prices = tokens[is + 1..quote].iter().filter(|token| token.kind == crate::lexer::TokenKind::ManaGroup).collect::<Vec<_>>();
     if prices.len() != 1 || prices[0].mana_group_inner().is_none_or(|symbol| !symbol.eq_ignore_ascii_case("x"))
-        || tokens[quote + 1..close].iter().filter(|token| token.kind == crate::lexer::TokenKind::Plus).count() != 2
-        || tokens[quote + 1..close].iter().any(|token| token.kind == crate::lexer::TokenKind::Dash)
+        || crate::grammar::effects::gain_ability_shapes::parse_gain_pump_head_shape(
+            &tokens[quote + 4..close],
+        ).is_none_or(|pump| pump.power.unhinted() != &Value::X || pump.toughness.unhinted() != &Value::Fixed(0))
     { return Ok(None); }
 
     // Both the price and the stat expression read the recipient's own live

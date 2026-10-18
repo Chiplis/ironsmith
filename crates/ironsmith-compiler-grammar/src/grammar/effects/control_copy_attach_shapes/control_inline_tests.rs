@@ -94,7 +94,7 @@ fn parses_typed_latched_control_duration_predicates() {
     assert_eq!(
         parse("for as long as that Aura is attached to it"),
         Until::ForAsLongAs(Predicate::ObjectAttachedTo {
-            attachment: ObjectRef::Tagged(crate::tag::CompilerReferenceTag::Triggering.key()),
+            attachment: ObjectRef::Tagged(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG.into()),
             attached_to: ObjectRef::AffectedObject,
         })
     );

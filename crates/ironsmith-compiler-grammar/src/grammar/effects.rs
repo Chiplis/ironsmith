@@ -1840,7 +1840,10 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     {
         return Ok(effects);
     }
-    let split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
+    let mut split = split_if_clause_lexed(tokens, parse_effect_chain_lexed)?;
+    if let IfClausePredicateSpec::Conditional(predicate) = &split.predicate {
+        crate::clause_support::bind_intervening_life_gained_that_many(predicate, &mut split.effects);
+    }
 
     match split.predicate {
         IfClausePredicateSpec::Conditional(predicate) => {
@@ -2100,7 +2103,7 @@ fn parse_named_player_untap_restriction(
 /// "Tatsunari and target Frog you control can't be blocked this turn except
 /// by creatures with flying or reach.": a source reference coordinated with a
 /// target shares one restriction; each subject gets its own copy.
-fn parse_source_and_target_cant_effect(
+pub(crate) fn parse_source_and_target_cant_effect(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(negation) =

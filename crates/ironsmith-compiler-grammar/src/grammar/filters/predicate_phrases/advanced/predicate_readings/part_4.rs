@@ -5,6 +5,31 @@ use super::{Predicate, Reading};
 use crate::recognition::RuleId;
 use crate::registry::HeadDiscriminator;
 
+fn parse_entry_history_descriptor(clause: LexedClause<'_>) -> Option<Option<PlayerFilter>> {
+    let article = [WinnowSequence::word("the")];
+    let battlefield = [
+        WinnowSequence::optional(&article),
+        WinnowSequence::word("battlefield"),
+    ];
+    for (controller_phrase, controller) in [
+        (&[][..], None),
+        (&["under", "your", "control"][..], Some(PlayerFilter::You)),
+        (&["under", "opponent", "control"][..], Some(PlayerFilter::Opponent)),
+        (&["under", "opponents", "control"][..], Some(PlayerFilter::Opponent)),
+    ] {
+        let atoms = [
+            WinnowSequence::word("entered"),
+            WinnowSequence::optional(&battlefield),
+            WinnowSequence::phrase(controller_phrase),
+            WinnowSequence::phrase(&["this", "turn"]),
+        ];
+        if WinnowSequence::new(&atoms).parse_full(clause).is_some() {
+            return Some(controller);
+        }
+    }
+    None
+}
+
 pub(super) fn read_player_life_change_this_turn_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -272,19 +297,13 @@ pub(super) fn read_demonstrative_descriptor(
             // battlefield under your control this turn": an entry-history
             // descriptor. The generic object-filter grammar reads it as an
             // empty filter, silently testing only "is a permanent".
-            let descriptor_words = descriptor_clause.word_refs();
-            if let Some((controller, consumed)) =
-                crate::grammar::filters::player_relations::parse_entered_battlefield_this_turn_words(
-                    &descriptor_words,
-                )
-                && consumed == descriptor_words.len()
-            {
+            if let Some(controller) = parse_entry_history_descriptor(descriptor_clause) {
                 let mut filter = ObjectFilter::default();
                 filter.entered_battlefield_this_turn = true;
                 filter.entered_battlefield_controller = controller;
                 filter.zone = Some(Zone::Battlefield);
                 filter.set_entered_battlefield_explicit_surface(
-                    descriptor_words.contains(&"battlefield"),
+                    descriptor_clause.tokens().iter().any(|token| token.is_word("battlefield")),
                 );
                 if antecedent_surface.is_some() {
                     filter.set_demonstrative_antecedent_surface(antecedent_surface);

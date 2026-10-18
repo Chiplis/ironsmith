@@ -25,15 +25,14 @@ pub(super) fn clown_car_parses_roll_x_six_sided_dice_with_odd_even_result_clause
         .expect("Clown Car text should parse");
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("RepeatEffects")
-            && debug.contains("RollDieEffect")
-            && debug.contains("OneOf([1, 3, 5])")
-            && debug.contains("OneOf([2, 4, 6])")
+        debug.contains("RollDiceChooseResult")
+            && debug.contains("OddDieResults")
+            && debug.contains("EvenDieResults")
             && debug.contains("CreateToken")
             && debug.contains("PutCounter")
             && debug.contains("Clown")
             && debug.contains("Robot"),
-        "expected repeat roll plus odd/even result branches for Clown Car, got {debug}"
+        "expected retained rolls with odd/even result counts for Clown Car, got {debug}"
     );
 }
 

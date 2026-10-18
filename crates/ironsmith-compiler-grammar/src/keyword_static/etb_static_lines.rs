@@ -1896,53 +1896,14 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
             Box::new(Value::Count(filter)),
         ));
     }
-    let mut filter =
+    let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
-    share_relative_selector_zone_domain(&mut filter, &filter_words);
     Some(Value::Add(
         Box::new(Value::Fixed(fixed_value as i32)),
         Box::new(Value::Count(filter)),
     ))
 }
 
-/// "cards in your graveyard that are instant cards, sorcery cards, and/or
-/// have an Adventure" (Frantic Firebolt): every relative-selector branch
-/// counts in the authored zone domain. A branch-scoped union can leave the
-/// zone/owner on its first branch only, so a later branch (here "have an
-/// Adventure") would otherwise default to the battlefield.
-fn share_relative_selector_zone_domain(filter: &mut ObjectFilter, filter_words: &[&str]) {
-    let Some(relative_idx) = filter_words.iter().position(|word| matches!(*word, "that" | "which"))
-    else {
-        return;
-    };
-    if !filter_words[..relative_idx]
-        .iter()
-        .any(|word| matches!(*word, "graveyard" | "graveyards" | "exile" | "hand" | "library"))
-    {
-        return;
-    }
-    if filter.any_of.len() < 2 {
-        return;
-    }
-    let Some(domain) = filter
-        .any_of
-        .iter()
-        .find(|branch| matches!(branch.zone, Some(zone) if zone != Zone::Battlefield))
-        .map(|branch| (branch.zone, branch.owner.clone(), branch.single_graveyard))
-    else {
-        return;
-    };
-    for branch in &mut filter.any_of {
-        if matches!(branch.zone, None | Some(Zone::Battlefield))
-            && branch.owner.is_none()
-            && branch.controller.is_none()
-        {
-            branch.zone = domain.0;
-            branch.owner = domain.1.clone();
-            branch.single_graveyard = domain.2;
-        }
-    }
-}
 
 pub fn parse_where_x_is_sum_of_number_of_filter_values(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = parser_token_word_refs(tokens);

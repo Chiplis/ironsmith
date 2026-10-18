@@ -23,7 +23,17 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
         let Some(cost) = crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(&payment)? else {
             return Ok(None);
         };
-        let Some([crate::model::CompilerCost::Mana(mana)]) = cost.as_all() else { return Ok(None); };
+        let mana = match cost.as_all() {
+            Some([crate::model::CompilerCost::Mana(mana)]) => mana,
+            Some([crate::model::CompilerCost::ValidatedEffect(effect)]) => {
+                let EffectAst::SubjectVerb(subject) = effect.as_ref() else { return Ok(None); };
+                let SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::PayMana {
+                    cost, x_value: None, x_maximum: None, mana_cost_of: None, ..
+                }) = &subject.action else { return Ok(None); };
+                cost
+            }
+            _ => return Ok(None),
+        };
         if mana.pips().is_empty() || mana.pips().iter().any(|pip| !matches!(pip.as_slice(),
             [crate::mana::ManaSymbol::Generic(_) | crate::mana::ManaSymbol::X]))
         { return Ok(None); }

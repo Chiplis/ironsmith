@@ -570,14 +570,18 @@ pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
     });
 }
 
-pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    if let Some(and) = tokens.windows(3).position(|window|
-        window[0].is_word("and") && window[1].is_word("you")
-            && window[2].is_any_word(&["gain", "lose"]))
-    {
-        let mut effects = vec![parse_deal_damage(&tokens[..and])?];
-        effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
-        return Ok(EffectAst::Sequence { effects });
+pub fn parse_delegated_damage_target(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+    if !tokens.iter().any(|token| token.is_word("damage")) {
+        return Ok(None);
+    }
+    // Each member of a damage fanout owns its own target and chooser.
+    if crate::grammar::effects::parse_serial_damage_fanout_tokens(tokens)?.is_some() {
+        return Ok(None);
+    }
+    // A redirect owns its delegated destination and remembers that choice.
+    // Stripping the chooser here would announce the destination twice.
+    if crate::grammar::effects::clause_pattern_shapes::parse_redirect_next_damage_tokens(tokens).is_some() {
+        return Ok(None);
     }
     // "deals 1 damage to any target of an opponent's choice" (Karplusan
     // Minotaur): an opponent announces the target (CR 115.4, 601.2c). The
@@ -593,39 +597,55 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
         let target = parse_target_phrase(&choice.object_tokens)?;
         let mut damage_tokens = tokens[..=to_idx].to_vec();
         damage_tokens.extend_from_slice(&choice.object_tokens);
-        let damage = parse_deal_damage(&damage_tokens)?;
-        return Ok(EffectAst::Sequence {
+        let damage = if damage_tokens.iter().any(|token| token.is_any_word(&["deal", "deals"])) {
+            // The document entry point supplies the source and verb; the verb
+            // handler supplies only its body. Preserve the source in either route.
+            EffectAst::Sequence { effects: crate::effect_sentences::parse_effect_sentence_lexed(&damage_tokens)? }
+        } else {
+            parse_deal_damage(&damage_tokens)?
+        };
+        return Ok(Some(EffectAst::Sequence {
             effects: vec![
                 EffectAst::subject_verb(
                     crate::cards::builders::SubjectVerbRoleAst::Chooser,
                     crate::cards::builders::PlayerAst::Opponent,
                     crate::cards::builders::SubjectVerbActionAst::TargetOnly {
                         target,
-                        explicit_declaration: false,
+                        explicit_declaration: true,
                     },
                 ),
                 damage,
             ],
-        });
+        }));
     }
-    // "deals 2 damage to any target and 3 damage to itself" inside a granted
-    // quoted ability (Psionic Sliver): the reflexive recipient is the damage
-    // source. Read it with the same compound-damage fanout the top-level
-    // sentence uses, sourced from the ability's own object.
+    Ok(None)
+}
+
+pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(and) = tokens.windows(3).position(|window|
+        window[0].is_word("and") && window[1].is_word("you")
+            && window[2].is_any_word(&["gain", "lose"]))
+    {
+        let mut effects = vec![parse_deal_damage(&tokens[..and])?];
+        effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
+        return Ok(EffectAst::Sequence { effects });
+    }
+    // A verb body has lost its explicit source/verb prefix. Restore that
+    // context before parsing a fanout so each recipient retains its chooser
+    // and reflexive recipients still denote the ability's source.
     thread_local! {
-        static IN_REFLEXIVE_FANOUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        static IN_COMPOUND_FANOUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
-    if !IN_REFLEXIVE_FANOUT.with(std::cell::Cell::get)
-        && trimmed.last().is_some_and(|token| token.is_word("itself"))
+    if !IN_COMPOUND_FANOUT.with(std::cell::Cell::get)
         && trimmed.iter().any(|token| token.is_word("and"))
     {
         let mut sentence = crate::lexer::synthetic_word_tokens(["this", "creature", "deals"]);
         sentence.extend_from_slice(trimmed);
-        IN_REFLEXIVE_FANOUT.with(|flag| flag.set(true));
+        IN_COMPOUND_FANOUT.with(|flag| flag.set(true));
         let parsed =
             crate::effect_sentences::fanout_family::parse_compound_damage_fanout_sentence(&sentence);
-        IN_REFLEXIVE_FANOUT.with(|flag| flag.set(false));
+        IN_COMPOUND_FANOUT.with(|flag| flag.set(false));
         if let Some(effects) = parsed?
             && !effects.is_empty()
         {
@@ -635,6 +655,9 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
                 EffectAst::Sequence { effects }
             });
         }
+    }
+    if let Some(effect) = parse_delegated_damage_target(tokens)? {
+        return Ok(effect);
     }
     let has_unpreventable_rider = damage_clause_has_terminal_unpreventable_rider(tokens);
     let parse_tokens = if has_unpreventable_rider {

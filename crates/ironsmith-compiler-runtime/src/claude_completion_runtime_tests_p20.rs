@@ -241,7 +241,6 @@ fn psychic_paper_equipped_creature_takes_the_last_chosen_name_and_creature_type(
     for id in [
         StaticAbilityId::ChooseCreatureCardNameAndTypeAsBecomesAttached,
         StaticAbilityId::AttachedHasSourceChosenNameAndCreatureType,
-        StaticAbilityId::Unblockable,
     ] {
         assert!(ids.contains(&id), "{id:?} missing from {ids:?}");
     }
@@ -261,6 +260,7 @@ fn psychic_paper_equipped_creature_takes_the_last_chosen_name_and_creature_type(
     let chars = game.current_characteristics(creature).unwrap();
     assert_eq!(String::from(&chars.name), "Test Bear", "no choice yet: unchanged");
     assert!(chars.subtypes.contains(&Subtype::Bear));
+    assert!(!game.can_be_blocked(creature), "the equipped creature cannot be blocked");
 
     game.set_chosen_named_option(paper, "Grizzly Bears".to_string());
     game.set_chosen_creature_type(paper, Subtype::Elf);

@@ -26,7 +26,7 @@ fn tie_axis(sentence: &[OwnedLexToken]) -> Option<(&'static str, bool, &str)> {
     };
     (rest == ["you", "choose", "one", "of", "them"]).then_some((axis, greatest, noun))
 }
-fn is_per_player_tie_clarification(sentence: &[OwnedLexToken]) -> bool {
+pub(crate) fn is_per_player_tie_clarification(sentence: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::parser_token_word_refs(sentence);
     let Some(rest) = words.strip_prefix(&["if", "two", "or", "more"]) else {
         return false;
@@ -56,20 +56,22 @@ fn is_per_player_tie_clarification(sentence: &[OwnedLexToken]) -> bool {
 }
 
 fn has_per_player_choice(effect: &EffectAst) -> bool {
+    fn contains_choice(effect: &EffectAst) -> bool {
+        if matches!(effect, EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
+            player: PlayerAst::That, count, ..
+        }) if *count == ChoiceCount::exactly(1)) {
+            return true;
+        }
+        match effect {
+            EffectAst::Sequence { effects } => effects.iter().any(contains_choice),
+            _ => false,
+        }
+    }
     match effect {
         EffectAst::ForEach(
             crate::cards::builders::ForEachEffectAst::ForEachPlayer { effects }
             | crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered { effects, .. },
-        ) => effects.iter().any(|effect| {
-            matches!(
-                effect,
-                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-                    player: PlayerAst::That,
-                    count,
-                    ..
-                }) if *count == ChoiceCount::exactly(1)
-            )
-        }),
+        ) => effects.iter().any(contains_choice),
         _ => false,
     }
 }

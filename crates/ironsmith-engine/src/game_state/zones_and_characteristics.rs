@@ -1238,6 +1238,7 @@ impl GameState {
         self.object_store.changes.record(old_id);
         self.object_store.render_changes.record(old_id);
         let old_object = ObjectStore::into_owned_object(self.objects.remove(&old_id)?);
+        self.effect_store.continuous_effects.remove_source_bound_static_effects(old_id);
         self.turn_store.forecast_revealed_hand_cards.remove(&old_id);
         self.turn_store
             .hand_cards_revealed_until_owners_next_turn
@@ -4379,6 +4380,7 @@ impl GameState {
         self.object_store.changes.record(id);
         self.object_store.render_changes.record(id);
         if let Some(obj) = self.objects.remove(&id).map(ObjectStore::into_owned_object) {
+            self.effect_store.continuous_effects.remove_source_bound_static_effects(id);
             if let Some(target) = obj.attached_to {
                 match target {
                     AttachmentTarget::Object(parent_id) => {

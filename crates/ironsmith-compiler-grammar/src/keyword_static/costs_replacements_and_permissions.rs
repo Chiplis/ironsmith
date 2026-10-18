@@ -1504,7 +1504,7 @@ fn parse_trailing_candidate_ability_condition_in_cost_modifier(
 pub fn parse_flashback_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let clause_words = crate::lexer::token_word_refs(tokens);
+    let clause_words = crate::lexer::parser_token_word_refs(tokens);
     let Some((kind, consumed)) = parse_alternative_cast_words(&clause_words) else {
         return Ok(None);
     };
@@ -1523,7 +1523,7 @@ pub fn parse_flashback_cost_modifier_line(
     let parsed_amount = parse_cost_modifier_amount(amount_tokens);
     let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
     let remaining_tokens = &amount_tokens[used..];
-    let remaining_words = crate::lexer::token_word_refs(remaining_tokens);
+    let remaining_words = crate::lexer::parser_token_word_refs(remaining_tokens);
     let Some(direction) = static_mid_facts::parse_cost_modifier_direction_words(&remaining_words)
     else {
         return Ok(None);
@@ -7381,8 +7381,9 @@ fn draw_replacement_drawn_card_body(body: &[OwnedLexToken]) -> Option<Vec<OwnedL
     }
     let subject = &words[..verb];
     let possessive = if subject.is_empty() || subject == ["you"] { "your" } else { "their" };
-    let text = format!("{} {} the top card of {possessive} library.", subject.join(" "), words[verb]);
-    crate::lexer::lex_line(text.trim(), 0).ok()
+    let mut rewritten = crate::lexer::synthetic_word_tokens(subject);
+    rewritten.extend(crate::lexer::synthetic_word_tokens([words[verb], "the", "top", "card", "of", possessive, "library"]));
+    Some(rewritten)
 }
 
 pub fn parse_draw_extra_cards_replacement_line(

@@ -46,7 +46,7 @@ fn malamet_battle_glyph_tests_the_first_target_for_entering_this_turn() {
         .expect("Malamet Battle Glyph should compile");
     let debug = p58_spell_debug(&definition);
     assert!(debug.contains("entered_battlefield_this_turn: true"), "{debug}");
-    let condition = debug.find("condition:").expect("a resolution-time condition");
+    let condition = debug.find("ConditionalEffect { condition:").expect("a resolution-time condition");
     let if_true = debug[condition..].find("if_true").map(|offset| condition + offset).unwrap();
     let tested = &debug[condition..if_true];
     assert!(

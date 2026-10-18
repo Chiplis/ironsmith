@@ -10,16 +10,12 @@ fn p76_debug(name: &str, text: &str) -> String {
     format!("{definition:?}")
 }
 
-/// The text from `start` (first occurrence of `marker`) of at most `len` bytes.
-fn p76_window<'a>(debug: &'a str, marker: &str, len: usize) -> &'a str {
+/// The suffix beginning at the marker; nested filter debug output has no fixed size.
+fn p76_window<'a>(debug: &'a str, marker: &str, _len: usize) -> &'a str {
     let start = debug
         .find(marker)
         .unwrap_or_else(|| panic!("missing {marker}: {debug}"));
-    let mut end = (start + len).min(debug.len());
-    while !debug.is_char_boundary(end) {
-        end -= 1;
-    }
-    &debug[start..end]
+    &debug[start..]
 }
 
 #[test]
@@ -220,15 +216,22 @@ fn p76_giant_oyster_counters_go_on_the_target_and_cleanup_is_delayed() {
 
 #[test]
 fn p76_dog_umbra_otherwise_branch_is_this_auras_conditional_umbra_armor() {
-    let debug = p76_debug(
+    let definition = compile_to_runtime_definition(
         "Dog Umbra",
         "Mana cost: {1}{W}\nType: Enchantment — Aura\nFlash\nEnchant creature\nAs long as another player controls enchanted creature, it can't attack or block. Otherwise, this Aura has umbra armor.",
-    );
+        false,
+    ).expect("Dog Umbra compiles");
+    let debug = format!("{definition:?}");
     assert!(debug.contains("UmbraArmor"), "{debug}");
-    assert!(
-        !debug.contains("GrantObjectAbilityForFilter"),
-        "umbra armor belongs to this Aura, not to every Aura: {debug}"
-    );
+    let grants = definition.abilities.iter().filter_map(|ability| {
+        let ironsmith::ability::AbilityKind::Static(ability) = &ability.kind else { return None; };
+        let model = ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) = &model.payload else { return None; };
+        Some(grant)
+    }).collect::<Vec<_>>();
+    assert_eq!(grants.len(), 1, "one conditional intrinsic keyword: {debug}");
+    assert!(grants[0].filter.source, "umbra armor is granted only to this Aura: {debug}");
+    assert!(grants[0].condition.is_some(), "the intrinsic keyword remains conditional");
     assert!(
         debug.matches("Not(").count() >= 2,
         "the restriction and the umbra armor are gated by opposite conditions: {debug}"
