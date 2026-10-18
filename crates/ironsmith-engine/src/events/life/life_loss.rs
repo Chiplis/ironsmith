@@ -20,6 +20,8 @@ pub struct LifeLossEvent {
     pub from_damage: bool,
     /// Whether this loss was caused by the inherent rad-counter ability (CR 728.1a).
     pub from_radiation: bool,
+    /// This action pays an already accepted life cost (CR 118.11).
+    pub from_payment: bool,
 }
 
 impl LifeLossEvent {
@@ -30,12 +32,17 @@ impl LifeLossEvent {
             amount,
             from_damage,
             from_radiation: false,
+            from_payment: false,
         }
     }
 
     /// Create a life loss event from a non-damage effect.
     pub fn from_effect(player: PlayerId, amount: u32) -> Self {
         Self::new(player, amount, false)
+    }
+
+    pub fn from_payment(player: PlayerId, amount: u32) -> Self {
+        Self { from_payment: true, ..Self::new(player, amount, false) }
     }
 
     /// Create a life loss event caused by the inherent rad-counter ability.
@@ -45,6 +52,7 @@ impl LifeLossEvent {
             amount,
             from_damage: false,
             from_radiation: true,
+            from_payment: false,
         }
     }
 

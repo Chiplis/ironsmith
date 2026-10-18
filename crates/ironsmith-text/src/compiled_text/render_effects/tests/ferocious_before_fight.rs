@@ -71,7 +71,7 @@ fn ferocious_before_fight_pumps_the_selected_fighter_before_damage() {
                 assert_eq!(game.current_power(qualifier), Some(4));
             }
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(game.current_power(own), Some(power));
         }
     }

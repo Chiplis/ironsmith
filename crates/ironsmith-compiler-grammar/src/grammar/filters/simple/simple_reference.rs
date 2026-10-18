@@ -70,6 +70,22 @@ pub(super) fn parse_other_than_filter(
     other: bool,
 ) -> Option<ObjectFilter> {
     let mut filter = parse_simple_object_filter_words(split.base, other)?;
+    // "other than a basic land" (Eye of Singularity): only lands are basic
+    // (CR 205.4c), so the Basic exclusion already removes exactly the basic
+    // lands; excluding Land too would also drop every nonbasic land.
+    let basic_land_only = {
+        let exclusion_words = split
+            .exclusions
+            .iter()
+            .copied()
+            .filter(|word| !matches!(*word, "a" | "an"))
+            .collect::<Vec<_>>();
+        matches!(exclusion_words.as_slice(), ["basic", "land" | "lands"])
+    };
+    if basic_land_only {
+        push_unique(&mut filter.excluded_supertypes, crate::types::Supertype::Basic);
+        return Some(filter);
+    }
     let mut input: WordInput<'_> = split.exclusions;
     let mut saw_exclusion = false;
     while !input.is_empty() {

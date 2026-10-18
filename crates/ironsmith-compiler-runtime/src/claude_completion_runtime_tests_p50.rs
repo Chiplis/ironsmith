@@ -211,7 +211,7 @@ fn finale_of_promise_casts_both_slots_before_copying_each_spell() {
     let definition = p50_compile("Finale of Promise",
         "Mana cost: {X}{R}{R}\nType: Sorcery\nYou may cast up to one target instant card and/or up to one target sorcery card from your graveyard each with mana value X or less without paying their mana costs. If a spell cast this way would be put into your graveyard, exile it instead. If X is 10 or more, copy each of those spells twice. You may choose new targets for the copies.");
     let program = definition.spell_effect.as_ref().expect("spell effect");
-    let top: Vec<&Effect> = program.all_effects().collect();
+    let top: Vec<&Effect> = program.all_effects();
     let mut targets = Vec::new();
     let mut casts = Vec::new();
     let mut replacements = 0;

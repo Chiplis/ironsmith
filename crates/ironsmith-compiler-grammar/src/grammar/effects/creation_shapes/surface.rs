@@ -359,6 +359,11 @@ impl CreationPhrase {
                 &["its", "not", "legendary"],
                 &["it's", "not", "legendary"],
                 &["it", "s", "not", "legendary"],
+                // "except the tokens aren't legendary" (The Notary Hobbits).
+                &["aren't", "legendary"],
+                &["arent", "legendary"],
+                &["aren", "t", "legendary"],
+                &["are", "not", "legendary"],
             ],
             Self::NumberOf => &[&["a", "number", "of"], &["the", "number", "of"]],
             Self::ObjectExiledThisWay => &[

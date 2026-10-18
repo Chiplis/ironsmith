@@ -304,6 +304,37 @@ impl WasmGame {
         command: UiCommand,
         command_decode_ms: f64,
     ) -> Result<JsValue, JsValue> {
+        if let UiCommand::PriorityYield { mode, stops } = command {
+            return self.dispatch_priority_yield(mode, stops);
+        }
+        if let UiCommand::CancelPriorityYield { player } = command {
+            let before = RuntimeSavepoint::capture(self);
+            self.pass_intents.remove(&player);
+            self.last_crypto_requirements.clear();
+            self.pending_crypto_audit_before = None;
+            self.cached_snapshot = None;
+            let result = self.snapshot();
+            if result.is_err() { before.restore(self); }
+            return result;
+        }
+        if !self.pass_intents.is_empty() && matches!(command, UiCommand::PriorityAction {
+            action_ref: Some(PriorityActionRef::PassPriority), ..
+        }) {
+            if self.pending_priority_decision_is_stale() {
+                return Err(payment_disclosure_error("pending priority decision no longer matches the game priority holder"));
+            }
+            return self.continue_priority_yield(command);
+        }
+        // A manual action ends previously granted automation. Its next priority
+        // opportunity must be authorized against the resulting state again.
+        let intentions = std::mem::take(&mut self.pass_intents);
+        let result = self.dispatch_typed_command_inner(command, command_decode_ms);
+        if result.is_err() { self.pass_intents = intentions; self.cached_snapshot = None; }
+        result
+    }
+
+    fn dispatch_typed_command_inner(&mut self, command: UiCommand, command_decode_ms: f64) -> Result<JsValue, JsValue> {
+
         if self.pending_priority_decision_is_stale() {
             self.recompute_stale_priority_decision()?;
             return Err(payment_disclosure_error(

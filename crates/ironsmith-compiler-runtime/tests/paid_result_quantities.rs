@@ -504,7 +504,7 @@ fn voracious_brood_full_body_counts_only_owned_creature_cards_and_captures_each_
         creature(&mut game, A, Zone::Battlefield, "Owned one", 1, 2, "Elf");
         creature(&mut game, A, Zone::Battlefield, "Owned two", 1, 2, "Elf");
         let stolen = creature(&mut game, B, Zone::Battlefield, "Foreign-owned", 1, 2, "Elf");
-        game.set_current_controller(stolen, A);
+        game.set_current_controller(stolen, A).expect("paid-result fixture control change succeeds");
         assert_eq!(game.current_controller(stolen), Some(A));
         assert_eq!(game.object(stolen).unwrap().owner, B);
         let token = compile_to_runtime_definition("Saproling", "Type: Creature — Saproling\nPower/Toughness: 1/1", false).unwrap();

@@ -15,8 +15,8 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::target::ChooseSpec;
+use ironsmith::triggers::{TriggerQueue};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
@@ -174,26 +174,6 @@ impl DecisionMaker for Choices {
         }
     }
 }
-fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> usize {
-    let mut queue = TriggerQueue::new();
-    for entry in check_triggers(game, &event) {
-        queue.add(entry);
-    }
-    let count = queue.entries.len();
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-    count
-}
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
     let mut dm = SelectFirstDecisionMaker;
     let controller = game.current_controller(source).unwrap_or(A);
@@ -206,15 +186,6 @@ fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcom
 }
 fn resolve(game: &mut GameState, dm: &mut Choices) {
     resolve_stack_entry_with(game, dm).unwrap();
-}
-fn resolve_all(game: &mut GameState, dm: &mut Choices) {
-    for _ in 0..30 {
-        if game.stack_is_empty() {
-            return;
-        }
-        resolve(game, dm);
-    }
-    panic!("unexpected continuing trigger chain");
 }
 fn cast(
     game: &mut GameState,
@@ -437,7 +408,7 @@ fn tagged_comparison_reads_live_power_and_exact_departure_lki_after_a_blink() {
 #[test]
 fn active_resolution_tag_prefers_the_exact_departure_receipt_over_its_earlier_selection() {
     use ironsmith::effect::Value;
-    use ironsmith::filter::{Comparison, FilterContext, ObjectFilter};
+    use ironsmith::filter::{Comparison, ObjectFilter};
     use ironsmith::snapshot::ObjectSnapshot;
     let mut game = game();
     let source = creature(&mut game, A, 1);

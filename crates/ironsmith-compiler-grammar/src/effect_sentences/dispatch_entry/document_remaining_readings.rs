@@ -683,6 +683,14 @@ fn read_coordinated_leading_duration_chain(
         && effect_grammar::chain_carry::coordinated_effect_chain_leading_duration(tokens)
             == Some(true)
     {
+        // "Until end of turn, target nonland permanent loses all abilities
+        // and becomes your choice of A or B." (Mercurial Transformation): the
+        // choice between two characteristic packages owns the coordination.
+        if let Some(effects) =
+            super::parse_becomes_your_choice_sentence(&crate::util::trim_edge_punctuation(tokens))?
+        {
+            return Ok(Some(effects));
+        }
         return parse_effect_sentence_lexed(tokens).map(Some);
     }
     Ok(None)

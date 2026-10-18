@@ -17,7 +17,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardDefinition, CardId, CounterType, GameState, ObjectId, Phase, PlayerId, Zone};
+use ironsmith::{CardDefinition, CardId,  GameState, ObjectId, Phase, PlayerId, Zone};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -309,34 +309,6 @@ fn immediate(
     }
     Err("immediate action bound".into())
 }
-fn next_main(g: &mut GameState) {
-    g.next_turn();
-    ironsmith::turn::execute_untap_step(g);
-    while g.turn.active_player != alice() {
-        g.next_turn();
-        ironsmith::turn::execute_untap_step(g);
-    }
-    g.turn.phase = Phase::FirstMain;
-    g.turn.step = None;
-    g.turn.priority_player = Some(alice());
-}
-fn paid_land(
-    g: &mut GameState,
-    d: &CardDefinition,
-    q: &mut TriggerQueue,
-    dm: &mut Dm,
-) -> Result<ironsmith::ids::StableId, String> {
-    let id = g.create_object_from_definition(d, alice(), Zone::Hand);
-    let s = g.object(id).unwrap().stable_id;
-    let a = compute_legal_actions(g, alice()).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::PlayLand{land_id}if *land_id==id))
-        .ok_or("source land play absent")?;
-    dm.stage = "actual_source_land_play".into();
-    immediate(g, a, q, dm)?;
-    finish(g, q, dm)?;
-    Ok(s)
-}
 fn sacrifice(
     g: &mut GameState,
     altar: ironsmith::ids::StableId,
@@ -352,15 +324,6 @@ fn sacrifice(
     dm.targets.clear();
     dm.chosen.clear();
     Ok(())
-}
-fn named_counter(g: &GameState, id: ObjectId, n: &str) -> u32 {
-    g.object(id)
-        .unwrap()
-        .counters
-        .iter()
-        .filter(|(k, _)| k.description().eq_ignore_ascii_case(n))
-        .map(|(_, v)| *v)
-        .sum()
 }
 fn prepared_cast(
     g: &mut GameState,

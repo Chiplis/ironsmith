@@ -95,7 +95,7 @@ fn run(game: &mut GameState, effect: Effect, controller: PlayerId, dm: &mut dyn 
 }
 
 fn run_from(game: &mut GameState, effect: Effect, src: ObjectId, controller: PlayerId, dm: &mut dyn DecisionMaker) {
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let mut ctx = ironsmith::effects::EffectContext::new(src, controller, dm);
     let outcome = ironsmith::effects::execute_effect(game, &effect, &mut ctx).expect("effect");
     for event in outcome.events {
@@ -415,12 +415,12 @@ mod boast {
         let mut game = new_game();
         let arni = put(&mut game, &card("Axgard Braggart"), alice());
         game.player_mut(alice()).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::White, 3);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(boast_actions(&game, arni), 0, "hasn't attacked");
         // Declared as an attacker this turn (what attack declaration records).
         game.turn_store.turn_history.creatures_attacked_this_turn.insert(arni);
         let _ = pending(&mut game);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(boast_actions(&game, arni), 1, "attacked this turn");
     }
 }
@@ -489,7 +489,7 @@ mod echo {
         let mut game = new_game();
         let patrol = put(&mut game, &card("Goblin Patrol"), bob());
         game.set_current_controller(patrol, alice()).expect("finite controller fixture must refresh successfully");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         game.set_summoning_sick(patrol);
         assert_eq!(echo_triggers(&mut game, patrol), 1);
     }
@@ -529,7 +529,7 @@ mod level_up {
         enter(&mut game, &card("Godhead of Awe"), bob(), &mut dm);
         let student = enter(&mut game, &card("Student of Warfare"), alice(), &mut dm);
         game.object_mut(student).unwrap().add_counters(CounterType::Level, 7);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(game.calculated_power(student), Some(4));
         assert_eq!(game.calculated_toughness(student), Some(4));
     }
@@ -739,7 +739,7 @@ mod sacrifice_control {
         let _ = pending(&mut game);
         if steal {
             game.set_current_controller(giant, bob()).expect("finite controller fixture must refresh successfully");
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state should refresh");
         }
         step_triggers(&mut game, Step::End, &mut dm);
         settle(&mut game, &mut dm);
@@ -852,17 +852,17 @@ mod ring_bearer {
         let mut game = new_game();
         let bearer = put(&mut game, &creature("Bearer", 2, 2), alice());
         game.set_ring_bearer(alice(), bearer);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(legendary(&game, bearer));
         let mut dm = Dm::default();
         run(&mut game, Effect::create_token_copy(ChooseSpec::SpecificObject(bearer)), alice(), &mut dm);
         let copies = named_on_battlefield(&game, "Bearer");
         let copy = copies.into_iter().find(|id| *id != bearer).expect("token copy");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!legendary(&game, copy), "copy isn't legendary");
         assert!(on_battlefield(&game, bearer) && on_battlefield(&game, copy), "no legend rule");
         game.set_current_controller(bearer, bob()).expect("finite controller fixture must refresh successfully");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!legendary(&game, bearer), "no longer Alice's Ring-bearer");
     }
 }
@@ -905,11 +905,11 @@ mod amass {
         game.object_mut(army).unwrap().add_counters(CounterType::PlusOnePlusOne, 1);
         let mut dm = Dm::default();
         run(&mut game, Effect::amass(Some(Subtype::Orc), 1), alice(), &mut dm);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(game.calculated_subtypes(army).contains(&Subtype::Orc));
         run(&mut game, Effect::create_token_copy(ChooseSpec::SpecificObject(army)), alice(), &mut dm);
         let copy = named_on_battlefield(&game, "Zombie Army").into_iter().find(|id| *id != army).expect("copy");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!game.calculated_subtypes(copy).contains(&Subtype::Orc));
     }
 }
@@ -1032,7 +1032,7 @@ mod face_down {
         let b = put(&mut game, &card("Llanowar Elves"), bob());
         game.set_face_down(a);
         game.set_face_down(b);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let truth = game.create_object_from_definition(&card("Echoing Truth"), alice(), Zone::Stack);
         game.push_to_stack(ironsmith::game_state::StackEntry::new(truth, alice()).with_targets(vec![Target::Object(a)]));
         let mut dm = Dm::default();
@@ -1198,7 +1198,7 @@ mod rooms {
         let mut dm = Dm::default();
         let room = game.move_object_with_etb_processing_with_dm(room, Zone::Battlefield, &mut dm).map(require_plain_entry_for_test).expect("entry execution must succeed in this scenario").unwrap().new_id;
         game.player_mut(alice()).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Blue, 6);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let chars = game.current_characteristics(room).unwrap();
         assert!(chars.abilities.as_slice().is_empty(), "no door's rules text");
         let doors = unlock_actions(&game, room);
@@ -1265,7 +1265,7 @@ mod megamorph {
         put(&mut game, &card("Hardened Scales"), alice());
         let protector = put(&mut game, &card("Den Protector"), alice());
         game.set_face_down(protector);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         {
             let pool = &mut game.player_mut(alice()).unwrap().mana_pool;
             pool.add(ironsmith::mana::ManaSymbol::Green, 1);

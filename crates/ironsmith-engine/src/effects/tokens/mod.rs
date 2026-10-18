@@ -26,7 +26,7 @@ pub(crate) mod resources;
 pub use resources::TokenCreationLimits;
 
 pub(crate) use lifecycle::{
-    execute_resource_transaction_atomically, execute_token_instruction_atomically,
+    execute_resource_transaction_atomically,
 };
 pub(crate) use lifecycle::{
     execute_resource_transaction_with_pending_value, execute_token_instruction_with_pending_value,

@@ -117,6 +117,11 @@ pub enum ChoiceAggregateMetric {
     ManaValue,
     /// Number of distinct card types represented by the entire selection.
     DistinctCardTypes,
+    /// Total number of mana symbols of one color among the chosen objects'
+    /// mana costs ("with fifteen or more black mana symbols among their mana
+    /// costs", Baron Helmut Zemo). A hybrid or Phyrexian symbol of that color
+    /// counts once. Appended; additive like the stat totals.
+    ManaSymbolsOfColor(crate::color::Color),
 }
 
 /// Upper bound on an aggregate characteristic of a group of chosen objects.
@@ -839,6 +844,8 @@ pub enum DelayedTriggerSpec {
     /// [player's] turn" (CR 508): fires once attackers have been declared
     /// (or none were) in that player's declare attackers step.
     BeginningOfDeclareAttackersStep(PlayerFilter),
+    /// A delayed cast watcher linked to the preceding play grant.
+    SpellCastThroughPreviousPermission,
 }
 
 /// Lifetime policy for a delayed trigger registration.
@@ -3421,6 +3428,10 @@ pub enum LibraryPlacementOrder {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct MoveToZoneEffect {
+    /// Resolution references retained by the actual arriving permanent for
+    /// its granted abilities. References are not inherited on later blinks.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub retained_reference_tags: Vec<TagKey>,
     pub target: ChooseSpec,
     pub zone: crate::zone::Zone,
     pub to_top: bool,
@@ -3510,6 +3521,7 @@ pub enum MoveToZoneAttackTargetMode {
 impl MoveToZoneEffect {
     pub fn new(target: ChooseSpec, zone: crate::zone::Zone, to_top: bool) -> Self {
         Self {
+            retained_reference_tags: Vec::new(),
             target,
             zone,
             tagged_destinations: Vec::new(),
@@ -5025,6 +5037,31 @@ impl DetainEffect {
 #[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
 pub struct NoteActivationManaTypeEffect;
 
+/// Remember the exact color-by-color payment of an activation on its source.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Default, TagKeyWalk)]
+pub struct NoteActivationManaPaymentEffect;
+
+/// Choose and optionally cast a creature from hand face down, using the
+/// resolving activation's retained physical mana payment as eligibility proof.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct CastFaceDownUsingActivationManaEffect {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
+    pub turn_face_up_before_action: bool,
+}
+
+/// Register one extra-die/ignored-result replacement through the current turn.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct RegisterExtraDieReplacementEffect {
+    pub player: ChooseSpec,
+    pub chooser: PlayerFilter,
+    pub additional: u32,
+}
+
+
 impl NoteActivationManaTypeEffect {
     pub fn new() -> Self {
         Self
@@ -5120,6 +5157,8 @@ impl RegisterDamageCounterReplacementEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct AddManaOfNotedTypeEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub use_noted_amount: bool,
     pub amount: Value,
     pub player: PlayerFilter,
 }
@@ -5127,6 +5166,7 @@ pub struct AddManaOfNotedTypeEffect {
 impl AddManaOfNotedTypeEffect {
     pub fn new(amount: impl Into<Value>, player: PlayerFilter) -> Self {
         Self {
+            use_noted_amount: false,
             amount: amount.into(),
             player,
         }

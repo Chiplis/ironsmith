@@ -78,7 +78,7 @@ mod tests {
             .build();
         game.create_object_from_definition(&ascend_permanent, alice, Zone::Battlefield);
 
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(game.has_citys_blessing(alice));
         assert!(
             game.stack.is_empty(),

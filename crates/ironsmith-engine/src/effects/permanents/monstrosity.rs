@@ -4,8 +4,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
-#[cfg(test)]
-use crate::object::CounterType;
 pub use ironsmith_core::MonstrosityEffect;
 
 /// Effect that makes a creature monstrous.

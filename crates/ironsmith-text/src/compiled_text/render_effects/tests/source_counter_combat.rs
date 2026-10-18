@@ -28,7 +28,7 @@ fn intrinsic_counter_gate_uses_its_source_and_preserves_comparisons() {
             for count in [0, 1, 2, 3, 4, 5, 6, 2, 5] {
                 game.remove_counters(source, CounterType::PlusOnePlusOne, 100, None, None);
                 game.add_counters(source, CounterType::PlusOnePlusOne, count);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 let allowed = match quantity {
                     "five or more" => count >= 5,
                     "exactly five" => count == 5,

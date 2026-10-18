@@ -8,7 +8,6 @@ use ironsmith::effect::Effect;
 use ironsmith::effects::{execute_effect, BecomeBlockedEffect, EffectContext};
 use ironsmith::combat_state::{AttackTarget, CombatState};
 use ironsmith::decision::{AttackerDeclaration, BlockerDeclaration};
-use ironsmith::filter::{FilterContext, ObjectFilter};
 use ironsmith::game_loop::{apply_decision_context_with_dm, apply_priority_response_with_dm,
     put_triggers_on_stack_with_dm, resolve_stack_entry_with, PriorityLoopState, PriorityResponse};
 use ironsmith::mana::ManaSymbol;
@@ -20,7 +19,6 @@ use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definit
 
 const A: PlayerId = PlayerId(0);
 const B: PlayerId = PlayerId(1);
-const C: PlayerId = PlayerId(2);
 
 fn definitions(name: &str) -> [CardDefinition; 2] {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!(

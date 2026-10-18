@@ -1,3 +1,4 @@
+import { isOwnPassCancellation } from "../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand } from "../lib/sync-object-identity.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./peer-lobby/match-lifecycle.js";
 import { createValueStore } from "../lib/value-store.js";
@@ -820,6 +821,9 @@ export function usePeerLobby({
             command.object_hidden_refs = hiddenRefs;
           }
         }
+        if (command?.type === "cancel_priority_yield" && !isOwnPassCancellation(command, session.localPlayerIndex)) {
+          throw new Error("A player can only cancel their own passing intention");
+        }
         const expectedActor = preSubmitState?.decision?.player;
         const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
         const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
@@ -896,6 +900,7 @@ export function usePeerLobby({
           });
         } else if (
           !isSelfForfeit
+          && !isOwnPassCancellation(command, session.localPlayerIndex)
           && expectedActor !== null
           && expectedActor !== undefined
           && Number(expectedActor) !== Number(session.localPlayerIndex)
@@ -1098,6 +1103,7 @@ export function usePeerLobby({
         const refreshedExpectedActor = preSubmitState?.decision?.player;
         if (
           !isForfeitCommand(command)
+          && !isOwnPassCancellation(command, session.localPlayerIndex)
           && refreshedExpectedActor !== null
           && refreshedExpectedActor !== undefined
           && Number(refreshedExpectedActor) !== Number(session.localPlayerIndex)
@@ -1481,6 +1487,7 @@ export function usePeerLobby({
         const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
         if (
           !isSelfForfeit
+          && !isOwnPassCancellation(command, session.localPlayerIndex)
           && expectedActorBeforeApply !== null
           && expectedActorBeforeApply !== undefined
           && Number(expectedActorBeforeApply) !== Number(session.localPlayerIndex)

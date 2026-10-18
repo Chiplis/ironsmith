@@ -1333,7 +1333,12 @@ pub fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Opti
         && filter_words
             .iter()
             .any(|word| etb_word_is_any(word, ETB_CONTROL_OWN_WORDS));
-    let mut filter = parse_cast_time_controlled_objects_filter(filter_tokens)
+    // Demonstratives retain the previously named set (including an attack
+    // group); parsing only the noun would widen it to every creature.
+    let referenced_set = matches!(filter_words.as_slice(),
+        ["those", "creatures" | "permanents" | "cards" | "objects"])
+        .then(|| ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()));
+    let mut filter = referenced_set.or_else(|| parse_cast_time_controlled_objects_filter(filter_tokens))
         .or_else(|| {
             if should_try_split {
                 let segments = crate::grammar::primitives::split_lexed_slices_on_and(filter_tokens);
@@ -1891,12 +1896,52 @@ pub fn parse_where_x_is_fixed_plus_number_of_filter_value(
             Box::new(Value::Count(filter)),
         ));
     }
-    let filter =
+    let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
+    share_relative_selector_zone_domain(&mut filter, &filter_words);
     Some(Value::Add(
         Box::new(Value::Fixed(fixed_value as i32)),
         Box::new(Value::Count(filter)),
     ))
+}
+
+/// "cards in your graveyard that are instant cards, sorcery cards, and/or
+/// have an Adventure" (Frantic Firebolt): every relative-selector branch
+/// counts in the authored zone domain. A branch-scoped union can leave the
+/// zone/owner on its first branch only, so a later branch (here "have an
+/// Adventure") would otherwise default to the battlefield.
+fn share_relative_selector_zone_domain(filter: &mut ObjectFilter, filter_words: &[&str]) {
+    let Some(relative_idx) = filter_words.iter().position(|word| matches!(*word, "that" | "which"))
+    else {
+        return;
+    };
+    if !filter_words[..relative_idx]
+        .iter()
+        .any(|word| matches!(*word, "graveyard" | "graveyards" | "exile" | "hand" | "library"))
+    {
+        return;
+    }
+    if filter.any_of.len() < 2 {
+        return;
+    }
+    let Some(domain) = filter
+        .any_of
+        .iter()
+        .find(|branch| matches!(branch.zone, Some(zone) if zone != Zone::Battlefield))
+        .map(|branch| (branch.zone, branch.owner.clone(), branch.single_graveyard))
+    else {
+        return;
+    };
+    for branch in &mut filter.any_of {
+        if matches!(branch.zone, None | Some(Zone::Battlefield))
+            && branch.owner.is_none()
+            && branch.controller.is_none()
+        {
+            branch.zone = domain.0;
+            branch.owner = domain.1.clone();
+            branch.single_graveyard = domain.2;
+        }
+    }
 }
 
 pub fn parse_where_x_is_sum_of_number_of_filter_values(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -2198,6 +2243,39 @@ pub fn parse_as_enters_reveal_from_hand_line(
     )))
 }
 
+/// "As this land enters, you may behold a Jace. If you don't, this land
+/// enters tapped." (Theorist's Sanctum): beholding (CR 701.66) is choosing a
+/// matching permanent you control or revealing a matching card from your
+/// hand, so the land enters untapped exactly when either exists. The line is
+/// a two-sentence compound like the reveal lands, so the compound reader
+/// (`parse_reveal_card_or_enter_tapped_line`) consults this first.
+pub(crate) fn parse_behold_or_enters_tapped_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+    let without_reminder = tokens
+        .iter()
+        .position(|token| token.kind == crate::lexer::TokenKind::LParen)
+        .map_or(tokens, |paren| &tokens[..paren]);
+    let behold_words = parser_token_word_refs(without_reminder);
+    let [
+        "as", "this", "land", "enters", "you", "may", "behold", "a" | "an", subtype_word,
+        "if", "you", "dont" | "don't", "this", "land", "enters", "tapped",
+    ] = behold_words.as_slice()
+    else {
+        return None;
+    };
+    let subtype = crate::util::parse_subtype_flexible(subtype_word)?;
+    let mut in_hand = ObjectFilter::default();
+    in_hand.subtypes.push(subtype);
+    let mut controlled = ObjectFilter::default().in_zone(Zone::Battlefield);
+    controlled.subtypes.push(subtype);
+    Some(StaticAbility::enters_tapped_unless_condition(
+        PredicateAst::Or(
+            Box::new(PredicateAst::YouHaveCardInHandMatching(in_hand)),
+            Box::new(PredicateAst::YouControl(controlled)),
+        ),
+        crate::lexer::token_word_refs(without_reminder).join(" "),
+    ))
+}
+
 pub fn parse_reveal_from_hand_or_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2205,32 +2283,8 @@ pub fn parse_reveal_from_hand_or_enters_tapped_line(
     if etb_grammar::parse_as_this_land_enters_prefix_tokens(tokens).is_none() {
         return Ok(None);
     }
-    // "As this land enters, you may behold a Jace. If you don't, this land
-    // enters tapped." (Theorist's Sanctum): beholding (CR 701.66) is choosing a
-    // matching permanent you control or revealing a matching card from your
-    // hand, so the land enters untapped exactly when either exists.
-    let without_reminder = tokens
-        .iter()
-        .position(|token| token.kind == crate::lexer::TokenKind::LParen)
-        .map_or(tokens, |paren| &tokens[..paren]);
-    let behold_words = parser_token_word_refs(without_reminder);
-    if let [
-        "as", "this", "land", "enters", "you", "may", "behold", "a" | "an", subtype_word,
-        "if", "you", "dont" | "don't", "this", "land", "enters", "tapped",
-    ] = behold_words.as_slice()
-        && let Some(subtype) = crate::util::parse_subtype_flexible(subtype_word)
-    {
-        let mut in_hand = ObjectFilter::default();
-        in_hand.subtypes.push(subtype);
-        let mut controlled = ObjectFilter::default().in_zone(Zone::Battlefield);
-        controlled.subtypes.push(subtype);
-        return Ok(Some(StaticAbility::enters_tapped_unless_condition(
-            PredicateAst::Or(
-                Box::new(PredicateAst::YouHaveCardInHandMatching(in_hand)),
-                Box::new(PredicateAst::YouControl(controlled)),
-            ),
-            clause_words.join(" "),
-        )));
+    if let Some(ability) = parse_behold_or_enters_tapped_line(tokens) {
+        return Ok(Some(ability));
     }
     if !etb_grammar::etb_tokens_have_reveal_from_hand_marker(tokens) {
         return Ok(None);

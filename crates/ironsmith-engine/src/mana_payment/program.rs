@@ -66,6 +66,7 @@ pub enum ManaProduction<'a> {
         source: crate::effects::ManaTypeSource,
     },
     NotedType {
+        use_noted_amount: bool,
         amount: &'a Value,
         player: &'a PlayerFilter,
     },

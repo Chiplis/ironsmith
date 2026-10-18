@@ -5,7 +5,9 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until, Value};
+use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, Until, Value};
+#[cfg(test)]
+use crate::effect::OutcomeValue;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::permanents::face_down_entry::{
@@ -13,24 +15,27 @@ use crate::effects::permanents::face_down_entry::{
     rollback_manifest_preparation,
 };
 use crate::effects::player::CastTaggedEffect;
-use crate::effects::zones::apply_zone_change;
+
 use crate::effects::zones::apply_zone_change_with_context_and_additional_effects_with_outputs;
 use crate::effects::zones::{
-    BattlefieldEntryOptions, BattlefieldEntryOutcome, move_to_battlefield_batch_with_options,
+    BattlefieldEntryOptions, BattlefieldEntryOutcome,
     move_to_battlefield_with_options,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::Event;
-use crate::events::permanents::SacrificeEvent;
+
 use crate::events::processing::{
-    EventOutcome, TraitEventResult, process_trait_event_with_execution_context,
+    EventOutcome,
 };
+#[cfg(test)]
 use crate::events::zones::ZoneChangeEvent;
-use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+use crate::events::{ KeywordActionEvent, KeywordActionKind};
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::PlayerFilter;
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::ids::{ObjectId, PlayerId, };
+#[cfg(test)]
+use crate::ids::StableId;
 use crate::object::{CounterType, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;

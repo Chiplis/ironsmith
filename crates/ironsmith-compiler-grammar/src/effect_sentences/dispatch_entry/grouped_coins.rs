@@ -117,7 +117,8 @@ pub(super) fn parse_die_result_document(
     let mut earlier_roll = false;
     let has_result_followup = sentences.iter().any(|sentence| {
         let words = crate::lexer::token_word_refs(sentence);
-        if earlier_roll && words.starts_with(&head) {
+        if earlier_roll && (words.starts_with(&head)
+            || words.ends_with(&["for", "each", "even", "result"])) {
             return true;
         }
         earlier_roll |= words.starts_with(&["roll"]) || words.starts_with(&["you", "roll"]);
@@ -132,6 +133,41 @@ pub(super) fn parse_die_result_document(
     for sentence in &sentences {
         let view = crate::lexer::TokenWordView::new(sentence);
         let words = view.word_refs();
+        if rolled && words.ends_with(&["for", "each", "even", "result"]) {
+            let end = view.map_word_to_token_start(words.len() - 4)
+                .ok_or_else(|| CardTextError::ParseError("die-result suffix has no action".into()))?;
+            let effects = parse_effect_sentences_lexed(&sentence[..end])?;
+            let value = Value::PendingPriorEffectMetric(
+                PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::EvenDieResults)
+                    .with_action(PriorEffectAction::Rolled),
+            );
+            parsed.extend(quantified_effect_by(effects, value));
+            recognized = true;
+            continue;
+        }
+        if rolled && matches!(words.as_slice(), ["if", "you", "rolled", _, "exactly", _, "times", ..]) {
+            let face = words[3].parse::<u32>().ok();
+            let count_tokens = crate::lexer::synthetic_word_tokens(&[words[5]]);
+            let count = crate::util::parse_value(&count_tokens).and_then(|(value, used)|
+                (used == count_tokens.len()).then_some(value));
+            if let (Some(face), Some(count), Some(comma)) =
+                (face, count, sentence.iter().position(OwnedLexToken::is_comma))
+            {
+                let effects = parse_effect_sentences_lexed(&sentence[comma + 1..])?;
+                parsed.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::ValueComparison {
+                        left: Value::PendingPriorEffectMetric(PriorEffectMetricQuery::new(
+                            EffectMetricSource::Outcome, EffectMetric::DieResultsEqual(face),
+                        ).with_action(PriorEffectAction::Rolled)),
+                        operator: ironsmith_core::ValueComparisonOperator::Equal,
+                        right: count,
+                    },
+                    if_true: effects,
+                    if_false: Vec::new(),
+                }));
+                continue;
+            }
+        }
         if rolled && words.starts_with(&head) {
             let start = view
                 .map_word_to_token_start(head.len())
@@ -192,8 +228,8 @@ fn quantified_effect_by(mut effects: Vec<EffectAst>, value: Value) -> Vec<Effect
 fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.word_refs();
-    if (words.starts_with(&["if", "they", "lose", "the", "flip"])
-        || words.starts_with(&["if", "they", "win", "the", "flip"]))
+    if words.starts_with(&["if", "they", "lose", "the", "flip"])
+        || words.starts_with(&["if", "they", "win", "the", "flip"])
     {
         let start = view.map_word_to_token_start(5).ok_or_else(malformed_coin_clause)?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }

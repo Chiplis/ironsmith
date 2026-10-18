@@ -32,7 +32,8 @@ use crate::object::CounterType;
 pub use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
-use crate::types::{CardType, Subtype};
+#[cfg(test)]
+use crate::types::CardType;
 use crate::zone::Zone;
 pub use ironsmith_core::effect::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId,
@@ -2290,12 +2291,22 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::BeAttachedBy(hosts, attachments) => {
+            Restriction::GainControl(objects, players) => {
+                let forbidden = game.players.iter().filter(|player| players.matches_player(player.id, &ctx))
+                    .map(|player| player.id).collect::<std::collections::HashSet<_>>();
+                for &id in &game.battlefield {
+                    if game.object(id).is_some_and(|object| objects.matches(object, &ctx, game)) {
+                        tracker.cant_gain_control.entry(id).or_default().extend(forbidden.iter().copied());
+                    }
+                }
+            }
+            Restriction::BeAttachedBy(hosts, attachments) | Restriction::BeAttachedByNew(hosts, attachments) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)
                         && hosts.matches(obj, &ctx, game)
                     {
                         tracker.cant_be_attached_by.push(crate::game_state::CantBeAttachedBy {
+                            only_new: matches!(self, Restriction::BeAttachedByNew(..)),
                             host: obj_id,
                             attachments: attachments.clone(),
                             controller,

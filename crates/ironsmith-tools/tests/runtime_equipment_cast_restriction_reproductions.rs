@@ -12,11 +12,11 @@ use ironsmith::game_loop::{
     apply_priority_response_with_dm, drain_pending_trigger_events, put_triggers_on_stack_with_dm,
 };
 use ironsmith::game_state::Target;
-use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::object::CounterType;
+use ironsmith::mana::{ ManaSymbol};
+
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+     CardId, CardType,  GameState, ObjectId, PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -213,51 +213,6 @@ fn count(g: &GameState, name: &str, zone: Zone) -> usize {
         .into_iter()
         .filter(|o| o.zone == zone && o.name.contains(name))
         .count()
-}
-fn find(g: &GameState, name: &str, zone: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .into_iter()
-        .find(|o| o.zone == zone && o.name == name)
-        .map(|o| o.id)
-        .ok_or(format!("fixture {name} missing in {zone:?}"))
-}
-fn cast(
-    g: &mut GameState,
-    def: &CardDefinition,
-    player: PlayerId,
-    dm: &mut ProbeDm,
-) -> Result<(TriggerQueue, u32), String> {
-    let id = g.create_object_from_definition(def, player, Zone::Hand);
-    perform(g, id, None, dm)
-}
-fn established(
-    g: &mut GameState,
-    def: &CardDefinition,
-    player: PlayerId,
-    expected: u32,
-) -> Result<ObjectId, String> {
-    let mut dm = dm(0, false);
-    let (mut q, paid) = cast(g, def, player, &mut dm)?;
-    if paid != expected {
-        return Err(format!(
-            "setup {} paid{paid} expected{expected}",
-            def.name()
-        ));
-    }
-    resolve(g, &mut q, &mut dm)?;
-    find(g, def.name(), Zone::Battlefield)
-}
-fn witness(name: &str, kind: CardType, cost: u8, with_x: bool) -> CardDefinition {
-    let mut pips = vec![ManaSymbol::Generic(cost)];
-    if with_x {
-        pips.push(ManaSymbol::X);
-    }
-    CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![kind])
-        .mana_cost(ManaCost::from_symbols(pips))
-        .power_toughness(PowerToughness::fixed(3, 3))
-        .with_spell_effect(vec![Effect::gain_life(1)])
-        .build()
 }
 
 #[test]

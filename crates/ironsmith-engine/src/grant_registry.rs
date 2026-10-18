@@ -918,6 +918,14 @@ pub struct PlayFromConstraints {
         )
     )]
     pub cast_mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
+    /// A linked cast watcher requires the chosen grant's immutable receipt.
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub requires_cast_receipt: bool,
+}
+impl PlayFromConstraints {
+    pub fn requires_exact_selection(&self) -> bool {
+        self.requires_cast_receipt || !self.cast_mana_spend_mode.is_normal()
+    }
 }
 
 /// Identity of one shared deferred-use budget across multiple card grants.
@@ -1803,7 +1811,7 @@ impl GrantRegistry {
             })
             // New permission-local mana readers need an exact selection.
             // Source-only actions retain their existing unmarked alternatives.
-            .filter(|grant| grant.play_from_constraints.cast_mana_spend_mode.is_normal())
+            .filter(|grant| !grant.play_from_constraints.requires_exact_selection())
             .filter(|grant| {
                 grant_usage_limit_allows(
                     game,
@@ -1834,7 +1842,7 @@ impl GrantRegistry {
             .find(|grant| {
                 grant.source.source_id() == source_id
                     && matches!(grant.grantable, Grantable::PlayFrom)
-                    && grant.play_from_constraints.cast_mana_spend_mode.is_normal()
+                    && !grant.play_from_constraints.requires_exact_selection()
             })
             .map(|grant| grant.play_from_constraints)
             .unwrap_or_default()
@@ -3124,12 +3132,12 @@ mod tests {
         let before = identities(&game);
         assert_eq!(before.len(), 2);
         assert_ne!(before[0], before[1], "cloned definitions are independent ability occurrences");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(identities(&game), before);
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(source, alice,
             EffectTarget::Specific(source), Modification::RemoveStaticAbilityFamily(crate::static_abilities::StaticAbilityId::Haste))
             .until(Until::Forever));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(game.current_characteristics(source).unwrap().abilities.len(), 2);
         assert_eq!(identities(&game), before, "removing another ability must not renumber permission origins");
         game.set_current_controller(source, bob).expect("finite controller fixture must refresh successfully");

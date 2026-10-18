@@ -5,8 +5,6 @@
 
 use crate::color::Color;
 use crate::continuous::Modification;
-#[cfg(test)]
-use crate::decisions::context::SelectOptionsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};

@@ -195,6 +195,17 @@ pub fn parse_typed_choice_object_clause_tokens(
         filter.could_be_enchanted_by_source = true;
     }
     if references_it {
+        // A "card" noun names a card wherever the group went; a default
+        // battlefield zone from the type word must not pin it there.
+        let names_card_noun = filter_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"));
+        if shape.references.references_object_group
+            && names_card_noun
+            && filter.zone == Some(Zone::Battlefield)
+        {
+            filter.zone = None;
+        }
         if shape.references.references_object_group && filter.zone.is_none() {
             // "choose a creature card from among them" (Kaya, Spirits'
             // Justice; "Mill three cards. ... from among them"): the chosen

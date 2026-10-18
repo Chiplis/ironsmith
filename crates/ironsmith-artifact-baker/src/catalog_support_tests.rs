@@ -59,7 +59,7 @@ fn catalog_vizier_reduces_only_matching_counter_placements() {
     let own = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
     let opposing = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
     let noncreature = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
-    game.update_replacement_effects();
+    game.update_replacement_effects().expect("fixture replacement effects should refresh");
     for (target, counter, count, expected) in [
         (own, CounterType::MinusOneMinusOne, 0, 0),
         (own, CounterType::MinusOneMinusOne, 1, 0),
@@ -92,7 +92,7 @@ fn catalog_vizier_reduces_only_matching_counter_placements() {
     ))
     .build();
     let entering = game.create_object_from_definition(&entering_definition, alice, Zone::Hand);
-    game.update_replacement_effects();
+    game.update_replacement_effects().expect("fixture replacement effects should refresh");
     let mut dm = engine::decision::AutoPassDecisionMaker;
     let id = game
         .move_object_with_etb_processing_with_dm(entering, Zone::Battlefield, &mut dm)
@@ -1521,7 +1521,7 @@ fn catalog_replacement_reflexive_trigger_waits_for_the_stack() {
             Zone::Battlefield,
         );
         let stable = game.object(victim).unwrap().stable_id;
-        game.update_replacement_effects();
+        game.update_replacement_effects().expect("fixture replacement effects should refresh");
         let mut dm = engine::decision::AutoPassDecisionMaker;
         engine::effects::execute_effect(
             &mut game,

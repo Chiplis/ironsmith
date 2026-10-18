@@ -2091,6 +2091,7 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+                ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
             };
             format!("if it's a {keyword} ability")
         }
@@ -2122,6 +2123,7 @@ fn describe_activated_ability_cost_condition(condition: &ActivatedAbilityCostCon
                 ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+                ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
             };
             format!("if it's the first {keyword} ability activated {turn}")
         }

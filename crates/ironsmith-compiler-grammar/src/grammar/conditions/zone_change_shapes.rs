@@ -268,8 +268,12 @@ fn parse_object_entry_this_turn(tokens: &[OwnedLexToken]) -> Option<EntryShape<'
     )?;
     let object_tokens = crate::grammar::primitives::take_leaf(&mut input, take_until_entry_verb)?;
     crate::grammar::primitives::take_leaf(&mut input, parse_entry_verb)?;
-    crate::grammar::primitives::take_leaf(&mut input, opt(primitives::kw("the")))?;
-    crate::grammar::primitives::take_leaf(&mut input, primitives::kw("battlefield"))?;
+    // Current Oracle wording drops "the battlefield": "if a Food entered
+    // under your control this turn" (Motivated Pony) names the same event.
+    crate::grammar::primitives::take_leaf(
+        &mut input,
+        opt((opt(primitives::kw("the")), primitives::kw("battlefield")).void()),
+    )?;
     let face_down = crate::grammar::primitives::take_leaf(
         &mut input,
         opt(primitives::phrase(&["face", "down"])),

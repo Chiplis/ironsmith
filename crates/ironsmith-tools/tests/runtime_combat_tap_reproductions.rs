@@ -507,7 +507,7 @@ fn run(
     } else {
         None
     };
-    let mut attackers = vec![];
+    let mut attackers;
     let mut actor = 0;
     let mut blocker = None;
     if name == "Templar Knight" {

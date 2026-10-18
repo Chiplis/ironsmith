@@ -591,6 +591,9 @@ pub enum StaticAbilityId {
     /// (Butcher Orgg): an optional free division with no lethal-damage
     /// ordering (CR 510.1); appended for wire compatibility.
     MayDivideCombatDamageAmongDefendingPlayerAndCreatures,
+    /// Mandatory public reveal of every card drawn by matching players.
+    RevealCardsDrawn,
+    ExtraPlanarDieIgnoreOne,
 }
 
 impl StaticAbilityId {
@@ -909,6 +912,7 @@ impl StaticAbilityId {
             | IncreaseMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
+            | RevealCardsDrawn
             | LookAtTopCardOfLibrary
             | LookAtFaceDownCreaturesYouDontControl
             | AllPlayersLookAtTopCardsOfLibraries
@@ -943,6 +947,7 @@ impl StaticAbilityId {
             | FirstCoinBatchHeadsWin
             | LookAtSourceExiledCards
             | ExtraDieIgnoreLowest
+            | ExtraPlanarDieIgnoreOne
             | RedirectMatchingDamage
             | AddLifeGainReplacement
             | TokenCreationTemplates

@@ -357,11 +357,18 @@ fn parse_all_phase_subject(
 
 fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     // "Untap another target nonland permanent, then it phases out" (The
-    // Pandorica) is two instructions; the phase subject is only `it`.
-    if tokens
-        .iter()
-        .any(|token| token.is_comma() || token.is_word("then"))
-    {
+    // Pandorica) is two instructions; the phase subject is only `it`. A
+    // serial-comma type list inside one target phrase ("up to that many
+    // other target artifacts, creatures, and/or enchantments", Spectral
+    // Adversary) is still one subject, so only a `then` boundary or a comma
+    // opening a new pronoun clause splits it.
+    if tokens.iter().enumerate().any(|(index, token)| {
+        token.is_word("then")
+            || (token.is_comma()
+                && tokens
+                    .get(index + 1)
+                    .is_some_and(|next| next.is_any_word(&["it", "they", "that", "those"])))
+    }) {
         return None;
     }
     let mut input = LexStream::new(tokens);

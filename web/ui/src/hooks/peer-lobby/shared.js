@@ -787,10 +787,12 @@ export function hasOnlyOwnerPrivateViewRequirements(requirements = []) {
 }
 
 export function shouldRequestRemoteCryptoPreview(command, state, previewedRequirements = []) {
+  if (command?.type === "priority_yield") return true;
   if (!command || command.type !== "priority_action") return false;
   const kind = String(command.action_ref?.kind || "");
   if (kind === "private_search_action") return true;
   if (kind !== "pass_priority") return false;
+  if ((state?.pass_intents || []).length > 0) return true;
   const resolvingStackObject = Boolean(
     Number(state?.stack_size || 0) > 0
     || (Array.isArray(state?.stack_preview) && state.stack_preview.length > 0)

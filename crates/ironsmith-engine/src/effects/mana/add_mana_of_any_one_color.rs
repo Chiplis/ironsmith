@@ -1,6 +1,6 @@
 //! Add mana of any one color effect implementation.
 
-use crate::color::Color;
+
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};

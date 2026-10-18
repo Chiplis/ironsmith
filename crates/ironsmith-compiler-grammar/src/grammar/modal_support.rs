@@ -38,6 +38,29 @@ type ModalHeader = ParsedModalHeader;
 type ModalActivatedHeader = ParsedModalActivatedHeader;
 type ModalGate = ParsedModalGate;
 
+/// The comma that ends a modal trigger's event. A serial comma inside the
+/// event's characteristic list ("a spell with power, toughness, or mana value
+/// 4", The Fantastic Four) continues the trigger, so a comma followed by
+/// another characteristic of that list is skipped.
+fn first_trigger_boundary_comma(tokens: &[OwnedLexToken], choose_idx: usize) -> Option<usize> {
+    let continues_characteristic_list = |rest: &[OwnedLexToken]| {
+        let words = crate::lexer::token_word_refs(rest);
+        let words = match words.as_slice() {
+            ["or" | "and" | "and/or", tail @ ..] => tail,
+            all => all,
+        };
+        matches!(words, ["power" | "toughness", ..] | ["mana", "value", ..])
+    };
+    tokens
+        .iter()
+        .enumerate()
+        .take(choose_idx)
+        .filter(|(_, token)| token.kind == TokenKind::Comma)
+        .map(|(idx, _)| idx)
+        .find(|idx| !continues_characteristic_list(&tokens[idx + 1..]))
+        .or_else(|| locate_token_index(tokens, |token| token.kind == TokenKind::Comma))
+}
+
 fn locate_token_index(
     tokens: &[OwnedLexToken],
     mut predicate: impl FnMut(&OwnedLexToken) -> bool,
@@ -242,7 +265,7 @@ pub fn parse_modal_header(
     }
 
     if activated.is_none()
-        && let Some(comma_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Comma)
+        && let Some(comma_idx) = first_trigger_boundary_comma(tokens, choose_idx)
         && choose_idx > comma_idx
     {
         // An ability-word label ("Trick Arrows — Whenever ...") moves the
@@ -797,6 +820,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
+            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(

@@ -277,7 +277,6 @@ impl ironsmith::decision::DecisionMaker for TargetChoice {
     fn decide_targets(&mut self, game: &GameState, context: &ironsmith::decisions::context::TargetsContext)
         -> Vec<ironsmith::Target>
     {
-        use ironsmith::decision::DecisionMaker;
         let Some(target) = self.target else {
             return ironsmith::decision::SelectFirstDecisionMaker.decide_targets(game, context);
         };

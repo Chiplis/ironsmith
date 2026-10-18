@@ -468,10 +468,16 @@ pub(super) fn compile_target_only_action(
     }
     // A declared player target is the player later references ("that
     // player", a condition naming the target) mean.
-    if spec.is_target()
-        && let ChooseSpec::Player(filter) = spec.base()
-    {
-        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+    if spec.is_target() {
+        match spec.base() {
+            ChooseSpec::Player(filter) => {
+                ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+            }
+            ChooseSpec::PlayerOrPlaneswalker(_) => {
+                ctx.last_player_filter = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+            }
+            _ => {}
+        }
     }
     let effect = tag_object_target_effect(Effect::new(target_only), &spec, ctx, "targeted");
     Ok((vec![effect], choices))
@@ -1231,6 +1237,23 @@ pub(super) fn compile_cant_action(
                 .lock_filter_at_resolution();
                 Ok((vec![Effect::new(apply)], Vec::new()))
             }
+            crate::effect::Restriction::PhaseIn(_)
+                if matches!(condition, PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceIsTapped
+                )) && matches!(duration, crate::effect::Until::Forever) =>
+            {
+                // "can't phase in for as long as this remains tapped" is
+                // latched to the exact source incarnation, not an ongoing
+                // conditional rule that could restart after it untaps.
+                let lifetime = crate::effect::Until::ForAsLongAs(
+                    ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                        ironsmith_core::ContinuousDurationObject::Source,
+                    ),
+                );
+                Ok((vec![Effect::new(crate::effects::CantEffect::starting(
+                    restriction, lifetime, start.clone(),
+                ).with_duration_surface(*duration_surface))], Vec::new()))
+            }
             other => Err(CardTextError::ParseError(format!(
                 "unsupported conditioned restriction: {other:?}"
             ))),
@@ -1730,6 +1753,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![cast], Vec::new()))
         }
         SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+            spell_filter,
             alternative_cost,
             tag,
             player,
@@ -1777,6 +1801,7 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_any_color_for_cast,
             )
             .with_max_plays(*max_plays);
+            grant_play.spell_filter = spell_filter.clone();
             grant_play.alternative_cost = alternative_cost.as_ref().map(|cost| {
                 let lowered = crate::lowering::cost_materialization::materialize_compiler_core_total_cost(cost)?;
                 resolve_total_cost_it_tags(&lowered, &current_reference_env(ctx))
@@ -2464,6 +2489,7 @@ pub(super) fn compile_subject_verb_middle(
             Ok((vec![effect], Vec::new()))
         }
         SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            retained_reference_tags,
             target,
             source_top_only,
             zone,
@@ -2552,7 +2578,11 @@ pub(super) fn compile_subject_verb_middle(
                     &current_reference_env(ctx),
                 )?)
             };
-            let with_move_surfaces = |move_effect: crate::effects::MoveToZoneEffect| {
+            let retained_reference_tags = retained_reference_tags.iter()
+                .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let with_move_surfaces = |mut move_effect: crate::effects::MoveToZoneEffect| {
+                move_effect.retained_reference_tags = retained_reference_tags.clone();
                 let move_effect = if let Some(order) = resolved_library_order.clone() {
                     move_effect.with_library_order(order)
                 } else {
@@ -3646,6 +3676,7 @@ pub(super) fn compile_subject_verb_middle(
             })
         }
         SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+            accumulated_match_tag,
             player,
             mode,
             filter,
@@ -3705,6 +3736,8 @@ pub(super) fn compile_subject_verb_middle(
                 resolved_all_tag,
                 resolved_match_tag,
             );
+            consult.accumulated_match_tag = accumulated_match_tag.as_ref()
+                .map(|tag| resolve_it_tag_key(tag, &current_reference_env(ctx))).transpose()?;
             if let Some(max_exposed) = resolved_max_exposed {
                 consult = consult.with_max_exposed(max_exposed);
             }

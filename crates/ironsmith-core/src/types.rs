@@ -812,6 +812,7 @@ impl Subtype {
             Subtype::Mercenary,
             Subtype::Merfolk,
             Subtype::Minion,
+            Subtype::Mite,
             Subtype::Minotaur,
             Subtype::Mole,
             Subtype::Monk,

@@ -113,6 +113,13 @@ pub(super) fn parse_triggered_line_impl(
         trigger_parse_tokens,
         effect_parse_tokens,
     )?;
+    // "if you gained life this turn, distribute up to that many ..." (Lathiel):
+    // "that many" is the intervening condition's life total gained.
+    if let Some(predicate) = line.intervening_if.as_ref()
+        && let LineAst::Triggered { effects, .. } = &mut parsed
+    {
+        crate::clause_support::bind_intervening_life_gained_that_many(predicate, effects);
+    }
     if line.presentation == Some(PresentationLabel::CaseToSolve) {
         // The synthetic recognition text mentions a level counter only to
         // locate the trigger. It must never replace the typed solve action.
@@ -412,6 +419,7 @@ pub fn is_exact_correlated_trigger_effect_bundle(effect_parse_tokens: &[OwnedLex
         || exact_atomic_return_as_aura_bundle(effect_parse_tokens).is_some()
         || exact_looked_hand_optional_cast_bundle(effect_parse_tokens).is_some()
         || exact_target_same_name_graveyard_may_cast_bundle(effect_parse_tokens).is_some()
+        || exact_target_graveyard_any_type_may_cast_bundle(effect_parse_tokens).is_some()
         || exact_each_other_player_copies_triggering_spell_bundle(effect_parse_tokens).is_some()
 }
 
@@ -620,6 +628,7 @@ pub(super) fn parse_triggered_ability_line_impl(
     // with `?`: that parser has no `cast target card ...` verb and its hard
     // error would end the triggered-line attempt before the special readers.
     if let Some(effects) = exact_target_same_name_graveyard_may_cast_bundle(effect_parse_tokens)
+        .or_else(|| exact_target_graveyard_any_type_may_cast_bundle(effect_parse_tokens))
         .or_else(|| exact_each_other_player_copies_triggering_spell_bundle(effect_parse_tokens))
     {
         let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;

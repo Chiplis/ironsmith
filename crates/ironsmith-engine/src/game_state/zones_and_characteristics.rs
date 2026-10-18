@@ -1145,6 +1145,7 @@ impl GameState {
                 }
             },
         };
+        let turn_face_up_before_action = self.object_annotations.turn_face_up_before_action.contains(&old_id);
         let was_face_down = self.is_face_down(old_id);
         let was_foretold = self.is_foretold(old_id);
         let preserved_exile_viewers = if self
@@ -1296,6 +1297,7 @@ impl GameState {
 
         // Remove from old zone index
         self.remove_from_zone_index(old_id, old_zone, owner);
+        self.object_annotations_mut().turn_face_up_before_action.remove(&old_id);
 
         // Clear state from old zone's extension maps
         if old_zone == Zone::Battlefield {
@@ -1633,6 +1635,9 @@ impl GameState {
         }
         let sticker_identity = new_object.stable_id;
         self.add_object(new_object);
+        if turn_face_up_before_action && old_zone == Zone::Stack && new_zone == Zone::Battlefield {
+            self.register_turn_face_up_before_action(new_id);
+        }
         if old_zone == Zone::Stack && new_zone == Zone::Battlefield {
             self.effect_store
                 .continuous_effects
@@ -4356,6 +4361,7 @@ impl GameState {
         self.object_annotations_mut().noted_life_totals.remove(&id);
         self.object_annotations_mut().noted_creature_types.remove(&id);
         self.object_annotations_mut().stored_die_results.remove(&id);
+        self.object_annotations_mut().turn_face_up_before_action.remove(&id);
         if self
             .object(id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
@@ -5373,6 +5379,32 @@ impl GameState {
         {
             // A dirty read inside another calculation (a delirium count reading
             // each graveyard card) repeats in an identical layer context.
+            if self.object(id).is_some_and(|object| object.zone == Zone::Battlefield)
+                && self.battlefield.len() > 1
+            {
+                return crate::continuous::board_characteristics_in_context(context, id, || {
+                    let all_effects = self.all_continuous_effects_arc();
+                    self.runtime_cache
+                        .work_counters
+                        .bump_characteristics_full_recomputes();
+                    self.runtime_cache
+                        .work_counters
+                        .add_effects_considered(all_effects.len() as u64);
+                    let board: Vec<_> = self
+                        .battlefield
+                        .iter()
+                        .copied()
+                        .filter(|&candidate| {
+                            candidate == id
+                                || (!self.is_phased_out(candidate)
+                                    && !crate::continuous::characteristics_calculation_in_progress(
+                                        self, candidate,
+                                    ))
+                        })
+                        .collect();
+                    self.calculated_characteristics_batch_with_effects(&board, &all_effects)
+                });
+            }
             return crate::continuous::characteristics_in_context(context, id, || {
                 let all_effects = self.all_continuous_effects_arc();
                 self.runtime_cache
@@ -5891,6 +5923,8 @@ impl GameState {
         if working.current_controller(id) == Some(controller) {
             return Ok(());
         }
+        if let Some(old) = working.current_controller(id)
+            && !working.control_acquisition_allowed(id, old, controller) { return Ok(()); }
         working.stage_controller_change_for_assembly(id, controller);
         working.refresh_continuous_state()?;
         *self = working;
@@ -5914,6 +5948,8 @@ impl GameState {
         if self.object(id).is_none() || self.current_controller(id) == Some(controller) {
             return;
         }
+        if let Some(old) = self.current_controller(id)
+            && !self.control_acquisition_allowed(id, old, controller) { return; }
         self.set_summoning_sick(id);
         let effect = ContinuousEffect::new(
             id,
@@ -6200,7 +6236,12 @@ impl GameState {
     pub fn update_cant_effects(&mut self) {
         // Restriction sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
+        let prior_prohibitions = self.effect_store.cant_effects.cant_gain_control.clone();
+        let prior_scan = self.effect_store.cant_effects.control_prohibitions_during_scan.replace(prior_prohibitions);
         self.update_cant_effects_inner();
+        // A nested derived query must restore its caller's retained map,
+        // rather than expose a partially rebuilt tracker to the outer scan.
+        self.effect_store.cant_effects.control_prohibitions_during_scan = prior_scan;
         self.exit_derived_tap_reads();
     }
 

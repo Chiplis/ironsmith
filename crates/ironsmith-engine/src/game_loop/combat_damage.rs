@@ -206,6 +206,9 @@ pub(crate) fn try_execute_combat_damage_step_with_dm_and_first_step_snapshot(
         game,
         dm,
         |game, dm| {
+            if !prepare_combat_damage_assigners(game, combat, first_strike, first_step_strikers, dm)? {
+                return Ok(Vec::new());
+            }
             let mut result = apply_combat_damage_step_with_dm_and_first_step_snapshot(
                 game,
                 combat,
@@ -312,6 +315,34 @@ struct PlannedCombatDamage {
     amount: u32,
     result: DamageResult,
     cause: crate::events::cause::EventCause,
+}
+
+/// Complete mandatory face-up transitions before calculating/asking for any
+/// assignment. The caller owns rollback when the decision maker suspends.
+pub(crate) fn prepare_combat_damage_assigners(
+    game: &mut GameState,
+    combat: &CombatState,
+    first_strike: bool,
+    first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) -> Result<bool, CombatDamageAssignmentError> {
+    let mut assigners = combat.attackers.iter().map(|attacker| attacker.creature)
+        .chain(combat.blockers.values().flatten().copied()).collect::<Vec<_>>();
+    assigners.sort();
+    assigners.dedup();
+    for object in assigners {
+        let assigns = game.object(object).is_some_and(|creature| {
+            !game.combat_damage_assignment_is_suppressed(object)
+        && combatant_participates_in_damage_step(game, creature, first_strike, first_step_strikers)
+        && combat_damage_stat_for_creature(game, creature).is_some_and(|power| power > 0)
+        });
+        if assigns && !game.prepare_turn_face_up_before_action(object, dm)
+            .map_err(|error| CombatDamageAssignmentError::execution(object, error))?
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn combatant_participates_in_damage_step(
@@ -3539,7 +3570,7 @@ mod tests {
             }],
             ..CombatState::default()
         };
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(can_use_unblocked_player_damage_fast_path(&game, &combat));
         let events = execute_combat_damage_step(&mut game, &combat, false);
         assert_eq!(game.player(alice).unwrap().life, 23);
@@ -4362,7 +4393,7 @@ mod tests {
             .expect("regular striker exists")
             .abilities_mut()
             .push(Ability::static_ability(StaticAbility::first_strike()));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let regular = execute_combat_damage_step_with_first_step_snapshot(
             &mut game,

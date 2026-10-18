@@ -11,6 +11,7 @@ pub enum BinaryPileCount {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryPileProducer {
     TopLibrary(BinaryPileCount),
+    ExiledTopLibrary(BinaryPileCount),
     SequentialFaceDownExile { first: i32, second: i32 },
     /// "Separate all creature cards in your graveyard into two piles"
     /// (Death or Glory): the pool is every matching card in your graveyard.
@@ -25,11 +26,13 @@ pub enum BinaryPileProducer {
 pub enum BinaryPilePartitioner {
     You,
     TargetOpponent,
+    ChosenOpponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryPileDestination {
     HandAndGraveyard,
+    ChosenPileImmediateFreePlay,
     OneToHandAndPoolToBottom,
     /// "Exile the pile of an opponent's choice and return the other to the
     /// battlefield."
@@ -62,6 +65,7 @@ fn surface_is_complete(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(super) fn parse(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
+    if let Some(program) = parse_exiled_piles_free_play(sentences) { return Some(program); }
     if let Some(program) = parse_sequential_exile(sentences) { return Some(program); }
     if let Some(program) = parse_graveyard_partition(sentences) { return Some(program); }
     if let Some(program) = parse_face_down_then_face_up_exile(sentences) { return Some(program); }
@@ -82,7 +86,7 @@ pub(super) fn parse(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramS
     remaining = remaining.get(used..)?.strip_prefix(&["cards", "of", "your", "library", "and"])?;
     remaining = remaining.strip_prefix(&[match partitioner {
         BinaryPilePartitioner::You => "separate",
-        BinaryPilePartitioner::TargetOpponent => "separates",
+        BinaryPilePartitioner::TargetOpponent | BinaryPilePartitioner::ChosenOpponent => "separates",
     }, "them", "into"])?;
     let expected_partition: &[&str] = if reveal_pool {
         &["two", "piles"]
@@ -280,4 +284,26 @@ mod tests {
             text.replace("face up.", "face up {B}."),
         ] { assert!(read(&invalid).is_none(), "{invalid}"); }
     }
+}
+
+/// A public exiled pool is split by an opponent chosen on resolution, then
+/// its controller may play cards from one pile in any chosen order.
+fn parse_exiled_piles_free_play(sentences: &[&[OwnedLexToken]]) -> Option<BinaryPileProgramShape> {
+    let [exile, partition, play, price, ..] = sentences else { return None; };
+    let words = TokenWordView::new(exile).to_word_refs();
+    let rest = words.strip_prefix(&["exile", "the", "top"])?;
+    let (count, used) = crate::grammar::leaf::parse_leaf_number_prefix_words(rest)?.into_fixed()?;
+    if rest.get(used..)? != ["cards", "of", "your", "library"]
+        || TokenWordView::new(partition).to_word_refs() != ["an", "opponent", "separates", "those", "cards", "into", "two", "piles"]
+        || TokenWordView::new(play).to_word_refs() != ["you", "may", "play", "lands", "and", "cast", "spells", "from", "one", "of", "those", "piles"]
+        || TokenWordView::new(price).to_word_refs() != ["if", "you", "cast", "a", "spell", "this", "way", "you", "cast", "it", "without", "paying", "its", "mana", "cost"]
+        || !sentences[..4].iter().all(|tokens| surface_is_complete(tokens))
+    { return None; }
+    Some(BinaryPileProgramShape {
+        producer: BinaryPileProducer::ExiledTopLibrary(BinaryPileCount::Fixed(i32::try_from(count).ok()?)),
+        partitioner: BinaryPilePartitioner::ChosenOpponent,
+        reveal_pool: true,
+        destination: BinaryPileDestination::ChosenPileImmediateFreePlay,
+        consumed_sentences: 4,
+    })
 }

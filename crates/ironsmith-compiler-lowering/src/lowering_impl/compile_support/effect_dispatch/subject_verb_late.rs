@@ -76,6 +76,7 @@ pub(super) fn handles_action(action: &SubjectVerbActionAst) -> bool {
             | SubjectVerbActionAst::Mana(ManaActionAst::ActivateManaAbilityOfEachLand)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
+            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Counters(CounterActionAst::EnergyCounters { .. })
             | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
@@ -2871,6 +2872,9 @@ pub(super) fn compile_subject_verb_late(
         }
         SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase) => {
             Ok((vec![Effect::end_combat_phase()], Vec::new()))
+        }
+        SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { destination }) => {
+            Ok((vec![Effect::new(crate::effects::RedirectEnteringSourceEffect::new(*destination))], Vec::new()))
         }
         SubjectVerbActionAst::Game(GameActionAst::DrawGame) => {
             Ok((vec![Effect::new(ironsmith_core::DrawTheGameEffect)], Vec::new()))

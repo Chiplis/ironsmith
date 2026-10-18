@@ -394,7 +394,6 @@ pub fn parse_discard(
                             clause_words.join(" ")
                         ))
                     })?;
-                discard_filter = None;
                 Some(combined)
             } else {
                 Some(filter)

@@ -52,7 +52,7 @@ fn s1_monarch_uses_live_controller_or_departure_lki_not_a_new_incarnation() {
             "The monarch still controls the inherent trigger"
         );
         g.set_current_controller(attacker, C).expect("finite controller fixture must refresh successfully");
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         if depart {
             let stable = g.object(attacker).unwrap().stable_id;
             g.move_object_by_effect(attacker, Zone::Graveyard).unwrap();
@@ -106,10 +106,10 @@ fn s3_storied_requires_present_source_and_three_present_qualifying_permanents() 
         for _ in 0..2 {
             permanent(&mut g, A, CardType::Artifact);
         }
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!g.has_enduring_story(A));
         g.phase_in(if phase_source { source } else { first });
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(g.has_enduring_story(A));
     }
 }
@@ -208,7 +208,7 @@ fn s5_visit_is_an_ordinary_ability_that_can_be_removed_and_restored() {
             EffectTarget::Specific(attraction),
             Modification::RemoveAllAbilities,
         ));
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     let mut q = TriggerQueue::new();
     g.force_next_die_roll(6);
     assert_eq!(
@@ -217,7 +217,7 @@ fn s5_visit_is_an_ordinary_ability_that_can_be_removed_and_restored() {
     );
     assert!(q.entries.is_empty());
     g.effect_store.continuous_effects.remove_effect(effect);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     g.force_next_die_roll(6);
     ironsmith::game_loop::roll_to_visit_attractions(&mut g, &mut q).unwrap();
     assert_eq!(q.entries.len(), 1);
@@ -488,7 +488,7 @@ fn a12_compleated_adjusts_combined_loyalty_once_and_respects_prospective_ability
                     EffectTarget::Filter(ironsmith::target::ObjectFilter::permanent()),
                     Modification::RemoveAllAbilities,
                 ));
-            g.refresh_continuous_state();
+            g.refresh_continuous_state().expect("test continuous state should refresh");
         }
         let permanent = g
             .move_object_with_etb_processing_with_initial_counters_with_dm(

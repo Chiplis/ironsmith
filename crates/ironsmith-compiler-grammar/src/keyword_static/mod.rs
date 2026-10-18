@@ -631,6 +631,18 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("if", "you"),
         ],
         "parse_may_skip_draw_step_line" => vec![StaticAbilityLineHeadHint::Pair("if", "you")],
+        // "You may discard this card any time ..." / "You may plot nonland
+        // cards ...": the rule-name head "may" is the second word, so the
+        // derived single-word hint made both exact grammars unreachable.
+        "parse_may_discard_source_any_time_line"
+        | "parse_may_plot_nonland_from_top_of_library_line" => {
+            vec![StaticAbilityLineHeadHint::Pair("you", "may")]
+        }
+        // "Enchanted creature is a copy of the chosen creature." (Metamorphic
+        // Alteration): the derived "attached" head never starts the line.
+        "parse_attached_is_copy_of_chosen_object_line" => {
+            vec![StaticAbilityLineHeadHint::Single("enchanted")]
+        }
         "parse_players_skip_extra_turns_line" => vec![
             StaticAbilityLineHeadHint::Single("if"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
@@ -796,6 +808,12 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("if", "a"),
             StaticAbilityLineHeadHint::Pair("if", "an"),
         ],
+        // Also owns the replacement spelling "If damage would be dealt to this
+        // creature, prevent that damage." (Phyrexian Vindicator).
+        "parse_prevent_all_damage_to_matching_permanents_line" => vec![
+            StaticAbilityLineHeadHint::Single("prevent"),
+            StaticAbilityLineHeadHint::Pair("if", "damage"),
+        ],
         "parse_search_limited_to_top_cards_line" => vec![
             StaticAbilityLineHeadHint::Pair("if", "an"),
             StaticAbilityLineHeadHint::Pair("if", "a"),
@@ -832,12 +850,21 @@ fn static_ability_rule_head_hints(rule_id: RuleId) -> Vec<StaticAbilityLineHeadH
             StaticAbilityLineHeadHint::Pair("as", "you"),
         ],
         "parse_play_from_permission_with_haste_this_way_line"
-        | "parse_play_from_permission_with_enter_counter_this_way_line"
         | "parse_play_from_permission_with_enter_tapped_this_way_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
             StaticAbilityLineHeadHint::Single("once"),
             StaticAbilityLineHeadHint::Pair("once", "during"),
+        ],
+        "parse_play_from_permission_with_enter_counter_this_way_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+            StaticAbilityLineHeadHint::Single("once"),
+            StaticAbilityLineHeadHint::Pair("once", "during"),
+            // "During your turn, you may cast ..." (Leonardo, Sewer Samurai):
+            // the enter-counter reader owns the leading turn window and
+            // records it as the grant's DuringYourTurns usage limit.
+            StaticAbilityLineHeadHint::Pair("during", "your"),
         ],
         "parse_you_have_protection_from_opponents_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -2542,6 +2569,31 @@ fn parse_source_attacks_player_each_combat_line(
 pub fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = parse_untapped_attachment_control_protection(tokens)? { return Ok(Some(abilities)); }
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if let Some(is) = words.iter().position(|word| *word == "is")
+        && words.get(is + 1..is + 5) == Some(&["an", "equipment", "with", "equip"][..])
+        && words.iter().any(|word| *word == "where")
+    {
+        // Kept in the helper below to preserve quoted ability boundaries.
+        if let Some(abilities) = parse_filtered_dynamic_equipment(tokens)? { return Ok(Some(abilities)); }
+    }
+    if words.as_slice() == ["if", "a", "source", "controlled", "by", "one", "of", "the", "chosen", "players", "would", "deal", "damage", "to", "the", "other", "chosen", "player", "or", "a", "permanent", "that", "player", "controls", "that", "source", "deals", "double", "that", "damage", "to", "that", "player", "or", "permanent", "instead"] {
+        return Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::damage_between_chosen_players(
+            2, crate::lexer::render_token_slice(tokens),
+        ))]));
+    }
+    if let Some(verb) = words.iter().position(|word| *word == "reveals")
+        && words[verb + 1..] == ["each", "card", "they", "draw"]
+        && let Some(range) = view.token_span_for_words(0, verb)
+        && let crate::cards::builders::TargetAst::Player(player, _) = crate::util::parse_target_phrase(&tokens[range])?
+    {
+        return Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::reveal_cards_drawn(
+            player, crate::lexer::render_token_slice(tokens),
+        ))]));
+    }
+
     // The static line grammar is also used as a speculative probe: line
     // recognizers, trigger-body readers and the document dispatcher all ask
     // "is this a static ability?" before trying other families. Its direct
@@ -2867,10 +2919,16 @@ fn parse_source_has_unless_status_line(
         return Ok(None);
     }
     let tail_words = parser_token_word_refs(tail);
-    let Some((state, subject)) = tail_words.split_last() else {
-        return Ok(None);
+    let is_state = |word: &str| matches!(word, "attacking" | "blocking" | "tapped" | "untapped");
+    // "Tromokratis has hexproof unless it's attacking or blocking."
+    let (subject, states): (&[&str], Vec<&str>) = match tail_words.as_slice() {
+        [subject @ .., first, "or", second] if is_state(*first) && is_state(*second) => {
+            (subject, vec![*first, *second])
+        }
+        [subject @ .., state] => (subject, vec![*state]),
+        [] => return Ok(None),
     };
-    if !matches!(*state, "attacking" | "blocking" | "tapped" | "untapped")
+    if !states.iter().all(|state| is_state(*state))
         || !matches!(subject, ["it's"] | ["its"] | ["it", "is"] | ["it", "s"])
     {
         return Ok(None);
@@ -2881,7 +2939,19 @@ fn parse_source_has_unless_status_line(
     if abilities.is_empty() {
         return Ok(None);
     }
-    let condition = parse_static_condition_clause(tail)?;
+    let condition = if let [first, second] = states.as_slice() {
+        let first = parse_static_condition_clause(&crate::lexer::lex_line(
+            &format!("it's {first}"),
+            0,
+        )?)?;
+        let second = parse_static_condition_clause(&crate::lexer::lex_line(
+            &format!("it's {second}"),
+            0,
+        )?)?;
+        PredicateAst::Or(Box::new(first), Box::new(second))
+    } else {
+        parse_static_condition_clause(tail)?
+    };
     Ok(Some(
         abilities
             .into_iter()
@@ -3952,6 +4022,75 @@ fn parse_source_graveyard_cast_trailing_condition_line(
         conditioned.push(add_static_ability_ast_condition(ability, condition.clone())?);
     }
     Ok(Some(conditioned))
+}
+
+/// "As long as another player controls enchanted creature, it can't attack or
+/// block. Otherwise, this Aura has umbra armor." (Dog Umbra): the first branch
+/// is about the attached object ("it"), the otherwise branch grants keywords
+/// to this Aura/Equipment itself, never to every Aura.
+pub(super) fn parse_as_long_as_attached_otherwise_source_keyword_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let Some(split) = crate::grammar::abilities::split_as_long_as_condition_prefix_lexed(first)
+    else {
+        return Ok(None);
+    };
+    let condition_words = crate::lexer::parser_token_word_refs(split.condition_tokens);
+    let attached_subject = if condition_words.windows(2).any(|pair| pair == ["enchanted", "creature"]) {
+        ["enchanted", "creature"]
+    } else if condition_words.windows(2).any(|pair| pair == ["equipped", "creature"]) {
+        ["equipped", "creature"]
+    } else {
+        return Ok(None);
+    };
+    let true_body = trim_edge_punctuation(split.remainder_tokens);
+    if !true_body.first().is_some_and(|token| token.is_word("it")) || true_body.len() < 2 {
+        return Ok(None);
+    }
+    let second_words = crate::lexer::parser_token_word_refs(second);
+    let ["otherwise", "this", "aura" | "equipment", "has", keyword_words @ ..] =
+        second_words.as_slice()
+    else {
+        return Ok(None);
+    };
+    if keyword_words.is_empty() {
+        return Ok(None);
+    }
+    let Some(has_idx) = second.iter().position(|token| token.is_word("has")) else {
+        return Ok(None);
+    };
+    let keyword_tokens = trim_edge_punctuation(&second[has_idx + 1..]);
+    let mut rebound = crate::lexer::synthetic_word_tokens(attached_subject);
+    rebound.extend_from_slice(&true_body[1..]);
+    let Ok(condition) = parse_static_condition_clause(split.condition_tokens) else {
+        return Ok(None);
+    };
+    let Some(true_abilities) =
+        parse_static_ability_ast_line_lexed_single_without_leading_condition(&rebound)?
+    else {
+        return Ok(None);
+    };
+    let Some(false_abilities) =
+        parse_static_ability_ast_line_lexed_single_without_leading_condition(&keyword_tokens)?
+    else {
+        return Ok(None);
+    };
+    if true_abilities.is_empty() || false_abilities.is_empty() {
+        return Ok(None);
+    }
+    let mut abilities = Vec::with_capacity(true_abilities.len() + false_abilities.len());
+    for ability in true_abilities {
+        abilities.push(add_static_ability_ast_condition(ability, condition.clone())?);
+    }
+    let negated = PredicateAst::Not(Box::new(condition));
+    for ability in false_abilities {
+        abilities.push(add_static_ability_ast_condition(ability, negated.clone())?);
+    }
+    Ok(Some(abilities))
 }
 
 /// "As long as you control enchanted creature, it gets +2/+2. Otherwise, it
@@ -9918,4 +10057,76 @@ mod ward_counter_payment_dispatch_tests {
             assert_eq!(parsed[0], parsed[1]);
         }
     }
+}
+
+/// A filtered set becomes Equipment with equip {X} and an equipped-stat
+/// grant, where X reads each granted object's own mana value.
+fn parse_filtered_dynamic_equipment(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let is = match tokens.iter().position(|token| token.is_word("is")) { Some(index) => index, None => return Ok(None) };
+    let where_at = match tokens.iter().rposition(|token| token.is_word("where")) { Some(index) => index, None => return Ok(None) };
+    let rhs = crate::lexer::token_word_refs(&tokens[where_at..]);
+    if !matches!(rhs.as_slice(), ["where", "x", "is", "that", "artifact", "s", "mana", "value"]
+        | ["where", "x", "is", "that", "artifact", "mana", "value"]
+        | ["where", "x", "is", "that", "artifacts", "mana", "value"])
+    { return Ok(None); }
+    let quote = tokens.iter().position(OwnedLexToken::is_quote).ok_or_else(|| CardTextError::ParseError("dynamic equipment grant requires a quoted equipped ability".into()))?;
+    let close = tokens.iter().enumerate().skip(quote + 1).find_map(|(index, token)| token.is_quote().then_some(index))
+        .ok_or_else(|| CardTextError::ParseError("unclosed equipped stat grant".into()))?;
+    if crate::lexer::token_word_refs(&tokens[quote + 1..close]).as_slice() != ["equipped", "creature", "gets", "x", "0"] {
+        return Ok(None);
+    }
+    let prices = tokens[is + 1..quote].iter().filter(|token| token.kind == crate::lexer::TokenKind::ManaGroup).collect::<Vec<_>>();
+    if prices.len() != 1 || prices[0].mana_group_inner().is_none_or(|symbol| !symbol.eq_ignore_ascii_case("x"))
+        || tokens[quote + 1..close].iter().filter(|token| token.kind == crate::lexer::TokenKind::Plus).count() != 2
+        || tokens[quote + 1..close].iter().any(|token| token.kind == crate::lexer::TokenKind::Dash)
+    { return Ok(None); }
+
+    // Both the price and the stat expression read the recipient's own live
+    // mana value; neither reads the enchantment that owns this outer rule.
+    let mut subject = &tokens[..is];
+    if subject.first().is_some_and(|token| token.is_any_word(&["each", "all"])) { subject = &subject[1..]; }
+    let filter = parse_object_filter_lexed(subject, false)?;
+    let source_value = Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source));
+    let target_filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    let target = crate::cards::builders::TargetAst::Object(target_filter.clone(), Some(crate::util::span_from_tokens(tokens).unwrap_or(crate::cards::builders::TextSpan::synthetic())), None);
+    let equip = crate::model::CompilerAbilityCore {
+        kind: crate::model::CompilerAbilityKindCore::Activated(crate::model::compiler_semantic::CompilerActivatedAbilityCore {
+            keyword: Some(ironsmith_core::ActivatedAbilityKeyword::Equip),
+            mana_cost: ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::DynamicMana(ironsmith_core::DynamicManaCost::generic_equal_to(source_value.clone()))),
+            effects: ironsmith_core::ResolutionProgram::from_effects(vec![EffectAst::subject_verb_attach(crate::cards::builders::TargetAst::Source(None), target)]),
+            choices: vec![], timing: crate::ability::ActivationTiming::SorcerySpeed,
+            additional_restrictions: vec![], activation_restrictions: vec![], mana_output: None,
+            activation_condition: None, mana_usage_restrictions: vec![], is_loyalty_ability: false,
+        }), functional_zones: vec![Zone::Battlefield],
+    };
+    let mut host = ObjectFilter::creature();
+    host.with_attached_object = Some(Box::new(ObjectFilter::source()));
+    let mut anthem = crate::model::CompilerAnthem::new(host, 0, 0);
+    anthem.power = ironsmith_core::AnthemValue::Dynamic(source_value);
+    let equipped = crate::model::CompilerAbilityCore::static_ability(StaticAbility::new(anthem));
+    Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::add_subtypes_and_grant_abilities(
+        filter, vec![Subtype::Equipment], vec![equip, equipped], crate::lexer::render_token_slice(tokens),
+    ))]))
+}
+
+/// A source-conditioned protection bundle whose attachment prohibition only
+/// prevents new attachments, leaving relationships established earlier intact.
+pub(crate) fn parse_untapped_attachment_control_protection(tokens: &[OwnedLexToken]) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !words.starts_with(&["as", "long", "as", "this", "creature", "is", "untapped"]) { return Ok(None); }
+    let Some(cant) = words.iter().position(|word| matches!(*word, "can't" | "cant")) else { return Ok(None); };
+    if words.get(cant + 1..) != Some(&["be", "enchanted", "they", "have", "indestructible", "and", "other", "players", "cant", "gain", "control", "of", "them", "this", "effect", "doesnt", "remove", "auras", "already", "attached", "to", "those", "artifacts"][..]) { return Ok(None); }
+    let Some(range) = view.token_span_for_words(7, cant) else { return Ok(None); };
+    let filter = parse_object_filter_lexed(&tokens[range], false)?;
+    let condition = PredicateAst::Source(SourcePredicateAst::SourceIsUntapped);
+    let rules = [
+        crate::effect::Restriction::be_attached_by_new(filter.clone(), ObjectFilter::default().with_subtype(crate::types::Subtype::Aura)),
+        crate::effect::Restriction::gain_control(filter.clone(), PlayerFilter::Excluding { base: Box::new(PlayerFilter::Any), excluded: Box::new(PlayerFilter::You) }),
+    ];
+    let mut result = rules.into_iter().map(|rule| StaticAbilityAst::ConditionalStaticAbility {
+        ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(rule, crate::lexer::render_token_slice(tokens)))), condition: condition.clone(),
+    }).collect::<Vec<_>>();
+    result.push(StaticAbilityAst::GrantStaticAbility { filter, ability: Box::new(StaticAbilityAst::Static(StaticAbility::indestructible())), condition: Some(condition) });
+    Ok(Some(result))
 }

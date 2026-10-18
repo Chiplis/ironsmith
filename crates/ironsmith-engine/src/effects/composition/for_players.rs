@@ -811,7 +811,7 @@ impl ForPlayersEffect {
         let filter_ctx = ctx.filter_context(game);
 
         // Iterate over all players that match the filter
-        let mut players: Vec<PlayerId> = game
+        let players: Vec<PlayerId> = game
             .players
             .iter()
             .filter(|p| p.is_in_game())

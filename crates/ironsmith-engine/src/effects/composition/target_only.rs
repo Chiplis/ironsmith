@@ -57,7 +57,12 @@ impl EffectExecutor for TargetOnlyEffect {
         if self.target.count().min == 0 {
             return Ok(EffectOutcome::count(0));
         }
-        if self.explicit_declaration {
+        if self.explicit_declaration && ctx.target_assignments.iter().any(|assignment|
+            assignment.spec.base() == self.target.base()) {
+            // CR 608.2b: another target may still be legal. This declaration
+            // has no surviving member, so skip it without aborting siblings.
+            Ok(EffectOutcome::target_invalid())
+        } else if self.explicit_declaration {
             Err(ExecutionError::InvalidTarget)
         } else {
             Ok(EffectOutcome::target_invalid())

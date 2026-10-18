@@ -1,6 +1,8 @@
 //! Fight effect implementation.
 
-use crate::effect::{Effect, EffectOutcome};
+use crate::effect::{ EffectOutcome};
+#[cfg(test)]
+use crate::effect::Effect;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::processing::SimultaneousDamageEvent;

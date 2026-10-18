@@ -1456,6 +1456,14 @@ fn apply_cleanup_discard_inner(
 /// Mana empties only after the cleanup step ends, through TurnRunner's
 /// resumable boundary owner; it must remain available during 514.3 priority.
 pub fn execute_cleanup_step(game: &mut GameState) {
+    try_execute_cleanup_step(game)
+        .expect("cleanup requires successful continuous discovery");
+}
+
+pub fn try_execute_cleanup_step(game: &mut GameState)
+    -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError>
+{
+    let checkpoint = game.clone();
     game.cleanup_damage_and_regeneration_end_of_turn();
 
     // Clear one-shot replacement effects (like regeneration shields)
@@ -1507,11 +1515,15 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     // Restrictions are materialized into CantEffectTracker. Rebuild it only
     // after both direct restriction instances and continuous effects have
     // expired so end-of-turn "can't" effects cannot remain cached.
-    game.refresh_continuous_state();
+    if let Err(error) = game.refresh_continuous_state() {
+        game.restore_execution_checkpoint(checkpoint, false);
+        return Err(error);
+    }
     game.update_cant_effects();
 
     // Normally no priority during cleanup, but if triggers/SBAs happen, there's a new cleanup
     game.turn.priority_player = None;
+    Ok(())
 }
 
 /// Returns a human-readable description of the current phase/step.
@@ -1732,7 +1744,7 @@ mod tests {
         let alice = PlayerId::from_index(0);
         let persistent = create_artifact(&mut game, "Persistent Damage", alice, vec![]);
         let ordinary = create_artifact(&mut game, "Ordinary Damage", alice, vec![]);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         game.mark_damage(persistent, 2);
         game.mark_damage(ordinary, 3);
         game.keep_damage_marked(persistent);
@@ -2027,10 +2039,10 @@ mod tests {
                 1,
             )],
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(game.current_power(visible), Some(3));
         game.phase_out(anthem);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(game.current_power(visible), Some(2));
         game.phase_out(absent);
 

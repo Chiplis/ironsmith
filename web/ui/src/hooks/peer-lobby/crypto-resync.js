@@ -1,3 +1,4 @@
+import { isOwnPassCancellation } from "../../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand, opaqueExileOriginReference } from "../../lib/sync-object-identity.js";
 import { createLocalRuntimeRecovery } from '../../lib/local-runtime-recovery.js';
 import { exactSnapshotMatches, validateExactSnapshotHeader } from '../../lib/exact-build-snapshot.js';
@@ -3710,6 +3711,9 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       const actorName = playerNameForIndex(multiplayerRef.current.players, normalizedActor);
       throw new Error(`Unauthorized add-card action from ${actorName}`);
     }
+    if (command?.type === "cancel_priority_yield" && !isOwnPassCancellation(command, normalizedActor)) {
+      throw new Error("A player can only cancel their own passing intention");
+    }
     const expectedActor = liveState?.decision?.player;
     const isTimeoutForfeit = isActionTimeoutForfeitCommand(command);
     const isDisconnectForfeit = isDisconnectTimeoutForfeitCommand(command);
@@ -3740,7 +3744,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
         actorIndex: normalizedActor,
         skipCertificate: true,
       });
-    } else if (!isSelfForfeit) {
+    } else if (!isSelfForfeit && !isOwnPassCancellation(command, normalizedActor)) {
       if (!isDecisionCommandCompatible(liveState?.decision, command)) {
         recordDiagnosticEvent("trusted_action:mismatch", {
           sequence: seq, actor: normalizedActor,

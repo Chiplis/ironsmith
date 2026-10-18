@@ -575,7 +575,13 @@ fn record_confirmed_waterbend_completion(
 fn execute_planned_waterbend_taps(
     game: &mut GameState,
     payment: &mut crate::mana_payment::PendingManaPayment,
-) -> Result<(), GameLoopError> {
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<bool, GameLoopError> {
+    for allocation in &payment.plan.allocations {
+        if let crate::mana_payment::PlannedPipPayment::Waterbend(id) = allocation.payment
+            && !game.prepare_turn_face_up_before_action(id, decision_maker)?
+        { return Ok(false); }
+    }
     if !crate::mana_payment::validate_waterbend_taps(
         game,
         &payment.request,
@@ -604,7 +610,7 @@ fn execute_planned_waterbend_taps(
         game.queue_trigger_event(event.provenance(), event);
     }
     payment.completed_outputs.retain_completed([outputs]);
-    Ok(())
+    Ok(true)
 }
 
 fn execute_planned_keyword_payments(
@@ -613,7 +619,17 @@ fn execute_planned_keyword_payments(
     pending: &mut PendingCast,
     payment: &crate::mana_payment::PendingManaPayment,
     _decision_maker: &mut impl DecisionMaker,
-) -> Result<(), GameLoopError> {
+) -> Result<bool, GameLoopError> {
+    // Reveal all required identities before the simultaneous tap batch starts.
+    for allocation in &payment.plan.allocations {
+        let id = match allocation.payment {
+            crate::mana_payment::PlannedPipPayment::Waterbend(id)
+            | crate::mana_payment::PlannedPipPayment::Convoke(id)
+            | crate::mana_payment::PlannedPipPayment::Improvise(id) => id,
+            _ => continue,
+        };
+        if !game.prepare_turn_face_up_before_action(id, _decision_maker)? { return Ok(false); }
+    }
     if !crate::mana_payment::validate_waterbend_taps(
         game,
         &payment.request,
@@ -724,7 +740,7 @@ fn execute_planned_keyword_payments(
     game.close_simultaneous_action(opened_batch);
     result?;
     try_drain_pending_trigger_events(game, trigger_queue)?;
-    Ok(())
+    Ok(true)
 }
 
 pub(super) fn prompt_pending_mana_ability_payment(
@@ -873,15 +889,10 @@ pub(super) fn commit_prepared_spell_mana_payment(
             state.rollback_action(game);
             return Err(error);
         }
-        if let Err(error) = execute_planned_keyword_payments(
-            game,
-            trigger_queue,
-            &mut pending,
-            &payment,
-            decision_maker,
-        ) {
-            state.rollback_action(game);
-            return Err(error);
+        match execute_planned_keyword_payments(game, trigger_queue, &mut pending, &payment, decision_maker) {
+            Ok(true) => {},
+            Ok(false) => return Ok(GameProgress::Continue),
+            Err(error) => { state.rollback_action(game); return Err(error); }
         }
         let Some(pool_before) = game
             .player(pending.caster)
@@ -1002,7 +1013,10 @@ pub(super) fn commit_prepared_activation_mana_payment(
                 "activation payer is missing".to_string(),
             ));
         };
-        execute_planned_waterbend_taps(game, &mut payment)?;
+        let physical_mana_before = game.player(pending.activator).cloned();
+        if !execute_planned_waterbend_taps(game, &mut payment, decision_maker)? {
+            return Ok(GameProgress::Continue);
+        }
         if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
             state.rollback_action(game);
@@ -1029,6 +1043,13 @@ pub(super) fn commit_prepared_activation_mana_payment(
             &pool_before,
             &pool_after,
         );
+        if let (Some(before), Some(after)) = (physical_mana_before.as_ref(), game.player(pending.activator)) {
+            let spent = crate::player::activation_mana_budget_spent(before, after);
+            for index in 0..6 {
+                pending.activation_mana_budget.units[index] += spent.units[index];
+                pending.activation_mana_budget.snow[index] += spent.snow[index];
+            }
+        }
         pending.mana_cost_to_pay = None;
         pending
             .completed_outputs
@@ -1272,7 +1293,7 @@ fn apply_mana_payment_plan_response_inner(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     use crate::mana_payment::ManaPaymentResponse;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
     if let ManaPaymentResponse::Activate {
         source,
@@ -1500,7 +1521,9 @@ fn apply_mana_payment_plan_response_inner(
                 return Err(error);
             }
         }
-        execute_planned_waterbend_taps(game, &mut payment)?;
+        if !execute_planned_waterbend_taps(game, &mut payment, decision_maker)? {
+            return Ok(GameProgress::Continue);
+        }
         if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
             state.rollback_action(game);
@@ -1711,7 +1734,9 @@ fn apply_mana_payment_plan_response_inner(
                 "Assist payer is missing".to_string(),
             ));
         };
-        execute_planned_waterbend_taps(game, &mut payment)?;
+        if !execute_planned_waterbend_taps(game, &mut payment, decision_maker)? {
+            return Ok(GameProgress::Continue);
+        }
         if !commit_confirmed_mana_spending(game, &mut payment, decision_maker, pending.provenance)
             .map_err(|error| {
             state.rollback_action(game);
@@ -1896,9 +1921,9 @@ pub(super) fn apply_modes_response(
         if let Some(spell) = hypothetical.object_mut(pending.spell_id) {
             spell.optional_costs_paid.pay_times(optional_cost_index, 1);
         }
-        hypothetical.refresh_continuous_state();
-        hypothetical
-    });
+        hypothetical.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Ok::<_, GameLoopError>(hypothetical)
+    }).transpose()?;
     let proposal_game = hypothetical_game.as_mut().map_or(&*game, |game| &*game);
 
     let has_legal_targets = proposal_game
@@ -2073,7 +2098,7 @@ pub(super) fn apply_optional_costs_response(
     // Optional-cost announcements mutate the stack object. Target legality
     // and requirement extraction below must observe one refreshed derived
     // state rather than rebuilding a dirty full-board baseline per candidate.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
     if pending.optional_costs_paid.was_entwined()
         && let Some(modal_spec) =
@@ -4140,7 +4165,7 @@ fn propose_spell_cast_with_origin(
     let exact_receipt = selected_plain_grant
         .as_ref()
         .filter(|grant| {
-            has_exact_permission || !grant.play_from_constraints.cast_mana_spend_mode.is_normal()
+            has_exact_permission || grant.play_from_constraints.requires_exact_selection()
         })
         .map(|grant| {
             crate::alternative_cast::play_permission::PlayPermissionReceipt::from_resolved_grant(
@@ -4907,7 +4932,7 @@ pub(super) fn finalize_spell_cast(
     // creature you controlled as you cast this spell".  Re-evaluating the
     // battlefield at resolution would be observably wrong after a creature
     // gains/loses a counter, an Aura, or Equipment, or changes zones.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let cast_filter = crate::target::ObjectFilter::creature()
         .modified()
         .controlled_by(crate::target::PlayerFilter::You);
@@ -4970,13 +4995,13 @@ pub(super) fn finalize_spell_cast(
     if let Some(x) = x_value {
         entry = entry.with_x(x);
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     if let Some(spell_obj) = game.object(new_id).cloned() {
         game.turn_store
             .cast_spell_lki
             .insert(new_id, std::sync::Arc::new((spell_obj, entry.clone())));
     }
-    game.push_to_stack(entry);
+    game.try_push_to_stack(entry).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     game.complete_cast_grant(new_id);
     game.consume_next_cast_timing(caster, new_id);
     game.finish_library_top_announcement(crate::game_state::LibraryTopAnnouncement::Cast(new_id));

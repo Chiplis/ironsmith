@@ -14,7 +14,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardDefinition, CardId, CounterType, GameState, ObjectId, Phase, PlayerId, Zone};
+use ironsmith::{CardDefinition, CardId,  GameState, ObjectId, Phase, PlayerId, Zone};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -341,15 +341,6 @@ fn sacrifice(
     dm.targets.clear();
     dm.chosen.clear();
     Ok(())
-}
-fn named_counter(g: &GameState, id: ObjectId, n: &str) -> u32 {
-    g.object(id)
-        .unwrap()
-        .counters
-        .iter()
-        .filter(|(k, _)| k.description().eq_ignore_ascii_case(n))
-        .map(|(_, v)| *v)
-        .sum()
 }
 fn pt(g: &GameState, id: ObjectId) -> Value {
     json!([g.current_power(id), g.current_toughness(id)])

@@ -241,6 +241,18 @@ pub fn parse_participant_clause_shape(
             inner_tokens: trim(rest),
         });
     }
+    // "Each of your opponents discards a card." (Everything Pizza): the same
+    // per-opponent iteration as "each opponent", with each opponent acting.
+    if let Some((_, rest)) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["each", "of", "your", "opponents"]),
+    ) {
+        return Some(ForEachParticipantClauseShape {
+            scope: ForEachParticipantScope::Opponent,
+            participant_is_actor: true,
+            inner_tokens: trim(rest),
+        });
+    }
     // "Whenever ~ attacks a player, for each other opponent, ..." (Shredder,
     // Shadow Master): the opponents other than the attacked (defending)
     // player.

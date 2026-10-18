@@ -2001,6 +2001,43 @@ impl PlayerFilter {
             Self::OpponentWithMoreControlledObjectsThan {
                 player,
                 filter,
+                fewer,
+                as_you_activate: true,
+                minimum_difference,
+            } if matches!(player.as_ref(), Self::You)
+                && filter.zone.is_some_and(|zone| zone != Zone::Battlefield) =>
+            {
+                // "who has at least two fewer creature cards in their
+                // graveyard than you do as you activate this ability"
+                // (Keeper of the Dead).
+                let mut counted = filter.as_ref().clone();
+                let zone = counted.zone.take();
+                let mut noun = counted.description();
+                if !noun.ends_with(" card") && noun != "card" {
+                    noun.push_str(" card");
+                }
+                let noun = pluralize_count_terminal_word(&noun);
+                let zone_text = match zone {
+                    Some(Zone::Graveyard) => " in their graveyard",
+                    Some(Zone::Hand) => " in their hand",
+                    Some(Zone::Library) => " in their library",
+                    Some(Zone::Exile) => " in exile",
+                    _ => "",
+                };
+                let margin = match *minimum_difference {
+                    0 | 1 => String::new(),
+                    2 => "at least two ".to_string(),
+                    3 => "at least three ".to_string(),
+                    count => format!("at least {count} "),
+                };
+                let comparison = if *fewer { "fewer" } else { "more" };
+                format!(
+                    "an opponent who has {margin}{comparison} {noun}{zone_text} than you do as you activate this ability"
+                )
+            }
+            Self::OpponentWithMoreControlledObjectsThan {
+                player,
+                filter,
                 fewer: true,
                 ..
             } => {
@@ -2423,6 +2460,10 @@ pub struct ObjectFilter {
     pub target_count: Option<ChoiceCount>,
     pub target_set_same_controller: bool,
     pub target_set_different_controllers: bool,
+    /// Each selected target is bound to the player who controlled it when
+    /// announced, rather than only to a different-controller set relation.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub target_controller_fixed_on_announcement: bool,
     /// "two target creatures ... that share a creature type": every selected
     /// target shares at least one creature type with the others.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2729,6 +2770,8 @@ pub struct ObjectFilter {
     /// This is intentionally distinct from mana value: `{1}` must not match
     /// `{W}`, even though both have mana value 1.
     pub exact_mana_cost: Option<ManaCost>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mana_cost_payable_with: Option<crate::mana::ManaPaymentBudget>,
     pub has_mana_cost: bool,
     /// Requires at least one printed mana-cost pip that can be paid with life
     /// (a Phyrexian mana symbol). Oracle represents this family as `{H}` in
@@ -3489,6 +3532,7 @@ impl ObjectFilter {
             || self.mana_value_parity.is_some()
             || self.mana_value_eq_counters_on_source.is_some()
             || self.exact_mana_cost.is_some()
+            || self.mana_cost_payable_with.is_some()
             || self.has_mana_cost
             || self.mana_symbol_count.is_some()
             || self.colored_mana_symbol_count.is_some()
@@ -4835,6 +4879,11 @@ impl ObjectFilter {
                     // Conformity) keeps the attachment's player noun.
                     controller_suffix = Some(if tag.as_str() == "enchanted" {
                         "enchanted player controls".to_string()
+                    } else if let Some(option) =
+                        tag.as_str().strip_prefix("__player_option_choice__:")
+                    {
+                        // "creatures controlled by players who chose war"
+                        format!("controlled by players who chose {option}")
                     } else {
                         "that player controls".to_string()
                     });
@@ -4893,6 +4942,24 @@ impl ObjectFilter {
                 }
                 PlayerFilter::Excluding { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
+                }
+                // A target restriction checked "as you activate this
+                // ability" names the announced player target; a later
+                // object target restricted to it reads "that player
+                // controls" (Keeper of the Dead).
+                PlayerFilter::Target(inner)
+                    if matches!(
+                        inner.as_ref(),
+                        PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                            as_you_activate: true,
+                            ..
+                        }
+                    ) =>
+                {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
                 }
                 PlayerFilter::Target(inner) => {
                     if !has_leading_determiner {
@@ -6450,6 +6517,7 @@ impl ObjectFilter {
                 ));
             }
         }
+        if self.mana_cost_payable_with.is_some() { parts.push("whose mana cost could be paid by some or all of the retained mana payment".into()); }
         if let Some(ref exact_mana_cost) = self.exact_mana_cost {
             parts.push(format!("with mana cost {}", exact_mana_cost.to_oracle()));
         }
@@ -6471,8 +6539,24 @@ impl ObjectFilter {
                 crate::ChoiceAggregateMetric::Toughness => "toughness",
                 crate::ChoiceAggregateMetric::ManaValue => "mana value",
                 crate::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                crate::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
             };
-            if constraint.metric == crate::ChoiceAggregateMetric::DistinctCardTypes
+            if let crate::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric
+                && let Some(minimum) = constraint.minimum.as_ref()
+            {
+                // "with fifteen or more black mana symbols among their mana
+                // costs" (Baron Helmut Zemo): counted across the whole set.
+                let minimum = match minimum.unhinted() {
+                    Value::Fixed(minimum) => format!("{minimum} or more"),
+                    _ => describe_comparison(&Comparison::GreaterThanOrEqualExpr(Box::new(
+                        minimum.clone(),
+                    ))),
+                };
+                parts.push(format!(
+                    "with {minimum} {} mana symbols among their mana costs",
+                    color.name()
+                ));
+            } else if constraint.metric == crate::ChoiceAggregateMetric::DistinctCardTypes
                 && let Some(minimum) = constraint.minimum.as_ref()
             {
                 // "with four or more card types among them" (Winter, Cynical
@@ -6511,10 +6595,13 @@ impl ObjectFilter {
             });
         }
         if let Some(ref color_count) = self.color_count {
-            parts.push(format!(
-                "with color count {}",
-                describe_comparison(color_count)
-            ));
+            parts.push(match color_count {
+                Comparison::Equal(count @ 2..=5) => format!(
+                    "with exactly {} colors",
+                    ["two", "three", "four", "five"][(*count - 2) as usize]
+                ),
+                _ => format!("with color count {}", describe_comparison(color_count)),
+            });
         }
         if let Some(mana_value_parity) = self.mana_value_parity {
             parts.push(mana_value_parity.describe_axis("mana value"));
@@ -7357,6 +7444,7 @@ fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String
         || filter.toughness.is_some()
         || filter.mana_value.is_some()
         || filter.exact_mana_cost.is_some()
+        || filter.mana_cost_payable_with.is_some()
         || filter.with_counter.is_some()
         || filter.without_counter.is_some()
         || filter.colors.is_some()
@@ -8108,6 +8196,15 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         {
             "those players".to_string()
         }
+        // "players who chose war" (Archangel of Strife).
+        PlayerFilter::TaggedPlayer(tag)
+            if tag.as_str().starts_with("__player_option_choice__:") =>
+        {
+            format!(
+                "players who chose {}",
+                tag.as_str().trim_start_matches("__player_option_choice__:")
+            )
+        }
         PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
@@ -8833,6 +8930,8 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 },
                 if *gained { "gained" } else { "lost" },
             ),
+            Value::EventValue(EventValueSpec::ManaSpentOnKeyword { .. }) =>
+                "the amount of matching mana spent on that keyword cost".to_string(),
             Value::EventValue(EventValueSpec::DieBatchTotal) => {
                 "the total result of those dice".to_string()
             }

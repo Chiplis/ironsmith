@@ -141,17 +141,6 @@ fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> u
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
     count
 }
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
     let mut dm = SelectFirstDecisionMaker;
     let controller = game.current_controller(source).unwrap_or(A);

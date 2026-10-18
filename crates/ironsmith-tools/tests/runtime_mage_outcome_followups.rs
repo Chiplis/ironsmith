@@ -13,10 +13,10 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Target;
 use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::object::CounterType;
+
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType,  GameState, ObjectId, PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -249,18 +249,6 @@ fn established(
     }
     resolve(g, &mut q, &mut dm)?;
     find(g, def.name(), Zone::Battlefield)
-}
-fn witness(name: &str, kind: CardType, cost: u8, with_x: bool) -> CardDefinition {
-    let mut pips = vec![ManaSymbol::Generic(cost)];
-    if with_x {
-        pips.push(ManaSymbol::X);
-    }
-    CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![kind])
-        .mana_cost(ManaCost::from_symbols(pips))
-        .power_toughness(PowerToughness::fixed(3, 3))
-        .with_spell_effect(vec![Effect::gain_life(1)])
-        .build()
 }
 
 fn creature(name: &str, subtype: ironsmith::Subtype) -> CardDefinition {

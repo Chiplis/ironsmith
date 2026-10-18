@@ -324,7 +324,7 @@ fn commit_mana_result(
                 })?;
             crate::mana_payment::resources::ManaCredit {
                 event: resolved.clone(),
-                context: crate::mana_payment::resources::ManaCreditContext::from_execution(ctx),
+                context: crate::mana_payment::resources::ManaCreditContext::from_execution(game, ctx),
             }
             .commit(game)?;
             let outcome = if resolved.mana.is_empty() {

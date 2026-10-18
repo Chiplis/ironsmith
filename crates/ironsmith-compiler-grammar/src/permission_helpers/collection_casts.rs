@@ -131,6 +131,12 @@ fn is_this_source_reference(tokens: &[OwnedLexToken]) -> bool {
     if crate::util::is_source_reference_words(&words) {
         return true;
     }
+    // "cards exiled with it" (Kylox's Voltstrider): inside the source's own
+    // ability the pronoun names the source (CR 607.2a linked pool), the same
+    // reading the source-exiled permission tail already gives it.
+    if words.as_slice() == ["it"] {
+        return true;
+    }
     tokens.iter().all(|token| {
         matches!(token.kind, TokenKind::Word)
             && token.slice.chars().next().is_some_and(char::is_uppercase)

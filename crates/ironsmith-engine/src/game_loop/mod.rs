@@ -116,6 +116,7 @@ use self::types::*;
 
 pub use self::attractions::*;
 pub use self::combat_damage::*;
+pub(crate) use self::combat_damage::prepare_combat_damage_assigners;
 pub use self::combat_decisions::*;
 pub use self::priority_apply::apply_priority_response_with_dm;
 pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_perf};

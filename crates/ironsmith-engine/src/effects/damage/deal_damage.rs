@@ -23,7 +23,7 @@ use crate::events::processing::SimultaneousDamageEvent;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
-use crate::triggers::TriggerEvent;
+
 use crate::types::CardType;
 pub use ironsmith_core::DealDamageEffect;
 

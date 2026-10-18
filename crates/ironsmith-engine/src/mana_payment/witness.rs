@@ -21,7 +21,7 @@ pub struct ManaProductionChoice {
 }
 impl std::hash::Hash for ManaProductionChoice {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use std::hash::Hash;
+
         // Preserve the previous production-choice digest and therefore existing
         // prepared payment IDs. Only the new decision domain adds a prefix.
         if self.purpose == ManaChoicePurpose::StoredColor { "stored-color-choice-v1".hash(state); }

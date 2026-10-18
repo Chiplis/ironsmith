@@ -41,7 +41,7 @@ fn trailing_if_combat_restriction_tracks_battlefield_presence() {
             if game.object(object).unwrap().zone != zone {
                 object = game.move_object_by_effect(object, zone).unwrap();
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let allowed = zone != Zone::Battlefield;
             assert_eq!(game.can_attack(source), allowed, "{zone:?}");
             assert_eq!(game.can_block_attacker(source, enemy), allowed);
@@ -73,7 +73,7 @@ fn trailing_if_counter_condition_remains_bound_to_source() {
     for count in [0, 4, 5, 6, 2] {
         game.remove_counters(source, CounterType::PlusOnePlusOne, 100, None, None);
         game.add_counters(source, CounterType::PlusOnePlusOne, count);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.can_attack(source), count < 5, "count={count}");
         assert_eq!(game.can_block_attacker(source, enemy), count < 5);
     }

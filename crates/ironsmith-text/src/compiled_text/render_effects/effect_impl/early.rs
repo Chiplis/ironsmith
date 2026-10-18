@@ -1664,6 +1664,11 @@ if filter.zone == Some(Zone::Hand)
     if let Some(choose_name) = effect.downcast_ref::<crate::effects::ChooseCardNameEffect>() {
         let chooser = describe_player_filter(&choose_name.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        if !choose_name.options.is_empty() {
+            let history = if choose_name.exclude_source_history { " that hasn't been chosen" } else { "" };
+            let names = choose_name.options.join(", ");
+            return format!("{chooser} {choose_verb} a card name{history} from among {names}");
+        }
         if choose_name
             .filter
             .as_ref()
@@ -1696,8 +1701,20 @@ if filter.zone == Some(Zone::Hand)
         );
     }
     if let Some(put_sticker) = effect.downcast_ref::<crate::effects::PutStickerEffect>() {
+        // "put an ability sticker with ticket cost X or less on it without
+        // paying that sticker's ticket cost" (Pin Collection).
+        let ticket_limit = put_sticker
+            .max_ticket_cost
+            .as_ref()
+            .map(|cost| format!(" with ticket cost {} or less", describe_value(cost)))
+            .unwrap_or_default();
+        let free = if put_sticker.without_paying_ticket_cost {
+            " without paying that sticker's ticket cost"
+        } else {
+            ""
+        };
         return format!(
-            "Put {} on {}",
+            "Put {}{ticket_limit} on {}{free}",
             match put_sticker.action {
                 crate::events::KeywordActionKind::Sticker => "a sticker",
                 crate::events::KeywordActionKind::NameSticker => "a name sticker",
@@ -6681,9 +6698,25 @@ if filter.zone == Some(Zone::Hand)
     if let Some(grant_target) = effect.downcast_ref::<crate::effects::GrantAbilitiesTargetEffect>()
     {
         if let Some(source) = &grant_target.activated_from {
-            return format!("{} gains all activated abilities of {} {}",
+            let mut text = format!("{} gains all activated abilities of {} {}",
                 capitalize_first(&describe_choose_spec(&grant_target.target)),
                 describe_choose_spec(source), describe_until(&grant_target.duration));
+            // "You may spend blue mana as though it were mana of any color to
+            // activate those abilities." (Grell Philosopher)
+            if let Some(symbol) = grant_target.activated_from_symbol_as_any_color {
+                let color = match symbol {
+                    crate::mana::ManaSymbol::White => "white",
+                    crate::mana::ManaSymbol::Blue => "blue",
+                    crate::mana::ManaSymbol::Black => "black",
+                    crate::mana::ManaSymbol::Red => "red",
+                    crate::mana::ManaSymbol::Green => "green",
+                    _ => "colorless",
+                };
+                text.push_str(&format!(
+                    ". You may spend {color} mana as though it were mana of any color to activate those abilities"
+                ));
+            }
+            return text;
         }
         if grant_target.abilities.len() == 1
             && matches!(grant_target.abilities[0].id(), crate::static_abilities::StaticAbilityId::CanBlockAnyNumber | crate::static_abilities::StaticAbilityId::CanBlockAdditionalCreatureEachCombat)
@@ -8165,7 +8198,11 @@ if filter.zone == Some(Zone::Hand)
             || crate::cards::is_sentence_helper_tag(tag, "consult_match");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.copy_named_definition {
-            "a copy of the card with the noted name".to_string()
+            if tag == "__chosen_name__" {
+                "a copy of the card with the chosen name".to_string()
+            } else {
+                "a copy of the card with the noted name".to_string()
+            }
         } else if cast_tagged.as_copy {
             let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
                 !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())

@@ -6,7 +6,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_value;
 use crate::effects::{CompletedEffectOutputs, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{TraitEventResult, process_trait_event_with_execution_context};
+
 use crate::events::{Event, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::object::CounterType;

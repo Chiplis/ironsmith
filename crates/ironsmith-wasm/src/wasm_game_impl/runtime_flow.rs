@@ -4118,7 +4118,7 @@ mod live_action_rollback_tests {
 
         wasm.game.tap(lush_portico);
         wasm.game.tap(plains);
-        wasm.game.empty_mana_pools();
+        wasm.game.empty_mana_pools().expect("test mana pools should empty");
         wasm.recompute_ui_decision()
             .expect("priority decision should rebuild");
 

@@ -35,14 +35,14 @@ fn source_block_permission_tracks_other_creatures_and_their_controller() {
                 .subtypes(vec![subtype])
                 .build();
             let enemy = game.create_object_from_card(&card, bob, Zone::Battlefield);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(
                 !game.can_block_attacker(source, enemy),
                 "source alone: {clause}"
             );
             assert!(game.can_attack(source));
             let friend = game.create_object_from_card(&card, alice, Zone::Battlefield);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(
                 game.can_block_attacker(source, enemy),
                 allowed_types.contains(&subtype),
@@ -50,7 +50,7 @@ fn source_block_permission_tracks_other_creatures_and_their_controller() {
             );
             assert!(game.can_block_attacker(friend, enemy));
             game.move_object_by_effect(friend, Zone::Graveyard);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(
                 !game.can_block_attacker(source, enemy),
                 "support removed: {clause}"

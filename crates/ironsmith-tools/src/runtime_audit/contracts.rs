@@ -1072,6 +1072,7 @@ impl Auditor {
             | "PlayerSearchesLibrary"
             | "PlayerShufflesLibrary"
             | "PlayerTapsForMana"
+            | "PlayerAddsManaFromSource"
             | "PlayerGivesGift"
             | "PlayerCoinFlipResult"
             | "SpellCountered"

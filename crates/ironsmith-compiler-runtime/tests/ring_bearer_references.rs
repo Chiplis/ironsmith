@@ -384,11 +384,6 @@ fn lord_protection_reads_live_designation_and_departed_source_lki() {
         game.set_ring_bearer(B, source);
         game.refresh_continuous_state().unwrap();
         assert!(ironsmith::has_protection_from_source(&game, lord, source));
-        let snapshot =
-            ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
-                game.object(source).unwrap(),
-                &game,
-            );
         let mut dm = SelectFirstDecisionMaker;
         apply(
             &mut game,

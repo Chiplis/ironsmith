@@ -15,8 +15,8 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::target::ChooseSpec;
+use ironsmith::triggers::TriggerQueue;
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
@@ -161,26 +161,6 @@ impl DecisionMaker for Choices {
             SelectFirstDecisionMaker.decide_objects(game, context)
         }
     }
-}
-fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) -> usize {
-    let mut queue = TriggerQueue::new();
-    for entry in check_triggers(game, &event) {
-        queue.add(entry);
-    }
-    let count = queue.entries.len();
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-    count
-}
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
     let mut dm = SelectFirstDecisionMaker;

@@ -5,7 +5,10 @@ use super::*;
 #[derive(Debug, Clone)]
 struct ExtraDiceReplacement {
     source: ObjectId,
-    ability: StaticAbilityInstanceId,
+    ability: Option<StaticAbilityInstanceId>,
+    temporary_id: Option<u64>,
+    chooser: Option<PlayerId>,
+    ignore_lowest: bool,
     occurrence: usize,
     additional: u32,
     display: String,
@@ -61,12 +64,19 @@ pub(super) fn roll_replacement_batch(
             }
             remaining.push(ExtraDiceReplacement {
                 source,
-                ability: ability.instance_id(),
+                ability: Some(ability.instance_id()),
+                temporary_id: None, chooser: None, ignore_lowest: true,
                 occurrence,
                 additional: *additional,
                 display: ability.display(),
             });
         }
+    }
+    for rule in game.pending_extra_die_replacements(player) {
+        remaining.push(ExtraDiceReplacement { source: rule.source, ability: None,
+            temporary_id: Some(rule.id), chooser: Some(rule.chooser), ignore_lowest: false,
+            occurrence: rule.id as usize, additional: rule.additional,
+            display: "roll an additional die and choose one result to ignore".into() });
     }
     // Each source/ability occurrence replaces this original event once (CR614.5).
     // Distinct entries remain distinct even when cloned from one shared model.
@@ -133,6 +143,16 @@ pub(super) fn roll_replacement_batch(
     // rerolls or numerical modifiers: no effects apply to them (CR706.6).
     for replacement in applied.iter().rev() {
         for _ in 0..replacement.additional {
+            if !replacement.ignore_lowest {
+                let options = rolls.iter().enumerate().map(|(index, roll)|
+                    (format!("Ignore die {} (rolled {})", index + 1, roll.result), index)).collect::<Vec<_>>();
+                let selected = ask_choose_one(game, &mut ctx.decision_maker,
+                    replacement.chooser.unwrap_or(player), replacement.source, &options);
+                if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+                let index = selected.ok_or_else(|| ExecutionError::UnresolvableValue("an ignored die must be selected".into()))?;
+                rolls.remove(index);
+                continue;
+            }
             let minimum = rolls
                 .iter()
                 .map(|roll| roll.natural_result)
@@ -172,6 +192,8 @@ pub(super) fn roll_replacement_batch(
             rolls.remove(ignored);
         }
     }
+    let consumed = applied.iter().filter_map(|rule| rule.temporary_id).collect::<Vec<_>>();
+    game.consume_extra_die_replacements(&consumed);
     debug_assert_eq!(rolls.len(), count as usize);
     Ok(Some(rolls))
 }

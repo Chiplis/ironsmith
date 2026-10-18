@@ -1870,6 +1870,19 @@ pub fn parse_create(
                         if matches!(ability.as_ref(), StaticAbilityAst::Static(ability)
                             if ability.id == Some(crate::static_abilities::StaticAbilityId::Haste))));
             }
+            // "... and it has "At end of combat, exile this token."" (Delina,
+            // Wild Mage): when no granted-trigger reading claims the quoted
+            // rule, it is the copy's end-of-combat exile (otherwise the rule
+            // was silently dropped and the token stayed forever).
+            let quoted_exile_at_end_of_combat = parse_inline_copy_granted_abilities(&tail_tokens)
+                .is_empty()
+                && double_quoted_rule_bodies(&tail_tokens).into_iter().any(|body| {
+                    matches!(
+                        token_word_refs(body).as_slice(),
+                        ["at", "end", "of", "combat", "exile", "this", "token" | "creature"]
+                            | ["at", "the", "end", "of", "combat", "exile", "this", "token" | "creature"]
+                    )
+                });
             let token_modifier_words = tail_surface
                 .location(CreateWord::Token)
                 .map(|idx| &tail_words[..idx])
@@ -1955,7 +1968,7 @@ pub fn parse_create(
                             half_power_toughness_round_up: half_pt,
                             has_haste,
                             haste_followup_reference_surface: None,
-                            exile_at_end_of_combat: false,
+                            exile_at_end_of_combat: quoted_exile_at_end_of_combat,
                             exile_at_end_of_combat_reference_surface: None,
                             loses_soulbond,
                             sacrifice_at_next_end_step,
@@ -2005,7 +2018,7 @@ pub fn parse_create(
                     half_power_toughness_round_up: half_pt,
                     has_haste,
                     haste_followup_reference_surface: None,
-                    exile_at_end_of_combat: false,
+                    exile_at_end_of_combat: quoted_exile_at_end_of_combat,
                     exile_at_end_of_combat_reference_surface: None,
                     loses_soulbond,
                     sacrifice_at_next_end_step,

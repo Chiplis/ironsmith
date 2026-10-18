@@ -5525,6 +5525,7 @@ fn describe_ability_kind_cause_protection(
 ) -> String {
     let abilities = match cause.ability_kind {
         Some(ironsmith_core::CauseAbilityKindFilter::Activated) => "Activated abilities",
+        Some(ironsmith_core::CauseAbilityKindFilter::ActivatedKeywordCost(_)) => "Activated keyword ability costs",
         Some(ironsmith_core::CauseAbilityKindFilter::ModularTrigger) => {
             "Modular triggered abilities"
         }
@@ -5665,6 +5666,7 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 ironsmith_core::ActivatedAbilityKeyword::Ninjutsu => "ninjutsu",
                 ironsmith_core::ActivatedAbilityKeyword::Boast => "boast",
                 ironsmith_core::ActivatedAbilityKeyword::Exhaust => "exhaust",
+                ironsmith_core::ActivatedAbilityKeyword::Craft => "craft",
             };
             if *filter == crate::target::ObjectFilter::default() {
                 format!("{keyword} abilities can't be activated")
@@ -6169,6 +6171,13 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::BecomeUntapped(filter) => {
             format!("{} can't become untapped", filter.description())
+        }
+        crate::effect::Restriction::GainControl(filter, player) => {
+            format!("{} can’t gain control of {}", player.description(), filter.description())
+        }
+        crate::effect::Restriction::BeAttachedByNew(hosts, attachments) => {
+            format!("{}. This effect doesn’t remove attachments already attached to those permanents",
+                describe_restriction(&crate::effect::Restriction::BeAttachedBy(hosts.clone(), attachments.clone())))
         }
         crate::effect::Restriction::BeAttachedBy(hosts, attachments) => {
             if attachments.subtypes.contains(&crate::types::Subtype::Equipment) {

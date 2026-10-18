@@ -14,7 +14,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardDefinition, CardId, CounterType, GameState, ObjectId, Phase, PlayerId, Zone};
+use ironsmith::{CardDefinition, CardId,  GameState, ObjectId, Phase, PlayerId, Zone};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

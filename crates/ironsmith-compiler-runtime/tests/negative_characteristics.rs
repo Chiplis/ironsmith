@@ -1,22 +1,15 @@
 //! UNVALIDATED full-card Snow/type-negation scenarios. No execution under deferred workflow.
-use ironsmith::ability::ActivatedAbilityRuntimeExt;
+
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::cards::CardDefinition;
-use ironsmith::decision::{
-    DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
-};
-use ironsmith::decisions::context::{
-    BooleanContext, NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
-};
-use ironsmith::effect::{Effect, EffectOutcome, Until};
-use ironsmith::effects::{EffectContext, execute_effect};
-use ironsmith::game_loop::{
-    PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
-    apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
-};
+use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decisions::context::{BooleanContext, NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext};
+use ironsmith::ability::ActivatedAbilityRuntimeExt;
+
+use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm, apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
+
 use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
@@ -95,7 +88,7 @@ struct Choices {
 }
 impl DecisionMaker for Choices {
     fn decide_options(&mut self, game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
-        if (ctx.description.starts_with("Choose ") && ctx.description.contains("mode")) {
+        if ctx.description.starts_with("Choose ") && ctx.description.contains("mode") {
             return vec![ctx.options[self.mode].index];
         }
         if ctx.description.starts_with("Choose optional costs") {
@@ -153,16 +146,6 @@ impl DecisionMaker for Choices {
         }
     }
 }
-fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
-    let mut dm = SelectFirstDecisionMaker;
-    let controller = game.current_controller(source).unwrap_or(A);
-    execute_effect(
-        game,
-        &effect,
-        &mut EffectContext::new(source, controller, &mut dm),
-    )
-    .unwrap()
-}
 fn resolve(game: &mut GameState, dm: &mut Choices) {
     resolve_stack_entry_with(game, dm).unwrap();
 }
@@ -184,40 +167,11 @@ fn resource(name: &str, types: &str) -> CardDefinition {
     compile_to_runtime_definition(name, format!("Mana cost: {{1}}\nType: {types}{pt}"), false)
         .unwrap()
 }
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
 fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
     (
         game.current_power(id).unwrap(),
         game.current_toughness(id).unwrap(),
     )
-}
-fn pump(game: &mut GameState, source: ObjectId, id: ObjectId, p: i32, t: i32) {
-    apply(
-        game,
-        source,
-        Effect::pump(p, t, ChooseSpec::SpecificObject(id), Until::EndOfTurn),
-    );
-}
-fn counter(game: &mut GameState, source: ObjectId, id: ObjectId, count: i32) {
-    apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::PlusOnePlusOne,
-            count,
-            ChooseSpec::SpecificObject(id),
-        ),
-    );
 }
 fn cast(
     game: &mut GameState,
@@ -317,25 +271,6 @@ fn activated_at(definition: &CardDefinition, position: usize) -> usize {
         .nth(position)
         .unwrap()
 }
-fn current_activated_at(game: &GameState, source: ObjectId, position: usize) -> usize {
-    game.calculated_characteristics(source)
-        .unwrap()
-        .abilities
-        .iter()
-        .enumerate()
-        .filter_map(|(i, a)| {
-            matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)
-        })
-        .nth(position)
-        .unwrap()
-}
-fn has(
-    game: &GameState,
-    id: ObjectId,
-    ability: ironsmith::static_abilities::StaticAbilityId,
-) -> bool {
-    game.current_has_static_ability_id(id, ability)
-}
 fn event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
     for trigger in check_triggers(game, &event) {
@@ -345,19 +280,6 @@ fn event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) {
         queue.add(trigger);
     }
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
-fn lore(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
-    let outcome = apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::Lore,
-            1,
-            ChooseSpec::SpecificObject(source),
-        ),
-    );
-    queue_outcome(game, outcome, dm);
-    resolve_all(game, &mut Choices::default());
 }
 fn snow(game: &GameState, id: ObjectId) -> bool {
     game.current_has_supertype(id, ironsmith::Supertype::Snow)

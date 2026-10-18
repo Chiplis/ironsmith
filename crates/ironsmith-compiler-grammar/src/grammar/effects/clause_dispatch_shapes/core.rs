@@ -62,6 +62,13 @@ fn controller_subject_word<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         &["sources"],
         &["spell"],
         &["spells"],
+        // The authored possessive keeps its apostrophe in parser text
+        // ("that creature's controller may ...", Pandemonium).
+        &["creature's"],
+        &["permanent's"],
+        &["planeswalker's"],
+        &["source's"],
+        &["spell's"],
     ])
     .void()
     .parse_next(input)

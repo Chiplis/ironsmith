@@ -254,6 +254,12 @@ pub(crate) fn rewrite_static_model_words(
             *filter = rewrite_filter_words(filter, change)?;
             abilities_words(abilities, change)?;
         }
+        P::DamageBetweenChosenPlayers { .. } => {},
+        P::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+            subtype_words(subtypes, change);
+            abilities_words(abilities, change)?;
+        }
         P::SourceHasFullTextOfTopGraveyardCard { filter, abilities, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
             abilities_words(abilities, change)?;
@@ -323,7 +329,9 @@ pub(crate) fn rewrite_static_model_words(
         | P::DoubleLifeChangeReplacement { player, .. } | P::EntersUnderChosenControl(player)
         | P::AddLifeGainReplacement { player, .. } | P::NoMaximumHandSizeFor(player)
         | P::MaximumHandSizeFromSourceCounters { player, .. }
+        | P::RevealCardsDrawn { player }
         | P::ExtraDieIgnoreLowest { player, .. }
+        | P::ExtraPlanarDieIgnoreOne { player }
         | P::ExtraCoinIgnoreOne { player } | P::FirstCoinBatchHeadsWin { player }
         | P::SearchLimitedToTopCards { searcher: player, .. } => {
             *player = rewrite_player_filter_words(player, change)?;
@@ -820,13 +828,17 @@ fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: Text
         | R::MustBlock(filter) => *filter = rewrite_filter_words(filter, change)?,
         R::BlockSpecificAttacker { blockers, attacker } | R::MustBlockSpecificAttacker { blockers, attacker }
         | R::MustBeBlockedBy { blockers, attacker }
-        | R::BeCounteredFrom(blockers, attacker) | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker)
+        | R::BeCounteredFrom(blockers, attacker) | R::BeTargetedFrom(blockers, attacker) | R::BeAttachedBy(blockers, attacker) | R::BeAttachedByNew(blockers, attacker)
         | R::BeTargetedByRequirementsLimitedTo(blockers, attacker)
         | R::AttackPermanents { attackers: blockers, permanents: attacker }
         | R::MustAttackPermanents { attackers: blockers, permanents: attacker }
         | R::PreventDamageFromTo { sources: blockers, recipients: attacker, .. } => {
             *blockers = rewrite_filter_words(blockers, change)?;
             *attacker = rewrite_filter_words(attacker, change)?;
+        }
+        R::GainControl(filter, player) => {
+            *filter = rewrite_filter_words(filter, change)?;
+            *player = rewrite_player_filter_words(player, change)?;
         }
         R::BeSacrificedByCause { filter, cause } | R::BeExiledByCause { filter, cause } => {
             *filter = rewrite_filter_words(filter, change)?;

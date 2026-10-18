@@ -766,7 +766,7 @@ mod independent_occurrence_gameplay_tests {
                 };
                 let before = keys(&game);
                 assert_eq!(before.len(), 2);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert_eq!(keys(&game), before);
                 let mut ctx = crate::effects::EffectContext::new_default(source, alice);
                 let outcome = crate::effects::GainLifeEffect::you(1)
@@ -905,7 +905,7 @@ mod continuous_parent_occurrence_gameplay_tests {
             let before = keys(&game);
             assert_eq!(before.len(), 2, "depth={depth}");
             for _ in 0..3 {
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert_eq!(keys(&game), before);
             }
             assert_eq!(keys(&game.clone()), before);
@@ -1012,7 +1012,7 @@ mod registered_continuous_occurrence_gameplay_tests {
         };
         let before = keys(&game);
         assert_eq!(before.len(), 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(keys(&game), before);
         assert_eq!(keys(&game.clone()), before);
         let mut ctx = crate::effects::EffectContext::new_default(source, alice);
@@ -1167,7 +1167,7 @@ mod surviving_level_parent_gameplay_tests {
             assert_eq!(before.len(), usize::from(active), "mode={mode}");
             for refreshed in [false, true] {
                 if refreshed {
-                    game.refresh_continuous_state();
+                    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 }
                 let chars = game.current_characteristics(source).unwrap();
                 assert_eq!(
@@ -1219,7 +1219,7 @@ mod surviving_level_parent_gameplay_tests {
             let before = keys(&game);
             assert_eq!(before.len(), 2, "temporary={temporary}");
             for _ in 0..3 {
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert_eq!(keys(&game), before);
             }
             assert_eq!(keys(&game.clone()), before);
@@ -1351,7 +1351,7 @@ mod independent_static_copy_gameplay_tests {
             let before = keys(&game);
             assert_eq!(before.len(), 2, "route={route}");
             for _ in 0..3 {
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert_eq!(keys(&game), before);
             }
             assert_eq!(keys(&game.clone()), before);
@@ -1378,7 +1378,7 @@ mod independent_static_copy_gameplay_tests {
             assert_eq!(game.player(bob).unwrap().life, 24);
             game.object_mut(donor).unwrap().abilities_mut().clear();
             assert!(keys(&game).is_empty(), "variant no longer available");
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             assert!(keys(&game).is_empty());
             for _ in 0..2 {
                 game.object_mut(donor)
@@ -1398,7 +1398,7 @@ mod independent_static_copy_gameplay_tests {
                 let survivor = keys(&game);
                 assert_eq!(survivor.len(), 1);
                 assert!(survivor.is_subset(&before));
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert_eq!(keys(&game), survivor);
                 let mut ctx = crate::effects::EffectContext::new_default(recipient, bob);
                 let outcome = crate::effects::GainLifeEffect::you(1)
@@ -1420,7 +1420,7 @@ mod independent_static_copy_gameplay_tests {
                     ),
                 );
                 assert!(keys(&game).is_empty());
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 assert!(keys(&game).is_empty());
                 game.effect_store.continuous_effects.remove_effect(loss);
                 assert_eq!(keys(&game), before);

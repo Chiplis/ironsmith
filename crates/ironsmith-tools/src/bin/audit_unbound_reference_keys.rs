@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             other => panic!("unknown argument {other}"),
         }
     }
-    let mut db = CardStatusDb::open(&db_path)?;
+    let db = CardStatusDb::open(&db_path)?;
     let payloads = db.registry_card_payloads()?;
     if payloads.is_empty() {
         return Err(format!("no registry_card rows found in {db_path}").into());

@@ -1,6 +1,7 @@
 //! Card draw/discard replacement effect matchers.
 
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
+#[cfg(test)]
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt};

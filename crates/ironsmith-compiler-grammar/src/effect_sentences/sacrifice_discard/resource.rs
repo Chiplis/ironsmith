@@ -25,6 +25,33 @@ pub fn parse_sacrifice(
             .unwrap_or(clause_shape.body_tokens),
     );
     let normalized_words = crate::lexer::token_word_refs(tokens);
+    // Capture the explicitly named object before its controller sacrifices it.
+    // In a granted ability the named source is the granting attachment, while
+    // "you" still denotes the controller of the permanent with the ability.
+    // A captured object also keeps its controller available to a later draw
+    // after the sacrifice moves it off the battlefield.
+    if normalized_words.as_slice() == ["it"]
+        && matches!(subject, Some(SubjectAst::Player(PlayerAst::ItsController)))
+        && let Some(TargetAst::Object(filter, ..)) = target.as_ref()
+        && filter.source
+        && filter.source_surface.is_some()
+    {
+        let tag = crate::util::helper_tag_for_tokens(tokens, "sacrifice_subject");
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::TagAffected {
+                    tag: tag.clone().into(),
+                    effect: Box::new(EffectAst::subject_verb_target_only(target.clone().unwrap())),
+                },
+                EffectAst::subject_verb_sacrifice(
+                    PlayerAst::ItsController,
+                    ObjectFilter::default(),
+                    1,
+                    Some(TargetAst::Tagged(tag.into(), None)),
+                ),
+            ],
+        });
+    }
     let unless_escaped = matches!(
         clause_shape.unless_kind,
         sacrifice_discard_grammar::SacrificeUnlessKind::Escaped

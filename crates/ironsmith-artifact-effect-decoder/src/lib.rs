@@ -397,6 +397,9 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "GrantEndThisEffectPaymentEffect" => Some(EffectFamily::Player),
         "SaddleCostEffect" => Some(EffectFamily::Permanent),
         "AddManaOfNotedTypeEffect" => Some(EffectFamily::Resources),
+        "CastFaceDownUsingActivationManaEffect" => Some(EffectFamily::Resources),
+        "RegisterExtraDieReplacementEffect" => Some(EffectFamily::Resources),
+        "NoteActivationManaPaymentEffect" => Some(EffectFamily::Resources),
         "NoteActivationManaTypeEffect" => Some(EffectFamily::Resources),
         "NoteTriggeringCreatureTypeEffect" => Some(EffectFamily::Resources),
         "NoteCountersEffect" => Some(EffectFamily::Resources),
@@ -557,7 +560,7 @@ fn remap_effect_payload(
 }
 
 mod card_graph {
-    use serde::ser::{self, Serialize, SerializeMap as _, Serializer as _};
+    use serde::ser::{self, Serialize};
     use serde_json::{Value, value};
     use std::cell::RefCell;
 

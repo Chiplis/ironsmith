@@ -109,6 +109,70 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     Ok(Some(effect))
 }
 
+/// "For as long as you control Kotose, you may play one of the exiled cards,
+/// and you may spend mana as though it were mana of any color to cast it."
+/// The leading duration bounds a lasting play permission (the same grant as
+/// the trailing "for as long as you control this creature" lifetime), not a
+/// one-shot play now. Reads only an unpriced, unconditional tagged permission.
+pub(crate) fn parse_control_source_leading_permission(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    const HEAD: [&str; 6] = ["for", "as", "long", "as", "you", "control"];
+    if tokens.len() <= HEAD.len()
+        || !tokens.iter().zip(HEAD).all(|(token, word)| token.is_word(word))
+    {
+        return Ok(None);
+    }
+    let rest = &tokens[HEAD.len()..];
+    let Some(comma) = rest.iter().position(OwnedLexToken::is_comma) else {
+        return Ok(None);
+    };
+    let source = trim_lexed_commas(&rest[..comma]);
+    if source.is_empty()
+        || !(crate::util::is_source_reference_words(&token_word_refs(source))
+            || crate::lexer::is_authored_proper_name_phrase(source))
+    {
+        return Ok(None);
+    }
+    let body = trim_lexed_commas(&rest[comma + 1..]);
+    let words = token_word_refs(body);
+    if !(words.starts_with(&["you", "may", "play"]) || words.starts_with(&["you", "may", "cast"]))
+        || words
+            .iter()
+            .any(|word| matches!(*word, "rather" | "by" | "during" | "if" | "without"))
+    {
+        return Ok(None);
+    }
+    let duration = crate::lexer::synthetic_word_tokens([
+        "for", "as", "long", "as", "you", "control", "this", "creature",
+    ]);
+    let mut rewritten = Vec::with_capacity(body.len() + duration.len() + 1);
+    if let Some(rider) = super::strip_allow_any_color_for_cast_suffix_tokens(body) {
+        let split = rider.body_tokens.len();
+        rewritten.extend_from_slice(trim_lexed_commas(&body[..split]));
+        rewritten.extend(duration);
+        rewritten.push(OwnedLexToken::comma(crate::cards::TextSpan::synthetic()));
+        rewritten.extend_from_slice(&body[split..]);
+    } else {
+        rewritten.extend_from_slice(body);
+        rewritten.extend(duration);
+    }
+    let Some(effect) = super::parse_cast_or_play_tagged_clause(&rewritten)? else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(subject) = &effect else {
+        return Ok(None);
+    };
+    if !matches!(
+        subject.action,
+        SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. })
+    ) {
+        return Ok(None);
+    }
+    Ok(Some(effect))
+}
+
 /// "For as long as you control <this source>, you may cast <the exiled card>
 /// [during your turn] by <price> rather than paying its mana cost[, where X
 /// is its mana value]." (Hama, the Bloodbender): a lasting priced permission

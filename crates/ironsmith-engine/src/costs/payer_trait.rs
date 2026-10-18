@@ -120,7 +120,11 @@ pub(crate) fn payment_event_cause(
         cause.cause_type = crate::events::cause::CauseType::Cost;
         return cause;
     }
-    crate::events::cause::EventCause::from_cost(source, payer)
+    let mut cause = crate::events::cause::EventCause::from_cost(source, payer);
+    if let PaymentReason::ActivateAbilityWithKeyword { keyword, .. } = reason {
+        cause.resolving_ability = Some(crate::events::cause::CauseAbilityKind::ActivatedKeywordCost(keyword));
+    }
+    cause
 }
 
 /// Compose dependency-aware cost validation through the total-cost owner.

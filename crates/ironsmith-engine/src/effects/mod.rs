@@ -208,7 +208,7 @@ pub use mana::{
     AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect, DoubleManaPoolEffect,
     EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect,
     GrantPayLifeManaAbilityUntilEndOfTurnEffect, ManaTypeSource,
-    NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, PayManaEffect,
+    NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, PayManaEffect,
     RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
@@ -239,7 +239,7 @@ pub use player::{
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     IncreaseSpeedEffect, LoseTheGameEffect, GrantLoyaltyActivationAllowanceEffect,
-    GrantTapUncontrolledLandsForManaEffect, RerollStoredDieResultsEffect, RollAndStoreDieResultsEffect,
+    CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, GrantTapUncontrolledLandsForManaEffect, RerollStoredDieResultsEffect, RollAndStoreDieResultsEffect,
     LoyaltyActivationAllowance, LoyaltyActivationScope, MayCastForMadnessCostEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayAnyLifeEffect,
     PayEnergyEffect, PlaySubgameEffect, PlayerCountersEffect, PoisonCountersEffect,
@@ -298,7 +298,6 @@ pub(crate) use composition::{
     PreparedIfBranch, execute_if_branches_with_outputs, prepare_if_branches,
 };
 
-pub(crate) use composition::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
 
 pub use damage::DealDamageBySourcesEffect;
 

@@ -27,7 +27,7 @@ fn attached_your_untap_uses_source_counters_and_source_controller() {
                     game.add_counters(target, pupa, 1);
                     game.tap(target);
                     game.tap(unrelated);
-                    game.refresh_continuous_state();
+                    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                     let restricted = counters > 0 && aura_controller_index == active_index;
                     assert_eq!(game.current_has_static_ability_id(target, crate::static_abilities::StaticAbilityId::DoesntUntap), restricted,
                         "full={full_card}, counters={counters}, aura={aura_controller_index}, active={active_index}");
@@ -61,7 +61,7 @@ fn cocoon_upkeep_waits_until_no_counter_can_be_removed_and_keeps_attachment_refe
         for segment in &trigger.effects.segments {
             for effect in &segment.default_effects { crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|error| panic!("step={step}: {error:?}, tags={:?}", ctx.tagged_objects.keys().collect::<Vec<_>>())); }
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         if step < 4 {
             assert_eq!(game.object(source).unwrap().counters.get(&pupa).copied().unwrap_or(0), 3 - step);
             assert_eq!(game.object(target).unwrap().counters.get(&pupa).copied().unwrap_or(0), 0);

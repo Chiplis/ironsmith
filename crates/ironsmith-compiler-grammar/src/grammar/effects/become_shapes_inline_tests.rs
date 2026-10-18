@@ -16,6 +16,15 @@ fn parses_controller_owner_and_base_pt_subjects() {
         TargetAst::Tagged(ref tag, None) if tag.as_str() == "triggering_source"
     ));
 
+    let tokens = lex_line("that source's controller", 0).expect("lex");
+    let shape = parse_controller_owner_subject_tokens(&tokens)
+        .expect("damage-source controller subject");
+    assert_eq!(shape.subject, SubjectAst::TriggeringSourceController);
+    assert!(matches!(
+        shape.target,
+        TargetAst::Tagged(ref tag, None) if tag.as_str() == "triggering_source"
+    ));
+
     let tokens = lex_line("target creature's base power and toughness", 0).expect("lex");
     let shape = parse_base_power_toughness_subject_tokens(&tokens).expect("base pt subject");
     assert!(!shape.target_tokens.is_empty());

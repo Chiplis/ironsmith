@@ -130,7 +130,7 @@ fn granted_exhaust() {
     )
     .execute(&mut g, &mut EffectContext::new_default(id, A))
     .unwrap();
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     let mut q = TriggerQueue::new();
     let mut s = PriorityLoopState::new(2);
     for i in 0..2 {
@@ -459,7 +459,7 @@ fn refueler_permission_is_consumed_when_activation_begins_and_rolls_back() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Colorless, 1);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     let old_mana_action = SpecialAction::ActivateManaAbility {
         permanent_id: mana_id,
         ability_index: 0,
@@ -523,7 +523,7 @@ fn affinity_printed_and_multiple_grants_accumulate() {
         .build();
     for zone in [Zone::Hand, Zone::Stack] {
         let id = g.create_object_from_definition(&d, A, zone);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(
             ironsmith::decision::calculate_effective_mana_cost(&g, A, g.object(id).unwrap(), &cost)
                 .mana_value(),
@@ -611,7 +611,7 @@ fn independent_granted_exhaust_instances_have_independent_limits() {
         .execute(&mut g, &mut EffectContext::new_default(source, A))
         .unwrap();
     }
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     g.record_ability_activation(source, 0);
     assert!(g.exhaust_ability_activated(source, 0));
     assert!(!g.exhaust_ability_activated(source, 1));
@@ -624,7 +624,7 @@ fn independent_granted_exhaust_instances_have_independent_limits() {
     ));
     let first_grant = g.effect_store.continuous_effects.effects()[0].id;
     g.effect_store.continuous_effects.remove_effect(first_grant);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !g.exhaust_ability_activated(source, 0),
         "the unused second grant moved into slot zero"

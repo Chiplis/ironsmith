@@ -2108,7 +2108,7 @@ pub(super) fn keyword_static_exile_replacement_shape_gates_use_clause_shapes() {
 pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
-    let content = read_repo_file(&root, relative);
+    let _content = read_repo_file(&root, relative);
     // The condition's readings live in the registry module beside the parser.
     let parser = read_repo_file(
         &root,
@@ -2148,7 +2148,7 @@ pub(super) fn keyword_static_cost_target_specs_use_clause_shapes() {
 pub(super) fn keyword_static_this_spell_cost_condition_quantity_tails_use_clause_shapes() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
-    let content = read_repo_file(&root, relative);
+    let _content = read_repo_file(&root, relative);
     // The condition's readings live in the registry module beside the parser.
     let parser = read_repo_file(
         &root,

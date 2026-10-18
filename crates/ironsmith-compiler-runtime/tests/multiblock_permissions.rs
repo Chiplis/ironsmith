@@ -789,14 +789,14 @@ fn blaze_of_glory_requires_each_legal_attacker_without_overriding_evasion_or_tim
         let mut game = game();
         let guard = creature(&mut game, "Forced defender", bob, "");
         game.mark_combat_phase_started();
-        let (mut combat, attackers) = attack_setup(&mut game, bob, 3, "");
+        let (_, attackers) = attack_setup(&mut game, bob, 3, "");
         let flyer = creature(&mut game, "Unblockable-by-guard flyer", alice, "Flying");
         game.remove_summoning_sickness(flyer);
         // All attackers belong to the same declaration, including the flyer.
         for attacker in &attackers {
             game.untap(*attacker);
         }
-        combat = CombatState::default();
+        let mut combat = CombatState::default();
         declare_attackers(
             &mut game,
             &mut combat,

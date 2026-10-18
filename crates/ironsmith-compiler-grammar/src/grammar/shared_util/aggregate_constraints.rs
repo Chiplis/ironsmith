@@ -119,3 +119,46 @@ pub fn lift_total_mana_value_choice_constraint(
 
     Some(ChoiceAggregateConstraint::total_mana_value_at_most(maximum))
 }
+
+/// "... with fifteen or more black mana symbols among their mana costs"
+/// (Baron Helmut Zemo): a lower bound on the colored mana symbols across the
+/// whole chosen set, never a per-card requirement. Returns the token length
+/// of the selection before the qualifier and the set constraint.
+pub fn split_mana_symbols_among_constraint(
+    tokens: &[OwnedLexToken],
+) -> Option<(usize, ChoiceAggregateConstraint)> {
+    const TAIL_LEN: usize = 11;
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let len = words.len();
+    if len <= TAIL_LEN {
+        return None;
+    }
+    let [
+        "with",
+        amount,
+        "or",
+        "more",
+        color,
+        "mana",
+        "symbols",
+        "among",
+        "their",
+        "mana",
+        "costs",
+    ] = &words[len - TAIL_LEN..]
+    else {
+        return None;
+    };
+    let minimum = crate::util::parse_number_word_u32(amount)
+        .or_else(|| amount.parse::<u32>().ok())?;
+    let color = crate::color::Color::from_name(color)?;
+    let base_end = view.token_span_for_words(0, len - TAIL_LEN)?.end;
+    Some((
+        base_end,
+        ChoiceAggregateConstraint::at_least(
+            crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(color),
+            Value::Fixed(i32::try_from(minimum).ok()?),
+        ),
+    ))
+}

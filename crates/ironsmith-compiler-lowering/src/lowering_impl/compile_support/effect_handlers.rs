@@ -13,6 +13,7 @@ pub fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
+        TriggerSpec::SpellCastThroughPreviousPermission => Ok(ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission),
         TriggerSpec::ConditionQualified {
             trigger,
             condition,
@@ -1394,6 +1395,21 @@ pub(super) fn try_compile_timing_and_control_effect(
             until_end_of_combat,
             attach_to_previous_ability,
         }) => {
+            if matches!(trigger_without_intro(trigger), TriggerSpec::SpellCastThroughPreviousPermission) {
+                // The body has the ordinary cast-event reference scope; only
+                // its matcher is linked to the exact preceding permission.
+                let cast = TriggerSpec::SpellCast {
+                    filter: None, mana_source_filter: None, caster: PlayerFilter::You,
+                    timing: None, during_turn: None, min_spells_this_turn: None,
+                    exact_spells_this_turn: None, from_not_hand: false,
+                };
+                let (body, _) = compile_trigger_effects(Some(&cast), effects)?;
+                let delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission,
+                    body, true, Vec::new(), PlayerFilter::You,
+                ).until_end_of_turn();
+                return Ok(Some((vec![Effect::new(delayed)], Vec::new())));
+            }
             // "Whenever damage is prevented this way [this turn], ..." (CR
             // 603.7, 615.5): a delayed trigger linked to the shield the
             // preceding instruction created; it resolves on the stack with
@@ -2450,7 +2466,16 @@ fn compile_conditional_ast(
         true_effects
     };
 
-    let conditional = if false_effects.is_empty() {
+    let conditional = if true_effects.is_empty() && false_effects.is_empty() {
+        // A bare state gate ("When this ability resolves for the third time
+        // this turn, ..." - Gimli) exists only so a later result follow-up can
+        // read whether the condition matched, even when that follow-up lowers
+        // as a separate statement.
+        Effect::new(
+            crate::effects::ConditionalEffect::if_only(condition, true_effects)
+                .with_condition_result(true),
+        )
+    } else if false_effects.is_empty() {
         Effect::conditional_only(condition, true_effects)
     } else {
         Effect::conditional(condition, true_effects, false_effects)

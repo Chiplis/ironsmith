@@ -82,7 +82,7 @@ fn kicker_entry_activated_grant_keeps_each_payment_independent() {
             assert!(game.is_tapped(entered));
         }
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             game.current_has_static_ability_id(
                 entered,

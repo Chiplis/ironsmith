@@ -187,7 +187,7 @@ fn absent_optional_life_reduction_skips_dirty_layered_battlefield_scan() {
         .card_types(vec![CardType::Instant])
         .build();
     let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     game.object_mut(spell_id)
         .expect("spell should exist")
         .optional_costs_paid = Default::default();
@@ -243,7 +243,7 @@ fn cost_presence_payment_calculation_reuses_view_for_minimum_spell_mana_scan() {
         .mana_cost(base_cost.clone())
         .build();
     let spell_id = game.create_object_from_card(&spell, alice, Zone::Hand);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     let before_public_query = game.work_counters();
     assert_eq!(game.minimum_total_spell_mana_payment(), None);
@@ -676,7 +676,7 @@ fn optional_and_x_proposals_reuse_characteristics_without_mutating_live_state() 
             crate::cost::TotalCost::free(),
         )]
         .into();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let spell = game.object(id).unwrap();
         let cost = has_x.then(|| ManaCost::from_symbols(vec![ManaSymbol::X]));
         let mut visited = Vec::new();

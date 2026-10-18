@@ -2,6 +2,8 @@ use crate::tag::TagKeyWalk;
 
 use crate::color::{Color, ColorSet};
 mod x_payment;
+mod payment_budget;
+pub use payment_budget::ManaPaymentBudget;
 mod waterbend;
 pub use waterbend::{WaterbendCapacity, WaterbendObligation, WaterbendPaymentScope};
 pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};

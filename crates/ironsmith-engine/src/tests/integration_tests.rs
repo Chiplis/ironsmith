@@ -91,32 +91,32 @@ fn run_scripted_turn(
     game.turn.phase = Phase::Beginning;
     game.turn.step = Some(Step::Untap);
     execute_untap_step(game);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     game.turn.step = Some(Step::Upkeep);
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     game.turn.step = Some(Step::Draw);
     let _ = execute_draw_step(game).unwrap();
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // === Precombat Main Phase ===
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // === Combat Phase ===
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(Step::BeginCombat);
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // Declare attackers
     game.turn.step = Some(Step::DeclareAttackers);
@@ -142,7 +142,7 @@ fn run_scripted_turn(
 
     let _ = put_triggers_on_stack(game, trigger_queue);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // Declare blockers (if there are attackers)
     if !combat.attackers.is_empty() {
@@ -185,14 +185,14 @@ fn run_scripted_turn(
 
         let _ = put_triggers_on_stack(game, trigger_queue);
         run_priority!(game, trigger_queue, dm);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
         // Combat damage
         game.turn.step = Some(Step::CombatDamage);
         crate::execute_combat_damage_step(game, combat, false);
         let _ = check_and_apply_sbas(game, trigger_queue);
         run_priority!(game, trigger_queue, dm);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
     }
 
     // End combat
@@ -200,21 +200,21 @@ fn run_scripted_turn(
     *combat = CombatState::default();
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // === Postcombat Main Phase ===
     game.turn.phase = Phase::NextMain;
     game.turn.step = None;
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // === Ending Phase ===
     game.turn.phase = Phase::Ending;
     game.turn.step = Some(Step::End);
     game.turn.priority_player = Some(game.turn.active_player);
     run_priority!(game, trigger_queue, dm);
-    game.empty_mana_pools();
+    game.empty_mana_pools().expect("test mana pool cleanup succeeds");
 
     // Cleanup (no priority normally)
     game.turn.step = Some(Step::Cleanup);

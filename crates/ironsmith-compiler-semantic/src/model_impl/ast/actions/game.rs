@@ -11,4 +11,5 @@ pub enum GameActionAst {
     LoseGame,
     WinGame,
     DrawGame,
+    RedirectEnteringSource { destination: crate::zone::Zone },
 }

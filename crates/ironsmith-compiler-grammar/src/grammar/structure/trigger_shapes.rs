@@ -36,6 +36,9 @@ enum TriggerListTailKind {
 const PLAYER_ACTION_VERBS: &[&str] = &[
     "scries", "surveils", "searches", "mills", "discards", "draws", "sacrifices", "cycles",
     "explores", "investigates", "shuffles", "reveals", "exiles", "casts", "activates",
+    // "Whenever you waterbend, earthbend, firebend, or airbend, ..." (Avatar
+    // Aang): bare verbs after "you".
+    "waterbend", "earthbend", "firebend", "airbend",
 ];
 
 fn player_action_verb_list_tail(
@@ -251,10 +254,63 @@ pub fn parse_first_time_each_turn_trigger_suffix_lexed(
     })
 }
 
+/// "Whenever you waterbend, earthbend, firebend, or airbend, ... if you've
+/// done all four this turn, ..." (Avatar Aang): "all <N>" names every action
+/// of the trigger's keyword-action list. Restate it as the explicit
+/// conjunction "you've waterbent and earthbent and ... this turn", which the
+/// turn-history predicate grammar reads as one check per action.
+fn restate_all_listed_keyword_actions_done(
+    trigger_tokens: &[OwnedLexToken],
+    effects_tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    use crate::events::KeywordActionKind;
+    let (_, actions) =
+        crate::grammar::trigger_clauses::parse_shared_keyword_action_list(trigger_tokens)?;
+    let past: Vec<&str> = actions
+        .iter()
+        .map(|action| match action {
+            KeywordActionKind::Waterbend => Some("waterbent"),
+            KeywordActionKind::Earthbend => Some("earthbent"),
+            KeywordActionKind::Firebend => Some("firebent"),
+            KeywordActionKind::Airbend => Some("airbent"),
+            KeywordActionKind::Scry => Some("scried"),
+            KeywordActionKind::Surveil => Some("surveilled"),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let count_word = match actions.len() {
+        3 => "three",
+        4 => "four",
+        5 => "five",
+        _ => return None,
+    };
+    let done = effects_tokens.windows(5).position(|window| {
+        window[0].is_word("done")
+            && window[1].is_word("all")
+            && window[2].is_word(count_word)
+            && window[3].is_word("this")
+            && window[4].is_word("turn")
+    })?;
+    let mut rewritten = effects_tokens[..done].to_vec();
+    for (index, word) in past.iter().enumerate() {
+        if index > 0 {
+            rewritten.push(OwnedLexToken::synthetic_word("and"));
+        }
+        rewritten.push(OwnedLexToken::synthetic_word(*word));
+    }
+    rewritten.extend_from_slice(&effects_tokens[done + 3..]);
+    Some(rewritten)
+}
+
 pub fn rewrite_attached_controller_effect_tokens_lexed(
     trigger_tokens: &[OwnedLexToken],
     effects_tokens: &[OwnedLexToken],
 ) -> Vec<OwnedLexToken> {
+    if let Some(rewritten) =
+        restate_all_listed_keyword_actions_done(trigger_tokens, effects_tokens)
+    {
+        return rewrite_attached_controller_effect_tokens_lexed(trigger_tokens, &rewritten);
+    }
     fn enchanted_controller_prefix(
         input: &mut primitives::WordSliceInput<'_>,
     ) -> winnow::error::ModalResult<()> {

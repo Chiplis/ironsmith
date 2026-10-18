@@ -17,7 +17,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardDefinition, CardId, CounterType, GameState, ObjectId, Phase, PlayerId, Zone};
+use ironsmith::{CardDefinition, CardId,  GameState, ObjectId, Phase, PlayerId, Zone};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -279,13 +279,6 @@ fn current(g: &GameState, id: ironsmith::ids::StableId) -> ObjectId {
         .expect("current resource incarnation")
 }
 
-fn set_actor(g: &mut GameState, dm: &mut Dm, p: PlayerId) {
-    dm.actor = p;
-    g.turn.active_player = p;
-    g.turn.priority_player = Some(p);
-    g.turn.phase = Phase::FirstMain;
-    g.turn.step = None;
-}
 fn immediate(
     g: &mut GameState,
     a: LegalAction,
@@ -311,17 +304,6 @@ fn immediate(
         }
     }
     Err("immediate action bound".into())
-}
-fn next_main(g: &mut GameState) {
-    g.next_turn();
-    ironsmith::turn::execute_untap_step(g);
-    while g.turn.active_player != alice() {
-        g.next_turn();
-        ironsmith::turn::execute_untap_step(g);
-    }
-    g.turn.phase = Phase::FirstMain;
-    g.turn.step = None;
-    g.turn.priority_player = Some(alice());
 }
 fn paid_land(
     g: &mut GameState,
@@ -355,15 +337,6 @@ fn sacrifice(
     dm.targets.clear();
     dm.chosen.clear();
     Ok(())
-}
-fn named_counter(g: &GameState, id: ObjectId, n: &str) -> u32 {
-    g.object(id)
-        .unwrap()
-        .counters
-        .iter()
-        .filter(|(k, _)| k.description().eq_ignore_ascii_case(n))
-        .map(|(_, v)| *v)
-        .sum()
 }
 fn run(
     defs: &HashMap<String, (CardDefinition, String)>,

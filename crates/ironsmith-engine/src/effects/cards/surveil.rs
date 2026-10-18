@@ -10,7 +10,9 @@ use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
-use crate::tag::{SURVEIL_KEPT_ON_TOP_TAG, SURVEILLED_THIS_TURN_TAG, TagKey};
+use crate::tag::{
+    SURVEIL_KEPT_ON_TOP_TAG, SURVEIL_PUT_INTO_GRAVEYARD_TAG, SURVEILLED_THIS_TURN_TAG, TagKey,
+};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 use std::collections::HashMap;
@@ -152,6 +154,7 @@ fn execute_surveil_body(
 
     let surveil_count = top_cards_top_to_bottom.len();
     ctx.set_tagged_objects(TagKey::from(SURVEIL_KEPT_ON_TOP_TAG), Vec::new());
+    ctx.set_tagged_objects(TagKey::from(SURVEIL_PUT_INTO_GRAVEYARD_TAG), Vec::new());
     let surveilled_snapshots = top_cards_top_to_bottom
         .iter()
         .filter_map(|card_id| {
@@ -236,7 +239,29 @@ fn execute_surveil_body(
         game,
         ctx,
         moves,
-        |game, ctx, _| {
+        |game, ctx, receipts| {
+            // The cards this surveil actually put into a graveyard, as their
+            // new graveyard objects (CR 400.7), for "put that card into your
+            // hand" follow-ups.
+            let put_into_graveyard = receipts
+                .iter()
+                .filter_map(|(_, receipt)| match &receipt.original {
+                    crate::events::processing::EventOutcome::Proceed(change)
+                        if change.final_zone == Zone::Graveyard =>
+                    {
+                        change.new_object_id
+                    }
+                    _ => None,
+                })
+                .filter_map(|id| {
+                    game.object(id)
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                })
+                .collect::<Vec<_>>();
+            ctx.set_tagged_objects(
+                TagKey::from(SURVEIL_PUT_INTO_GRAVEYARD_TAG),
+                put_into_graveyard,
+            );
             super::arrange_library_cards(
                 game,
                 player_id,

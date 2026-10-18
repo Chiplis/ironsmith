@@ -64,9 +64,9 @@ const store = {
   argBytes: 0,
   overflowed: false,
   overflowAtSeq: null,
-  // "full" keeps arguments, which include card identities. Multiplayer holds
-  // other people's hidden information, so the default there is "redacted" and
-  // the operator has to opt in.
+  // "full" keeps arguments, which include card identities. A Trusted
+  // multiplayer match holds other people's hidden information, so it is
+  // "redacted" there; Verified matches stay "full" (see GameContext).
   policy: "full",
   workerInit: null,
   cardRoutes: null,

@@ -110,6 +110,11 @@ fn bind_cast_origin_predicate_to_entering_object(
             PredicateAst::ThisSpellWasCastFromZone(zone) => PredicateAst::TurnHistory(
                 TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone),
             ),
+            // "Whenever an Aura you control enters, if you cast it" (Light-Paws,
+            // The Sibsig Ceremony): the entering object was cast, not the source.
+            PredicateAst::Source(crate::cards::builders::SourcePredicateAst::SourceWasCast) => {
+                PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectWasCast)
+            }
             PredicateAst::And(left, right) => {
                 PredicateAst::And(Box::new(rewrite(*left)), Box::new(rewrite(*right)))
             }

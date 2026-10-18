@@ -79,7 +79,7 @@ fn casts(game: &GameState, player: PlayerId, id: ObjectId) -> Vec<LegalAction> {
         .filter(|a| matches!(a, LegalAction::CastSpell {spell_id, ..} if *spell_id == id))
         .collect()
 }
-fn announce(game: &mut GameState, player: PlayerId, action: LegalAction) -> ObjectId {
+fn announce(game: &mut GameState, _player: PlayerId, action: LegalAction) -> ObjectId {
     let LegalAction::CastSpell { spell_id, .. } = &action else {
         panic!("not a cast");
     };

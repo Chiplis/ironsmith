@@ -125,7 +125,10 @@ pub fn execute_turn_with(
 /// Generate step trigger events and add them to the queue.
 pub fn generate_and_queue_step_triggers(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
     // Phase/step changes can invalidate conditions on triggered abilities.
-    game.refresh_continuous_state();
+    if let Err(error) = game.refresh_continuous_state() {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+        return;
+    }
     for event in crate::triggers::check::generate_step_trigger_events_for_active_players(game) {
         let event = game.ensure_trigger_event_provenance(event);
         queue_triggers_from_event(game, trigger_queue, event.clone(), true);
@@ -556,7 +559,7 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let bob = PlayerId::from_index(1);
         let mut trigger_queue = TriggerQueue::new();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(can_batch_combat_damage_trigger_events(&game));
         let events = vec![
             CombatDamageEvent {
@@ -665,7 +668,7 @@ mod tests {
             Trigger::deals_combat_damage_to_player(zombie_you_control, PlayerFilter::Opponent),
             vec![Effect::draw(1)],
         ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let events = vec![
             CombatDamageEvent {

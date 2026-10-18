@@ -1299,6 +1299,7 @@ pub(super) fn stack_entry_execution_context<'a>(
         // ability, whose stack object is only a stand-in for the copy.
         .with_cause(EventCause::from_effect(execution_source, entry.controller))
         .with_provenance(entry.provenance);
+    ctx.mana.activation_mana_budget = entry.activation_mana_budget.clone();
     // CR 115.1: events this resolution causes remember what it targets
     // ("a spell or ability that targets that creature would cause ...").
     ctx.cause.targeted_objects = stack_entry_targeted_objects(entry);

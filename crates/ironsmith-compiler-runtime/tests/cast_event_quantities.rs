@@ -18,7 +18,7 @@ use ironsmith::object::{CounterType, ObjectKind};
 use ironsmith::snapshot::ObjectSnapshot;
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::target::{ChooseSpec, ObjectFilter, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::triggers::{TriggerEvent, TriggerQueue};
 use ironsmith::{Color, GameProgress, GameState, ObjectId, Phase, PlayerId, Subtype, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};

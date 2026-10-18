@@ -260,6 +260,15 @@ fn filter_comparison_rhs_ranges(
             || (axis == "power"
                 && parse_phrase_choice_at_head(&words[idx..], POWER_GREATER_THAN_TOUGHNESS_PHRASES)
                     .is_some())
+            // "power greater than that creature's base power" (Sovereign
+            // Okinec Ahau) is the per-object base-power relation, recorded by
+            // the relation pass; its demonstrative is not a scalar operand.
+            || (axis == "power"
+                && parse_phrase_choice_at_head(
+                    &words[idx..],
+                    &POWER_GREATER_THAN_THAT_BASE_POWER_PHRASES[1..],
+                )
+                .is_some())
         {
             idx += axis_word_count;
             continue;
@@ -1187,7 +1196,7 @@ fn strip_be_put_on_reference_prefix(all_words: &mut Vec<&str>, segment_tokens: &
 /// serial list whose members are different kinds of permanents. Each member
 /// keeps its own noun; the trailing "creatures" belongs only to the last
 /// member, and the controller tail is shared by all of them.
-fn parse_serial_mixed_permanent_union(
+pub(super) fn parse_serial_mixed_permanent_union(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {

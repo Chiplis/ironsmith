@@ -3572,9 +3572,13 @@ fn parse_predicate_card_types_among_uses_capture_parser() -> Result<(), CardText
     assert_eq!(
         parsed,
         PredicateAst::ValueComparison {
-            left: Value::CardTypesAmong(ObjectFilter::tagged(
-                crate::tag::CompilerReferenceTag::Sacrificed0.bind()
-            )),
+            left: Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::CardTypesAmong,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Sacrificed),
+            ),
             operator: ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(2),
         }

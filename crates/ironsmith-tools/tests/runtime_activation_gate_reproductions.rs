@@ -218,7 +218,7 @@ fn setup(
                 Zone::Battlefield,
                 n - own,
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state should refresh");
             if game.has_citys_blessing(PlayerId(0)) != (n >= 10) {
                 return Err("ascend designation did not match setup".into());
             }

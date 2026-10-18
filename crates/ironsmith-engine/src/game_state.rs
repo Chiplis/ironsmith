@@ -15,7 +15,7 @@ use crate::card::{Card, LinkedFaceLayout};
 use crate::cards::CardRegistry;
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectId, ContinuousEffectManager,
-    EffectSourceType, EffectTarget, Modification,
+     EffectTarget, Modification,
 };
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
@@ -31,7 +31,7 @@ use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
 use crate::replacement::{ReplacementEffectId, ReplacementEffectKey, ReplacementEffectManager};
 use crate::snapshot::ObjectSnapshot;
-use crate::static_abilities::{AnthemCountExpression, StaticAbility};
+use crate::static_abilities::{ StaticAbility};
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerIdentity;
 use crate::turn_history::{TurnEventRecord, TurnEventRecords, TurnHistory};
@@ -591,6 +591,8 @@ struct ObjectAnnotationStore {
     /// Last type of mana noted for a battlefield source object
     /// ("Note the type of mana spent to pay this activation cost").
     noted_mana_types: HashMap<ObjectId, crate::mana::ManaSymbol>,
+    noted_mana_payments: HashMap<ObjectId, crate::player::ManaPool>,
+    last_exiled_with_source: HashMap<ObjectId, ObjectId>,
     /// Creature types noted for a battlefield source object, in note order
     /// ("note one of its creature types that hasn't been noted for Volo's
     /// Journal").
@@ -599,6 +601,7 @@ struct ObjectAnnotationStore {
     /// those results on it", Centaur of Attention): the die size and the
     /// results, in roll order. A new object (CR 400.7) has none.
     stored_die_results: HashMap<ObjectId, (u32, Vec<u32>)>,
+    turn_face_up_before_action: HashSet<ObjectId>,
     /// Stickers attached to an object, keyed by stable object identity.
     object_stickers: HashMap<StableId, Vec<StickerMarker>>,
     /// Names from the player's accessible sticker sheets, keyed by physical sticker identity.
@@ -606,7 +609,11 @@ struct ObjectAnnotationStore {
     /// Ability stickers from the player's accessible sticker sheets: each is
     /// a physical sticker carrying abilities and a {TK} ticket cost.
     accessible_ability_stickers: HashMap<PlayerId, Vec<AbilityStickerSheetEntry>>,
+    accessible_pt_stickers: HashMap<PlayerId, Vec<(u64, u32, i32, i32)>>,
+    accessible_art_stickers: HashMap<PlayerId, Vec<u64>>,
     next_sticker_id: u64,
+    pub(crate) numeric_die_replacements: Vec<NumericDieReplacement>,
+    next_numeric_die_replacement_id: u64,
     /// Token instance -> source instance that created it. Stable identities
     /// preserve the link when the source leaves the battlefield and its
     /// leaves-trigger resolves from last known information.
@@ -2161,6 +2168,8 @@ pub struct CantEffectTracker {
     /// Hosts that can't have matching attachments attached to them.
     /// Example: Anti-Magic Aura "can't be enchanted by other Auras".
     pub cant_be_attached_by: Vec<CantBeAttachedBy>,
+    pub cant_gain_control: HashMap<ObjectId, HashSet<PlayerId>>,
+    pub(crate) control_prohibitions_during_scan: Option<HashMap<ObjectId, HashSet<PlayerId>>>,
 
     /// Permanents that can't be destroyed (indestructible via effect, not ability).
     /// Note: Intrinsic indestructible keyword is checked separately on the object.
@@ -2569,6 +2578,12 @@ pub struct TargetingAsThoughOverride {
     pub source: ObjectId,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct NumericDieReplacement {
+    pub id: u64, pub source: ObjectId, pub player: PlayerId,
+    pub chooser: PlayerId, pub additional: u32, pub turn: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StickerMarker {
     pub action: KeywordActionKind,
@@ -2579,6 +2594,7 @@ pub struct StickerMarker {
     /// Continuous effects granting an ability sticker's abilities to the
     /// stickered object; they follow it like a name sticker's name.
     pub ability_effects: Vec<crate::continuous::ContinuousEffectId>,
+    pub power_toughness: Option<(i32, i32)>,
 }
 
 /// One ability sticker of a player's accessible sticker sheets: the abilities
@@ -2612,6 +2628,7 @@ pub struct PendingRestartBattlefieldEntry {
 /// One "can't be enchanted/equipped by ..." prohibition on a host.
 #[derive(Debug, Clone)]
 pub struct CantBeAttachedBy {
+    pub only_new: bool,
     pub host: ObjectId,
     pub attachments: crate::target::ObjectFilter,
     pub controller: PlayerId,
@@ -2620,7 +2637,8 @@ pub struct CantBeAttachedBy {
 
 impl CantBeAttachedBy {
     pub fn forbids(&self, game: &GameState, host: ObjectId, attachment: &crate::object::Object) -> bool {
-        self.host == host && {
+        self.host == host
+            && !(self.only_new && attachment.attached_to == Some(crate::object::AttachmentTarget::Object(host))) && {
             let ctx = game.filter_context_for(self.controller, self.source);
             self.attachments.matches(attachment, &ctx, game)
         }
@@ -3109,6 +3127,7 @@ impl CantEffectTracker {
         self.cant_become_untapped.extend(other.cant_become_untapped);
         self.cant_crew.extend(other.cant_crew);
         self.cant_be_attached_by.extend(other.cant_be_attached_by);
+        for (object, players) in other.cant_gain_control { self.cant_gain_control.entry(object).or_default().extend(players); }
         self.cant_be_destroyed.extend(other.cant_be_destroyed);
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
@@ -3273,6 +3292,7 @@ impl CantEffectTracker {
         self.cant_become_untapped.clear();
         self.cant_crew.clear();
         self.cant_be_attached_by.clear();
+        self.cant_gain_control.clear();
         self.cant_be_destroyed.clear();
         self.cant_be_regenerated.clear();
         self.cant_be_sacrificed.clear();
@@ -4444,6 +4464,7 @@ pub struct StackEntry {
     pub activation_cost_has_tap: bool,
     /// Mana actually spent to activate this ability, color-by-color.
     pub mana_spent_on_activation: crate::player::ManaPool,
+    pub activation_mana_budget: ironsmith_core::mana::ManaPaymentBudget,
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
@@ -4559,6 +4580,7 @@ impl StackEntry {
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
+            activation_mana_budget: Default::default(),
             ability_effects: None,
             linked_exile_owner: None,
             source_number_owner: None,
@@ -4612,6 +4634,7 @@ impl StackEntry {
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: crate::player::ManaPool::default(),
+            activation_mana_budget: Default::default(),
             ability_effects: Some(effects.into()),
             linked_exile_owner: None,
             source_number_owner: None,
@@ -5949,6 +5972,18 @@ impl GameState {
         }
     }
 
+    pub fn note_mana_payment_for_source(&mut self, source: ObjectId, payment: crate::player::ManaPool) {
+        self.object_annotations_mut().noted_mana_payments.insert(source, payment);
+    }
+
+    pub fn last_exiled_with_source(&self, source: ObjectId) -> Option<ObjectId> {
+        self.object_annotations.last_exiled_with_source.get(&source).copied()
+    }
+
+    pub fn noted_mana_payment_for_source(&self, source: ObjectId) -> Option<&crate::player::ManaPool> {
+        self.object_annotations.noted_mana_payments.get(&source)
+    }
+
     pub fn note_mana_type_for_source(&mut self, source: ObjectId, symbol: crate::mana::ManaSymbol) {
         self.object_annotations_mut()
             .noted_mana_types
@@ -6028,6 +6063,32 @@ impl GameState {
         counts.values().copied().max().unwrap_or(0)
     }
 
+    /// Query assembled prohibitions without recursing into layer calculation.
+    pub(crate) fn control_acquisition_allowed(&self, object: ObjectId, old: PlayerId, new: PlayerId) -> bool {
+        // Reapplying an already accepted continuous control effect is not a
+        // new acquisition. In particular, untapping a protection source must
+        // not return an artifact stolen while that source was tapped.
+        if old == new || self.battlefield_flags.controller_at_last_refresh.get(&object) == Some(&new) { return true; }
+        let tracker = &self.effect_store.cant_effects;
+        let prohibitions = tracker.control_prohibitions_during_scan.as_ref().unwrap_or(&tracker.cant_gain_control);
+        !prohibitions.get(&object).is_some_and(|players| players.contains(&new))
+    }
+
+    pub(crate) fn register_extra_die_replacement(&mut self, source: ObjectId, player: PlayerId, chooser: PlayerId, additional: u32) {
+        let turn = self.turn.turn_number;
+        let store = self.object_annotations_mut(); store.next_numeric_die_replacement_id += 1;
+        let id = store.next_numeric_die_replacement_id;
+        store.numeric_die_replacements.push(NumericDieReplacement { id, source, player, chooser, additional, turn });
+    }
+    pub(crate) fn pending_extra_die_replacements(&self, player: PlayerId) -> Vec<NumericDieReplacement> {
+        self.object_annotations.numeric_die_replacements.iter().filter(|rule|
+            rule.player == player && rule.turn == self.turn.turn_number).cloned().collect()
+    }
+    pub(crate) fn consume_extra_die_replacements(&mut self, ids: &[u64]) {
+        let turn = self.turn.turn_number;
+        self.object_annotations_mut().numeric_die_replacements.retain(|rule| rule.turn == turn && !ids.contains(&rule.id));
+    }
+
     pub fn put_sticker_on_object(&mut self, object_id: ObjectId, action: KeywordActionKind) {
         let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
             return;
@@ -6043,7 +6104,78 @@ impl GameState {
                 sticker_id: None,
                 name_effect: None,
                 ability_effects: Vec::new(),
+                power_toughness: None,
             });
+    }
+
+    pub fn add_accessible_art_sticker(&mut self, owner: PlayerId) -> u64 {
+        let store = self.object_annotations_mut(); store.next_sticker_id += 1;
+        let id = store.next_sticker_id;
+        store.accessible_art_stickers.entry(owner).or_default().push(id); id
+    }
+    pub fn available_art_stickers(&self, owner: PlayerId) -> Vec<u64> {
+        let used: HashSet<_> = self.object_annotations.object_stickers.values().flatten()
+            .filter_map(|marker| marker.sticker_id).collect();
+        self.object_annotations.accessible_art_stickers.get(&owner).into_iter().flatten()
+            .filter(|id| !used.contains(id)).copied().collect()
+    }
+    pub fn apply_art_sticker(&mut self, object_id: ObjectId, sticker_id: u64) -> Option<()> {
+        let object = self.object(object_id)?;
+        if !object.zone.is_public() { return None; }
+        let stable_id = object.stable_id;
+        self.object_annotations_mut().object_stickers.entry(stable_id).or_default().push(StickerMarker {
+            action: KeywordActionKind::ArtSticker, name_letter_count: None, name: None, sticker_id: Some(sticker_id),
+            name_effect: None, ability_effects: Vec::new(), power_toughness: None,
+        }); Some(())
+    }
+
+    /// Register a physical P/T sticker from an accessible sheet.
+    pub fn add_accessible_pt_sticker(&mut self, owner: PlayerId, tickets: u32, power: i32, toughness: i32) -> u64 {
+        let store = self.object_annotations_mut();
+        store.next_sticker_id += 1;
+        let id = store.next_sticker_id;
+        store.accessible_pt_stickers.entry(owner).or_default().push((id, tickets, power, toughness));
+        id
+    }
+
+    pub fn available_pt_stickers(&self, owner: PlayerId) -> Vec<(u64, u32, i32, i32)> {
+        let used: HashSet<_> = self.object_annotations.object_stickers.values().flatten()
+            .filter_map(|marker| marker.sticker_id).collect();
+        self.object_annotations.accessible_pt_stickers.get(&owner).into_iter().flatten()
+            .filter(|entry| !used.contains(&entry.0)).copied().collect()
+    }
+
+    pub fn apply_pt_sticker(&mut self, object_id: ObjectId, sticker_id: u64) -> Option<()> {
+        let object = self.object(object_id)?;
+        if !object.zone.is_public() { return None; }
+        let stable_id = object.stable_id;
+        let controller = self.current_controller(object_id).unwrap_or(object.owner);
+        let (_, _, power, toughness) = *self.object_annotations.accessible_pt_stickers.values().flatten()
+            .find(|entry| entry.0 == sticker_id)?;
+        let checkpoint = self.clone();
+        let effect = crate::continuous::ContinuousEffect::new(object_id, controller,
+            crate::continuous::EffectTarget::Specific(object_id),
+            crate::continuous::Modification::SetPowerToughness {
+                power: crate::effect::Value::Fixed(power), toughness: crate::effect::Value::Fixed(toughness),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            }).with_source_type(crate::continuous::EffectSourceType::Resolution { locked_targets: vec![object_id] });
+        let id = self.effect_store.continuous_effects.add_effect(effect);
+        self.object_annotations_mut().object_stickers.entry(stable_id).or_default().push(StickerMarker {
+            action: KeywordActionKind::PowerToughnessSticker, name_letter_count: None, name: None,
+            sticker_id: Some(sticker_id), name_effect: None, ability_effects: vec![id],
+            power_toughness: Some((power, toughness)),
+        });
+        if self.refresh_continuous_state().is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+            return None;
+        }
+        Some(())
+    }
+
+    pub fn sticker_characteristic_total(&self, object_id: ObjectId, toughness: bool) -> i64 {
+        self.object(object_id).and_then(|object| self.object_annotations.object_stickers.get(&object.stable_id))
+            .into_iter().flatten().filter_map(|marker| marker.power_toughness)
+            .map(|(power, value)| i64::from(if toughness { value } else { power })).sum()
     }
 
     /// Register a name from the sheets made accessible during game setup. Equal
@@ -6159,6 +6291,7 @@ impl GameState {
         let stable_id = object.stable_id;
         let controller = self.current_controller(object_id).unwrap_or(object.owner);
         let abilities = self.ability_sticker_entry(sticker_id)?.abilities.clone();
+        let checkpoint = self.clone();
         let mut ability_effects = Vec::with_capacity(abilities.len());
         for ability in abilities {
             let effect = crate::continuous::ContinuousEffect::new(
@@ -6183,8 +6316,12 @@ impl GameState {
                 sticker_id: Some(sticker_id),
                 name_effect: None,
                 ability_effects,
+                power_toughness: None,
             });
-        self.refresh_continuous_state();
+        if self.refresh_continuous_state().is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+            return None;
+        }
         Some(())
     }
 
@@ -6225,6 +6362,7 @@ impl GameState {
         }
         let stable_id = object.stable_id;
         let controller = self.current_controller(object_id).unwrap_or(object.owner);
+        let checkpoint = self.clone();
         let effect = crate::continuous::ContinuousEffect::new(
             object_id,
             controller,
@@ -6250,8 +6388,12 @@ impl GameState {
                 sticker_id,
                 name_effect: Some(effect_id),
                 ability_effects: Vec::new(),
+                power_toughness: None,
             });
-        self.refresh_continuous_state();
+        if self.refresh_continuous_state().is_err() {
+            self.restore_execution_checkpoint(checkpoint, false);
+            return None;
+        }
         Some(())
     }
 

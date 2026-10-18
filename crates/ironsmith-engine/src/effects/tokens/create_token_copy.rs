@@ -6,7 +6,7 @@ use crate::combat_state::AttackTarget;
 use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter, resolve_value};
+use crate::effects::helpers::{ resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -1108,7 +1108,7 @@ mod tests {
             alice,
             Zone::Battlefield,
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let mut effect = CreateTokenCopyEffect::one(ChooseSpec::SpecificObject(original))
             .sacrifice_at_next_end_step(true);
         effect.must_attack_player_this_turn = Some(PlayerFilter::Specific(bob));
@@ -1354,7 +1354,7 @@ mod tests {
             ))
             .build();
         game.create_object_from_definition(&doubler, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(creature_id)]);
@@ -1385,7 +1385,7 @@ mod tests {
         );
         let source = game.new_object_id();
         game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(treasure_id)]);
@@ -1436,7 +1436,7 @@ mod tests {
             game.create_object_from_definition(&clue_token_definition(), alice, Zone::Battlefield);
         let source = game.new_object_id();
         game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(clue_id)]);
@@ -1468,7 +1468,7 @@ mod tests {
         );
         let source = game.new_object_id();
         game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(treasure_id)]);

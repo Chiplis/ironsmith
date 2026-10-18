@@ -1900,36 +1900,28 @@ fn pre_rule_permission_payment_followup(
         {
             let parts = match grant {
                 GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
-                    tag,
-                    player,
                     allow_any_color_for_cast,
                     surface,
                     ..
-                } => Some((tag, player, allow_any_color_for_cast, surface, true)),
+                } => Some((allow_any_color_for_cast, surface)),
                 GrantActionAst::GrantPlayTaggedForAsLongAsExiled {
-                    tag,
-                    player,
                     allow_any_color_for_cast,
                     surface,
                     ..
                 }
                 | GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
-                    tag,
-                    player,
                     allow_any_color_for_cast,
                     surface,
                     ..
                 }
                 | GrantActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
-                    tag,
-                    player,
                     allow_any_color_for_cast,
                     surface,
                     ..
-                } => Some((tag, player, allow_any_color_for_cast, surface, false)),
+                } => Some((allow_any_color_for_cast, surface)),
                 _ => None,
             };
-            if let Some((tag, player, spending, surface, until_end_of_turn)) = parts {
+            if let Some((spending, surface)) = parts {
                 if let Some(mode) = mode {
                     *spending = mode;
                     surface
@@ -2505,7 +2497,65 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     pre_followup_rule!("x-maximum-followup", &["x"], pre_rule_x_maximum_followup),
 ];
 
+/// "Surveil 1. If you put a noncreature, nonland card into your graveyard
+/// this way, put that card into your hand." (Chandra, Chill of Compliance;
+/// Enlightened Confidant): the condition and "that card" read the cards the
+/// surveil put into the graveyard, so that result set gets an explicit name
+/// instead of leaving `it` with no antecedent (or falling back to the source).
+fn post_rule_surveil_graveyard_result_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+    _sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    let words = crate::lexer::parser_token_word_refs(sentence_tokens);
+    if words.first() != Some(&"if")
+        || !crate::word_primitives::sequence_occurs(
+            &words,
+            &["into", "your", "graveyard", "this", "way"],
+        )
+    {
+        return Ok(None);
+    }
+    fn is_surveil(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::KeywordActions(
+                        crate::cards::builders::KeywordActionAst::Surveil { .. },
+                    ),
+                ..
+            }) => true,
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+                if effects.len() == 1 =>
+            {
+                is_surveil(&effects[0])
+            }
+            _ => false,
+        }
+    }
+    let Some(last) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if !is_surveil(last) {
+        return Ok(None);
+    }
+    let tag = crate::util::helper_tag_for_tokens(sentence_tokens, "surveilled_this_way");
+    let surveil = std::mem::replace(last, EffectAst::Sequence { effects: Vec::new() });
+    *last = EffectAst::TagAffected {
+        effect: Box::new(surveil),
+        tag: crate::tag::TagRef::of(tag),
+    };
+    Ok(Some(PostParseFollowupResult::Annotated))
+}
+
 const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &[
+    post_followup_rule!(
+        "surveil-graveyard-result-followup",
+        &["if"],
+        post_rule_surveil_graveyard_result_followup
+    ),
     post_followup_rule!(
         "numeric-result-branch-label",
         &[],

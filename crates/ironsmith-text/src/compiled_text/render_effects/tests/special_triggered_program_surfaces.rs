@@ -81,7 +81,7 @@ fn land_majority_search_target_legality_tracks_active_players_lands() {
         }
         for active in 0..3 {
             game.turn.active_player = players[active];
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let legal = crate::game_loop::compute_legal_targets(
                 &game,
                 &target.target,

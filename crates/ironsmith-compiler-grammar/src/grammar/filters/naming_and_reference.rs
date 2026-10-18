@@ -1289,11 +1289,15 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
             filter.multicolored = true;
         }
         // "Commander spells you cast cost {1} less" (Myth Unbound, rewritten
-        // from "Your commander costs ...").
+        // from "Your commander costs ..."). The cost-modifier line hands
+        // over the subject without its "spells" head noun, so a lone
+        // "commander" subject is the same commander-spell qualifier ("with
+        // your commander" relations never reach here as a one-word subject).
         if matches!(word, "commander" | "commanders")
-            && words
-                .get(idx + 1)
-                .is_some_and(|next| matches!(*next, "spell" | "spells"))
+            && match words.get(idx + 1) {
+                Some(next) => matches!(*next, "spell" | "spells"),
+                None => words.len() == 1,
+            }
         {
             filter.is_commander = true;
         }

@@ -34,7 +34,24 @@ pub fn parse_effect_with_verb(
         Verb::Deal => parse_deal_damage(tokens),
         Verb::Draw => parse_draw(tokens, subject),
         Verb::Counter => parse_counter(tokens),
-        Verb::Destroy => parse_destroy(tokens),
+        Verb::Destroy => {
+            let mut effect = parse_destroy(tokens)?;
+            // "target opponent destroys four lands they control" (Burning of
+            // Xinye): a named non-you actor performs the destroy and chooses
+            // the objects; keep that actor on the instruction.
+            if let Some(player) = extract_subject_player(subject)
+                && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                && let EffectAst::SubjectVerb(subject_verb) = &mut effect
+                && matches!(
+                    subject_verb.action,
+                    SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy { .. })
+                )
+                && subject_verb.subject.player == PlayerAst::Implicit
+            {
+                subject_verb.subject.player = player;
+            }
+            Ok(effect)
+        }
         Verb::Exile => parse_exile(tokens, subject),
         Verb::Reveal => parse_reveal(tokens, subject),
         Verb::Look => parse_look(tokens, subject),
@@ -398,6 +415,10 @@ fn parse_note(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    if crate::lexer::parser_token_word_refs(tokens) == ["the", "type", "and", "amount", "of", "mana", "spent", "to", "pay", "this", "activation", "cost"] {
+        return Ok(EffectAst::NoteActivationManaPayment);
+    }
+
     if matches!(
         subject,
         None | Some(SubjectAst::This)
@@ -621,8 +642,16 @@ pub fn parse_look(
             .unwrap_or(trimmed.len());
         let mut line = crate::lexer::synthetic_word_tokens(&["you", "may", "look"]);
         line.extend_from_slice(&trimmed[..body_end]);
-        if matches!(subject_player, None | Some(PlayerAst::You))
-            && crate::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(&line)
+        // Under a leading "you may" the clause reaches here verb-first with
+        // the implicit actor, which is the same controller.
+        let body_words = &words[..body_len];
+        let surface_matches = matches!(
+            body_words,
+            ["at", "face-down", "creatures", "you", "don't" | "dont", "control", "any", "time"]
+        );
+        if matches!(subject_player, None | Some(PlayerAst::You) | Some(PlayerAst::Implicit))
+            && (surface_matches
+                || crate::grammar::abilities::is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed(&line))
         {
             return Ok(EffectAst::subject_verb_grant_abilities_to_target(
                 TargetAst::Source(span_from_tokens(tokens)),

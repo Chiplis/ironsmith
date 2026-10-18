@@ -210,6 +210,9 @@ impl GameState {
         &self,
     ) -> Result<Self, crate::static_ability_processor::StaticEffectDiscoveryError> {
         let mut snapshot = self.clone();
+        snapshot.update_cant_effects();
+        snapshot.update_static_ability_effects()?;
+        snapshot.update_cant_effects();
         snapshot.update_static_ability_effects()?;
         snapshot.update_cant_effects();
         Ok(snapshot)
@@ -244,8 +247,11 @@ impl GameState {
         }
         let checkpoint = self.clone();
         let result = (|| {
-            // Update continuous effects from static abilities
+            // Refresh prohibitions before discovering or committing new
+            // controller assignments; source tap-state changes are live now.
+            self.update_cant_effects();
             self.update_static_ability_effects()?;
+            self.update_cant_effects();
             self.reconcile_continuous_control_changes();
 
             // A continuous effect may itself inspect summoning-sickness state.
@@ -253,6 +259,7 @@ impl GameState {
             // the newly sick permanent in this same refresh transaction.
             if !self.continuous_state_is_clean() {
                 self.update_static_ability_effects()?;
+                self.update_cant_effects();
                 self.reconcile_continuous_control_changes();
             }
 
@@ -264,6 +271,7 @@ impl GameState {
 
             if self.apply_day_nightbound_transformations_with_current_restrictions() {
                 self.update_static_ability_effects()?;
+                self.update_cant_effects();
                 self.reconcile_continuous_control_changes();
                 self.update_replacement_effects()?;
                 self.update_cant_effects();
@@ -277,6 +285,7 @@ impl GameState {
                 | self.grant_enduring_stories_from_permanent_storied()
             {
                 self.update_static_ability_effects()?;
+                self.update_cant_effects();
                 self.reconcile_continuous_control_changes();
                 self.update_replacement_effects()?;
                 self.update_cant_effects();
@@ -1243,7 +1252,6 @@ impl GameState {
 
     fn modification_may_change_enter_as_copy_presence(modification: &Modification) -> bool {
         match modification {
-            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
@@ -1452,7 +1460,6 @@ impl GameState {
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
         match modification {
-            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)
@@ -1820,6 +1827,14 @@ impl GameState {
             .filter_context_for(controller, Some(unit.source))
             .with_caster(Some(controller));
         let mut stack_filter = filter.clone();
+        // A mana restriction can name a specific card in its prior zone.
+        // Casting creates a stack incarnation; the cast-origin receipt proves
+        // that it came from that exact card, rather than a later blink.
+        if let Some(expected) = stack_filter.specific {
+            if source_id != expected && !self.cast_origin_snapshot(source_id)
+                .is_some_and(|origin| origin.object_id == expected) { return false; }
+            stack_filter.specific = None;
+        }
         if let Some(zone) = stack_filter.zone {
             if !matches!(zone, Zone::Stack | Zone::Battlefield)
                 && !self
@@ -4658,7 +4673,6 @@ impl GameState {
             // Rewrites the whole ability list or text box, so triggered
             // abilities can appear or disappear. SetAbilities replaces the
             // existing list even when it only sets static abilities.
-            Modification::Restriction(_) => true,
             Modification::CopyOf { .. }
             | Modification::ChangeText { .. }
             | Modification::RewriteText(_)

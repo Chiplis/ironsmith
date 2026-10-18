@@ -178,7 +178,7 @@ fn reveal_morph_source_opening_and_hand_payment_share_the_existing_attempt_owner
         // it and is the payer. Existing command opening metadata uses the
         // source identity while the payment choice still belongs to Alice.
         let source = reveal_morph_cast_for(&mut wasm, &reveal_morph_definition(name), PlayerId(1), true);
-        wasm.game.set_current_controller(source, PlayerId(0));
+        wasm.game.set_current_controller(source, PlayerId(0)).expect("fixture control change should succeed");
         wasm.game.turn.priority_player = Some(PlayerId(0));
         let [chosen, other] = reveal_morph_hand(&mut wasm, color);
         payment_disclosure_prepare_priority(&mut wasm);

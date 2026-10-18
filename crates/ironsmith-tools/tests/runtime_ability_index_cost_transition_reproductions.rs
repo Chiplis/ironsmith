@@ -306,24 +306,6 @@ fn activation(
         json!({"offered":a.is_some(),"announcement_error":error,"resolution_error":resolution_error,"mana_paid":before-g.player(PlayerId(0)).unwrap().mana_pool.total() as i64,"remaining_stack":g.stack.len()}),
     )
 }
-fn paid(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-    source: ObjectId,
-    cost: i64,
-) -> Result<Value, String> {
-    let a = activation(g, q, dm, source)?;
-    if a != json!({"offered":true,"announcement_error":null,"resolution_error":null,"mana_paid":cost,"remaining_stack":0})
-    {
-        return Err(format!("prerequisite activation did not complete: {a}"));
-    }
-    Ok(a)
-}
-fn stats(g: &GameState, source: ObjectId) -> Value {
-    use ironsmith::static_abilities::StaticAbilityId as K;
-    json!({"power":g.calculated_power(source),"toughness":g.calculated_toughness(source),"plus_counters":g.counter_count(source,ironsmith::CounterType::PlusOnePlusOne),"trample":g.object_has_static_ability_id(source,K::Trample),"flying":g.object_has_static_ability_id(source,K::Flying),"vigilance":g.object_has_static_ability_id(source,K::Vigilance),"hexproof":g.object_has_static_ability_id(source,K::Hexproof),"haste":g.object_has_static_ability_id(source,K::Haste)})
-}
 fn run(
     def: &CardDefinition,
     goblin: &CardDefinition,

@@ -14,10 +14,10 @@ use crate::color::ColorSet;
 use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::PermanentTappedEvent;
+
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::triggers::TriggerEvent;
+
 pub use ironsmith_core::ConspireCostEffect;
 
 fn source_colors(game: &GameState, source: ObjectId) -> ColorSet {

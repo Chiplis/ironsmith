@@ -256,32 +256,6 @@ fn set_actor(g: &mut GameState, dm: &mut Dm, p: PlayerId) {
     g.turn.phase = Phase::FirstMain;
     g.turn.step = None;
 }
-fn immediate(
-    g: &mut GameState,
-    a: LegalAction,
-    q: &mut TriggerQueue,
-    dm: &mut Dm,
-) -> Result<(), String> {
-    g.turn.priority_player = Some(dm.actor);
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    dm.trace
-        .push(json!({"stage":dm.stage,"action":format!("{a:?}")}));
-    let mut p =
-        apply_priority_response_with_dm(g, q, &mut state, &PriorityResponse::PriorityAction(a), dm)
-            .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        if let GameProgress::NeedsDecisionCtx(c) = p {
-            if matches!(c, DecisionContext::Priority(_)) {
-                return Ok(());
-            }
-            p = apply_decision_context_with_dm(g, q, &mut state, &c, dm)
-                .map_err(|e| e.to_string())?;
-        } else {
-            return Ok(());
-        }
-    }
-    Err("immediate action bound".into())
-}
 fn time_counters(g: &GameState, s: ironsmith::ids::StableId) -> u32 {
     g.find_object_by_stable_id(s)
         .and_then(|id| g.object(id))

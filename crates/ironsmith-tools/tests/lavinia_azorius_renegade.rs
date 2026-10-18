@@ -64,7 +64,7 @@ fn casting_limit_uses_each_opponents_own_lands_and_exempts_creatures() {
                     .unwrap()
                     .mana_pool
                     .add(ironsmith::mana::ManaSymbol::Colorless, 20);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state should refresh");
                 let can_cast = compute_legal_actions(&game, caster).expect("fixture has complete replacement state").iter().any(
                     |a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell),
                 );
@@ -115,7 +115,7 @@ fn actual_cast_triggers_only_for_opponents_who_spent_no_mana() {
                     .unwrap()
                     .mana_pool
                     .add(ironsmith::mana::ManaSymbol::Colorless, 1);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state should refresh");
                 let action = compute_legal_actions(&game, caster).expect("fixture has complete replacement state")
                 .into_iter()
                 .find(
@@ -201,7 +201,7 @@ fn casting_limit_updates_with_land_count_and_expires_with_source() {
         .mana_pool
         .add(ironsmith::mana::ManaSymbol::Colorless, 10);
     let available = |game: &mut GameState| {
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         compute_legal_actions(game, bob).expect("fixture has complete replacement state")
             .iter()
             .any(|a| matches!(a, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell))

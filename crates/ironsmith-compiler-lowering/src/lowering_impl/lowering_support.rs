@@ -243,7 +243,7 @@ fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
                     amount: count,
                     ..
                 })
-                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count })
+                | SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount: count, .. })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaLostThisWay { amount: count })
                 | SubjectVerbActionAst::Mana(ManaActionAst::AddManaFromLandCouldProduce {
                     amount: count,
@@ -1500,7 +1500,8 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
 fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
-        TriggerSpec::SpellCast { .. }
+        TriggerSpec::SpellCastThroughPreviousPermission
+        | TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. } => true,
         _ => false,
@@ -1512,11 +1513,13 @@ fn triggering_stack_object_kind(trigger: &TriggerSpec) -> Option<crate::filter::
 
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => triggering_stack_object_kind(trigger),
-        TriggerSpec::SpellCast { .. }
+        TriggerSpec::SpellCastThroughPreviousPermission
+        | TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCastSameNameCardInZone { .. }
         | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. } => Some(StackObjectKind::Spell),
+        TriggerSpec::StackObjectAdded => Some(StackObjectKind::SpellOrAbility),
         TriggerSpec::AbilityActivated { .. } | TriggerSpec::AbilityTriggered { .. } => {
             Some(StackObjectKind::Ability)
         }
@@ -3724,6 +3727,40 @@ pub fn stage_owned_triggered_effects_for_lowering(
         }
     }
 
+    /// "Whenever Kotis deals combat damage to a player, exile the top X cards
+    /// of their library": when this source damaged a player, "their" cannot
+    /// name the source's own controller (that would be "your library"); it
+    /// names the damaged player. The grammar's library-owner default for a
+    /// bare "their" is the triggering object's controller, which here is the
+    /// source itself, so rebind it to the event's player.
+    fn bind_damaged_player_library_owner(trigger: &TriggerSpec, effects: &mut [EffectAst]) {
+        match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => {
+                return bind_damaged_player_library_owner(trigger, effects);
+            }
+            TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
+            | TriggerSpec::ThisDealsDamageToPlayer { .. } => {}
+            _ => return,
+        }
+        for effect in effects {
+            match effect {
+                EffectAst::Sequence { effects } => {
+                    bind_damaged_player_library_owner(trigger, effects);
+                }
+                EffectAst::SubjectVerb(subject_verb)
+                    if matches!(
+                        subject_verb.action,
+                        SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary { .. })
+                    ) && subject_verb.subject.player
+                        == crate::cards::builders::PlayerAst::ItsController =>
+                {
+                    subject_verb.subject.player = crate::cards::builders::PlayerAst::That;
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn bind_exact_damage_recipient_followup(trigger: &TriggerSpec, effects: &mut [EffectAst]) {
         let (trigger_object, trigger_player) = match trigger {
             TriggerSpec::DealsExactDamageToObjectOrPlayer { object, player, .. } => {
@@ -3931,6 +3968,7 @@ pub fn stage_owned_triggered_effects_for_lowering(
     if !promote_body_condition {
         bind_exact_damage_recipient_followup(&trigger, &mut body_effects);
     }
+    bind_damaged_player_library_owner(&trigger, &mut body_effects);
     if let Some(predicate) = intervening_if.take() {
         intervening_if = Some(link_spell_cast_mana_spent_predicate(&trigger, predicate));
     }
@@ -4956,6 +4994,7 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
             .into_iter()
             .map(preserve_named_granting_source_in_effect)
             .collect();
+        rebind_draw_after_granting_source_sacrifice(&mut sequence.effects);
         return Effect::new(sequence);
     }
 
@@ -5019,6 +5058,48 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
 /// object recorded under `GRANTING_SOURCE_TAG` when the granted ability is
 /// activated or triggers (the Equipment in `Equipped creature has "...
 /// Shuriken deals 2 damage ..."`), keeping the authored name's surface.
+/// "Hold for Ransom's controller sacrifices it and draws a card": once the
+/// named sacrifice is scoped to the granting Aura (and performed by that
+/// Aura's controller), the coordinated draw shares the same subject, the
+/// granting object's controller, not the controller of the creature that
+/// has the ability. The granting object is recorded under
+/// `GRANTING_SOURCE_TAG` when the granted ability is activated.
+fn rebind_draw_after_granting_source_sacrifice(effects: &mut [Effect]) {
+    fn is_granting_source_sacrifice(effect: &Effect) -> bool {
+        let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        else {
+            return false;
+        };
+        matches!(
+            with_source.source.base(),
+            ChooseSpec::Tagged(tag)
+                if *tag == crate::tag::CompilerReferenceTag::GrantingSource.key()
+        ) && with_source
+            .effect
+            .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+            .is_some_and(|sacrifice| sacrifice.player.is_none())
+    }
+    let mut after_sacrifice = false;
+    for effect in effects.iter_mut() {
+        if is_granting_source_sacrifice(effect) {
+            after_sacrifice = true;
+            continue;
+        }
+        if !after_sacrifice {
+            continue;
+        }
+        if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>()
+            && matches!(draw.player, PlayerFilter::ControllerOf(_))
+        {
+            let mut draw = draw.clone();
+            draw.player = PlayerFilter::ControllerOf(ObjectRef::tagged(
+                crate::tag::CompilerReferenceTag::GrantingSource.key(),
+            ));
+            *effect = Effect::new(draw);
+        }
+    }
+}
+
 fn granting_source_scope_spec(named: &ChooseSpec) -> ChooseSpec {
     ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::GrantingSource.key())
         .with_surface_hints(named.surface_hints().iter().cloned())
@@ -5076,9 +5157,10 @@ fn bind_granting_source_unattach_costs(
 /// concrete attachment object when it generates its continuous effect.
 fn preserve_named_granting_source(mut ability: Ability) -> Ability {
     fn wrap_effects(effects: &mut [Effect]) {
-        for effect in effects {
+        for effect in effects.iter_mut() {
             *effect = preserve_named_granting_source_in_effect(effect.clone());
         }
+        rebind_draw_after_granting_source_sacrifice(effects);
     }
 
     if let AbilityKind::Activated(activated) = &mut ability.kind

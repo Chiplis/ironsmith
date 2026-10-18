@@ -1,8 +1,8 @@
-import { LOOK_DONE_EVENT, lookViewKey, temporaryLookView } from "@/lib/look-pile";
+import { isOwnPassCancellation } from "@/lib/sync-commands.js";
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
 import { selectGoldfishPlayer } from "@/lib/goldfish-player.js";
-import { COMBAT_STEPS, createPriorityStops } from "@/lib/priority-stops";
+import { createPriorityStops } from "@/lib/priority-stops";
 import { usePaymentOptions } from "@/hooks/usePaymentOptions";
 import { ManaPaymentEditorProvider } from "@/context/ManaPaymentEditorContext";
 import { improvePayment } from "@/lib/payment-analysis.js";
@@ -14,6 +14,7 @@ import {
   startMainThreadMonitor,
 } from "@/lib/action-diagnostics";
 import { setJournalPolicy } from "@/lib/engine-journal";
+import { isVerifiedMultiplayerSecurityMode } from "@/lib/multiplayer-security";
 import { captureEngineRestorePoint, restoreEngineRestorePoint } from "@/lib/engine-restore-point";
 import { subscribePriorityAnalysisSnapshots } from "@/lib/priority-analysis-scheduler.js";
 import { castingMethodChoiceForAction, finishExplicitCastingMethod } from "@/lib/casting-method-choice";
@@ -1925,11 +1926,16 @@ export function GameProvider({ children }) {
     multiplayerActiveRef.current = multiplayer.matchStarted;
     // A local session's journal may carry card identities: they are the
     // player's own, and without them the export cannot rebuild the board. A
-    // peer match holds other people's hidden information, so the journal keeps
-    // method names and argument shapes only and the bundle reports itself as
-    // not replayable.
-    setJournalPolicy(multiplayer.matchStarted ? "redacted" : "full");
-  }, [multiplayer.matchStarted]);
+    // Trusted match starts every peer with every deck and the shuffle seed, so
+    // its journal would disclose other people's hidden cards: it keeps method
+    // names and argument shapes only and the bundle reports itself as not
+    // replayable. A Verified match's engine only ever holds openings this seat
+    // was entitled to see, so its journal discloses nothing the exporter could
+    // not already see.
+    const redact = multiplayer.matchStarted
+      && !isVerifiedMultiplayerSecurityMode(multiplayer.securityMode);
+    setJournalPolicy(redact ? "redacted" : "full");
+  }, [multiplayer.matchStarted, multiplayer.securityMode]);
 
   useEffect(() => {
     if (!multiplayer.matchStarted) {
@@ -2202,7 +2208,8 @@ export function GameProvider({ children }) {
             setStatus("No pending decision to submit", true);
             return;
           }
-          if (!samePlayerId(currentState.decision.player, currentState.perspective)) {
+          if (!samePlayerId(currentState.decision.player, currentState.perspective)
+              && !isOwnPassCancellation(command, currentState.perspective)) {
             setStatus("Waiting for the active player");
             return;
           }
@@ -2287,9 +2294,26 @@ export function GameProvider({ children }) {
 
           const dispatchStartedAt = performance.now();
           if (isTargetSubmit) armTargetSubmitDebounce();
+          const continuingYield = command.type === "priority_action"
+            && command.action_ref?.kind === "pass_priority"
+            && (stateRef.current?.pass_intents || []).length > 0;
+          const isYield = command.type === "priority_yield" || continuingYield;
           priorityCheckpoint = priorityStops.beforeCommand(command, stateRef.current);
           let st = await dispatchForAutomation(game, command);
           st = await finishExplicitCastingMethod(st, castingAction, (nextCommand) => dispatchForAutomation(game, nextCommand));
+          // Goldfish opponents already governed by the automatic hold policy
+          // grant their own intention too. Required choices always return to UI.
+          if (isYield) {
+            const actor = Number(stateRef.current?.perspective);
+            for (let pass = 0; pass < 4096; pass++) {
+              if (!(st?.pass_intents || []).includes(actor)
+                  || st?.decision?.kind !== "priority"
+                  || samePlayerId(st.decision.player, actor)
+                  || opponentHoldReason(st.decision, st)) break;
+              st = await dispatchForAutomation(game, holdRule === "never" ? command
+                : priorityCommandForAction(findPassPriorityAction(st.decision)));
+            }
+          }
           const workerRoundTripMs = performance.now() - dispatchStartedAt;
           if (isTargetSubmit) settleTargetSubmitDebounce();
           const workerPerf = readDispatchPerf(st);
@@ -2320,8 +2344,8 @@ export function GameProvider({ children }) {
           const finalizeStartedAt = performance.now();
           await finalizeState(game, st, {
             message: successMessage,
-            allowOpponentAutomation: !stopAfterEffectOrderingSubmit,
-            allowTrivialAutomation: !stopAfterEffectOrderingSubmit,
+            allowOpponentAutomation: !stopAfterEffectOrderingSubmit && !isYield && command.type !== "cancel_priority_yield",
+            allowTrivialAutomation: !stopAfterEffectOrderingSubmit && !isYield && command.type !== "cancel_priority_yield",
             clearViewedCards: true,
           });
           const finalizeMs = performance.now() - finalizeStartedAt;
@@ -2395,6 +2419,8 @@ export function GameProvider({ children }) {
       finalizeState,
       priorityStops,
       finishMultiplayerSubmission,
+      opponentHoldReason,
+      holdRule,
       game,
       multiplayer.matchStarted,
       multiplayer.role,
@@ -2455,38 +2481,32 @@ export function GameProvider({ children }) {
   }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, dispatch,
     isSnapshotRendered, multiplayer.submittingAction, stateRef, state]);
 
-  // "Resolve all": keep passing the local player's priority while the stack
-  // drains. It stops once the stack is empty, the turn changes, the pass is a
-  // custom action, or an opponent puts something new on the stack (so they
-  // never get a response silently skipped). Choices the resolving objects ask
-  // for still prompt; the run resumes after they are answered.
+  // Each run sends one authenticated intention. The engine drains authorized
+  // priority without intermediate renders and reports retained consent.
   const [resolveAllTick, setResolveAllTick] = useState(0);
   const resolveAllRef = useRef(null);
-  const completedLookRef = useRef("");
-  useEffect(() => {
-    const completeLook = () => {
-      completedLookRef.current = lookViewKey(temporaryLookView(stateRef.current), null);
-      setResolveAllTick(tick => tick + 1);
-    };
-    window.addEventListener(LOOK_DONE_EVENT, completeLook);
-    return () => window.removeEventListener(LOOK_DONE_EVENT, completeLook);
-  }, [stateRef]);
-  useEffect(() => {
-    const key = lookViewKey(temporaryLookView(state), null);
-    if (key !== completedLookRef.current) completedLookRef.current = "";
-  }, [state]);
   const stopResolveAll = useCallback(() => {
     resolveAllRef.current = null;
     setPhasePassing(false);
   }, []);
+  useEffect(() => { stopResolveAll(); }, [game, stopResolveAll]);
   // A stop ends the current phase run. It must not switch off auto-pass or
   // the saved auto-resolve preference: the stop itself keeps holding until the
   // player acts, and with default stops a paused run is the normal outcome.
-  const pausePassing = stopResolveAll;
+  const pausePassing = useCallback(() => {
+    const run = resolveAllRef.current;
+    if (!run) return;
+    run.cancelRequested = true;
+    setPhasePassing(false);
+    setResolveAllTick(tick => tick + 1);
+  }, []);
   const changeGoldfishPlayer = useCallback(async (playerId) => runWasmInteraction(async () => {
     if (!game || multiplayerActiveRef.current) return;
     stopResolveAll();
     try {
+      for (const player of stateRef.current?.pass_intents || []) {
+        await dispatchForAutomation(game, { type: "cancel_priority_yield", player });
+      }
       const result = await selectGoldfishPlayer(game, playerId,
         command => dispatchForAutomation(game, command));
       const current = await game.uiState();
@@ -2502,17 +2522,19 @@ export function GameProvider({ children }) {
       await finalizeState(game, current, { allowOpponentAutomation: false, allowTrivialAutomation: false });
       setStatus(`Change player failed: ${error}`, true);
     }
-  }), [game, runWasmInteraction, stopResolveAll, priorityStops, finalizeState, setStatus]);
+  }), [game, runWasmInteraction, stopResolveAll, priorityStops, finalizeState, setStatus, stateRef]);
   const startResolveAll = useCallback(() => {
     const current = stateRef.current;
     const stackSize = Number(current?.stack_size || 0);
     if (stackSize <= 0) return;
+    setAutoPassEnabled(true);
     const pass = findPassPriorityAction(current?.decision);
     if (pass && samePlayerId(current?.decision?.player, current?.perspective)) {
       priorityStops.beforeCommand(priorityCommandForAction(pass), current);
     }
     resolveAllRef.current = {
       turn: current?.turn_number ?? null,
+      stackIds: new Set((current.stack_objects || []).map(entry => String(entry.id))),
       stackSize,
       passes: 0,
       inFlight: false,
@@ -2524,7 +2546,7 @@ export function GameProvider({ children }) {
 
   const beginPhasePassing = useCallback((ignoreStops = false) => {
     if (resolveAllRef.current?.phases) {
-      stopResolveAll();
+      pausePassing();
       return;
     }
     const current = stateRef.current;
@@ -2551,94 +2573,75 @@ export function GameProvider({ children }) {
     };
     setPhasePassing(true);
     setResolveAllTick(tick => tick + 1);
-  }, [stateRef, stopResolveAll, priorityStops]);
+  }, [stateRef, pausePassing, priorityStops]);
   const togglePhasePassing = useCallback(() => beginPhasePassing(true), [beginPhasePassing]);
   const startPhaseAdvance = useCallback(() => beginPhasePassing(false), [beginPhasePassing]);
 
   useEffect(() => {
     const run = resolveAllRef.current;
-    if (!run || run.inFlight) return;
-    const stackSize = Number(state?.stack_size || 0);
-    if (
-      !state
-      || state.game_over
-      || (stackSize <= 0 && !run?.phases)
-      || (run && (state.turn_number ?? null) !== run.turn)
-      || (run && run.passes >= 200)
-    ) {
+    if (!run || run.inFlight || stateRef.current !== state) return;
+    if (!state || state.game_over || state.turn_number !== run.turn) {
       stopResolveAll();
       return;
     }
-    const top = Array.isArray(state.stack_objects) ? state.stack_objects[0] : null;
-    if (run && !run.phases && stackSize > run.stackSize && top && !samePlayerId(top.controller, state.perspective)) {
+    if (run.submitted && (run.stopKeys !== JSON.stringify(priorityStopsState.stops)
+        || holdRule === "always" || !autoPassEnabled)) run.cancelRequested = true;
+    if (run.submitted && !(state.pass_intents || []).includes(Number(state.perspective))) {
+      priorityStops.holdCurrentPriority(state);
       stopResolveAll();
       return;
     }
-    if (run) run.stackSize = stackSize;
-    const decision = state.decision;
-    if (!samePlayerId(decision?.player, state.perspective)) return;
-    const passCombat = run?.phases && decision?.kind === "attackers";
-    if (decision?.kind !== "priority" && !passCombat) return;
-    if (passCombat && (
-      (decision.attacker_options || []).some(option => option.must_attack)
-      || (!run.ignoreStops && (priorityStopsState.stops['phase:Combat']
-        || COMBAT_STEPS.some(step => priorityStopsState.stops[`step:${step}`])))
-    )) {
-      // A combat stop also opts out of declaring no attackers automatically:
-      // otherwise that declaration would remove the later blocking window.
-      pausePassing();
-      return;
-    }
-    if (run?.dispatchedFrom === state) return;
-    const reason = priorityStops.stopReason(state);
-    const stopReason = run?.ignoreStops && reason?.startsWith("stop at ") ? null : reason;
-    if (stopReason || holdRule === "always") {
-      if (run?.phases || stopReason?.startsWith("stop at ")) pausePassing();
-      return;
-    }
-    const pendingLook = temporaryLookView(state);
-    if (run?.phases && pendingLook && !pendingLook.acknowledged
-      && lookViewKey(pendingLook, null) !== completedLookRef.current) return;
-    const passAction = findPassPriorityAction(decision);
-    if (!passCombat && (!passAction || (passAction.label && passAction.label !== "Pass priority"))) {
-      stopResolveAll();
-      return;
-    }
-    // A continuation must wait for the previous click's cooldown and for
-    // the current snapshot to paint. Otherwise dispatch drops it and the
-    // same-state guard prevents the stack from draining any further.
-    const timer = setTimeout(() => {
-      if (stateRef.current !== state) {
-        setResolveAllTick((tick) => tick + 1);
-        return;
-      }
-      if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
-          || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
-        setResolveAllTick((tick) => tick + 1);
-        return;
-      }
-      if (run) {
+    if (run.cancelRequested) {
+      if (!run.submitted) { stopResolveAll(); return; }
+      const timer = setTimeout(() => {
+        if (wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()
+            || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
+          setResolveAllTick(tick => tick + 1);
+          return;
+        }
         run.inFlight = true;
-        run.dispatchedFrom = state;
-        run.passes += 1;
+        Promise.resolve(dispatch({ type: "cancel_priority_yield", player: Number(state.perspective) }, "Passing paused"))
+          .finally(() => { run.inFlight = false; setResolveAllTick(tick => tick + 1); });
+      }, 25);
+      return () => clearTimeout(timer);
+    }
+    if (run.dispatchedFrom === state) return;
+    if (state.decision?.kind !== "priority" || (!run.phases && (!state.stack_size
+        || (state.stack_objects || []).some(entry => !run.stackIds.has(String(entry.id)))))) {
+      stopResolveAll();
+      return;
+    }
+    if (!samePlayerId(state.decision?.player, state.perspective)) return;
+    const pass = findPassPriorityAction(state.decision);
+    if (!pass || (pass.label && pass.label !== "Pass priority") || holdRule === "always") {
+      stopResolveAll();
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (stateRef.current !== state || wasmInteractionGateRef.current.isBlocked()
+          || !isSnapshotRendered() || multiplayer.submittingAction || multiplayerSubmitInFlightRef.current) {
+        setResolveAllTick(tick => tick + 1);
+        return;
       }
-      Promise.resolve(dispatch(
-        passCombat ? { type: "declare_attackers", declarations: [] }
-          : { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
-        passCombat ? "No attackers declared" : passAction.label
-      ))
-        .catch(() => {
-          stopResolveAll();
-          setAutoResolveEnabled(false);
-        })
+      const continuing = run.submitted;
+      run.inFlight = true;
+      run.submitted = true;
+      run.dispatchedFrom = state;
+      run.stopKeys = JSON.stringify(priorityStops.getSnapshot().stops);
+      Promise.resolve(dispatch(continuing ? priorityCommandForAction(pass) : {
+        type: "priority_yield",
+        mode: run.phases ? "phases" : "stack",
+        stops: run.ignoreStops ? [] : Object.keys(priorityStops.getSnapshot().stops),
+      }, run.phases ? "Advance to next pause" : "Resolve all"))
+        .catch(stopResolveAll)
         .finally(() => {
-          if (run) run.inFlight = false;
-          setResolveAllTick((tick) => tick + 1);
+          run.inFlight = false;
+          setResolveAllTick(tick => tick + 1);
         });
     }, 25);
     return () => clearTimeout(timer);
-  }, [autoResolveEnabled, dispatch, isSnapshotRendered, multiplayer.submittingAction,
-    resolveAllTick, phasePassing, state, stateRef, stopResolveAll, pausePassing, priorityStops, priorityStopsState, holdRule]);
+  }, [dispatch, isSnapshotRendered, multiplayer.submittingAction, resolveAllTick,
+    state, stateRef, stopResolveAll, priorityStops, priorityStopsState, holdRule, autoPassEnabled]);
 
   const automaticRevealBlocked = useCallback(() =>
     wasmInteractionGateRef.current.isBlocked() || !isSnapshotRendered()

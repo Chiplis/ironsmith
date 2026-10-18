@@ -31,27 +31,7 @@ impl TriggerMatcher for TapForManaTrigger {
             return false;
         }
 
-        let player_matches = match &self.player {
-            PlayerFilter::You => e.player == ctx.controller,
-            PlayerFilter::Opponent => e.player != ctx.controller,
-            PlayerFilter::Any => true,
-            PlayerFilter::Specific(id) => e.player == *id,
-            PlayerFilter::Active => ctx.game.is_active_player(e.player),
-            PlayerFilter::IteratedPlayer => event.trigger_player() == Some(e.player),
-            _ => true,
-        };
-        if !player_matches {
-            return false;
-        }
-
-        if let Some(snapshot) = e.snapshot.as_ref() {
-            self.filter
-                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
-        } else if let Some(obj) = ctx.game.object(e.source) {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-        } else {
-            false
-        }
+        matches_mana_source(e, event, ctx, &self.player, &self.filter)
     }
 
     fn display(&self) -> String {
@@ -76,6 +56,80 @@ impl TriggerMatcher for TapForManaTrigger {
             format!("a {object}")
         };
         format!("Whenever {player} {verb} {object_phrase} for mana")
+    }
+}
+
+/// Mana produced by a matching source, including triggered abilities and
+/// activated abilities without a tap cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaFromSourceTrigger {
+    pub player: PlayerFilter,
+    pub filter: ObjectFilter,
+}
+
+impl TriggerMatcher for ManaFromSourceTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        Some(
+            ironsmith_core::trigger_model::Trigger::player_adds_mana_from_source(
+                self.player.clone(),
+                self.filter.clone(),
+            ),
+        )
+    }
+
+    fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
+        Some(vec![EventKind::ManaAdded])
+    }
+
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        let Some(e) = event.downcast::<ManaAddedEvent>() else {
+            return false;
+        };
+        if e.mana.is_empty() {
+            return false;
+        }
+        matches_mana_source(e, event, ctx, &self.player, &self.filter)
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Whenever an ability of {} causes {} to add mana",
+            self.filter.description(),
+            if matches!(self.player, PlayerFilter::You) {
+                "you".to_string()
+            } else {
+                describe_player_filter_fallback(&self.player)
+            }
+        )
+    }
+}
+
+fn matches_mana_source(
+    e: &ManaAddedEvent,
+    event: &TriggerEvent,
+    ctx: &TriggerContext,
+    player: &PlayerFilter,
+    filter: &ObjectFilter,
+) -> bool {
+    let player_matches = match player {
+        PlayerFilter::You => e.player == ctx.controller,
+        PlayerFilter::Opponent => e.player != ctx.controller,
+        PlayerFilter::Any => true,
+        PlayerFilter::Specific(id) => e.player == *id,
+        PlayerFilter::Active => ctx.game.is_active_player(e.player),
+        PlayerFilter::IteratedPlayer => event.trigger_player() == Some(e.player),
+        _ => true,
+    };
+    if !player_matches {
+        return false;
+    }
+
+    if let Some(snapshot) = e.snapshot.as_ref() {
+        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+    } else if let Some(obj) = ctx.game.object(e.source) {
+        filter.matches(obj, &ctx.filter_ctx, ctx.game)
+    } else {
+        false
     }
 }
 
@@ -125,6 +179,43 @@ mod tests {
     use crate::snapshot::ObjectSnapshot;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
+
+    #[test]
+    fn mana_from_source_accepts_non_tap_production_and_last_known_land() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let land = CardDefinitionBuilder::new(CardId::new(), "Sacrificed mana land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let source = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
+        game.remove_object(source);
+        let ctx = TriggerContext::for_source(game.new_object_id(), alice, &game);
+        let mana = ManaFromSourceTrigger {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::land(),
+        };
+        let tap = TapForManaTrigger::new(PlayerFilter::You, ObjectFilter::land());
+        for provenance in [
+            ManaProductionProvenance::Unknown,
+            ManaProductionProvenance::ManaAbility,
+            ManaProductionProvenance::TappedSourceForMana,
+        ] {
+            let event = TriggerEvent::new(
+                ManaAddedEvent::new(source, alice, alice, vec![ManaSymbol::Green])
+                    .with_snapshot(Some(snapshot.clone()))
+                    .with_production_provenance(provenance),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert!(mana.matches(&event, &ctx));
+            assert_eq!(
+                tap.matches(&event, &ctx),
+                provenance == ManaProductionProvenance::TappedSourceForMana
+            );
+        }
+        let empty = ManaAddedEvent::trigger_event(source, alice, alice, vec![]);
+        assert!(!mana.matches(&empty, &ctx));
+    }
 
     #[test]
     fn matches_actual_mana_from_a_tapped_filtered_source_using_lki() {
@@ -235,7 +326,8 @@ mod tests {
         )
         .execute(&mut game, &mut ctx)
         .expect("earthbend should resolve");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state()
+            .expect("test continuous state refresh succeeds");
 
         let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
             .into_iter()

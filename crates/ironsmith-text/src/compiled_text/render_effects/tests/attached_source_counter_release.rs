@@ -55,7 +55,7 @@ fn run_attached_source_counter_release(capture_granting_source: bool) {
                     crate::object::AttachmentTarget::Object(captive)
                 )
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             game.update_cant_effects();
             assert!(!game.current_has_static_ability_id(
                 captive,
@@ -150,7 +150,7 @@ fn run_attached_source_counter_release(capture_granting_source: bool) {
                     );
                 }
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             game.update_cant_effects();
             assert!(game.current_has_static_ability_id(
                 captive,

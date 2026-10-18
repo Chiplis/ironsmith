@@ -45,7 +45,7 @@ fn attachment_condition_grants_defender_permission_only_to_its_source() {
             } else if game.object(attached).unwrap().attached_to.is_some() {
                 assert!(game.detach_object_from_current_target(attached));
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             for source in [first, second] {
                 assert!(game.current_has_static_ability_id(
                     source,

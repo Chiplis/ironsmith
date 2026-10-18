@@ -186,8 +186,8 @@ pub(crate) fn match_triggers_at_instruction_boundary<'a>(
 
 fn match_triggers_at_instruction_boundary_inner<'a>(
     game: &mut GameState,
-    ctx: &ExecutionContext,
-    next: Option<&Effect>,
+    _ctx: &ExecutionContext,
+    _next: Option<&Effect>,
     reported: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
 ) -> bool {
     let fresh = reported

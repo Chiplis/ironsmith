@@ -1,6 +1,6 @@
 use super::*;
 use ironsmith::cards::CardDefinition;
-use ironsmith::combat_state::{AttackTarget, AttackerInfo, CombatState};
+use ironsmith::combat_state::{AttackTarget, CombatState};
 use ironsmith::decision::AttackerDeclaration;
 use ironsmith::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use ironsmith::game_loop::{

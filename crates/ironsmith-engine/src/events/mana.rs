@@ -311,7 +311,7 @@ pub mod matchers {
         }
     }
 
-    use crate::events::context::EventContext;
+
 
     #[derive(Debug, Clone, PartialEq)]
     pub struct ManaRewriteMatcher {

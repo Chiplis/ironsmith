@@ -130,7 +130,6 @@ impl DecisionMaker for TargetChoice {
 fn activate(game: &mut GameState, source: ObjectId, target: Option<Target>) {
     let action = compute_legal_actions(game, A).unwrap().into_iter().find(|action| matches!(action, LegalAction::ActivateAbility { source: candidate, .. } if *candidate == source)).unwrap();
     let mut target_dm = TargetChoice(target.unwrap_or(Target::Player(A)));
-    let mut first = SelectFirstDecisionMaker;
     let dm = &mut target_dm;
     let mut state = PriorityLoopState::new(game.players.len());
     let mut queue = TriggerQueue::new();

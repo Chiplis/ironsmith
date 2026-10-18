@@ -292,13 +292,6 @@ fn current(g: &GameState, id: ironsmith::ids::StableId) -> ObjectId {
         .expect("current resource incarnation")
 }
 
-fn set_actor(g: &mut GameState, dm: &mut Dm, p: PlayerId) {
-    dm.actor = p;
-    g.turn.active_player = p;
-    g.turn.priority_player = Some(p);
-    g.turn.phase = Phase::FirstMain;
-    g.turn.step = None;
-}
 fn immediate(
     g: &mut GameState,
     a: LegalAction,

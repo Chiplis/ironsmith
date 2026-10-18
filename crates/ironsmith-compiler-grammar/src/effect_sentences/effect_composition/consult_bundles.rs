@@ -374,6 +374,19 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                     }
                 });
             }
+            if clauses.iter().any(|clause|
+                bundle_grammar::followup_shapes::parse_damage_amount_replacement(clause).is_some())
+            {
+                // A dependent damage replacement needs both the preceding
+                // damage instruction and the consult's matched-card receipt.
+                // The sentence planner binds those identities; isolated
+                // clause parsing has neither and cannot supply "that damage".
+                let mut sentences = vec![SentenceInput::from_lexed(&shape.consult_tokens)];
+                sentences.extend(clauses.iter().map(|clause| SentenceInput::from_lexed(clause)));
+                effects = crate::grammar::primitives::probe_shape(
+                    super::super::dispatch_entry::parse_effect_sentences_from_sentence_inputs(sentences),
+                )?;
+            } else {
             for clause in clauses {
                 if let Some(matched) = bundle_grammar::parse_consult_matched_move_shape(&clause)
                     && matched.selection == bundle_grammar::ConsultMoveSelectionShape::AllMatched
@@ -398,6 +411,7 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
                     }
                 }
                 effects.append(&mut clause_effects);
+            }
             }
             parts.match_tag.clone()
         }

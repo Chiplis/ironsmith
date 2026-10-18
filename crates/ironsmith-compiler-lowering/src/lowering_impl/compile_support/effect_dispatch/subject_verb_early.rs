@@ -1428,15 +1428,16 @@ pub(super) fn compile_subject_verb_early(
                 Effect::choose_land_type(subject.into_player_filter(), *exclude_basic)
             }
         }),
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag, options, exclude_source_history }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
             let mut effects = subject.target_prelude();
-            effects.push(Effect::choose_card_name(
-                chooser.clone(),
-                filter.clone(),
-                tag.clone(),
-            ));
+            let mut choice = crate::effects::ChooseCardNameEffect::new(
+                chooser.clone(), filter.clone(), tag.clone(),
+            );
+            choice.options = options.clone();
+            choice.exclude_source_history = *exclude_source_history;
+            effects.push(Effect::new(choice));
             ctx.last_object_tag = Some(tag.clone().into());
             ctx.last_player_filter = Some(chooser);
             Ok((effects, subject.into_choices()))
@@ -1627,15 +1628,11 @@ pub(super) fn compile_subject_verb_early(
                 },
             )
         }
-        SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount }) => {
-            let (amount, player_filter, choices) =
-                resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
-            compile_player_effect_from_resolved_filter(
-                player_filter,
-                choices,
-                || Effect::add_mana_of_noted_type(amount.clone(), PlayerFilter::You),
-                |filter| Effect::add_mana_of_noted_type(amount.clone(), filter),
-            )
+        SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, use_noted_amount }) => {
+            let (amount, player_filter, choices) = resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
+            let mut effect = crate::effects::AddManaOfNotedTypeEffect::new(amount, player_filter);
+            effect.use_noted_amount = *use_noted_amount;
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::Mana(ManaActionAst::AddManaChosenColor {
             amount,

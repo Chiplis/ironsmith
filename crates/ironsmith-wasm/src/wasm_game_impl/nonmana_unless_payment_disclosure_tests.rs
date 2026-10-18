@@ -74,7 +74,7 @@ fn nonmana_unless_payment_fixture(name: &str, failing: std::sync::Arc<std::sync:
         let source = nonmana_unless_announce(&mut wasm, &nonmana_unless_definition(name), PlayerId(0), Some(Target::Object(victim)));
         (source, victim)
     };
-    drain_pending_trigger_events(&mut wasm.game, &mut wasm.trigger_queue);
+    ironsmith::game_loop::try_drain_pending_trigger_events(&mut wasm.game, &mut wasm.trigger_queue).expect("fixture pending triggers should drain");
     ironsmith::game_loop::put_triggers_on_stack_with_dm(&mut wasm.game, &mut wasm.trigger_queue,
         &mut ironsmith::decision::SelectFirstDecisionMaker).unwrap();
     wasm.game.turn.priority_player = Some(PlayerId(0));

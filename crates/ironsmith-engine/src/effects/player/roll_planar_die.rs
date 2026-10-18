@@ -17,7 +17,7 @@ impl EffectExecutor for RollPlanarDieEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player = resolve_player_filter(game, &self.player, ctx)?;
-        match game.roll_planar_die(player, false) {
+        match game.roll_planar_die_with_decision_maker(player, false, &mut ctx.decision_maker) {
             Ok(_) => Ok(EffectOutcome::resolved()),
             // No Planechase game: there is no planar die to roll.
             Err(ExecutionError::Impossible(_)) => Ok(EffectOutcome::count(0)),

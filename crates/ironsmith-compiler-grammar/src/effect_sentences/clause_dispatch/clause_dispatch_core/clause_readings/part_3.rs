@@ -738,6 +738,34 @@ fn choose_one_object_of_each_color(tokens: &[OwnedLexToken]) -> Option<Vec<Effec
         return None;
     }
     let chosen = crate::util::helper_tag_for_tokens(tokens, "chosen");
+    // "That player ... chooses one card of each color from it" inside a
+    // per-player body: "it" is the participant's own hand. Every slot must
+    // choose from that same hand, but a slot's own choice rebinds the
+    // implicit `it` (and the following "that player") to the chosen card, so
+    // later slots would choose among the already chosen cards. Name the pool
+    // explicitly as the iterated player's hand, chosen by that player.
+    // (The choice parser reads "that player chooses ... from it" as "its
+    // controller chooses ... it controls"; undo that for the hand pool.)
+    let mut base = base;
+    let mut chooser = chooser;
+    let it_pool = |constraint: &crate::target::TaggedObjectConstraint| {
+        constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+    };
+    let it_controller = PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+        crate::tag::CompilerReferenceTag::It.bind(),
+    ));
+    if matches!(chooser, PlayerAst::That | PlayerAst::ItsController)
+        && base.zone == Some(Zone::Hand)
+        && base.owner.is_none()
+        && (base.controller.is_none() || base.controller.as_ref() == Some(&it_controller))
+        && base.tagged_constraints.iter().any(it_pool)
+    {
+        base.tagged_constraints.retain(|constraint| !it_pool(constraint));
+        base.controller = None;
+        base.owner = Some(PlayerFilter::IteratedPlayer);
+        chooser = PlayerAst::That;
+    }
     Some(
         crate::color::Color::ALL
             .iter()

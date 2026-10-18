@@ -306,6 +306,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        ctx.last_play_permissions.clear();
         if self.alternative_cost.as_ref().is_some_and(|cost| cost.as_all().is_none()
             || cost.as_all().is_some_and(|components| components.iter().any(|cost| cost.dynamic_mana_cost_ref().is_some()))) {
             return Err(ExecutionError::InternalError("temporary casting price requires an announced flat cost".into()));
@@ -524,6 +525,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 spell_cost_reduction_per_opponent: self.spell_cost_reduction_per_opponent,
                 lands_enter_tapped: self.lands_enter_tapped,
                 top_card_only: false, instant_timing: false, may_look_at_top: false,
+                requires_cast_receipt: false,
                 cast_mana_spend_mode: if self.permission_bound_mana { self.mana_spend_mode } else { ironsmith_core::value_model::ManaSpendMode::Normal },
             };
             let shared_usage_id = self.max_plays.map(|max_plays| {
@@ -721,6 +723,8 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             );
         }
 
+        ctx.last_play_permissions = game.effect_store.grant_registry.grants[first_grant..].iter()
+            .filter_map(|grant| grant.permission_identity.clone()).collect();
         Ok(EffectOutcome::count(granted as i32))
     }
 }
@@ -734,7 +738,7 @@ mod tests {
     use crate::effects::ExecutionContext;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::snapshot::ObjectSnapshot;
-    use std::collections::HashSet;
+
 
     #[test]
     fn marked_tagged_conversion_is_one_exact_grant_and_has_no_stable_card_mana_side_effect() {

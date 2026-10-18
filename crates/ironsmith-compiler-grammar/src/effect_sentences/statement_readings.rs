@@ -91,7 +91,7 @@ const STATEMENT_READINGS: &[Reading] = &[
     },
     Reading {
         id: RuleId::new("block-attacker-of-choice"),
-        head: HeadDiscriminator::Words(&["you", "have"]),
+        head: HeadDiscriminator::Words(&["you", "have", "it", "that", "then"]),
         admits: |_| true,
         read: |input| input.outcome(read_block_attacker_of_choice(input)),
     },
@@ -733,9 +733,13 @@ fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<Ow
         return None;
     }
     let words = crate::lexer::token_word_refs(sentence);
-    if words.first() != Some(&"return") || words.get(1) != Some(&"target") {
-        return None;
-    }
+    // "Return another target permanent you control and all Auras ..."
+    // (Essence Reliquary): the target may be qualified by "another".
+    let noun_index = match (words.first(), words.get(1), words.get(2)) {
+        (Some(&"return"), Some(&"target"), _) => 2,
+        (Some(&"return"), Some(&"another"), Some(&"target")) => 3,
+        _ => return None,
+    };
     let and_all = words.windows(2).position(|pair| pair == ["and", "all"])?;
     let attached = words
         .windows(4)
@@ -746,8 +750,8 @@ fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<Ow
     let target = &sentence[1..and_all];
     let collection = &sentence[and_all + 1..attached];
     let destination = &sentence[attached + 4..];
-    let noun = target.get(1)?.as_word()?.to_string();
-    if destination.is_empty() || target.len() < 2 {
+    let noun = target.get(noun_index - 1)?.as_word()?.to_string();
+    if destination.is_empty() || target.len() < noun_index {
         return None;
     }
     let mut rewritten = vec![sentence[0].clone()];
@@ -1133,6 +1137,14 @@ fn read_exile_single_segment(
         return Ok(None);
     }
 
+    // The object-filter reader accepts a trailing where clause but cannot
+    // bind the enclosing target count. Let the sentence binder own it.
+    if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(input.sentence)
+        .is_some()
+    {
+        return super::dispatch_inner::parse_effect_sentence_with_where_x_lexed(input.sentence)
+            .map(Some);
+    }
     if let Some(effects) = super::parse_same_name_target_fanout_sentence(input.sentence)? {
         return Ok(Some(effects));
     }
@@ -1526,6 +1538,37 @@ pub(super) fn parse_unblock_sole_blocked_attackers_sentence(
     .into_iter()
     .filter(|word| !matches!(*word, "," | "."))
     .collect::<Vec<_>>();
+    // "Creatures it was blocking that hadn't become blocked by another
+    // creature this combat become unblocked[, then it blocks an attacking
+    // creature of your choice]" (Balduvian Warlord): the same attackers as
+    // "blocked by only that creature", named by negation.
+    if let Some(rest) = words.strip_prefix(&[
+        "creatures", "it", "was", "blocking", "that",
+    ][..])
+        && let Some(rest) = rest
+            .strip_prefix(&["hadn't"][..])
+            .or_else(|| rest.strip_prefix(&["hadnt"][..]))
+            .or_else(|| rest.strip_prefix(&["had", "not"][..]))
+        && let Some(rest) = rest.strip_prefix(&[
+            "become", "blocked", "by", "another", "creature", "this", "combat", "become",
+            "unblocked",
+        ][..])
+    {
+        let mut effects = vec![EffectAst::UnblockSoleBlockedAttackersOf {
+            blocker: crate::cards::builders::TargetAst::Tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+                None,
+            ),
+        }];
+        if !rest.is_empty() {
+            let tail = crate::lexer::synthetic_word_tokens(rest.iter().copied());
+            let Ok(Some(block)) = parse_block_attacker_of_choice_sentence(&tail) else {
+                return None;
+            };
+            effects.extend(block);
+        }
+        return Some(effects);
+    }
     let rest = words.strip_prefix(&[
         "creatures", "it", "was", "blocking", "that", "had", "become", "blocked", "by", "only",
     ][..])?;
@@ -1577,11 +1620,17 @@ pub(super) fn parse_block_attacker_of_choice_sentence(
     .into_iter()
     .filter(|word| !matches!(*word, "," | "."))
     .collect::<Vec<_>>();
-    let (optional, rest) = match words.strip_prefix(&["you", "may", "have"][..]) {
-        Some(rest) => (true, rest),
+    // "then it blocks an attacking creature of your choice" (Balduvian
+    // Warlord): the referenced creature itself is the actor, and the block is
+    // mandatory.
+    let (optional, direct, rest) = match words.strip_prefix(&["you", "may", "have"][..]) {
+        Some(rest) => (true, false, rest),
         None => match words.strip_prefix(&["have"][..]) {
-            Some(rest) => (false, rest),
-            None => return Ok(None),
+            Some(rest) => (false, false, rest),
+            None => {
+                let rest = words.strip_prefix(&["then"][..]).unwrap_or(words.as_slice());
+                (false, true, rest)
+            }
         },
     };
     let (blocker, rest) = match rest {
@@ -1594,7 +1643,8 @@ pub(super) fn parse_block_attacker_of_choice_sentence(
         ),
         _ => return Ok(None),
     };
-    let Some(rest) = rest.strip_prefix(&["block"][..]) else {
+    let block_verb: &[&str] = if direct { &["blocks"] } else { &["block"] };
+    let Some(rest) = rest.strip_prefix(block_verb) else {
         return Ok(None);
     };
     let Some(filter_words) = rest.strip_suffix(&["of", "your", "choice"][..]) else {

@@ -218,7 +218,10 @@ pub fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::DidNot);
     }
+    // "You may pay eight {E}. If you pay, ..." (Lightning Runner): the bare
+    // restated payment is the ordinary result of the optional payment.
     if matches_phrase(&normalized, &["you", "do"])
+        || matches_phrase(&normalized, &["you", "pay"])
         || matches_phrase(&normalized, &["they", "do"])
         || matches_phrase(&normalized, &["player", "do"])
         || matches_phrase(&normalized, &["player", "does"])

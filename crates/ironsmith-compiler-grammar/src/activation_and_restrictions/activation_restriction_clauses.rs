@@ -1590,7 +1590,26 @@ pub fn parse_negated_object_restriction_clause(
                 target: None,
             }));
         }
-        let Some(restriction) = player_negated_restriction_from_tail(&remainder_words, player)
+        // "Enchanted player can't activate abilities that aren't mana
+        // abilities or loyalty abilities." (Overwhelming Splendor): the
+        // activation-ban tails are the same facts the player activation
+        // clause reads; that clause's subject grammar has no attached-player
+        // subject, so read the two whole-player activation bans here too.
+        let activation_ban = || {
+            use restriction_grammar::PlayerActivationRestrictionTailFact as Fact;
+            match restriction_grammar::parse_player_activation_restriction_tail_words(
+                &remainder_words,
+            )? {
+                fact @ (Fact::ActivateNonManaAbilities
+                | Fact::ActivateNonManaNonLoyaltyAbilities) => {
+                    Some(restriction_from_player_action_fact(player.clone(), fact))
+                }
+                _ => None,
+            }
+        };
+        let Some(restriction) =
+            player_negated_restriction_from_tail(&remainder_words, player.clone())
+                .or_else(activation_ban)
         else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported player negated restriction tail (clause: '{}')",

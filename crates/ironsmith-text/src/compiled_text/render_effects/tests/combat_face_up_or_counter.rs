@@ -47,7 +47,7 @@ fn combat_face_up_or_counter_preserves_both_choices_for_the_damage_source() {
         if face_down {
             assert!(game.set_face_down(dealer));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         let damage = |source, combat| {
             crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::DamageEvent::with_cause(

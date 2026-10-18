@@ -4119,9 +4119,90 @@ fn parse_conditional_source_prevention_and_grant(
     Ok(Some(abilities))
 }
 
+/// "Equipped creature has lifelink if you control a Cleric, deathtouch if you
+/// control a Rogue, haste if you control a Warrior, and flying if you control
+/// a Wizard." (Multiclass Baldric): one subject with a list of grants, each
+/// gated by its own player condition. Each item is the ordinary conditional
+/// grant "<subject> has <ability> as long as <condition>" (CR 611.3a), read
+/// by the complete static-line grammar. Only player conditions ("if you ...")
+/// are owned here; per-object conditions ("if it's white") stay with their
+/// own readers.
+fn parse_per_item_conditional_grant_list_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if tokens
+        .iter()
+        .any(|token| token.kind == crate::lexer::TokenKind::Quote)
+    {
+        return Ok(None);
+    }
+    let body = trim_edge_punctuation(tokens);
+    let Some(has_idx) = body.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+        return Ok(None);
+    };
+    let subject = &body[..has_idx];
+    if subject.is_empty()
+        || subject
+            .iter()
+            .any(|token| token.is_comma() || token.is_any_word(&["if", "as", "and"]))
+    {
+        return Ok(None);
+    }
+    // Split the predicate list on commas; the last item may open with "and".
+    let mut items: Vec<&[OwnedLexToken]> = Vec::new();
+    let mut start = has_idx + 1;
+    for index in has_idx + 1..=body.len() {
+        if index == body.len() || body[index].is_comma() {
+            let mut item = &body[start..index];
+            if item.first().is_some_and(|token| token.is_word("and")) {
+                item = &item[1..];
+            }
+            items.push(item);
+            start = index + 1;
+        }
+    }
+    if items.len() < 2 {
+        return Ok(None);
+    }
+    let mut abilities = Vec::new();
+    for item in items {
+        let Some(if_idx) = item.iter().position(|token| token.is_word("if")) else {
+            return Ok(None);
+        };
+        let ability = &item[..if_idx];
+        let condition = &item[if_idx + 1..];
+        if ability.is_empty()
+            || ability.iter().any(|token| token.is_any_word(&["and", "or", "if"]))
+            || !condition.first().is_some_and(|token| token.is_word("you"))
+            || condition.iter().skip(1).any(|token| token.is_word("if"))
+        {
+            return Ok(None);
+        }
+        let span = item[if_idx].span();
+        let mut line = subject.to_vec();
+        line.push(body[has_idx].clone());
+        line.extend_from_slice(ability);
+        for word in ["as", "long", "as"] {
+            line.push(OwnedLexToken::word(word.to_string(), span));
+        }
+        line.extend_from_slice(condition);
+        let Some(parsed) = crate::keyword_static::parse_static_ability_ast_line_lexed(&line)? else {
+            return Ok(None);
+        };
+        if parsed.is_empty() {
+            return Ok(None);
+        }
+        abilities.extend(parsed);
+    }
+    Ok(Some(abilities))
+}
+
 pub fn parse_filter_has_granted_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(abilities) = parse_per_item_conditional_grant_list_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     if parse_filtered_land_reset_and_grant_line(tokens)?.is_some() {
         return Ok(None);
     }

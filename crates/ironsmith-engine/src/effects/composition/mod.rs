@@ -138,7 +138,7 @@ pub use emit_keyword_action::EmitKeywordActionEffect;
 pub(crate) use emit_keyword_action::{
     complete_keyword_action, complete_keyword_action_with_outputs,
     complete_keyword_action_with_result, observe_keyword_action_completion,
-    observe_keyword_action_completion_with_outputs, publish_keyword_action_completion,
+    observe_keyword_action_completion_with_outputs,
     publish_keyword_action_completion_receipt,
 };
 pub use execute_with_source::ExecuteWithSourceEffect;
@@ -215,7 +215,6 @@ pub(crate) use if_effect::{
     PreparedIfBranch, execute_if_branches_with_outputs, prepare_if_branches,
 };
 
-pub(crate) use for_players::{ForPlayersDrawContinuation, ForPlayersDrawProgress};
 
 mod keyword_action;
 pub(crate) use keyword_action::{

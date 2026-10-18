@@ -271,6 +271,7 @@ impl Event {
                 amount,
                 from_damage,
                 from_radiation: false,
+                from_payment: false,
             },
             ProvNodeId::default(),
         )

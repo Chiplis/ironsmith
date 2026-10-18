@@ -18,7 +18,7 @@ pub use copy_spell::CopySpellEffect;
 pub(crate) use copy_spell::discard_departed_ability_copy_object;
 pub use copy_spell_for_each_target::CopySpellForEachTargetEffect;
 pub use counter::CounterEffect;
-pub(crate) use counter::{counter_stack_entry_at, counter_stack_entry_at_with_outputs};
+pub(crate) use counter::{counter_stack_entry_at_with_outputs};
 pub(crate) use epic_spell_copy::EpicSpellCopyEffect;
 pub use retained_spell_copy::{PutRetainedSpellCopyOntoStackEffect, RetainSpellChoicesEffect};
 pub use retarget_stack_object::{NewTargetRestriction, RetargetMode, RetargetStackObjectEffect};

@@ -164,6 +164,8 @@ pub enum EventKind {
     MonarchChanged,
     /// Beginning of the declare attackers step, after the attack declaration.
     BeginningOfDeclareAttackersStep,
+    /// A spell or ability was actually inserted, after announcement.
+    StackObjectAdded,
 }
 
 /// A target within an event that can potentially be redirected.

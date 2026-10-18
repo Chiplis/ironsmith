@@ -109,6 +109,14 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         } else {
             self.surface.trim().to_string()
         };
+        // Mana-production qualifications can retain the complete authored
+        // event clause, rather than joining two descriptions with "while".
+        if self.trigger.downcast_ref::<crate::triggers::ManaFromSourceTrigger>().is_some()
+            && matches!(self.condition, Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor))
+            && !self.surface.trim().is_empty()
+        {
+            return format!("Whenever {}", self.surface.trim());
+        }
         // An adverbial qualification ("from anywhere other than exile",
         // "during your turn") reads directly after the event.
         // "by spending four or more mana to activate it" and "enters

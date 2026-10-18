@@ -52,6 +52,9 @@ impl EffectExecutor for ConsultTopOfLibraryEffect {
             |object, game| self.filter.matches(object, &filter_ctx, game),
         )?;
 
+        if let Some(tag) = &self.accumulated_match_tag {
+            ctx.tag_objects_unique(tag.clone(), result.matched_snapshots.clone());
+        }
         if result.exposed_object_ids.is_empty() {
             Ok(result.attach_to_outputs(EffectOutcome::count(0)))
         } else {

@@ -93,10 +93,9 @@ test("a card chosen inside a closed zone still shows its check on the pile", asy
     const pileBox = await page.locator('[data-zone-pile="graveyard"]').boundingBox();
     const checkBox = await pileCheck.boundingBox();
     assert.ok(checkBox.width > 8 && checkBox.height > 8, "and it is visible");
-    const labelBox = await page.locator(".zone-pile-label").first().boundingBox();
-    assert.ok(checkBox.y >= labelBox.y + labelBox.height - 1, "below the count label");
-    assert.ok(checkBox.y >= pileBox.y - 1, "and over the pile art");
-    assert.ok(checkBox.x < pileBox.x + (pileBox.width / 2), "in the corner the label leaves free");
+    // The zone is a glyph-and-count chip; the check sits on its leading corner.
+    assert.ok(checkBox.x < pileBox.x + (pileBox.width / 2), "on the chip's leading side");
+    assert.ok(checkBox.y < pileBox.y + (pileBox.height / 2), "over its top edge");
     assert.equal(await strip.isVisible(), false, "without opening the zone");
 
     // Clicking it unchooses that card. Reaching for it hovers the pile, which
@@ -114,17 +113,18 @@ test("a card chosen inside a closed zone still shows its check on the pile", asy
 });
 
 
-test("Look shows the latest remaining choice when the pointer leaves", async () => {
+test("looked-at library cards are chosen from the Deck chip, which checks the latest choice", async () => {
   const vite = await createServer({server: {host: "127.0.0.1", port: 0}, logLevel: "silent"});
   await vite.listen();
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({viewport: {width: 1200, height: 900}});
     await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-selection-check.html?look`);
-    const pile = page.locator('[data-zone-pile="look"]');
-    const check = page.locator('.player-look-pile .zone-pile-check');
+    // The looked-at cards live in the deck: its chip wears the eye.
+    const pile = page.locator('[data-zone-pile="library"][data-looking="true"]').first();
+    const check = page.locator('.zone-pile-slot--icon > .zone-pile-check');
     await pile.hover();
-    const strip = page.locator('.zone-pile-menu--look');
+    const strip = page.locator('.zone-pile-menu--icon');
     await strip.locator('[data-object-id="20"]').click();
     await strip.locator('[data-object-id="21"]').click();
     // Selection must not reorder cards under the pointer in the open strip.
@@ -132,12 +132,10 @@ test("Look shows the latest remaining choice when the pointer leaves", async () 
     await page.mouse.move(1150, 60);
     await strip.waitFor({state: "hidden"});
     assert.equal(await check.getAttribute("title"), "Deselect Swamp");
-    const swampArt = await pile.locator('img').getAttribute('src');
     await check.click();
     await page.mouse.move(1150, 60);
     await strip.waitFor({state: "hidden"});
     assert.equal(await check.getAttribute("title"), "Deselect Island");
-    assert.notEqual(await pile.locator('img').getAttribute('src'), swampArt);
     await check.click();
     await page.mouse.move(1150, 60);
     await strip.waitFor({state: "hidden"});

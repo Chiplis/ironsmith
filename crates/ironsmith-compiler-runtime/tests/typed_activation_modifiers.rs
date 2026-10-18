@@ -85,7 +85,7 @@ struct Choices {
 }
 impl DecisionMaker for Choices {
     fn decide_options(&mut self, game: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
-        if (context.description.starts_with("Choose ") && context.description.contains("mode")) {
+        if context.description.starts_with("Choose ") && context.description.contains("mode") {
             if let Some(mode) = self.mode {
                 assert!(
                     context
@@ -183,12 +183,6 @@ fn activation(
         .nth(index)?
         .0;
     compute_legal_actions(game, player).unwrap().into_iter().find(|action| matches!(action, LegalAction::ActivateAbility { source: id, ability_index } if *id == source && *ability_index == index))
-}
-fn cast(game: &mut GameState, spell: ObjectId, choices: &mut Choices) {
-    let player = game.turn.priority_player.unwrap();
-    let action = compute_legal_actions(game, player).unwrap().into_iter().find(|action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == spell)).unwrap();
-    announce(game, action, choices);
-    resolve_stack_entry_with(game, choices).unwrap();
 }
 
 fn printed(game: &mut GameState, name: &str, text: &str, owner: PlayerId, zone: Zone) -> ObjectId {

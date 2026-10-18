@@ -156,7 +156,7 @@ fn build_board(players: usize, extra_lands: usize, cauldron: bool) -> Board {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("probe board continuous state should refresh");
 
     Board {
         game,
@@ -399,7 +399,7 @@ fn reported_board(cubs: usize) -> (GameState, PlayerId, Vec<CardDefinition>) {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("probe board continuous state should refresh");
 
     let cub = compile(&index, "Badgermole Cub");
     (game, alice, vec![cub; cubs])
@@ -501,11 +501,11 @@ fn report_reported_board() -> Result<(), ironsmith::effects::ExecutionError> {
         let started = Instant::now();
         let actions = ironsmith::decision::compute_legal_actions(&game, alice)?;
         let legal_ms = started.elapsed().as_secs_f64() * 1000.0;
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         let started = Instant::now();
         let _ = ironsmith::decision::compute_legal_actions(&game, alice)?;
         let legal_clean_ms = started.elapsed().as_secs_f64() * 1000.0;
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
         let animated = game
             .battlefield
             .iter()

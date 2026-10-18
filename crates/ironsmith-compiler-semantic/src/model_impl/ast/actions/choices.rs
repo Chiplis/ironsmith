@@ -36,6 +36,8 @@ pub enum ChoiceActionAst {
     ChooseCardName {
         filter: Option<ObjectFilter>,
         tag: TagRef,
+        options: Vec<String>,
+        exclude_source_history: bool,
     },
     ChoosePlayer {
         filter: PlayerFilter,

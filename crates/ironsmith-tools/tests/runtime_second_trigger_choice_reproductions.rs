@@ -10,7 +10,7 @@ use ironsmith::decisions::context::{
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, advance_priority_with_dm,
-    apply_attacker_declarations_with_dm, apply_blocker_declarations,
+    apply_attacker_declarations_with_dm,
     apply_decision_context_with_dm, apply_priority_response_with_dm,
 };
 use ironsmith::mana::ManaSymbol;
@@ -386,13 +386,6 @@ fn forest(g: &mut GameState, snow: bool) {
     } else {
         b.build()
     };
-    g.create_object_from_definition(&d, alice(), Zone::Battlefield);
-}
-fn food(g: &mut GameState) {
-    let d = CardDefinitionBuilder::new(CardId::new(), "Audit Food")
-        .card_types(vec![CardType::Artifact])
-        .subtypes(vec![Subtype::Food])
-        .build();
     g.create_object_from_definition(&d, alice(), Zone::Battlefield);
 }
 fn attack_next_turn(g: &mut GameState, ids: &[ObjectId], dm: &mut Choices) -> Result<(), String> {

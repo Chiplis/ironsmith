@@ -166,6 +166,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                 trigger,
                 TriggerSpec::CardsMilled { .. }
                     | TriggerSpec::DamageToPlayerPrevented(_)
+                    | TriggerSpec::SourceManaAbilityResolves
                     | TriggerSpec::DamagePreventedThisWay { .. }
                     | TriggerSpec::PlayerGainsLife { .. }
                     | TriggerSpec::YouGainLife
@@ -538,7 +539,7 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
         }
         TargetAst::Object(filter, explicit_target_span, _) => {
             if explicit_target_span.is_some()
-                && (filter.owner.is_some() || filter.controller.is_some())
+                && (target_filter_names_owner(filter) || filter.controller.is_some())
             {
                 // The lexical owner/controller filter describes the legal
                 // target set, not the concrete player selected at runtime.
@@ -546,7 +547,7 @@ fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
                 // exact provenance even when no later object reference forced
                 // us to create a tag for that target.
                 let reference = ObjectRef::Target;
-                frame.last_player_filter = Some(if filter.owner.is_some() {
+                frame.last_player_filter = Some(if target_filter_names_owner(filter) {
                     PlayerFilter::AliasedOwnerOf(reference)
                 } else {
                     PlayerFilter::AliasedControllerOf(reference)
@@ -676,6 +677,15 @@ fn chooser_bound_followup_player_filter(
         .is_some_and(PlayerFilter::mentions_iterated_player)
     {
         chooser.cloned().or(inferred)
+    } else if inferred.as_ref().is_some_and(is_you_player_filter)
+        && let Some(chooser) = chooser
+        && matches!(chooser, PlayerFilter::Target(_))
+        && !is_you_player_filter(chooser)
+    {
+        // "discard a card of target opponent's choice. Then that player
+        // ..." (Rakdos Augermage): "you" is never "that player"; the target
+        // player choosing from your cards is the new player antecedent.
+        Some(chooser.clone())
     } else {
         inferred.or_else(|| chooser.cloned())
     }
@@ -724,10 +734,10 @@ fn maybe_tag_target(
     }
     track_target_player(target, frame);
     if let (Some(tag), TargetAst::Object(filter, Some(_), _)) = (current_object_tag, target)
-        && (filter.owner.is_some() || filter.controller.is_some())
+        && (target_filter_names_owner(filter) || filter.controller.is_some())
     {
         let reference = ObjectRef::tagged(tag);
-        frame.last_player_filter = Some(if filter.owner.is_some() {
+        frame.last_player_filter = Some(if target_filter_names_owner(filter) {
             PlayerFilter::AliasedOwnerOf(reference)
         } else {
             PlayerFilter::AliasedControllerOf(reference)
@@ -742,6 +752,17 @@ fn maybe_tag_target(
         frame.last_player_filter = Some(PlayerFilter::Target(Box::new(filter)));
     }
     Ok(())
+}
+
+/// An explicit object target names its owner either directly or in every
+/// branch of an exception union ("target card other than a basic land card
+/// from an opponent's graveyard" = nonland or nonbasic, each in that
+/// graveyard; Kotose): a later "that player" is the chosen card's owner.
+fn target_filter_names_owner(filter: &ObjectFilter) -> bool {
+    filter.owner.is_some()
+        || (filter.controller.is_none()
+            && !filter.any_of.is_empty()
+            && filter.any_of.iter().all(|branch| branch.owner.is_some()))
 }
 
 fn remember_source_superseded_antecedent(frame: &mut ReferenceFrame, previous: TagKey) {
@@ -1994,6 +2015,14 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::LifeResources(LifeResourceActionAst::GainLife { amount })
                 | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw {
                     count: amount,
+                })
+                // "pay an amount of {E} equal to target nonland permanent's
+                // mana value. When you do, destroy that permanent." (Behemoth
+                // of Vault 0): lowering tags the amount's object target as
+                // `targeted_N`, so "that permanent" must name it rather than
+                // the trigger's own object.
+                | SubjectVerbActionAst::LifeResources(LifeResourceActionAst::PayEnergy {
+                    amount,
                 }) => {
                     maybe_tag_value_object_target(amount, frame, id_gen, "targeted");
                 }
@@ -3782,6 +3811,9 @@ fn advance_reference_frame_for_effect(
         | EffectAst::RevealContestWinnerMayChangeTriggeringTargets { .. }
         | EffectAst::ResolvesDespiteIllegalTargets
         | EffectAst::NoteActivationManaType
+        | EffectAst::NoteActivationManaPayment
+        | EffectAst::CastFaceDownUsingActivationMana { .. }
+        | EffectAst::RegisterExtraDieReplacement { .. }
         | EffectAst::NoteTriggeringCreatureType
         | EffectAst::NoteCounters { .. }
         | EffectAst::PutTriggeringCounterKind { .. }
@@ -5815,6 +5847,13 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                 | SubjectVerbActionAst::Library(LibraryActionAst::Mill { .. })
                 // Surveil's outcome is the cards it put into the graveyard.
                 | SubjectVerbActionAst::KeywordActions(KeywordActionAst::Surveil { .. })
+                // "mills a card, then repeats this process until ... . If one
+                // or more creature cards were put into that graveyard this
+                // way, ..." (Helm of Obedience): the repeated mill's arrivals.
+                | SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                    mode: crate::cards::builders::LibraryConsultModeAst::Mill,
+                    ..
+                })
                 | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
                     zone: crate::zone::Zone::Graveyard,
                     ..
@@ -7606,7 +7645,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
             | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
             | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
+            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
             | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
             | SubjectVerbActionAst::Library(
                 LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
@@ -7656,6 +7695,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
+            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(
@@ -8939,6 +8979,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
             | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
+            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
             | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
             | SubjectVerbActionAst::TurnStructure(
@@ -9490,7 +9531,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 target,
                 ..
             }) => bind_unresolved_it_in_target(target, seed_tag),
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => {
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag, .. }) => {
                 filter
                     .as_mut()
                     .map(|filter| bind_unresolved_it_in_filter(filter, seed_tag))
@@ -10133,7 +10174,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         }
         EffectAst::Permissions(
             PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. },
-        ) => bind_unresolved_it_in_filter(filter, seed_tag),
+        ) | EffectAst::CastFaceDownUsingActivationMana { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcess)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessMay)
         | EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessOnce)
@@ -10343,6 +10384,7 @@ fn bind_unresolved_it_in_value(value: &mut Value, seed_tag: &TagKey) -> usize {
         | Value::GreatestSharedNameCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
+        | Value::StickerCharacteristicTotal { filter, .. }
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
@@ -10470,6 +10512,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::Block(filter)
         | Restriction::MustBeBlocked(filter)
         | Restriction::MustAttack(filter)
+        | Restriction::GainControl(filter, _)
         | Restriction::MustBlock(filter)
         | Restriction::Untap(filter)
         | Restriction::BeBlocked(filter)
@@ -10500,7 +10543,8 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::MustBlockSpecificAttacker { blockers, attacker }
         | Restriction::MustBeBlockedBy { blockers, attacker }
         | Restriction::BeCounteredFrom(blockers, attacker)
-        | Restriction::BeAttachedBy(blockers, attacker) => {
+        | Restriction::BeAttachedBy(blockers, attacker)
+        | Restriction::BeAttachedByNew(blockers, attacker) => {
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }

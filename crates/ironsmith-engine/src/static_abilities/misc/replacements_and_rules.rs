@@ -5118,3 +5118,28 @@ impl StaticAbilityKind for ConvertUnspentMana {
             ReplacementAction::ConvertUnspentMana(self.symbol)))
     }
 }
+
+/// Event-time correlation between two different members of a chosen-player set.
+#[derive(Debug, Clone)]
+pub(crate) struct ChosenPlayersDamageMatcher { pub ability_source: ObjectId }
+impl ReplacementMatcher for ChosenPlayersDamageMatcher {
+    fn matches_prepared_event(&self, event: &dyn crate::events::traits::GameEventType,
+        ctx: &crate::events::context::PreparedEventContext) -> bool {
+        let Some(damage) = downcast_event::<DamageEvent>(event) else { return false; };
+        let chosen = ctx.game.chosen_players(self.ability_source);
+        let source_controller = ctx.game.current_controller(damage.source).or_else(||
+            ctx.event_source_snapshot.filter(|snapshot| snapshot.object_id == damage.source).map(|snapshot| snapshot.controller));
+        let recipient = match damage.target {
+            crate::events::DamageTarget::Player(player) => Some(player),
+            crate::events::DamageTarget::Object(id) => ctx.game.object(id)
+                .filter(|object| object.zone == Zone::Battlefield && !ctx.game.is_phased_out(id))
+                .and_then(|_| ctx.game.current_controller(id)),
+        };
+        match (source_controller, recipient) {
+            (Some(from), Some(to)) => from != to && chosen.contains(&from) && chosen.contains(&to),
+            _ => false,
+        }
+    }
+    fn priority(&self) -> ReplacementPriority { ReplacementPriority::Other }
+    fn display(&self) -> String { "damage between different chosen players".into() }
+}

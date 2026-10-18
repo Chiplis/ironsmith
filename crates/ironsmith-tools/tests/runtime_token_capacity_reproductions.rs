@@ -1,5 +1,4 @@
 //! Bounded small token-multiplier counterparts of imported capacity stress tests.
-use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::{
     DecisionMaker, GameProgress, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
 };
@@ -12,11 +11,11 @@ use ironsmith::game_loop::{
     apply_priority_response_with_dm, drain_pending_trigger_events, put_triggers_on_stack_with_dm,
 };
 use ironsmith::game_state::Target;
-use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::object::CounterType;
+use ironsmith::mana::{ ManaSymbol};
+
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType,  GameState, ObjectId, PlayerId,  Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -211,12 +210,6 @@ fn dm(x: u32, accept: bool) -> ProbeDm {
         trace: vec![],
     }
 }
-fn count(g: &GameState, name: &str, zone: Zone) -> usize {
-    g.objects_in_deterministic_order()
-        .into_iter()
-        .filter(|o| o.zone == zone && o.name.contains(name))
-        .count()
-}
 fn find(g: &GameState, name: &str, zone: Zone) -> Result<ObjectId, String> {
     g.objects_in_deterministic_order()
         .into_iter()
@@ -249,18 +242,6 @@ fn established(
     }
     resolve(g, &mut q, &mut dm)?;
     find(g, def.name(), Zone::Battlefield)
-}
-fn witness(name: &str, kind: CardType, cost: u8, with_x: bool) -> CardDefinition {
-    let mut pips = vec![ManaSymbol::Generic(cost)];
-    if with_x {
-        pips.push(ManaSymbol::X);
-    }
-    CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![kind])
-        .mana_cost(ManaCost::from_symbols(pips))
-        .power_toughness(PowerToughness::fixed(3, 3))
-        .with_spell_effect(vec![Effect::gain_life(1)])
-        .build()
 }
 
 fn token_state(g: &GameState) -> Value {

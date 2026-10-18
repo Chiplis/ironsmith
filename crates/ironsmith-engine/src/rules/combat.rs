@@ -8,7 +8,7 @@
 use crate::ability::{ProtectionFrom, extract_static_abilities};
 use crate::color::Color;
 use crate::derived_view::DerivedGameView;
-use crate::filter::ObjectFilterExt as _;
+
 use crate::object::Object;
 use crate::static_abilities::{LandwalkKind, StaticAbilityId};
 use crate::types::{CardType, Supertype};

@@ -191,3 +191,46 @@ fn recomputation_discards_dependencies_of_removed_mana_readers() {
     assert_matches_full(&mut game);
     assert_eq!(game.current_characteristics(id).unwrap().power, Some(2));
 }
+
+#[test]
+fn checked_stack_insertion_and_cleanup_restore_state_when_discovery_fails() {
+    let (mut game, object, player) = fixture(Anthem::for_source(1, 1));
+    game.mark_damage(object, 1);
+    game.with_player_mana_mut(player, |p| p.mana_pool.green = u32::MAX);
+    let entry = StackEntry::ability(object, player, Vec::new());
+    assert!(game.try_push_to_stack(entry.clone()).is_err());
+    assert!(game.stack.is_empty(), "failed discovery must not publish the stack entry");
+    assert_eq!(game.damage_on(object), 1);
+    assert!(crate::turn::try_execute_cleanup_step(&mut game).is_err());
+    assert_eq!(game.damage_on(object), 1, "failed cleanup must restore marked damage");
+    game.with_player_mana_mut(player, |p| p.mana_pool.green = 0);
+    game.try_push_to_stack(entry).unwrap();
+    assert_eq!(game.stack.len(), 1);
+    crate::turn::try_execute_cleanup_step(&mut game).unwrap();
+    assert_eq!(game.damage_on(object), 0);
+}
+
+#[test]
+fn failed_sticker_refresh_leaves_each_sticker_available_and_retries_cleanly() {
+    let (mut game, object, player) = fixture(Anthem::for_source(1, 1));
+    let pt = game.add_accessible_pt_sticker(player, 1, 4, 5);
+    let ability = game.add_accessible_ability_sticker(player, 1,
+        vec![Ability::static_ability(StaticAbility::vigilance())], "Vigilance");
+    let name = game.add_accessible_name_sticker(player, "Bright");
+    let stable_id = game.object(object).unwrap().stable_id;
+    game.with_player_mana_mut(player, |p| p.mana_pool.green = u32::MAX);
+    assert!(game.apply_pt_sticker(object, pt).is_none());
+    assert!(game.apply_ability_sticker(object, ability).is_none());
+    assert!(game.apply_available_name_sticker(player, object, name, 0).is_none());
+    assert!(game.object_annotations.object_stickers.get(&stable_id).is_none());
+    assert!(game.available_pt_stickers(player).iter().any(|entry| entry.0 == pt));
+    assert!(game.available_ability_stickers(player).iter().any(|entry| entry.id == ability));
+    assert!(game.available_name_stickers(player).iter().any(|entry| entry.0 == name));
+    game.with_player_mana_mut(player, |p| p.mana_pool.green = 0);
+    assert!(game.apply_pt_sticker(object, pt).is_some());
+    assert!(game.apply_ability_sticker(object, ability).is_some());
+    assert!(game.apply_available_name_sticker(player, object, name, 0).is_some());
+    assert_eq!(game.object_annotations.object_stickers[&stable_id].len(), 3);
+    assert_eq!(game.current_characteristics(object).unwrap().power, Some(5));
+    assert_eq!(game.current_characteristics(object).unwrap().toughness, Some(6));
+}

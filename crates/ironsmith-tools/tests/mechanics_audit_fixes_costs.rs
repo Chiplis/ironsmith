@@ -134,7 +134,7 @@ fn add_type(g: &mut GameState, id: ObjectId, kind: CardType) {
     effect
         .execute(g, &mut EffectContext::new_default(id, A))
         .unwrap();
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
 }
 #[test]
 fn f16_improvise_uses_live_artifact_types_and_excludes_phased_permanents() {
@@ -207,7 +207,7 @@ fn f17_ward_uses_current_then_departure_power_on_actual_stack() {
         act(&mut g, action, &mut dm);
         assert_eq!(g.stack.len(), 2, "ward must be a real trigger");
         g.add_counters(target, CounterType::PlusOnePlusOne, 3);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         if leave {
             g.move_object_by_effect(target, Zone::Graveyard);
         }
@@ -256,7 +256,7 @@ fn f18_parsed_teamwork_has_no_crew_substitutions_events_or_history() {
         CostExecutableEffect::can_execute_as_cost(&CrewCostEffect::new(3), &g, source, A).is_ok()
     );
     g.add_counters(id, CounterType::PlusOnePlusOne, 2);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     let mut dm = Dm::default();
     let outcome = crew
         .execute(&mut g, &mut EffectContext::new(source, A, &mut dm))
@@ -381,7 +381,7 @@ fn f20_blight_completion_survives_prevented_counters_and_no_creatures() {
                 .build();
             g.create_object_from_definition(&d, A, Zone::Battlefield);
         }
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         let source = g.new_object_id();
         let effect = PutCountersEffect::new(
             CounterType::MinusOneMinusOne,
@@ -421,7 +421,7 @@ fn f22_counter_cost_prohibitions_affect_legal_actions_and_blight_selection() {
         ))
         .build();
     let bad = g.create_object_from_definition(&prohibited, A, Zone::Battlefield);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !compute_legal_actions(&g, A).expect("fixture has complete replacement state")
             .iter()
@@ -548,7 +548,7 @@ fn f20_optional_blight_excludes_prohibited_recipients_when_another_is_legal() {
         A,
         Zone::Battlefield,
     );
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     // Attempt the prohibited choice if it is incorrectly offered.
     let mut dm = Dm {
         chosen: Some(bad),

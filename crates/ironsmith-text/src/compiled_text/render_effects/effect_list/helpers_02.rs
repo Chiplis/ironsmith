@@ -3473,3 +3473,99 @@ pub(crate) fn render_look_reveal_choice_to_hand_rest_graveyard(
         5,
     ))
 }
+
+/// The Fact or Fiction split whose other pile goes on the bottom of the
+/// library in any order (Jace, Architect of Thought): an opponent separates
+/// the revealed cards (the chosen pile), and you choose whether the chosen
+/// pile or its complement goes to your hand; the other pile is put on the
+/// bottom of your library in an order you choose.
+pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bottom_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let filtered = match filtered.split_last() {
+        Some((last, rest))
+            if last
+                .downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                .is_some_and(|emit| {
+                    emit.action == crate::events::KeywordActionKind::GroupIntoPiles
+                }) =>
+        {
+            rest
+        }
+        _ => filtered,
+    };
+    let (reveal_effect, tag_effect, choose_player_effect, choose_effect, unless_effect) =
+        match filtered {
+            [reveal, tag, choose, unless] => (*reveal, *tag, None, *choose, *unless),
+            [reveal, tag, choose_player, choose, unless] => {
+                (*reveal, *tag, Some(*choose_player), *choose, *unless)
+            }
+            _ => return None,
+        };
+    let reveal = reveal_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let tag_matching = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let unless_action = unless_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+    let delegated_opponent = choose_player_effect
+        .and_then(|effect| effect.downcast_ref::<crate::effects::ChoosePlayerEffect>())
+        .is_some_and(|player_choice| {
+            player_choice.chooser == PlayerFilter::You
+                && player_choice.filter == PlayerFilter::Opponent
+                && !player_choice.random
+                && player_choice.excluded_tags.is_empty()
+                && choose.chooser == PlayerFilter::TaggedPlayer(player_choice.tag.clone())
+        });
+    if choose_player_effect.is_some() != delegated_opponent
+        || !reveal.reveal
+        || reveal.player != PlayerFilter::You
+        || tag_matching.tag.as_str() != "divvy_source"
+        || choose.tag.as_str() != "divvy_pile"
+        || (!delegated_opponent && choose.chooser != PlayerFilter::Opponent)
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.is_search
+        || !choose.count.is_any_number()
+        || unless_action.player != PlayerFilter::You
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == tag_matching.tag
+        })
+    {
+        return None;
+    }
+    let [main_selected, main_rest] = unless_action.effects.as_slice() else {
+        return None;
+    };
+    let [alt_rest, alt_selected] = unless_action.alternative.as_slice() else {
+        return None;
+    };
+    let main_selected = downcast_move_to_zone(main_selected)?;
+    let main_rest = unwrap_tag_wrappers(main_rest)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let (_, alt_rest) = for_each_tagged_for_compaction(alt_rest)?;
+    let alt_selected = unwrap_tag_wrappers(alt_selected)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let bottom_by_you = |remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect| {
+        remainder.order == crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+            && remainder.player == PlayerFilter::You
+    };
+    if !move_to_zone_uses_tag(main_selected, choose.tag.as_str(), Zone::Hand)
+        || main_rest.tag != tag_matching.tag
+        || main_rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || !bottom_by_you(main_rest)
+        || !for_each_moves_unselected_to_zone(
+            alt_rest,
+            tag_matching.tag.as_str(),
+            choose.tag.as_str(),
+            Zone::Hand,
+        )
+        || alt_selected.tag != choose.tag
+        || alt_selected.keep_tagged.is_some()
+        || !bottom_by_you(alt_selected)
+    {
+        return None;
+    }
+    let reveal_text = describe_effect(reveal_effect);
+    Some(format!(
+        "{reveal_text}. An opponent separates those cards into two piles. Put one pile into your hand and the other on the bottom of your library in any order."
+    ))
+}

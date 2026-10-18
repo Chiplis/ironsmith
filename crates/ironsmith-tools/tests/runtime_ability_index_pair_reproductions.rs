@@ -12,7 +12,7 @@ use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType, GameState,  PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -56,14 +56,6 @@ impl DecisionMaker for Choices {
             json!({"decision":"targets","context":format!("{c:?}"),"answer":format!("{a:?}")}),
         );
         a
-    }
-}
-fn basic(name: &str, kind: CardType) -> CardDefinition {
-    let b = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![kind]);
-    if kind == CardType::Creature {
-        b.power_toughness(PowerToughness::fixed(2, 6)).build()
-    } else {
-        b.build()
     }
 }
 fn cast(
@@ -150,8 +142,8 @@ fn resolve_all(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Res
     }
     Err("bounded resolution did not empty stack".into())
 }
-use ironsmith::combat_state::{AttackTarget, CombatState};
-use ironsmith::decision::AttackerDeclaration;
+
+
 fn announce(
     g: &mut GameState,
     q: &mut TriggerQueue,
@@ -184,35 +176,8 @@ fn announce(
     }
     Err("activation bound".into())
 }
-fn start_next_turn(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-) -> Result<(), String> {
-    g.next_turn();
-    ironsmith::turn::execute_untap_step(g);
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    let events = ironsmith::turn::execute_draw_step_with(g, dm).unwrap();
-    for event in events {
-        for t in ironsmith::triggers::check_triggers(g, &event) {
-            q.add(t);
-        }
-    }
-    resolve_all(g, q, dm)?;
-    ironsmith::turn::advance_phase(g).map_err(|e| e.to_string())?;
-    g.turn.priority_player = Some(g.turn.active_player);
-    dm.trace.push(json!({"stage":"next_turn_main","active":g.turn.active_player.index(),"turn":g.turn.turn_number,"phase":format!("{:?}",g.turn.phase)}));
-    Ok(())
-}
-fn next_own_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(), String> {
-    for _ in 0..g.players_in_game() {
-        start_next_turn(g, q, dm)?;
-    }
-    Ok(())
-}
 
-use ironsmith::Supertype;
+
 
 use ironsmith::Subtype;
 fn mana(g: &mut GameState) {

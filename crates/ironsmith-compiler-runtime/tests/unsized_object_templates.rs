@@ -5,20 +5,15 @@ use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::CardDefinition;
 use ironsmith::color::ColorSet;
 use ironsmith::decision::SelectFirstDecisionMaker;
-use ironsmith::effects::{AttachToEffect, EffectContext, EffectExecutor};
-use ironsmith::game_loop::{
-    extract_target_requirements_from_program_with_modes, put_triggers_on_stack_with_dm,
-    resolve_stack_entry_with,
-};
+use ironsmith::effects::{EffectContext, EffectExecutor};
+use ironsmith::game_loop::{extract_target_requirements_from_program_with_modes, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::{StackEntry, TargetAssignment};
 use ironsmith::object::CounterType;
 use ironsmith::resolution::ResolutionProgram;
 use ironsmith::static_abilities::StaticAbility;
 use ironsmith::target::ChooseSpec;
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
-use ironsmith::{
-    CardId, CardType, GameState, ObjectId, PlayerId, Subtype, Supertype, Target, Zone,
-};
+use ironsmith::triggers::{TriggerQueue};
+use ironsmith::{CardId, CardType, GameState, ObjectId, PlayerId, Subtype, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::compile_to_artifact;
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;
@@ -119,22 +114,6 @@ fn activated(definition: &CardDefinition, index: usize) -> ResolutionProgram {
         })
         .nth(index)
         .unwrap()
-}
-fn event(game: &mut GameState, event: TriggerEvent) {
-    let mut queue = TriggerQueue::new();
-    for trigger in check_triggers(game, &event) {
-        queue.add(trigger);
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, &mut SelectFirstDecisionMaker).unwrap();
-    while !game.stack_is_empty() {
-        resolve_stack_entry_with(game, &mut SelectFirstDecisionMaker).unwrap();
-    }
-    game.refresh_continuous_state().unwrap();
-}
-fn legendary(game: &GameState, id: ObjectId) -> bool {
-    game.current_supertypes(id)
-        .unwrap()
-        .contains(&Supertype::Legendary)
 }
 
 

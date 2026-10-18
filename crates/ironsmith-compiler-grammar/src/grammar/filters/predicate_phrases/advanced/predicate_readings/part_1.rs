@@ -62,9 +62,26 @@ fn read_player_owns_at_least(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let Ok(filter) = parse_object_filter_lexed(filter_tokens, false) else {
+    let Ok(mut filter) = parse_object_filter_lexed(filter_tokens, false) else {
         return Ok(None);
     };
+    // "exiled cards" here is every card the player owns in exile, not the
+    // cards linked to this source (CR 607): only an authored "exiled with
+    // <source>" links them. Otherwise a recast Etrata (a new object) would
+    // never see the hit cards its earlier incarnation exiled.
+    let filter_words = crate::lexer::token_word_refs(filter_tokens);
+    if !filter_words.windows(2).any(|pair| pair == ["exiled", "with"]) {
+        let linked = filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == "__source_exiled__");
+        if linked {
+            filter
+                .tagged_constraints
+                .retain(|constraint| constraint.tag.as_str() != "__source_exiled__");
+            filter.zone = Some(Zone::Exile);
+        }
+    }
     if !matches!(filter.zone, Some(zone) if zone != Zone::Battlefield) {
         return Ok(None);
     }

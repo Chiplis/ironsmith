@@ -724,6 +724,14 @@ impl GameState {
     pub fn roll_planar_die(
         &mut self, player: PlayerId, voluntary: bool,
     ) -> Result<PlanarDieFace, crate::effects::ExecutionError> {
+        self.roll_planar_die_with_decision_maker(player, voluntary, &mut crate::decision::AutoPassDecisionMaker)?
+            .ok_or_else(|| crate::effects::ExecutionError::InternalError("planar roll unexpectedly awaits a choice".into()))
+    }
+
+    pub fn roll_planar_die_with_decision_maker(
+        &mut self, player: PlayerId, voluntary: bool,
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    ) -> Result<Option<PlanarDieFace>, crate::effects::ExecutionError> {
         if self.planechase.is_none() {
             return Err(crate::effects::ExecutionError::Impossible("the planar die exists only during a Planechase game".into()));
         }
@@ -731,14 +739,17 @@ impl GameState {
         // complete direct owner also rolls back any later operational failure.
         self.turn_store.turn_history.check_completed_die_roll_capacity(player, 1)?;
         let checkpoint = self.clone();
-        let result = self.roll_planar_die_inner(player, voluntary);
-        if result.is_err() { self.restore_execution_checkpoint(checkpoint, false); }
+        let result = self.roll_planar_die_inner(player, voluntary, decision_maker);
+        if result.is_err() || decision_maker.awaiting_choice() {
+            self.restore_execution_checkpoint(checkpoint, decision_maker.awaiting_choice());
+        }
         result
     }
 
     fn roll_planar_die_inner(
         &mut self, player: PlayerId, voluntary: bool,
-    ) -> Result<PlanarDieFace, crate::effects::ExecutionError> {
+        decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+    ) -> Result<Option<PlanarDieFace>, crate::effects::ExecutionError> {
         if self.planechase.is_none() {
             return Err(crate::effects::ExecutionError::Impossible("the planar die exists only during a Planechase game".into()));
         }
@@ -752,15 +763,74 @@ impl GameState {
                 .saturating_add(1);
         }
 
-        let (random_count_before, random_count_after) = self.record_irreversible_random();
-        let raw = self
-            .take_forced_die_roll()
-            .unwrap_or_else(|| (self.next_random_u64() % 6) as u32 + 1);
-        self.push_hidden_info_operation(HiddenInfoOperation::FairRandom {
-            random_count_before,
-            random_count_after,
-            reason: "planar die roll".to_string(),
-        });
+        use crate::filter::PlayerFilterExt as _;
+        let checked = self.continuous_query_snapshot()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        // (source, ignore chooser, additional dice, optional one-shot id).
+        let mut remaining = Vec::new();
+        for &source in &checked.battlefield {
+            if checked.is_phased_out(source) { continue; }
+            let Some(controller) = checked.current_controller(source) else { continue; };
+            let filter_ctx = checked.filter_context_for(controller, Some(source));
+            for ability in checked.current_abilities(source).unwrap_or_default() {
+                let AbilityKind::Static(ability) = ability.kind else { continue; };
+                let Some(model) = ability.compiled_model() else { continue; };
+                if let ironsmith_core::StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player: filter } = &model.payload
+                    && filter.matches_player(player, &filter_ctx)
+                { remaining.push((source, player, 1u32, None)); }
+            }
+        }
+        remaining.extend(self.pending_extra_die_replacements(player).into_iter()
+            .map(|rule| (rule.source, rule.chooser, rule.additional, Some(rule.id))));
+        let mut applied = Vec::new();
+        let mut physical_count = 1u32;
+        while !remaining.is_empty() {
+            let index = if remaining.len() == 1 { 0 } else {
+                let options = remaining.iter().enumerate().map(|(index, (source, _, count, _))|
+                    (format!("Apply {count} extra planar dice from {source:?}"), index)
+                ).collect::<Vec<_>>();
+                let index = crate::decisions::ask_choose_one(self, decision_maker, player, ObjectId::from_raw(0), &options);
+                if decision_maker.awaiting_choice() { return Ok(None); }
+                index.ok_or(crate::effects::ExecutionError::InvalidTarget)?
+            };
+            let rule = remaining.remove(index);
+            physical_count = physical_count.checked_add(rule.2).ok_or(
+                crate::effects::ExecutionError::ResourceLimitExceeded {
+                    resource: "physical planar dice", requested: u128::from(physical_count) + u128::from(rule.2), maximum: u32::MAX as u128,
+                })?;
+            applied.push(rule);
+        }
+        let mut rolls = Vec::new();
+        rolls.try_reserve_exact(physical_count as usize).map_err(|_| crate::effects::ExecutionError::ResourceAllocationFailed {
+            resource: "physical planar dice", requested: physical_count as usize,
+        })?;
+        for _ in 0..physical_count {
+            let (random_count_before, random_count_after) = self.record_irreversible_random();
+            rolls.push(self.take_forced_die_roll()
+                .unwrap_or_else(|| (self.next_random_u64() % 6) as u32 + 1));
+            self.push_hidden_info_operation(HiddenInfoOperation::FairRandom {
+                random_count_before, random_count_after, reason: "planar die roll".to_string(),
+            });
+        }
+        // Replacements complete inside-out; an effect may give the ignore
+        // choice to someone other than the roller. Ignored symbols never
+        // produce completed-roll events or planar consequences.
+        for (source, chooser, additional, _) in applied.iter().rev() {
+          for _ in 0..*additional {
+            let options = rolls.iter().enumerate().map(|(index, raw)| {
+                let face = match raw { 1 => "planeswalker", 2 => "chaos", _ => "blank" };
+                (format!("Ignore planar die {} ({face})", index + 1), index)
+            }).collect::<Vec<_>>();
+            let ignored = crate::decisions::ask_choose_one(
+                self, decision_maker, *chooser, *source, &options,
+            );
+            if decision_maker.awaiting_choice() { return Ok(None); }
+            let ignored = ignored.ok_or_else(|| crate::effects::ExecutionError::InvalidTarget)?;
+            rolls.remove(ignored);
+          }
+        }
+        self.consume_extra_die_replacements(&applied.iter().filter_map(|rule| rule.3).collect::<Vec<_>>());
+        let raw = rolls[0];
         let face = match raw {
             1 => PlanarDieFace::Planeswalker,
             2 => PlanarDieFace::Chaos,
@@ -835,7 +905,7 @@ impl GameState {
             }
         }
         self.bump_mutation_revision();
-        Ok(face)
+        Ok(Some(face))
     }
 
     /// Remove stale planar-card bookkeeping when a player leaves, then reveal

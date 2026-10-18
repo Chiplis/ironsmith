@@ -13,7 +13,7 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Target;
 use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::object::CounterType;
+
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
     CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,

@@ -3344,6 +3344,9 @@ fn build_artifact_token_definition(
     {
         return Some(def);
     }
+    for keyword in shape.keywords.iter().copied() {
+        builder = apply_standard_token_keyword(builder, keyword);
+    }
     builder = apply_embedded_token_rules(builder, &shape.token_rules);
     if let Some(amount) = shape.leaves_damage_any_target {
         builder = builder.with_ability(token_leaves_deals_damage_any_target_ability(amount));

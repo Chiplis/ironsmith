@@ -517,6 +517,7 @@ fn parse_exile_top_library_then_play_bundle(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter,
                     alternative_cost,
                     tag: _,
                     player,
@@ -536,6 +537,7 @@ fn parse_exile_top_library_then_play_bundle(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter,
                 alternative_cost,
                 tag: permission_tag,
                 player,

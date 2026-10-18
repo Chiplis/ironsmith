@@ -22,6 +22,7 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
         }
         ReplacedEventSpec::LifeGain { .. } => &["gain", "gains"],
         ReplacedEventSpec::LifeLoss { .. } => &["lose", "loses"],
+        ReplacedEventSpec::LifePayment { .. } => &["pay", "pays"],
         // Regeneration is its own destruction replacement (CR 701.19).
         ReplacedEventSpec::Destroy { .. } => &["regenerate"],
         ReplacedEventSpec::ZoneChange { .. } => &[],
@@ -35,6 +36,14 @@ fn event_modification_words(event: &ReplacedEventSpec) -> &'static [&'static str
 /// An object event subject: the source, or an object description
 /// ("enchanted land", "a creature you control that's enchanted").
 fn object_subject(header: &[OwnedLexToken], subject: &[&str]) -> Option<ObjectFilter> {
+    // A card is an arbitrary-origin physical card, not a battlefield
+    // permanent and not a token. The wildcard's default filter is otherwise
+    // indistinguishable from an unrecognized description below.
+    if matches!(subject, ["a", "card"] | ["card"]) {
+        let mut filter = ObjectFilter::default();
+        filter.physical_card = true;
+        return Some(filter);
+    }
     if let Some(filter) = source_subject(subject) {
         return Some(filter);
     }
@@ -194,6 +203,14 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         ["lose", "life"] => Some(ReplacedEventSpec::LifeLoss {
             player: player_subject(subject)?,
         }),
+        ["pay", "life", "while", "your", "library", "has", "at", "least", "that", "many", "cards", "in", "it"]
+            if subject == ["you"] => Some(ReplacedEventSpec::LifePayment {
+                player: PlayerFilter::You,
+                require_library_capacity: true,
+            }),
+        ["pay", "life"] => Some(ReplacedEventSpec::LifePayment {
+            player: player_subject(subject)?, require_library_capacity: false,
+        }),
         // "If an opponent would put a land onto the battlefield" (Land
         // Equilibrium): a matching object's entry for that player. The
         // putting player is read as the entering card's owner; "that player"
@@ -211,6 +228,11 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 return None;
             }
             filter.owner = Some(player);
+            // The replaced event is matched against the object before it
+            // moves (a land in hand, a card in a library): a default
+            // battlefield zone from the noun would never match an entering
+            // object.
+            filter.zone = None;
             Some(ReplacedEventSpec::ZoneChange {
                 object: filter,
                 from: None,

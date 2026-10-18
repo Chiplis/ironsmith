@@ -8,7 +8,9 @@ use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, };
+#[cfg(test)]
+use crate::target::PlayerFilter;
 
 /// Effect that asks a player to pay a mana cost.
 ///
@@ -162,6 +164,18 @@ fn try_pay_interactively_inner(
                     Ok(completed)
                         if completed.status == crate::mana_payment::ManaPaymentExecution::Paid =>
                     {
+                        // Count the symbols actually removed, including mana
+                        // produced by the payment's own mana abilities. This
+                        // receipt is checkpointed with the surrounding optional
+                        // transaction, so canceled/failed payments leave none.
+                        for allocation in &plan.allocations {
+                            match &allocation.payment {
+                                crate::mana_payment::PlannedPipPayment::Mana(symbol)
+                                | crate::mana_payment::PlannedPipPayment::Assist { symbol, .. } =>
+                                    ctx.mana.effect_payment.add(*symbol, 1),
+                                _ => {}
+                            }
+                        }
                         outputs.extend(completed.outputs);
                         Ok(Some(outputs))
                     }

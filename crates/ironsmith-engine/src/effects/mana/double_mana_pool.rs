@@ -4,6 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+#[cfg(test)]
 use crate::mana::ManaSymbol;
 use crate::target::PlayerFilter;
 

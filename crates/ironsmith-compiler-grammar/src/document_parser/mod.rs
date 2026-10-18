@@ -1470,6 +1470,24 @@ fn replace_named_source_alias_tokens(
             word_idx += 1;
             continue;
         }
+        // "a creature named Silver Surfer, Galactus's Herald" (Galactus):
+        // inside a literal card-name reference the source's name is part of
+        // another card's name, never a self-reference.
+        let directly_named = word_idx
+            .checked_sub(1)
+            .is_some_and(|previous| pieces[previous].text == "named");
+        let continues_comma_name = piece_tokens[word_idx]
+            .checked_sub(1)
+            .and_then(|previous| tokens.get(previous))
+            .is_some_and(OwnedLexToken::is_comma)
+            && (word_idx.saturating_sub(6)..word_idx).any(|previous| {
+                pieces[previous].text == "named"
+                    && pieces[previous].sentence == pieces[word_idx].sentence
+            });
+        if directly_named || continues_comma_name {
+            word_idx += 1;
+            continue;
+        }
         let overlaps_preserved_longer_alias = all_alias_words.iter().any(|longer_words| {
             longer_words.len() > alias_words.len()
                 && source_alias_word_span_matches(&pieces, word_idx, longer_words)
@@ -4769,18 +4787,23 @@ fn try_merge_collection_cast_count_instead_of_one(
     line: &PreprocessedLine,
 ) -> bool {
     use crate::cards::builders::{ConditionalEffectAst, EffectAst, ForEachEffectAst, ObjectChoiceEffectAst};
-    let Some((_, _, body)) = split_label_prefix_lexed(&line.tokens) else {
+    // Preprocessing may already have moved the ability word off the parse
+    // tokens; the authored tokens still carry it.
+    let Some((_, _, body)) = split_label_prefix_lexed(&line.tokens)
+        .or_else(|| split_label_prefix_lexed(&line.info.source_tokens))
+    else {
         return false;
     };
     let body = crate::util::trim_edge_punctuation_tokens(body);
-    let words = token_word_refs(body);
+    // Normalized words: the authored fallback keeps its original casing.
+    let words = crate::lexer::parser_token_word_refs(body);
     if words.first() != Some(&"if") || !words.ends_with(&["instead", "of", "one"]) {
         return false;
     }
     let Some(comma) = body.iter().position(|token| token.kind == TokenKind::Comma) else {
         return false;
     };
-    let restated_words = token_word_refs(&body[comma + 1..]);
+    let restated_words = crate::lexer::parser_token_word_refs(&body[comma + 1..]);
     let ["you", "may", "cast", "up", "to", count, ..] = restated_words.as_slice() else {
         return false;
     };

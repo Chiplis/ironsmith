@@ -56,7 +56,7 @@ pub use ironsmith_core::{
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     NewTargetRestriction, NextAdaptIgnoresCountersEffect, NinjutsuCostEffect, NinjutsuEffect,
-    NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect, PayManaEffect, PhaseInEffect,
     PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect, PoisonCountersEffect, PopulateEffect,
     PrepareEffect, PreventAllCombatDamageEffect,

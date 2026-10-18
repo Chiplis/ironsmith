@@ -263,13 +263,6 @@ fn activate(
     )
 }
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,

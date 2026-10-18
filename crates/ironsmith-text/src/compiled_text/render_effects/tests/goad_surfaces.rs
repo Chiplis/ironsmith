@@ -101,7 +101,7 @@ fn investigate_counts_goaded_creatures_once_regardless_of_goaders() {
         }
         let other = game.create_object_from_card(&creature, bob, Zone::Battlefield);
         game.add_goad_effect(other, alice, Until::YourNextTurn, source);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         let mut ctx = crate::effects::EffectContext::new_default(source, alice);
         for segment in &definition.spell_effect.as_ref().unwrap().segments {
             for effect in &segment.default_effects {
@@ -136,7 +136,7 @@ fn investigate_then_clear_goad_preserves_order_and_controller_scope() {
     game.add_goad_effect(own, bob, Until::YourNextTurn, source);
     game.add_goad_effect(own, carol, Until::YourNextTurn, source);
     game.add_goad_effect(other, alice, Until::YourNextTurn, source);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     let mut ctx = crate::effects::EffectContext::new_default(source, alice);
     for segment in &definition.spell_effect.as_ref().unwrap().segments {
         for effect in &segment.default_effects {
@@ -175,7 +175,7 @@ fn serene_sleuth_combat_ability_investigates_before_clearing_goad() {
     game.add_goad_effect(own, bob, Until::YourNextTurn, source);
     game.add_goad_effect(own, carol, Until::YourNextTurn, source);
     game.add_goad_effect(other, alice, Until::YourNextTurn, source);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     let mut ctx = crate::effects::EffectContext::new_default(source, alice);
     assert_eq!(definition.abilities.len(), 2);
     let crate::ability::AbilityKind::Triggered(triggered) = &definition.abilities[1].kind else {
@@ -234,7 +234,7 @@ fn clear_goad_suppresses_old_aura_but_a_later_attachment_goads_again() {
         );
     };
     attach(&mut game, first);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(
         game.is_goaded(first),
         "aura={:#?}; timestamp={:?}",
@@ -249,18 +249,18 @@ fn clear_goad_suppresses_old_aura_but_a_later_attachment_goads_again() {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(!game.is_goaded(first));
     assert_eq!(
         game.object(attached).unwrap().attached_to,
         Some(crate::object::AttachmentTarget::Object(first))
     );
     attach(&mut game, second);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(!game.is_goaded(first));
     assert!(game.is_goaded(second));
     attach(&mut game, first);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(
         game.is_goaded(first),
         "aura={:#?}; timestamp={:?}",

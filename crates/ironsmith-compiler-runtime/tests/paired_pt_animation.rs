@@ -16,14 +16,12 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::triggers::{TriggerQueue, check_triggers};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 const A: PlayerId = PlayerId::from_index(0);
-const B: PlayerId = PlayerId::from_index(1);
-const C: PlayerId = PlayerId::from_index(2);
 
 fn fixtures() -> Vec<serde_json::Value> {
     serde_json::from_str(include_str!(
@@ -74,14 +72,6 @@ fn game() -> GameState {
         game.player_mut(A).unwrap().mana_pool.add(color, 20);
     }
     game
-}
-fn vanilla(name: &str, cost: &str, subtype: &str, p: i32, t: i32) -> CardDefinition {
-    compile_to_runtime_definition(
-        name,
-        format!("Mana cost: {cost}\nType: Creature — {subtype}\nPower/Toughness: {p}/{t}"),
-        false,
-    )
-    .unwrap()
 }
 #[derive(Default)]
 struct Choices {

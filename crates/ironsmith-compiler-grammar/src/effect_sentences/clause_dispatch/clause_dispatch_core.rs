@@ -899,6 +899,21 @@ fn bind_quantified_damage_actor(effect: &mut EffectAst, span: Option<TextSpan>) 
         };
         return;
     }
+    // "Each creature you control deals damage equal to its power to each
+    // opponent" (Lukka, Coppercoat Outcast): the per-opponent fanout already
+    // built the power-damage action with the quantified subject as a fresh
+    // (non-target) object source. Inside the per-object loop the source is
+    // the iterated object, not a new choice among the subject set.
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower { source, .. }),
+        ..
+    }) = effect
+        && matches!(source, TargetAst::Object(filter, None, _) if !filter.source)
+    {
+        *source = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), span);
+        return;
+    }
     crate::model::visit::for_each_nested_effects_mut(effect, false, |effects| {
         for child in effects {
             bind_quantified_damage_actor(child, span);

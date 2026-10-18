@@ -68,6 +68,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "AddManaOfNotedTypeEffect" => {
             decode_as::<T, ironsmith_core::AddManaOfNotedTypeEffect>(effect)
         }
+        "CastFaceDownUsingActivationManaEffect" => decode_as::<T, ironsmith_core::CastFaceDownUsingActivationManaEffect>(effect),
+        "RegisterExtraDieReplacementEffect" => decode_as::<T, ironsmith_core::RegisterExtraDieReplacementEffect>(effect),
+        "NoteActivationManaPaymentEffect" => decode_as::<T, ironsmith_core::NoteActivationManaPaymentEffect>(effect),
         "NoteActivationManaTypeEffect" => {
             decode_as::<T, ironsmith_core::NoteActivationManaTypeEffect>(effect)
         }
@@ -1622,7 +1625,10 @@ macro_rules! with_native_direct_effect_types {
             crate::effects::MoveToZoneEffect,
             crate::effects::NinjutsuCostEffect,
             crate::effects::NinjutsuEffect,
-            crate::effects::NoteActivationManaTypeEffect,
+            crate::effects::CastFaceDownUsingActivationManaEffect,
+            crate::effects::RegisterExtraDieReplacementEffect,
+        crate::effects::NoteActivationManaTypeEffect,
+        crate::effects::NoteActivationManaPaymentEffect,
             crate::effects::NoteTriggeringCreatureTypeEffect,
             crate::effects::NoteCountersEffect,
             crate::effects::PayAnyEnergyEffect,

@@ -590,7 +590,7 @@ impl<'a> DerivedGameView<'a> {
         let calculated = if self.use_game_characteristics_cache {
             self.game.calculated_characteristics_arc(object_id)
         } else {
-            if self.derive_battlefield_batch_on_repeated_miss(object_id)
+            if self.derive_battlefield_batch_on_miss(object_id)
                 && let Some(cached) = self.characteristics.borrow().get(&object_id)
             {
                 return cached.clone();
@@ -605,11 +605,11 @@ impl<'a> DerivedGameView<'a> {
         calculated
     }
 
-    /// A view over a dirty state has no game cache, and computing objects one
-    /// at a time repeats the dependency sort per object. Passes that walk the
-    /// battlefield (state triggers, menus) miss repeatedly; from the second
-    /// battlefield miss, derive every remaining permanent in one batch.
-    fn derive_battlefield_batch_on_repeated_miss(&self, object_id: ObjectId) -> bool {
+    /// A view over a dirty state has no game cache, and any one permanent is
+    /// derived by a pass over the whole board. Keep every permanent that pass
+    /// produces: passes that walk the battlefield (state triggers, menus) would
+    /// otherwise repeat it per permanent.
+    fn derive_battlefield_batch_on_miss(&self, object_id: ObjectId) -> bool {
         let on_battlefield = |id: ObjectId| {
             self.game
                 .object(id)
@@ -619,12 +619,7 @@ impl<'a> DerivedGameView<'a> {
         if !on_battlefield(object_id) {
             return false;
         }
-        let misses = self.battlefield_misses.get();
-        if misses == u8::MAX {
-            return false;
-        }
-        self.battlefield_misses.set(misses + 1);
-        if misses != 1 {
+        if self.battlefield_misses.get() == u8::MAX {
             return false;
         }
         self.battlefield_misses.set(u8::MAX);

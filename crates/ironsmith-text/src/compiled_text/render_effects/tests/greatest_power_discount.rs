@@ -58,7 +58,7 @@ fn greatest_power_discount_uses_current_controlled_battlefield_maximum() {
                 })
                 .unwrap();
             game.add_counters(strongest, CounterType::PlusOnePlusOne, 2);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(
                 crate::decision::calculate_effective_mana_cost(
                     &game,

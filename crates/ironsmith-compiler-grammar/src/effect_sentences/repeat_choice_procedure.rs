@@ -175,29 +175,29 @@ fn open_round(
     };
     let body_tokens = &tokens[body_start..];
     let mut body = super::parse_effect_sentence_lexed(body_tokens)?;
-    // A sentence wrapper around the single optional instruction is presentation.
-    let unwrapped = if let [EffectAst::SourceSentence { effects, .. }] = body.as_mut_slice()
-        && effects.len() == 1
-    {
-        Some(std::mem::take(effects))
-    } else {
-        None
-    };
-    if let Some(unwrapped) = unwrapped {
-        body = unwrapped;
+    // Source-sentence/sequence wrappers group executable siblings; they are
+    // not permission boundaries. Normalize all such wrappers, including one
+    // around the first instruction of a comma chain, before finding its May.
+    fn flatten_groupings(effects: Vec<EffectAst>, out: &mut Vec<EffectAst>) {
+        for effect in effects {
+            match effect {
+                EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects } => {
+                    flatten_groupings(effects, out);
+                }
+                effect => out.push(effect),
+            }
+        }
     }
-    // "you may pay 1 life, put those cards on the bottom ..., then look at
-    // the top five cards" (Lim-Dûl's Vault): the whole series after "you
-    // may" is the optional round, including the instructions the comma/then
-    // chain left after the permission.
-    if let [EffectAst::Sequence { effects }] = body.as_mut_slice()
-        && matches!(effects.first(), Some(EffectAst::Permissions(PermissionEffectAst::May { .. })))
-    {
-        body = std::mem::take(effects);
-    }
+    let mut flat = Vec::new();
+    flatten_groupings(body, &mut flat);
+    body = flat;
+    // The permission applies to the complete repeated instruction sequence,
+    // including the bottom move and subsequent look after its life payment.
     if body.len() > 1
         && let Some((first, rest)) = body.split_first_mut()
-        && let EffectAst::Permissions(PermissionEffectAst::May { effects }) = first
+        && let EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. }
+        ) = first
     {
         effects.extend(rest.iter().cloned());
         body.truncate(1);
@@ -254,6 +254,12 @@ pub(super) fn continue_with(
         return Ok(false);
     };
     let it = crate::tag::CompilerReferenceTag::It.as_str();
+    // "you may cast any number of spells from among those cards" lowers to a
+    // choice plus a per-chosen-card loop whose body casts the iterated card
+    // (`it`). That per-iteration `it` is not the group reference: keep loop
+    // bodies out of the group rebinding so each chosen card is cast.
+    let mut loop_bodies = Vec::new();
+    detach_for_each_tagged_bodies(&mut effects, &mut loop_bodies);
     for effect in &mut effects {
         effect.map_tag_keys(&mut |key| {
             if key.as_str() == it || key.as_str() == "it" {
@@ -261,9 +267,45 @@ pub(super) fn continue_with(
             }
         });
     }
+    let mut loop_bodies = loop_bodies.into_iter();
+    reattach_for_each_tagged_bodies(&mut effects, &mut loop_bodies);
     group.effects.extend(effects);
     group.consumed += 1;
     Ok(true)
+}
+
+/// Take the body of every `ForEachTagged` loop (at any depth) out of the
+/// tree, in a fixed traversal order, so a tag rewrite skips the loops'
+/// per-iteration references.
+fn detach_for_each_tagged_bodies(effects: &mut [EffectAst], saved: &mut Vec<Vec<EffectAst>>) {
+    for effect in effects.iter_mut() {
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects: body, .. }) = effect {
+            saved.push(std::mem::take(body));
+            continue;
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            detach_for_each_tagged_bodies(nested, saved);
+        });
+    }
+}
+
+/// Restore the bodies taken by [`detach_for_each_tagged_bodies`], in the same
+/// traversal order.
+fn reattach_for_each_tagged_bodies(
+    effects: &mut [EffectAst],
+    saved: &mut std::vec::IntoIter<Vec<EffectAst>>,
+) {
+    for effect in effects.iter_mut() {
+        if let EffectAst::ForEach(ForEachEffectAst::ForEachTagged { effects: body, .. }) = effect {
+            if let Some(restored) = saved.next() {
+                *body = restored;
+            }
+            continue;
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            reattach_for_each_tagged_bodies(nested, saved);
+        });
+    }
 }
 
 /// "Then shuffle and put the last cards you looked at this way on top in any

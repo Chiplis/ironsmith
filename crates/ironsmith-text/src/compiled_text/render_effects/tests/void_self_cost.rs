@@ -70,7 +70,7 @@ fn labeled_self_cost_reduction_obeys_history_and_does_not_discount_other_spells(
             base
         );
         game.create_object_from_definition(&permanent_discount, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             crate::decision::calculate_effective_mana_cost(
                 &game,

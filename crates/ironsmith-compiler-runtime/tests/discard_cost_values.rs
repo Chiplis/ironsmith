@@ -11,7 +11,7 @@ use ironsmith::decision::{
 use ironsmith::decisions::context::{
     ManaPaymentContext, NumberContext, SelectObjectsContext, TargetsContext,
 };
-use ironsmith::effect::{Effect, Value};
+use ironsmith::effect::Value;
 use ironsmith::effects::DiscardEffect;
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,

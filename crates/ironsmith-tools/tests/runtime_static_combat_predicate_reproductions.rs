@@ -217,19 +217,6 @@ fn dm(x: u32, accept: bool) -> ProbeDm {
         trace: vec![],
     }
 }
-fn count(g: &GameState, name: &str, zone: Zone) -> usize {
-    g.objects_in_deterministic_order()
-        .into_iter()
-        .filter(|o| o.zone == zone && o.name.contains(name))
-        .count()
-}
-fn find(g: &GameState, name: &str, zone: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .into_iter()
-        .find(|o| o.zone == zone && o.name == name)
-        .map(|o| o.id)
-        .ok_or(format!("fixture {name} missing in {zone:?}"))
-}
 fn cast(
     g: &mut GameState,
     def: &CardDefinition,
@@ -238,23 +225,6 @@ fn cast(
 ) -> Result<(TriggerQueue, u32), String> {
     let id = g.create_object_from_definition(def, player, Zone::Hand);
     perform(g, id, None, dm)
-}
-fn established(
-    g: &mut GameState,
-    def: &CardDefinition,
-    player: PlayerId,
-    expected: u32,
-) -> Result<ObjectId, String> {
-    let mut dm = dm(0, false);
-    let (mut q, paid) = cast(g, def, player, &mut dm)?;
-    if paid != expected {
-        return Err(format!(
-            "setup {} paid{paid} expected{expected}",
-            def.name()
-        ));
-    }
-    resolve(g, &mut q, &mut dm)?;
-    find(g, def.name(), Zone::Battlefield)
 }
 fn card(name: &str, kind: CardType) -> CardDefinition {
     let b = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![kind]);

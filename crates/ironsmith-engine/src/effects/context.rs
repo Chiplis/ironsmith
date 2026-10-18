@@ -308,6 +308,9 @@ pub struct ManaExecutionContext {
     pub retention: Option<ironsmith_core::ManaRetentionDuration>,
     /// Mana spent on the activation cost of the resolving ability.
     pub activation_payment: crate::player::ManaPool,
+    pub activation_mana_budget: ironsmith_core::mana::ManaPaymentBudget,
+    /// Cumulative receipt of actual mana spent by PayMana in this execution.
+    pub effect_payment: crate::player::ManaPool,
     /// More specific purpose for mana payments nested inside this effect.
     pub payment_reason: Option<crate::costs::PaymentReason>,
 }
@@ -468,6 +471,7 @@ pub struct ExecutionContext<'a> {
     /// Delayed effects that explicitly reference damage "prevented this way"
     /// capture this stable identity when they are scheduled.
     pub last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    pub last_play_permissions: Vec<crate::grant_registry::GrantPermissionIdentity>,
     /// Structural identity of the resolving triggered ability, when available.
     pub trigger_identity: Option<crate::triggers::TriggerIdentity>,
     /// "Do this only once each turn" gate for the resolving triggered ability.
@@ -628,6 +632,7 @@ execution_context_checkpoint! {
     triggering_event: Option<crate::triggers::TriggerEvent>,
     event_value_amount: Option<i32>,
     last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
+    last_play_permissions: Vec<crate::grant_registry::GrantPermissionIdentity>,
     trigger_identity: Option<crate::triggers::TriggerIdentity>,
     do_this_limit: Option<DoThisLimit>,
     ability_index: Option<usize>,
@@ -696,6 +701,7 @@ payment_execution_inputs! {
         activation_values: Vec<(crate::effect::Value, Option<i32>)>,
         event_value_amount: Option<i32>,
         last_prevention_shield: Option<crate::prevention::PreventionShieldId>,
+        last_play_permissions: Vec<crate::grant_registry::GrantPermissionIdentity>,
         trigger_identity: Option<crate::triggers::TriggerIdentity>,
         ability_index: Option<usize>,
         mana: ManaExecutionContext,
@@ -820,6 +826,7 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: None,
             event_value_amount: None,
             last_prevention_shield: None,
+            last_play_permissions: Vec::new(),
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
@@ -890,6 +897,7 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: None,
             event_value_amount: None,
             last_prevention_shield: None,
+            last_play_permissions: Vec::new(),
             trigger_identity: None,
             do_this_limit: None,
             ability_index: None,
@@ -950,6 +958,7 @@ impl<'a> ExecutionContext<'a> {
             triggering_event: self.triggering_event,
             event_value_amount: self.event_value_amount,
             last_prevention_shield: self.last_prevention_shield,
+            last_play_permissions: self.last_play_permissions,
             trigger_identity: self.trigger_identity,
             do_this_limit: self.do_this_limit,
             ability_index: self.ability_index,

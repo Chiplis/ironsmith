@@ -106,6 +106,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         spell_cast_minimum_each_turn, mana_from_source_spent_to_cast, owner,
         single_graveyard, targets_player, targets_object, targets_any_of, stack_kind,
         target_count, target_set_same_controller, target_set_different_controllers,
+        target_controller_fixed_on_announcement,
         target_set_shared_creature_type, target_set_aggregate_constraint,
         targets_only_player, targets_only_object, targets_only_any_of, could_be_targeted_by,
         not_targeted_by_ability_from, would_destroy_object,
@@ -145,7 +146,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         power, power_parity, power_reference, power_relative_to_source,
         power_greater_than_base_power, power_comparison_to_base, power_toughness_relation,
         toughness, toughness_reference, total_power_toughness, mana_value, mana_value_parity,
-        mana_value_eq_counters_on_source, exact_mana_cost, has_mana_cost,
+        mana_value_eq_counters_on_source, exact_mana_cost, mana_cost_payable_with, has_mana_cost,
         has_phyrexian_mana_symbol, could_produce_mana, has_tap_activated_ability,
         has_non_mana_activated_ability, no_abilities, no_x_in_cost, has_x_in_cost,
         with_counter, without_counter, total_counters_parity, name, name_surface,
@@ -235,6 +236,11 @@ pub(crate) fn rewrite_filter_comparison_words(comparison: &FilterComparison, cha
 
 pub(crate) fn rewrite_aggregate_constraint_words(constraint: &ChoiceAggregateConstraint, change: TextChange) -> RewriteResult<ChoiceAggregateConstraint> {
     let mut rewritten = constraint.clone();
+    // "black mana symbols among their mana costs": a changed color word
+    // changes the counted color.
+    if let ironsmith_core::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = &mut rewritten.metric {
+        change.replace_color_word(color);
+    }
     if let Some(value) = &mut rewritten.minimum { *value = rewrite_value_words(value, change)?; }
     rewritten.maximum = rewrite_value_words(&rewritten.maximum, change)?;
     Ok(rewritten)
@@ -261,7 +267,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
         Value::TaggedSnapshotCount { filter, .. } | Value::Count(filter) | Value::CountScaled(filter, _) | Value::GreatestCount(filter)
         | Value::LeastCount(filter)
         | Value::GreatestSharedCreatureTypeCount(filter) | Value::GreatestSharedNameCount(filter)
-        | Value::TotalPower(filter) | Value::TotalToughness(filter) | Value::TotalManaValue(filter)
+        | Value::TotalPower(filter) | Value::TotalToughness(filter)
+        | Value::StickerCharacteristicTotal { filter, .. } | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter) | Value::GreatestToughness(filter) | Value::GreatestManaValue(filter)
         | Value::LeastPower(filter) | Value::LeastToughness(filter) | Value::LeastManaValue(filter)
         | Value::BasicLandTypesAmong(filter) | Value::CreatureTypesAmong(filter)
@@ -329,6 +336,7 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
                     CastEventQuantity::ManaSymbols(color) => change.replace_color_word(color),
                     CastEventQuantity::ManaValue | CastEventQuantity::DistinctTargets => {}
                 },
+                EventValueSpec::ManaSpentOnKeyword { .. } => {}
                 EventValueSpec::Amount | EventValueSpec::LifeAmount
                 | EventValueSpec::BlockersBeyondFirst { .. } | EventValueSpec::DieResult
                 | EventValueSpec::LifeChange { .. } | EventValueSpec::DieBatchTotal

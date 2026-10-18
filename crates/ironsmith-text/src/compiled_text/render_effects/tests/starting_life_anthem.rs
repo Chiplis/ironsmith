@@ -23,7 +23,7 @@ fn starting_life_anthem_checks_starting_total_and_one_attack_group() {
                 .collect::<Vec<_>>();
             let opposing = game.create_object_from_card(&creature, bob, Zone::Battlefield);
             game.player_mut(alice).unwrap().life = starting + delta;
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             for &id in &own {
                 assert_eq!(game.current_power(id), Some(if delta >= 0 { 3 } else { 2 }));
             }

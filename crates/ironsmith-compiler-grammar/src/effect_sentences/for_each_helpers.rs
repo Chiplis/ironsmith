@@ -447,10 +447,16 @@ pub fn parse_get_for_each_count_value(
 ) -> Result<Option<Value>, CardTextError> {
     // "gets +1/+1 for each supertype, card type, and subtype it has"
     // (Embiggen): the pumped object's own type count.
-    if matches!(
-        crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
-        ["for", "each", "supertype", "card", "type", "and", "subtype", "it", "has"]
-    ) {
+    // The tail may still carry the leading "+N/+N" modifier token, so read
+    // the words from the authored "for each" on.
+    if crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens))
+        .ends_with(&["for", "each", "supertype", "card", "type", "and", "subtype", "it", "has"])
+        && crate::lexer::token_word_refs(tokens)
+            .iter()
+            .filter(|word| **word == "for")
+            .count()
+            == 1
+    {
         return Ok(Some(
             Value::TypeCountOf(Box::new(crate::target::ChooseSpec::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind().into(),
@@ -482,6 +488,40 @@ pub fn parse_get_for_each_count_value(
                 )
                 .with_surface_hint(ValueSurfaceHint::EnergyPaidThisWay),
             ));
+        }
+    }
+    // Mana symbols name the actual symbols paid, not an object-filter count.
+    // Keep the disjunction as a set so each spent unit is counted once.
+    {
+        let mut rest = crate::util::trim_edge_punctuation_tokens(tokens);
+        if rest.len() >= 2 && rest[0].is_word("for") && rest[1].is_word("each") {
+            rest = &rest[2..];
+        }
+        if rest.len() >= 4
+            && crate::lexer::token_word_refs(&rest[rest.len() - 3..]) == ["spent", "this", "way"]
+        {
+            let mut colors = crate::color::ColorSet::COLORLESS;
+            let mut expect_symbol = true;
+            let mut valid = true;
+            for token in &rest[..rest.len() - 3] {
+                if expect_symbol {
+                    let color = match token.mana_group_inner().map(str::to_ascii_uppercase).as_deref() {
+                        Some("W") => Some(crate::color::Color::White),
+                        Some("U") => Some(crate::color::Color::Blue),
+                        Some("B") => Some(crate::color::Color::Black),
+                        Some("R") => Some(crate::color::Color::Red),
+                        Some("G") => Some(crate::color::Color::Green),
+                        _ => None,
+                    };
+                    if let Some(color) = color { colors = colors.with(color); }
+                    else { valid = false; break; }
+                } else if !token.is_word("or") { valid = false; break; }
+                expect_symbol = !expect_symbol;
+            }
+            if valid && !expect_symbol {
+                return Ok(Some(Value::EventValue(crate::effect::EventValueSpec::ManaSpentOnKeyword { colors })
+                    .with_surface_hint(ValueSurfaceHint::ForEach)));
+            }
         }
     }
     let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(tokens) else {

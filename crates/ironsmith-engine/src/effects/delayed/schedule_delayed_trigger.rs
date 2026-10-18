@@ -252,6 +252,16 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         game.refresh_continuous_state().map_err(ExecutionError::ContinuousDiscovery)?;
         // New attack/damage observations start their own exact role. Other
         // delayed bodies inherit a selected actor at registration time.
+        let bound_trigger = if self.trigger.downcast_ref::<crate::triggers::SpellCastThroughPermissionTrigger>().is_some() {
+            for grant in &mut game.effect_store.grant_registry.grants {
+                if grant.permission_identity.as_ref().is_some_and(|identity| ctx.last_play_permissions.contains(identity)) {
+                    grant.play_from_constraints.requires_cast_receipt = true;
+                }
+            }
+            Trigger::new(crate::triggers::SpellCastThroughPermissionTrigger {
+                permissions: ctx.last_play_permissions.clone(),
+            })
+        } else { self.trigger.clone() };
         let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
             kinds.iter().any(|kind| matches!(kind, crate::events::EventKind::CreatureAttacked
                 | crate::events::EventKind::PlayerAttackDeclaration
@@ -393,7 +403,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                     &mut delayed_tagged_objects,
                 );
                 let delayed = DelayedTriggerTemplate::new(
-                    self.trigger.clone(),
+                    bound_trigger.clone(),
                     self.effects.clone(),
                     self.one_shot,
                     controller_id,
@@ -451,7 +461,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         let mut tagged_objects = tagged_objects;
         crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
         let delayed = DelayedTriggerTemplate::new(
-            self.trigger.clone(),
+            bound_trigger.clone(),
             self.effects.clone(),
             self.one_shot,
             controller_id,

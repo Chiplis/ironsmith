@@ -1,7 +1,7 @@
 use ironsmith_core::tag::TagKeyWalk;
 
 use crate::diagnostics::TextSpan;
-use ironsmith_core::{ChoiceCount, TagKey, Value};
+use ironsmith_core::{ChoiceCount, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum DamageBySpec {

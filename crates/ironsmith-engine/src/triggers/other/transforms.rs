@@ -124,7 +124,7 @@ impl TriggerMatcher for TransformsTrigger {
 
     fn display(&self) -> String {
         if let Some(filter) = &self.permanent_filter {
-            use crate::filter::ObjectFilterExt as _;
+
             return format!(
                 "Whenever {} transforms{}",
                 filter.description(),

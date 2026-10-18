@@ -212,10 +212,12 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
             SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                 all_tag,
                 match_tag,
+                accumulated_match_tag,
                 ..
             }) => {
                 push_unique_tag(tags, all_tag);
                 push_unique_tag(tags, match_tag);
+                if let Some(tag) = accumulated_match_tag { push_unique_tag(tags, tag); }
             }
             SubjectVerbActionAst::Stack(StackActionAst::CopySpell { .. })
             | SubjectVerbActionAst::Stack(StackActionAst::CopySpellForEachTarget { .. }) => {
@@ -261,6 +263,12 @@ pub fn effects_reference_tag_in_object_position(effects: &[EffectAst], tag: &str
 
 fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetAst)) {
     assert_effect_ast_variant_coverage(effect);
+    // "If each of those creatures could block ..." (Sorrow's Path): the
+    // exchanged pair is the earlier declared target set, so that declaration
+    // must be tagged for this back-reference.
+    if let EffectAst::ExchangeBlocks { blockers, .. } = effect {
+        visit(blockers);
+    }
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         match &subject_verb.action {
             SubjectVerbActionAst::Damage(DamageActionAst::DealDamageBySources {
@@ -1201,6 +1209,7 @@ pub fn value_references_tag(value: &Value, tag: &str) -> bool {
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
+        | Value::StickerCharacteristicTotal { filter, .. }
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
@@ -1325,8 +1334,10 @@ pub fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
         ChooseSpec::Tagged(t) => t.as_str() == tag,
         ChooseSpec::SurfaceHinted { spec: inner, .. }
         | ChooseSpec::Target(inner)
-        | ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => choose_spec_references_tag(inner, tag),
+        | ChooseSpec::WithCount(inner, _) => choose_spec_references_tag(inner, tag),
+        ChooseSpec::WithCountValue(inner, _, value) => {
+            choose_spec_references_tag(inner, tag) || value_references_tag(value, tag)
+        }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
             .tagged_constraints
             .iter()
@@ -1401,8 +1412,9 @@ pub fn target_references_tag(target: &TargetAst, tag: &str) -> bool {
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
             player_filter_references_tag(filter, tag)
         }
-        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            target_references_tag(inner, tag)
+        TargetAst::WithCount(inner, _) => target_references_tag(inner, tag),
+        TargetAst::WithCountValue(inner, _, value) => {
+            target_references_tag(inner, tag) || value_references_tag(value, tag)
         }
         TargetAst::AttackedPlayerOrPlaneswalker(_) => false,
         TargetAst::Source(_)
@@ -1665,7 +1677,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoin)
         | SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly)
         | SubjectVerbActionAst::Random(RandomActionAst::ChooseNumberAtRandom { .. })
-        | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. } | RandomActionAst::RollDiceTotal { .. })
+        | SubjectVerbActionAst::Random(RandomActionAst::RollDiceChooseResult { .. })
         | SubjectVerbActionAst::Library(LibraryActionAst::ShuffleHandAndGraveyardIntoLibrary)
         | SubjectVerbActionAst::Library(
             LibraryActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
@@ -1713,6 +1725,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Game(GameActionAst::EndTurn)
         | SubjectVerbActionAst::Game(GameActionAst::EndCombatPhase)
             | SubjectVerbActionAst::Game(GameActionAst::DrawGame)
+            | SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { .. })
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipTurn)
         | SubjectVerbActionAst::TurnStructure(TurnStructureActionAst::SkipCombatPhases)
         | SubjectVerbActionAst::TurnStructure(
@@ -2087,6 +2100,13 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
             value_references_event_derived_amount(count)
                 || effects.iter().any(effect_references_event_derived_amount)
         }
+        // "You draw X cards and you lose X life, where X is the greatest mana
+        // value among cards exiled this way" (The Kenriths' Royal Funeral):
+        // the binding's value reads the earlier producer.
+        EffectAst::BindX { value, effects } => {
+            value_references_event_derived_amount(value)
+                || effects.iter().any(effect_references_event_derived_amount)
+        }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             count_value: Some(count_value),
             ..
@@ -2210,7 +2230,14 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
                     })
                     | SubjectVerbActionAst::StatChanges(
                         StatChangeActionAst::RemoveAbilitiesAll { filter, .. },
-                    ) => filter_references_event_derived_amount(filter),
+                    )
+                    // "Search ... for a creature card with mana value less
+                    // than or equal to the number of creatures sacrificed
+                    // this way" (The Hunger Tide Rises).
+                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                        filter,
+                        ..
+                    }) => filter_references_event_derived_amount(filter),
                     SubjectVerbActionAst::PermanentState(PermanentStateActionAst::PhaseInAll {
                         filter,
                         simultaneous_phase_out,

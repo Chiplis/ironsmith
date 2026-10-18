@@ -113,7 +113,7 @@ mod retained_participant_tests {
             ),
             Default::default(),
         );
-        game.set_current_controller(attacker, b);
+        game.set_current_controller(attacker, b).expect("test control change succeeds");
         let matcher = BecomesBlockedTrigger::one_or_more(ObjectFilter::creature().you_control());
         assert!(matcher.matches(&event, &TriggerContext::for_source(attacker, a, &game)));
         assert!(matcher.simultaneous_trigger_key(&event).is_some());

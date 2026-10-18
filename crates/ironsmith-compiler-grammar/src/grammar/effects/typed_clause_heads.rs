@@ -302,6 +302,9 @@ fn is_structural_action(word: &str) -> bool {
             | "populates"
             | "proliferate"
             | "proliferates"
+            // "Redistribute any number of players' life totals." (Reverse
+            // the Sands): its typed primitive is indexed under this head.
+            | "redistribute"
             | "regenerate"
             | "regenerates"
             | "reorder"

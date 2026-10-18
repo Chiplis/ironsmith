@@ -243,6 +243,11 @@ pub(super) fn read_leading_player_may(
         return Ok(Some(vec![offer]));
     }
     if super::super::super::super::parse_leading_player_may_lexed(tokens).is_some() {
+        // Bind the trailing value before the optional-action chain consumes
+        // the sentence and loses the definition of X inside its payload.
+        if sentence_shapes::parse_where_x_sentence_tokens(tokens).is_some() {
+            return parse_effect_sentence_with_where_x_lexed(tokens).map(Some);
+        }
         if let Some(spec) = parse_may_cast_it_sentence(tokens) {
             return Ok(Some(vec![build_may_cast_tagged_effect(&spec)]));
         }

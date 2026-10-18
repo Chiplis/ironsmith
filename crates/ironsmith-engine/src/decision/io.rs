@@ -2821,7 +2821,7 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
         }
         LegalAction::TurnFaceUp {
             creature_id,
-            method,
+            method: _,
         } => {
             let name = game
                 .object(*creature_id)
@@ -2839,8 +2839,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
                 "Play land".to_string()
             }
             crate::special_actions::SpecialAction::TurnFaceUp {
-                permanent_id,
-                method,
+                permanent_id: _,
+                method: _,
             } => {
                 let cost_prefix =
                     face_up_cost

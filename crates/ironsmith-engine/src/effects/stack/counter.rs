@@ -906,7 +906,7 @@ mod tests {
                 ]),
             );
         game.stack.push(StackEntry::new(target_spell, bob));
-        game.update_replacement_effects();
+        game.update_replacement_effects().expect("test replacement effect discovery succeeds");
 
         let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
         let mut dm = SelectFirstDecisionMaker;

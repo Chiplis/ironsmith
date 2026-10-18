@@ -90,6 +90,10 @@ pub enum EffectMetric {
     /// ("Roll three six-sided dice. For each different result, ...",
     /// Circuits Act). Appended to preserve serialized ordinals.
     DistinctDieResults,
+    /// Number of retained numeric die results that are even. Appended.
+    EvenDieResults,
+    /// Number of retained numeric die results equal to a given face. Appended.
+    DieResultsEqual(u32),
 }
 
 /// The authored action that produced a prior-effect metric query.
@@ -1061,6 +1065,9 @@ pub enum Value {
     /// of items they revealed", Goblin Game); 0 when that player chose none.
     /// Appended.
     IteratedPlayerChosenNumber,
+    /// Sum printed power or toughness of every P/T sticker on matching
+    /// objects. All stickers count even when a newer sticker sets P/T.
+    StickerCharacteristicTotal { filter: ObjectFilter, toughness: bool },
 }
 
 impl Value {
@@ -1557,6 +1564,11 @@ pub enum Restriction {
     /// other damage-source color checks); its colors are otherwise
     /// unchanged. Appended for wire stability.
     DamageSourcesAreColorless(ObjectFilter),
+    /// Prevent new attachments without invalidating attachments already there.
+    BeAttachedByNew(ObjectFilter, ObjectFilter),
+    /// Prohibit matching players acquiring control of matching objects.
+    GainControl(ObjectFilter, PlayerFilter),
+
 }
 
 /// Which attacks an [`AttackTaxRule`] taxes, relative to the rule's
@@ -2103,6 +2115,9 @@ impl Restriction {
     pub fn attack_block_or_crew(filter: ObjectFilter) -> Self {
         Self::AttackBlockOrCrew(filter)
     }
+
+    pub fn be_attached_by_new(hosts: ObjectFilter, attachments: ObjectFilter) -> Self { Self::BeAttachedByNew(hosts, attachments) }
+    pub fn gain_control(objects: ObjectFilter, players: PlayerFilter) -> Self { Self::GainControl(objects, players) }
 
     pub fn be_attached_by(hosts: ObjectFilter, attachments: ObjectFilter) -> Self {
         Self::BeAttachedBy(hosts, attachments)

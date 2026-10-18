@@ -538,6 +538,11 @@ fn move_entry_options(
     // status inside the one simultaneous move.
     let enters_tapped = effect.enters_tapped
         || effect.enters_tapped_if.as_ref().is_some_and(|filter| {
+            // The filter describes the entering object ("a land enters"); it
+            // is checked before the move, so its battlefield zone is not
+            // part of the test.
+            let mut filter = filter.clone();
+            filter.zone = None;
             game.object(object).is_some_and(|candidate| {
                 filter.matches(candidate, &ctx.filter_context(game), game)
             })
@@ -608,7 +613,7 @@ impl EffectExecutor for MoveToZoneEffect {
 
     fn prepare_simultaneous_player_action(
         &self,
-        game: &GameState,
+        _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         Ok(Box::new(MoveZoneProposal {
@@ -1667,6 +1672,14 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 }
                 match entry_outcome {
                     BattlefieldEntryOutcome::Moved(new_id) => {
+                        // References captured before this move belong to the
+                        // resulting permanent, not the ability's old source.
+                        let retained = self.retained_reference_tags.iter().filter_map(|tag|
+                            ctx.get_tagged_all(tag).cloned().map(|snapshots| (tag.clone(), snapshots))
+                        ).collect::<Vec<_>>();
+                        if let Some(object) = game.object_mut(new_id) {
+                            for (tag, snapshots) in retained { object.cast_tagged_objects.insert(tag, snapshots); }
+                        }
                         // CR 506.3a/b/f, 508.4: only a creature controlled by
                         // an attacking player, during combat, becomes attacking.
                         if self.enters_attacking

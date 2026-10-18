@@ -12,6 +12,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         // ("Ruric Thar has hexproof as long as they haven't dealt ...").
         ["it" | "they", ..] => 1,
         ["this", "creature" | "permanent", ..] => 2,
+        // A self-name normalized to the bare source word ("As long as
+        // Ratonhnhaké꞉ton hasn't dealt damage yet").
+        ["this", ..] => 1,
         _ => return None,
     };
     let dealt = PredicateAst::Source(SourcePredicateAst::SourceHasDealtDamageSinceEntered);

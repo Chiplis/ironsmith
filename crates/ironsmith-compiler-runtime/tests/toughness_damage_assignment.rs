@@ -1,22 +1,15 @@
 //! UNVALIDATED receiver-scoped toughness assignment and complete-source combat regressions.
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::cards::CardDefinition;
-use ironsmith::decision::{
-    DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
-};
-use ironsmith::decisions::context::{
-    NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext, ViewCardsContext,
-};
+use ironsmith::decision::{DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions};
+use ironsmith::decisions::context::{NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext, ViewCardsContext};
 use ironsmith::effect::{Effect, EffectOutcome, Until};
 use ironsmith::effects::{EffectContext, execute_effect};
-use ironsmith::game_loop::{
-    PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
-    apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
-};
+use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_decision_context_with_dm, apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerQueue, check_triggers};
+use ironsmith::target::{ChooseSpec};
+use ironsmith::triggers::{TriggerQueue};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
@@ -230,17 +223,6 @@ impl DecisionMaker for Choices {
         }
     }
 }
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
     let mut dm = SelectFirstDecisionMaker;
     let controller = game.current_controller(source).unwrap_or(A);
@@ -373,7 +355,7 @@ fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &m
     assert_eq!(game.stack.len(), 1);
 }
 use ironsmith::Subtype;
-use ironsmith::object::{CounterType, ObjectKind};
+use ironsmith::object::{ObjectKind};
 fn activated_at(definition: &CardDefinition, n: usize) -> usize {
     definition
         .abilities
@@ -402,19 +384,6 @@ fn creature(game: &mut GameState, owner: PlayerId, p: i32, t: i32, subtype: &str
         &vanilla("Quantity subject", "{2}", subtype, p, t),
         owner,
         Zone::Battlefield,
-    )
-}
-fn counter(
-    game: &mut GameState,
-    source: ObjectId,
-    id: ObjectId,
-    kind: CounterType,
-    count: i32,
-) -> EffectOutcome {
-    apply(
-        game,
-        source,
-        Effect::put_counters(kind, count, ChooseSpec::SpecificObject(id)),
     )
 }
 fn attack(game: &mut GameState, source: ObjectId, dm: &mut Choices) {

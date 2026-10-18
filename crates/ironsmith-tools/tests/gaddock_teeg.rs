@@ -61,7 +61,7 @@ fn teeg_restricts_both_players_and_stops_when_it_leaves() {
                 .mana_cost(cost)
                 .build();
             let spell = game.create_object_from_definition(&fixture, caster, Zone::Hand);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state should refresh");
             assert_eq!(
                 game.effect_store
                     .cant_effects
@@ -95,7 +95,7 @@ fn teeg_restricts_both_players_and_stops_when_it_leaves() {
                 allowed,
             );
             game.move_object_by_effect(source, Zone::Graveyard).unwrap();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state should refresh");
             assert!(can_cast(&game), "restriction must end when Teeg leaves");
         }
     }
@@ -195,7 +195,7 @@ fn teeg_checks_flashback_escape_and_exile_against_printed_cost() {
                     CardDefinitionBuilder::new(CardId::new(), "Escape payment fixture").build();
                 game.create_object_from_definition(&fodder, caster, Zone::Graveyard);
                 let spell = game.create_object_from_definition(&builder.build(), caster, origin);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state should refresh");
                 let action = LegalAction::CastSpell {
                     spell_id: spell,
                     from_zone: origin,
@@ -209,7 +209,7 @@ fn teeg_checks_flashback_escape_and_exile_against_printed_cost() {
                 );
                 attempt_cast(&game, action.clone(), allowed);
                 game.move_object_by_effect(source, Zone::Graveyard).unwrap();
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state should refresh");
                 attempt_cast(&game, action, true);
             }
         }

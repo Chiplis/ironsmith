@@ -1530,7 +1530,7 @@ fn compute_player_or_planeswalker_targets_with_view(
 
     view.prewarm_characteristics(&game.battlefield);
     for &obj_id in &game.battlefield {
-        let Some(obj) = game.object(obj_id) else {
+        let Some(_obj) = game.object(obj_id) else {
             continue;
         };
         if !view.object_has_card_type(obj_id, CardType::Planeswalker) {
@@ -1595,7 +1595,7 @@ fn compute_any_targets_with_view(
     // All creatures, planeswalkers, and battles on the battlefield
     view.prewarm_characteristics(&game.battlefield);
     for &obj_id in &game.battlefield {
-        if let Some(obj) = game.object(obj_id) {
+        if let Some(_obj) = game.object(obj_id) {
             if !view.object_has_card_type(obj_id, CardType::Creature)
                 && !view.object_has_card_type(obj_id, CardType::Planeswalker)
                 && !view.object_has_card_type(obj_id, CardType::Battle)
@@ -2143,7 +2143,7 @@ mod tests {
                     modification,
                 ));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         // The cast pipeline mutates announced/optional-cost state after moving
         // a spell to the stack. `object_mut` conservatively dirties continuous

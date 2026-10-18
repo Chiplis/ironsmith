@@ -18,14 +18,14 @@ pub(crate) struct ManaCreditContext {
 }
 
 impl ManaCreditContext {
-    pub fn from_execution(ctx: &ExecutionContext) -> Self {
+    pub fn from_execution(game: &GameState, ctx: &ExecutionContext) -> Self {
         Self {
             ability_index: ctx.ability_index,
             trigger_identity: ctx.trigger_identity,
             restrictions: ctx.mana.mana_usage_restrictions.clone(),
             chosen_creature_type: ctx.mana.mana_source_chosen_creature_type,
             retention: ctx.mana.retention,
-        }
+        }.with_bound_source_references(game, ctx.source)
     }
 
     pub fn from_activation(game: &GameState, source: ObjectId, ability: &ActivatedAbility, ability_index: usize) -> Self {
@@ -35,7 +35,24 @@ impl ManaCreditContext {
             restrictions: ability.mana_usage_restrictions.clone(),
             chosen_creature_type: game.chosen_creature_type(source),
             retention: None,
+        }.with_bound_source_references(game, source)
+    }
+
+    fn with_bound_source_references(mut self, game: &GameState, source: ObjectId) -> Self {
+        for restriction in &mut self.restrictions {
+            let ManaUsageRestriction::CastSpellMatching { filter, .. } = restriction else { continue; };
+            if !filter.tagged_constraints.iter().any(|constraint|
+                constraint.tag.as_str() == ironsmith_core::tag::LAST_SOURCE_EXILED_AT_PRODUCTION_TAG) { continue; }
+            filter.tagged_constraints.retain(|constraint|
+                constraint.tag.as_str() != ironsmith_core::tag::LAST_SOURCE_EXILED_AT_PRODUCTION_TAG);
+            if let Some(card) = game.last_exiled_with_source(source) {
+                filter.specific = Some(card);
+            } else {
+                filter.card_types.push(crate::types::CardType::Creature);
+                filter.excluded_card_types.push(crate::types::CardType::Creature);
+            }
         }
+        self
     }
 }
 
@@ -346,5 +363,38 @@ mod frozen_restriction_context_tests {
             game.player(bob).unwrap().restricted_mana[0].source_controller,
             Some(alice)
         );
+    }
+}
+
+#[cfg(test)]
+mod sol_78_retained_mana_subject {
+    use super::*;
+    #[test]
+    fn last_exiled_subject_is_frozen_when_produced_and_does_not_revive_older_cards() {
+        let alice = crate::ids::PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Linked witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        let first = game.create_object_from_card(&card, alice, crate::zone::Zone::Exile);
+        let last = game.create_object_from_card(&card, alice, crate::zone::Zone::Exile);
+        game.add_exiled_with_source_link(source, first);
+        let restriction = ManaUsageRestriction::CastSpellMatching {
+            filter: crate::filter::ObjectFilter::tagged(crate::tag::TagKey::from(
+                ironsmith_core::tag::LAST_SOURCE_EXILED_AT_PRODUCTION_TAG)),
+            restrict_to_matching_spell: true,
+            grant_uncounterable: false,
+            enters_with_counters: vec![],
+            granted_abilities: vec![],
+        };
+        let original = ManaCreditContext { restrictions: vec![restriction], ..Default::default() };
+        let first_credit = original.clone().with_bound_source_references(&game, source);
+        game.add_exiled_with_source_link(source, last);
+        game.remove_exiled_with_source_link(last);
+        let later_credit = original.with_bound_source_references(&game, source);
+        let ManaUsageRestriction::CastSpellMatching { filter: first_filter, .. } = &first_credit.restrictions[0] else { panic!() };
+        let ManaUsageRestriction::CastSpellMatching { filter: last_filter, .. } = &later_credit.restrictions[0] else { panic!() };
+        assert_eq!(first_filter.specific, Some(first));
+        assert_eq!(last_filter.specific, Some(last));
     }
 }

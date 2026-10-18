@@ -15,15 +15,14 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::target::ChooseSpec;
+use ironsmith::triggers::TriggerQueue;
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 const A: PlayerId = PlayerId::from_index(0);
 const B: PlayerId = PlayerId::from_index(1);
-const C: PlayerId = PlayerId::from_index(2);
 
 fn fixtures() -> Vec<serde_json::Value> {
     serde_json::from_str(include_str!(
@@ -74,14 +73,6 @@ fn game() -> GameState {
         game.player_mut(A).unwrap().mana_pool.add(color, 20);
     }
     game
-}
-fn vanilla(name: &str, cost: &str, subtype: &str, p: i32, t: i32) -> CardDefinition {
-    compile_to_runtime_definition(
-        name,
-        format!("Mana cost: {cost}\nType: Creature — {subtype}\nPower/Toughness: {p}/{t}"),
-        false,
-    )
-    .unwrap()
 }
 #[derive(Default)]
 struct Choices {
@@ -178,17 +169,6 @@ fn resource(name: &str, types: &str) -> CardDefinition {
     };
     compile_to_runtime_definition(name, format!("Mana cost: {{1}}\nType: {types}{pt}"), false)
         .unwrap()
-}
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
 }
 fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
     (

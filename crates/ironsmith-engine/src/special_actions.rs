@@ -1142,7 +1142,7 @@ fn finish_special_action_with_mana_activation_outputs(
         SpecialAction::UnlockRoomDoor { room_id, door } => {
             perform_unlock_room_door(game, player, room_id, door, &mut *decision_maker)
         }
-        SpecialAction::RollPlanarDie => perform_roll_planar_die(game, player),
+        SpecialAction::RollPlanarDie => perform_roll_planar_die(game, player, decision_maker),
         SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => game
             .turn_conspiracy_face_up(player, conspiracy_id)
             .map_err(|_| ActionError::InvalidTarget),
@@ -1757,8 +1757,8 @@ fn can_roll_planar_die(game: &GameState, player: PlayerId) -> Result<(), ActionE
     Ok(())
 }
 
-fn perform_roll_planar_die(game: &mut GameState, player: PlayerId) -> Result<(), ActionError> {
-    game.roll_planar_die(player, true)
+fn perform_roll_planar_die(game: &mut GameState, player: PlayerId, decision_maker: &mut impl crate::decision::DecisionMaker) -> Result<(), ActionError> {
+    game.roll_planar_die_with_decision_maker(player, true, decision_maker)
         .map(|_| ())
         .map_err(|error| match error {
             crate::effects::ExecutionError::Impossible(_) => ActionError::InvalidTiming,

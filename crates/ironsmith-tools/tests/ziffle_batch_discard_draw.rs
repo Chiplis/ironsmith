@@ -1,7 +1,7 @@
 //! Real compiled cards plus replacement-aware simultaneous discard/draw checks.
 use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
 use ironsmith::decision::SelectFirstDecisionMaker;
-use ironsmith::events::context::EventContext;
+
 use ironsmith::events::traits::{EventKind, GameEventType, ReplacementMatcher};
 use ironsmith::game_state::StackEntry;
 use ironsmith::replacement::{ReplacementAction, ReplacementEffect};

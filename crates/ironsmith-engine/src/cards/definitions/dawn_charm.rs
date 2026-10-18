@@ -92,6 +92,7 @@ mod tests {
             activation_cost_has_x: false,
             activation_cost_has_tap: false,
             mana_spent_on_activation: Default::default(),
+            activation_mana_budget: Default::default(),
             ability_effects: None,
             linked_exile_owner: None,
             source_number_owner: None,

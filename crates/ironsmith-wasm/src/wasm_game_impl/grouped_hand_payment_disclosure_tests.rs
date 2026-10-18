@@ -20,7 +20,7 @@ fn payment_disclosure_group_costs_reject_invalid_groups_before_commit_then_pay_e
         let source =
             wasm.game
                 .create_object_from_definition(&definition, PlayerId(1), Zone::Battlefield);
-        wasm.game.set_current_controller(source, PlayerId(0));
+        wasm.game.set_current_controller(source, PlayerId(0)).expect("fixture control change should succeed");
         wasm.game.remove_summoning_sickness(source);
         let names = if name == "Sphinx of the Chimes" {
             ["Pair", "Pair", "Other", "Pair"]

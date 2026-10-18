@@ -3252,7 +3252,7 @@ mod tests {
                 vec![crate::ability::Ability::static_ability(
                     super::super::StaticAbility::new(ability.clone()),
                 )];
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let view = crate::derived_view::DerivedGameView::new(game);
             imposed_attack_costs_for_target(game, attacker, target, &view)
                 .first()

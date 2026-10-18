@@ -259,7 +259,8 @@
      the rail, still used while ordering triggers or replacements, is capped
      here. */
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
-    left: calc(var(--stack-frame-rail-left, 0px) + var(--fc-rail-gutter)) !important;
+    /* The rail already starts past the measured mana column. */
+    left: calc(var(--stack-frame-rail-left, 0px) + max(0px, var(--fc-rail-gutter) - var(--stack-mana-clearance, 0px))) !important;
   }
 
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail:not([data-card-stack-anchor]) {

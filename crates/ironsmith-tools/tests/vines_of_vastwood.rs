@@ -77,7 +77,7 @@ fn shock_can_target_after_vines(owner: PlayerId, caster: PlayerId) -> bool {
     for effect in vines_def.spell_effect.as_ref().unwrap().all_effects() {
         ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     game.update_cant_effects();
     let shock: ObjectId = game.create_object_from_definition(&load("Shock"), caster, Zone::Hand);
     game.player_mut(caster)

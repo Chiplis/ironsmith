@@ -36,6 +36,18 @@ pub fn parse_activation_choice_prefix_tokens(
 pub fn parse_activation_exile_filter_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
+    // "black cards from your graveyard with fifteen or more black mana
+    // symbols among their mana costs" (Baron Helmut Zemo): the trailing
+    // qualifier bounds the whole exiled set.
+    if let Some((base_len, constraint)) =
+        crate::grammar::shared_util::aggregate_constraints::split_mana_symbols_among_constraint(
+            tokens,
+        )
+    {
+        let mut filter = parse_activation_exile_filter_tokens(&tokens[..base_len])?;
+        filter.target_set_aggregate_constraint = Some(Box::new(constraint));
+        return Ok(filter);
+    }
     let base_len = crate::grammar::primitives::probe_all(
         tokens,
         parse_single_graveyard_suffix_lexed,

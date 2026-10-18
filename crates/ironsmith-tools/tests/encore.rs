@@ -174,7 +174,7 @@ fn encore_does_not_force_attack_taxes() {
         .push(ironsmith::Ability::static_ability(
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(1),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let mut alternative = declarations.clone();
     alternative[0].target = declarations[1].target.clone();
     apply_attacker_declarations(
@@ -286,7 +286,7 @@ fn encore_replacements_keep_each_opponents_assignment_and_cleanup() {
                 "Double tokens".into(),
             ),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
     assert_eq!(game.battlefield.len(), 5);
     assert_eq!(game.effect_store.delayed_triggers.len(), 4);

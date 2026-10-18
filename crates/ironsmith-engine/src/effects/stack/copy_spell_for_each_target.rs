@@ -6,8 +6,6 @@ use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
 use crate::effects::stack::copy_spell::{create_stack_copy, stack_entry_for_copy_target};
 use crate::effects::{ExecutionContext, ExecutionError};
-#[cfg(test)]
-use crate::events::spells::{BecomesTargetedEvent, SpellCopiedEvent};
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::effects::stack::retarget_stack_object::stack_entry_retarget_requirements;
 use crate::game_state::{GameState, Target};

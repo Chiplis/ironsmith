@@ -22,7 +22,7 @@ fn source_pump_keyword_target_debuff_keeps_objects_and_duration() {
         for effect in &ability.effects {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             game.current_power(source),
             Some(if self_target { 2 } else { 4 })
@@ -48,7 +48,7 @@ fn source_pump_keyword_target_debuff_keeps_objects_and_duration() {
             )
         );
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for id in [source, other] {
             assert_eq!(game.current_power(id), Some(2));
             assert_eq!(game.current_toughness(id), Some(2));

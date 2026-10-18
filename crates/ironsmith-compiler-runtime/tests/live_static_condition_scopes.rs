@@ -7,7 +7,7 @@ use ironsmith::decision::{
 use ironsmith::decisions::context::{
     BooleanContext, NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext,
 };
-use ironsmith::effect::{Effect, EffectOutcome, Until};
+use ironsmith::effect::{Effect, EffectOutcome};
 use ironsmith::effects::{EffectContext, execute_effect};
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
@@ -16,7 +16,7 @@ use ironsmith::game_loop::{
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::triggers::{TriggerQueue, check_triggers};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
@@ -208,13 +208,6 @@ fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
         game.current_toughness(id).unwrap(),
     )
 }
-fn pump(game: &mut GameState, source: ObjectId, id: ObjectId, p: i32, t: i32) {
-    apply(
-        game,
-        source,
-        Effect::pump(p, t, ChooseSpec::SpecificObject(id), Until::EndOfTurn),
-    );
-}
 fn counter(game: &mut GameState, source: ObjectId, id: ObjectId, count: i32) {
     apply(
         game,
@@ -301,17 +294,6 @@ fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &m
     }
     assert!(state.pending_activation.is_none());
 }
-fn activated_at(definition: &CardDefinition, position: usize) -> usize {
-    definition
-        .abilities
-        .iter()
-        .enumerate()
-        .filter_map(|(i, a)| {
-            matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)
-        })
-        .nth(position)
-        .unwrap()
-}
 fn current_activated_at(game: &GameState, source: ObjectId, position: usize) -> usize {
     game.calculated_characteristics(source)
         .unwrap()
@@ -330,26 +312,6 @@ fn has(
     ability: ironsmith::static_abilities::StaticAbilityId,
 ) -> bool {
     game.current_has_static_ability_id(id, ability)
-}
-fn event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    for trigger in check_triggers(game, &event) {
-        queue.add(trigger);
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
-fn lore(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
-    let outcome = apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::Lore,
-            1,
-            ChooseSpec::SpecificObject(source),
-        ),
-    );
-    queue_outcome(game, outcome, dm);
-    resolve_all(game, &mut Choices::default());
 }
 
 fn attach(game: &mut GameState, aura: ObjectId, host: ObjectId) {

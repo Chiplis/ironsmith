@@ -297,7 +297,7 @@ mod replacement_cascade_owner_contract_tests {
         let source = card(&mut game, bob, CardType::Artifact, Zone::Battlefield);
         let spell = card(&mut game, alice, CardType::Instant, Zone::Library);
         let land = card(&mut game, alice, CardType::Land, Zone::Library);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let sentinel = ObjectSnapshot::from_object(game.object(parent).unwrap(), &game);
         let effects = match mode {
             1 => vec![Effect::gain_life(3), Effect::lose_life(Value::X)],

@@ -268,6 +268,16 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 if card.zone != Zone::Hand {
                     return None;
                 }
+                // "Each nonland card in your hand without foretell has
+                // foretell" (Bohn, Beguiling Balladeer): a card with its own
+                // foretell keeps only that one.
+                if card
+                    .alternative_casts
+                    .iter()
+                    .any(|method| matches!(method, AlternativeCastingMethod::Foretell { .. }))
+                {
+                    return None;
+                }
                 Some(AlternativeCastingMethod::Foretell {
                     cost: mana_cost.reduce_generic(*reduction),
                 })

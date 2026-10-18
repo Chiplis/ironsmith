@@ -229,6 +229,11 @@ pub const HEXPROOF_PROTECTED_OBJECT_TAG: &str = "__hexproof_protected_object__";
 /// its player's library ("for each card you put on top of your library").
 pub const SURVEIL_KEPT_ON_TOP_TAG: &str = "__surveil_kept_on_top__";
 
+/// Runtime resolution tag for the cards the latest surveil put into a
+/// graveyard, as their new graveyard objects ("If you put a card ... into
+/// your graveyard this way, put that card into your hand").
+pub const SURVEIL_PUT_INTO_GRAVEYARD_TAG: &str = "__surveil_put_into_graveyard__";
+
 /// Runtime action-event tag for the card put into a graveyard while
 /// performing the manifest-dread keyword action.
 pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
@@ -324,6 +329,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     EXPLOITER_TAG,
     SURVEILLED_THIS_TURN_TAG,
     SURVEIL_KEPT_ON_TOP_TAG,
+    SURVEIL_PUT_INTO_GRAVEYARD_TAG,
     HEXPROOF_PROTECTED_OBJECT_TAG,
     MANIFEST_DREAD_GRAVEYARD_TAG,
     ATTACKING_GROUP_TAG,
@@ -412,3 +418,6 @@ impl From<&String> for TagKey {
 pub fn optional_cost_sacrifice_receipt(reference: &crate::cost_model::OptionalCostRef) -> TagKey {
     TagKey::new(format!("__optional_cost_sacrifice:{:?}:{:?}", reference.kind, reference.discriminator))
 }
+
+/// Resolve to the last source-linked exiled incarnation when mana is produced.
+pub const LAST_SOURCE_EXILED_AT_PRODUCTION_TAG: &str = "__last_source_exiled_at_production__";

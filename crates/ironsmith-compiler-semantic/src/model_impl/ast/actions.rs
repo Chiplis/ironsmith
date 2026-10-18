@@ -519,10 +519,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("exclude_basic", exclude_basic)
                 .field("basic_only", basic_only)
                 .finish(),
-            Self::Choices(ChoiceActionAst::ChooseCardName { filter, tag }) => f
+            Self::Choices(ChoiceActionAst::ChooseCardName { filter, tag, options, exclude_source_history }) => f
                 .debug_struct("ChooseCardName")
                 .field("filter", filter)
                 .field("tag", tag)
+                .field("options", options)
+                .field("exclude_source_history", exclude_source_history)
                 .finish(),
             Self::Choices(ChoiceActionAst::ChoosePlayer {
                 filter,
@@ -577,8 +579,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("AddManaLostThisWay")
                 .field("amount", amount)
                 .finish(),
-            Self::Mana(ManaActionAst::AddManaNotedType { amount }) => f
+            Self::Mana(ManaActionAst::AddManaNotedType { amount, use_noted_amount }) => f
                 .debug_struct("AddManaNotedType")
+                .field("use_noted_amount", use_noted_amount)
                 .field("amount", amount)
                 .finish(),
             Self::Mana(ManaActionAst::AddManaChosenColor {
@@ -1304,6 +1307,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 )
                 .finish(),
             Self::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter,
                 alternative_cost,
                 tag,
                 player,
@@ -1319,6 +1323,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 surface,
             }) => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
+                .field("spell_filter", spell_filter)
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
@@ -1512,6 +1517,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("explicit_return_surface", explicit_return_surface)
                 .finish(),
             Self::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            retained_reference_tags,
                 target,
                 source_top_only,
                 zone,
@@ -1537,6 +1543,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 all,
             }) => f
                 .debug_struct("MoveToZone")
+                .field("retained_reference_tags", retained_reference_tags)
                 .field("target", target)
                 .field("source_top_only", source_top_only)
                 .field("zone", zone)
@@ -2065,6 +2072,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .finish(),
             Self::Library(LibraryActionAst::ConsultTopOfLibrary {
+                accumulated_match_tag,
                 player,
                 mode,
                 filter,
@@ -2074,6 +2082,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 match_tag,
             }) => f
                 .debug_struct("ConsultTopOfLibrary")
+                .field("accumulated_match_tag", accumulated_match_tag)
                 .field("player", player)
                 .field("mode", mode)
                 .field("filter", filter)
@@ -2799,6 +2808,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Game(GameActionAst::EndTurn) => f.write_str("EndTurn"),
             Self::Game(GameActionAst::EndCombatPhase) => f.write_str("EndCombatPhase"),
             Self::Game(GameActionAst::DrawGame) => f.write_str("DrawGame"),
+            Self::Game(GameActionAst::RedirectEnteringSource { destination }) => f.debug_struct("RedirectEnteringSource").field("destination", destination).finish(),
             Self::TurnStructure(TurnStructureActionAst::SkipTurn) => f.write_str("SkipTurn"),
             Self::TurnStructure(TurnStructureActionAst::SkipCombatPhases) => {
                 f.write_str("SkipCombatPhases")

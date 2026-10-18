@@ -6828,7 +6828,7 @@ mod referenced_characteristic_frame_tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::events::EventCause;
-    use crate::filter::{FilterContext, ObjectFilter, ObjectFilterExt as _};
+    use crate::filter::{FilterContext, ObjectFilter, };
     use crate::ids::CardId;
     use crate::provenance::ProvNodeId;
     use crate::snapshot::ObjectSnapshot;

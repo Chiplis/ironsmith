@@ -34,7 +34,7 @@ fn counter_gated_combat_prevention_and_defender_apply_only_to_source() {
         Some(&3)
     );
     for remaining in (0..=3).rev() {
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             game.current_has_static_ability_id(
                 source,
@@ -95,7 +95,7 @@ fn counter_gated_combat_prevention_and_defender_apply_only_to_source() {
         }
     }
     game.add_counters(source, crate::CounterType::Ice, 1);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(
         game.current_has_static_ability_id(
             source,

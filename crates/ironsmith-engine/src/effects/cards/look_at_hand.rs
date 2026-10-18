@@ -1,10 +1,8 @@
 //! Look at hand effect implementation.
 
-#[cfg(test)]
-use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_players_from_spec, view_hidden_candidate_objects};
+use crate::effects::helpers::{resolve_players_from_spec, };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;

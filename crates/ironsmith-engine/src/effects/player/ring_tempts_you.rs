@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(game.current_ring_bearer(alice), Some(second));
         // CR 701.54c: the Ring-bearer is legendary through a layer-4 effect,
         // not a copiable supertype (CR 701.54b).
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let legendary = |id| {
             game.current_characteristics(id)
                 .is_some_and(|chars| chars.supertypes.contains(&Supertype::Legendary))

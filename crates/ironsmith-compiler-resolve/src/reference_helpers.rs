@@ -638,6 +638,7 @@ fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
         | Value::GreatestSharedCreatureTypeCount(filter)
         | Value::TotalPower(filter)
         | Value::TotalToughness(filter)
+        | Value::StickerCharacteristicTotal { filter, .. }
         | Value::TotalManaValue(filter)
         | Value::GreatestPower(filter)
         | Value::GreatestToughness(filter)
@@ -1226,10 +1227,25 @@ fn resolve_it_tag_inner(
     if resolved.tagged_constraints.iter().any(|constraint| {
         constraint.tag.as_str() == crate::tag::CompilerReferenceTag::ThoseCardsReference.as_str()
     }) {
-        let collection = refs
-            .known_last_object_tag()
-            .cloned()
-            .unwrap_or_else(|| crate::tag::CompilerReferenceTag::Triggering.key());
+        // "those cards" never names a just-created token ("create a Wolf
+        // token, then put a counter on it for each creature card among those
+        // cards"): fall back to the most recent exiled collection.
+        let exiled_collection = || {
+            refs.snapshot_tag_aliases
+                .iter()
+                .rev()
+                .find(|(alias, _)| {
+                    alias.as_str() == crate::model::reference_state::LAST_EXILED_COLLECTION_ALIAS
+                })
+                .map(|(_, tag)| tag.clone())
+        };
+        let collection = match refs.known_last_object_tag() {
+            Some(tag) if tag.as_str().starts_with("created") => {
+                exiled_collection().unwrap_or_else(|| tag.clone())
+            }
+            Some(tag) => tag.clone(),
+            None => crate::tag::CompilerReferenceTag::Triggering.key(),
+        };
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str()
                 == crate::tag::CompilerReferenceTag::ThoseCardsReference.as_str()
@@ -1738,6 +1754,12 @@ pub fn resolve_restriction_it_tag(
         Restriction::BeAttachedBy(hosts, attachments) => Restriction::be_attached_by(
             resolve_it_tag(hosts, refs)?,
             resolve_it_tag(attachments, refs)?,
+        ),
+        Restriction::BeAttachedByNew(hosts, attachments) => Restriction::be_attached_by_new(
+            resolve_it_tag(hosts, refs)?, resolve_it_tag(attachments, refs)?,
+        ),
+        Restriction::GainControl(filter, player) => Restriction::gain_control(
+            resolve_it_tag(filter, refs)?, resolve_contextual_player_filter(player, refs)?,
         ),
         Restriction::BeBlocked(filter) => Restriction::be_blocked(resolve_it_tag(filter, refs)?),
         Restriction::BeDestroyed(filter) => {
@@ -2480,6 +2502,7 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
             Value::GreatestSharedCreatureTypeCount(resolve_it_tag(filter, refs)?),
         ),
         Value::TotalPower(filter) => Ok(Value::TotalPower(resolve_it_tag(filter, refs)?)),
+        Value::StickerCharacteristicTotal { filter, toughness } => Ok(Value::StickerCharacteristicTotal { filter: resolve_it_tag(filter, refs)?, toughness: *toughness }),
         Value::TotalToughness(filter) => Ok(Value::TotalToughness(resolve_it_tag(filter, refs)?)),
         Value::TotalManaValue(filter) => Ok(Value::TotalManaValue(resolve_it_tag(filter, refs)?)),
         Value::GreatestPower(filter) => Ok(Value::GreatestPower(resolve_it_tag(filter, refs)?)),
@@ -2964,6 +2987,12 @@ pub fn resolve_total_cost_it_tags(
                 }
                 if let Some(value) = dynamic.multiplier.as_mut() {
                     *value = resolve_value_it_tag(value, refs)?;
+                }
+                // "sacrifice it unless you pay its mana cost" (Flash): the
+                // payment's `its` names the instruction's antecedent.
+                if let Some(spec) = dynamic.mana_cost_of.as_mut() {
+                    let resolved = resolve_choose_spec_it_tag(spec.as_ref(), refs)?;
+                    **spec = resolved;
                 }
             }
             crate::costs::Cost::Energy(value)

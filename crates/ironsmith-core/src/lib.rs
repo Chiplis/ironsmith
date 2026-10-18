@@ -160,7 +160,7 @@ pub use effect::{
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneAttackTargetMode, MoveToZoneEffect,
     MoveToZoneVerbSurface, NewTargetRestriction, NextAdaptIgnoresCountersEffect,
-    NinjutsuCostEffect, NinjutsuEffect, NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect,
+    NinjutsuCostEffect, NinjutsuEffect, CastFaceDownUsingActivationManaEffect, RegisterExtraDieReplacementEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect, NoteCountersEffect, NoteLifeTotalEffect, RedistributeLifeTotalsEffect, CoinFlipLifeStakesEffect, RedirectEnteringSourceEffect,
     OpenAttractionEffect, PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect, PayLifeEffect,
     PayManaEffect, PhaseInEffect, PhaseOutDuration, PhaseOutEffect, PlaySubgameEffect,
     PlayerControlDuration, PlayerControlStart, PoisonCountersEffect, PopulateEffect, PrepareEffect,

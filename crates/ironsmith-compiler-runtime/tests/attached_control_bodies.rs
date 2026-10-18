@@ -4,13 +4,10 @@ use ironsmith::card::{CardBuilder, PowerToughness};
 use ironsmith::cards::CardDefinition;
 use ironsmith::decision::{compute_legal_actions, DecisionMaker, LegalAction, SelectFirstDecisionMaker};
 use ironsmith::decisions::context::TargetsContext;
-use ironsmith::effect::Effect;
-use ironsmith::effects::{execute_effect, DealDamageEffect, EffectContext};
-use ironsmith::filter::{FilterContext, ObjectFilter};
+use ironsmith::effects::{EffectContext};
 use ironsmith::game_loop::{apply_decision_context_with_dm, apply_priority_response_with_dm,
     put_triggers_on_stack_with_dm, resolve_stack_entry_with, PriorityLoopState, PriorityResponse};
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{CardId, CardType, GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;

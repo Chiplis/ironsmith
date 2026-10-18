@@ -1,5 +1,6 @@
 //! Look at top cards effect implementation.
 
+#[cfg(test)]
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;

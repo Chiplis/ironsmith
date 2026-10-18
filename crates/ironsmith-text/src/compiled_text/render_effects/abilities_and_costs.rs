@@ -1641,19 +1641,6 @@ pub(crate) fn describe_ability(
                 None
             };
             cost_text = normalize_zone_bound_self_exile_cost(cost_text, ability);
-            if ability.functional_zones.contains(&Zone::Hand)
-                && cost_text.as_deref().is_some_and(|cost| {
-                    matches!(
-                        cost,
-                        "Exile this creature"
-                            | "Exile this permanent"
-                            | "Exile this source"
-                            | "Exile this card"
-                    )
-                })
-            {
-                cost_text = Some("Exile this card from your hand".to_string());
-            }
             let loyalty_prefix = describe_loyalty_activation_prefix_for_activated(activated);
             let mana_symbols = activated.mana_symbols();
             let add_text = if !mana_symbols.is_empty() {
@@ -1934,6 +1921,18 @@ pub(crate) fn describe_ability(
             if let Some(x_definition) = trailing_x_definition {
                 append_sentence_clause(&mut line, &x_definition);
             }
+            // Heirloom Epic: the activation's mana may be paid by tapping
+            // untapped creatures (the scoped creature tap payment).
+            if activated
+                .mana_cost
+                .mana_cost()
+                .is_some_and(|mana| mana.has_creature_tap_payment())
+            {
+                append_sentence_clause(
+                    &mut line,
+                    "For each mana in this ability's activation cost, you may tap an untapped creature you control rather than pay that mana",
+                );
+            }
             let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
@@ -2205,26 +2204,76 @@ pub(super) fn normalize_zone_bound_self_exile_cost(
     ability: &Ability,
 ) -> Option<String> {
     let cost = cost_text?;
-    if ability.functional_zones.contains(&Zone::Graveyard) {
-        let mut rewritten = cost;
-        if rewritten.contains("Exile this card from your graveyard") {
-            return Some(rewritten.replace(
-                "from your graveyard from your graveyard",
-                "from your graveyard",
-            ));
+    // A source exile cost does not itself retain its origin zone: that fact
+    // belongs to the enclosing activated ability. Use an exact zone, not
+    // `contains`, so multi-zone abilities never acquire a false restriction.
+    let zone = match ability.functional_zones.as_slice() {
+        [Zone::Hand] => "hand",
+        [Zone::Graveyard] => "graveyard",
+        _ => return Some(cost),
+    };
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return Some(cost);
+    };
+    fn exiles_source(effect: &Effect) -> bool {
+        let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+            return matches!(exile.spec.base(), ChooseSpec::Source);
         }
-        for subject in ["creature", "permanent", "source", "spell", "card"] {
-            rewritten = rewritten.replace(
-                &format!("Exile this {subject}"),
-                "Exile this card from your graveyard",
-            );
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().any(exiles_source);
         }
-        return Some(rewritten.replace(
-            "from your graveyard from your graveyard",
-            "from your graveyard",
-        ));
+        false
     }
-    Some(cost)
+    fn has_source_exile(cost: &crate::cost::TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs
+                .iter()
+                .any(|cost| cost.effect_ref().is_some_and(exiles_source)),
+            ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(has_source_exile),
+        }
+    }
+    if !has_source_exile(&activated.mana_cost) {
+        return Some(cost);
+    }
+    // Render only the unqualified source reference produced by the cost
+    // renderer. Explicit origins and quoted abilities remain untouched.
+    let mut rendered = String::new();
+    for (index, part) in cost.split('"').enumerate() {
+        if index > 0 {
+            rendered.push('"');
+        }
+        if index % 2 == 1 {
+            rendered.push_str(part);
+            continue;
+        }
+        let mut part = part.to_string();
+        for verb in ["Exile", "exile"] {
+            for subject in ["creature", "permanent", "source", "spell", "card"] {
+                let needle = format!("{verb} this {subject}");
+                let replacement = format!("{verb} this card from your {zone}");
+                let mut rewritten = String::new();
+                let mut start = 0;
+                for (offset, _) in part.match_indices(&needle) {
+                    let end = offset + needle.len();
+                    let tail = &part[end..];
+                    rewritten.push_str(&part[start..offset]);
+                    if tail.starts_with(" from ")
+                        || tail.chars().next().is_some_and(char::is_alphanumeric)
+                    {
+                        rewritten.push_str(&needle);
+                    } else {
+                        rewritten.push_str(&replacement);
+                    }
+                    start = end;
+                }
+                rewritten.push_str(&part[start..]);
+                part = rewritten;
+            }
+        }
+        rendered.push_str(&part);
+    }
+    Some(rendered)
 }
 
 pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str) -> String {

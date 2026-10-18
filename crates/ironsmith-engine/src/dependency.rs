@@ -1159,6 +1159,9 @@ fn object_matches_filter_with_chars(
         }
     }
 
+    if let Some(budget) = &filter.mana_cost_payable_with
+        && object.mana_cost.as_deref().is_none_or(|cost| !budget.can_pay(cost))
+    { return false; }
     if let Some(required_cost) = &filter.exact_mana_cost
         && object.mana_cost.as_deref() != Some(required_cost)
     {
@@ -1702,6 +1705,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaSymbolsInManaCostOf { .. }
         | Value::NameStickerCharacterCountOnSource { .. }
         | Value::StickersOnSource { .. }
+        | Value::StickerCharacteristicTotal { .. }
         | Value::NameStickersOnSourceStartingWithChosenLetter { .. }
         | Value::LifeTotal(_)
         | Value::MaximumLifeTotal(_)
@@ -2504,6 +2508,7 @@ fn value_could_be_affected_by(value: &Value, modification: &Modification) -> boo
                     Value::GreatestSharedNameCount(_) | Value::DistinctNames(_)
                 )
         }
+        Value::StickerCharacteristicTotal { filter, .. } => modification_can_affect_filter(modification, filter),
         Value::TotalPower(filter)
         | Value::TotalToughness(filter)
         | Value::GreatestPower(filter)

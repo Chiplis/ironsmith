@@ -87,7 +87,7 @@ fn setup() -> (GameState, [ObjectId; 3]) {
         &mut ctx,
     )
     .unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert_eq!(game.controller_of_id(stolen), Some(alice));
     ironsmith::effects::execute_effect(
         &mut game,

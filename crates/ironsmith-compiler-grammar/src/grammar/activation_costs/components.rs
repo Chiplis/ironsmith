@@ -337,6 +337,8 @@ fn parse_activation_cost_segment_head_lexed<'a>(input: &mut LexStream<'a>) -> WR
                     primitives::kw("behold"),
                     primitives::kw("blight"),
                     primitives::kw("forage"),
+                    // "{6}, Roll a d8: ..." (Clay Golem).
+                    primitives::kw("roll"),
                 ))
                 .void(),
                 alt((

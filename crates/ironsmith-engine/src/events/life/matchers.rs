@@ -1,5 +1,6 @@
 //! Life gain/loss replacement effect matchers.
 
+#[cfg(test)]
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::PlayerFilterExt;

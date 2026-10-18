@@ -102,7 +102,7 @@ fn damaged_target_player_or_controller_discards_and_sacrifices_only_seven() {
         } else {
             None
         };
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         let target = walker
             .map(crate::effects::ResolvedTarget::Object)
             .unwrap_or(crate::effects::ResolvedTarget::Player(bob));

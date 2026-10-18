@@ -289,13 +289,6 @@ fn activate(
     )
 }
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -401,7 +394,7 @@ fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
     compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
-use ironsmith::static_abilities::StaticAbilityId;
+
 
 const NAMES: [(&str, usize); 2] = [("Captain America, First Avenger", 0), ("Sunforger", 1)];
 fn get_stable(g: &GameState, id: ObjectId) -> u64 {

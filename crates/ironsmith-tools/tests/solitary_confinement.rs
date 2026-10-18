@@ -107,7 +107,7 @@ fn you_have_shroud() {
         alice,
         Zone::Battlefield,
     );
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !game.can_target_player_from_source(alice, bob_source),
         "opponents can't target Alice"

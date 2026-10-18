@@ -1418,7 +1418,7 @@ pub(super) fn player_life_change_this_turn_conditions_use_shared_capture_parser(
 pub(super) fn this_spell_cost_conditions_use_clause_shapes_and_life_change_capture_parser() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler-grammar/src/keyword_static/mod.rs";
-    let content = read_repo_file(&root, relative);
+    let _content = read_repo_file(&root, relative);
     // The condition's readings live in the registry module beside the parser.
     let parser = read_repo_file(
         &root,

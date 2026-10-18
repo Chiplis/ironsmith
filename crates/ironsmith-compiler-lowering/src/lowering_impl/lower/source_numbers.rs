@@ -129,7 +129,6 @@ fn apply_pair(definition: &mut CardDefinition, pair: LinkedExilePair) {
                 };
                 if reads>0 || program_choices(&ability.effects)>0 {ability.effects.source_number_pair=Some(pair);}
             }
-            _=>{}
         }
     }
 }

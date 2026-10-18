@@ -37,6 +37,29 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                 return Ok(Some(effects));
             }
         }
+        // The same sentence after an upstream shared-subject pass elided the
+        // repeated "and it": "It's goaded for the rest of the game gains
+        // "..."". The goad state cannot itself be a grant subject, so restore
+        // the pronoun subject for the grant half.
+        if pronoun_state_head
+            && words.iter().any(|word| *word == "goaded")
+            && let Some(gain_idx) = (2..tokens.len())
+                .find(|&idx| tokens[idx].is_any_word(&["gains", "gain"]))
+            && tokens[gain_idx - 1].is_word("game")
+        {
+            let mut effects = parse_effect_chain(&tokens[..gain_idx])?;
+            let mut grant_tokens = vec![OwnedLexToken::word(
+                "it",
+                crate::cards::builders::TextSpan::synthetic(),
+            )];
+            grant_tokens.extend_from_slice(&tokens[gain_idx..]);
+            if !effects.is_empty()
+                && let Some(grant) = parse_gain_ability_sentence(&grant_tokens)?
+            {
+                effects.extend(grant);
+                return Ok(Some(effects));
+            }
+        }
     }
     let stripped_if_you_do = trim_commas(strip_leading_if_you_do_lexed(tokens));
     if stripped_if_you_do.len() < tokens.len() {
@@ -697,7 +720,15 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     // The typed get-then-gain shape owns the complete subject capture. Resolve an
     // explicit target before considering references embedded inside that target
     // (for example, "other than this creature" or "with a sticker on it").
-    if real_subject_shape.target && !target_word_qualifies_controller {
+    // "You and target permanent you control each gain ..." (Guardian Archon)
+    // is a player-plus-target pair owned by the mixed reader below; read as
+    // a bare target phrase it lost the player half and the targeting.
+    let you_and_target_subject = matches!(
+        real_subject_tokens,
+        [you, and, target, ..]
+            if you.is_word("you") && and.is_word("and") && target.is_word("target")
+    );
+    if real_subject_shape.target && !target_word_qualifies_controller && !you_and_target_subject {
         let has_preceding_target_effect = pump_effect.is_some()
             || leading_base_pt_effect.is_some()
             || leading_become_effect.is_some();

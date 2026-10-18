@@ -534,7 +534,7 @@ fn lose_life_for_lost_mana(
 mod tests {
     use super::*;
     use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
-    use crate::effects::EffectExecutor;
+
     use crate::ids::{CardId, ObjectId};
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::target::PlayerFilter;

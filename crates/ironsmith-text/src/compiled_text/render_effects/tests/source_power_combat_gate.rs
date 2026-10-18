@@ -23,7 +23,7 @@ fn source_power_combat_gate_tracks_current_power_on_battlefield() {
     for counters in [0, 2, 3, 4, 2, 0] {
         game.remove_counters(source, CounterType::PlusOnePlusOne, 10, None, None);
         game.add_counters(source, CounterType::PlusOnePlusOne, counters);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             game.can_attack(source),
             counters >= 3,

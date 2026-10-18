@@ -1078,7 +1078,9 @@ fn tap_prepared_attackers(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     prepared: &PreparedAttackDeclarations,
-) -> (Vec<TriggerEvent>, bool) {
+) -> Result<(Vec<TriggerEvent>, bool), GameLoopError> {
+    let game_checkpoint = game.clone();
+    let queue_checkpoint = trigger_queue.clone();
     // CR 508.1f taps every chosen attacker before attack costs are paid. Use
     // the pre-cost vigilance result prepared from the same derived state as
     // attack legality; paying a cost can remove the source of that ability.
@@ -1111,11 +1113,15 @@ fn tap_prepared_attackers(
     let queued_tapped_events_before_costs =
         prepared.has_post_tap_attack_costs && !tapped_events.is_empty();
     if queued_tapped_events_before_costs {
-        game.refresh_continuous_state();
+        if let Err(error) = game.refresh_continuous_state() {
+            *game = game_checkpoint;
+            *trigger_queue = queue_checkpoint;
+            return Err(crate::effects::ExecutionError::ContinuousDiscovery(error).into());
+        }
         super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events.clone(), true);
     }
 
-    (tapped_events, queued_tapped_events_before_costs)
+    Ok((tapped_events, queued_tapped_events_before_costs))
 }
 
 fn apply_prepared_attacker_declarations_with_dm(
@@ -1126,7 +1132,7 @@ fn apply_prepared_attacker_declarations_with_dm(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     let (tapped_events, queued_tapped_events_before_costs) =
-        tap_prepared_attackers(game, trigger_queue, &prepared);
+        tap_prepared_attackers(game, trigger_queue, &prepared)?;
     let mut prepared = prepared;
     lock_prepared_attack_costs(game, &mut prepared)?;
     apply_prepared_attacker_declarations_after_tapping_with_dm(
@@ -1243,7 +1249,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     });
     next_combat.attacking_bands.clear();
     next_combat.had_to_attack_this_combat.clear();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let post_cost_view = DerivedGameView::new(game);
     let post_cost_candidates = prepared
         .declarations
@@ -1339,7 +1345,7 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     }
 
     game.mark_continuous_state_dirty();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
 
     if !queued_tapped_events_before_costs {
         super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events, true);
@@ -1424,13 +1430,68 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     Ok(())
 }
 
+fn prepare_attackers_to_tap_face_up(
+    game: &mut GameState,
+    prepared: &PreparedAttackDeclarations,
+    dm: &mut impl DecisionMaker,
+) -> Result<bool, GameLoopError> {
+    for declaration in &prepared.declarations {
+        if !declaration.has_vigilance && !game.is_tapped(declaration.declaration.creature)
+            && !game.prepare_turn_face_up_before_action(declaration.declaration.creature, dm)?
+        { return Ok(false); }
+    }
+    Ok(true)
+}
+
+pub(crate) fn begin_attack_declaration_transaction_with_dm(
+    game: &mut GameState,
+    combat: &CombatState,
+    trigger_queue: &mut TriggerQueue,
+    declarations: &[AttackerDeclaration],
+    dm: &mut impl DecisionMaker,
+) -> Result<Option<AttackDeclarationTransaction>, GameLoopError> {
+    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    let checkpoint = game.clone();
+    match prepare_attackers_to_tap_face_up(game, &prepared, dm) {
+        Ok(true) => {},
+        Ok(false) => {
+            game.restore_execution_checkpoint(checkpoint, true);
+            return Ok(None);
+        }
+        Err(error) => {
+            game.restore_execution_checkpoint(checkpoint, false);
+            return Err(error);
+        }
+    }
+    match begin_prepared_attack_declaration_transaction(game, combat, trigger_queue, prepared) {
+        Ok(mut transaction) => {
+            transaction.game_checkpoint = Box::new(checkpoint);
+            Ok(Some(transaction))
+        }
+        Err(error) => {
+            game.restore_execution_checkpoint(checkpoint, false);
+            Err(error)
+        }
+    }
+}
+
 pub(crate) fn begin_attack_declaration_transaction(
     game: &mut GameState,
     combat: &CombatState,
     trigger_queue: &mut TriggerQueue,
     declarations: &[AttackerDeclaration],
 ) -> Result<AttackDeclarationTransaction, GameLoopError> {
-    let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    begin_attack_declaration_transaction_with_dm(game, combat, trigger_queue, declarations, &mut dm)?
+        .ok_or_else(|| GameLoopError::InvalidState("attack declaration requires a face-up choice".into()))
+}
+
+fn begin_prepared_attack_declaration_transaction(
+    game: &mut GameState,
+    combat: &CombatState,
+    trigger_queue: &mut TriggerQueue,
+    prepared: PreparedAttackDeclarations,
+) -> Result<AttackDeclarationTransaction, GameLoopError> {
     if !prepared.has_post_tap_attack_costs {
         return Err(GameLoopError::InvalidState(
             "attack declaration transaction requested without an attack cost".to_string(),
@@ -1441,7 +1502,7 @@ pub(crate) fn begin_attack_declaration_transaction(
     let combat_checkpoint = combat.clone();
     let trigger_queue_checkpoint = trigger_queue.clone();
     let (tapped_events, queued_tapped_events_before_costs) =
-        tap_prepared_attackers(game, trigger_queue, &prepared);
+        tap_prepared_attackers(game, trigger_queue, &prepared)?;
 
     let mut prepared = prepared;
     if let Err(error) = lock_prepared_attack_costs(game, &mut prepared) {
@@ -1528,6 +1589,18 @@ pub fn apply_attacker_declarations_with_dm(
         return Ok(());
     }
     let prepared = prepare_attacker_declarations(game, combat, declarations)?;
+    let face_up_checkpoint = game.clone();
+    match prepare_attackers_to_tap_face_up(game, &prepared, decision_maker) {
+        Ok(true) => {},
+        Ok(false) => {
+            game.restore_execution_checkpoint(face_up_checkpoint, true);
+            return Ok(());
+        }
+        Err(error) => {
+            game.restore_execution_checkpoint(face_up_checkpoint, false);
+            return Err(error);
+        }
+    }
 
     // Once preparation succeeds, a declaration without attack costs has no
     // fallible step after attackers are tapped. Keep that common path free of
@@ -1548,7 +1621,7 @@ pub fn apply_attacker_declarations_with_dm(
     // require sacrificing an artifact). Preserve every mutable output before
     // CR 508.1f taps attackers or any required/optional cost is paid, then
     // restore it if any later payment or validation fails.
-    let game_checkpoint = game.clone();
+    let game_checkpoint = face_up_checkpoint;
     let combat_checkpoint = combat.clone();
     let trigger_queue_checkpoint = trigger_queue.clone();
 
@@ -2195,10 +2268,15 @@ impl BlockDeclarationTransaction {
     /// abilities used during CR 509.1e-f without publishing triggers or
     /// mutating the caller's authoritative `CombatState`. The transaction's
     /// checkpoint restores this view if payment fails.
-    pub fn stage_proposed_combat_for_payment(&self, game: &mut GameState) {
+    pub fn stage_proposed_combat_for_payment(&self, game: &mut GameState) -> Result<(), GameLoopError> {
+        let checkpoint = game.clone();
         game.combat = Some(self.prepared.next_combat.clone());
         game.mark_continuous_state_dirty();
-        game.refresh_continuous_state();
+        if let Err(error) = game.refresh_continuous_state() {
+            *game = checkpoint;
+            return Err(crate::effects::ExecutionError::ContinuousDiscovery(error).into());
+        }
+        Ok(())
     }
 }
 
@@ -2469,7 +2547,7 @@ fn prepare_blocker_declarations(
     let mut declaration_view = game.clone();
     declaration_view.combat = Some(next_combat.clone());
     declaration_view.mark_continuous_state_dirty();
-    declaration_view.refresh_continuous_state();
+    declaration_view.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let locked_costs =
         locked_block_costs_for_declarations(&declaration_view, &pairs, decision_maker)?;
     Ok(PreparedBlockerDeclarations {
@@ -2522,7 +2600,7 @@ fn apply_prepared_blocker_declaration_state(
     } = prepared;
     game.combat = Some(next_combat.clone());
     game.mark_continuous_state_dirty();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     if !pay_locked_combat_costs(game, locked_costs, decision_maker, false)? {
         return Ok(());
     }
@@ -2531,7 +2609,7 @@ fn apply_prepared_blocker_declaration_state(
     *combat = next_combat;
     game.combat = Some(combat.clone());
     game.mark_continuous_state_dirty();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     Ok(())
 }
 
@@ -2761,7 +2839,7 @@ mod declaration_batch_tests {
                     )]),
                     "Phyrexian attack tax",
                 )));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let declarations = attackers
                 .iter()
                 .map(|&creature| AttackerDeclaration {
@@ -2819,7 +2897,7 @@ mod declaration_batch_tests {
                 crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::dynamic_mana(dynamic)]),
                 "Dynamic attack tax",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(
             crate::decision::compute_legal_attackers(&game, &CombatState::default()).is_empty()
         );
@@ -2940,7 +3018,7 @@ mod declaration_batch_tests {
         let attacker = create_enlist_attacker(&mut game, alice, "Double Enlister", 2);
         let first_support = create_attacker(&mut game, alice, "First Support", false);
         let second_support = create_attacker(&mut game, alice, "Second Support", false);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let declarations = [AttackerDeclaration {
             creature: attacker,
@@ -3070,7 +3148,7 @@ mod declaration_batch_tests {
             .abilities_mut()
             .push(Ability::static_ability(StaticAbility::haste()));
         game.set_summoning_sick(haste_support);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let declarations = [
             AttackerDeclaration {
@@ -3121,7 +3199,7 @@ mod declaration_batch_tests {
         let attacker = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
         game.remove_summoning_sickness(attacker);
         let support = create_attacker(&mut game, alice, "Support", false);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         let mut trigger_queue = TriggerQueue::new();
@@ -3166,7 +3244,7 @@ mod declaration_batch_tests {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
         let attacker = create_attacker(&mut game, alice, "Only Once", false);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let declarations = vec![
             AttackerDeclaration {
@@ -3215,7 +3293,7 @@ mod declaration_batch_tests {
             .push(Ability::static_ability(
                 StaticAbility::max_attackers_each_combat(1),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut trigger_queue = TriggerQueue::new();
         let optional_only = [AttackerDeclaration {
@@ -3269,7 +3347,7 @@ mod declaration_batch_tests {
             .push(Ability::static_ability(
                 StaticAbility::max_attackers_each_combat(1),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         apply_attacker_declarations(
             &mut game,
@@ -3311,7 +3389,7 @@ mod declaration_batch_tests {
             .push(Ability::static_ability(
                 StaticAbility::max_attackers_each_combat(1),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let low_score = [AttackerDeclaration {
             creature: one_requirement,
@@ -3381,7 +3459,7 @@ mod declaration_batch_tests {
                 ]])),
                 true,
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let mut combat = CombatState::default();
             let mut tq = TriggerQueue::new();
             let declarations = [first, second].map(|creature| AttackerDeclaration {
@@ -3436,7 +3514,7 @@ mod declaration_batch_tests {
             .unwrap()
             .mana_pool
             .add(crate::mana::ManaSymbol::Colorless, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let mut combat = CombatState::default();
         let mut tq = TriggerQueue::new();
         let declarations = [AttackerDeclaration {
@@ -3529,7 +3607,7 @@ mod declaration_batch_tests {
                 .unwrap()
                 .mana_pool
                 .add(crate::mana::ManaSymbol::Colorless, 1);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let result = apply_attacker_declarations(
                 &mut game,
                 &mut CombatState::default(),
@@ -3573,7 +3651,7 @@ mod declaration_batch_tests {
                 },
                 "Black creatures can't attack you".to_string(),
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let legal = crate::decision::compute_legal_attackers(&game, &CombatState::default());
         let option = legal
             .iter()
@@ -3624,7 +3702,7 @@ mod declaration_batch_tests {
             .expect("attacking player exists")
             .mana_pool
             .add(crate::mana::ManaSymbol::Colorless, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         apply_attacker_declarations(
             &mut game,
@@ -3716,7 +3794,7 @@ mod declaration_batch_tests {
                     "Can't attack unless you sacrifice an artifact",
                 ),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(game.object_has_ability(attacker, &StaticAbility::vigilance()));
 
         let mut combat = CombatState::default();
@@ -3769,7 +3847,7 @@ mod declaration_batch_tests {
                     ),
                 ));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let declarations = [first_attacker, second_attacker].map(|creature| AttackerDeclaration {
             creature,
@@ -3825,7 +3903,7 @@ mod declaration_batch_tests {
                 target: AttackTarget::Player(bob),
             });
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let before = game.work_counters();
         let mut combat = CombatState::default();
@@ -3911,7 +3989,7 @@ mod declaration_batch_tests {
                 .abilities_mut()
                 .push(Ability::static_ability(StaticAbility::flanking()));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -3984,7 +4062,7 @@ mod declaration_batch_tests {
                 crate::cost::TotalCost::mana(generic_mana_cost(1)),
                 "Creatures can't block unless their controller pays {1} for each blocking creature they control.",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -4075,7 +4153,7 @@ mod declaration_batch_tests {
                 cost,
                 "This creature can't block unless you tap an eligible creature",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -4133,7 +4211,7 @@ mod declaration_batch_tests {
             .expect("defending player exists")
             .mana_pool
             .add(crate::mana::ManaSymbol::Colorless, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         for attacker in [first_attacker, second_attacker] {
@@ -4225,7 +4303,7 @@ mod declaration_batch_tests {
             .expect("defending player exists")
             .mana_pool
             .add(crate::mana::ManaSymbol::Colorless, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         combat.attackers.push(crate::combat_state::AttackerInfo {
@@ -4361,5 +4439,60 @@ mod declaration_batch_tests {
         let event = &game.turn_store.turn_history.event_records.iter()
             .find(|record| record.event.downcast::<crate::events::CreatureAttackedEvent>().is_some()).unwrap().event;
         assert_eq!(game.defending_player_candidates(game.defending_reference_for_event(event).unwrap()).unwrap(), vec![bob]);
+    }
+}
+
+#[cfg(test)]
+mod continuous_failure_rollback_tests {
+    use super::*;
+
+    fn poison_scalar_domain(game: &mut GameState) {
+        game.player_mut(PlayerId::from_index(0)).unwrap().mana_pool.white = i32::MAX as u32 + 1;
+    }
+
+    #[test]
+    fn staged_blocking_combat_restores_previous_state_when_refresh_fails() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let combat = CombatState::default();
+        let queue = TriggerQueue::new();
+        let transaction = BlockDeclarationTransaction {
+            game_checkpoint: game.clone(), combat_checkpoint: combat.clone(), trigger_queue_checkpoint: queue,
+            prepared: PreparedBlockerDeclarations {
+                pairs: Vec::new(), next_combat: combat, locked_costs: Vec::new(), defending_player: None,
+            },
+        };
+        assert!(game.combat.is_none());
+        poison_scalar_domain(&mut game);
+        let result = transaction.stage_proposed_combat_for_payment(&mut game);
+        assert!(matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { .. }
+        )))));
+        assert!(game.combat.is_none(), "failed proposal must not publish its combat state");
+        assert_eq!(game.player(PlayerId::from_index(0)).unwrap().mana_pool.white, i32::MAX as u32 + 1);
+    }
+
+    #[test]
+    fn attacker_tap_batch_rolls_back_before_queueing_on_refresh_failure() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0); let bob = PlayerId::from_index(1);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Tap rollback witness")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2)).build();
+        let creature = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let prepared = PreparedAttackDeclarations {
+            declarations: vec![PreparedAttackerDeclaration {
+                declaration: AttackerDeclaration { creature, target: AttackTarget::Player(bob) },
+                controller: alice, defending_player: bob, abilities: Vec::new(), optional_attack_cost_prompts: Vec::new(),
+                has_vigilance: false, had_to_attack_this_combat: false,
+            }],
+            total_generic_attack_mana_cost: 0, generic_attack_mana_costs: Default::default(),
+            imposed_attack_costs: Vec::new(), has_post_tap_attack_costs: true,
+        };
+        let mut queue = TriggerQueue::new();
+        poison_scalar_domain(&mut game);
+        let result = tap_prepared_attackers(&mut game, &mut queue, &prepared);
+        assert!(matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(_)))));
+        assert!(!game.is_tapped(creature), "the failed declaration must restore the attacker's tap state");
+        assert!(queue.is_empty(), "no tap trigger can escape a failed declaration");
     }
 }

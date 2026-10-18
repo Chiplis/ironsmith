@@ -256,57 +256,7 @@ fn finish(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(
     }
     Err("finish budget".into())
 }
-fn activate(
-    g: &mut GameState,
-    source: ObjectId,
-    index: usize,
-    dm: &mut Choices,
-) -> Result<Value, String> {
-    let initial_stack_len = g.stack.len();
-    g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
-    let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
-    let mut q = TriggerQueue::new();
-    let mut st = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        &mut q,
-        &mut st,
-        &PriorityResponse::PriorityAction(action.clone()),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..24 {
-        if st.pending_activation.is_none() && g.stack.len() > initial_stack_len {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            return Err(format!("activation stopped:{progress:?}"));
-        };
-        if matches!(ctx, DecisionContext::Priority(_)) {
-            return Err("activation returned priority without stack".into());
-        }
-        progress = apply_decision_context_with_dm(g, &mut q, &mut st, &ctx, dm)
-            .map_err(|e| e.to_string())?;
-    }
-    let paid = before - g.player(PlayerId(0)).unwrap().mana_pool.total();
-    let announced_x = g.stack.last().and_then(|e| e.x_value);
-    let source_present_at_announcement = g
-        .object(source)
-        .is_some_and(|o| o.zone == Zone::Battlefield);
-    let error = finish(g, &mut q, dm).err();
-    Ok(
-        json!({"action":format!("{action:?}"),"mana_paid":paid,"resolution_error":error,"announced_x":announced_x,"source_present_at_announcement":source_present_at_announcement}),
-    )
-}
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -408,9 +358,6 @@ fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> 
     }
     Err("priority unavailable".into())
 }
-fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
-}
 
 fn get_stable(g: &GameState, id: ObjectId) -> u64 {
     g.object(id).unwrap().stable_id.0.0
@@ -447,53 +394,6 @@ fn cast_creature(
         .copied()
         .find(|id| !prior.contains(id) && g.object(*id).is_some_and(|o| o.name == defs[n].name()))
         .ok_or(format!("new {n} absent"))
-}
-fn tap(
-    g: &mut GameState,
-    defs: &HashMap<String, CardDefinition>,
-    id: ObjectId,
-    d: &mut Choices,
-    h: &mut Vec<Value>,
-) -> Result<(), String> {
-    d.targets = vec![Target::Object(id)];
-    paid(g, defs, "Twiddle", 0, 1, d, h)?;
-    if !g.is_tapped(id) {
-        return Err("actual Twiddle did not tap intended object".into());
-    }
-    Ok(())
-}
-fn intrinsic_index(
-    g: &GameState,
-    source: ObjectId,
-    def: &CardDefinition,
-    canonical: usize,
-) -> Result<usize, String> {
-    let ironsmith::ability::AbilityKind::Activated(expected) = &def.abilities[canonical].kind
-    else {
-        return Err("expected canonical activated ability".into());
-    };
-    let matches = g
-        .current_abilities(source)
-        .unwrap_or_default()
-        .iter()
-        .enumerate()
-        .filter_map(|(i, a)| match &a.kind {
-            ironsmith::ability::AbilityKind::Activated(a)
-                if a.mana_cost == expected.mana_cost
-                    && a.timing == expected.timing
-                    && format!("{:?}", a.effects) == format!("{:?}", expected.effects) =>
-            {
-                Some(i)
-            }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    if matches.len() != 1 {
-        return Err(format!(
-            "canonical intrinsic cost match not unique:{matches:?}"
-        ));
-    }
-    Ok(matches[0])
 }
 fn hash(p: &std::path::Path) -> String {
     Sha256::digest(std::fs::read(p).unwrap())
@@ -563,54 +463,6 @@ fn land(
     Ok(id)
 }
 
-fn announce_existing(
-    g: &mut GameState,
-    def: &CardDefinition,
-    actor: u8,
-    source: ObjectId,
-    dm: &mut Choices,
-) -> Result<(TriggerQueue, Value), String> {
-    g.turn.priority_player = Some(PlayerId(actor));
-    let action = compute_legal_actions(g, PlayerId(actor)).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==source))
-        .ok_or("intended cast unavailable")?;
-    let mana = g.player(PlayerId(actor)).unwrap().mana_pool.total();
-    let mut q = TriggerQueue::new();
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        &mut q,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..24 {
-        if state.pending_cast.is_none() && !g.stack.is_empty() {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            return Err(format!("announcement stopped:{progress:?}"));
-        };
-        if matches!(ctx, DecisionContext::Priority(_)) {
-            return Err("announcement returned priority without spell".into());
-        }
-        progress = apply_decision_context_with_dm(g, &mut q, &mut state, &ctx, dm)
-            .map_err(|e| e.to_string())?;
-    }
-    if g.stack.is_empty() {
-        return Err("announcement budget".into());
-    }
-    let evidence = json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null,"stack_card":g.stack.last().unwrap().object_id.0,"resources_after_announcement":dm.resources.iter().map(|id|json!({"original_id":id.0,"on_battlefield":g.battlefield.contains(id),"object":g.object(*id).map(|o|format!("{:?}",o.zone))})).collect::<Vec<_>>()});
-    if !g.stack.last().is_some_and(|entry| {
-        g.object(entry.object_id)
-            .is_some_and(|o| o.name == def.name())
-    }) {
-        return Err("intended spell did not reach top of stack".into());
-    }
-    Ok((q, evidence))
-}
 
 fn check(v: &mut Vec<Value>, n: &str, e: Value, o: Value) {
     v.push(json!({"check":n,"expected":e,"observed":o}));

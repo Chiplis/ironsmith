@@ -1,5 +1,6 @@
 //! Permanent replacement effect matchers (tap, untap, destroy, sacrifice).
 
+#[cfg(test)]
 use crate::events::context::EventContext;
 use crate::events::traits::{
     EventKind, GameEventType, ReplacementMatcher, ReplacementPriority, downcast_event,

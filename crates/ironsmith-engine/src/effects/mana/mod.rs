@@ -46,6 +46,6 @@ pub use grant_mana_ability_until_eot::{
     GrantManaAbilityUntilEotEffect, GrantPayLifeManaAbilityUntilEndOfTurnEffect,
 };
 pub use ironsmith_core::ManaTypeSource;
-pub use noted_mana_type::{AddManaOfNotedTypeEffect, NoteActivationManaTypeEffect, NoteTriggeringCreatureTypeEffect};
+pub use noted_mana_type::{AddManaOfNotedTypeEffect, NoteActivationManaTypeEffect, NoteActivationManaPaymentEffect, NoteTriggeringCreatureTypeEffect};
 pub use pay_mana::PayManaEffect;
 pub use retain_mana_until_end_of_turn::RetainManaUntilEndOfTurnEffect;

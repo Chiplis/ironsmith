@@ -64,7 +64,7 @@ fn returned_aura_ability_belongs_to_aura_and_protects_attachment() {
                     crate::static_abilities::StaticAbility::enters_tapped_for_filter(filter),
                 ),
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let snapshot =
                 crate::snapshot::ObjectSnapshot::from_object(game.object(source).unwrap(), &game);
@@ -158,7 +158,7 @@ fn returned_aura_ability_belongs_to_aura_and_protects_attachment() {
                     crate::static_abilities::StaticAbilityId::Indestructible
                 ));
                 game.effect_store.continuous_effects.cleanup_end_of_turn();
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert!(!game.current_has_static_ability_id(
                     host,
                     crate::static_abilities::StaticAbilityId::Indestructible

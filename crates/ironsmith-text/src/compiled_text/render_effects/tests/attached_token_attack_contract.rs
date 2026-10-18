@@ -164,7 +164,7 @@ fn attached_token_attack_contract_preserves_creation_and_both_branches() {
             assert_eq!(game.player(carol).unwrap().life, 20);
             assert_eq!(game.current_power(other), Some(1));
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(game.current_power(target), Some(1));
         }
     }

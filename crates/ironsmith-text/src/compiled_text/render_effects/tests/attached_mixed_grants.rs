@@ -68,7 +68,7 @@ fn attached_mixed_keyword_and_blocking_grants_follow_current_attachment() {
             } else {
                 assert!(game.detach_object_from_current_target(source));
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             for recipient in [first, second] {
                 let granted = attached == Some(recipient);
                 assert_eq!(

@@ -1112,7 +1112,13 @@ pub fn split_leading_result_prefix_lexed<'a>(
     if predicate_tokens.is_empty() {
         return None;
     }
-    let predicate = parse_if_result_predicate(predicate_tokens)?;
+    let predicate = match parse_if_result_predicate(predicate_tokens) {
+        Some(predicate) => predicate,
+        None if kind == LeadingResultPrefixKind::When => {
+            super::modal_results::parse_put_onto_battlefield_this_way_result(predicate_tokens)?
+        }
+        None => return None,
+    };
 
     let trailing_tokens = trim_lexed_commas(&trimmed[comma_idx + 1..]);
     if trailing_tokens.is_empty() {

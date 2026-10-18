@@ -546,6 +546,12 @@ fn parse_single_action_origin_zone(words: &[&str]) -> Option<Zone> {
 }
 
 fn parse_shared_name_restriction_tail(words: &[&str], mut filter: ObjectFilter) -> Option<ObjectFilter> {
+    // "lands with the chosen name" (Conjurer's Ban): the same chosen-name
+    // placeholder the cast restriction uses for "spells with the chosen name".
+    if exact_any(words, &[&["with", "the", "chosen", "name"], &["with", "chosen", "name"]]) {
+        filter.name = Some("{chosen name}".to_string());
+        return Some(filter);
+    }
     let comparison = prefix_remainder(words, &["with", "the", "same", "name", "as"])?;
     if exact(comparison, &["a", "nontoken", "permanent"]) {
         return Some(filter.sharing_characteristics_with(

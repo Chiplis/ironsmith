@@ -164,6 +164,48 @@
                 describe_value(right),
             );
         }
+        // "choose "left" or "right." That creature can't be blocked this
+        // combat except by creatures with flying and creatures in a pile with
+        // the chosen label" (Raging River): each labeled mode bars the
+        // non-flyers outside its pile from blocking the iterated attacker.
+        if let [first, second] = choose_mode.modes.as_slice()
+            && choose_mode.chooser == Some(PlayerFilter::You)
+            && let (Some(first_label), Some(second_label)) = (
+                first
+                    .source_text
+                    .strip_prefix('"')
+                    .and_then(|text| text.strip_suffix('"')),
+                second
+                    .source_text
+                    .strip_prefix('"')
+                    .and_then(|text| text.strip_suffix('"')),
+            )
+            && [first, second].iter().all(|mode| {
+                let [effect] = mode.effects.as_slice() else {
+                    return false;
+                };
+                effect
+                    .downcast_ref::<crate::effects::CantEffect>()
+                    .is_some_and(|cant| {
+                        cant.duration == crate::effect::Until::EndOfCombat
+                            && matches!(
+                                &cant.restriction,
+                                crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker }
+                                    if blockers.tagged_constraints.iter().any(|constraint| {
+                                        constraint.relation
+                                            == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                                    }) && attacker.tagged_constraints.iter().any(|constraint| {
+                                        constraint.relation
+                                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                    })
+                            )
+                    })
+            })
+        {
+            return format!(
+                "choose \"{first_label}\" or \"{second_label}.\" That creature can't be blocked this combat except by creatures with flying and creatures in a pile with the chosen label"
+            );
+        }
         if let Some((_, compact)) = describe_permanent_keyword_choice(choose_mode) {
             return compact;
         }
@@ -2326,6 +2368,16 @@
             player,
             player_verb(&player, "win", "wins")
         );
+    }
+    if let Some(redirect) = effect.downcast_ref::<crate::effects::RedirectEnteringSourceEffect>() {
+        let destination = match redirect.destination {
+            crate::zone::Zone::Graveyard => "its owner's graveyard",
+            crate::zone::Zone::Exile => "exile",
+            crate::zone::Zone::Hand => "its owner's hand",
+            crate::zone::Zone::Library => "its owner's library",
+            _ => return format!("Put the entering object into {:?} instead of onto the battlefield", redirect.destination),
+        };
+        return format!("Put the entering object into {destination} instead of onto the battlefield");
     }
     if effect
         .downcast_ref::<crate::effects::DrawTheGameEffect>()
@@ -5487,6 +5539,23 @@
         {
             return "The next time you cast an instant or sorcery spell from your hand this turn, put that card into your hand instead of into your graveyard".to_string();
         }
+        // "exile it instead of putting it into a graveyard as it resolves"
+        // (Rod of Absorption, River Song's Diary): the triggering spell's
+        // resolution destination, linked to this source.
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+            && register.mode == crate::effects::ReplacementApplyMode::OneShot
+            && !register.cast_this_way_surface
+            && register.filter.zone == Some(Zone::Stack)
+            && register
+                .filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == "triggering")
+        {
+            return "Exile it instead of putting it into a graveyard as it resolves".to_string();
+        }
         // "If a spell cast this way would be put into your graveyard, exile it
         // instead" (Radiant Scrollwielder): the replacement watches only the
         // spell the preceding permission allowed.
@@ -5679,6 +5748,20 @@
         {
             let text = ensure_trailing_period(&capitalize_first(&describe_inline_ability_with_self_subject(ability, "this emblem")));
             return format!("Each player dealt damage this way gets an emblem with \"{text}\"");
+        }
+        if for_each_tagged_player.tag.as_str() == "voted_with_you" {
+            let body = describe_effect_list(&for_each_tagged_player.effects);
+            let body = body.trim().trim_end_matches('.');
+            let predicate = body
+                .strip_prefix("That player ")
+                .or_else(|| body.strip_prefix("that player "))
+                .or_else(|| body.strip_prefix("They "))
+                .or_else(|| body.strip_prefix("they "))
+                .unwrap_or(body);
+            return format!(
+                "Each opponent who voted for a choice you voted for {}",
+                lowercase_first(predicate)
+            );
         }
         if for_each_tagged_player.tag.as_str() == "voted_against_you" {
             let body = describe_effect_list(&for_each_tagged_player.effects);
@@ -5877,6 +5960,21 @@
     if let Some(devour) = effect.downcast_ref::<crate::effects::DevourEffect>() {
         return devour.keyword_text();
     }
+    if let Some(rule) = effect.downcast_ref::<crate::effects::CastFaceDownUsingActivationManaEffect>() {
+        let mut text = format!("{} may choose a card matching {} in their hand whose mana cost could be paid by some amount of, or all of, the mana spent on this activation. They may cast that card face down as a 2/2 creature spell without paying its mana cost", describe_player_filter(&rule.player), rule.filter.description());
+        if rule.turn_face_up_before_action {
+            text.push_str(". If the creature that spell becomes as it resolves has not been turned face up and would assign or deal damage, be dealt damage, or become tapped, instead it's turned face up and assigns or deals damage, is dealt damage, or becomes tapped");
+        }
+        return text;
+    }
+    if let Some(rule) = effect.downcast_ref::<crate::effects::RegisterExtraDieReplacementEffect>() {
+        return format!("The next time {} would roll one or more dice this turn, instead they roll that many dice plus {} and {} chooses {} of those rolls to ignore",
+            describe_choose_spec(&rule.player), small_number_word(rule.additional).unwrap_or_else(|| rule.additional.to_string()),
+            describe_player_filter(&rule.chooser), small_number_word(rule.additional).unwrap_or_else(|| rule.additional.to_string()));
+    }
+    if effect.downcast_ref::<crate::effects::NoteActivationManaPaymentEffect>().is_some() {
+        return "Note the type and amount of mana spent to pay this activation cost".to_string();
+    }
     if effect
         .downcast_ref::<crate::effects::NoteActivationManaTypeEffect>()
         .is_some()
@@ -5902,6 +6000,7 @@
         return format!("You may pay {} to end this effect", end_offer.cost.to_oracle());
     }
     if let Some(add) = effect.downcast_ref::<crate::effects::AddManaOfNotedTypeEffect>() {
+        if add.use_noted_amount { return "Add this source's last noted type and amount of mana".to_string(); }
         return format!(
             "Add {} mana of this source's last noted type",
             describe_value(&add.amount)
@@ -6376,6 +6475,22 @@
         }
         let source_presence_free_price = grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsSourceOnBattlefield
             && grant_play_tagged.alternative_cost.as_ref().is_some_and(|price| price.as_all().is_some_and(|costs| costs.is_empty()));
+        // An empty alternative price is a free cast: "you may play those
+        // cards ... without paying their mana costs" (Ignite the Future).
+        if let Some(price) = &grant_play_tagged.alternative_cost
+            && !source_presence_free_price
+            && price.as_all().is_some_and(|costs| costs.is_empty())
+        {
+            let mut grant = grant_play_tagged.clone();
+            grant.alternative_cost = None;
+            let permission = describe_effect(&Effect::new(grant));
+            let permission = permission.trim().trim_end_matches('.');
+            let plural = permission.contains("those cards")
+                || permission.contains(" them")
+                || permission.contains("cards exiled");
+            let costs = if plural { "their mana costs" } else { "its mana cost" };
+            return format!("{permission} without paying {costs}");
+        }
         if let Some(price) = &grant_play_tagged.alternative_cost && !source_presence_free_price {
             let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
             let payment = describe_casting_price_payment(price);
@@ -6540,8 +6655,22 @@
                     _ => "spells from among those cards".to_string(),
                 }
             }
+        } else if crate::cards::is_sentence_helper_tag(
+            grant_play_tagged.tag.as_str(),
+            "pile_program_exiled_by_player",
+        ) {
+            // Per-player exile pool ("players may play cards they exiled
+            // this way", Memory Vessel): each iteration tags only that
+            // player's own exiled cards.
+            "the cards they exiled this way".to_string()
         } else if grant_play_tagged.allow_land && helper_exiled {
-            if grant_play_tagged.cast_pool_is_plural {
+            if grant_play_tagged.max_plays == Some(1)
+                && grant_play_tagged.duration
+                    == crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource
+            {
+                // "you may play one of the exiled cards" (Kotose).
+                "one of those cards".to_string()
+            } else if grant_play_tagged.cast_pool_is_plural {
                 "those cards".to_string()
             } else {
                 "that card".to_string()

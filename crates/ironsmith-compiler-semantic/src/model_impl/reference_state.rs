@@ -11,6 +11,10 @@ use std::sync::Arc;
 
 use super::facts::LoweringFrame;
 
+/// Snapshot-alias key under which the lowering frame exports its most recent
+/// exiled collection (see `ReferenceFrame::from_lowering_frame`).
+pub const LAST_EXILED_COLLECTION_ALIAS: &str = "__last_exiled_collection__";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RefState<T> {
     Known(T),
@@ -269,7 +273,19 @@ impl ReferenceFrame {
             last_object_tag: frame.last_object_tag.clone(),
             last_value_comparison: frame.last_value_comparison.clone(),
             recent_object_target_bindings: Arc::default(),
-            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
+            snapshot_tag_aliases: {
+                // The lowering-only exiled collection is exported as an alias
+                // so "those cards" can still name it after a later token
+                // creation took over the last-object antecedent (Journey to
+                // the Lost City: "create a Wolf ..., then put a counter on it
+                // for each creature card among those cards").
+                let mut aliases = frame.snapshot_tag_aliases.clone();
+                aliases.retain(|(alias, _)| alias.as_str() != LAST_EXILED_COLLECTION_ALIAS);
+                if let Some(tag) = &frame.last_exiled_collection_tag {
+                    aliases.push((TagKey::from(LAST_EXILED_COLLECTION_ALIAS), tag.clone()));
+                }
+                aliases
+            },
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,

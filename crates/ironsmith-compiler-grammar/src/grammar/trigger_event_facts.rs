@@ -176,7 +176,7 @@ fn trigger_kind(full_tokens: &[OwnedLexToken], trigger: &TriggerSpec) -> Trigger
     }
 
     match core_semantics(trigger) {
-        TriggerSpec::StateBased { .. } => TriggerKindAst::State,
+        TriggerSpec::StateBased { .. } | TriggerSpec::StateBasedObjects { .. } => TriggerKindAst::State,
         TriggerSpec::ThisDies
         | TriggerSpec::ThisDiesOrIsExiled
         | TriggerSpec::ThisDiesOrIsExiledWithSurface(_)

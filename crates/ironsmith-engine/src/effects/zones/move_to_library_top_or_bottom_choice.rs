@@ -1,8 +1,6 @@
 //! Move an object to the top or bottom of its owner's library at a specified player's choice.
 
 use crate::decision::DecisionMaker;
-#[cfg(test)]
-use crate::decisions::context::SelectOptionsContext;
 use crate::decisions::context::SelectableOption;
 use crate::effect::EffectOutcome;
 use crate::effects::CompletedEffectOutputs;

@@ -63,7 +63,7 @@ test("zone glossary interactions preserve the strip and outside clicks dismiss i
   }
 });
 
-test("Look cards can be inspected regardless of selection legality", { timeout: 90000 }, async () => {
+test("looked-at deck cards can be inspected regardless of selection legality", { timeout: 90000 }, async () => {
   const vite = await createServer({ server: { host: "127.0.0.1", port: 0 }, logLevel: "silent" });
   await vite.listen();
   const browser = await chromium.launch();
@@ -75,8 +75,8 @@ test("Look cards can be inspected regardless of selection legality", { timeout: 
       window.choices = [];
       window.addEventListener("ironsmith:select-object-choice", event => window.choices.push(event.detail));
     });
-    await page.locator('[data-zone-pile="look"]').hover();
-    const invalid = page.locator('[data-zone-card="look"][data-object-id="41"]');
+    await page.locator('[data-zone-pile="library"][data-looking="true"]').hover();
+    const invalid = page.locator('[data-zone-card="library"][data-object-id="41"]');
     await invalid.hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-preview-object-id="41"]'));
     // aria-disabled preserves inspection; the handler still rejects selection.
@@ -85,7 +85,7 @@ test("Look cards can be inspected regardless of selection legality", { timeout: 
     await page.keyboard.press("Enter");
     assert.deepEqual(await page.evaluate(() => window.choices), []);
     assert.equal(await page.locator("output").textContent(), "none");
-    const valid = page.locator('[data-zone-card="look"][data-object-id="42"]');
+    const valid = page.locator('[data-zone-card="library"][data-object-id="42"]');
     await valid.hover();
     await page.waitForFunction(() => document.querySelector('[data-card-hover-preview][data-preview-object-id="42"]'));
     await valid.click();

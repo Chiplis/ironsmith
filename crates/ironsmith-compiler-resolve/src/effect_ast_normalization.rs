@@ -3503,7 +3503,7 @@ fn is_noop_effect(effect: &EffectAst) -> bool {
 mod tests {
     use crate::cards::builders::IfResultPredicate;
     use crate::cards::builders::{
-        EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
+        EffectAst, PlayerAst, PredicateAst, SubjectVerbActionAst, TargetAst,
     };
     use crate::effect::{ChoiceCount, Until, Value};
     use crate::filter::{

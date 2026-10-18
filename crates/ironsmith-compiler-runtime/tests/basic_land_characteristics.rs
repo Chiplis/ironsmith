@@ -1,5 +1,4 @@
 //! UNVALIDATED full-card basic-land templates, exact choice and CR305.7 ability retention.
-use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::cards::CardDefinition;
 use ironsmith::decision::{
     DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
@@ -182,15 +181,6 @@ fn resolve_all(game: &mut GameState, dm: &mut Choices) {
     }
     panic!("unexpected continuing trigger chain");
 }
-fn resource(name: &str, types: &str) -> CardDefinition {
-    let pt = if types.contains("Creature") {
-        "\nPower/Toughness: 1/1"
-    } else {
-        ""
-    };
-    compile_to_runtime_definition(name, format!("Mana cost: {{1}}\nType: {types}{pt}"), false)
-        .unwrap()
-}
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
     // Checked execution already captures some triggers in the original observer frame.
@@ -207,66 +197,6 @@ fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
         game.current_power(id).unwrap(),
         game.current_toughness(id).unwrap(),
     )
-}
-fn pump(game: &mut GameState, source: ObjectId, id: ObjectId, p: i32, t: i32) {
-    apply(
-        game,
-        source,
-        Effect::pump(p, t, ChooseSpec::SpecificObject(id), Until::EndOfTurn),
-    );
-}
-fn counter(game: &mut GameState, source: ObjectId, id: ObjectId, count: i32) {
-    apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::PlusOnePlusOne,
-            count,
-            ChooseSpec::SpecificObject(id),
-        ),
-    );
-}
-fn cast(
-    game: &mut GameState,
-    definition: &CardDefinition,
-    method: CastingMethod,
-    dm: &mut Choices,
-) -> ObjectId {
-    let id = game.create_object_from_definition(definition, A, Zone::Hand);
-    let action = LegalAction::CastSpell {
-        spell_id: id,
-        from_zone: Zone::Hand,
-        casting_method: method,
-    };
-    assert!(compute_legal_actions(game, A).unwrap().contains(&action));
-    let mut queue = TriggerQueue::new();
-    let mut state = PriorityLoopState::new(3);
-    let mut progress = apply_priority_response_with_dm(
-        game,
-        &mut queue,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .unwrap();
-    for _ in 0..60 {
-        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            panic!("{progress:?}");
-        };
-        progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
-    }
-    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
-    let spell = game
-        .stack
-        .iter()
-        .find(|entry| !entry.is_ability)
-        .unwrap()
-        .object_id;
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-    spell
 }
 
 fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &mut Choices) {
@@ -301,17 +231,6 @@ fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &m
     }
     assert!(state.pending_activation.is_none());
 }
-fn activated_at(definition: &CardDefinition, position: usize) -> usize {
-    definition
-        .abilities
-        .iter()
-        .enumerate()
-        .filter_map(|(i, a)| {
-            matches!(a.kind, ironsmith::ability::AbilityKind::Activated(_)).then_some(i)
-        })
-        .nth(position)
-        .unwrap()
-}
 fn current_activated_at(game: &GameState, source: ObjectId, position: usize) -> usize {
     game.calculated_characteristics(source)
         .unwrap()
@@ -337,19 +256,6 @@ fn event(game: &mut GameState, event: TriggerEvent, dm: &mut Choices) {
         queue.add(trigger);
     }
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
-fn lore(game: &mut GameState, source: ObjectId, dm: &mut Choices) {
-    let outcome = apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::Lore,
-            1,
-            ChooseSpec::SpecificObject(source),
-        ),
-    );
-    queue_outcome(game, outcome, dm);
-    resolve_all(game, &mut Choices::default());
 }
 
 fn land(

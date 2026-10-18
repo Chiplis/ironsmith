@@ -81,7 +81,7 @@ pub(crate) use discard_hand::discard_hand_cards;
 pub(crate) use draw_cards::execute_turn_draw_proposal;
 
 pub(crate) use reveal::{
-    public_reveal_observation, public_reveal_view, reveal_objects, reveal_objects_with_outputs,
+    public_reveal_observation, public_reveal_view,  reveal_objects_with_outputs,
 };
 
 mod library_arrangement;
@@ -91,13 +91,12 @@ pub(crate) use library_arrangement::{
 
 mod look;
 pub(crate) use library_arrangement::{
-    execute_library_instruction_atomically, order_library_cards_top_to_bottom,
+     order_library_cards_top_to_bottom,
 };
-pub(crate) use look::{look_at_cards, look_at_cards_with_outputs};
+pub(crate) use look::{look_at_cards_with_outputs};
 
 pub(crate) use shuffle_library::{
-    commit_library_shuffle, commit_library_shuffle_with_outputs, shuffle_library,
-    shuffle_library_action, shuffle_library_with_outputs,
+    commit_library_shuffle_with_outputs, shuffle_library_action, shuffle_library_with_outputs,
 };
 
 pub(crate) use draw_cards::{

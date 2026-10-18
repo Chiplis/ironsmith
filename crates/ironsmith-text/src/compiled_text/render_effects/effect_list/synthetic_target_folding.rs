@@ -307,7 +307,8 @@ fn restriction_references_identity(
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
         | Restriction::AttackPlayer { attackers, player }
-        | Restriction::MustAttackPlayer { attackers, player } => {
+        | Restriction::MustAttackPlayer { attackers, player }
+        | Restriction::GainControl(attackers, player) => {
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }
@@ -323,6 +324,7 @@ fn restriction_references_identity(
         | Restriction::BeTargetedFrom(blockers, attacker)
         | Restriction::BeTargetedByRequirementsLimitedTo(blockers, attacker)
         | Restriction::BeAttachedBy(blockers, attacker)
+        | Restriction::BeAttachedByNew(blockers, attacker)
         | Restriction::AttackPermanents {
             attackers: blockers,
             permanents: attacker,

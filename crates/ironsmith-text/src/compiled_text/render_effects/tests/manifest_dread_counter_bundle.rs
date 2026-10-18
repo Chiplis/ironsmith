@@ -37,7 +37,7 @@ fn manifest_dread_counter_bundle_room_affects_only_the_new_creature() {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     let new_creatures = game
         .battlefield
         .iter()

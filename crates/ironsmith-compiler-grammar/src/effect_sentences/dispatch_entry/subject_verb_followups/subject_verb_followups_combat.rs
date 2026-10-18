@@ -38,9 +38,12 @@ pub(super) fn pre_rule_damage_amount_replacement(
     };
     // "it deals twice that much damage to itself instead" repeats a
     // self-damage instruction's recipient, never a declared target or player.
+    // A declared target counts only when it is the instruction's own source
+    // ("Target creature deals damage to itself ..."; Cut Propulsion).
     if shape.self_recipient
         && primary_damage_target_from_effect(previous).is_none_or(|target| {
-            matches!(target, TargetAst::Player(..) | TargetAst::Object(_, Some(_), _))
+            matches!(target, TargetAst::Player(..))
+                || (matches!(target, TargetAst::Object(_, Some(_), _)) && target != source)
         })
     {
         return Ok(None);
@@ -88,6 +91,12 @@ pub(super) fn pre_rule_damage_amount_replacement(
         fn scalar_amount(value: &Value) -> bool {
             match value.unhinted() {
                 Value::Fixed(_) | Value::X => true,
+                // The optional reveal/choose additional cost freezes this
+                // object's identity on the spell; the replacement reads its
+                // characteristic with the existing tagged-object/LKI path.
+                Value::PowerOf(spec) | Value::ToughnessOf(spec)
+                    if matches!(spec.as_ref(), crate::target::ChooseSpec::Tagged(tag)
+                        if tag.as_str() == crate::tag::CompilerReferenceTag::BeheldCost0.as_str()) => true,
                 Value::Add(left, right) => scalar_amount(left) && scalar_amount(right),
                 _ => false,
             }
@@ -114,6 +123,24 @@ pub(super) fn pre_rule_damage_amount_replacement(
             }
             EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
                 if effects.len() == 1 => replace_amount(&mut effects[0], replacement),
+            // "deals damage equal to the number of nonland cards revealed
+            // this way" (Goblin Charbelcher) can carry snapshot/tag steps
+            // before the damage instruction; the instruction is the last step.
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects }
+                if effects.len() > 1
+                    && effects[..effects.len() - 1].iter().all(|effect| {
+                        !matches!(
+                            effect,
+                            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                                action: SubjectVerbActionAst::Damage(_),
+                                ..
+                            })
+                        )
+                    }) =>
+            {
+                let last = effects.len() - 1;
+                replace_amount(&mut effects[last], replacement)
+            }
             _ => false,
         }
     }
@@ -480,6 +507,12 @@ pub(super) fn pre_rule_damage_recipient_choice_instead(
         return Ok(None);
     }
     let original = state.effects.pop().expect("the bound damage instruction exists");
+    // Announce the original recipient before asking that player (or the
+    // planeswalker controller) whether to redirect. Both damage branches
+    // reuse this declaration; neither branch creates an additional target.
+    let recipient = primary_damage_target_from_effect(&original)
+        .expect("checked original damage recipient");
+    state.effects.push(EffectAst::subject_verb_explicit_target_only(recipient));
     state.effects.push(EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
         player: PlayerAst::ThatPlayerOrTargetController,
         effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {

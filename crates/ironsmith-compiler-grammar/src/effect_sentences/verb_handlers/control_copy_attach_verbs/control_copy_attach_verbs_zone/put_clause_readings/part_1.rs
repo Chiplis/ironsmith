@@ -218,14 +218,34 @@ pub(super) fn read_from_among_hand_surface(
                         clause_words.join(" ")
                     ))
                 })?;
-                return Ok(Some(EffectAst::Sequence {
-                    effects: compose_put_all_filtered_looked_cards_to_zone(
-                        filter,
-                        (looked_tag).into(),
-                        (chosen_tag).into(),
-                        Zone::Hand,
-                    ),
-                }));
+                let mut effects = compose_put_all_filtered_looked_cards_to_zone(
+                    filter,
+                    (looked_tag.clone()).into(),
+                    (chosen_tag.clone()).into(),
+                    Zone::Hand,
+                );
+                // "..., then put the rest on the bottom of your library in a
+                // random order" (Depala) travels in the same clause; the
+                // remainder is every looked card that wasn't moved.
+                if crate::word_primitives::sequence_occurs(
+                    clause_words,
+                    &["then", "put", "the", "rest", "on", "the", "bottom"],
+                ) {
+                    let order = if clause_words.iter().any(|word| *word == "random") {
+                        crate::cards::builders::LibraryBottomOrderAst::Random
+                    } else {
+                        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+                    };
+                    effects.push(
+                        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                            crate::tag::TagRef::of(looked_tag),
+                            Some(crate::tag::TagRef::of(chosen_tag)),
+                            order,
+                            player,
+                        ),
+                    );
+                }
+                return Ok(Some(EffectAst::Sequence { effects }));
             }
             let filter =
                 crate::effect_sentences::parse_looked_card_choice_filter(shape.filter_tokens)

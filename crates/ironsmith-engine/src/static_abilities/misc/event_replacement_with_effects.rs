@@ -75,6 +75,7 @@ impl StaticAbilityKind for EventReplacementWithEffects {
             | ReplacedEventSpec::LifeGain { .. }
             | ReplacedEventSpec::DrawInstruction { .. }
             | ReplacedEventSpec::LifeReducedToZeroOrLess { .. }
+            | ReplacedEventSpec::LifePayment { .. }
             | ReplacedEventSpec::Untap { .. } => ReplacementEffect::with_matcher(
                 source,
                 controller,
@@ -178,6 +179,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             ReplacedEventSpec::DrawInstruction { .. } => kind == EventKind::KeywordAction,
             ReplacedEventSpec::Untap { .. } => kind == EventKind::BecomeUntapped,
             ReplacedEventSpec::LifeReducedToZeroOrLess { .. } => kind == EventKind::LifeLoss,
+            ReplacedEventSpec::LifePayment { .. } => kind == EventKind::LifeLoss,
             // Installed through their dedicated matchers instead.
             ReplacedEventSpec::LifeLoss { .. }
             | ReplacedEventSpec::Destroy { .. }
@@ -273,6 +275,15 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                     && action.amount >= *minimum
                     && player.matches_player(action.player, &ctx.filter_ctx)
             }
+            ReplacedEventSpec::LifePayment { player, require_library_capacity } => {
+                let Some(loss) = downcast_event::<crate::events::LifeLossEvent>(event) else {
+                    return false;
+                };
+                loss.from_payment && loss.amount > 0
+                    && player.matches_player(loss.player, &ctx.filter_ctx)
+                    && (!require_library_capacity || ctx.game.player(loss.player)
+                        .is_some_and(|state| state.library.len() >= loss.amount as usize))
+            }
             // CR 119.3: the loss would leave the player's life total at 0 or
             // less. The life total is read as the loss is proposed.
             ReplacedEventSpec::LifeReducedToZeroOrLess { player } => {
@@ -306,6 +317,9 @@ impl ReplacementMatcher for ReplacedEventMatcher {
             }
             ReplacedEventSpec::LifeLoss { .. } => {
                 "When a matching player would lose life".to_string()
+            }
+            ReplacedEventSpec::LifePayment { .. } => {
+                "When a matching player would pay life".to_string()
             }
             ReplacedEventSpec::Destroy { .. } => {
                 "When a matching permanent would be destroyed".to_string()

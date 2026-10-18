@@ -58,6 +58,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.iteration = ctx.iteration;
     entry.x_value = ctx.x_value;
     entry.mana_spent_on_activation = ctx.mana.activation_payment.clone();
+    entry.activation_mana_budget = ctx.mana.activation_mana_budget.clone();
     entry.ninjutsu_attack_target = ctx.ninjutsu_attack_target.clone();
     entry.casting_method = ctx.casting_method.clone();
     entry.optional_costs_paid = ctx.optional_costs_paid.clone();
@@ -272,6 +273,7 @@ pub(crate) fn create_stack_copy_from_object(
     // CR 707.10: mana isn't copiable, so a copied ability has no mana spent
     // to activate it either.
     copy_entry.mana_spent_on_activation = crate::player::ManaPool::default();
+    copy_entry.activation_mana_budget = Default::default();
     copy_entry.ability_effects = original_entry.ability_effects.clone();
     copy_entry.linked_exile_owner = original_entry.linked_exile_owner.clone();
     copy_entry.source_number_owner = original_entry.source_number_owner.clone();
@@ -334,7 +336,13 @@ pub(crate) fn create_stack_copy_from_object(
         game.set_chosen_player(copy_id, chosen_player);
     }
 
+    // Copy creation is a real insertion (unlike the temporary entry used
+    // during target announcement); it must notify stack-insertion observers.
+    let added = crate::events::spells::StackObjectAddedEvent::from_entry(&copy_entry);
+    let provenance = copy_entry.provenance;
     game.stack.push(copy_entry);
+    game.queue_trigger_event(provenance,
+        crate::triggers::TriggerEvent::new_with_provenance(added, provenance));
     Ok(Some(copy_id))
 }
 

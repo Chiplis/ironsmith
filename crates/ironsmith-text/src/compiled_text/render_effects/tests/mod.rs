@@ -340,3 +340,5 @@ mod cohort_named_sources_and_persistent_choices;
 mod cohort_prevention_and_historical_counts;
 
 mod cohort_corpus_filter_regressions;
+
+mod zone_bound_self_exile_cost;

@@ -274,62 +274,6 @@ fn count(g: &GameState, name: &str, zone: Zone) -> usize {
         .filter(|o| o.name == name && o.zone == zone)
         .count()
 }
-fn action(
-    g: &mut GameState,
-    source: ObjectId,
-    index: usize,
-    mana: bool,
-    dm: &mut Choices,
-) -> Result<Value, String> {
-    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| match a {
-            LegalAction::ActivateAbility {
-                source: s,
-                ability_index,
-            } => !mana && *s == source && *ability_index == index,
-            LegalAction::ActivateManaAbility {
-                source: s,
-                ability_index,
-            } => mana && *s == source && *ability_index == index,
-            _ => false,
-        })
-        .ok_or("intended activation unavailable")?;
-    let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
-    let mut q = TriggerQueue::new();
-    let mut st = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        &mut q,
-        &mut st,
-        &PriorityResponse::PriorityAction(a.clone()),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        match progress {
-            GameProgress::NeedsDecisionCtx(ref ctx)
-                if !matches!(ctx, DecisionContext::Priority(_)) =>
-            {
-                progress = apply_decision_context_with_dm(g, &mut q, &mut st, ctx, dm)
-                    .map_err(|e| e.to_string())?;
-            }
-            _ => {
-                let taps = g
-                    .battlefield
-                    .iter()
-                    .filter(|id| g.is_tapped(**id))
-                    .map(|id| id.0)
-                    .collect::<Vec<_>>();
-                let err = finish(g, &mut q, dm).err();
-                return Ok(
-                    json!({"action":format!("{a:?}"),"mana_change":g.player(PlayerId(0)).unwrap().mana_pool.total() as i64-before as i64,"resolution_error":err,"tapped_at_announcement":taps}),
-                );
-            }
-        }
-    }
-    Err("activation decision budget".into())
-}
 
 fn fund(g: &mut GameState, actor: PlayerId) {
     for c in [

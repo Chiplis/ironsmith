@@ -704,6 +704,24 @@ pub fn parse_spells_cost_modifier_line(
         if between_fact.from_your_graveyard {
             filter.zone = Some(Zone::Graveyard);
             filter.owner = Some(PlayerFilter::You);
+            // "Spells you cast from your graveyard or from exile" (Doc
+            // Aurlock): a second cast origin is a disjunction, and only the
+            // graveyard branch carries the "your" ownership.
+            if filter.any_of.is_empty()
+                && (cost_words_contain_phrase(
+                    &between_words,
+                    &["from", "your", "graveyard", "or", "from", "exile"],
+                ) || cost_words_contain_phrase(
+                    &between_words,
+                    &["from", "your", "graveyard", "or", "exile"],
+                ))
+            {
+                filter.zone = None;
+                filter.owner = None;
+                let mut graveyard = ObjectFilter::spell().in_zone(Zone::Graveyard);
+                graveyard.owner = Some(PlayerFilter::You);
+                filter.any_of = vec![graveyard, ObjectFilter::spell().in_zone(Zone::Exile)];
+            }
         }
         // "Spells with the chosen name you cast cost {2} less to cast."
         // (Council of the Absolute) — the name constraint resolves against
@@ -2892,6 +2910,11 @@ pub fn parse_subject_are_chosen_type_line(
         return Ok(None);
     };
     if first_subject.source {
+        return Ok(None);
+    }
+    // A land subject's "chosen type" is a chosen land type ("Enchanted land
+    // is the chosen type."), never a creature type.
+    if tail_len == 4 && first_subject.card_types.contains(&CardType::Land) {
         return Ok(None);
     }
     let mut subjects = vec![first_subject];
@@ -8331,6 +8354,11 @@ pub fn parse_redirect_would_enter_line(
 pub fn parse_reveal_card_or_enter_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    // The behold gate (Theorist's Sanctum) is the same two-sentence compound
+    // with "choose a <subtype> you control or reveal one" as its action.
+    if let Some(ability) = parse_behold_or_enters_tapped_line(tokens) {
+        return Ok(Some(ability));
+    }
     let Some(fact) = late_static_facts::parse_reveal_card_or_enter_tapped_tokens(tokens) else {
         return Ok(None);
     };

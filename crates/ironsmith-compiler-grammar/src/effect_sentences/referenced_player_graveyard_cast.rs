@@ -19,7 +19,14 @@ use winnow::combinator::alt;
 /// turn-long play permission over every graveyard but yours, without a use
 /// budget.
 fn parse_other_players_graveyards(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = crate::lexer::token_word_refs(tokens);
+    // The plural possessive lexes as one word ("players'").
+    let words = crate::lexer::token_word_refs(tokens)
+        .into_iter()
+        .map(|word| match word {
+            "players'" | "players’" => "players",
+            other => other,
+        })
+        .collect::<Vec<_>>();
     let rest = words.strip_prefix(&[
         "you", "may", "play", "lands", "and", "cast", "spells", "from", "other", "players",
         "graveyards", "this", "turn",
@@ -132,6 +139,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
             primitives::kw("from").void(),
             alt((
                 primitives::phrase(&["that", "players"]).value(PlayerFilter::IteratedPlayer),
+                primitives::phrase(&["that", "player's"]).value(PlayerFilter::IteratedPlayer),
+                primitives::phrase(&["that", "player", "s"]).value(PlayerFilter::IteratedPlayer),
                 primitives::phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
             )),
             primitives::phrase(&["graveyard", "this", "turn"]),

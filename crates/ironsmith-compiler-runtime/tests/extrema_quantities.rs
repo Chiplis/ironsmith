@@ -270,7 +270,6 @@ fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &m
     assert!(state.pending_activation.is_none());
     assert_eq!(game.stack.len(), 1);
 }
-use ironsmith::static_abilities::StaticAbilityId;
 fn game() -> GameState {
     game_with_starting_life(20)
 }
@@ -301,9 +300,6 @@ fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
         game.calculated_power(id).unwrap(),
         game.calculated_toughness(id).unwrap(),
     )
-}
-fn has(game: &GameState, id: ObjectId, ability: StaticAbilityId) -> bool {
-    game.current_has_static_ability_id(id, ability)
 }
 
 fn creature(game: &mut GameState, player: PlayerId, name: &str, p: i32, t: i32) -> ObjectId {

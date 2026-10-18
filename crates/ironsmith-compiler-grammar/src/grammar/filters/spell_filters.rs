@@ -180,6 +180,14 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
         return Ok(filter);
     }
+    // "Auras, Equipment, and modified creatures you control" (Silkguard):
+    // the serial union owner also guards this entrypoint, which
+    // parse_object_filter_lexed reaches without the lexed wrapper.
+    if let Some(union) =
+        super::reference_tag_stage::parse_serial_mixed_permanent_union(tokens, other)?
+    {
+        return Ok(union);
+    }
     if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word)
         && let Ok((power, toughness)) = crate::keyword_static::parse_pt_modifier(first)
     {

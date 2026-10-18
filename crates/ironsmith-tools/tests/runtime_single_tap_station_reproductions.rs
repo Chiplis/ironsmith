@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-use ironsmith::turn_runner::{TurnAction, TurnRunner, TurnState};
+
 
 #[derive(Default)]
 struct Choices {
@@ -315,58 +315,6 @@ fn fund(g: &mut GameState, p: u8) {
         g.player_mut(PlayerId(p)).unwrap().mana_pool.add(c, 12);
     }
 }
-fn reach_main(
-    g: &mut GameState,
-    r: &mut TurnRunner,
-    q: &mut TriggerQueue,
-    actor: u8,
-    min_turn: u32,
-    h: &mut Vec<Value>,
-) -> Result<(), String> {
-    for _ in 0..500 {
-        match r.advance(g, q).map_err(|e| e.to_string())? {
-            TurnAction::Continue => {}
-            TurnAction::RunPriority => {
-                if g.turn.active_player == PlayerId(actor)
-                    && g.turn.phase == ironsmith::Phase::FirstMain
-                    && g.turn.turn_number >= min_turn
-                {
-                    h.push(json!({"producer":"TurnRunner reached real first main priority","turn":g.turn.turn_number,"active":actor}));
-                    return Ok(());
-                }
-                ironsmith::game_loop::run_priority_loop_with(
-                    g,
-                    q,
-                    &mut ironsmith::decision::AutoPassDecisionMaker,
-                )
-                .map_err(|e| e.to_string())?;
-                r.priority_done();
-            }
-            TurnAction::Decision(c) => match c {
-                DecisionContext::Attackers(_) => {
-                    r.respond_attackers(vec![]);
-                }
-                DecisionContext::Blockers(c) => {
-                    r.respond_blockers(vec![], c.player);
-                }
-                DecisionContext::SelectObjects(c) => {
-                    let ids = ironsmith::decision::SelectFirstDecisionMaker.decide_objects(g, &c);
-                    r.respond_discard(ids);
-                }
-                DecisionContext::Boolean(_) => {
-                    r.respond_boolean(false);
-                }
-                c => return Err(format!("turn decision {c:?}")),
-            },
-            TurnAction::TurnComplete => {
-                g.next_turn();
-                *r = TurnRunner::new();
-            }
-            TurnAction::GameOver(w) => return Err(format!("game over {w:?}")),
-        }
-    }
-    Err("turn budget".into())
-}
 fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> Result<(), String> {
     if g.turn.priority_player == Some(PlayerId(p)) {
         return Ok(());
@@ -391,15 +339,6 @@ fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
     compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
-fn get_stable(g: &GameState, id: ObjectId) -> u64 {
-    g.object(id).unwrap().stable_id.0.0
-}
-fn find_stable(g: &GameState, stable: u64) -> Option<ObjectId> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.stable_id.0.0 == stable)
-        .map(|o| o.id)
-}
 fn new_game(defs: &HashMap<String, CardDefinition>) -> GameState {
     let mut g = setup(2, 0);
     for p in 0..2 {

@@ -261,6 +261,17 @@ fn read_while_qualified_event(
     input: &TriggerClause<'_>,
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = input.tokens;
+    let craft_words = crate::lexer::token_word_refs(tokens).into_iter()
+        .filter(|word| !matches!(*word, "a" | "an" | "the"))
+        .collect::<Vec<_>>();
+    if matches!(craft_words.as_slice(),
+        ["this", "creature", "is", "exiled", "from", "battlefield", "while",
+         "youre" | "you're", "activating", "craft", "ability"])
+    {
+        return Ok(Some(TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
+            marker: "craft".into(),
+        }));
+    }
     // "Whenever you choose to put one or more cards on the bottom of your
     // library while scrying" (The Temporal Anchor): `while scrying` names the
     // scry action itself (CR 701.22a), whose bottom choice is its own event.

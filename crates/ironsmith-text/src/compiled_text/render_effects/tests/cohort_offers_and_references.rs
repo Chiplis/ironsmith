@@ -205,7 +205,7 @@ fn cohort_filtered_graveyard_combat_restriction_is_static_and_tracks_count() {
     }
     let mut added = Vec::new();
     for count in 0..=4 {
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.can_attack(source), count >= 3);
         assert_eq!(game.can_block_attacker(source, enemy), count >= 3);
         if count < 4 {
@@ -215,7 +215,7 @@ fn cohort_filtered_graveyard_combat_restriction_is_static_and_tracks_count() {
     for id in added.iter().take(2) {
         game.move_object_by_effect(*id, Zone::Exile);
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(!game.can_attack(source));
     assert!(!game.can_block_attacker(source, enemy));
 }

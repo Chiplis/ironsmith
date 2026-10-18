@@ -195,7 +195,16 @@ const READINGS: &[Reading] = &[
                     && words.contains(&"until");
             // A replacement ("if ... would ..., ... instead") is the zone-replacement reading's.
             let replacement = words.contains(&"would") && words.contains(&"instead");
-            !consult && !replacement
+            // "If the top card of target player's graveyard is a creature
+            // card, put that card on top of that player's library." (Guiding
+            // Spirit) is the top-of-target-graveyard reading's; a generic
+            // conditional would let its quality select a deeper card.
+            let top_of_target_graveyard = input.sentences.len() == 1
+                && words.first() == Some(&"if")
+                && input.sentences.first().is_some_and(|sentence| {
+                    crate::effect_sentences::top_of_target_graveyard::parse(sentence).is_some()
+                });
+            !consult && !replacement && !top_of_target_graveyard
         },
         read: |input| input.outcome(read_conditional_sentence_family(input)),
     },
@@ -611,6 +620,22 @@ fn leading_duration_with_recurring_delayed_trigger(
     if delayed_effects.is_empty() {
         return Ok(None);
     }
+    // "..., put a -1/-1 counter on that creature" (Giant Oyster): parsed as a
+    // standalone triggered line, the delayed body's anaphor has no antecedent
+    // and fell back to the source. It names the restriction's one target.
+    let mut delayed_effects = delayed_effects;
+    if tokens[..split].iter().any(|token| token.is_word("target")) {
+        use ironsmith_core::tag::TagKeyWalk;
+        let it = crate::tag::CompilerReferenceTag::It.as_str();
+        let targeted = crate::tag::CompilerReferenceTag::Targeted0.key();
+        for effect in &mut delayed_effects {
+            effect.map_tag_keys(&mut |key| {
+                if key.as_str() == it {
+                    *key = targeted.clone();
+                }
+            });
+        }
+    }
     // The restriction keeps its own leading duration surface.
     let mut effects = super::super::parse_effect_sentences_lexed(&tokens[..split])?;
     if effects.is_empty() {
@@ -635,6 +660,33 @@ fn read_leading_duration_sentence(
     if sentences.len() == 1
         && let Some(effects) = leading_duration_with_recurring_delayed_trigger(tokens)?
     {
+        return Ok(Some(effects));
+    }
+    // "... put a -1/-1 counter on that creature. When this creature leaves
+    // the battlefield or becomes untapped, remove all -1/-1 counters from the
+    // creature." (Giant Oyster): the cleanup is a delayed trigger watching the
+    // source, and "the creature" is the same targeted creature.
+    if let [duration_sentence, cleanup_sentence] = sentences
+        && cleanup_sentence.first().is_some_and(|token| token.is_word("when"))
+        && let Some(mut effects) =
+            leading_duration_with_recurring_delayed_trigger(duration_sentence)?
+        && let Some(mut cleanup) =
+            crate::effect_sentences::dispatch_inner::parse_sentence_delayed_trigger_this_turn(cleanup_sentence)?
+        && cleanup
+            .iter()
+            .all(|effect| matches!(effect, EffectAst::Delayed(_)))
+    {
+        use ironsmith_core::tag::TagKeyWalk;
+        let it = crate::tag::CompilerReferenceTag::It.as_str();
+        let targeted = crate::tag::CompilerReferenceTag::Targeted0.key();
+        for effect in &mut cleanup {
+            effect.map_tag_keys(&mut |key| {
+                if key.as_str() == it {
+                    *key = targeted.clone();
+                }
+            });
+        }
+        effects.append(&mut cleanup);
         return Ok(Some(effects));
     }
     let source_words = crate::lexer::parser_token_word_refs(tokens);
@@ -893,6 +945,27 @@ fn read_conditional_sentence_family(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     let sentences = input.sentences;
+    // "If you lose the flip, the next time that creature would deal combat
+    // damage this turn, prevent that damage." (Impulsive Maneuvers): the
+    // body is a whole next-time prevention sentence, which the clause chain
+    // would split at its comma into a bogus damage clause.
+    if sentences.len() == 1
+        && let Some(prefix) = crate::grammar::structure::split_leading_result_prefix_lexed(tokens)
+        && prefix.kind == crate::grammar::structure::LeadingResultPrefixKind::If
+        && crate::lexer::token_word_refs(prefix.trailing_tokens)
+            .starts_with(&["the", "next", "time"])
+        && let Some(body) =
+            crate::effect_sentences::clause_pattern_helpers::parse_prevent_next_time_damage_sentence(
+                prefix.trailing_tokens,
+            )?
+    {
+        return Ok(Some(vec![EffectAst::Conditionals(
+            crate::cards::builders::ConditionalEffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: body,
+            },
+        )]));
+    }
     if sentences.len() == 1
         && let Some(effects) = effect_grammar::parse_conditional_sentence_family_lexed(
             tokens,

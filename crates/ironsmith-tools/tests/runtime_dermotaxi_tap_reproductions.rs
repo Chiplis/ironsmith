@@ -268,12 +268,6 @@ fn paid(
     }
     Ok(e)
 }
-fn count(g: &GameState, name: &str, zone: Zone) -> usize {
-    g.objects_in_deterministic_order()
-        .iter()
-        .filter(|o| o.name == name && o.zone == zone)
-        .count()
-}
 fn action(
     g: &mut GameState,
     source: ObjectId,

@@ -1123,6 +1123,7 @@ impl SnapshotJsEncodingCache {
         self.set_serde(&object, "phase", &snapshot.phase)?;
         self.set_serde(&object, "step", &snapshot.step)?;
         self.set_serde(&object, "combat_damage_step", &snapshot.combat_damage_step)?;
+        self.set_serde(&object, "pass_intents", &snapshot.pass_intents)?;
         self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
         self.set_serde(&object, "stack_preview", &snapshot.stack_preview)?;
         self.set_serde(&object, "stack_objects", &snapshot.stack_objects)?;
@@ -2497,6 +2498,7 @@ pub(super) struct ObjectDetailsSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct GameSnapshot {
+    pub(super) pass_intents: Vec<u8>,
     pub(super) snapshot_id: u64,
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
@@ -3419,6 +3421,7 @@ impl GameSnapshot {
         Self {
             snapshot_id,
             perspective: perspective.0,
+            pass_intents: Vec::new(),
             turn_number: game.turn.turn_number,
             active_player: game.turn.active_player.0,
             active_players: game
@@ -4551,7 +4554,7 @@ mod tests {
             snapshot.abilities
         );
 
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let refreshed_effects = game.all_continuous_effects();
         let explicit_refreshed = game
             .calculated_characteristics_with_effects(yawgmoth_id, &refreshed_effects)
@@ -5646,6 +5649,7 @@ mod tests {
             check_incremental(&game, &mut incremental, &HashSet::new());
         }
     }
+    #[test]
     fn battlefield_snapshot_marks_summoning_sickness_and_active_aura() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -6233,7 +6237,7 @@ mod tests {
         let card = test_bears_card();
         let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
         game.create_object_from_card(&card, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let views = SnapshotObjectViewCache::default();
         let mut groups = IncrementalBattlefieldGroups::default();
         let protected = HashSet::new();
@@ -6272,7 +6276,7 @@ mod tests {
         let card = test_bears_card();
         let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
         let second = game.create_object_from_card(&card, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let protected = HashSet::from([first, second]);
         let views = SnapshotObjectViewCache::default();
         let mut groups = IncrementalBattlefieldGroups::default();
@@ -6344,7 +6348,7 @@ mod tests {
             .until(Until::EndOfTurn)
             .with_expires_end_of_turn(game.turn.turn_number),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
 
         assert_eq!(
             game.current_controller(bear),
@@ -6463,7 +6467,7 @@ mod mana_payment_preview {
             wasm.add_card_to_zone(0, (*land).to_string(), "battlefield".to_string(), true)
                 .expect("land");
         }
-        wasm.game.refresh_continuous_state();
+        wasm.game.refresh_continuous_state().expect("test continuous state should refresh");
         (wasm, ObjectId::from_raw(source))
     }
 
@@ -6586,7 +6590,7 @@ mod hidden_zone_continuous_effects {
                 .unwrap_or_else(|_| panic!("a bear should go to the {zone}"));
             (label, ObjectId::from_raw(id))
         });
-        wasm.game.refresh_continuous_state();
+        wasm.game.refresh_continuous_state().expect("test continuous state should refresh");
 
         for (label, id) in placements {
             let chars = wasm

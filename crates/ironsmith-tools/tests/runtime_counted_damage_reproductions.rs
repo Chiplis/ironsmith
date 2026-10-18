@@ -56,7 +56,7 @@ fn announce(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices
         progress=apply_decision_context_with_dm(g,&mut q,&mut state,&ctx,dm).map_err(|e|e.to_string())?;
     }
     if g.stack.is_empty() { return Err("announcement budget".into()); }
-    let mut evidence=json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
+    let evidence=json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
     if !g.stack.last().is_some_and(|entry|g.object(entry.object_id).is_some_and(|o|o.name==def.name())){return Err("intended spell did not reach top of stack".into());}
     Ok((q,evidence))
 }
@@ -100,7 +100,7 @@ fn expected(name:&str, count:usize, removed:Option<usize>) -> Value {
     let mut ws=vec![];
     for i in 0..4 {
         if removed==Some(i) { ws.push(json!({"battlefield":false,"power":null,"toughness":null,"damage":0,"plus":0,"minus":0,"vigilance":false,"first_strike":false,"lifelink":false}));continue; }
-        let (mut p,mut t)=(2+i as i32,10+i as i32);let(mut plus,mut minus,mut damage)=(0,0,0);let(mut vigilance,mut first_strike,mut lifelink)=(false,false,false);
+        let (p,t)=(2+i as i32,10+i as i32);let(plus,minus,mut damage)=(0,0,0);let(vigilance,first_strike,lifelink)=(false,false,false);
         if i<count {damage=self::damage(name);}
         ws.push(json!({"battlefield":true,"power":p,"toughness":t,"damage":damage,"plus":plus,"minus":minus,"vigilance":vigilance,"first_strike":first_strike,"lifelink":lifelink}));
     }

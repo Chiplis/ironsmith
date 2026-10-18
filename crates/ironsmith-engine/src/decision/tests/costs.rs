@@ -777,7 +777,7 @@ fn planeswalker_inclusive_attack_tax_preview_does_not_tax_battles() {
         .build();
     let siege = game.create_object_from_card(&siege, alice, Zone::Battlefield);
     assert_eq!(game.battle_protector(siege), Some(bob));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     let options = compute_legal_attackers(&game, &CombatState::default());
     let option = options
@@ -816,7 +816,7 @@ fn compute_legal_attackers_reuses_one_derived_view_for_many_candidates() {
         let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
         game.remove_summoning_sickness(creature_id);
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     let before = game.work_counters();
     let options = compute_legal_attackers(&game, &CombatState::default());
@@ -897,7 +897,7 @@ fn test_compute_legal_attackers_respects_cast_creature_spell_attack_restriction(
         ));
     game.remove_summoning_sickness(cohort_id);
 
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     let options = compute_legal_attackers(&game, &CombatState::default());
     assert!(
         options.iter().all(|option| option.creature != cohort_id),
@@ -914,7 +914,7 @@ fn test_compute_legal_attackers_respects_cast_creature_spell_attack_restriction(
     );
     stage_spell_cast_for_test(&mut game, prior_snapshot.object_id, alice, Zone::Hand);
 
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     let options = compute_legal_attackers(&game, &CombatState::default());
     assert!(
         options.iter().any(|option| option.creature == cohort_id),
@@ -945,7 +945,7 @@ fn test_compute_legal_attackers_respects_graveyard_threshold_attack_restriction(
             ));
     game.remove_summoning_sickness(attacker_id);
 
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     let options = compute_legal_attackers(&game, &CombatState::default());
     assert!(
         options.iter().all(|option| option.creature != attacker_id),
@@ -959,7 +959,7 @@ fn test_compute_legal_attackers_respects_graveyard_threshold_attack_restriction(
         let _ = game.create_object_from_card(&filler, alice, Zone::Graveyard);
     }
 
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     let options = compute_legal_attackers(&game, &CombatState::default());
     assert!(
         options.iter().any(|option| option.creature == attacker_id),

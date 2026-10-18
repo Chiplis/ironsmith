@@ -122,11 +122,10 @@ const RULES: &[UnsupportedRule] = &[
     // line: the counter-placement reader declares that target with the
     // defending player as its chooser, and other shapes still fail in their
     // own sentence-level guard.
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &["if", "you", "sacrifice", "an", "island", "this", "way"],
-        kind: UnsupportedRewriteLineKind::SacrificeIslandThisWay,
-    },
+    // "If you sacrifice an Island this way, ..." (Serendib Djinn) is no
+    // longer rejected: the active "you sacrifice <filter> this way"
+    // predicate reads the same sacrificed set as "an Island was sacrificed
+    // this way".
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,
         phrase: &[
@@ -331,7 +330,8 @@ fn parse_loses_abilities_becomes(
     locate_word_sequence(&["loses", "all", "abilities", "and", "becomes"]).parse_next(input)?;
     // "... and becomes your choice of A or B" (Mercurial Transformation) has
     // a dedicated resolution-choice reader.
-    if word_sequence(&["your", "choice", "of"]).parse_next(&mut input.clone()).is_ok() {
+    let mut choice_probe = *input;
+    if word_sequence(&["your", "choice", "of"]).parse_next(&mut choice_probe).is_ok() {
         return Err(primitives::backtrack_err(
             "loses-abilities-becomes",
             "becomes without a resolution choice",

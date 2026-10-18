@@ -144,7 +144,7 @@ pub(crate) fn is_limited_budget_choice(
     let plain = |candidate: &crate::grant_registry::Grant| {
         matches!(candidate.grantable, crate::grant::Grantable::PlayFrom)
             && candidate.source.source_id() == source
-            && candidate.play_from_constraints.cast_mana_spend_mode.is_normal()
+            && !candidate.play_from_constraints.requires_exact_selection()
     };
     if !plain(grant) || grant.usage_limit.is_none() || grant.shared_usage_id.is_some()
         || grants.iter().any(|candidate| plain(candidate)
@@ -192,7 +192,7 @@ fn append_exact_permission_actions_for_card_selected(
         if let Some(error) = query.token_resource_failure() { return Err(error); }
         for (index, grant) in grants.iter().enumerate() {
             if !matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
-                || selected.map_or(grant.play_from_constraints.cast_mana_spend_mode.is_normal()
+                || selected.map_or(!grant.play_from_constraints.requires_exact_selection()
                     && !is_limited_budget_choice(&query, player, &grants, grant), |selected|
                     grant.permission_identity.as_ref() != Some(&selected.identity) || grant.source.source_id() != selected.source)
                 || !grant_usage_limit_allows(&query, player, grant.permission_identity.as_ref(), grant.usage_limit) { continue; }
@@ -321,7 +321,7 @@ fn append_granted_play_from_actions_for_card(
     };
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
-        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
+        if grant.constraints.requires_exact_selection() { continue; }
         if grant.usage_limit.is_some() && budget_choice_sources.contains(&grant.source_id) { continue; }
         if !grant_usage_limit_allows(
             game,
@@ -448,7 +448,7 @@ fn append_granted_play_from_actions_for_card(
             .ok_or(crate::effects::ExecutionError::ObjectNotFound(card_id))?;
         let cost = face_down_cast_mana_cost();
         for grant in face_view.granted_play_from_for_card(card_id, source_zone, player) {
-        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
+        if grant.constraints.requires_exact_selection() { continue; }
             if !grant_usage_limit_allows(
                 game,
                 player,
@@ -498,7 +498,7 @@ fn append_granted_play_from_actions_for_card(
             .granted_alternative_casts_for_card(card_id, source_zone, player)
             .len();
     for grant in adventure_play_from_grants {
-        if !grant.constraints.cast_mana_spend_mode.is_normal() { continue; }
+        if grant.constraints.requires_exact_selection() { continue; }
         if !grant_usage_limit_allows(
             game,
             player,

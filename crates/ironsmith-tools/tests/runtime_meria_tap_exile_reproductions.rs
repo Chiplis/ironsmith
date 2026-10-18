@@ -291,13 +291,6 @@ fn activate(
     )
 }
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -412,15 +405,6 @@ fn find_stable(g: &GameState, stable: u64) -> Option<ObjectId> {
         .find(|o| o.stable_id.0.0 == stable)
         .map(|o| o.id)
 }
-fn new_game(defs: &HashMap<String, CardDefinition>) -> GameState {
-    let mut g = setup(2, 0);
-    for p in 0..2 {
-        for _ in 0..30 {
-            g.create_object_from_definition(&defs["Plains"], PlayerId(p), Zone::Library);
-        }
-    }
-    g
-}
 fn cast_creature(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -438,20 +422,6 @@ fn cast_creature(
         .copied()
         .find(|id| !prior.contains(id) && g.object(*id).is_some_and(|o| o.name == n))
         .ok_or(format!("new {n} absent"))
-}
-fn tap(
-    g: &mut GameState,
-    defs: &HashMap<String, CardDefinition>,
-    id: ObjectId,
-    d: &mut Choices,
-    h: &mut Vec<Value>,
-) -> Result<(), String> {
-    d.targets = vec![Target::Object(id)];
-    paid(g, defs, "Twiddle", 0, 1, d, h)?;
-    if !g.is_tapped(id) {
-        return Err("actual Twiddle did not tap intended object".into());
-    }
-    Ok(())
 }
 fn intrinsic_index(
     g: &GameState,

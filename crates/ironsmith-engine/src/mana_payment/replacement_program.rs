@@ -26,7 +26,7 @@ pub struct ReplacementDecision {
 }
 impl std::hash::Hash for ReplacementDecision {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use std::hash::Hash;
+
         // Existing deterministic witnesses keep their previous payment IDs.
         if let Some(color) = self.color { "mana-rewrite-color-v1".hash(state); color.hash(state); }
         self.key.hash(state); self.apply.hash(state); self.player.hash(state);

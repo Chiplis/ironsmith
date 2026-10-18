@@ -69,7 +69,10 @@ pub(super) fn queue_triggers_for_event(
     let event = game.ensure_trigger_event_provenance(event);
     // Zone changes and turn-history updates invalidate characteristics. Build
     // the shared cache before trigger matching creates immutable derived views.
-    game.refresh_continuous_state();
+    if let Err(error) = game.refresh_continuous_state() {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+        return;
+    }
     let triggers = check_triggers(game, &event);
     for trigger in triggers {
         if crate::triggers::check::is_speed_rule_trigger(&trigger) {
@@ -377,7 +380,11 @@ pub(super) fn queue_triggers_for_simultaneous_events(
         game.record_turn_history_event(event);
     }
 
-    game.refresh_continuous_state();
+    if let Err(error) = game.refresh_continuous_state() {
+        game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+        game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
+        return;
+    }
     let trigger_groups = check_triggers_batch(game, &events);
     let trigger_groups =
         match crate::triggers::counters::coalesce_counter_recipient_groups(trigger_groups) {
@@ -551,6 +558,7 @@ pub(super) fn target_events_from_targets(
     source_controller: PlayerId,
     by_ability: bool,
     stack_ability: Option<ObjectId>,
+    stack_kind: Option<ironsmith_core::filter_model::StackObjectKind>,
     provenance: ProvNodeId,
 ) -> Vec<TriggerEvent> {
     // An object or player chosen for several instances of "target" becomes
@@ -567,11 +575,11 @@ pub(super) fn target_events_from_targets(
             true
         })
         .map(|target| {
-            TriggerEvent::new_with_provenance(
-                BecomesTargetedEvent::new_target(*target, source, source_controller, by_ability)
-                    .with_stack_ability(stack_ability),
-                provenance,
-            )
+            let mut event = BecomesTargetedEvent::new_target(
+                *target, source, source_controller, by_ability,
+            ).with_stack_ability(stack_ability);
+            event.stack_kind = stack_kind;
+            TriggerEvent::new_with_provenance(event, provenance)
         })
         .collect()
 }
@@ -688,6 +696,16 @@ fn queue_target_selection_events(
     // "Whenever you and/or at least one permanent you control becomes the
     // target of a spell or ability" (Leyline of Combustion) triggers once per
     // spell or ability, however many of the matching things it targets.
+    let stack_kind = if by_ability {
+        stack_ability.and_then(|id| game.stack.iter().find(|entry| entry.target_id() == id))
+            .map(|entry| if entry.triggering_event.is_some() {
+                ironsmith_core::filter_model::StackObjectKind::TriggeredAbility
+            } else {
+                ironsmith_core::filter_model::StackObjectKind::ActivatedAbility
+            })
+    } else {
+        Some(ironsmith_core::filter_model::StackObjectKind::Spell)
+    };
     let mut targeting_batches_seen = HashSet::new();
     for mut event in target_events_from_targets(
         targets,
@@ -695,6 +713,7 @@ fn queue_target_selection_events(
         source_controller,
         by_ability,
         stack_ability,
+        stack_kind,
         provenance,
     ) {
         let event_provenance = game.alloc_child_event_provenance(provenance, event.kind());
@@ -2759,6 +2778,9 @@ fn prior_shared_player_requirement(
     let ChooseSpec::Object(filter) = spec.base() else {
         return None;
     };
+    if filter.blocked_by == Some(crate::filter::ObjectRef::Target) {
+        return requirements.iter().rposition(|r| matches!(r.spec.base(), ChooseSpec::Object(_)));
+    }
     if filter
         .controller
         .as_ref()
@@ -2815,6 +2837,9 @@ pub(super) fn relax_target_player_relation(spec: &ChooseSpec) -> ChooseSpec {
         },
         ChooseSpec::Object(filter) => {
             let mut filter = filter.clone();
+            if filter.blocked_by == Some(crate::filter::ObjectRef::Target) {
+                filter.blocked_by = None;
+            }
             for player_filter in [&mut filter.controller, &mut filter.owner] {
                 if let Some(original) = player_filter.as_ref() {
                     let relaxed = relax_prior_target_player_filter(original);
@@ -2843,6 +2868,24 @@ fn link_target_controller_requirement(
         return None;
     };
     let prior_index = prior_shared_player_requirement(spec, requirements)?;
+    if filter.blocked_by == Some(crate::filter::ObjectRef::Target) {
+        let mut allowed_pairs = Vec::new();
+        for prior in &requirements[prior_index].legal_targets {
+            let Target::Object(blocker) = prior else { continue; };
+            for candidate in candidates {
+                let Target::Object(attacker) = candidate else { continue; };
+                if game.creature_was_blocked_by_this_turn(*attacker, *blocker) {
+                    allowed_pairs.push((*prior, *candidate));
+                }
+            }
+        }
+        return Some(crate::decisions::context::SharedTargetPlayerGroup {
+            group: 0, target_players: Vec::new(),
+            pair_constraint: Some(crate::decisions::context::TargetPairConstraint {
+                prior_requirement: prior_index, allowed_pairs,
+            }),
+        });
+    }
     if filter
         .controller
         .as_ref()
@@ -4146,6 +4189,18 @@ pub(crate) fn spell_has_legal_targets_with_modes_and_view(
         let ChooseSpec::Object(recipient_filter) = recipient.spec.base() else {
             return true;
         };
+        if recipient_filter.blocked_by == Some(crate::filter::ObjectRef::Target) {
+            let blockers = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                game, &source.spec, caster, source_id, None, view);
+            let attackers = crate::targeting::compute_legal_targets_with_tagged_objects_with_view(
+                game, &relax_target_player_relation(&recipient.spec), caster, source_id, None, view);
+            return blockers.iter().any(|blocker| attackers.iter().any(|attacker|
+                match (blocker, attacker) {
+                    (Target::Object(blocker), Target::Object(attacker)) =>
+                        game.creature_was_blocked_by_this_turn(*attacker, *blocker),
+                    _ => false,
+                }));
+        }
         if source.spec.count() != crate::effect::ChoiceCount::exactly(1)
             || recipient.spec.count() != crate::effect::ChoiceCount::exactly(1)
             || recipient_filter.controller != Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
@@ -5117,6 +5172,20 @@ fn stack_entry_current_assignment_legal_targets(
         .flat_map(|prior| entry.targets[prior.range.clone()].iter())
         .copied()
         .collect();
+    fn bind_prior_blocker(spec: &mut ChooseSpec, blocker: Option<ObjectId>) {
+        match spec {
+            ChooseSpec::Object(filter) if filter.blocked_by == Some(crate::filter::ObjectRef::Target) => {
+                filter.blocked_by = Some(crate::filter::ObjectRef::Specific(
+                    blocker.unwrap_or_else(|| ObjectId::from_raw(0))));
+            }
+            ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)
+            | ChooseSpec::WithCountValue(inner, _, _) => bind_prior_blocker(inner, blocker),
+            ChooseSpec::SurfaceHinted { spec, .. } => bind_prior_blocker(spec, blocker),
+            _ => {}
+        }
+    }
+    bind_prior_blocker(&mut resolved_spec, prior_object_targets.last().and_then(|target|
+        if let Target::Object(id) = target { Some(*id) } else { None }));
     let relative_object_target = !prior_object_targets.is_empty()
         && matches!(resolved_spec.base(), ChooseSpec::Object(filter)
             if filter.other && filter.source_surface.is_none()
@@ -5201,7 +5270,7 @@ fn stack_entry_current_assignment_legal_targets(
             &ctx,
             view,
         )
-    } else if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+    } else if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
         compute_legal_targets_with_tagged_objects_combat_context_and_view(
             game,
             &resolved_spec,
@@ -5378,6 +5447,13 @@ fn assignment_aggregate_still_legal(
                 })
             }
             ChoiceAggregateMetric::ManaValue => total += i128::from(mana_value),
+            ChoiceAggregateMetric::ManaSymbolsOfColor(_) => {
+                total += i128::from(crate::targeting::aggregate_object_value(
+                    game,
+                    *id,
+                    constraint.metric,
+                ))
+            }
             ChoiceAggregateMetric::DistinctCardTypes => {
                 for ty in card_types {
                     types |= 1u128 << (ty as u32);
@@ -5461,7 +5537,11 @@ fn validate_current_stack_entry_targets_with_view(
                     "target assignment range is outside its retained targets".into(),
                 )
             })?;
-            if !assignment_aggregate_still_legal(
+            let fixed_participant_slots = matches!(assignment.spec.base(), ChooseSpec::Object(filter)
+                if filter.target_controller_fixed_on_announcement);
+            // An announced one-per-player set becomes independent bound
+            // slots. One now-illegal slot must not invalidate the others.
+            if !fixed_participant_slots && !assignment_aggregate_still_legal(
                 game,
                 entry,
                 &assignment.spec,
@@ -5476,8 +5556,19 @@ fn validate_current_stack_entry_targets_with_view(
                 });
                 continue;
             }
-            for target in assigned {
-                if (legal_targets.contains(target)
+            for (offset, target) in assigned.iter().enumerate() {
+                let controller_binding = entry.tagged_objects.get(&crate::tag::TagKey::from(
+                    format!("__announced_target_controller_{}__", assignment.range.start + offset)
+                )).and_then(|snapshots| snapshots.first()).map(|snapshot| snapshot.controller);
+                if fixed_participant_slots && controller_binding.is_none() {
+                    return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                        "target slot has no announced player binding".into(),
+                    ));
+                }
+                let bound_controller_legal = controller_binding.is_none_or(|controller| {
+                    matches!(target, Target::Object(id) if view.current_controller(*id) == Some(controller))
+                });
+                if bound_controller_legal && ((legal_targets.contains(target)
                     && (!relative_object_target || !prior_object_targets.contains(target)))
                     || (!exchange_specs.is_empty()
                         && exchange_control_target_still_targetable(
@@ -5486,7 +5577,7 @@ fn validate_current_stack_entry_targets_with_view(
                             &exchange_specs,
                             target,
                             view,
-                        ))
+                        )))
                 {
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),
@@ -5551,7 +5642,7 @@ fn validate_current_stack_entry_targets_with_view(
                     view,
                 );
             }
-            if (entry.defending_player.is_some() || entry.defending_player_reference.is_some()) {
+            if entry.defending_player.is_some() || entry.defending_player_reference.is_some() {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(
                     game,
                     &resolved_spec,
@@ -6297,5 +6388,45 @@ mod completed_cast_capture_tests {
         game.record_turn_history_event(&receipt);
         assert_eq!(game.player(player).unwrap().spells_cast_this_game, 1);
         assert_eq!(game.turn_store.turn_history.total_spells_cast_this_turn(), 1);
+    }
+}
+
+#[cfg(test)]
+mod sol_78_procedure_target_bindings {
+    use super::*;
+
+    #[test]
+    fn fixed_participant_targets_reject_controller_swaps_without_invalidating_other_slots() {
+        use crate::card::CardBuilder;
+        use crate::ids::CardId;
+        use crate::types::CardType;
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = CardBuilder::new(CardId::new(), "Controller witness")
+            .card_types(vec![CardType::Artifact]).build();
+        let first = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let second = game.create_object_from_card(&card, bob, Zone::Battlefield);
+        let mut filter = crate::filter::ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.target_set_different_controllers = true;
+        filter.target_controller_fixed_on_announcement = true;
+        let spec = ChooseSpec::target(ChooseSpec::Object(filter)).with_count(ironsmith_core::ChoiceCount::exactly(2));
+        let entry = StackEntry::ability(first, alice, vec![crate::effect::Effect::new(
+            crate::effects::TargetOnlyEffect::new(spec.clone()),
+        )]).with_targets(vec![Target::Object(first), Target::Object(second)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment { spec, range: 0..2 }]);
+        game.push_to_stack(entry);
+        let entry = game.stack.last().unwrap().clone();
+        game.object_mut(first).unwrap().initial_controller = bob;
+        {
+            let view = crate::derived_view::DerivedGameView::new(&game);
+            let (valid, _, _) = validate_stack_entry_targets_with_view(&game, &entry, &view, None).unwrap();
+            assert_eq!(valid, vec![ResolvedTarget::Object(second)], "only the first slot changed its designated controller");
+        }
+        game.object_mut(second).unwrap().initial_controller = alice;
+        let view = crate::derived_view::DerivedGameView::new(&game);
+        let (valid, _, all_invalid) = validate_stack_entry_targets_with_view(&game, &entry, &view, None).unwrap();
+        assert!(valid.is_empty(), "swapping controllers preserves uniqueness but violates both fixed player bindings");
+        assert!(all_invalid);
     }
 }

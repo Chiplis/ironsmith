@@ -1165,6 +1165,31 @@ pub fn parse_granted_abilities_for_gain_clause(
     clause_words: &[&str],
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
+    let parsed =
+        parse_granted_abilities_for_gain_clause_unchecked(ability_tokens, clause_words, allow_choice)?;
+    // `gains crew 2 and "<quoted ability>"` (Captain Rex Nebula): when the
+    // quoted item could not be read on its own, a prefix-tolerant keyword
+    // fallback can accept only the leading keyword and silently discard the
+    // quoted ability. A list with a quoted item must keep one ability per
+    // item; anything less is unsupported, never a narrower grant.
+    if let Some(segments) = split_quoted_granted_ability_list(ability_tokens)
+        && !parsed.1
+        && !parsed.0.is_empty()
+        && parsed.0.len() < segments.len()
+    {
+        return Err(CardTextError::ParseError(format!(
+            "granted ability list dropped a quoted item (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    Ok(parsed)
+}
+
+fn parse_granted_abilities_for_gain_clause_unchecked(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+    allow_choice: bool,
+) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
     if let Some(segments) = split_quoted_granted_ability_list(ability_tokens) {
         let mut abilities = Vec::new();
         for segment in segments {
@@ -2043,6 +2068,14 @@ pub(super) fn parse_copular_base_characteristic_assignment(
     if value.iter().any(|token| token.is_any_word(&["gain", "gains", "has", "have", "lose", "loses"])) {
         return Ok(None);
     }
+    // "has base power 1 or base toughness 1" (Vhati il-Dal) is a choice
+    // between two single-axis settings, owned by `parse_has_base_power_clause`.
+    if value
+        .windows(2)
+        .any(|pair| pair[0].is_word("or") && pair[1].is_word("base"))
+    {
+        return Ok(None);
+    }
     if value.first().is_some_and(|token| token.is_word("each")) {
         if !value.get(1).is_some_and(|token| token.is_word("equal")) { return Ok(None); }
         value = &value[1..];
@@ -2093,7 +2126,7 @@ fn lose_bare_ability_families(
     let mut families = Vec::new();
     let mut rest: Vec<OwnedLexToken> = Vec::new();
     let mut item: Vec<OwnedLexToken> = Vec::new();
-    let mut flush = |item: &mut Vec<OwnedLexToken>,
+    let flush = |item: &mut Vec<OwnedLexToken>,
                      rest: &mut Vec<OwnedLexToken>,
                      families: &mut Vec<GrantedAbilityAst>| {
         let words = crate::lexer::parser_token_word_refs(item);

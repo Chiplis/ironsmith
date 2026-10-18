@@ -1,8 +1,8 @@
 //! Opt-in canonical runtime evidence. Passing means reports were generated.
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::combat_state::{AttackTarget, CombatState};
+
 use ironsmith::decision::{
-    AttackerDeclaration, DecisionMaker, GameProgress, LegalAction, SelectFirstDecisionMaker,
+     DecisionMaker, GameProgress, LegalAction, SelectFirstDecisionMaker,
     compute_legal_actions,
 };
 use ironsmith::decisions::context::{
@@ -10,7 +10,7 @@ use ironsmith::decisions::context::{
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, advance_priority_with_dm,
-    apply_attacker_declarations_with_dm, apply_blocker_declarations,
+
     apply_decision_context_with_dm, apply_priority_response_with_dm,
 };
 use ironsmith::mana::ManaSymbol;
@@ -51,18 +51,6 @@ fn game() -> GameState {
         }
     }
     game
-}
-fn creature(name: &str, blue: bool, flying: bool) -> CardDefinition {
-    let mut b = CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(2, 6));
-    if blue {
-        b = b.color_indicator(ironsmith::color::ColorSet::BLUE);
-    }
-    if flying {
-        b = b.flying();
-    }
-    b.build()
 }
 struct Choices {
     target: Option<ObjectId>,
@@ -218,36 +206,6 @@ fn finish(
     }
     Err("resolution exceeded32 priority windows".into())
 }
-fn attack(
-    game: &mut GameState,
-    attackers: &[ObjectId],
-    defender: PlayerId,
-) -> Result<TriggerQueue, String> {
-    game.turn.phase = Phase::Combat;
-    game.turn.step = Some(Step::DeclareAttackers);
-    for id in attackers {
-        game.remove_summoning_sickness(*id);
-    }
-    let declarations = attackers
-        .iter()
-        .map(|id| AttackerDeclaration {
-            creature: *id,
-            target: AttackTarget::Player(defender),
-        })
-        .collect::<Vec<_>>();
-    let mut combat = CombatState::default();
-    let mut queue = TriggerQueue::new();
-    apply_attacker_declarations_with_dm(
-        game,
-        &mut combat,
-        &mut queue,
-        &declarations,
-        &mut SelectFirstDecisionMaker,
-    )
-    .map_err(|e| e.to_string())?;
-    game.combat = Some(combat);
-    Ok(queue)
-}
 fn compile(names: &[String]) -> HashMap<String, (CardDefinition, String)> {
     let input = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../reports/runtime-audit/optional-tag-candidate-inputs.json");
@@ -337,9 +295,6 @@ fn find(g: &GameState, name: &str) -> Result<ObjectId, String> {
         .find(|id| g.object(*id).is_some_and(|o| o.name == name))
         .ok_or(format!("missing battlefield {name}"))
 }
-fn trample(g: &GameState, id: ObjectId) -> bool {
-    g.current_has_static_ability_id(id, ironsmith::static_abilities::StaticAbilityId::Trample)
-}
 fn cast_paid(
     g: &mut GameState,
     d: &CardDefinition,
@@ -354,42 +309,6 @@ fn cast_paid(
     if paid != cost {
         return Err(format!("fixture payment expected{cost} actual{paid}"));
     }
-    finish(g, &mut q, dm)
-}
-fn upkeep(g: &mut GameState, player: PlayerId, dm: &mut Choices) -> Result<(), String> {
-    g.turn.turn_number += 1;
-    g.turn.active_player = player;
-    g.turn.priority_player = Some(player);
-    g.turn.phase = Phase::Beginning;
-    g.turn.step = Some(Step::Upkeep);
-    let mut q = TriggerQueue::new();
-    ironsmith::game_loop::generate_and_queue_step_triggers(g, &mut q);
-    dm.trace
-        .push(json!({"stage":"real_upkeep_event","player":player.0}));
-    finish(g, &mut q, dm)
-}
-fn forest(g: &mut GameState, snow: bool) {
-    let b = CardDefinitionBuilder::new(CardId::new(), "Audit Forest")
-        .card_types(vec![CardType::Land])
-        .subtypes(vec![Subtype::Forest]);
-    let d = if snow {
-        b.supertypes(vec![ironsmith::Supertype::Snow]).build()
-    } else {
-        b.build()
-    };
-    g.create_object_from_definition(&d, alice(), Zone::Battlefield);
-}
-fn food(g: &mut GameState) {
-    let d = CardDefinitionBuilder::new(CardId::new(), "Audit Food")
-        .card_types(vec![CardType::Artifact])
-        .subtypes(vec![Subtype::Food])
-        .build();
-    g.create_object_from_definition(&d, alice(), Zone::Battlefield);
-}
-fn attack_next_turn(g: &mut GameState, ids: &[ObjectId], dm: &mut Choices) -> Result<(), String> {
-    g.turn.turn_number += 1;
-    let mut q = attack(g, ids, bob())?;
-    dm.trace.push(json!({"stage":"actual_attack_declaration","attackers":format!("{ids:?}"),"timing_fixture":"next own turn established; skipped intervening steps"}));
     finish(g, &mut q, dm)
 }
 fn add_row(

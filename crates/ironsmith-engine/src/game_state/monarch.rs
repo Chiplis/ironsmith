@@ -138,7 +138,7 @@ mod tests {
         let survivor = observer(&mut game, C);
         observer(&mut game, B);
         let borrowed = observer(&mut game, A);
-        game.set_current_controller(borrowed, C);
+        game.set_current_controller(borrowed, C).expect("test control change succeeds");
         assert_eq!(
             game.mark_players_lost_simultaneously(&[A, B]).unwrap(),
             vec![A, B]

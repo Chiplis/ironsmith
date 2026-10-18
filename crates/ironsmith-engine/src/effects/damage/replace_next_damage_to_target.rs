@@ -4,7 +4,9 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
 use crate::effects::{EffectExecutionCategory, EffectExecutor, ExecutionContext, ExecutionError};
 use crate::events::damage::DamageEvent;
-use crate::events::{DamageTarget, EventContext, EventKind, GameEventType, ReplacementMatcher};
+use crate::events::{DamageTarget, EventKind, GameEventType, ReplacementMatcher};
+#[cfg(test)]
+use crate::events::EventContext;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::replacement::{ReplacementAction, ReplacementEffect};

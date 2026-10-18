@@ -74,7 +74,7 @@ pub use model_interpreter::{CompiledStaticAbility, StaticAbilityModelInterpreter
 pub use protection::*;
 pub use restrictions::*;
 
-pub(crate) use continuous::{resolve_anthem_count_expression, resolve_anthem_count_expression_checked};
+pub(crate) use continuous::{resolve_anthem_count_expression_checked};
 use std::sync::Arc;
 
 use crate::continuous::ContinuousEffect;
@@ -1589,8 +1589,10 @@ pub struct TriggerSuppressionSpec {
 }
 
 /// Spec for static abilities that reveal a card as part of a draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RevealDrawnCardSpec {
+    /// None means source controller; card_number=0 means every draw.
+    pub player: Option<crate::target::PlayerFilter>,
     pub card_number: u32,
     pub optional: bool,
     pub your_turns_only: bool,

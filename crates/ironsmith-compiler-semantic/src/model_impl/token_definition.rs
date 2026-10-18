@@ -389,6 +389,10 @@ pub struct ArtifactTokenShape {
     pub equipment_rules: Option<EquipmentRulesShape>,
     pub token_rules: TokenRulesSurfaces,
     pub leaves_damage_any_target: Option<i32>,
+    /// Unquoted intrinsic keywords of a noncreature artifact token ("a
+    /// legendary colorless Book artifact token with hexproof and ...",
+    /// Volo, Itinerant Scholar).
+    pub keywords: Vec<TokenKeywordShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]

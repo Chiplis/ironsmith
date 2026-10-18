@@ -170,15 +170,6 @@ fn resolve_all(game: &mut GameState, dm: &mut Choices) {
     }
     panic!("unexpected continuing trigger chain");
 }
-fn resource(name: &str, types: &str) -> CardDefinition {
-    let pt = if types.contains("Creature") {
-        "\nPower/Toughness: 1/1"
-    } else {
-        ""
-    };
-    compile_to_runtime_definition(name, format!("Mana cost: {{1}}\nType: {types}{pt}"), false)
-        .unwrap()
-}
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
     let mut queue = TriggerQueue::new();
     // Checked execution already captures some triggers in the original observer frame.
@@ -195,24 +186,6 @@ fn pt(game: &GameState, id: ObjectId) -> (i32, i32) {
         game.current_power(id).unwrap(),
         game.current_toughness(id).unwrap(),
     )
-}
-fn pump(game: &mut GameState, source: ObjectId, id: ObjectId, p: i32, t: i32) {
-    apply(
-        game,
-        source,
-        Effect::pump(p, t, ChooseSpec::SpecificObject(id), Until::EndOfTurn),
-    );
-}
-fn counter(game: &mut GameState, source: ObjectId, id: ObjectId, count: i32) {
-    apply(
-        game,
-        source,
-        Effect::put_counters(
-            ironsmith::object::CounterType::PlusOnePlusOne,
-            count,
-            ChooseSpec::SpecificObject(id),
-        ),
-    );
 }
 fn cast(
     game: &mut GameState,

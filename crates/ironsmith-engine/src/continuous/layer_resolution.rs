@@ -333,10 +333,10 @@ pub(super) fn calculate_with_layers(
 
                 // Layer 2: Control
                 Modification::ChangeController(new_controller) => {
-                    chars.controller = *new_controller;
+                    if ctx.game.control_acquisition_allowed(object.id, chars.controller, *new_controller) { chars.controller = *new_controller; }
                 }
                 Modification::ChangeControllerToEffectController => {
-                    chars.controller = effect.controller;
+                    if ctx.game.control_acquisition_allowed(object.id, chars.controller, effect.controller) { chars.controller = effect.controller; }
                 }
                 Modification::ChangeText { .. } => {
                     // Legacy wire vocabulary. New instructions use RewriteText.
@@ -1597,7 +1597,7 @@ pub(super) struct BaselineScope {
 }
 
 impl BaselineScope {
-    fn covers(&self, object: &crate::object::Object) -> bool {
+    pub(super) fn covers(&self, object: &crate::object::Object) -> bool {
         self.covers_object(object.zone, object.id)
     }
 

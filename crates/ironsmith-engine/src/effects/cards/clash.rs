@@ -5,16 +5,19 @@
 //! their revealed card has greater mana value.
 
 use crate::decisions::{
-    ChoiceSpec, DisplayOption, context::ViewCardsContext, make_decision,
+    ChoiceSpec, DisplayOption,  make_decision,
 };
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
-use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
+use crate::events::{ KeywordActionEvent, KeywordActionKind};
+#[cfg(test)]
+use crate::events::CardRevealedEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
+#[cfg(test)]
 use crate::zone::Zone;
 use std::collections::HashMap;
 

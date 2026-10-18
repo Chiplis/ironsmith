@@ -4,7 +4,7 @@ use crate::decision::DecisionMaker;
 use crate::decisions::context::{BooleanContext, SelectObjectsContext, ViewCardsContext};
 use crate::effect::{Effect, EffectId, EffectPredicate, Value};
 use crate::events::EnterBattlefieldEvent;
-use crate::filter::ObjectFilterExt as _;
+
 use crate::ids::{CardId, ObjectId, StableId};
 use crate::object::CounterType;
 use crate::replacement::{ReplacementAction, ReplacementEffect};

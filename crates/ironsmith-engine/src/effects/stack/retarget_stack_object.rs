@@ -154,6 +154,32 @@ pub(super) fn stack_entry_retarget_requirements(
                 relative_object_target,
                 ..
             } = crate::game_loop::stack_entry_assignment_legal_targets(game, entry, index, &view)?;
+            // A per-player target declaration consists of distinct fixed
+            // participant slots, even though its authored filter is one set.
+            // Offer each slot only permanents its designated player controls.
+            if matches!(assignment.spec.base(), ChooseSpec::Object(filter)
+                if filter.target_controller_fixed_on_announcement)
+            {
+                let ChooseSpec::Object(filter) = current_assignments[index].spec.base() else {
+                    return Ok(None);
+                };
+                for target_index in assignment.range.clone() {
+                    let key = crate::tag::TagKey::from(format!("__announced_target_controller_{target_index}__"));
+                    let Some(controller) = entry.tagged_objects.get(&key)
+                        .and_then(|snapshots| snapshots.first()).map(|snapshot| snapshot.controller)
+                    else { return Err(ExecutionError::IncompleteEvidence("target slot has no announced player binding".into())); };
+                    let mut bound_filter = filter.clone();
+                    bound_filter.controller = Some(crate::target::PlayerFilter::Specific(controller));
+                    bound_filter.target_set_different_controllers = false;
+                    bound_filter.target_controller_fixed_on_announcement = false;
+                    let spec = ChooseSpec::target(ChooseSpec::Object(bound_filter));
+                    let legal = legal_targets.iter().copied().filter(|target|
+                        matches!(target, Target::Object(id) if view.current_controller(*id) == Some(controller))
+                    ).collect();
+                    slots.push(slot_requirement(&spec, &(target_index..target_index + 1), legal, false));
+                }
+                continue;
+            }
             slots.push(slot_requirement(
                 &current_assignments[index].spec,
                 &assignment.range,
@@ -280,6 +306,14 @@ pub(super) fn commit_retarget(
     let entry = game.stack[index].clone();
     if entry.targets == targets {
         return Some((false, Vec::new()));
+    }
+    for (index, target) in targets.iter().enumerate() {
+        if entry.targets.get(index) == Some(target) { continue; }
+        let key = crate::tag::TagKey::from(format!("__announced_target_controller_{index}__"));
+        if let Some(controller) = entry.tagged_objects.get(&key)
+            .and_then(|snapshots| snapshots.first()).map(|snapshot| snapshot.controller)
+            && !matches!(target, Target::Object(id) if game.current_controller(*id) == Some(controller))
+        { return None; }
     }
     let mut updated = entry.clone();
     updated.targets = targets;

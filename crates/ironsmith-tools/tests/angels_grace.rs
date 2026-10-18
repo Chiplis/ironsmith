@@ -42,7 +42,7 @@ fn resolved(life: i32) -> GameState {
     for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
         ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     game
 }
 
@@ -102,7 +102,7 @@ fn the_effects_end_at_end_of_turn() {
     let alice = PlayerId::from_index(0);
     let mut game = resolved(5);
     game.cleanup_restrictions_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     game.update_cant_effects();
     assert!(game.can_lose_game(alice));
     damage(&mut game, alice, 10);

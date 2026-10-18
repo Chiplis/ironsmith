@@ -831,7 +831,8 @@ pub fn should_strip_labeled_ability_prefix_tokens(
     }
     !remainder.is_empty()
         && (is_labeled_ability_prefix_tokens(prefix)
-            || (starts_with_if_clause_tokens(remainder)
+            || ((starts_with_if_clause_tokens(remainder)
+                || remainder.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"])))
                 && is_generic_ability_label_prefix_tokens(prefix)))
 }
 
@@ -2116,7 +2117,9 @@ fn parse_source_and_target_cant_effect(
     let left_words = token_word_refs(left);
     if !matches!(
         left_words.as_slice(),
-        ["this", "creature" | "permanent"]
+        // A self-name normalizes to the bare source word ("Tatsunari and
+        // target Frog you control can't be blocked ...").
+        ["this", "creature" | "permanent"] | ["this"]
     ) || !right.first().is_some_and(|token| token.is_word("target"))
         || subject.iter().any(OwnedLexToken::is_comma)
     {

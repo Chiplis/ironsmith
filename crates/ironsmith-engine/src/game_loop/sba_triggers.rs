@@ -77,7 +77,7 @@ fn check_and_apply_sbas_with_inner(
     try_drain_pending_trigger_events(game, trigger_queue)?;
     // Refresh continuous state (static ability effects and "can't" effect tracking)
     // before checking SBAs. This ensures the layer system is up to date.
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     // Day/night transformations happen outside any resolution; finish their
     // "As this transforms" choices before anyone receives priority.
     let awaiting_before = decision_maker.awaiting_choice();
@@ -90,7 +90,7 @@ fn check_and_apply_sbas_with_inner(
 
     loop {
         if restore_unattached_bestow_creatures(game) {
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         }
         // CR 704.5t: remove dungeons whose last room ability has left the stack.
         crate::effects::player::complete_finished_dungeons(game, trigger_queue)?;
@@ -98,7 +98,7 @@ fn check_and_apply_sbas_with_inner(
         // choices, dungeon completion) are matched before this check's
         // actions are performed (CR 603.2).
         try_drain_pending_trigger_events(game, trigger_queue)?;
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
         let context = StateBasedActionContext::from_trigger_queue(trigger_queue);
         let actions = check_state_based_actions_with_context(game, &view, &context);
@@ -332,7 +332,7 @@ fn put_triggers_on_stack_with_dm_inner(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), GameLoopError> {
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let mut announced_counts = std::collections::HashMap::<
         (crate::ids::ObjectId, crate::triggers::TriggerIdentity),
         u32,
@@ -346,7 +346,7 @@ fn put_triggers_on_stack_with_dm_inner(
         // Hidden-information matches: the owner of a hidden card just drawn
         // answers its draw reveal window before triggers are put on the stack
         // (CR 702.94a: a miracle card triggers only if revealed as drawn).
-        if resolve_pending_hidden_draw_reveals(game, trigger_queue, decision_maker) {
+        if resolve_pending_hidden_draw_reveals(game, trigger_queue, decision_maker)? {
             return Ok(());
         }
         drain_ability_triggered_events(game, trigger_queue, &mut announced_counts)?;
@@ -388,7 +388,7 @@ fn put_triggers_on_stack_with_dm_inner(
 
         // First complete APNAP pass: trigger conditions other than another
         // ability triggering.
-        if stack_trigger_pass(game, trigger_queue, decision_maker, ordinary) {
+        if stack_trigger_pass(game, trigger_queue, decision_maker, ordinary)? {
             for trigger in triggered_by_ability {
                 trigger_queue.requeue(trigger);
             }
@@ -396,7 +396,7 @@ fn put_triggers_on_stack_with_dm_inner(
         }
 
         // Second complete APNAP pass: all remaining trigger-on-trigger entries.
-        if stack_trigger_pass(game, trigger_queue, decision_maker, triggered_by_ability) {
+        if stack_trigger_pass(game, trigger_queue, decision_maker, triggered_by_ability)? {
             return Ok(());
         }
         announced_counts.clear();
@@ -426,11 +426,11 @@ fn resolve_pending_hidden_draw_reveals(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
-) -> bool {
+) -> Result<bool, GameLoopError> {
     // Enclosing setup must neither consume existing trigger offers nor finish
     // deferred disclosures under a different observation policy.
     if game.action_observations_suppressed() {
-        return false;
+        return Ok(false);
     }
     // "Reveal the first card you draw each turn" reveals deferred from a
     // draw step come first: a card they open publicly no longer needs its own
@@ -446,7 +446,7 @@ fn resolve_pending_hidden_draw_reveals(
                 crate::effects::cards::hidden_automatic_draw_reveal_description(pending.optional),
                 pending.optional,
             ) else {
-                return true;
+                return Ok(true);
             };
             revealed.contains(&pending.card)
         } else if pending.optional {
@@ -457,7 +457,7 @@ fn resolve_pending_hidden_draw_reveals(
                 &crate::effects::cards::automatic_draw_reveal_boolean_context(&candidate),
             );
             if decision_maker.awaiting_choice() {
-                return true;
+                return Ok(true);
             }
             accepted
         } else {
@@ -467,12 +467,7 @@ fn resolve_pending_hidden_draw_reveals(
         if !revealed {
             continue;
         }
-        if let Err(error) = game.refresh_continuous_state() {
-            game.record_token_resource_failure(
-                &crate::effects::ExecutionError::ContinuousDiscovery(error),
-            );
-            return true;
-        }
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let candidate =
             crate::effects::cards::automatic_draw_reveal_candidate_for_pending(game, &pending);
         let event = crate::effects::cards::emit_automatic_draw_reveal_event(
@@ -499,7 +494,7 @@ fn resolve_pending_hidden_draw_reveals(
                 "You may reveal the first card you drew this turn as you draw it (Miracle)",
                 true,
             ) else {
-                return true;
+                return Ok(true);
             };
             revealed.contains(&card)
         } else {
@@ -509,7 +504,7 @@ fn resolve_pending_hidden_draw_reveals(
         if !revealed {
             continue;
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         for trigger in crate::triggers::check_triggers(game, &pending.event) {
             // Every other source already saw the original draw event.
             if trigger.source == card {
@@ -517,7 +512,7 @@ fn resolve_pending_hidden_draw_reveals(
             }
         }
     }
-    false
+    Ok(false)
 }
 
 fn drain_ability_triggered_events(
@@ -593,15 +588,15 @@ fn stack_trigger_pass(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
     triggers: Vec<TriggeredAbilityEntry>,
-) -> bool {
+) -> Result<bool, GameLoopError> {
     if triggers.is_empty() {
-        return false;
+        return Ok(false);
     }
 
     let Some(triggers) =
         choose_delayed_trigger_events(game, decision_maker, triggers, trigger_queue)
     else {
-        return true;
+        return Ok(true);
     };
 
     // Group triggers by controller, then let each controller order their own
@@ -642,7 +637,7 @@ fn stack_trigger_pass(
                     }
                 }
             }
-            return true;
+            return Ok(true);
         }
         let ordered_for_stacking: Vec<_> = ordered.into_iter().rev().collect();
         for (index, trigger) in ordered_for_stacking.iter().enumerate() {
@@ -668,7 +663,7 @@ fn stack_trigger_pass(
                                 }
                             }
                         }
-                        return true;
+                        return Ok(true);
                     }
                 };
             if destination_marker != origin_marker {
@@ -702,14 +697,14 @@ fn stack_trigger_pass(
                             }
                         }
                     }
-                    return true;
+                    return Ok(true);
                 }
                 game.record_trigger_fired(trigger.source, trigger.trigger_identity);
                 let targets = entry.targets.clone();
                 let object_id = entry.object_id;
                 let controller = entry.controller;
                 let provenance = entry.provenance;
-                game.push_to_stack(entry);
+                game.try_push_to_stack(entry).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 queue_becomes_targeted_events(
                     game,
                     trigger_queue,
@@ -744,7 +739,7 @@ fn stack_trigger_pass(
                         }
                     }
                 }
-                return true;
+                return Ok(true);
             } else if destination_marker != origin_marker
                 && let Some(origin_marker) = origin_marker
             {
@@ -754,7 +749,7 @@ fn stack_trigger_pass(
         }
     }
 
-    false
+    Ok(false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1709,7 +1704,7 @@ fn refresh_trigger_program_target_requirements(
     }
 
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-    let tagged_objects = (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects);
+    let _tagged_objects = (!entry.tagged_objects.is_empty()).then_some(&entry.tagged_objects);
     let attacking_player = entry
         .triggering_event
         .as_ref()

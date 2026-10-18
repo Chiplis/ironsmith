@@ -86,12 +86,6 @@ fn cast(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) ->
     }
     Err("resolution decision budget".into())
 }
-fn find(g: &GameState, name: &str) -> Result<ObjectId,String> {
-    g.battlefield.iter().copied().find(|id|g.object(*id).is_some_and(|o|o.name==name)).ok_or(format!("{name} absent"))
-}
-fn lands(g: &GameState) -> usize {
-    g.battlefield.iter().filter(|id|g.object(**id).is_some_and(|o|o.name=="Trigger sacrifice land")).count()
-}
 fn finish(g:&mut GameState,q:&mut TriggerQueue,dm:&mut Choices)->Result<(),String>{
     let mut state=PriorityLoopState::new(g.players_in_game());
     for _ in 0..24{

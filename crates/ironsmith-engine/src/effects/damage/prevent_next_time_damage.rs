@@ -13,7 +13,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
 };
-use crate::events::traits::ReplacementMatcher as _;
+
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};

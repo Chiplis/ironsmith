@@ -138,9 +138,29 @@ pub fn parse_granted_spell_keyword_line(
         subject = &subject[1..];
     }
     let filter = parse_object_filter_lexed(subject, false)?;
-    let Some(filter) = granted_spell_subject_filter(filter) else {
+    let Some(mut filter) = granted_spell_subject_filter(filter) else {
         return Ok(None);
     };
+    // "The first spell you cast from anywhere other than your hand each turn
+    // has demonstrate." (The Twelfth Doctor): the first matching spell each
+    // turn, and "other than your hand" is a cast-origin exclusion, not
+    // "other" (the source).
+    let subject_words = parser_token_word_refs(subject);
+    let subject_words = subject_words
+        .strip_prefix(&["the"][..])
+        .unwrap_or(&subject_words);
+    if subject_words.first() == Some(&"first")
+        && subject_words.ends_with(&["each", "turn"])
+    {
+        filter.first_spell_cast_each_turn = true;
+    }
+    if crate::word_primitives::sequence_occurs(
+        subject_words,
+        &["from", "anywhere", "other", "than", "your", "hand"],
+    ) {
+        filter.other = false;
+        filter.excluded_cast_origin_zone = Some(Zone::Hand);
+    }
     let keyword = ironsmith_core::GrantedSpellKeyword::new(kind, price);
     let display = crate::lexer::render_token_slice(&tokens)
         .trim()
@@ -193,7 +213,11 @@ fn parse_granted_hand_evoke(
     if !filter.excluded_card_types.contains(&crate::types::CardType::Land) {
         filter.excluded_card_types.push(crate::types::CardType::Land);
     }
-    let rider_tokens = crate::lexer::lex_line("When this permanent enters, sacrifice it.", 0)?;
+    // The granted trigger has no antecedent context for "it", which the
+    // granted-ability reader would read as "a permanent you control"; name
+    // the evoked permanent itself (CR 702.74a).
+    let rider_tokens =
+        crate::lexer::lex_line("When this permanent enters, sacrifice this permanent.", 0)?;
     let rider_words = parser_token_word_refs(&rider_tokens);
     let Some(rider) = crate::effect_sentences::parse_granted_activated_or_triggered_ability_for_gain(
         &rider_tokens,

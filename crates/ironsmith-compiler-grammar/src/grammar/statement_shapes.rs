@@ -52,6 +52,13 @@ pub fn is_extra_die_ignore_lowest(tokens: &[OwnedLexToken]) -> bool {
     ]
 }
 
+pub fn is_extra_planar_die_ignore_one(tokens: &[OwnedLexToken]) -> bool {
+    crate::lexer::parser_token_word_refs(tokens) == [
+        "if", "you", "would", "roll", "one", "or", "more", "planar", "dice",
+        "instead", "roll", "that", "many", "planar", "dice", "plus", "one", "and", "ignore", "one",
+    ]
+}
+
 /// Complete bounded coin replacements; these are static instructions, not
 /// conditional effects whose coin text may be split into executable clauses.
 fn complete_coin_modifier(tokens: &[OwnedLexToken], expected: &[&str], comma_after: usize) -> bool {

@@ -998,6 +998,7 @@ pub struct PendingActivation {
     /// Mana actually spent on this activation cost, retained color-by-color
     /// for resolution-time effects that refer to that payment.
     pub mana_spent_on_activation: ManaPool,
+    pub activation_mana_budget: ironsmith_core::mana::ManaPaymentBudget,
     /// Remaining non-mana activation costs awaiting payment.
     pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying activation costs.
@@ -1128,6 +1129,7 @@ impl PendingActivation {
             pending_mana_payment: None,
             completed_outputs: Default::default(),
             mana_spent_on_activation: ManaPool::default(),
+            activation_mana_budget: Default::default(),
             remaining_cost_steps,
             tagged_objects,
             effect_outcomes: Default::default(),

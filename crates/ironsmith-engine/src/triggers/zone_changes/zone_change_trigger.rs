@@ -684,6 +684,12 @@ impl ZoneChangeTrigger {
                     Some(crate::events::cause::ControllerFilter::You)
                 ) =>
                 {
+                    if cause_filter.ability_kind == Some(
+                        crate::events::cause::CauseAbilityKindFilter::ActivatedKeywordCost(
+                            ironsmith_core::ActivatedAbilityKeyword::Craft))
+                    {
+                        return Some("while you're activating a craft ability".into());
+                    }
                     let source_filter = cause_filter.source_filter.as_ref()?;
                     let [marker] = source_filter.ability_markers.as_slice() else {
                         return None;
@@ -1222,11 +1228,7 @@ impl ZoneChangeTrigger {
                 } else {
                     "is"
                 };
-                let library = if self.object_filter.owner == Some(PlayerFilter::You) {
-                    "your library"
-                } else {
-                    "a library"
-                };
+                let library = owned_zone_phrase(self.object_filter.owner.as_ref(), "library");
                 let origin = match &self.from {
                     ZonePattern::Any => " from anywhere".to_string(),
                     ZonePattern::Specific(zone) => format!(" from {}", zone_origin_name(*zone)),
@@ -1251,6 +1253,18 @@ impl ZoneChangeTrigger {
                         "are put into exile from the battlefield"
                     } else {
                         "is put into exile from the battlefield"
+                    }
+                    .to_string(),
+                );
+            }
+            // "is put into the command zone" (Reyhan, Last of the Abzan): a
+            // commander moved there from the battlefield (CR 903.9a).
+            (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Command)) => {
+                parts.push(
+                    if self.count_mode == CountMode::OneOrMore {
+                        "are put into the command zone"
+                    } else {
+                        "is put into the command zone"
                     }
                     .to_string(),
                 );
@@ -1289,17 +1303,6 @@ impl ZoneChangeTrigger {
                 } else {
                     parts.push(format!("{verb} put into exile"));
                 }
-            }
-            // "Whenever one or more cards are put into a library from
-            // anywhere" (Dutiful Knowledge Seeker).
-            (ZonePattern::Any, ZonePattern::Specific(Zone::Library)) => {
-                let verb = if self.count_mode == CountMode::OneOrMore {
-                    "are"
-                } else {
-                    "is"
-                };
-                let library = owned_zone_phrase(self.object_filter.owner.as_ref(), "library");
-                parts.push(format!("{verb} put into {library} from anywhere"));
             }
             _ => {
                 parts.push("changes zones".to_string());

@@ -44,7 +44,7 @@ fn animation_granted_land_count_keeps_types_and_dynamic_size() {
     );
     game.move_object_by_effect(added, Zone::Graveyard).unwrap();
     game.effect_store.continuous_effects.cleanup_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(game.current_is_creature(source));
     assert_eq!(
         (game.current_power(source), game.current_toughness(source)),
@@ -74,7 +74,7 @@ fn animation_granted_land_count_keeps_types_and_dynamic_size() {
         "removed grant cannot keep setting size"
     );
     game.effect_store.continuous_effects.cleanup_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert_eq!(
         (game.current_power(source), game.current_toughness(source)),
         (Some(3), Some(3))

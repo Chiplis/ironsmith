@@ -4,7 +4,9 @@ use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, OutcomeStatus};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{apply_single_target_object_from_spec, resolve_objects_for_effect};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::processing::{EventOutcome, process_destroy};
+use crate::events::processing::{EventOutcome, };
+#[cfg(test)]
+use crate::events::processing::process_destroy;
 use crate::events::zones::ZoneChangeEvent;
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
@@ -621,7 +623,7 @@ mod tests {
         let victim = create_creature(&mut game, bob, "Opponent Target", 50_201);
         let victim_stable_id = game.object(victim).expect("victim").stable_id;
 
-        game.update_replacement_effects();
+        game.update_replacement_effects().expect("test replacement effect discovery succeeds");
         let mut dm = SelectFirstDecisionMaker;
         let outcome = process_destroy(&mut game, victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
@@ -667,7 +669,7 @@ mod tests {
             .expect("victim before destroy")
             .stable_id;
 
-        game.update_replacement_effects();
+        game.update_replacement_effects().expect("test replacement effect discovery succeeds");
         let mut dm = SelectFirstDecisionMaker;
         let outcome = process_destroy(&mut game, victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 
@@ -702,7 +704,7 @@ mod tests {
             .build();
         let noncreature_victim = game.create_object_from_card(&noncreature, bob, Zone::Battlefield);
 
-        game.update_replacement_effects();
+        game.update_replacement_effects().expect("test replacement effect discovery succeeds");
         let mut dm = SelectFirstDecisionMaker;
         let outcome = process_destroy(&mut game, noncreature_victim, Some(source), &mut dm).expect("destruction succeeds").expect("destruction is not pending");
 

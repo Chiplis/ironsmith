@@ -101,66 +101,36 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 844, height: 390 
 });
 
 
-for (const commander of [false, true]) test(`Look follows ${commander ? 'Command' : 'Exile'} without consuming stack frame height`, {timeout:60000}, async()=>{
+test('the stack starts past the mana rail and looked-at cards open from the Deck chip', {timeout:60000}, async()=>{
  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
  const browser=await chromium.launch({args:['--disable-webgl']});
  try {
   const page=await browser.newPage({viewport:{width:1440,height:900}});
   await page.route('https://**/*',r=>r.fulfill({status:404,body:''}));
-  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look&targetLook${commander ? "&commander" : ""}`,{waitUntil:'domcontentloaded'});
-  await page.locator('[data-zone-pile="look"]').waitFor();
+  await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look&targetLook`,{waitUntil:'domcontentloaded'});
+  const deck=page.locator('[data-my-zone] [data-zone-pile="library"][data-looking="true"]');
+  await deck.waitFor();
   await page.waitForTimeout(1200);
   const geometry=await page.evaluate(()=>{
    const board=document.querySelector('[data-my-zone] .my-zone-board-shell');
-   const rect=el=>el.getBoundingClientRect().toJSON();
-   return {opponent:rect(document.querySelector('.battlefield-panel--opponents')),board:rect(board),rail:rect(board.querySelector('.my-zone-stack-rail')),look:rect(board.querySelector('.player-look-pile')),mana:rect(document.querySelector('.local-player-mana-dock')),identity:rect(document.querySelector('.table-shared-player-header')),pile:rect(document.querySelector('.card-stack-slot[data-top="true"] .stack-card--frame')),pager:rect(document.querySelector('.card-stack-pager')),automaticFrames:document.querySelectorAll('[data-automatic-stack-preview="true"]').length,top:board.style.getPropertyValue('--stack-area-top')};
+   const rect=el=>el?.getBoundingClientRect().toJSON();
+   const mana=[...document.querySelectorAll('[data-my-zone] .my-zone-mana-rail, .fc-local-mana-rail, .local-player-mana-dock')]
+     .map(el=>el.getBoundingClientRect()).filter(r=>r.width>0&&r.width<160);
+   return {rail:rect(board.querySelector('.my-zone-stack-rail')),manaRight:Math.max(0,...mana.map(r=>r.right)),identity:rect(document.querySelector('.table-shared-player-header')),pile:rect(document.querySelector('.card-stack-slot[data-top="true"] .stack-card--frame')),pager:rect(document.querySelector('.card-stack-pager')),automaticFrames:document.querySelectorAll('[data-automatic-stack-preview="true"]').length,top:board.style.getPropertyValue('--stack-area-top')};
   });
-  await page.screenshot({path:'/tmp/stack-look-layout.png'});
-  const exile = await page.locator(`[data-my-zone] [data-zone-pile=${commander ? 'command' : 'exile'}]`).boundingBox();
-  assert.ok(geometry.look.top - exile.y - exile.height >= 5 && geometry.look.top - exile.y - exile.height <= 13, `Look immediately follows last zone: ${JSON.stringify({look:geometry.look, exile})}`);
-  assert.ok(Math.abs(geometry.look.right - exile.x - exile.width) < 2, 'Look aligns with the right zone column');
-  assert.ok(Math.abs(geometry.rail.left)<1,'stack begins at screen edge');
+  assert.ok(geometry.rail.left>=geometry.manaRight,`stack clears the mana rail: ${JSON.stringify(geometry)}`);
   const firstColumn=await page.locator('[data-my-zone] .battlefield-row .game-card').evaluateAll(cards=>Math.min(...cards.map(card=>card.getBoundingClientRect().left)));
-  // The compact appearance's card pile narrows the old rail box to its cards.
   assert.ok(geometry.rail.right<=firstColumn-6,'stack stops before the first field column');
-  assert.equal(geometry.top,'12px','Look never moves the stack anchor');
-  const lookSlot=await page.locator('.player-look-pile .zone-pile-slot').boundingBox();
-  assert.ok(lookSlot.y >= exile.y + exile.height + 5, 'enlarged Look stays below Exile');
-  assert.ok(geometry.mana.top>=geometry.identity.bottom,'mana sits beneath identity');
-  assert.ok(geometry.mana.bottom<=900 && geometry.mana.bottom>=875,'mana sits at the screen bottom');
-  // The pile is the stack's frame: no second, automatic one opens.
+  assert.equal(geometry.top,'12px');
   assert.equal(geometry.automaticFrames,0,'no duplicate stack frame');
   assert.ok(geometry.pager.bottom<=geometry.identity.top,'pile and pager clear the player header');
-  assert.ok(Math.abs(geometry.pile.left-geometry.rail.left-12)<3,'front card sits in the stack box');
-  // Allow for the cards' gentle float (up to 5px).
-  assert.ok(geometry.pile.top>=0,'enlarged stack frame stays on screen');
-  assert.ok(geometry.rail.width>=150,'stack holds a readable card');
-  const lookTile=await page.locator('[data-zone-pile="look"]').boundingBox();
-  assert.ok(lookTile.x>=0,'enlarged Look stays inside the left screen edge');
-  await page.locator('[data-zone-pile="look"]').hover();
-  await page.locator('.zone-pile-menu--look').waitFor();
-  const menu=await page.locator('.zone-pile-menu--look').boundingBox();
-  assert.ok(menu.x>=0 && menu.y>=0,'expanded Look stays on screen');
-  assert.ok(menu.x < lookTile.x, 'Look extends left');
-  await page.locator('[data-zone-card="look"]').first().hover();
-  const lookInspector=page.locator('[data-look-stack-preview="true"][data-visible="true"]');
-  await lookInspector.waitFor();
-  assert.equal(await lookInspector.getAttribute('data-preview-object-id'),await page.locator('[data-zone-card="look"]').first().getAttribute('data-object-id'));
-  const lookInspectorBounds=await lookInspector.boundingBox();
-  assert.ok(Math.abs(lookInspectorBounds.x-geometry.rail.right-12)<2,'Look inspector uses the same beside-stack position');
-  assert.ok(Math.abs(lookInspectorBounds.y-geometry.rail.top)<2,'Look inspector aligns with the stack top');
-  await page.waitForTimeout(300);
-  const hoveredLook=await page.locator('[data-zone-card="look"]').first().boundingBox();
-  const hoveredMenu=await page.locator('.zone-pile-menu--look').boundingBox();
-  assert.ok(hoveredLook.x>=0 && hoveredLook.y>=0,'hover-enlarged Look card stays on screen');
-  assert.ok(hoveredMenu.x>=0 && hoveredMenu.x+hoveredMenu.width<=1440,'hovered Look strip stays within the viewport');
-  await page.mouse.move(1400,20);
-  await page.locator('.player-look-pile').evaluate(el=>el.style.display='none');
-  await page.waitForTimeout(600);
-  const after=await page.locator('.card-stack-slot[data-top="true"] .stack-card--frame').boundingBox();
-  assert.ok(Math.abs(after.height-geometry.pile.height)<2,'hiding Look does not change the stack card size');
-  // Allow for the float.
-  assert.ok(Math.abs(after.y-geometry.pile.top)<7,'hiding Look does not move the stack');
-  await page.screenshot({path:'/tmp/stack-look-layout.png'});
- } finally {await browser.close();await vite.close();}
+  // Holding legal picks, the Deck chip opens to the left with its looked-at cards.
+  await deck.hover();
+  const menu=page.locator('.zone-pile-menu--icon[data-local-zone-strip="true"]');
+  await menu.waitFor();
+  const menuBox=await menu.boundingBox(), deckBox=await deck.boundingBox();
+  assert.ok(menuBox.x>=0 && menuBox.y>=0,'strip stays on screen');
+  assert.ok(menuBox.x+menuBox.width<=deckBox.x+2,'strip extends left of the chip');
+  assert.deepEqual(await menu.locator('[data-zone-card="library"]').evaluateAll(cards=>cards.map(card=>card.dataset.objectId)),['7002','7001']);
+ } finally { await browser.close(); await vite.close(); }
 });

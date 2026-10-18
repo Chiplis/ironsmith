@@ -83,7 +83,7 @@ struct Choices {
 }
 impl DecisionMaker for Choices {
     fn decide_options(&mut self, game: &GameState, context: &SelectOptionsContext) -> Vec<usize> {
-        if (context.description.starts_with("Choose ") && context.description.contains("mode")) {
+        if context.description.starts_with("Choose ") && context.description.contains("mode") {
             if let Some(mode) = self.mode {
                 assert!(
                     context

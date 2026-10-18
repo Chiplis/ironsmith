@@ -30,6 +30,49 @@ enum PaymentHead {
     EachPlayer,
 }
 
+/// An optional payment owns the whole following failure consequence, including
+/// a delayed instruction joined to an immediate one. Parse each instruction
+/// outside the conditional prefix so the delayed comma is not mistaken for
+/// the end of a conditional predicate.
+pub(super) fn read_failure_consequence(
+    sentences: &[SentenceInput],
+    index: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(head), Some(next)) = (sentences.get(index), sentences.get(index + 1)) else {
+        return Ok(None);
+    };
+    if !crate::lexer::parser_token_word_refs(head.lowered())
+        .starts_with(&["that", "player", "may", "pay"])
+    {
+        return Ok(None);
+    }
+    let tokens = next.lowered();
+    let Some(comma) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else {
+        return Ok(None);
+    };
+    if !matches!(crate::lexer::parser_token_word_refs(&tokens[..comma]).as_slice(),
+        ["if", "they", "don't" | "dont", "pay"])
+    {
+        return Ok(None);
+    }
+    let body = &tokens[comma + 1..];
+    let Some(join) = body.windows(4).position(|part|
+        part[0].is_word("and") && part[1].is_word("at")
+            && part[2].is_word("the") && part[3].is_word("beginning"))
+    else { return Ok(None); };
+    let mut payment = crate::effect_sentences::parse_effect_sentence_lexed(head.lowered())?;
+    if payment.len() != 1 { return Ok(None); }
+    let mut otherwise = crate::effect_sentences::parse_effect_sentence_lexed(
+        crate::util::trim_edge_punctuation_tokens(&body[..join]),
+    )?;
+    otherwise.extend(crate::effect_sentences::parse_effect_sentence_lexed(&body[join + 1..])?);
+    Ok(Some(vec![EffectAst::Conditionals(
+        crate::cards::builders::ConditionalEffectAst::IfEffectDidNotHappen {
+            effect: Box::new(payment.remove(0)), otherwise,
+        },
+    )]))
+}
+
 fn payment_head(tokens: &[OwnedLexToken]) -> Option<PaymentHead> {
     primitives::probe_all(
         tokens,
@@ -247,4 +290,27 @@ mod tests {
         ));
         assert!(payment_head(&lexed("Each player may pay any amount of life.")).is_none());
     }
+}
+
+/// A bounded play permission and its linked delayed cast trigger.
+pub(super) fn read_play_permission_cast_rider(
+    sentences: &[SentenceInput], index: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(head), Some(next)) = (sentences.get(index), sentences.get(index + 1)) else { return Ok(None); };
+    let words = crate::lexer::parser_token_word_refs(head.lowered());
+    if !words.starts_with(&["until", "end", "of", "turn"])
+        || !words.windows(3).any(|words| words == ["you", "may", "play"] || words == ["you", "may", "cast"])
+    { return Ok(None); }
+    let tokens = next.lowered();
+    let Some(comma) = tokens.iter().position(|token| token.kind == TokenKind::Comma) else { return Ok(None); };
+    if crate::lexer::parser_token_word_refs(&tokens[..comma]) != ["when", "you", "cast", "a", "spell", "this", "way"] {
+        return Ok(None);
+    }
+    let mut effects = crate::effect_sentences::parse_effect_sentence_lexed(head.lowered())?;
+    let body = crate::effect_sentences::parse_effect_sentence_lexed(&tokens[comma + 1..])?;
+    effects.push(EffectAst::Delayed(crate::cards::builders::DelayedEffectAst::DelayedTriggerThisTurn {
+        trigger: crate::cards::builders::TriggerSpec::SpellCastThroughPreviousPermission,
+        effects: body, one_shot: true, until_end_of_combat: false, attach_to_previous_ability: false,
+    }));
+    Ok(Some(effects))
 }

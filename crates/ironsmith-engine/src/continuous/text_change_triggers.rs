@@ -93,6 +93,8 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
     // are explicitly bound to `_`: they are identities, references, flags,
     // fixed quantities, or presentation, rather than literal word predicates.
     match &mut rewritten.kind {
+        K::StackObjectAdded => {}
+        K::StateBasedObjects { filter, .. } => { *filter = rewrite_filter_words(filter, change)?; }
         K::StateBased { display: _ } | K::Custom { id: _, label: _ } => {
             return Err(Error::TriggeredAbility);
         }
@@ -234,7 +236,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *player = rewrite_player_filter_words(player, change)?;
             rewrite_optional_player(during_turn, change)?;
         }
-        K::PlayerPlaysLand { player, filter } | K::PlayerTapsForMana { player, filter }
+        K::PlayerPlaysLand { player, filter } | K::PlayerTapsForMana { player, filter } | K::PlayerAddsManaFromSource { player, filter }
         | K::PlayerRevealsCard { player, filter, from_source: _, first_draw_pair: _ }
         | K::PlayerSacrifices { player, filter, one_or_more_surface: _ }
         | K::TokensCreated { player, filter, one_or_more: _ }
@@ -706,6 +708,11 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
     exact!(PermanentDestroyedTrigger, n, K::PermanentDestroyed { filter: n.filter.clone() });
     exact!(FinalChapterAbilityResolvedTrigger, n, K::FinalChapterAbilityResolved { filter: n.filter.clone() });
     exact!(FinalChapterAbilityTriggersTrigger, n, K::FinalChapterAbilityTriggers { filter: n.filter.clone() });
+    exact!(StackObjectAddedTrigger, n, K::StackObjectAdded);
+    if let Some(n) = trigger.downcast_ref::<native::StateTrigger>()
+        && let Some(filter) = &n.objects {
+        return exact_native_kind(n, K::StateBasedObjects { filter: filter.clone(), display: n.description.clone() });
+    }
     exact!(PermanentMutatesTrigger, n, K::PermanentMutates { filter: n.filter.clone() });
     exact!(DiesDamagedByFilteredSourceThisTurnTrigger, n, K::DiesCreatureDealtDamageByFilteredSourceThisTurn {
         victim: n.victim.clone(), damager_filter: n.damager_filter.clone(),

@@ -207,7 +207,7 @@ export default function DiagnosticsSheet({ trigger, triggerClassName = defaultTr
                       hint={ui(journal.replayable
                         ? "the report can rebuild this session from a fresh engine"
                         : journal.policy === "redacted"
-                          ? "peer match: card identities are withheld, so the report profiles but cannot replay"
+                          ? "Trusted match: card identities are withheld, so the report profiles but cannot replay"
                           : "the journal stopped recording, so only the prefix before it can replay")}
                     />
                     <Stat

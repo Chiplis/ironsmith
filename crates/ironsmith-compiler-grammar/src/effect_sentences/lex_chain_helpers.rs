@@ -24,6 +24,28 @@ pub fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     Some((lower_chain_verb(found.kind), found.word_index))
 }
 
+/// "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
+/// Sauron): the conjunctions after "any combination of" list mana options and
+/// never coordinate actions. A later "and <effect verb>" ("add three mana in
+/// any combination of its colors and put it into your hand", Omnath, Locus of
+/// All) is still a real chain boundary, so the list only shields the clause
+/// when no such boundary follows it.
+pub fn lists_mana_combination_without_chain_boundary(tokens: &[OwnedLexToken]) -> bool {
+    let Some(start) = tokens.windows(3).position(|window| {
+        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+    }) else {
+        return false;
+    };
+    !tokens
+        .iter()
+        .enumerate()
+        .skip(start + 3)
+        .any(|(index, token)| {
+            token.is_word("and")
+                && find_verb_lexed(&tokens[index + 1..]).is_some_and(|(_, word_index)| word_index == 0)
+        })
+}
+
 pub fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
     chain_grammar::split_effect_chain_on_and_tokens(tokens, true)
 }

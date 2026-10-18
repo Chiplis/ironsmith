@@ -303,6 +303,15 @@ pub fn preserve_and_reason(
     }
     let words = crate::lexer::parser_token_word_refs(current);
     let tail = crate::lexer::parser_token_word_refs(remaining);
+    // Recorded characteristics form one noun phrase even when a relative
+    // clause later contains an effect verb.
+    if (words.ends_with(&["note", "the", "number"])
+        && matches!(tail.as_slice(), ["kind" | "kinds", "of", "counters", ..]))
+        || (words.ends_with(&["note", "the", "type"])
+            && tail.starts_with(&["amount", "of", "mana"]))
+    {
+        return Some(AndPreservation::SharedSubject);
+    }
     if contains_any(current, &["lose", "loses"]) {
         // The first conjunction joins removed characteristics; a subsequent
         // explicit grant starts its own action. Both coordination readers

@@ -307,7 +307,7 @@ fn title_case_set_surface(surface: &str) -> String {
         .join(" ")
 }
 
-fn split_original_printing_set_tokens(
+pub(crate) fn split_original_printing_set_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, String)> {
     let word_view = TokenWordView::new(tokens);

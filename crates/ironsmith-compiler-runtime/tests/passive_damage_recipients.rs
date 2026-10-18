@@ -329,7 +329,7 @@ fn pain_magnification_requires_single_source_total_and_keeps_each_recipient() {
             assert_eq!(g.player(B).unwrap().hand.len(), 5);
         }
         let mut g = game();
-        let observer = g.create_object_from_definition(&d, A, Zone::Battlefield);
+        g.create_object_from_definition(&d, A, Zone::Battlefield);
         let source = creature(&mut g, A, 3);
         for p in [A, B, C] {
             resources(&mut g, p, Zone::Hand, 3);

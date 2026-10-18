@@ -4,10 +4,12 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
+#[cfg(test)]
 use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
-use crate::triggers::TriggerEvent;
+
+#[cfg(test)]
 use crate::zone::Zone;
 
 /// Effect that moves all cards from a player's hand and graveyard to their library, then shuffles.

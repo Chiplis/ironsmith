@@ -233,6 +233,7 @@ pub fn parse_token_definition_shape_tokens(
             equipment_rules: equipment::parse_equipment_rules_tokens(&scope.rule_source),
             token_rules: rules::parse_token_rules_surfaces_tokens(&scope.rule_source),
             leaves_damage_any_target: leaves_damage,
+            keywords: token_keywords(&outer_words),
         }));
     }
 

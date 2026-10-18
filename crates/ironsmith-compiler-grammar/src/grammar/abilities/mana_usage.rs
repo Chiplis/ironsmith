@@ -101,6 +101,16 @@ pub fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> boo
 pub fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.starts_with(&["spend", "this", "mana", "only", "to", "cast", "the", "last", "card", "exiled", "with"])
+        && crate::util::is_source_reference_words(&words[11..])
+    {
+        return Some(ManaUsageRestriction::CastSpellMatching {
+            filter: ObjectFilter::tagged(crate::tag::declared_key(ironsmith_core::tag::LAST_SOURCE_EXILED_AT_PRODUCTION_TAG)),
+            restrict_to_matching_spell: true, grant_uncounterable: false,
+            enters_with_counters: Vec::new(), granted_abilities: Vec::new(),
+        });
+    }
     parse_generic_mana_transaction(tokens)
         .or_else(|| mana_usage_payment_branches::parse(tokens))
         .or_else(|| parse_cast_unlock_turn_face_up(tokens))

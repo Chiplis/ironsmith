@@ -991,7 +991,7 @@ pub(super) fn add_card_to_zone_battlefield_applies_etb_replacement_effects() {
             true,
         )
         .expect("should add Tayam to battlefield");
-    wasm.game.refresh_continuous_state();
+    wasm.game.refresh_continuous_state().expect("test continuous state should refresh");
 
     let entered_id = wasm
         .add_card_to_zone(

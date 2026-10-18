@@ -13,7 +13,7 @@ use crate::game_loop::{
     AttackDeclarationTransaction, BlockDeclarationTransaction, GameLoopError,
     apply_attack_mana_ability_window_response, apply_attacker_declarations_with_dm,
     apply_blocker_mana_ability_window_response, attack_mana_ability_window_context,
-    begin_attack_declaration_transaction, begin_blocker_declaration_transaction,
+    begin_blocker_declaration_transaction,
     blocker_mana_ability_window_context, try_drain_pending_trigger_events,
     finish_attack_declaration_transaction,
     finish_blocker_declaration_transaction_deferring_triggers, generate_and_queue_step_triggers,
@@ -28,7 +28,6 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::rules::combat::deals_first_strike_damage_with_game;
 use crate::rules::state_based::check_state_based_actions;
 use crate::triggers::TriggerQueue;
-use crate::turn::execute_cleanup_step;
 
 /// What the caller should do next after calling [`TurnRunner::advance`].
 #[derive(Debug)]
@@ -831,6 +830,7 @@ pub struct TurnRunner {
     /// Choices of an SBA check the runner is applying.
     pending_sba_choices: Option<PendingSbaChoices>,
     pending_combat_damage_choices: Option<PendingTurnActionChoices>,
+    pending_face_up_choices: Option<PendingTurnActionChoices>,
     pending_saga_lore_choices: Option<PendingTurnActionChoices>,
     pending_mana_loss_choices: Option<PendingTurnActionChoices>,
     skipped_phase_boundary: Option<(Step, Phase, TurnScheduleDestination)>,
@@ -896,6 +896,7 @@ impl TurnRunner {
             pending_turn_draw: None,
             pending_sba_choices: None,
             pending_combat_damage_choices: None,
+            pending_face_up_choices: None,
             pending_saga_lore_choices: None,
             pending_mana_loss_choices: None,
             skipped_phase_boundary: None,
@@ -947,11 +948,12 @@ impl TurnRunner {
         tq: &mut TriggerQueue,
     ) -> Result<TurnAction, GameLoopError> {
         let retrying_untap_choice = self.has_pending_untap_continuation();
+        let retrying_face_up_choice = self.pending_face_up_choices.is_some();
         let runner_checkpoint = self.clone();
         let game_checkpoint = game.clone();
         let queue_checkpoint = tq.clone();
         let result = self.advance_inner(game, tq);
-        if (retrying_untap_choice && result.is_err())
+        if ((retrying_untap_choice || retrying_face_up_choice) && result.is_err())
             || matches!(&result, Err(GameLoopError::ExecutionFailed(error)) if error.is_incomplete_execution())
         {
             // Retain the accepted prefix and submitted response together with
@@ -1550,6 +1552,10 @@ impl TurnRunner {
                         }
                     }
                 } else {
+                    let answers = match self.take_face_up_answers() {
+                        Ok(answers) => answers,
+                        Err(prompt) => return Ok(TurnAction::Decision(prompt)),
+                    };
                     let declarations = self.pending_attackers.take().unwrap_or_default();
                     validate_declared_attacking_bands(
                         game,
@@ -1570,12 +1576,23 @@ impl TurnRunner {
                                     "attack costs exist without an attacker".to_string(),
                                 )
                             })?;
-                        let transaction = begin_attack_declaration_transaction(
-                            game,
-                            &self.combat,
-                            tq,
-                            &declarations,
-                        )?;
+                        let mut trial = game.clone();
+                        let mut trial_triggers = tq.clone();
+                        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+                        let result = crate::game_loop::begin_attack_declaration_transaction_with_dm(
+                            &mut trial, &self.combat, &mut trial_triggers, &declarations, &mut dm,
+                        );
+                        if let Some(prompt) = dm.pending_prompt {
+                            trial.restore_execution_checkpoint(game.clone(), true);
+                            *game = trial;
+                            self.pending_attackers = Some(declarations);
+                            self.retain_face_up_prompt(answers, prompt.clone());
+                            return Ok(TurnAction::Decision(prompt));
+                        }
+                        let transaction = result?.ok_or_else(|| GameLoopError::InvalidState(
+                            "attack preparation suspended without a prompt".into()))?;
+                        *game = trial;
+                        *tq = trial_triggers;
                         if let Some(first_prompt) = prompts.first().cloned() {
                             self.pending_attacker_optional_costs =
                                 Some(PendingAttackerOptionalCosts {
@@ -1610,14 +1627,24 @@ impl TurnRunner {
                             return Ok(action);
                         }
                     } else {
-                        let mut dm = QueuedAttackCostDecisionMaker::new(Vec::new());
-                        apply_attacker_declarations_with_dm(
-                            game,
-                            &mut self.combat,
-                            tq,
-                            &declarations,
-                            &mut dm,
-                        )?;
+                        let mut trial = game.clone();
+                        let mut trial_combat = self.combat.clone();
+                        let mut trial_triggers = tq.clone();
+                        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+                        let result = apply_attacker_declarations_with_dm(
+                            &mut trial, &mut trial_combat, &mut trial_triggers, &declarations, &mut dm,
+                        );
+                        if let Some(prompt) = dm.pending_prompt {
+                            trial.restore_execution_checkpoint(game.clone(), true);
+                            *game = trial;
+                            self.pending_attackers = Some(declarations);
+                            self.retain_face_up_prompt(answers, prompt.clone());
+                            return Ok(TurnAction::Decision(prompt));
+                        }
+                        result?;
+                        *game = trial;
+                        self.combat = trial_combat;
+                        *tq = trial_triggers;
                     }
                 }
                 if let Some(bands) = self.pending_attacking_bands.take() {
@@ -1825,7 +1852,7 @@ impl TurnRunner {
                             return Ok(TurnAction::Decision(prompt));
                         }
                     };
-                    transaction.stage_proposed_combat_for_payment(game);
+                    transaction.stage_proposed_combat_for_payment(game)?;
                     let payers = transaction.mana_cost_payers();
                     if !payers.is_empty() {
                         let declaration_source =
@@ -2182,7 +2209,8 @@ impl TurnRunner {
                 // before damage is removed and "until end of turn" effects
                 // end (CR 514.2).
                 try_drain_pending_trigger_events(game, tq)?;
-                execute_cleanup_step(game);
+                crate::turn::try_execute_cleanup_step(game)
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 self.state = TurnState::CleanupRecursiveCheck;
                 Ok(TurnAction::Continue)
             }
@@ -2420,6 +2448,7 @@ impl TurnRunner {
             || self.pending_turn_draw.is_some()
             || self.pending_attacker_payment_choices.is_some()
             || self.pending_combat_damage_choices.is_some()
+            || self.pending_face_up_choices.is_some()
             || self.pending_saga_lore_choices.is_some()
             || self.pending_mana_loss_choices.is_some()
             || self.pending_cleanup_discard.is_some()
@@ -2431,6 +2460,9 @@ impl TurnRunner {
     fn replay_response_slot(&mut self) -> Option<&mut Option<AttackCostAnswer>> {
         if self.has_pending_combat_cost_choice() {
             return self.combat_cost_response_slot();
+        }
+        if let Some(pending) = self.pending_face_up_choices.as_mut() {
+            return Some(&mut pending.response);
         }
         if let Some(pending) = self.pending_combat_damage_choices.as_mut() {
             return Some(&mut pending.response);
@@ -2592,6 +2624,21 @@ impl TurnRunner {
         )
     }
 
+    fn take_face_up_answers(&mut self) -> Result<Vec<AttackCostAnswer>, DecisionContext> {
+        let Some(mut pending) = self.pending_face_up_choices.take() else { return Ok(Vec::new()); };
+        let Some(answer) = pending.response.take() else {
+            let prompt = pending.prompt.clone();
+            self.pending_face_up_choices = Some(pending);
+            return Err(prompt);
+        };
+        pending.answers.push(answer);
+        Ok(pending.answers)
+    }
+
+    fn retain_face_up_prompt(&mut self, answers: Vec<AttackCostAnswer>, prompt: DecisionContext) {
+        self.pending_face_up_choices = Some(PendingTurnActionChoices { answers, prompt, response: None });
+    }
+
     /// Record a pending division (if any), then return the next division
     /// decision the players must make before this damage step (CR 510.1).
     fn next_combat_damage_assignment_decision(
@@ -2600,6 +2647,26 @@ impl TurnRunner {
         first_strike: bool,
         use_snapshot: bool,
     ) -> Result<Option<DecisionContext>, GameLoopError> {
+        let answers = match self.take_face_up_answers() {
+            Ok(answers) => answers,
+            Err(prompt) => return Ok(Some(prompt)),
+        };
+        let mut trial = game.clone();
+        let mut dm = QueuedAttackCostDecisionMaker::new(answers.clone());
+        let ready = crate::game_loop::prepare_combat_damage_assigners(
+            &mut trial, &self.combat, first_strike,
+            use_snapshot.then_some(&self.first_step_strikers), &mut dm,
+        );
+        if let Some(prompt) = dm.pending_prompt {
+            trial.restore_execution_checkpoint(game.clone(), true);
+            *game = trial;
+            self.retain_face_up_prompt(answers, prompt.clone());
+            return Ok(Some(prompt));
+        }
+        if !ready.map_err(|error| GameLoopError::InvalidState(error.to_string()))? {
+            return Err(GameLoopError::InvalidState("damage preparation suspended without a prompt".into()));
+        }
+        *game = trial;
         game.refresh_continuous_state()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         // The refresh may have removed permanents from combat (CR 506.4).
@@ -5034,7 +5101,7 @@ mod tests {
                 ]])),
                 "Creatures can't block unless their controller pays {1} for each blocking creature.",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         game.turn.active_player = alice;
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareBlockers);
@@ -5261,7 +5328,7 @@ mod tests {
                     "Dynamic attack tax",
                 )));
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
             game.turn.phase = Phase::Combat;
             game.turn.step = Some(Step::DeclareAttackers);
@@ -5364,7 +5431,7 @@ mod tests {
             game.turn.step = Some(Step::DeclareAttackers);
             game.turn.active_player = alice;
             game.turn.priority_player = Some(alice);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             runner.state = TurnState::DeclareAttackersApply;
             runner.respond_attackers(
                 vec![first, second]
@@ -5463,7 +5530,7 @@ mod tests {
                 ]])),
                 "Creatures can't block unless their controller pays {1} for each blocking creature.",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareBlockers);
         game.turn.active_player = alice;
@@ -5532,7 +5599,7 @@ mod tests {
         let mountain = create_mountain(&mut game, alice);
         let second_mountain = create_mountain(&mut game, alice);
         add_attack_tax(&mut game, bob, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareAttackers);
@@ -5598,7 +5665,7 @@ mod tests {
                 None,
                 "You may exert this creature as it attacks",
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareAttackers);
@@ -6043,7 +6110,7 @@ mod tests {
         game.remove_summoning_sickness(attacker);
         let support = create_battlefield_creature(&mut game, alice, "Enlist Support");
         game.remove_summoning_sickness(support);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareAttackers);
@@ -7209,4 +7276,37 @@ pub(crate) fn empty_mana_pools_without_choices(
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod sol_78_face_up_runner_tests {
+    use super::*;
+
+    #[test]
+    fn attack_tap_is_preserved_when_face_up_identity_has_vigilance() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::DeclareAttackers);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Vigilant identity")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(4, 4)).build();
+        let attacker = game.create_object_from_card(&card, alice, crate::zone::Zone::Battlefield);
+        game.object_mut(attacker).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::vigilance()));
+        game.remove_summoning_sickness(attacker);
+        assert!(game.set_face_down(attacker));
+        game.register_turn_face_up_before_action(attacker);
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::DeclareAttackersApply);
+        runner.pending_attackers = Some(vec![AttackerDeclaration {
+            creature: attacker, target: crate::combat_state::AttackTarget::Player(bob),
+        }]);
+        let mut triggers = TriggerQueue::new();
+        runner.advance(&mut game, &mut triggers).unwrap();
+        assert!(!game.is_face_down(attacker));
+        assert!(game.is_tapped(attacker), "the originally required tap still happens");
+        assert_eq!(runner.combat.attackers.len(), 1);
+    }
 }

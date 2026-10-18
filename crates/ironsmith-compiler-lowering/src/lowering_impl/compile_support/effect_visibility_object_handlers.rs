@@ -128,6 +128,19 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 && matches!(chooser, PlayerFilter::TaggedPlayer(_))
             {
                 LoweredSubject::from_resolved(chooser, Vec::new()).as_role(SubjectRole::Chooser)
+            } else if *player == PlayerAst::That
+                && ctx.iterated_player
+                && filter.zone == Some(Zone::Hand)
+                && filter.controller.is_none()
+                && filter.owner == Some(PlayerFilter::IteratedPlayer)
+            {
+                // "That player chooses ... from their hand" inside a
+                // per-player body (Noxious Vapors' color slots): the pool
+                // names the iterated player's hand, so the chooser is that
+                // player even after an earlier choice moved the "that"
+                // antecedent onto a chosen card.
+                LoweredSubject::from_resolved(PlayerFilter::IteratedPlayer, Vec::new())
+                    .as_role(SubjectRole::Chooser)
             } else {
                 LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?
             };
@@ -300,14 +313,29 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let followup_player = subject.clone_player_filter();
             let mut resolved_filter =
                 subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-            resolved_filter.zone = Some(*zone);
+            // "Exile the top four cards ... You may put a land card from among
+            // those cards onto the battlefield" (Journey to the Lost City): the
+            // looked-pool composition assumes the cards are still on top of
+            // the library, but a pool resolved to an exiled collection is in
+            // exile.
+            let zone = if *zone == Zone::Library
+                && resolved_filter.tagged_constraints.iter().any(|constraint| {
+                    matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                        && (constraint.tag.as_str().starts_with("__sentence_helper_exiled")
+                            || constraint.tag.as_str().starts_with("exiled_"))
+                }) {
+                Zone::Exile
+            } else {
+                *zone
+            };
+            resolved_filter.zone = Some(zone);
             let (effects, choices) = compile_choose_objects_with_subject(
                 subject,
                 resolved_filter,
                 *count,
                 None,
                 tag.clone().into(),
-                *zone,
+                zone,
             );
             ctx.last_it_choice_is_set =
                 tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str();

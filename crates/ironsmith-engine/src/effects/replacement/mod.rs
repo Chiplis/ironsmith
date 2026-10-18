@@ -42,8 +42,8 @@ pub(crate) use execute_payload::{
     commit_replacement_original_with_outputs,
 };
 pub(crate) use execute_payload::{
-    execute_deferred_replacement_programs, execute_event_expansion,
-    execute_event_expansion_with_targets, execute_replacement_payload,
+    execute_deferred_replacement_programs,
+     execute_replacement_payload,
     execute_replacement_payload_with_object_tags, execute_replacement_payload_with_snapshot,
 };
 
@@ -51,9 +51,9 @@ pub(crate) use execute_payload::{
     CompletedReplacementPrograms, ReplacementProgramBindings,
     complete_bound_replacement_programs_with_outputs, complete_deferred_replacement_programs,
     complete_deferred_replacement_programs_with_bindings,
-    complete_deferred_replacement_programs_with_targets,
+
     complete_replacement_programs_with_original_outputs,
-    execute_deferred_replacement_programs_with_bindings, execute_event_expansion_with_outputs,
+     execute_event_expansion_with_outputs,
     execute_replacement_original_payload_with_outputs, execute_replacement_payload_with_outputs,
     project_replacement_original_outputs,
 };
@@ -85,12 +85,9 @@ pub(crate) use draw_continuation::prepare_draw_continuation_with_bindings_and_ou
 
 pub(crate) use execute_payload::with_replacement_child;
 
-pub(crate) use draw_continuation::{
-    prepare_scoped_draw_continuation, prepare_scoped_draw_continuation_with_outputs,
-};
 
 mod zone_draw_tail;
-pub(crate) use zone_draw_tail::{prepare_zone_draw_tail, prepare_zone_draw_tail_with_outputs};
+pub(crate) use zone_draw_tail::{prepare_zone_draw_tail_with_outputs};
 
 mod deferred_programs;
 pub(crate) use deferred_programs::defer_replacement_programs_with_outputs;

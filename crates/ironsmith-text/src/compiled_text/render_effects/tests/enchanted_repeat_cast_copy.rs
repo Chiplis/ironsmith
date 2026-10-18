@@ -17,7 +17,7 @@ fn enchanted_repeat_cast_copy_triggers_after_first_cast_and_on_every_copy() {
     game.object_mut(source).unwrap().attached_to =
         Some(crate::object::AttachmentTarget::Player(bob));
     game.player_mut(bob).unwrap().attachments.push(source);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     let spell_card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Event Spell")
         .card_types(vec![CardType::Sorcery])
         .mana_cost(crate::mana::ManaCost::from_symbols(vec![

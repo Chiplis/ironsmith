@@ -2,7 +2,7 @@
 
 use crate::events::EventKind;
 use crate::events::other::CardDiscardedEvent;
-use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+use crate::filter::{ObjectFilterExt as _, };
 use crate::snapshot::ObjectSnapshot;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;

@@ -1,7 +1,7 @@
 //! Tap effect implementation.
 
 use crate::effect::{EffectOutcome, ObjectSnapshot};
-use crate::effects::helpers::{ObjectApplyResultPolicy, apply_to_selected_objects};
+use crate::effects::helpers::ObjectApplyResultPolicy;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::PermanentTappedEvent;
@@ -170,7 +170,12 @@ fn commit_tap_cost_objects_for_kind(
             "Tap cost set is no longer payable".into(),
         ));
     }
-    crate::effects::composition::execute_world_checkpoint_transaction(game, |game| {
+    crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
+        for id in objects {
+            if !game.prepare_turn_face_up_before_action(*id, &mut *ctx.decision_maker)? {
+                return Ok(EffectOutcome::count(0));
+            }
+        }
         let mut action = TapAction::new(game, ctx.controller, ctx.provenance).with_cost_kind(cost_kind);
         for id in objects {
             if !action.tap(game, *id) {
@@ -213,37 +218,33 @@ impl EffectExecutor for TapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let actor = self
-            .actor
-            .as_ref()
-            .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
-            .transpose()?
-            .unwrap_or(ctx.controller);
-        let mut action = TapAction::new(game, actor, ctx.provenance);
-        let result_policy = if self.target.is_target() && self.target.is_single() {
-            ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
-        } else {
-            ObjectApplyResultPolicy::CountApplied
-        };
-        let mut selected = Vec::new();
-
-        let apply_result = apply_to_selected_objects(
-            game,
-            ctx,
-            &self.target,
-            result_policy,
-            |game, _ctx, object_id| {
-                selected.push(object_id);
-                Ok(action.tap(game, object_id))
-            },
-        )?;
-        let taps = action.finish(game);
-        // "Those permanents" includes selected permanents that were already
-        // tapped. The tap receipt still records only actual state changes.
-        let outcome = EffectOutcome::aggregate_with_primary_result(apply_result.outcome, [taps])
-            .with_result_objects(selected);
-
-        Ok(outcome)
+        crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
+            let actor = self.actor.as_ref()
+                .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
+                .transpose()?.unwrap_or(ctx.controller);
+            let selected = crate::effects::helpers::resolve_objects_for_effect(game, ctx, &self.target)?;
+            for object in &selected {
+                if !game.is_tapped(*object)
+                    && !game.prepare_turn_face_up_before_action(*object, &mut *ctx.decision_maker)?
+                {
+                    return Ok(EffectOutcome::count(0));
+                }
+            }
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            // The original tap batch begins after its mandatory face-up actions.
+            let mut action = TapAction::new(game, actor, ctx.provenance);
+            let result_policy = if self.target.is_target() && self.target.is_single() {
+                ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
+            } else { ObjectApplyResultPolicy::CountApplied };
+            let apply_result = crate::effects::helpers::apply_to_selected_objects_with_prepared(
+                game, ctx, &self.target, result_policy, None, Some(selected.clone()),
+                |game, _ctx, object| Ok(action.tap(game, object)),
+            )?;
+            if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+            let taps = action.finish(game);
+            Ok(EffectOutcome::aggregate_with_primary_result(apply_result.outcome, [taps])
+                .with_result_objects(selected))
+        })
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

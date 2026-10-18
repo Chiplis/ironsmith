@@ -1,7 +1,7 @@
 //! Source-authored only. All compilation and execution are deferred.
 use ironsmith::cards::CardDefinition;
-use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
-use ironsmith::decisions::context::{DecisionContext, SelectOptionsContext};
+use ironsmith::decision::SelectFirstDecisionMaker;
+use ironsmith::decisions::context::DecisionContext;
 use ironsmith::effects::EffectContext;
 use ironsmith::effects::{AddManaEffect, EffectExecutor};
 use ironsmith::mana::{ManaCost, ManaSymbol};
@@ -36,9 +36,6 @@ fn game() -> GameState {
 fn card(game: &mut GameState, owner: PlayerId, text: &str, zone: Zone) -> ObjectId {
     let definition = compile_to_runtime_definition("Mana fixture", text, false).unwrap();
     game.create_object_from_definition(&definition, owner, zone)
-}
-fn land(game: &mut GameState, owner: PlayerId, types: &str) -> ObjectId {
-    card(game, owner, &format!("Type: {types}\n{{T}}: Add {{G}}{{G}}."), Zone::Battlefield)
 }
 fn produce(game: &mut GameState, source: ObjectId, player: PlayerId, mana: Vec<ManaSymbol>) {
     AddManaEffect::new(mana, PlayerFilter::Specific(player))
@@ -235,6 +232,7 @@ fn cleanup_expires_turn_retention_before_loss_and_keeps_mana_until_the_step_ends
         ironsmith::effects::RetainManaUntilEndOfTurnEffect {
             player: PlayerFilter::You,
             color: None,
+            until_end_of_combat: false,
         }
             .execute(&mut game, &mut EffectContext::new_default(stone, A)).unwrap();
         produce(&mut game, stone, A, vec![ManaSymbol::Blue; 2]);

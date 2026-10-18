@@ -283,6 +283,13 @@ fn exclude_participant_choice_from_other_discard(
             | EffectAst::SourceSentence { effects, .. } => {
                 exclude_participant_choice_from_other_discard(effects, chosen);
             }
+            // "reveals their hand, chooses ..., then discards ..." is one
+            // coordinated participant program; walk its members in order.
+            EffectAst::Coordination(coordination) => {
+                for member in &mut coordination.members {
+                    exclude_participant_choice_from_other_discard(&mut member.effects, chosen);
+                }
+            }
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. }) => {
                 *chosen = Some(tag.key.clone());
             }

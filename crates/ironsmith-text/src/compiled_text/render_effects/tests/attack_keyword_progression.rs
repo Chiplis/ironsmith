@@ -20,7 +20,7 @@ fn attack_keyword_progression_checks_first_strike_at_trigger_and_resolution() {
             if starts_with_first_strike {
                 game.add_counters(source, CounterType::FirstStrike, 1);
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let event = crate::triggers::TriggerEvent::new_with_provenance(
                 crate::events::CreatureAttackedEvent::new(
                     source,
@@ -40,7 +40,7 @@ fn attack_keyword_progression_checks_first_strike_at_trigger_and_resolution() {
                 } else {
                     game.add_counters(source, CounterType::FirstStrike, 1);
                 }
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             }
             let trigger = &triggers[0];
             let condition = trigger
@@ -67,7 +67,7 @@ fn attack_keyword_progression_checks_first_strike_at_trigger_and_resolution() {
                     }
                 }
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(
                 game.counter_count(source, CounterType::FirstStrike),
                 u32::from(!(starts_with_first_strike && change_before_resolution))
@@ -80,7 +80,7 @@ fn attack_keyword_progression_checks_first_strike_at_trigger_and_resolution() {
                 starts_with_first_strike && !change_before_resolution
             );
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(!game.current_has_static_ability_id(
                 source,
                 crate::static_abilities::StaticAbilityId::DoubleStrike

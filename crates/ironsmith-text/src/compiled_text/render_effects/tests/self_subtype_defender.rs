@@ -77,7 +77,7 @@ fn self_subtype_defender_tracks_type_choice_and_expiry() {
             ));
         }
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert!(game.current_has_subtype(source, Subtype::Wall));
         assert!(game.current_has_subtype(source, Subtype::Illusion));
         assert!(game.current_has_static_ability_id(

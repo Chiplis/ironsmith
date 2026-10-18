@@ -1566,7 +1566,7 @@ mod unearth_marker_contract_tests {
                 gained, alice, crate::continuous::EffectTarget::Specific(gained),
                 crate::continuous::Modification::AddAbilityGeneric(ability),
             ));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             assert!(game.current_characteristics(removed).unwrap().abilities.is_empty());
             let ctx = game.filter_context_for(alice, None);
             let required = ObjectFilter::default().with_ability_marker(marker);

@@ -1369,6 +1369,9 @@ fn parse_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(abilities) = crate::keyword_static::parse_untapped_attachment_control_protection(parse_tokens)? {
+        return Ok(vec![LineAst::StaticAbilities(abilities)]);
+    }
     // This complete counter program must survive statement/static partitioning
     // intact. Prefer prepared tokens, where legitimate reminder text is gone.
     if let Some(effects) = crate::effect_sentences::counter_exile_permission::parse(parse_tokens)? {
@@ -1490,6 +1493,18 @@ fn parse_statement_to_chunks_impl(
     if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
         return Ok(vec![chunk]);
     }
+    // An entry-time exile, failed-fulfillment destination and per-exiled
+    // counter choices are one replacement program with shared local results.
+    let entry_words = crate::lexer::parser_token_word_refs(parse_tokens);
+    if line.info.semantic_facts.statement.as_enters_effect_program.is_some()
+        && entry_words.windows(5).any(|words| words == ["instead", "of", "onto", "the", "battlefield"])
+        && entry_words.windows(3).any(|words| words == ["exiled", "this", "way"])
+    {
+        let body_start = parse_tokens.iter().position(OwnedLexToken::is_comma)
+            .ok_or_else(|| CardTextError::ParseError("as-enters program has no body boundary".into()))? + 1;
+        let effects = parse_effect_sentences_preserving_source_boundaries(&parse_tokens[body_start..])?;
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     // "As this creature enters, roll X d6. It enters with a number of +1/+1
     // counters on it equal to the total of those results." / "... roll a
     // six-sided die twice. Its base power becomes the first result ...": the
@@ -1507,7 +1522,12 @@ fn parse_statement_to_chunks_impl(
             .iter()
             .any(|word| matches!(*word, "result" | "results"))
     {
-        let effects = parse_effect_sentences_preserving_source_boundaries(parse_tokens)?;
+        // The entry header belongs to the static program owner, not to its
+        // executable body. Keep every following sentence in the same scope
+        // so the counter instruction can consume the local dice result.
+        let body_start = parse_tokens.iter().position(OwnedLexToken::is_comma)
+            .ok_or_else(|| CardTextError::ParseError("as-enters program has no body boundary".into()))? + 1;
+        let effects = parse_effect_sentences_preserving_source_boundaries(&parse_tokens[body_start..])?;
         return Ok(vec![LineAst::Statement { effects }]);
     }
     // A target pump followed by the subjectless `and can't be blocked this
@@ -2028,6 +2048,13 @@ fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Op
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::extra_die_ignore_lowest(PlayerFilter::You, 1, rendered),
+            ),
+        ]));
+    }
+    if crate::grammar::statement_shapes::is_extra_planar_die_ignore_one(tokens) {
+        return Some(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(
+                StaticAbility::extra_planar_die_ignore_one(PlayerFilter::You, rendered),
             ),
         ]));
     }

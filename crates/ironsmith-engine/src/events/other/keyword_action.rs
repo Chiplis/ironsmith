@@ -4,6 +4,7 @@ use std::any::Any;
 use std::collections::HashMap;
 
 use super::players_finished_voting::PlayerVote;
+#[cfg(test)]
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::{ObjectFilterExt as _, player_filter_matches_game};
@@ -26,6 +27,8 @@ pub struct KeywordActionEvent {
     pub source: ObjectId,
     /// Optional action magnitude (for "scry N", "earthbend N", etc.).
     pub amount: u32,
+    /// Actual mana paid for this completed keyword action, by printed color.
+    pub mana_spent: crate::player::ManaPool,
     /// Optional vote records for "vote" keyword actions.
     pub votes: Option<Vec<PlayerVote>>,
     /// Snapshot of the object performing the action, when relevant.
@@ -61,6 +64,7 @@ impl KeywordActionEvent {
             player,
             source,
             amount,
+            mana_spent: crate::player::ManaPool::default(),
             votes: None,
             snapshot: None,
             player_tags: HashMap::new(),
@@ -74,6 +78,11 @@ impl KeywordActionEvent {
     }
 
     /// Change only the proposed magnitude; keep performer, source and bindings.
+    pub fn with_mana_spent(mut self, mana: crate::player::ManaPool) -> Self {
+        self.mana_spent = mana;
+        self
+    }
+
     pub fn with_amount(mut self, amount: u32) -> Self {
         self.amount = amount;
         self

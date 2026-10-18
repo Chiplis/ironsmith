@@ -225,7 +225,6 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                 AbilityKind::Activated(activated) => {
                     activated_ability_uses_persistent_chosen_object(activated)
                 }
-                _ => false,
             }
             .then_some(ability_index)
         })
@@ -278,7 +277,6 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
                     };
                     (ChoiceContainer::AsEnters, program)
                 }
-                _ => return Vec::new().into_iter(),
             };
             program
                 .segments

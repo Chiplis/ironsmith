@@ -24,7 +24,7 @@ fn max_speed_bonus_tracks_its_controller_and_only_its_source() {
         for (own_speed, opponent_speed) in [(0, 4), (1, 4), (3, 4), (4, 0), (4, 4), (2, 4)] {
             game.player_mut(alice).unwrap().speed = Some(own_speed);
             game.player_mut(bob).unwrap().speed = Some(opponent_speed);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let bonus = if own_speed >= 4 { 1 } else { 0 };
             assert_eq!(
                 game.current_power(source),

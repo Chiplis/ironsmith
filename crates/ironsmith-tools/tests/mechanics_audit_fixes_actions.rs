@@ -213,7 +213,7 @@ fn f7_entry_prohibition_leaves_both_aura_objects_unchanged() {
         )))
         .build();
     g.create_object_from_definition(&blocker, A, Zone::Battlefield);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     execute(&mut g, old, A, &mut dm, AuraSwapEffect::new());
     assert_eq!(g.object(old).unwrap().zone, Zone::Battlefield);
     assert_eq!(g.object(incoming).unwrap().zone, Zone::Hand);
@@ -389,7 +389,7 @@ fn f12_blocked_manifest_dread_moves_all_looked_cards_with_replacements() {
                 )))
                 .build();
             g.create_object_from_definition(&blocker, A, Zone::Battlefield);
-            g.refresh_continuous_state();
+            g.refresh_continuous_state().expect("test continuous state should refresh");
             for _ in 0..n {
                 g.create_object_from_definition(&creature("Looked", 1), A, Zone::Library);
             }
@@ -767,7 +767,7 @@ fn f7_prevalidated_exchange_does_not_recheck_dynamic_entry_filter_after_departur
         )))
         .build();
     g.create_object_from_definition(&restriction, A, Zone::Battlefield);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
 
     let mut sequential = g.clone();
     sequential.move_object_by_effect(old, Zone::Hand).unwrap();

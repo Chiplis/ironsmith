@@ -33,6 +33,7 @@ use crate::object::CounterType;
 use crate::replacement::{
     ReplacementAction, ReplacementEffect, ReplacementEffectId, ReplacementEffectKey,
 };
+#[cfg(test)]
 use crate::types::CardType;
 use crate::zone::Zone;
 use application::{
@@ -892,7 +893,7 @@ fn retain_additional_programs(
 
 fn process_event_direct(
     game: &mut GameState,
-    mut event: Event,
+    event: Event,
     state: &mut TraitEventProcessingState,
     additional_effects: &[ReplacementEffect],
     event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
@@ -8782,6 +8783,24 @@ fn process_simultaneous_damage_assignments_with_completion<R>(
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let result = (|| {
+        let mut events = events.to_vec();
+        for item in &mut events {
+            if item.amount == 0 { continue; }
+            let expose_source = game.object_requires_turn_face_up_before_action(item.source);
+            if !game.prepare_turn_face_up_before_action(item.source, dm)
+                .map_err(|error| DamageProcessingError { source: item.source, error })?
+            { return Ok(PreparedDamageProcessingBatch::empty()); }
+            if let DamageTarget::Object(target) = item.target {
+                if !game.prepare_turn_face_up_before_action(target, dm)
+                    .map_err(|error| DamageProcessingError { source: target, error })?
+                { return Ok(PreparedDamageProcessingBatch::empty()); }
+            }
+            if expose_source {
+                item.source_snapshot = game.object(item.source).map(|object|
+                    crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game));
+            }
+        }
+        let events = events.as_slice();
         game.update_cant_effects();
         game.update_replacement_effects()
             .map_err(|error| DamageProcessingError {
@@ -9151,6 +9170,26 @@ fn process_damage_assignments_with_event_with_source_snapshot_opts_with_dm_and_a
     batch_allocation: Option<&PreventionBatchAllocation>,
     replacement_scope: &crate::effects::ReplacementExecutionContext,
 ) -> Result<ProcessedDamageResult, crate::effects::ExecutionError> {
+    let expose_source = amount > 0 && game.object_requires_turn_face_up_before_action(source);
+    if amount > 0 {
+        let ready = game.prepare_turn_face_up_before_action(source, dm)?;
+        let ready = if ready {
+            if let DamageTarget::Object(target) = target {
+                game.prepare_turn_face_up_before_action(target, dm)?
+            } else { true }
+        } else { false };
+        if !ready {
+            return Ok(ProcessedDamageResult {
+                assignments: Vec::new(), replacement_prevented: true,
+                original_payloads: Vec::new(), payload_outcome: None, programs: Vec::new(),
+            });
+        }
+    }
+    let exposed_snapshot = if expose_source {
+        game.object(source).map(|object|
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+    } else { None };
+    let source_snapshot = exposed_snapshot.as_ref().or(source_snapshot);
     game.update_cant_effects();
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -9321,6 +9360,18 @@ fn finish_processed_damage_result(
                 }
         });
         if final_damage > 0 && target_is_in_source_range {
+            let ready = game.prepare_turn_face_up_before_action(replaced.source, dm)?;
+            let ready = if ready {
+                if let DamageTarget::Object(target) = replaced.target {
+                    game.prepare_turn_face_up_before_action(target, dm)?
+                } else { true }
+            } else { false };
+            if !ready {
+                return Ok(ProcessedDamageResult {
+                    assignments: Vec::new(), replacement_prevented: true,
+                    original_payloads: Vec::new(), payload_outcome: None, programs: Vec::new(),
+                });
+            }
             assignments.push(ProcessedDamageAssignment {
                 target: replaced.target,
                 amount: final_damage,
@@ -9899,7 +9950,7 @@ pub(crate) fn prepare_token_creation_deferred(
     cause: crate::events::cause::EventCause,
     ctx: &mut crate::effects::ExecutionContext,
 ) -> Result<PreparedTokenCreation, crate::effects::ExecutionError> {
-    use crate::effect::{EffectOutcome, OutcomeStatus, OutcomeValue};
+    use crate::effect::{EffectOutcome,  OutcomeValue};
     use crate::effects::ExecutionError;
     use crate::events::{CreateTokensEvent, downcast_event};
     if count == 0 || ctx.decision_maker.awaiting_choice() {
@@ -10431,7 +10482,7 @@ fn prepare_etb_replacements_inner(
         // One-shot instructions establish the original event before replacements
         // (such as entering untapped) modify it.
         let enters_tapped = initial_enters_tapped;
-        let mut enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
+        let enters_with_counters: Vec<(CounterType, u32)> = initial_enters_with_counters;
 
         // Gather ETB replacement effects from the object's abilities.
         let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();
@@ -12615,9 +12666,9 @@ mod tests {
                 crate::continuous::EffectTarget::AllCreatures,
                 crate::continuous::Modification::AddAbility(StaticAbility::flying()),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let entering = create_creature_in_zone(&mut game, "Entering Bear", alice, Zone::Hand, 2, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         // ETB processing must inspect the entering object's own characteristics
         // once for replacement abilities. Warm that required lookup so the
         // counter window below isolates external battlefield-source discovery.
@@ -14082,7 +14133,7 @@ mod tests {
                 crate::continuous::EffectTarget::Specific(damage_source),
                 crate::continuous::Modification::SetColors(crate::color::ColorSet::RED),
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert_eq!(
             game.calculated_characteristics(damage_source)
                 .expect("damage source should have calculated characteristics")

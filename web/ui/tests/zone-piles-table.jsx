@@ -33,12 +33,12 @@ function Fixture(){
  const multiplayer = new URLSearchParams(location.search).has('multiplayer') ? {mode:'in_match',role:'client'} : {mode:'idle'};
  const [motionStep,setMotionStep]=useState(0);
  const [targeting,setTargeting]=useState(false);
- const state={viewed_cards: new URLSearchParams(location.search).has("look") ? {cards:[{id:7001,name:"Island"},{id:7002,name:"Forest"}]} : undefined,players,perspective,priority_player:0,active_player:0,decision:targeting?{kind:"targets",player:0,requirements:[{description:"Target card in a graveyard",min_targets:1,max_targets:1,legal_targets:[{kind:"object",object:1000},{kind:"object",object:1001}]}]}:{kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0}]},stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
+ const state={viewed_cards: new URLSearchParams(location.search).has("look") ? {subject:0,zone:"library",cards:[{id:7001,name:"Island",zone:"library",position:0},{id:7002,name:"Forest",zone:"library",position:1}]} : undefined,players,perspective,priority_player:0,active_player:0,decision:targeting?{kind:"targets",player:0,requirements:[{description:"Target card in a graveyard",min_targets:1,max_targets:1,legal_targets:[{kind:"object",object:1000},{kind:"object",object:1001}]}]}:{kind:"priority",player:0,actions:[{kind:"pass_priority",label:"Pass priority",index:0}]},stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
  const libraryVisible = Number(new URLSearchParams(location.search).get("libraryVisible") || 0);
  if (libraryVisible) state.players = players.map((player) => player.id !== 0 ? player : {
    ...player, can_view_library_top: true, library_top: "Island",
-   persistent_look_cards: [{id:7101,name:"Island",type_line:"Basic Land — Island"},
-     {id:7102,name:"Forest",type_line:"Basic Land — Forest"}].slice(0, libraryVisible),
+   persistent_look_cards: [{id:7101,name:"Island",type_line:"Basic Land — Island",zone:"library",position:0},
+     {id:7102,name:"Forest",type_line:"Basic Land — Forest",zone:"library",position:1}].slice(0, libraryVisible),
  });
  if (new URLSearchParams(location.search).has("singleOpponent")) state.players = players.slice(0,2);
  if (new URLSearchParams(location.search).has("decisionDock")) {

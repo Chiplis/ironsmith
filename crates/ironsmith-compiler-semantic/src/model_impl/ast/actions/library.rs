@@ -63,6 +63,7 @@ pub enum LibraryActionAst {
         top_position: u32,
     },
     ConsultTopOfLibrary {
+        accumulated_match_tag: Option<TagRef>,
         player: PlayerAst,
         mode: LibraryConsultModeAst,
         filter: ObjectFilter,

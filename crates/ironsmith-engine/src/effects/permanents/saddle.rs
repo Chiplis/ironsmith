@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::effect::EffectOutcome;
 use crate::effects::{CompletedEffectOutputs, CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind, PermanentTappedEvent};
+use crate::events::{KeywordActionEvent, KeywordActionKind, };
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;

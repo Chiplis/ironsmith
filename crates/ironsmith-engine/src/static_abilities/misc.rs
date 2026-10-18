@@ -1654,6 +1654,7 @@ impl StaticAbilityKind for RevealFirstCardYouDrawEachTurn {
 
     fn reveal_drawn_card_spec(&self) -> Option<crate::static_abilities::RevealDrawnCardSpec> {
         Some(crate::static_abilities::RevealDrawnCardSpec {
+            player: None,
             card_number: 1,
             optional: self.optional,
             your_turns_only: self.your_turns_only,

@@ -195,8 +195,11 @@ fn parse_turn_history_intervening_predicate(
                 }
             })
             .collect();
-        if let Ok(filter) = parse_object_filter_lexed(subject_tokens, false)
-            .or_else(|_| parse_object_filter_lexed(&present_tense, false))
+        // The past-tense "an opponent controlled" parses without error but
+        // silently loses the controller, so read the present-tense form
+        // first (its LKI controller is what the history records).
+        if let Ok(filter) = parse_object_filter_lexed(&present_tense, false)
+            .or_else(|_| parse_object_filter_lexed(subject_tokens, false))
             && filter != ObjectFilter::default()
         {
             return Ok(Some(PredicateAst::ValueComparison {
@@ -3754,7 +3757,18 @@ fn parse_target_was_cast_for_named_cost_shape(tokens: &[OwnedLexToken]) -> Optio
         "web-slinging" => "Web-slinging",
         _ => return None,
     };
-    Some(PredicateAst::TargetPaidLabel(label.into()))
+    // A casting method with no dedicated optional-cost kind (warp, prowl,
+    // emerge, ...) is queried by its named alternative-cast receipt, never
+    // as an unsupported custom label.
+    let kind = match ironsmith_core::OptionalCostKind::from_label(label) {
+        ironsmith_core::OptionalCostKind::CustomUnsupported(_) => {
+            ironsmith_core::OptionalCostKind::AlternativeCast(
+                ironsmith_core::AlternativeCostReference::by_name(label, None),
+            )
+        }
+        kind => kind,
+    };
+    Some(PredicateAst::TargetPaidLabel(ironsmith_core::OptionalCostRef::new(kind)))
 }
 
 pub(super) fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -5331,7 +5345,23 @@ pub(super) fn parse_card_types_among_predicate(tokens: &[OwnedLexToken]) -> Opti
 
     let scope = matched.capture_clause_by_role(WinnowCaptureRole::Modifier, clause)?;
     let filter = if surface::exact_any(scope, SACRIFICED_PERMANENTS_SCOPE_PHRASES) {
-        ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Sacrificed0.bind())
+        // "card types among the sacrificed permanents" (Baba Lysaga) reads
+        // the completed sacrifice. Leave it as a pending sacrificed-objects
+        // metric: reference resolution binds it to the preceding sacrifice
+        // effect, or to the activation's sacrifice-cost result
+        // (`__original_sacrifice_cost_N`) when the sacrifice was a cost. A
+        // literal `sacrificed_0` tag is never published by a cost payment.
+        return Some(PredicateAst::ValueComparison {
+            left: Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::CardTypesAmong,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Sacrificed),
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
     } else if let Some(filter) = permanents_you_control_scope(scope) {
         // "if there are three or more card types among permanents you
         // control"
@@ -5934,7 +5964,19 @@ pub(super) fn parse_object_on_battlefield_predicate(
             object_tokens = &object_tokens[rest_start..];
         }
     }
+    // "one or more other nontoken permanents with a name originally printed
+    // in the Arabian Nights expansion are on the battlefield" (City in a
+    // Bottle): the original-printing qualifier restricts the counted set and
+    // must not be dropped by the grammar-stage filter reader.
+    let original_printing =
+        crate::object_filters::split_original_printing_set_tokens(object_tokens);
+    let object_tokens = original_printing
+        .as_ref()
+        .map_or(object_tokens, |(tokens, _)| tokens.as_slice());
     let mut filter = parse_object_filter(object_tokens, false)?;
+    if let Some((_, set_name)) = &original_printing {
+        filter.name_originally_printed_in_set = Some(set_name.clone());
+    }
     if filter.name.is_some()
         && let Some(name) = parse_named_object_filter_name_tail(object_tokens)
     {
@@ -6569,6 +6611,20 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     let monarch_words = non_article_token_word_refs(tokens);
     if let Some(predicate) = parse_indefinite_object_combat_state_predicate(tokens) {
         return Ok(predicate);
+    }
+    if matches!(monarch_words.strip_prefix(&["if"]).unwrap_or(monarch_words.as_slice()),
+        ["opponent", "created", "token", "this", "way"])
+    {
+        let mut filter = ObjectFilter::default();
+        filter.token = true;
+        filter.owner = Some(PlayerFilter::Opponent);
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::Count)
+                .with_filter(filter)),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        });
     }
     // "if it has a single target" (Captured by the Consulate): the
     // referenced spell or ability has exactly one target.

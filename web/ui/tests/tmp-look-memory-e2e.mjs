@@ -36,6 +36,7 @@ await server.listen();
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
 page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
+page.on("console", (m) => { if (m.text().startsWith("ZONELIFT")) console.log(m.text()); });
 const S = () => page.evaluate(() => window.__ironsmithE2E.scenarioState());
 const D = (cmd) => page.evaluate(async (cmd) => {
   try { const r = await window.__ironsmithE2E.dispatch(cmd); return r === undefined ? "undef" : (typeof r === "object" ? Object.keys(r || {}).slice(0, 5).join(",") : String(r)); }
@@ -130,22 +131,28 @@ try {
   s = await S();
   console.log("opt stop", stoppedOpt, "decision", s.decision?.kind, JSON.stringify(s.viewed_cards?.cards?.map(c => [c.name, c.zone, c.position])));
   await page.screenshot({ path: `${out}/opt-during.png` });
+  console.log("stack vs mana", JSON.stringify(await page.evaluate(() => {
+    const r = (e) => e && (({ left, right, top, bottom }) => ({ left: Math.round(left), right: Math.round(right), top: Math.round(top), bottom: Math.round(bottom) }))(e.getBoundingClientRect());
+    return { mana: [...document.querySelectorAll("[data-my-zone] .my-zone-mana-rail, .fc-local-mana-rail, .local-player-mana-dock")].map(r),
+      stack: r(document.querySelector(".my-zone-stack-rail")), pile: [...document.querySelectorAll(".card-stack-slot, .stack-card--frame")].map(r).slice(0, 2) };
+  })));
   console.log("alice looks", JSON.stringify(s.players[0].persistent_look_cards?.map(c => [c.name, c.zone, c.position])));
-  console.log("eye chips", JSON.stringify(await page.locator('[data-zone-pile="look"]').evaluateAll(es => es.map(e => [e.dataset.lookZone, e.innerText]))));
+  console.log("eye chips", JSON.stringify(await page.locator('[data-looking="true"]').evaluateAll(es => es.map(e => [e.dataset.zonePile, e.innerText]))));
   console.log("geometry", JSON.stringify(await page.evaluate(() => {
     const r = (e) => e && (({ top, bottom, left, right }) => ({ top: Math.round(top), bottom: Math.round(bottom), left: Math.round(left), right: Math.round(right) }))(e.getBoundingClientRect());
     const piles = document.querySelector('[data-local-zone-piles]');
     return { rows: [...document.querySelectorAll('[data-local-zone-piles] .zone-icon-row')].map(r), lift: piles?.style.getPropertyValue('--local-piles-lift'), pilesTop: piles?.style.getPropertyValue('--zone-piles-top'),
       docks: [...document.querySelectorAll('.battlefield-human-action-dock, .decision-dock, [data-decision-dock], .action-strip-decision-inline-summary')].map(e => [e.className.toString().slice(0, 50), r(e)]) };
   })));
-  const eye = page.locator('[data-zone-pile="look"]').first();
+  const eye = page.locator('[data-looking="true"]').first();
   if (await eye.count()) {
     const eb = await eye.boundingBox();
     console.log("eye box", JSON.stringify(eb), "top element", await page.evaluate(({x, y}) => { const e = document.elementFromPoint(x, y); return e?.className?.toString().slice(0, 80); }, { x: eb.x + eb.width / 2, y: eb.y + eb.height / 2 }));
     await page.mouse.move(eb.x + eb.width / 2, eb.y + eb.height / 2);
     await page.waitForTimeout(900);
-    console.log("eye strip", JSON.stringify(await page.locator('.zone-pile-menu--eye .zone-pile-card-row').evaluateAll(es => es.map(e => e.getAttribute("aria-label")))));
+    console.log("eye strip", JSON.stringify(await page.locator('.zone-pile-menu .zone-pile-card-row').evaluateAll(es => es.map(e => e.getAttribute("aria-label")))));
     await page.screenshot({ path: `${out}/eye-open.png` });
+    await page.screenshot({ path: `${out}/eye-chip.png`, clip: { x: eb.x - 220, y: eb.y - 140, width: eb.width + 240, height: eb.height + 200 } });
     await page.mouse.move(800, 450);
     const s2 = await S();
     const pass = (s2.decision?.actions || []).find(a => a.kind === "pass_priority");

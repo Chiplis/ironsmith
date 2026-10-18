@@ -106,7 +106,7 @@ fn check_power_gap(first_power: i32, second_power: i32) {
     assert_eq!(game.calculated_power(unchosen), Some(9));
     assert!(!game.current_has_static_ability_id(unchosen, StaticAbilityId::Trample));
     game.effect_store.continuous_effects.cleanup_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert_eq!(game.calculated_power(small), Some(first_power));
     assert_eq!(game.calculated_power(large), Some(second_power));
     for chosen in [small, large] {

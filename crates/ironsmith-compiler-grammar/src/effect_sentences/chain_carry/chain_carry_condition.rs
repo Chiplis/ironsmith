@@ -132,6 +132,31 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
     }))
 }
 
+/// A sentence-level trailing `if` that another reader attached around a
+/// (possibly optional) delayed return still belongs inside the delayed body
+/// (Shirei, Shizo's Caretaker: "if Shirei is still on the battlefield" is
+/// checked at the beginning of the next end step).
+pub fn sink_delayed_trailing_ifs(effects: &mut [EffectAst]) {
+    for effect in effects.iter_mut() {
+        let replacement = match &mut *effect {
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects } => {
+                sink_delayed_trailing_ifs(effects);
+                None
+            }
+            EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
+                predicate,
+                effects: inner,
+            }) if inner.len() == 1 => {
+                sink_trailing_if_into_delayed_timing(inner[0].clone(), predicate).ok()
+            }
+            _ => None,
+        };
+        if let Some(sunk) = replacement {
+            *effect = sunk;
+        }
+    }
+}
+
 fn delayed_timing_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
     use crate::cards::builders::DelayedEffectAst;
     match effect {

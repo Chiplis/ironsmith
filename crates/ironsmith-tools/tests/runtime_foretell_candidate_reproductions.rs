@@ -13,7 +13,7 @@ use ironsmith::game_loop::{
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, GameState, ObjectId, Phase, PlayerId, PowerToughness, Step,
+    CardDefinition, CardId, CardType, GameState, ObjectId, Phase, PlayerId,  Step,
     Subtype, Zone,
 };
 use serde_json::{Value, json};
@@ -48,18 +48,6 @@ fn game() -> GameState {
         }
     }
     game
-}
-fn creature(name: &str, blue: bool, flying: bool) -> CardDefinition {
-    let mut b = CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(2, 6));
-    if blue {
-        b = b.color_indicator(ironsmith::color::ColorSet::BLUE);
-    }
-    if flying {
-        b = b.flying();
-    }
-    b.build()
 }
 struct Choices {
     target: Option<ObjectId>,
@@ -178,19 +166,6 @@ fn announce(
         progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &context, dm);
     }
     Err("announcement exceeded24 decisions".into())
-}
-fn cast(
-    game: &mut GameState,
-    def: &CardDefinition,
-    dm: &mut impl DecisionMaker,
-) -> Result<TriggerQueue, String> {
-    game.turn.priority_player = Some(alice());
-    let id = game.create_object_from_definition(def, alice(), Zone::Hand);
-    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
-        .ok_or_else(|| format!("no legal cast of {}", def.name()))?;
-    announce(game, action, dm)
 }
 // Use production priority-pass resolution, including dedicated ETB event emission.
 fn finish(

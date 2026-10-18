@@ -12,11 +12,11 @@ use ironsmith::game_loop::{
     apply_priority_response_with_dm, drain_pending_trigger_events, put_triggers_on_stack_with_dm,
 };
 use ironsmith::game_state::Target;
-use ironsmith::mana::{ManaCost, ManaSymbol};
+use ironsmith::mana::{ ManaSymbol};
 use ironsmith::object::CounterType;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType,  GameState, ObjectId, PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -76,7 +76,6 @@ struct ProbeDm {
     kicks: u32,
     targets: Vec<Target>,
     accept: bool,
-    target_name: Option<String>,
     recipient: usize,
     trace: Vec<Value>,
 }
@@ -215,7 +214,6 @@ fn dm(x: u32, accept: bool) -> ProbeDm {
         kicks: 0,
         targets: vec![],
         accept,
-        target_name: None,
         recipient: 1,
         trace: vec![],
     }
@@ -258,18 +256,6 @@ fn established(
     }
     resolve(g, &mut q, &mut dm)?;
     find(g, def.name(), Zone::Battlefield)
-}
-fn witness(name: &str, kind: CardType, cost: u8, with_x: bool) -> CardDefinition {
-    let mut pips = vec![ManaSymbol::Generic(cost)];
-    if with_x {
-        pips.push(ManaSymbol::X);
-    }
-    CardDefinitionBuilder::new(CardId::new(), name)
-        .card_types(vec![kind])
-        .mana_cost(ManaCost::from_symbols(pips))
-        .power_toughness(PowerToughness::fixed(3, 3))
-        .with_spell_effect(vec![Effect::gain_life(1)])
-        .build()
 }
 
 const NAMES: [&str; 7] = [

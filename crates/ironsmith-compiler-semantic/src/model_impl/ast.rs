@@ -10,7 +10,6 @@ use crate::model::control_flow::CompilerControlFlowAst;
 use crate::model::coordination::CoordinationAst;
 use crate::model::resource_choice_clauses::{CompilerIterationAst, CompilerVoteAst};
 use crate::object::{AuraAttachmentFilter, CounterType};
-use crate::tag::TagRef;
 use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
@@ -404,6 +403,10 @@ pub enum TriggerSpec {
         caused_by_effect: bool,
         source_controller_shuffles: bool,
     },
+    PlayerAddsManaFromSource {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
     PlayerTapsForMana {
         player: PlayerFilter,
         filter: ObjectFilter,
@@ -667,6 +670,8 @@ pub enum TriggerSpec {
     DamageToPlayerPrevented(PlayerFilter),
     /// "Whenever damage [from a <quality> source] is prevented this way";
     /// only meaningful as a delayed trigger linked to the preceding shield.
+    /// Delayed watcher bound to the preceding play permission.
+    SpellCastThroughPreviousPermission,
     DamagePreventedThisWay {
         source_filter: Option<ObjectFilter>,
     },
@@ -761,4 +766,6 @@ pub enum TriggerSpec {
     PlayerBecomesMonarch(PlayerFilter),
     /// "Whenever the final chapter ability of a Saga you control triggers".
     FinalChapterAbilityTriggers(ObjectFilter),
+    StackObjectAdded,
+    StateBasedObjects { filter: ObjectFilter, display: String },
 }

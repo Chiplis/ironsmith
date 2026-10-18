@@ -12,7 +12,7 @@ use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
 };
-use ironsmith::target::{ChooseSpec, PlayerFilter};
+use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::{TriggerEvent, TriggerQueue};
 use ironsmith::{GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;

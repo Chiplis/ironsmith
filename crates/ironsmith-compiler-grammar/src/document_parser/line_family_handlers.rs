@@ -2189,11 +2189,20 @@ pub(super) fn run_statement_probe_line_family(
     // A token creation can contain quoted static-looking abilities.  Claim
     // the complete create sentence before the ability/static probes classify
     // one of those quoted rules as the host card's own ability.
-    if ctx
-        .line
-        .tokens
-        .first()
-        .is_some_and(|token| token.is_word("create"))
+    // "For each creature target player controls, create a token that's a
+    // copy of that creature, except it has haste and \"...\"" (Face
+    // Yourself): the iterated creation owns its quoted grant the same way.
+    let tokens = &ctx.line.tokens;
+    let for_each_create = tokens.len() > 3
+        && tokens[0].is_word("for")
+        && tokens[1].is_word("each")
+        && tokens.iter().any(|token| token.kind == TokenKind::Quote)
+        && tokens
+            .iter()
+            .position(|token| token.is_comma())
+            .and_then(|comma| tokens.get(comma + 1))
+            .is_some_and(|token| token.is_word("create"));
+    if (tokens.first().is_some_and(|token| token.is_word("create")) || for_each_create)
         && let Some(mut statement_line) =
             line_family_try!(ctx, rule, recognize_statement_line(ctx.line))
     {

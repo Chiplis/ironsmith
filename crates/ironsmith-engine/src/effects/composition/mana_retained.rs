@@ -98,7 +98,7 @@ mod tests {
 
         game.turn.phase = Phase::Combat;
         game.turn.step = Some(Step::DeclareAttackers);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(
             game.player(alice).expect("alice exists").mana_pool.red,
             2,
@@ -106,11 +106,11 @@ mod tests {
         );
 
         game.turn.step = Some(Step::DeclareBlockers);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 2);
 
         game.turn.step = Some(Step::EndCombat);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(
             game.player(alice).expect("alice exists").mana_pool.red,
             0,
@@ -132,15 +132,15 @@ mod tests {
         game.turn.step = Some(Step::DeclareAttackers);
         effect.execute(&mut game, &mut ctx).expect("first combat");
         game.turn.step = Some(Step::EndCombat);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 0);
 
         game.turn.step = Some(Step::DeclareAttackers);
         effect.execute(&mut game, &mut ctx).expect("extra combat");
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 1);
         game.turn.step = Some(Step::EndCombat);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("test mana pool cleanup succeeds");
         assert_eq!(game.player(alice).expect("alice exists").mana_pool.red, 0);
     }
 }

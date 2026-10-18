@@ -72,7 +72,7 @@ fn milled_card_copy_changes_only_source_and_keeps_the_upkeep_ability() {
                     },
                 );
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(game.players.iter().all(|player| player.library.is_empty()));
             let copied = accept && creature_owner.is_some();
             assert_eq!(
@@ -175,7 +175,7 @@ fn death_triggered_paid_copy_uses_the_dead_creatures_last_known_values() {
             crate::effects::execute_effect(&mut game, effect, &mut ctx)
                 .unwrap_or_else(|error| panic!("accept={accept}, mana={mana}: {error:?}"));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(
             game.calculated_power(source),
             Some(if accept && mana > 0 { 5 } else { 1 })

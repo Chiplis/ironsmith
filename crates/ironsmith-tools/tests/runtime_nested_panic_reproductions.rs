@@ -154,7 +154,7 @@ fn settle(game: &mut GameState, dm: &mut impl DecisionMaker) -> Result<(), Strin
             "before_sba_and_triggers",
             json!({"life":game.players.iter().map(|p|p.life).collect::<Vec<_>>(),"stack":game.stack.len()}),
         );
-        check_and_apply_sbas_with(game, &mut queue, dm);
+        check_and_apply_sbas_with(game, &mut queue, dm).map_err(|error| error.to_string())?;
         drain_pending_trigger_events(game, &mut queue);
         put_triggers_on_stack_with_dm(game, &mut queue, dm).map_err(|e| e.to_string())?;
         if game.stack.is_empty() {

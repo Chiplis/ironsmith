@@ -702,21 +702,44 @@ fn keyword_actions_this_turn(words: &[&str]) -> Option<PredicateAst> {
     };
     let mut kinds = Vec::new();
     let mut expect_action = true;
+    let mut connector: Option<&str> = None;
     for word in actions {
         if expect_action {
             let kind = match *word {
                 "scried" => ironsmith_core::KeywordActionKind::Scry,
                 "surveilled" => ironsmith_core::KeywordActionKind::Surveil,
+                "waterbent" => ironsmith_core::KeywordActionKind::Waterbend,
+                "earthbent" => ironsmith_core::KeywordActionKind::Earthbend,
+                "firebent" => ironsmith_core::KeywordActionKind::Firebend,
+                "airbent" => ironsmith_core::KeywordActionKind::Airbend,
                 _ => return None,
             };
             kinds.push(kind);
-        } else if *word != "or" {
+        } else if !matches!(*word, "or" | "and") || connector.is_some_and(|seen| seen != *word) {
             return None;
+        } else {
+            connector = Some(*word);
         }
         expect_action = !expect_action;
     }
     if kinds.is_empty() || expect_action {
         return None;
+    }
+    // "you've waterbent and earthbent and ... this turn" (Avatar Aang, via
+    // its "done all four" restatement): every listed action was performed.
+    if connector == Some("and") {
+        return kinds
+            .into_iter()
+            .map(|kind| {
+                history_at_least(
+                    ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
+                        player: PlayerFilter::You,
+                        actions: vec![kind],
+                    },
+                    1,
+                )
+            })
+            .reduce(|left, right| PredicateAst::And(Box::new(left), Box::new(right)));
     }
     Some(history_at_least(
         ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
@@ -954,7 +977,7 @@ fn cards_exiled_with_source(words: &[&str]) -> Option<PredicateAst> {
     let mut filter = match descriptor {
         ["cards"] => ObjectFilter::default(),
         [.., "cards"] => {
-            let mut filter = filter_from_words(descriptor)?;
+            let filter = filter_from_words(descriptor)?;
             if filter.zone.is_some() || filter.controller.is_some() || filter.owner.is_some() {
                 return None;
             }

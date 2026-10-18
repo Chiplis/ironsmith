@@ -52,7 +52,7 @@ fn conditional_attacker_bonus_includes_already_untapped_attackers() {
         for effect in &ability.effects {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         let bonus = if food_owner == Some(0) { 3 } else { 1 };
         for id in [source, tapped, untapped] {
             let base = if id == source { 3 } else { 2 };
@@ -66,7 +66,7 @@ fn conditional_attacker_bonus_includes_already_untapped_attackers() {
         }
         assert_eq!(game.calculated_power(nonattacker), Some(2));
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(source), Some(3));
         for id in [tapped, untapped, nonattacker] {
             assert_eq!(game.calculated_power(id), Some(2));

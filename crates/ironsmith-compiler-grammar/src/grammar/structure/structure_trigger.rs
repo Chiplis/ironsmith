@@ -35,6 +35,32 @@ fn parse_trigger_roll_result_predicate(
 /// right after a `named X` predicate tail followed by a short, verbless
 /// fragment and another comma is inside the card name ("Bruna, the Fading
 /// Light"), not the predicate/effect boundary.
+/// "if you control an Employee, a Performer, or a Robot, ..." (Done for the
+/// Day): a comma inside a serial list of controlled permanents is not the
+/// predicate/effect boundary. The fragment after the comma is another bare
+/// "a/an <noun>" item (optionally led by "or"/"and/or") that ends at a comma.
+fn comma_continues_controlled_permanent_list(
+    predicate_tokens: &[OwnedLexToken],
+    after_comma: &[OwnedLexToken],
+) -> bool {
+    let predicate_words = crate::lexer::token_word_refs(predicate_tokens);
+    if !matches!(
+        predicate_words.as_slice(),
+        ["you", "control", "a" | "an", ..]
+    ) {
+        return false;
+    }
+    let Some(next_comma) = after_comma.iter().position(|token| token.is_comma()) else {
+        return false;
+    };
+    let fragment = crate::lexer::token_word_refs(&after_comma[..next_comma]);
+    let item = match fragment.as_slice() {
+        ["or" | "and/or", rest @ ..] => rest,
+        rest => rest,
+    };
+    matches!(item, ["a" | "an", _] | ["a" | "an", _, _])
+}
+
 fn comma_continues_named_card_name(
     predicate_tokens: &[OwnedLexToken],
     after_comma: &[OwnedLexToken],
@@ -218,6 +244,10 @@ pub fn split_triggered_conditional_clause_lexed<'a>(
             continue;
         }
         if comma_continues_named_card_name(predicate_tokens, &after_if[comma_idx + 1..]) {
+            continue;
+        }
+        if comma_continues_controlled_permanent_list(predicate_tokens, &after_if[comma_idx + 1..])
+        {
             continue;
         }
         if predicate_candidate_contains_damage_action(predicate_tokens) {

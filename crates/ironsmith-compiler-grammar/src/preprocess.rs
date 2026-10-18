@@ -325,9 +325,42 @@ fn rewrite_escapes_with_quoted_ability_line(line: &str) -> Option<String> {
     Some(format!("As long as {subject} escaped, it has {rest}"))
 }
 
+/// "This creature escapes with two +1/+1 counters on it. When it enters this
+/// way, ..." (Pharika's Spawn), read on the authored text so it does not
+/// depend on the staged tokens: the escape entry replacement, then an ETB
+/// trigger whose intervening condition is that the permanent escaped.
+fn split_escapes_with_enters_this_way_line(line: &str) -> Option<Vec<String>> {
+    const WHEN: &str = ". when it enters this way, ";
+    let lower = line.to_ascii_lowercase();
+    if lower.len() != line.len() {
+        return None;
+    }
+    let escapes = lower.find(" escapes with ")?;
+    let when = lower.find(WHEN)?;
+    if when < escapes {
+        return None;
+    }
+    let subject = line[..escapes].trim();
+    if subject.is_empty() || subject.contains(['.', ',', '"']) {
+        return None;
+    }
+    let first = line[..when].trim();
+    let rest = line[when + WHEN.len()..].trim();
+    if rest.is_empty() {
+        return None;
+    }
+    Some(vec![
+        format!("{first}."),
+        format!("When {subject} enters, if it escaped, {rest}"),
+    ])
+}
+
 fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<String> {
     if let Some(rewritten) = rewrite_escapes_with_quoted_ability_line(line) {
         return vec![rewritten];
+    }
+    if let Some(lines) = split_escapes_with_enters_this_way_line(line) {
+        return lines;
     }
     // Separate the static tapped-entry ability from a following entry program.
     // Its pronoun names the same source, so retain the first sentence's subject.

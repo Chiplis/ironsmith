@@ -111,7 +111,7 @@ fn authenticate_face_up_targets(
             .copied()
             .filter(|id| {
                 game.object(*id)
-                    .is_some_and(|object| object.owner == owner && object.zone == Zone::Exile)
+                    .is_some_and(|object| object.owner == owner && (object.zone == Zone::Exile || game.object_requires_turn_face_up_before_action(*id)))
                     && game.is_face_down(*id)
             })
             .collect();
@@ -128,7 +128,7 @@ fn authenticate_face_up_targets(
             owner,
             ctx.source,
             &exiled,
-            "Turn selected exiled cards face up",
+            "Turn selected cards face up",
             false,
         ) else {
             return Ok(false);
@@ -732,5 +732,81 @@ mod replacement_program_boundary_tests {
             assert!(game.is_face_down(target), "successful hypothetical query must not commit the face");
             assert!(crate::decision::compute_actions_for_source(&game, alice, Some(target)).is_ok());
         }
+    }
+}
+
+#[cfg(test)]
+mod mandatory_action_face_up_tests {
+    use super::*;
+    use crate::ids::{CardId, ObjectId, PlayerId};
+
+    fn fixture(game: &mut GameState, zone: Zone) -> ObjectId {
+        let definition = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Action exposure fixture")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(5, 5)).build();
+        let object = game.create_object_from_definition(&definition, PlayerId::from_index(0), zone);
+        assert!(game.set_face_down(object));
+        game.register_turn_face_up_before_action(object);
+        object
+    }
+
+    #[test]
+    fn mandatory_exposure_completes_before_tap_and_publishes_both_events() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let object = fixture(&mut game, Zone::Battlefield);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(object, PlayerId::from_index(0), &mut dm);
+        crate::effects::permanents::TapEffect::with_spec(crate::target::ChooseSpec::Source)
+            .execute(&mut game, &mut ctx).unwrap();
+        assert!(!game.is_face_down(object));
+        assert!(game.is_tapped(object));
+        assert!(!game.object_requires_turn_face_up_before_action(object));
+        assert_eq!(game.calculated_power(object), Some(5));
+        let events = game.take_pending_trigger_events();
+        assert!(events.iter().any(|event| event.downcast::<crate::events::TurnedFaceUpEvent>().is_some()));
+        assert!(events.iter().any(|event| event.downcast::<crate::events::PermanentTappedEvent>().is_some()));
+    }
+
+    #[test]
+    fn combat_assignment_uses_the_exposed_power() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let object = fixture(&mut game, Zone::Battlefield);
+        let combat = crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: object,
+                target: crate::combat_state::AttackTarget::Player(PlayerId::from_index(1)),
+            }],
+            ..Default::default()
+        };
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        assert!(crate::game_loop::prepare_combat_damage_assigners(
+            &mut game, &combat, false, None, &mut dm).unwrap());
+        assert!(!game.is_face_down(object));
+        assert_eq!(game.calculated_power(object), Some(5));
+    }
+
+    #[test]
+    fn mandatory_exposure_follows_resolution_but_not_a_later_zone_instance() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let spell = fixture(&mut game, Zone::Stack);
+        let permanent = game.move_object(spell, Zone::Battlefield, crate::events::cause::EventCause::effect()).unwrap();
+        assert!(game.object_requires_turn_face_up_before_action(permanent));
+        let exiled = game.move_object(permanent, Zone::Exile, crate::events::cause::EventCause::effect()).unwrap();
+        assert!(game.set_face_down(exiled));
+        assert!(!game.object_requires_turn_face_up_before_action(exiled));
+    }
+
+    #[test]
+    fn damage_recipient_exposes_before_the_original_damage_continues() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let recipient = fixture(&mut game, Zone::Battlefield);
+        let source = fixture(&mut game, Zone::Battlefield);
+        let cause = crate::events::cause::EventCause::from_effect(source, PlayerId::from_index(0));
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game, source, crate::events::DamageTarget::Object(recipient), 3, false, cause,
+        ).unwrap();
+        assert!(!game.is_face_down(source));
+        assert!(!game.is_face_down(recipient));
+        assert_eq!(processed.assignments.iter().map(|assignment| assignment.amount).sum::<u32>(), 3);
     }
 }

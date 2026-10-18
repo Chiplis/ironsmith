@@ -90,8 +90,10 @@ impl EffectExecutor for MutateThenCapture {
                 crate::target::ChooseSpec::SpecificObject(self.target),
             ).execute(game, ctx),
             CapturePath::ZoneProposal => {
-                crate::events::processing::process_zone_change_full(game, self.target, Zone::Battlefield, Zone::Graveyard, ctx.cause.clone())?;
-                Ok(EffectOutcome::resolved())
+                let proposal = crate::events::processing::process_zone_change_full(
+                    game, self.target, Zone::Battlefield, Zone::Graveyard, ctx.cause.clone(),
+                )?;
+                panic!("incomplete numeric evidence unexpectedly produced a zone proposal: {proposal:?}")
             }
             CapturePath::Movement => {
                 // Legacy Option mutation is permitted to return absence only

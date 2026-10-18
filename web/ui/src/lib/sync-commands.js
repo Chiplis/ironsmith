@@ -84,8 +84,17 @@ export function priorityCommandForAction(action) {
   return command;
 }
 
+// Cancellation is the only pass-intent control permitted out of turn. The
+// signed actor must match the seat; this is checked again on every receiver.
+export function isOwnPassCancellation(command, actor) {
+  return command?.type === "cancel_priority_yield" && Number.isInteger(command.player)
+    && command.player >= 0 && command.player <= 255 && actor != null
+    && command.player === Number(actor);
+}
+
 export function isDecisionCommandCompatible(decision, command) {
   if (!command) return false;
+  if (command.type === "cancel_priority_yield") return isOwnPassCancellation(command, command.player);
   if (command.type === "cancel_decision") return true;
   if (command.type === "forfeit_player") {
     // Forfeiting a seat is independent of the current engine decision.
@@ -96,6 +105,10 @@ export function isDecisionCommandCompatible(decision, command) {
 
   switch (decision.kind) {
     case "priority":
+      if (command.type === "priority_yield") return ["stack", "phases"].includes(command.mode)
+        && Array.isArray(command.stops)
+        && (decision.actions || []).some(action => action.kind === "pass_priority"
+          && (!action.label || action.label === "Pass priority"));
       if (!command.action_ref && ["open_exiled_card_for_play", "cast_exiled_card_face_down"].includes(
         findPriorityActionForCommand(decision, command)?.action_ref?.kind)) return false;
       // A deferred menu is incomplete, not a list of every legal action.

@@ -1511,6 +1511,10 @@ impl Trigger {
         Self::new(PlayerGivesGiftTrigger::new(player))
     }
 
+    /// Create a trigger for mana produced by a matching source.
+    pub fn player_adds_mana_from_source(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::new(ManaFromSourceTrigger { player, filter })
+    }
     /// Create a "whenever [player] taps [filter] for mana" trigger.
     pub fn player_taps_for_mana(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::new(TapForManaTrigger::new(player, filter))
@@ -1551,6 +1555,14 @@ impl Trigger {
     }
 
     /// Create a "when this permanent becomes the target of a spell or ability" trigger.
+    pub fn state_based_objects(filter: ObjectFilter, display: String) -> Self {
+        Self::new(StateTrigger::matching_objects(filter, display))
+    }
+
+    pub fn stack_object_added() -> Self {
+        Self::new(spell_ability::StackObjectAddedTrigger)
+    }
+
     pub fn becomes_targeted() -> Self {
         Self::new(BecomesTargetedTrigger)
     }
@@ -2429,5 +2441,3 @@ mod native_trigger_model_boundary_tests {
         );
     }
 }
-
-pub(crate) use check::verify_intervening_if_at_resolution;

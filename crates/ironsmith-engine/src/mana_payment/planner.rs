@@ -777,6 +777,25 @@ fn execute_mana_payment_plan_inner_with_outputs(
             return Err(ManaPaymentFailure::ExecutionFailed);
         }
     }
+    for allocation in &current.allocations {
+        let source = match allocation.payment {
+            super::PlannedPipPayment::Convoke(source)
+            | super::PlannedPipPayment::Waterbend(source)
+            | super::PlannedPipPayment::Improvise(source) => source,
+            _ => continue,
+        };
+        match game.prepare_turn_face_up_before_action(source, decision_maker) {
+            Ok(true) => {},
+            Ok(false) => {
+                game.restore_execution_checkpoint(checkpoint, true);
+                return Ok(super::CompletedManaPayment::pending());
+            }
+            Err(error) => {
+                game.restore_execution_checkpoint(checkpoint, false);
+                return Err(ManaPaymentFailure::from_execution(crate::game_loop::GameLoopError::ExecutionFailed(error)));
+            }
+        }
+    }
     if !super::validate_waterbend_taps(game, request, &current.allocations) {
         *game = checkpoint;
         return Err(ManaPaymentFailure::ExecutionFailed);
@@ -1124,6 +1143,7 @@ fn finite_fixed_production_is_insufficient(
                 ..
             }
             | ManaProduction::NotedType {
+                use_noted_amount: false,
                 amount: Value::Fixed(amount),
                 ..
             } => Some((*amount).max(0) as u64),
@@ -4460,7 +4480,7 @@ mod tests {
     use crate::mana::ManaCost;
     use crate::types::CardType;
     use crate::zone::Zone;
-    use std::collections::hash_map::DefaultHasher;
+
 
     fn game() -> (GameState, PlayerId) {
         (
@@ -5856,7 +5876,8 @@ mod tests {
         // Exercise the lazy fallback directly, irrespective of assignment coverage.
         let mut search = CandidateSearch::new(game.clone(), &request, 10, true, true);
         search.preview_root = Some(game.clone());
-        let candidates = search.step(&request, &mut usize::MAX).unwrap().unwrap();
+        let mut remaining_steps = usize::MAX;
+        let candidates = search.step(&request, &mut remaining_steps).unwrap().unwrap();
         assert_eq!(
             search.visited, 4,
             "follow only the three useful activations"
@@ -5919,7 +5940,8 @@ mod tests {
             ]),
         );
         let mut search = CandidateSearch::new(game.clone(), &request, 10, true, true);
-        let candidates = search.step(&request, &mut usize::MAX).unwrap().unwrap();
+        let mut remaining_steps = usize::MAX;
+        let candidates = search.step(&request, &mut remaining_steps).unwrap().unwrap();
         assert_eq!(candidates[0].1.len(), 1);
         assert_eq!(candidates[0].1[0].source, bundle);
         let projected = plan_first_mana_payment(&game, &request).unwrap();
@@ -6177,7 +6199,7 @@ mod tests {
                                     .mana_pool
                                     .add(M::Green, pool_green);
                             }
-                            game.refresh_continuous_state();
+                            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                             let source = game.new_object_id();
                             let mut reachable = Vec::new();
                             // These activations do not depend on the bill being
@@ -6259,7 +6281,7 @@ mod tests {
                     ),
                 }),
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let mut request = ManaPaymentRequest::new(
                 alice,
                 spell,
@@ -6287,7 +6309,7 @@ mod tests {
             false,
             Some(false),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let source = game.new_object_id();
         let base = request(
             &game,
@@ -6323,7 +6345,7 @@ mod tests {
             false,
             Some(false),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(
             !game.continuous_effects_are_tap_sensitive(),
             "a board of plain lands has nothing that reads tapped state"
@@ -6368,7 +6390,7 @@ mod tests {
                         Some(false),
                     );
                 }
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("test continuous state refresh succeeds");
                 let source = game.new_object_id();
                 let request = request(&game, alice, source, cost.clone());
                 let all = collect_activation_choices(&game, &request);
@@ -6620,7 +6642,7 @@ mod tests {
                     vec![ManaSymbol::Blue],
                 ));
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let request = ManaPaymentRequest::new(
             alice,
             spell,

@@ -3888,7 +3888,7 @@ mod noncombat_source_anthem_tests {
                 if initially_both {
                     assert!(game.set_battle_protector(target, alice));
                 }
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 let mut dm = ChooseWalker;
                 let mut ctx = crate::effects::EffectContext::new(source, alice, &mut dm);
                 let attacker = if path == "primitive" {
@@ -3959,7 +3959,7 @@ mod noncombat_source_anthem_tests {
                 );
                 crate::effects::execute_effect(&mut game, &Effect::new(remove_battle), &mut ctx)
                     .unwrap();
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert!(game.current_has_card_type(target, CardType::Planeswalker));
                 assert!(!game.current_has_card_type(target, CardType::Battle));
                 let actual = &game.combat.as_ref().unwrap().attackers[0].target;
@@ -4164,7 +4164,7 @@ mod noncombat_source_anthem_tests {
         let carol = crate::PlayerId::from_index(2);
         game.turn.phase = crate::game_state::Phase::Combat;
         let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.current_characteristics(source).unwrap().power, Some(4));
         game.take_pending_trigger_events();
         let effect = Effect::new(crate::effects::EnterAttackingEffect::new(
@@ -4244,7 +4244,7 @@ mod noncombat_source_anthem_tests {
                     if tapped {
                         game.tap(source);
                     }
-                    game.refresh_continuous_state();
+                    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                     assert_eq!(
                         game.current_characteristics(source).unwrap().power,
                         Some(4),
@@ -4384,7 +4384,7 @@ mod noncombat_source_anthem_tests {
                 let enemy = game.create_object_from_definition(&enemy, bob, Zone::Battlefield);
                 game.remove_summoning_sickness(source);
                 game.remove_summoning_sickness(enemy);
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert_eq!(
                     game.current_characteristics(source).unwrap().power,
                     Some(4),
@@ -4502,7 +4502,7 @@ mod noncombat_source_anthem_tests {
                 _ => {}
             }
             game.combat = Some(combat);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let chars = game.current_characteristics(source).unwrap();
             assert_eq!(
                 chars.power,
@@ -4518,7 +4518,7 @@ mod noncombat_source_anthem_tests {
             let combat = game.combat.as_ref().unwrap();
             assert!(!crate::combat_state::is_attacking(combat, source));
             assert!(!crate::combat_state::is_blocking(combat, source));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(
                 game.current_characteristics(source).unwrap().power,
                 Some(4),
@@ -6192,7 +6192,7 @@ mod all_subtypes_scope_ladder_tests {
                         if zone == Zone::Stack {
                             game.push_to_stack(crate::game_state::StackEntry::new(id, controller));
                         }
-                        game.refresh_continuous_state();
+                        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                         let expected = is_creature
                             && match zone {
                                 Zone::Battlefield => controller == alice,
@@ -13967,13 +13967,6 @@ fn describe_cross_segment_filtered_exile_cast_window(
     let [exile_effect] = exile_segment.default_effects.as_slice() else {
         return None;
     };
-    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
-    let [exiled_tag] = exile.moved_tags.as_slice() else {
-        return None;
-    };
-    if exile.player != PlayerFilter::You || exile.face_down || !exile.accumulated_tags.is_empty() {
-        return None;
-    }
     // The free-cast rider is a separate effect, so the paid window has two
     // effects in the permission segment and the free window has three.
     let (matching_effect, permission_effect, free_cast_effect) =
@@ -13984,6 +13977,71 @@ fn describe_cross_segment_filtered_exile_cast_window(
             }
             _ => return None,
         };
+    let text = describe_filtered_exile_cast_parts(
+        exile_effect,
+        matching_effect,
+        permission_effect,
+        free_cast_effect,
+    )?;
+    Some((text, 2))
+}
+
+/// The same exile-then-narrowed-cast window when both sentences resolve in one
+/// segment (spells such as Meeting of the Five), followed by any other effects
+/// of that segment.
+fn describe_same_segment_filtered_exile_cast_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let segment = segments.get(start)?;
+    if segment.starts_new_source_line || !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [exile_effect, matching_effect, permission_effect, rest @ ..] =
+        segment.default_effects.as_slice()
+    else {
+        return None;
+    };
+    let (free_cast_effect, rest) = match rest.split_first() {
+        Some((first, tail))
+            if first
+                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+                .is_some() =>
+        {
+            (Some(first), tail)
+        }
+        _ => (None, rest),
+    };
+    let head = describe_filtered_exile_cast_parts(
+        exile_effect,
+        matching_effect,
+        permission_effect,
+        free_cast_effect,
+    )?;
+    if rest.is_empty() {
+        return Some((head, 1));
+    }
+    let tail = describe_effect_list(rest);
+    let tail = tail.trim().trim_end_matches('.');
+    if tail.is_empty() {
+        return Some((head, 1));
+    }
+    Some((format!("{head}. {}", capitalize_first(tail)), 1))
+}
+
+fn describe_filtered_exile_cast_parts(
+    exile_effect: &Effect,
+    matching_effect: &Effect,
+    permission_effect: &Effect,
+    free_cast_effect: Option<&Effect>,
+) -> Option<String> {
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let [exiled_tag] = exile.moved_tags.as_slice() else {
+        return None;
+    };
+    if exile.player != PlayerFilter::You || exile.face_down || !exile.accumulated_tags.is_empty() {
+        return None;
+    }
     let matching = matching_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let [constraint] = matching.filter.tagged_constraints.as_slice() else {
         return None;
@@ -14048,9 +14106,8 @@ fn describe_cross_segment_filtered_exile_cast_window(
     } else {
         ""
     };
-    Some((
-        format!("{exile_text}. You may cast {spells} from among them this turn{payment}"),
-        2,
+    Some(format!(
+        "{exile_text}. You may cast {spells} from among them this turn{payment}"
     ))
 }
 
@@ -22094,6 +22151,13 @@ fn describe_resolution_program_inner(
         }
         if let Some((rendered, consumed)) =
             describe_cross_segment_filtered_exile_cast_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_same_segment_filtered_exile_cast_window(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -33121,7 +33185,7 @@ mod audit_20260927_keyword_tests {
                     .unwrap();
                     id = game.battlefield[0];
                 }
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert_eq!(
                     game.current_has_static_ability_id(
                         id,
@@ -44665,7 +44729,7 @@ mod self_replacement_rendering_tests {
                 let target = game.create_object_from_definition(&subject, owner, Zone::Battlefield);
                 game.set_current_controller(target, alice)
                     .expect("finite controller fixture must refresh successfully");
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert_eq!(game.current_controller(target), Some(alice));
                 let stable = game.object(target).unwrap().stable_id;
                 let before_records = game.turn_store.turn_history.event_records.len();

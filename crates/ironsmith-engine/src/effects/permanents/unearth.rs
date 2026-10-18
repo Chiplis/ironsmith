@@ -6,7 +6,9 @@ use crate::effects::zones::MoveToZoneEffect;
 use crate::effects::{
     ApplyContinuousEffect, ApplyReplacementEffect, EffectExecutor, ScheduleDelayedTriggerEffect,
 };
-use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::effects::{ExecutionContext, ExecutionError, };
+#[cfg(test)]
+use crate::effects::execute_effect;
 use crate::events::zones::matchers::WouldLeaveBattlefieldMatcher;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};

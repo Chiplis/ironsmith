@@ -12,7 +12,7 @@ use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType, GameState,  PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -66,49 +66,6 @@ fn basic(name: &str, kind: CardType) -> CardDefinition {
         b.build()
     }
 }
-fn cast(
-    g: &mut GameState,
-    def: &CardDefinition,
-    actor: PlayerId,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-) -> Result<u32, String> {
-    eprintln!("AUDIT_STAGE cast {}", def.name());
-    g.turn.priority_player = Some(actor);
-    let id = g.create_object_from_definition(def, actor, Zone::Hand);
-    let action = compute_legal_actions(g, actor).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
-        .ok_or_else(|| format!("{} normal cast unavailable", def.name()))?;
-    let before = g.player(actor).unwrap().mana_pool.total();
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    dm.trace.push(json!({"stage":"legal_cast","card":def.name(),"actor":actor.index(),"action":format!("{action:?}")}));
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        q,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        if state.pending_cast.is_none()
-            && g.stack.iter().any(|e| {
-                !e.is_ability && g.object(e.object_id).is_some_and(|o| o.name == def.name())
-            })
-        {
-            let paid = before - g.player(actor).unwrap().mana_pool.total();
-            dm.trace.push(json!({"stage":"cast_complete","card":def.name(),"paid":paid,"stack":format!("{:?}",g.stack)}));
-            return Ok(paid);
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            return Err(format!("cast stalled:{progress:?}"));
-        };
-        progress = apply_decision_context_with_dm(g, q, &mut state, &ctx, dm)
-            .map_err(|e| e.to_string())?;
-    }
-    Err("cast announcement bound".into())
-}
 fn resolve_one(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(), String> {
     let mut state = PriorityLoopState::new(g.players_in_game());
     state.reset_for_new_priority_window(g);
@@ -150,8 +107,8 @@ fn resolve_all(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Res
     }
     Err("bounded resolution did not empty stack".into())
 }
-use ironsmith::combat_state::{AttackTarget, CombatState};
-use ironsmith::decision::AttackerDeclaration;
+
+
 fn announce(
     g: &mut GameState,
     q: &mut TriggerQueue,
@@ -184,37 +141,10 @@ fn announce(
     }
     Err("activation bound".into())
 }
-fn start_next_turn(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-) -> Result<(), String> {
-    g.next_turn();
-    ironsmith::turn::execute_untap_step(g);
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    let events = ironsmith::turn::execute_draw_step_with(g, dm).unwrap();
-    for event in events {
-        for t in ironsmith::triggers::check_triggers(g, &event) {
-            q.add(t);
-        }
-    }
-    resolve_all(g, q, dm)?;
-    ironsmith::turn::advance_phase(g).map_err(|e| e.to_string())?;
-    g.turn.priority_player = Some(g.turn.active_player);
-    dm.trace.push(json!({"stage":"next_turn_main","active":g.turn.active_player.index(),"turn":g.turn.turn_number,"phase":format!("{:?}",g.turn.phase)}));
-    Ok(())
-}
-fn next_own_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(), String> {
-    for _ in 0..g.players_in_game() {
-        start_next_turn(g, q, dm)?;
-    }
-    Ok(())
-}
 
-use ironsmith::Supertype;
 
-use ironsmith::Subtype;
+
+
 fn mana(g: &mut GameState) {
     for sym in [
         ManaSymbol::White,

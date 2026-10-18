@@ -479,6 +479,14 @@ pub fn parse_can_attack_no_defender_subject_tokens(
 }
 
 fn target_indicator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    let mut event_count = input.clone();
+    if (opt(primitives::phrase(&["up", "to"])),
+        primitives::phrase(&["that", "many", "target"]))
+        .parse_next(&mut event_count).is_ok()
+    {
+        *input = event_count;
+        return Ok(());
+    }
     let mut any = input.clone();
     if primitives::phrase(&["any", "target"]).parse_next(&mut any).is_ok() {
         *input = any;

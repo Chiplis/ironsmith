@@ -12,7 +12,6 @@ use crate::tag::CompilerReferenceTag;
 use crate::target::{
     ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SourceReferenceSurface,
 };
-use crate::zone::Zone;
 
 use super::super::super::TargetAst;
 use super::{

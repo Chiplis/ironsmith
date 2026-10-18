@@ -40,7 +40,7 @@ fn relative_opponent_choice_selects_players_with_more_matching_permanents() {
                     game.create_object_from_card(&permanent, *player, Zone::Hand);
                 }
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(
                 crate::game_loop::extract_target_requirements_from_program_with_modes(
                     &game,

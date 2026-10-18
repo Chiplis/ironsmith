@@ -51,13 +51,13 @@ fn target_dependent_flash_requires_an_available_matching_target() {
         .unwrap()
         .abilities_mut()
         .push(Ability::static_ability(StaticAbility::shroud()));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !can_cast(&game),
         "an untargetable controlled permanent cannot enable flash"
     );
     game.object_mut(own_target).unwrap().abilities_mut().pop();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     attempt_targeted_cast(&game, spell, opponent_target, false);
     attempt_targeted_cast(&game, spell, own_target, true);
     game.turn.active_player = alice;

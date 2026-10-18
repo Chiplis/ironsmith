@@ -268,7 +268,7 @@ fn morph_uses_current_controller_hand_and_rejects_wrong_zone_color_and_tokens() 
     for route in ROUTES { for name in NAMES {
         let mut game = setup(); let mut choices = Choices::default();
         let source = cast(&mut game, &definition(name, route), BOB, true, &mut choices);
-        game.set_current_controller(source, ALICE); main(&mut game, ALICE);
+        game.set_current_controller(source, ALICE).expect("fixture controller change succeeds"); main(&mut game, ALICE);
         card(&mut game, BOB, Zone::Hand, "Original owner's match", color(name));
         card(&mut game, ALICE, Zone::Graveyard, "Wrong zone match", color(name));
         card(&mut game, ALICE, Zone::Hand, "Wrong color", ColorSet::COLORLESS);
@@ -324,7 +324,7 @@ fn horde_ambusher_blocks_trigger_uses_actual_controller_and_is_absent_face_down(
     for route in ROUTES { for face_down in [false, true] {
         let mut game = setup(); let mut choices = Choices::default();
         let source = cast(&mut game, &definition("Horde Ambusher", route), BOB, face_down, &mut choices);
-        game.set_current_controller(source, ALICE);
+        game.set_current_controller(source, ALICE).expect("fixture controller change succeeds");
         let attacker = card(&mut game, BOB, Zone::Battlefield, "Attacker", ColorSet::COLORLESS);
         game.remove_summoning_sickness(attacker);
         game.turn.active_player = BOB; game.turn.phase = ironsmith::Phase::Combat;

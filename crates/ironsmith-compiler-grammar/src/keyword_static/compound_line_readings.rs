@@ -50,6 +50,14 @@ pub(super) const REGISTRY: RuleId = RuleId::new("static-compound-line-registry")
 /// The readings, in the order they were ranked.
 const READINGS: &[Reading] = &[
     Reading {
+        id: RuleId::new("as-long-as-attached-otherwise-source-keyword-line"),
+        head: HeadDiscriminator::Any,
+        admits: |_| true,
+        read: |input| {
+            input.outcome(parse_as_long_as_attached_otherwise_source_keyword_line(input.tokens))
+        },
+    },
+    Reading {
         id: RuleId::new("graveyard-cast-linked-exile-replacement-line"),
         head: HeadDiscriminator::Any,
         admits: |_| true,

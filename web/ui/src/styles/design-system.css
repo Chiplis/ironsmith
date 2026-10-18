@@ -7917,6 +7917,26 @@ html[data-hand-pointer-suspended="true"] * {
     margin-right: 0;
     backdrop-filter: none;
   }
+
+  /* Give duels a centred, evenly spaced tracker between the two fields. */
+  .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
+    > .table-phase-divider > .topbar-phase-shell {
+    width: calc(100% - 2 * clamp(130px, 10vw, 180px)) !important;
+    margin-inline: auto;
+    padding-block: 12px;
+  }
+
+  .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
+    > .table-phase-divider .phase-track-group {
+    gap: 8px;
+  }
+
+  .table-shell[data-focused-hud="true"]:not([data-multiplayer-board="true"])
+    > .table-phase-divider .phase-track-stop-button {
+    height: 44px;
+    min-height: 44px;
+    gap: 6px;
+  }
 }
 
 /* Keep the single opponent's Deck label inside the board. Multiplayer retains

@@ -20,7 +20,7 @@ fn unblockable_base_stats_preserves_both_effects_on_the_chosen_creature() {
         let mut ctx = crate::effects::EffectContext::new_default(source, alice).with_targets(targets);
         ctx.snapshot_targets(&game);
         for effect in &trigger.effects { crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|error| panic!("chosen={choose_target}: {error:?}; {effect:#?}")); }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(selected), Some(if choose_target { 1 } else { 4 }));
         assert_eq!(game.calculated_toughness(selected), Some(if choose_target { 1 } else { 5 }));
         assert_eq!(game.can_be_blocked(selected), !choose_target);
@@ -28,7 +28,7 @@ fn unblockable_base_stats_preserves_both_effects_on_the_chosen_creature() {
         assert!(game.can_be_blocked(other));
         game.effect_store.continuous_effects.cleanup_end_of_turn();
         game.cleanup_restrictions_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         game.update_cant_effects();
         assert_eq!(game.calculated_power(selected), Some(4));
         assert_eq!(game.calculated_toughness(selected), Some(5));

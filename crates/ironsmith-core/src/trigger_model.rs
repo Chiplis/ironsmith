@@ -810,6 +810,14 @@ pub enum TriggerKind {
     /// (CR 714.2d): a chapter ability carrying the greatest chapter number of
     /// a matching source triggers. Appended to preserve serialized ordinals.
     FinalChapterAbilityTriggers { filter: ObjectFilter },
+    /// Any completed spell/ability stack insertion, including copies.
+    StackObjectAdded,
+    /// A state condition evaluated separately for each matching object.
+    StateBasedObjects { filter: ObjectFilter, display: String },
+    PlayerAddsManaFromSource {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+    },
 }
 
 /// The player mentioned as gaining or losing control is distinct from the
@@ -1342,6 +1350,14 @@ impl Trigger {
     pub fn turned_face_up(filter: ObjectFilter) -> Self {
         Self::typed("turned_face_up", TriggerKind::TurnedFaceUp { filter })
     }
+    pub fn state_based_objects(filter: ObjectFilter, display: String) -> Self {
+        Self::typed(display.clone(), TriggerKind::StateBasedObjects { filter, display })
+    }
+
+    pub fn stack_object_added() -> Self {
+        Self::typed("stack_object_added", TriggerKind::StackObjectAdded)
+    }
+
     pub fn becomes_targeted() -> Self {
         Self::typed("becomes_targeted", TriggerKind::BecomesTargeted)
     }
@@ -1750,6 +1766,9 @@ impl Trigger {
                 source_controller_shuffles,
             },
         )
+    }
+    pub fn player_adds_mana_from_source(player: PlayerFilter, filter: ObjectFilter) -> Self {
+        Self::typed("player_adds_mana_from_source", TriggerKind::PlayerAddsManaFromSource { player, filter })
     }
     pub fn player_taps_for_mana(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::typed(

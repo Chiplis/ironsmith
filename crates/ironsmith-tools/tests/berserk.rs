@@ -105,7 +105,7 @@ fn berserk(attacks: bool) -> (Option<i32>, bool, Zone) {
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let power = game.calculated_power(creature);
     let trample = game.object_has_static_ability_id(creature, StaticAbilityId::Trample);
     if attacks {

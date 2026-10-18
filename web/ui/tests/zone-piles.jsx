@@ -33,7 +33,7 @@ function Fixture() {
   const lookSelection = new URLSearchParams(location.search).has("look-selection");
   const state = {players:[player], perspective:0,decision:targeting?{kind:"targets",player:0}:{kind:"priority",player:0}};
   if (lookSelection) {
-    state.viewed_cards = { cards: [{id:41,name:"Island"}, {id:42,name:"Duress"}] };
+    state.viewed_cards = { subject:0, zone:"library", cards: [{id:41,name:"Island",zone:"library",position:0}, {id:42,name:"Duress",zone:"library",position:1}] };
     state.decision = {kind:"select_objects",player:0,candidates:[{id:41,legal:false},{id:42,legal:true}]};
   }
   if (optionHover) state.decision = {kind:"select_options",player:0,options:[{index:0,object_id:19},{index:1,object_id:31}]};

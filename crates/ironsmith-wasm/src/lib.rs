@@ -39,7 +39,7 @@ use ironsmith::decisions::context::{
 use ironsmith::game_loop::{
     ActivationStage, CastStage, PendingPriorityContinuation, PriorityActionPerfMetrics,
     PriorityAdvancePerfMetrics, PriorityLoopState, PriorityResponse, advance_priority_with_dm,
-    apply_decision_context_with_dm, apply_priority_response_with_dm, drain_pending_trigger_events,
+    apply_decision_context_with_dm, apply_priority_response_with_dm,
     last_priority_action_perf, last_priority_advance_perf,
 };
 use ironsmith::game_state::{GameState, HiddenInfoOperation, StackEntry, Target};
@@ -3937,6 +3937,11 @@ struct CounterAllocation {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum UiCommand {
+    CancelPriorityYield { player: u8 },
+    PriorityYield {
+        mode: wasm_game_impl::PassMode,
+        stops: Vec<String>,
+    },
     PriorityAction {
         #[serde(default)]
         action_index: Option<usize>,
@@ -4253,6 +4258,8 @@ enum ReplayOutcome {
 
 fn ui_command_kind(command: &UiCommand) -> &'static str {
     match command {
+        UiCommand::CancelPriorityYield { .. } => "cancel_priority_yield",
+        UiCommand::PriorityYield { .. } => "priority_yield",
         UiCommand::PriorityAction { .. } => "priority_action",
         UiCommand::SelectTargets { .. } => "select_targets",
         UiCommand::SelectOptions { .. } => "select_options",
@@ -4791,6 +4798,7 @@ struct GrandMeleeHostLane {
 
 #[wasm_bindgen]
 pub struct WasmGame {
+    pass_intents: std::collections::BTreeMap<u8, wasm_game_impl::PassIntent>,
     /// Internal dispatch output policy; never persisted in a gameplay savepoint.
     previewing_crypto_requirements: bool,
     runtime_identity_origin_available: bool,

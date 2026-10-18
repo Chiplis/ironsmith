@@ -1472,6 +1472,9 @@ pub(super) fn matches_subject(
             return false;
         }
     }
+    if let Some(budget) = &filter.mana_cost_payable_with
+        && subject.mana_cost(game).is_none_or(|cost| !budget.can_pay(cost))
+    { return false; }
     if let Some(required_cost) = &filter.exact_mana_cost
         && subject.mana_cost(game) != Some(required_cost)
     {

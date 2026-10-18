@@ -225,6 +225,32 @@ fn wrap_destroy_with_delayed_timing(
 }
 
 fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
+    // "destroy all other permanents with that name" (Eye of Singularity):
+    // "that name" is the antecedent object's name, and "other" excludes that
+    // same antecedent rather than the ability's source.
+    {
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let words = crate::lexer::token_word_refs(trimmed);
+        if words.len() > 3 && words.ends_with(&["with", "that", "name"]) {
+            let view = crate::lexer::TokenWordView::new(trimmed);
+            if let Some(base_end) = view.map_word_to_token_start(words.len() - 3) {
+                let mut filter = parse_object_filter(&trimmed[..base_end], false)?;
+                let it = crate::tag::CompilerReferenceTag::It.bind();
+                if filter.other {
+                    filter.other = false;
+                    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                        tag: it.clone().into(),
+                        relation: crate::target::TaggedOpbjectRelation::IsNotTaggedObject,
+                    });
+                }
+                filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+                    tag: it.into(),
+                    relation: crate::target::TaggedOpbjectRelation::SameNameAsTagged,
+                });
+                return Ok(filter);
+            }
+        }
+    }
     if let Some(shape) = shapes::parse_destroy_counter_constraint_shape(tokens) {
         let tail_words = crate::lexer::token_word_refs(shape.constraint_tokens);
         if let Some((counter_constraint, consumed)) =

@@ -84,7 +84,7 @@ fn shared_pump_targets_keep_both_sides_and_one_shared_count() {
             Some(if include_opponent { 14 } else { 20 })
         );
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(own), Some(2));
         assert_eq!(game.calculated_toughness(opposing), Some(20));
     }

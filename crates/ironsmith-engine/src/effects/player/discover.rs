@@ -16,6 +16,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::tag::TagKey;
+#[cfg(test)]
 use crate::zone::Zone;
 pub use ironsmith_core::DiscoverEffect;
 

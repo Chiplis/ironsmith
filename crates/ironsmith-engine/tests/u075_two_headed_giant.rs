@@ -225,7 +225,7 @@ fn u075_life_restrictions_on_one_head_protect_the_whole_team() {
         ))
         .build();
     game.create_object_from_definition(&lock, seats[0], Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
 
     assert!(!game.can_gain_life(seats[0]));
     assert!(!game.can_gain_life(seats[1]));
@@ -317,7 +317,7 @@ fn u075_cant_win_cant_lose_and_concession_apply_to_the_complete_team() {
         ))
         .build();
     game.create_object_from_definition(&angel, seats[0], Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
 
     assert!(!game.can_lose_game(seats[0]));
     assert!(!game.can_lose_game(seats[1]));

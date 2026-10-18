@@ -93,6 +93,8 @@ pub(super) mod reveal_put_rest_do_same;
 mod greatest_exchange;
 #[path = "pair_procedure/next_cast_procedure_body.rs"]
 mod next_cast_procedure_body;
+#[path = "pair_procedure/flip_result_reflexives.rs"]
+mod flip_result_reflexives;
 #[path = "pair_procedure/mutual_turn_control.rs"]
 mod mutual_turn_control;
 #[path = "pair_procedure/copy_exiled_pile_cast.rs"]
@@ -206,6 +208,26 @@ struct Shape {
 /// document's, as the registry kept the rule consuming the longest program,
 /// and equal readings are one; two readings that disagree are an ambiguity.
 const PAIR_SHAPES: &[Shape] = &[
+    Shape {
+        id: RuleId::new("resolving-spell-exile-instead-then-gains-suspend"),
+        head: HeadDiscriminator::words(&["exile"]),
+        consumed: 2,
+        read: |sentences, index| {
+            statements(sentences, index, read_resolving_spell_exile_then_gains_suspend(sentences, index))
+        },
+    },
+    Shape {
+        id: RuleId::new("play-permission-linked-cast-trigger"),
+        head: HeadDiscriminator::words(&["until"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, variable_mana_payments::read_play_permission_cast_rider(sentences, index)),
+    },
+    Shape {
+        id: RuleId::new("optional-payment-with-composite-failure-consequence"),
+        head: HeadDiscriminator::words(&["that"]),
+        consumed: 2,
+        read: |sentences, index| statements(sentences, index, variable_mana_payments::read_failure_consequence(sentences, index)),
+    },
     Shape {
         id: RuleId::new("random-pile-blocker-declaration"),
         head: HeadDiscriminator::words(&["this"]),
@@ -1112,6 +1134,30 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("if-you-do-flip-result-reflexives-4"),
+        head: HeadDiscriminator::words(&["if"]),
+        consumed: 4,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                flip_result_reflexives::read(sentences, sentence_idx, 4),
+            )
+        },
+    },
+    Shape {
+        id: RuleId::new("if-you-do-flip-result-reflexives-3"),
+        head: HeadDiscriminator::words(&["if"]),
+        consumed: 3,
+        read: |sentences, sentence_idx| {
+            statements(
+                sentences,
+                sentence_idx,
+                flip_result_reflexives::read(sentences, sentence_idx, 3),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("next-cast-delayed-procedure-body-3"),
         head: HeadDiscriminator::words(&["when"]),
         consumed: 3,
@@ -1567,6 +1613,46 @@ fn reading(
 }
 
 /// The outcome of a shape parser that reads the statements themselves.
+/// "exile that card with three time counters on it instead of putting it
+/// into your graveyard as it resolves. Then if the exiled card doesn't have
+/// suspend, it gains suspend." (Gandalf of the Secret Fire): a replacement of
+/// the triggering spell's resolution destination (CR 608.2n, 614.1a) whose
+/// suspend grant applies to the exiled card only once the replacement has
+/// exiled it. Claimed as one fixed pair so neither sentence is read alone
+/// (an immediate exile that drops the "instead ... as it resolves" tail).
+fn read_resolving_spell_exile_then_gains_suspend(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let (Some(exile), Some(suspend)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    if !crate::grammar::effects::is_resolving_spell_exile_instead_shape(exile.lowered())
+        || !crate::grammar::effects::is_then_if_exiled_card_lacks_suspend_it_gains_suspend_shape(
+            suspend.lowered(),
+        )
+    {
+        return Ok(None);
+    }
+    let counters = crate::grammar::effects::dispatch_entry_shapes::parse_future_zone_counter_tokens(
+        exile.lowered(),
+    )
+    .map(|shape| vec![(shape.counter_type, shape.count)])
+    .unwrap_or_default();
+    Ok(Some(vec![
+        EffectAst::subject_verb_register_zone_replacement_with_counters_and_linked_exile_follow_up(
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            crate::cards::builders::ZoneReplacementDurationAst::OneShot,
+            counters,
+            ironsmith_core::LinkedExileFollowUp::GainSuspendIfMissing,
+        ),
+    ]))
+}
+
 fn statements(
     sentences: &[SentenceInput],
     sentence_idx: usize,

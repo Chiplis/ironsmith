@@ -71,4 +71,7 @@ pub enum ReplacedEventSpec {
     /// set life total, CR 119.3, 119.5) that would leave that player's life
     /// total at 0 or less. Appended to preserve published variant ordinals.
     LifeReducedToZeroOrLess { player: PlayerFilter },
+    /// The life-loss action of an accepted life payment, never ordinary
+    /// damage or life loss. The capacity guard is evaluated before replacement.
+    LifePayment { player: PlayerFilter, require_library_capacity: bool },
 }

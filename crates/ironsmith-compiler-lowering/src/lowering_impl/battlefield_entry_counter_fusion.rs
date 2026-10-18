@@ -337,6 +337,32 @@ fn producer_output_consumes_tag(
         && entry_producer_body_consumes_tag(effect, consumed_tag)
 }
 
+/// "... create a token that's a copy of it at the beginning of the next end
+/// step. The token enters with half that many +1/+1 counters on it" (Ochre
+/// Jelly): an entry-time ("enters with") follow-up whose pronoun still names
+/// the copied object can only mean the token copy, the one object that
+/// enters. Ordinary later counters on the copied object stay separate.
+fn token_copy_output_copies_tag(effect: &Effect, output_tag: &TagKey, copied_tag: &TagKey) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if &tagged.tag == output_tag
+            && let Some(copy) = tagged.effect.downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        {
+            return matches!(copy.target.base(), ChooseSpec::Tagged(target) if target == copied_tag);
+        }
+        return token_copy_output_copies_tag(&tagged.effect, output_tag, copied_tag);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return token_copy_output_copies_tag(&with_id.effect, output_tag, copied_tag);
+    }
+    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        return schedule
+            .effects
+            .iter()
+            .any(|nested| token_copy_output_copies_tag(nested, output_tag, copied_tag));
+    }
+    false
+}
+
 fn normalize_followup_tags(
     producer: &Effect,
     producer_tag: &TagKey,
@@ -347,7 +373,11 @@ fn normalize_followup_tags(
         .map(|followup| {
             if followup.tag() == producer_tag {
                 Some(followup)
-            } else if producer_output_consumes_tag(producer, producer_tag, followup.tag()) {
+            } else if producer_output_consumes_tag(producer, producer_tag, followup.tag())
+                || (followup.amount().has_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+                ) && token_copy_output_copies_tag(producer, producer_tag, followup.tag()))
+            {
                 Some(followup.with_tag(producer_tag.clone()))
             } else {
                 None

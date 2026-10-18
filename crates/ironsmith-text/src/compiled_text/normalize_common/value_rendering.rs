@@ -2629,6 +2629,14 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str() == "__chosen_objects__" {
                 return "the chosen cards".to_string();
             }
+            if tag.as_str() == ironsmith_core::tag::SURVEIL_PUT_INTO_GRAVEYARD_TAG {
+                return "that card".to_string();
+            }
+            // "where X is the mana value of a commander you own ..." chooses
+            // the commander before the X-consuming actions.
+            if tag.as_str() == "__where_x_commander_mana_value" {
+                return "the chosen commander".to_string();
+            }
             if tag.as_str() == "rest" {
                 return "the rest".to_string();
             }
@@ -4990,6 +4998,8 @@ pub(crate) fn describe_effect_metric_value(
         crate::effect::EffectMetric::DistinctDieResults => {
             "the number of different results".to_string()
         }
+        crate::effect::EffectMetric::EvenDieResults => "the number of even results".to_string(),
+        crate::effect::EffectMetric::DieResultsEqual(face) => format!("the number of results equal to {face}"),
     };
     match offset {
         Some(0) | None => base,
@@ -5485,6 +5495,16 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
             let mut subject_filter = filter.clone();
             let owner = subject_filter.owner.take();
             subject_filter.zone = None;
+            if *from == Zone::Battlefield && *to == Zone::Graveyard {
+                let subject = describe_for_each_filter(&subject_filter);
+                let graveyard = owner.map_or_else(
+                    || "a graveyard".to_string(),
+                    |owner| format!("{} graveyard", describe_possessive_player_filter(&owner)),
+                );
+                return Some(format!(
+                    "{subject} put into {graveyard} from the battlefield this turn"
+                ));
+            }
             let zone_phrase = |zone: &Zone| -> Option<String> {
                 Some(match zone {
                     Zone::Battlefield => "the battlefield".to_string(),
@@ -5645,25 +5665,6 @@ pub(crate) fn describe_turn_history_for_each_basis(value: &Value) -> Option<Stri
             ) =>
         {
             Some(describe_prior_effect_metric_basis(query, false))
-        }
-        // "for each creature put into your graveyard from the battlefield
-        // this turn" (Fresh Meat).
-        Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
-            filter,
-            from: Some(Zone::Battlefield),
-            to: Some(Zone::Graveyard),
-        }) => {
-            let mut subject_filter = filter.clone();
-            let owner = subject_filter.owner.take();
-            subject_filter.zone = None;
-            let subject = describe_for_each_filter(&subject_filter);
-            let graveyard = owner.map_or_else(
-                || "a graveyard".to_string(),
-                |owner| format!("{} graveyard", describe_possessive_player_filter(&owner)),
-            );
-            Some(format!(
-                "{subject} put into {graveyard} from the battlefield this turn"
-            ))
         }
         Value::AttractionsVisitedThisTurn(player) => Some(match player {
             PlayerFilter::You => "Attraction you've visited this turn".to_string(),
@@ -6612,6 +6613,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 ironsmith_core::ChoiceAggregateMetric::Toughness => "toughness",
                 ironsmith_core::ChoiceAggregateMetric::ManaValue => "mana value",
                 ironsmith_core::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                ironsmith_core::ChoiceAggregateMetric::ManaSymbolsOfColor(color) => {
+                    return format!(
+                        "the total number of {} mana symbols in the mana costs of the objects this spell targets",
+                        color.name()
+                    );
+                }
             };
             format!("the total {property} of the objects this spell targets")
         }
@@ -6714,6 +6721,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Opponent => "the number of opponents".to_string(),
             PlayerFilter::NotYou => "the number of players other than you".to_string(),
             PlayerFilter::You => "the number of you".to_string(),
+            // Per-vote player relations set when players finish voting.
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "voted_against_you" => {
+                "the number of opponents who voted for a choice you didn't vote for".to_string()
+            }
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "voted_with_you" => {
+                "the number of opponents who voted for a choice you voted for".to_string()
+            }
             _ => format!("the number of {}", describe_player_filter(filter)),
         },
         Value::CountPlayersWithCardsInGraveyardAtLeast(filter, minimum) => {
@@ -6965,6 +6979,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_possessive_choose_spec(spec)
             ),
         },
+        Value::StickerCharacteristicTotal { filter, toughness } => format!(
+            "the total {} of all stickers on {}", if *toughness { "toughness" } else { "power" },
+            describe_count_filter_value_subject(filter)),
         Value::StickersOnSource { action, surface } => {
             let source = surface
                 .as_ref()
@@ -7445,6 +7462,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the amount of life {} {} {:+}", if *for_controller { "you" } else { "that player" },
             if *gained { "gained" } else { "lost" }, offset,
         ),
+        Value::EventValue(EventValueSpec::ManaSpentOnKeyword { colors }) => {
+            let symbols = [(crate::color::Color::White, "{W}"), (crate::color::Color::Blue, "{U}"),
+                (crate::color::Color::Black, "{B}"), (crate::color::Color::Red, "{R}"),
+                (crate::color::Color::Green, "{G}")].into_iter()
+                .filter(|(color, _)| colors.contains(*color)).map(|(_, symbol)| symbol)
+                .collect::<Vec<_>>().join(" or ");
+            format!("the amount of {symbols} spent this way")
+        }
+        Value::EventValueOffset(EventValueSpec::ManaSpentOnKeyword { colors }, offset) =>
+            format!("{} {offset:+}", describe_value(&Value::EventValue(
+                EventValueSpec::ManaSpentOnKeyword { colors: *colors }))),
         Value::EventValue(EventValueSpec::LoyaltyCountersRemovedToActivate) => {
             "the number of loyalty counters removed to activate it".to_string()
         }
@@ -7608,4 +7636,25 @@ pub(crate) fn describe_spells_cast_this_turn_phrase(
         other => format!("cast this turn by {}", describe_player_filter(other)),
     };
     format!("{base} {cast_surface}")
+}
+
+
+#[cfg(test)]
+mod moved_zone_for_each_rendering_tests {
+    use super::*;
+
+    #[test]
+    fn graveyard_move_basis_keeps_the_destination_owner() {
+        for (owner, expected) in [
+            (PlayerFilter::You, "creature put into your graveyard from the battlefield this turn"),
+            (PlayerFilter::Opponent, "creature put into an opponent's graveyard from the battlefield this turn"),
+        ] {
+            let mut filter = ObjectFilter::creature();
+            filter.owner = Some(owner);
+            let value = Value::TurnHistoryCount(TurnHistoryCount::MovedZones {
+                filter, from: Some(Zone::Battlefield), to: Some(Zone::Graveyard),
+            }).with_surface_hint(ValueSurfaceHint::ForEach);
+            assert_eq!(describe_turn_history_for_each_basis(&value).as_deref(), Some(expected));
+        }
+    }
 }

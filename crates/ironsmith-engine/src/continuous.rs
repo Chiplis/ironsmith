@@ -2493,7 +2493,7 @@ impl Drop for CharacteristicCalculationGuard<'_> {
 /// Everything a nested regeneration of the continuous effects can observe
 /// besides the (immutably borrowed) game: the layer views of calculations in
 /// progress and the condition/duration re-entry guards.
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct NestedRegenerationContext {
     game: usize,
     effects_revision: u64,
@@ -2609,6 +2609,44 @@ pub(crate) fn characteristics_in_context(
         ));
     });
     chars
+}
+
+/// `characteristics_in_context` for a permanent. One board pass answers every
+/// permanent in it, so the pass's results are all memoized: a count over the
+/// battlefield ("another Dwarf you control") costs one pass, not one each.
+pub(crate) fn board_characteristics_in_context(
+    context: NestedRegenerationContext,
+    object_id: ObjectId,
+    calculate_board: impl FnOnce() -> HashMap<ObjectId, CalculatedCharacteristics>,
+) -> Option<Arc<CalculatedCharacteristics>> {
+    let cached = find_nested_result(&context, |result| match result {
+        NestedResult::Characteristics(id, chars, provisional) if *id == object_id => {
+            Some((chars.clone(), *provisional))
+        }
+        _ => None,
+    });
+    if let Some(chars) = cached {
+        return chars;
+    }
+    let before = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get);
+    let board = calculate_board();
+    let provisional = CONDITION_REENTRY_FALLBACKS.with(std::cell::Cell::get) != before;
+    let requested = board.get(&object_id).cloned().map(Arc::new);
+    NESTED_EFFECT_REGENERATIONS.with(|memo| {
+        let mut memo = memo.borrow_mut();
+        for (id, chars) in board {
+            let chars = if id == object_id {
+                requested.clone()
+            } else {
+                Some(Arc::new(chars))
+            };
+            memo.push((
+                context.clone(),
+                NestedResult::Characteristics(id, chars, provisional),
+            ));
+        }
+    });
+    requested
 }
 
 /// A hit re-signals any provisional condition fallback its result depended
@@ -3176,6 +3214,25 @@ pub fn calculate_characteristics_with_effects(
     }
     let object = objects.get(&object_id)?;
 
+    // A permanent's characteristics come from one pass over the board, the
+    // same pass a clean refresh caches. Every permanent in it is an in-progress
+    // calculation, so a condition or filter read made mid-pass ("as long as you
+    // control another Dwarf") sees that permanent's current layer view. The
+    // one-object pass instead answered each such read with a full pass of its
+    // own, whose dependency baseline re-ran every permanent and re-read the same
+    // condition: a 10-permanent board took thousands of passes per action.
+    if object.zone == Zone::Battlefield && battlefield.len() > 1 {
+        return calculate_characteristics_layer_batch_with_effects(
+            &[object_id],
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            game,
+        )
+        .remove(&object_id);
+    }
+
     Some(calculate_with_layers_direct_internal(
         object,
         objects,
@@ -3314,10 +3371,17 @@ fn calculate_characteristics_layer_batch_with_effects(
         }
     }
 
+    // Objects no effect can reach keep their printed characteristics in every
+    // layer, so only the requested ones among them are worth computing. Most
+    // of a real game's objects are library and hand cards.
+    let scope = baseline_scope(effects);
+    let requested: HashSet<_> = ids.iter().copied().collect();
     let mut remaining: Vec<_> = objects
-        .keys()
-        .copied()
-        .filter(|id| seen.insert(*id))
+        .iter()
+        .filter(|(id, object)| {
+            (requested.contains(id) || scope.covers(object)) && seen.insert(**id)
+        })
+        .map(|(id, _)| *id)
         .collect();
     remaining.sort_unstable();
     order.extend(remaining);
@@ -3815,7 +3879,6 @@ fn calculate_characteristics_layer_batch_with_effects(
         guards[idx].update(chars);
     }
 
-    let requested: HashSet<_> = ids.iter().copied().collect();
     let mut calculated = HashMap::with_capacity(requested.len());
     for id in requested {
         if let Some(chars) = chars_by_id.get(&id) {
@@ -4028,7 +4091,7 @@ pub(crate) fn copiable_values_with_effects(
                 continue;
             }
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, unflipped.as_ref().unwrap_or(object), false);
+            apply_text_box_modification_to_chars(effect, &mut chars, unflipped.as_ref().unwrap_or(object), false, game);
             calc_guard.update(&chars);
         }
     }
@@ -4165,7 +4228,7 @@ pub fn text_box_characteristics_with_effects(
             }
 
             mark_continuous_effect_group_started(effect, &mut started_groups);
-            apply_text_box_modification_to_chars(effect, &mut chars, object, game.is_flipped(object.id));
+            apply_text_box_modification_to_chars(effect, &mut chars, object, game.is_flipped(object.id), game);
             calc_guard.update(&chars);
         }
 
@@ -4184,6 +4247,7 @@ fn apply_text_box_modification_to_chars(
     chars: &mut CalculatedCharacteristics,
     object: &Object,
     flipped: bool,
+    game: &crate::game_state::GameState,
 ) {
     chars.abilities.begin_effect(effect);
     match &effect.modification {
@@ -4212,10 +4276,10 @@ fn apply_text_box_modification_to_chars(
             }
         }
         Modification::ChangeController(new_controller) => {
-            chars.controller = *new_controller;
+            if game.control_acquisition_allowed(object.id, chars.controller, *new_controller) { chars.controller = *new_controller; }
         }
         Modification::ChangeControllerToEffectController => {
-            chars.controller = effect.controller;
+            if game.control_acquisition_allowed(object.id, chars.controller, effect.controller) { chars.controller = effect.controller; }
         }
         Modification::ChangeText { .. } => {}
         Modification::RewriteText(change) => text_changes::apply_text_change(chars, *change, object),
@@ -5905,6 +5969,9 @@ fn filter_matches_layered_fast(
             return Some(false);
         }
     }
+    if let Some(budget) = &filter.mana_cost_payable_with
+        && chars.mana_cost.as_ref().is_none_or(|cost| !budget.can_pay(cost))
+    { return Some(false); }
     if let Some(required_cost) = &filter.exact_mana_cost
         && chars.mana_cost.as_ref() != Some(required_cost)
     {
@@ -6425,10 +6492,10 @@ fn apply_modification_to_chars(
 
         // Layer 2: Control
         Modification::ChangeController(new_controller) => {
-            chars.controller = *new_controller;
+            if game.control_acquisition_allowed(object.id, chars.controller, *new_controller) { chars.controller = *new_controller; }
         }
         Modification::ChangeControllerToEffectController => {
-            chars.controller = effect.controller;
+            if game.control_acquisition_allowed(object.id, chars.controller, effect.controller) { chars.controller = effect.controller; }
         }
         Modification::ChangeText { .. } => {
             // Legacy wire vocabulary. New instructions use RewriteText.

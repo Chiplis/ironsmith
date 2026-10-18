@@ -63,6 +63,37 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
     let selected = tag("binary_selected_card");
     let remainder = tag("binary_remainder");
     let (source_zone, mut effects) = match program.producer {
+        BinaryPileProducer::ExiledTopLibrary(count) => {
+            let count = match count {
+                BinaryPileCount::Fixed(count) => Value::Fixed(count),
+                BinaryPileCount::XPlus(extra) => Value::Add(Box::new(Value::X), Box::new(Value::Fixed(extra))),
+            };
+            (Zone::Exile, vec![
+                EffectAst::subject_verb(SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                        count, surface: None, tags: vec![pool.clone()],
+                        accumulated_tags: vec![], face_down: false,
+                    })),
+                EffectAst::subject_verb_choose_player(
+                    PlayerAst::You, PlayerFilter::Opponent, opponent.clone(), false, 0,
+                ),
+                EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
+                    sequential: false,
+                    filter: PlayerFilter::TaggedPlayer(opponent.clone().into()),
+                    effects: vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                        optional_search_zones: false,
+                        filter: capture_filter(&pool, Zone::Exile),
+                        count: ChoiceCount::any_number(), count_value: None,
+                        player: PlayerAst::That,
+                        tag: first.clone(), zones: vec![Zone::Exile], search_mode: None,
+                    })],
+                }),
+                EffectAst::subject_verb_tag_matching_objects(
+                    capture_filter(&pool, Zone::Exile).not_tagged(first.clone()),
+                    vec![Zone::Exile], second.clone(),
+                ),
+            ])
+        }
         BinaryPileProducer::TopLibrary(count) => {
     let count = match count {
         BinaryPileCount::Fixed(count) => Value::Fixed(count),
@@ -75,6 +106,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
             viewer: match program.partitioner {
                 BinaryPilePartitioner::You => PlayerAst::You,
                 BinaryPilePartitioner::TargetOpponent => PlayerAst::TargetOpponent,
+                BinaryPilePartitioner::ChosenOpponent => PlayerAst::That,
             },
             library_owner: PlayerAst::You,
             count,
@@ -92,6 +124,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
             player: match program.partitioner {
                 BinaryPilePartitioner::You => PlayerAst::You,
                 BinaryPilePartitioner::TargetOpponent => PlayerAst::That,
+                BinaryPilePartitioner::ChosenOpponent => PlayerAst::That,
             },
             tag: first.clone(), zones: vec![Zone::Library], search_mode: None,
         }),
@@ -191,7 +224,7 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
         }
     };
     let chooser = match program.partitioner {
-        BinaryPilePartitioner::TargetOpponent => PlayerFilter::You,
+        BinaryPilePartitioner::TargetOpponent | BinaryPilePartitioner::ChosenOpponent => PlayerFilter::You,
         BinaryPilePartitioner::You => {
             effects.push(EffectAst::subject_verb_choose_player(
                 PlayerAst::You, PlayerFilter::Opponent, opponent.clone(), false, 0,
@@ -202,6 +235,25 @@ pub(super) fn lower(program: BinaryPileProgramShape, sentences: &[SentenceInput]
     let modes = [(&first, &second), (&second, &first)].into_iter().enumerate()
         .map(|(index, (chosen, other))| {
             let effects = match program.destination {
+                BinaryPileDestination::ChosenPileImmediateFreePlay => vec![
+                    // Select one at a time so later spells may use outcomes of
+                    // earlier plays, and the player controls their play order.
+                    EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
+                        effects: vec![
+                            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                                filter: capture_filter(chosen, source_zone),
+                                count: ChoiceCount::up_to(1), player: PlayerAst::You,
+                                tag: selected.clone(), zone: source_zone,
+                            }),
+                            EffectAst::subject_verb_cast_tagged(
+                                selected.clone(), PlayerAst::You, true, false, true, None,
+                            ),
+                        ],
+                        continue_effect_index: 1,
+                        continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+                        max_iterations: None,
+                    }),
+                ],
                 BinaryPileDestination::HandAndGraveyard => {
                     let mut union = ObjectFilter::default().in_zone(source_zone);
                     union.any_of = vec![capture_filter(chosen, source_zone), capture_filter(other, source_zone)];

@@ -181,12 +181,6 @@ fn find(g: &GameState, name: &str, zone: Zone) -> Result<ObjectId, String> {
         .map(|o| o.id)
         .ok_or(format!("fixture missing {name} in {zone:?}"))
 }
-fn count(g: &GameState, name: &str, zone: Zone) -> usize {
-    g.objects_in_deterministic_order()
-        .into_iter()
-        .filter(|o| o.name == name && o.zone == zone)
-        .count()
-}
 fn cast(
     g: &mut GameState,
     d: &CardDefinition,

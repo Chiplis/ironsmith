@@ -141,7 +141,7 @@ fn execute(definition: &CardDefinition) -> Value {
             "battlefield_source_grants_ninjutsu_to_hand",
         )
     };
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let action = compute_legal_actions(&game, alice).expect("fixture has complete replacement state")
         .into_iter()
         .find(|action| match action {

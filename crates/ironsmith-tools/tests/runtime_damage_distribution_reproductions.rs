@@ -7,7 +7,7 @@ use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, advance_priority
 use ironsmith::game_state::Target;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardDefinition, CardId, CardType, GameState, ObjectId, PlayerId, Zone};
+use ironsmith::{CardDefinition, CardId, CardType, GameState,  PlayerId, Zone};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -62,7 +62,7 @@ fn announce(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices
         progress=apply_decision_context_with_dm(g,&mut q,&mut state,&ctx,dm).map_err(|e|e.to_string())?;
     }
     if g.stack.is_empty() { return Err("announcement budget".into()); }
-    let mut evidence=json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
+    let evidence=json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
     if !g.stack.last().is_some_and(|entry|g.object(entry.object_id).is_some_and(|o|o.name==def.name())){return Err("intended spell did not reach top of stack".into());}
     Ok((q,evidence))
 }
@@ -82,12 +82,6 @@ fn cast(g: &mut GameState, def: &CardDefinition, actor: u8, dm: &mut Choices) ->
         }
     }
     Err("resolution decision budget".into())
-}
-fn find(g: &GameState, name: &str) -> Result<ObjectId,String> {
-    g.battlefield.iter().copied().find(|id|g.object(*id).is_some_and(|o|o.name==name)).ok_or(format!("{name} absent"))
-}
-fn lands(g: &GameState) -> usize {
-    g.battlefield.iter().filter(|id|g.object(**id).is_some_and(|o|o.name=="Trigger sacrifice land")).count()
 }
 
 fn run(defs:&HashMap<String,CardDefinition>,name:&str,amounts:&[u32],mode:&str)->Result<(Value,Value),String>{

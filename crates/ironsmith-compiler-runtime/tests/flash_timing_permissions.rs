@@ -16,12 +16,9 @@ use ironsmith::game_loop::{
     apply_priority_response_with_dm,
 };
 use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::mana_payment::{
-    ManaPaymentRequest, check_mana_payment, execute_mana_payment_plan, plan_first_mana_payment,
-};
 use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardType, CounterType, GameState, ObjectId, PlayerId, Target, Zone};
+use ironsmith::{CardType, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;
@@ -452,7 +449,7 @@ fn self_state_flash_uses_the_caster_and_actual_live_controlled_permanent() {
             let spell = game.create_object_from_definition(&definition, A, Zone::Graveyard);
             ordinary_origin(&mut game, A, Zone::Graveyard);
             assert!(casts(&game, A, spell).is_empty());
-            let helper = card(
+            card(
                 &mut game,
                 B,
                 "Foreign helper",

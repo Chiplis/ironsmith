@@ -47,7 +47,6 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
             | ["a", "player"]
             | ["a", "permanent", "or", "player"]
             | ["a", "permanent", "or", "a", "player"]
-            | ["an", "opponent", "or", "a", "permanent", "an", "opponent", "controls"]
     ) && !(recipient.is_empty() && shape.damaged_tokens.is_none())
     {
         return Ok(None);

@@ -120,6 +120,19 @@ enum ForceFaceUpError {
     TriggerStack(String),
 }
 
+impl std::fmt::Display for ForceFaceUpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ContinuousDiscovery(error) => write!(f, "continuous state discovery failed: {error}"),
+            Self::Execution(error) => write!(f, "face-up execution failed: {error:?}"),
+            Self::InvalidPermanent => f.write_str("invalid permanent"),
+            Self::NotTurnedFaceUp => f.write_str("permanent was not turned face up"),
+            Self::PendingChoice => f.write_str("face-up action requires a choice"),
+            Self::TriggerStack(error) => write!(f, "trigger stacking failed: {error}"),
+        }
+    }
+}
+
 #[derive(Debug)]
 enum SnapshotJsonError {
     HiddenLibraryEpoch(String),
@@ -287,6 +300,7 @@ impl WasmGame {
         );
         self.include_payment_disclosure_views(&mut snap);
         self.apply_hidden_card_memory(&mut snap);
+        snap.pass_intents = self.pass_intents.keys().copied().collect();
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -1092,6 +1106,7 @@ impl WasmGame {
 
     fn snapshot_state_shape_hash(&self) -> u64 {
         hash_debug_value(&(
+            &self.pass_intents,
             self.game.players.len(),
             self.game
                 .players
@@ -1486,6 +1501,7 @@ impl WasmGame {
     fn new_with_registry(registry: CardRegistry) -> Self {
         let priority_state = PriorityLoopState::new(2);
         Self {
+            pass_intents: Default::default(),
             previewing_crypto_requirements: false,
             runtime_identity_origin_available: true,
             game: GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20),
@@ -3517,6 +3533,7 @@ impl WasmGame {
         let snapshot_started_at = PerfTimer::start();
         self.prepare_snapshot_continuous_state()
             .map_err(|error| JsValue::from_str(&format!("snapshot refresh failed: {error}")))?;
+        #[cfg(target_arch = "wasm32")]
         let automation_snapshot = self.automation_snapshot;
         self.refresh_priority_presentation_unless_automating()
             .map_err(|error| JsValue::from_str(&format!("priority timing refresh failed: {error}")))?;
@@ -3575,6 +3592,7 @@ impl WasmGame {
         );
         self.include_payment_disclosure_views(&mut snap);
         self.apply_hidden_card_memory(&mut snap);
+        snap.pass_intents = self.pass_intents.keys().copied().collect();
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         let snapshot_build_ms = build_started_at.elapsed_ms();
@@ -3864,6 +3882,8 @@ impl WasmGame {
 
         self.game.mark_player_lost(player_id).map_err(|error| JsValue::from_str(&format!("player departure execution incomplete: {error}")))?;
         self.priority_state.player_left_game(&self.game);
+        self.pass_intents.clear();
+        self.cached_snapshot = None;
 
         let remaining: Vec<_> = self
             .game
@@ -4025,7 +4045,7 @@ impl WasmGame {
         }
         if let Err(error) = result {
             session.restore(self);
-            return Err(JsValue::from_str(&format!("forced face-up failed: {error:?}")));
+            return Err(JsValue::from_str(&format!("forced face-up failed: {error}")));
         }
         self.active_viewed_cards = viewed_cards;
         self.active_audit_viewed_cards = audit_viewed_cards;
@@ -4214,6 +4234,13 @@ impl WasmGame {
 
         self.ensure_card_definitions_loaded([query]);
         let definition = self.load_compilable_card_definition(query)?;
+        // An instant or sorcery can never be on the battlefield (CR 304.4,
+        // 307.4); asked to put one there, the card goes to that player's hand.
+        let zone = if zone == Zone::Battlefield && definition.is_spell() && !definition.is_permanent() {
+            Zone::Hand
+        } else {
+            zone
+        };
 
         if zone == Zone::Battlefield && !skip_triggers {
             let checkpoint = self.capture_replay_checkpoint();
@@ -4925,6 +4952,8 @@ impl WasmGame {
         if !self.is_cancelable() {
             return Err(JsValue::from_str("current decision cannot be cancelled"));
         }
+        self.pass_intents.clear();
+        self.cached_snapshot = None;
         let disclosure_epoch_lock = self.priority_epoch_undo_locked_by_disclosure;
         if let Some(checkpoint) = self.pending_action_checkpoint.as_ref().cloned() {
             self.restore_replay_checkpoint(&checkpoint);

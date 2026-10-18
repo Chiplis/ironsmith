@@ -4,7 +4,7 @@ use crate::effects::CompletedEffectOutputs;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::effects::zones::apply_zone_change_with_context_and_additional_effects;
+
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::EventOutcome;
 use crate::game_state::GameState;
@@ -60,7 +60,7 @@ impl EffectExecutor for ExileUntilEffect {
         plain == crate::target::ObjectFilter::default()
     }
 
-    fn prepare_simultaneous_player_action(&self, game: &GameState, ctx: &mut ExecutionContext)
+    fn prepare_simultaneous_player_action(&self, _game: &GameState, ctx: &mut ExecutionContext)
         -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         if !self.supports_simultaneous_player_action() {
             return Err(ExecutionError::IncompleteEvidence("unproved simultaneous exile-until scope".into()));

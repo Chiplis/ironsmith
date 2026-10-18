@@ -133,7 +133,7 @@ fn resolve_triggers(game: &mut GameState, queue: &mut TriggerQueue) {
         ironsmith::game_loop::resolve_stack_entry_with(game, &mut dm).unwrap();
         ironsmith::game_loop::put_triggers_on_stack_with_dm(game, queue, &mut dm).unwrap();
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
 }
 
 /// Run a regular combat damage step against the game's current combat, then
@@ -665,7 +665,7 @@ mod removal_from_combat {
             ContinuousEffect::gain_control(source, bob(), attacker, bob())
                 .until(ironsmith::Until::Forever),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!is_attacking(game.combat.as_ref().unwrap(), attacker));
         deal_combat_damage(&mut game);
         assert_eq!(life(&game, bob()), 20);
@@ -679,7 +679,7 @@ mod removal_from_combat {
         let blocker = put(&mut game, &creature("Blocker", 1, 1).build(), bob());
         attack(&mut game, vec![(attacker, AttackTarget::Planeswalker(walker))]);
         game.move_object_by_effect(walker, Zone::Graveyard);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let combat = game.combat.clone().unwrap();
         assert!(is_attacking(&combat, attacker), "still an attacking creature");
         assert!(matches!(
@@ -700,14 +700,14 @@ mod removal_from_combat {
         let walker = planeswalker(&mut game, bob(), 3);
         let attacker = put(&mut game, &creature("Attacker", 3, 3).build(), alice());
         attack(&mut game, vec![(attacker, AttackTarget::Planeswalker(walker))]);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
             walker,
             bob(),
             EffectTarget::Specific(walker),
             Modification::SetCardTypes(vec![CardType::Battle]),
         ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(
             matches!(
                 get_attack_target(game.combat.as_ref().unwrap(), attacker),
@@ -748,7 +748,7 @@ mod chosen_color_protection {
                 .build(),
             bob(),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         attack(&mut game, vec![(attacker, AttackTarget::Player(bob()))]);
         let combat = game.combat.clone().unwrap();
         assert!(declare_blockers(&game, &mut combat.clone(), vec![(red, attacker)]).is_err());
@@ -807,7 +807,7 @@ mod artifacts {
         main_phase(&mut game);
         put(&mut game, &real("March of the Machines"), alice());
         let copter = put(&mut game, &real("Smuggler's Copter"), alice());
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(game.current_is_creature(copter), "March animates the Vehicle");
         let crew = |game: &GameState| {
             compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
@@ -816,7 +816,7 @@ mod artifacts {
         };
         assert!(!crew(&game), "crew taps other creatures (CR 702.122a)");
         put(&mut game, &creature("Pilot", 1, 1).build(), alice());
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(crew(&game), "another creature can crew it");
     }
 
@@ -830,7 +830,7 @@ mod artifacts {
             }
             let bear = put(&mut game, &creature("Bear", 2, 2).build(), alice());
             let splitter = put(&mut game, &real("Bonesplitter"), alice());
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state should refresh");
             let mut dm = SelectFirstDecisionMaker;
             let mut ctx = ironsmith::effects::EffectContext::new(splitter, alice(), &mut dm);
             let _ = ironsmith::effects::execute_effect(
@@ -853,7 +853,7 @@ mod trample_over_planeswalkers {
 
     fn thrasta(game: &mut GameState) -> ObjectId {
         let id = put(game, &real("Thrasta, Tempest's Roar"), alice());
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         id
     }
 
@@ -871,7 +871,7 @@ mod trample_over_planeswalkers {
                 .build(),
             alice(),
         );
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(
             !game.object_has_static_ability_id(granted, StaticAbilityId::Trample),
             "trample over planeswalkers isn't trample"
@@ -956,7 +956,7 @@ mod trample_over_planeswalkers {
             ],
         );
         game.move_object_by_effect(walker, Zone::Exile);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         deal_combat_damage(&mut game);
         assert_eq!(
             life(&game, bob()),

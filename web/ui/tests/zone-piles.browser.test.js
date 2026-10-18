@@ -11,7 +11,7 @@ test('zone hover inspectors stay outside the expanded strip', async () => {
     const page = await browser.newPage();
     for (const viewport of [{width:1440,height:900}, {width:1280,height:720}]) {
       await page.setViewportSize(viewport);
-      for (const zone of ['graveyard', 'exile', 'look']) {
+      for (const zone of ['graveyard', 'exile', 'library']) {
         await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look`, {waitUntil: "domcontentloaded"});
         await page.locator(`[data-zone-pile="${zone}"][data-zone-owner="0"]`).dispatchEvent("pointerover", {pointerType: "mouse"});
         const card = page.locator(`[data-local-zone-strip="true"] [data-zone-card="${zone}"][data-object-id="${zone === 'graveyard' ? 1000 : zone === 'exile' ? 2000 : 7001}"]`);
@@ -74,16 +74,16 @@ test('zone piles align, scroll, animate and require a separate target click', as
     const pileBox = await pile.boundingBox();
     const cardBox = await page.locator('.battlefield-row-card').boundingBox();
     assert.ok(pileBox.width < cardBox.width);
-    const labelBox = await page.locator('.zone-pile-label').first().boundingBox();
-    assert.ok(labelBox.y + labelBox.height <= pileBox.y);
-    assert.equal(await pile.locator('.zone-pile-label').count(), 0);
+    // Zones are glyph-and-count chips in one right-aligned column: Exile,
+    // Graveyard, then Deck nearest our side of the table.
+    const right = (box) => box.x + box.width;
     const deckBox = await page.locator('[data-zone-pile="library"]').boundingBox();
-    assert.ok(Math.abs(deckBox.x-pileBox.x) < 2, 'Deck shares the zone column');
-    assert.ok(deckBox.y + deckBox.height < pileBox.y, 'Deck sits above Graveyard');
+    assert.ok(Math.abs(right(deckBox) - right(pileBox)) < 2, 'Deck shares the zone column');
+    assert.ok(deckBox.y >= pileBox.y + pileBox.height, 'Deck sits below Graveyard');
     assert.ok(pileBox.x > cardBox.x);
     const exileBox = await page.locator('[data-zone-pile="exile"]').boundingBox();
-    assert.ok(Math.abs(exileBox.x-pileBox.x)<1);
-    assert.ok(exileBox.y >= pileBox.y+pileBox.height);
+    assert.ok(Math.abs(right(exileBox) - right(pileBox)) < 2);
+    assert.ok(exileBox.y + exileBox.height <= pileBox.y, 'Exile sits above Graveyard');
     // Both zones open on hover and stay open while browsing the card strip.
     for (const zone of ['graveyard', 'exile']) {
       await page.locator(`[data-zone-pile="${zone}"]`).hover();
@@ -149,7 +149,10 @@ test('all four players can browse piles and select a graveyard target on the ful
     const field = await page.locator('[data-my-zone] .my-zone-board-shell').boundingBox();
     const topCard = await page.locator('[data-my-zone] .battlefield-row-card').evaluateAll(cards=>Math.min(...cards.map(card=>card.getBoundingClientRect().top)));
     assert.ok(Math.abs(stack.y-topCard)<2);
-    assert.ok(Math.abs(stack.x-field.x)<2);
+    // The stack starts just past our mana column, inside the field.
+    const manaRight = await page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('[data-my-zone] .my-zone-mana-rail, .fc-local-mana-rail, .local-player-mana-dock')]
+      .map(el => el.getBoundingClientRect()).filter(r => r.width > 0 && r.width < 160).map(r => r.right)));
+    assert.ok(stack.x >= Math.max(field.x - 2, manaRight), JSON.stringify({ stack, field, manaRight }));
     await page.screenshot({path:'/tmp/stack-left-zones-right-verified.png'});
     for(const owner of ['0','1','2','3']) {
       await page.locator(`[data-zone-pile="graveyard"][data-zone-owner="${owner}"]`).hover();
@@ -253,7 +256,7 @@ test('zone card inspectors leave the clicked card and expanded strip uncovered',
   } finally { await browser.close(); await vite.close(); }
 });
 
-test('opponent deck and all zone labels fit inside the clipped panel', async () => {
+test('opponent zones fit inside the clipped panel', async () => {
   const vite = await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});
   await vite.listen();
   const browser = await chromium.launch();
@@ -268,7 +271,7 @@ test('opponent deck and all zone labels fit inside the clipped panel', async () 
         await page.waitForTimeout(350);
         const geometry = await rail.evaluate(element => {
           const panel = element.closest('.battlefield-subpanel').getBoundingClientRect();
-          return [...element.querySelectorAll(':scope > .zone-pile-slot')].map(slot => {
+          return [...element.querySelectorAll(':scope > .zone-icon-row, :scope > .zone-pile-slot')].map(slot => {
             const rect = slot.getBoundingClientRect();
             return {zone:slot.querySelector('[data-zone-pile]').dataset.zonePile, top:rect.top, bottom:rect.bottom, panelTop:panel.top, panelBottom:panel.bottom};
           });
@@ -282,28 +285,4 @@ test('opponent deck and all zone labels fit inside the clipped panel', async () 
       }
     }
   } finally { await browser.close(); await vite.close(); }
-});
-
-
-test('zone labels fill their card frame width at different sizes', async()=>{
-  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'silent'});await vite.listen();
-  const browser=await chromium.launch();
-  try {
-    const page=await browser.newPage();
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/zone-piles-table.html?look`);
-    await page.locator('[data-zone-pile="look"]').waitFor();
-    for(const width of [1280,1800]) {
-      await page.setViewportSize({width,height:1000});
-      await page.waitForTimeout(500);
-      for(const zone of ['library','graveyard','exile','look']) {
-        const slot=page.locator(`[data-local-zone-piles="true"] [data-zone-pile="${zone}"]`).locator('..');
-        const frame=await slot.locator(':scope > .zone-pile').boundingBox();
-        const text=await slot.locator('.zone-pile-label > span').boundingBox();
-        assert.ok(Math.abs(text.x-frame.x)<1, `${zone} starts at frame edge`);
-        assert.ok(Math.abs(text.x+text.width-frame.x-frame.width)<2, `${zone} ends at frame edge`);
-        assert.ok(text.y+text.height<=frame.y, `${zone} label stays above frame`);
-      }
-    }
-    await page.screenshot({path:'/tmp/zone-labels-full-table.png'});
-  }finally{await browser.close();await vite.close();}
 });

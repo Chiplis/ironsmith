@@ -70,7 +70,7 @@ fn ninja_teen_level_three_lets_graveyard_creatures_be_cast_with_granted_sneak() 
             let card = game.create_object_from_definition(&card_def, A, Zone::Graveyard);
             game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Black, 1);
             game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Colorless, 3);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let castable = compute_legal_actions(&game, A).unwrap().into_iter().any(|action| {
                 matches!(
                     action,
@@ -111,7 +111,7 @@ fn falkenrath_gorger_discarded_vampires_use_the_madness_replacement_and_trigger(
             };
             let card_def = compile_to_runtime_definition("Discarded card", text, false).unwrap();
             let card = game.create_object_from_definition(&card_def, A, Zone::Hand);
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let mut dm = SelectFirstDecisionMaker;
             let out = ironsmith::events::processing::execute_discard(
                 &mut game,
@@ -159,7 +159,7 @@ fn granted_madness_is_not_an_ordinary_cast_from_exile() {
         .unwrap();
         let card = game.create_object_from_definition(&card_def, A, Zone::Exile);
         game.player_mut(A).unwrap().mana_pool.add(ManaSymbol::Black, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!compute_legal_actions(&game, A).unwrap().into_iter().any(|action| {
             matches!(action, LegalAction::CastSpell { spell_id, .. } if spell_id == card)
         }));

@@ -1442,6 +1442,17 @@ pub fn parse_granted_keyword_static_line(
     ) {
         return Ok(None);
     }
+    // A copular animation bundle ("..., it's a 0/0 creature in addition to
+    // its other types and it has annihilator 2.") owns its trailing grant;
+    // reading only the `has` tail would drop the type and P/T change.
+    if tokens.iter().any(|token| token.is_word("addition"))
+        && matches!(
+            crate::keyword_static::parse_filter_is_pt_creature_in_addition_and_has_line(tokens),
+            Ok(Some(_))
+        )
+    {
+        return Ok(None);
+    }
     // A combat requirement's `if able` belongs to that requirement, not
     // to the preceding keyword. Parse the complete keyword prefix first
     // and give the sibling requirement the same recipient and condition.
@@ -3258,6 +3269,29 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     if subject_words.as_slice() == ["also"] {
         return Err(CardTextError::ParseError("anthem adverb has no subject".to_string()));
     }
+    // "Creatures controlled by players who chose war" (Archangel of Strife):
+    // the controllers whose recorded as-enters option for this source is
+    // that option (`player_option_choice_tag`, bound by the source's filter
+    // context). Never drop the qualifier into an every-creature anthem.
+    {
+        let view = TokenWordView::new(tokens);
+        let words = view.word_refs();
+        if let Some(controlled) = words
+            .windows(5)
+            .position(|window| window == ["controlled", "by", "players", "who", "chose"])
+            && controlled > 0
+            && words.len() == controlled + 6
+            && let Some(span) = view.token_span_for_words(0, controlled)
+        {
+            let option = words[controlled + 5];
+            let mut filter = parse_object_filter(&tokens[span], false)?;
+            filter.zone.get_or_insert(Zone::Battlefield);
+            filter.controller = Some(PlayerFilter::TaggedPlayer(
+                ironsmith_core::player_option_choice_tag(option),
+            ));
+            return Ok(AnthemSubjectAst::Filter(filter));
+        }
+    }
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
     }
@@ -4889,7 +4923,15 @@ pub fn parse_anthem_clause(
             Some(anthem_grant_grammar::AnthemTailShape::AsLongAs { condition_tokens }) => {
                 suffix_attached_subject =
                     infer_attached_subject_filter_from_condition_tokens(condition_tokens);
-                suffix_condition = Some(parse_static_condition_clause(condition_tokens)?);
+                // "get +2/+2 as long as they all share a color" (Common
+                // Cause): the bare modifier tail reaches this arm, not the
+                // keyword-led trailing split above.
+                suffix_condition = Some(
+                    match subject_all_share_a_color_condition(&subject_tokens, condition_tokens) {
+                        Some(condition) => condition,
+                        None => parse_static_condition_clause(condition_tokens)?,
+                    },
+                );
             }
             Some(anthem_grant_grammar::AnthemTailShape::Unless { condition_tokens }) => {
                 suffix_attached_subject =

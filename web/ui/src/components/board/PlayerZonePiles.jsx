@@ -29,12 +29,13 @@ const ZONE_TARGET_GROW_MS = 220;
 const LOCAL_PILES_MAX_LIFT = 160;
 const LOCAL_PILES_CLEARANCE = 20;
 export const ZONE_PILES_MOVED_EVENT = "ironsmith:zone-piles-moved";
+const LOCAL_MANA_RAILS = "[data-my-zone] .my-zone-mana-rail, .fc-local-mana-rail, .local-player-mana-dock";
 
 // `variant` picks the trigger: "art" shows the top card (the command zone),
 // "icon" a zone glyph with its count, and "eye" the cards this perspective
 // looked at in `lookZone`. Icon and eye strips open beside their trigger.
 function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverride, onOpenChange,
-  variant = "art", lookZone = null, fresh = false, count: countOverride = null, onTriggerClick = null }) {
+  variant = "art", looking = false, fresh = false, count: countOverride = null, onTriggerClick = null }) {
   const beside = variant !== "art";
   const ui = useUiText();
   const { state } = useGame();
@@ -119,15 +120,15 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     document.addEventListener("pointerover", trackPointer);
     return () => document.removeEventListener("pointerover", trackPointer);
   });
-  const topCard = variant === "eye" ? cards[0] : cards.find(isFaceUpZoneCard) || cards[0];
-  // Looked-at library cards read deepest first, so the top card ends the
-  // strip right beside the deck.
+  // A library strip holds only the cards this perspective looked at, in
+  // library order: deepest first, so the top card ends the strip beside the
+  // deck.
+  const ordered = zone === "library";
+  const topCard = ordered ? cards[0] : cards.find(isFaceUpZoneCard) || cards[0];
   const remainingCards = cards.filter((card) => card !== topCard);
-  if (variant === "eye") remainingCards.reverse();
-  const labelZone = lookZone ?? zone;
-  const zoneLabel = labelZone === "library" ? "Deck" : labelZone === "command" ? "Command"
-    : t(labelZone === "graveyard" ? "zone.graveyardFull" : "zone.exileFull");
-  const label = variant === "eye" ? ui("Looked at in {0}", { 0: ui(zoneLabel) }) : zoneLabel;
+  if (ordered) remainingCards.reverse();
+  const label = zone === "library" ? "Deck" : zone === "command" ? "Command"
+    : t(zone === "graveyard" ? "zone.graveyardFull" : "zone.exileFull");
   const count = countOverride ?? (zone === "graveyard" ? (player.graveyard_size ?? cards.length) : cards.length);
   const decision = state?.decision?.kind === "targets" ? state.decision
     : castIntent?.targetDecision || state?.decision;
@@ -198,10 +199,10 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
   }, [player.id, player.index, zone]);
 
   // A card chosen inside a closed pile is otherwise invisible: the pile shows
-  // its most recent Look choice (or the normal top card). It wears the same check,
+  // its most recent looked-at deck choice (or the normal top card). It wears the same check,
   // and clicking it unchooses that card without opening the strip. Once the
   // strip is open the cards carry their own checks, so this one steps aside.
-  const latestChosenCard = zone === "look" && choosingObject
+  const latestChosenCard = zone === "library" && choosingObject
     ? chosenObjectIds.slice().reverse()
       .map((id) => cards.find((card) => String(card.id) === String(id)))
       .find(Boolean)
@@ -234,7 +235,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     // A face-up card opens the preview, which names it already; a bare-name
     // native tooltip would sit on top of that preview.
     const previews = isFaceUpZoneCard(card) && !String(card.id).startsWith("look-top-");
-    const rowLabel = card.position != null && variant === "eye"
+    const rowLabel = card.position != null && ordered
       ? ui("{0}, {1} from the top", { 0: card.name, 1: card.position + 1 }) : card.name;
     // The check has to sit outside the row button to stay clickable, so the
     // row gets a wrapper of its own strip width.
@@ -299,7 +300,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           if (choosingTarget || choosingObject) changeOpen(false);
         }}>
         <ZoneArt card={card} />
-        {variant === "eye" && card.position != null ? (
+        {ordered && card.position != null ? (
           <span className="zone-pile-position" aria-hidden="true">{card.position === 0 ? ui("Top") : card.position + 1}</span>
         ) : null}
         {card.known_face_down ? <span className="zone-pile-known-face-down" aria-hidden="true"><LookEyeGlyph /></span> : null}
@@ -308,11 +309,17 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
     </span>;
   };
 
+  // While this perspective knows hidden cards in here, a small eye sits above
+  // the glyph and hovering the zone shows them.
   const triggerContent = variant === "icon"
-    ? <><ZoneIcon zone={zone} /><span className="zone-pile-count">{count}</span></>
-    : variant === "eye"
-      ? <><LookEyeGlyph /><span className="zone-pile-count">{cards.length}</span></>
-      : <ZoneArt card={open ? topCard : collapsedCard} />;
+    ? <>
+      <ZoneIcon zone={zone} />
+      <span className="zone-pile-count-stack">
+        {looking && <span className="zone-pile-look" aria-hidden="true"><LookEyeGlyph /></span>}
+        <span className="zone-pile-count">{count}</span>
+      </span>
+    </>
+    : <ZoneArt card={open ? topCard : collapsedCard} />;
   return (
     <Popover open={open && cards.length > 0} onOpenChange={changeOpen}>
       {/* The slot carries its transitions inline, so the growth a legal target
@@ -323,7 +330,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
       {variant === "art" && <ZonePileLabel label={ui(label)} count={count} />}
       <PopoverTrigger asChild>
         <button ref={triggerRef} type="button" className={`zone-pile zone-pile--${variant}`} data-zone-pile={zone}
-          data-look-zone={lookZone ?? undefined}
+          data-looking={looking ? "true" : undefined}
           data-fresh-look={fresh ? "true" : undefined}
           title={beside ? `${ui(label)}: ${count}` : undefined}
           data-zone-owner={String(player.id ?? player.index)}
@@ -331,7 +338,7 @@ function ZonePile({ player, zone, onCardClick, legalTargetObjectIds, cardsOverri
           data-zone-card={!open && optionHoveredCard ? zone : undefined}
           data-object-id={!open && optionHoveredCard ? optionHoveredCard.id : undefined}
           data-has-targets={hasLegalCards ? "true" : undefined}
-          aria-label={ui("{0}'s {1}, {2} cards. Open zone", { 0: player.name, 1: ui(label), 2: variant === "eye" ? cards.length : count })}
+          aria-label={ui("{0}'s {1}, {2} cards. Open zone", { 0: player.name, 1: ui(label), 2: count })}
           onPointerEnter={(event) => {
             if (zone === "look") dismissedRef.current = false;
             if (event.pointerType !== "touch") keepOpen();
@@ -404,7 +411,7 @@ function exileCardsWithKnownFaces(player, known) {
   return [...knownCards, ...cards.filter((card) => !names.has(String(card.id)))];
 }
 
-// One zone: its glyph and count, with an eye beside it while this perspective
+// One zone: its glyph and count, marked with an eye while this perspective
 // knows cards inside it that are hidden from the table.
 function ZoneIconRow({ player, zone, onCardClick, legalTargetObjectIds, onOpenDecklist }) {
   const { state } = useGame();
@@ -412,11 +419,8 @@ function ZoneIconRow({ player, zone, onCardClick, legalTargetObjectIds, onOpenDe
   const fresh = looked.length > 0 && freshLookInZone(state, player, zone);
   const count = zone === "library" ? Math.max(0, Number(player.library_size) || 0) : undefined;
   return <div className="zone-icon-row" data-zone-row={zone} data-zone-owner={String(player.id ?? player.index)}>
-    {looked.length > 0 && <ZonePile key={`look-${zone}`} player={player} zone="look" lookZone={zone} variant="eye"
-      cardsOverride={looked} fresh={fresh}
-      onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />}
-    <ZonePile player={player} zone={zone} variant="icon" count={count}
-      cardsOverride={zone === "library" ? [] : zone === "exile" ? exileCardsWithKnownFaces(player, looked) : undefined}
+    <ZonePile player={player} zone={zone} variant="icon" count={count} looking={looked.length > 0} fresh={fresh}
+      cardsOverride={zone === "library" ? looked : zone === "exile" ? exileCardsWithKnownFaces(player, looked) : undefined}
       onTriggerClick={zone === "library" && onOpenDecklist ? () => onOpenDecklist(player) : null}
       onCardClick={onCardClick} legalTargetObjectIds={legalTargetObjectIds} />
   </div>;
@@ -477,19 +481,44 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
               .reduce((bottom, rect) => Math.max(bottom, rect.bottom + LOCAL_PILES_CLEARANCE), -Infinity);
             const room = nextPilesTop - ceiling;
             lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, room));
-            // A tall decision (a scry, a search) grows the action dock up the
-            // right edge; the zones, and any eye a look put there, rise above it.
-            const rows = [...piles.querySelectorAll(":scope > .zone-icon-row, :scope > .zone-pile-slot")]
-              .map((row) => row.getBoundingClientRect()).filter((rect) => rect.height > 0);
-            const dock = document.querySelector(".battlefield-human-action-dock")?.getBoundingClientRect();
-            const currentLift = parseFloat(piles.style.getPropertyValue("--local-piles-lift")) || 0;
-            if (rows.length && dock?.height > 0) {
-              const left = Math.min(...rows.map((rect) => rect.left));
-              const right = Math.max(...rows.map((rect) => rect.right));
-              if (dock.left < right && dock.right > left) {
-                const bottom = Math.max(...rows.map((rect) => rect.bottom)) + currentLift;
-                lift = Math.max(lift, Math.min(room, bottom - (dock.top - LOCAL_PILES_CLEARANCE / 2)));
+          }
+          // Our zone chips sit at the bottom of our board, above whatever
+          // decision dock shares their corner (a scry or search grows it up
+          // the right edge), and never above the opponent's piles.
+          const rows = [...piles.querySelectorAll(":scope > .zone-icon-row")]
+            .map((row) => row.getBoundingClientRect()).filter((rect) => rect.height > 0);
+          if (rows.length && board) {
+            const currentShift = parseFloat(piles.style.getPropertyValue("--local-zone-rows-shift")) || 0;
+            const left = Math.min(...rows.map((rect) => rect.left));
+            const right = Math.max(...rows.map((rect) => rect.right));
+            const restingTop = Math.min(...rows.map((rect) => rect.top)) - currentShift;
+            const restingBottom = Math.max(...rows.map((rect) => rect.bottom)) - currentShift;
+            const dockTop = [...document.querySelectorAll(".battlefield-human-action-dock")]
+              .map((dock) => dock.getBoundingClientRect())
+              .filter((rect) => rect.height > 0 && rect.left < right && rect.right > left && rect.bottom > restingTop)
+              .reduce((top, rect) => Math.min(top, rect.top), Infinity);
+            const floor = Math.min(boardBounds.bottom - LOCAL_PILES_CLEARANCE, dockTop - LOCAL_PILES_CLEARANCE / 2);
+            const ceiling = [...document.querySelectorAll('[data-opponent-zone-piles="true"] .zone-icon-row')]
+              .map((row) => row.getBoundingClientRect())
+              .filter((rect) => rect.width > 0 && rect.left < right && rect.right > left)
+              .reduce((bottom, rect) => Math.max(bottom, rect.bottom + LOCAL_PILES_CLEARANCE), 0);
+            let shift = floor - restingBottom;
+            // Rising above a tall dock must not land on the phase track's
+            // stops; the column then clears them too.
+            const height = restingBottom - restingTop;
+            for (const stop of document.querySelectorAll(".phase-track-stop-button")) {
+              const rect = stop.getBoundingClientRect();
+              const top = restingTop + shift;
+              if (rect.width > 0 && rect.left < right && rect.right > left
+                && rect.top < top + height && rect.bottom > top) {
+                shift = Math.min(shift, rect.top - LOCAL_PILES_CLEARANCE / 2 - restingBottom);
               }
+            }
+            shift = Math.max(ceiling - restingTop, shift);
+            const nextShift = `${Math.round(shift)}px`;
+            if (piles.style.getPropertyValue("--local-zone-rows-shift") !== nextShift) {
+              piles.style.setProperty("--local-zone-rows-shift", nextShift);
+              window.dispatchEvent(new Event(ZONE_PILES_MOVED_EVENT));
             }
           }
           const nextLift = `${Math.round(lift)}px`;
@@ -507,19 +536,32 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         const fieldCards = [...(row?.querySelectorAll('.game-card') || [])]
           .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
         const firstColumnLeft = fieldCards.length ? Math.min(...fieldCards.map(rect => rect.left)) : Math.min(360, window.innerWidth * .24);
-        const railWidth = `${Math.max(0, firstColumnLeft - 8)}px`;
+        // The stack starts past our mana column, which widens as pools fill.
+        const manaRight = piles.dataset.localZonePiles === "true"
+          ? [...document.querySelectorAll(LOCAL_MANA_RAILS)]
+            .map((rail) => rail.getBoundingClientRect())
+            .filter((rect) => rect.width > 0 && rect.width < 160 && rect.left < firstColumnLeft)
+            .reduce((right, rect) => Math.max(right, rect.right), 0)
+          : 0;
+        const railLeft = manaRight > 0 ? manaRight + 6 : 0;
+        board.style.setProperty('--stack-mana-clearance', `${railLeft}px`);
+        const railWidth = `${Math.max(0, firstColumnLeft - 8 - railLeft)}px`;
         if (board.style.getPropertyValue('--stack-frame-rail-width') !== railWidth) board.style.setProperty('--stack-frame-rail-width', railWidth);
-        board.style.setProperty('--stack-frame-rail-left', `${-boardBounds.left}px`);
+        board.style.setProperty('--stack-frame-rail-left', `${railLeft - boardBounds.left}px`);
       }
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
     measure();
+    // The action dock for a new decision mounts and grows after this commit.
+    const settleTimers = piles.dataset.localZonePiles === "true" ? [120, 450].map((delay) => setTimeout(schedule, delay)) : [];
     const observer = new ResizeObserver(schedule);
     observer.observe(container);
     observer.observe(piles);
     if (row) observer.observe(row);
-    const dock = document.querySelector(".battlefield-human-action-dock");
-    if (dock && piles.dataset.localZonePiles === "true") observer.observe(dock);
+    if (piles.dataset.localZonePiles === "true") {
+      document.querySelectorAll(".battlefield-human-action-dock").forEach((dock) => observer.observe(dock));
+      document.querySelectorAll(LOCAL_MANA_RAILS).forEach((rail) => observer.observe(rail));
+    }
     const mutations = new MutationObserver((records) => {
       // Card internals change for hover, targeting and animation. Only the
       // grid and its positioned wrappers determine the piles' placement.
@@ -535,7 +577,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
     });
     if (row) mutations.observe(row, { attributes: true, attributeOldValue: true, childList: true, subtree: true, attributeFilter: ["style", "class"] });
     window.addEventListener("resize", schedule);
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
+    return () => { cancelAnimationFrame(frame); settleTimers.forEach(clearTimeout); observer.disconnect(); mutations.disconnect(); window.removeEventListener("resize", schedule); };
   // A new decision can grow the action dock the local zones must clear.
   }, [player, state?.decision]);
   const isLocal = samePlayerId(player.id ?? player.index, state?.perspective);

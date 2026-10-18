@@ -73,7 +73,7 @@ fn conditional_quoted_grant_depends_on_defending_players_actual_sacrifice() {
             assert_eq!(game.object(other).unwrap().zone, Zone::Battlefield);
             assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert!(game.can_be_blocked(source));
         }
     }

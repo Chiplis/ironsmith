@@ -74,6 +74,7 @@ macro_rules! runtime_savepoint {
     };
 }
 runtime_savepoint! {
+    pass_intents: std::collections::BTreeMap<u8, PassIntent>,
     game: GameState,
     priority_affordability_cache: HashMap<PlayerId, Vec<LegalAction>>,
     priority_affordability_seed_key: Option<SnapshotCacheKey>,

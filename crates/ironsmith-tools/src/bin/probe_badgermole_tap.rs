@@ -156,7 +156,7 @@ fn main() -> Result<(), ironsmith::effects::ExecutionError> {
     game.turn.priority_player = Some(alice);
     game.turn.phase = ironsmith::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
 
     let mut queue = TriggerQueue::default();
     let mut dm = SelectFirstDecisionMaker;
@@ -170,7 +170,7 @@ fn main() -> Result<(), ironsmith::effects::ExecutionError> {
         }
         resolved += 1;
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().map_err(ironsmith::effects::ExecutionError::ContinuousDiscovery)?;
 
     println!("cub={cub_id:?} swamp={swamp:?}");
     let raw_types = game

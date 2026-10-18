@@ -188,7 +188,10 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
     context: Option<crate::parse_context::ParseContextView<'_>>,
     tokens: &[OwnedLexToken],
 ) -> Option<ControllerOwnerSubjectShape> {
-    const TRIGGERING_STACK_CONTROLLER: &[&[&str]] = &[
+    const TRIGGERING_SOURCE_CONTROLLER: &[&[&str]] = &[
+        &["that", "source's", "controller"],
+        &["that", "source", "s", "controller"],
+        &["that", "sources", "controller"],
         &["that", "spell", "or", "ability's", "controller"],
         &["that", "spell", "or", "ability", "s", "controller"],
         &["that", "spell", "or", "abilitys", "controller"],
@@ -205,7 +208,7 @@ fn parse_controller_owner_subject_tokens_with_optional_context(
     ];
 
     let words = TokenWordView::new(tokens).to_word_refs();
-    if TRIGGERING_STACK_CONTROLLER
+    if TRIGGERING_SOURCE_CONTROLLER
         .iter()
         .any(|expected| permission_shapes::exact_words(&words, expected))
     {

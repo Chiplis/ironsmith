@@ -49,6 +49,8 @@ pub enum CauseAbilityKind {
     Triggered,
     /// The triggered ability granted by the modular keyword (CR 702.43a).
     ModularTrigger,
+    /// Exact keyword of the ability whose activation cost caused this event.
+    ActivatedKeywordCost(crate::ActivatedAbilityKeyword),
 }
 
 impl CauseAbilityKind {
@@ -66,6 +68,7 @@ pub enum CauseAbilityKindFilter {
     Activated,
     Triggered,
     ModularTrigger,
+    ActivatedKeywordCost(crate::ActivatedAbilityKeyword),
 }
 
 impl CauseAbilityKindFilter {
@@ -74,6 +77,7 @@ impl CauseAbilityKindFilter {
             Self::Activated => kind == Some(CauseAbilityKind::Activated),
             Self::Triggered => kind.is_some_and(CauseAbilityKind::is_triggered),
             Self::ModularTrigger => kind == Some(CauseAbilityKind::ModularTrigger),
+            Self::ActivatedKeywordCost(keyword) => kind == Some(CauseAbilityKind::ActivatedKeywordCost(keyword)),
         }
     }
 }

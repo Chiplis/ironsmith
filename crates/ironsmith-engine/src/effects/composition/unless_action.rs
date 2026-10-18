@@ -996,7 +996,7 @@ mod tests {
             ))],
             PlayerFilter::You,
         );
-        let outcome = effect
+        let _outcome = effect
             .execute(&mut game, &mut ctx)
             .expect("payable optional cost resolves through replacement");
         assert!(!ctx.decision_maker.awaiting_choice());
@@ -1159,7 +1159,7 @@ mod tests {
             if simultaneous {
                 ctx.iteration.iterated_player = Some(alice);
             }
-            let outcome =
+            let _outcome =
                 run_optional_payment_owner(&effect, &mut game, &mut ctx, simultaneous).unwrap();
             assert!(!ctx.decision_maker.awaiting_choice());
             drop(ctx);

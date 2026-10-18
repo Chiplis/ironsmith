@@ -1198,7 +1198,6 @@ fn damage_added_type_removal_makes_live_and_departed_noncreature_toughness_zero(
 #[test]
 fn capped_damage_does_not_invent_toughness_for_a_known_creature_with_missing_evidence() {
     use ironsmith::effect::{EffectId, EffectMetric, EffectMetricSource, EffectOutcome, Value};
-    use ironsmith::effects::EffectContext;
     let mut game = game();
     let definition = ironsmith::cards::builders::CardDefinitionBuilder::new(
         ironsmith::CardId::new(),

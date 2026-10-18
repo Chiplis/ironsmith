@@ -668,6 +668,13 @@ impl TriggerMatcher for AttacksTrigger {
                 ChoiceAggregateMetric::Toughness => "toughness",
                 ChoiceAggregateMetric::ManaValue => "mana value",
                 ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+                ChoiceAggregateMetric::ManaSymbolsOfColor(color) => match color {
+                    crate::color::Color::White => "white mana symbols",
+                    crate::color::Color::Blue => "blue mana symbols",
+                    crate::color::Color::Black => "black mana symbols",
+                    crate::color::Color::Red => "red mana symbols",
+                    crate::color::Color::Green => "green mana symbols",
+                },
             };
             let comparison = match comparison {
                 Comparison::Equal(value) => value.to_string(),

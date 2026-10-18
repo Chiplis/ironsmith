@@ -39,7 +39,7 @@ fn source_attack_block_restrictions_track_hand_and_blessing_conditions() {
                 if blessed {
                     game.grant_citys_blessing(alice);
                 }
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 let allowed = match requirement {
                     "you have the city's blessing" => blessed,
                     "you have one or fewer cards in hand" => count <= 1,

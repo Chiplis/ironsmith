@@ -10,7 +10,10 @@ use crate::derived_view::DerivedGameView;
 use crate::effects::ExecutionContext;
 use crate::events::ManaAddedEvent;
 use crate::game_state::GameState;
-use crate::ids::{ObjectId, PlayerId};
+use crate::ids::{ObjectId, };
+#[cfg(test)]
+use crate::ids::PlayerId;
+#[cfg(test)]
 use crate::mana::ManaSymbol;
 #[cfg(test)]
 use crate::target::PlayerFilter;

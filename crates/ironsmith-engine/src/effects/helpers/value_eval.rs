@@ -747,6 +747,12 @@ pub(crate) fn resolve_wide(
         Value::NameStickerCharacterCountOnSource { character, .. } => Ok(i64::from(
             game.name_sticker_character_count_on_object(context.source, *character) as i64,
         )),
+        Value::StickerCharacteristicTotal { filter, toughness } => {
+            let filter_ctx = context.filter_context(game);
+            Ok(game.battlefield.iter().filter_map(|id| game.object(*id))
+                .filter(|object| filter.matches(object, &filter_ctx, game))
+                .map(|object| game.sticker_characteristic_total(object.id, *toughness)).sum())
+        }
         Value::StickersOnSource { action, .. } => Ok(i64::from(
             game.sticker_count_on_object(context.source, *action, None),
         )),
@@ -831,7 +837,7 @@ pub(crate) fn resolve_wide(
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(((i64::from(player.life) + 1).div_euclid(2)))
+            Ok((i64::from(player.life) + 1).div_euclid(2))
         }
         Value::HalfLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -839,7 +845,7 @@ pub(crate) fn resolve_wide(
         }
         Value::HalfStartingLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(((i64::from(player.starting_life) + 1).div_euclid(2)))
+            Ok((i64::from(player.starting_life) + 1).div_euclid(2))
         }
         Value::HalfStartingLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -1867,6 +1873,20 @@ fn resolve_event_value(
     spec: &EventValueSpec,
 ) -> Result<i64, ExecutionError> {
     match spec {
+        EventValueSpec::ManaSpentOnKeyword { colors } => {
+            let event = ctx.triggering_event.as_ref()
+                .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+                .ok_or_else(|| ExecutionError::IncompleteEvidence(
+                    "keyword payment quantity requires its completed action receipt".into()))?;
+            let mut amount = 0i64;
+            for color in [crate::color::Color::White, crate::color::Color::Blue,
+                crate::color::Color::Black, crate::color::Color::Red, crate::color::Color::Green] {
+                if colors.contains(color) {
+                    amount += i64::from(event.mana_spent.amount(crate::mana::ManaSymbol::from_color(color)));
+                }
+            }
+            Ok(amount)
+        }
         EventValueSpec::CastSpell(quantity) => ctx
             .triggering_event
             .as_ref()

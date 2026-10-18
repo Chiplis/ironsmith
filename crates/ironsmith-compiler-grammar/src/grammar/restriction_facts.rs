@@ -17,8 +17,49 @@ use super::restriction_normalization::{
 pub fn parse_activation_restriction_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedActivationRestriction> {
+    if let Some(parsed) = parse_cant_activate_this_ability_window_restriction(tokens) {
+        return Some(parsed);
+    }
     abilities::is_activate_only_restriction_sentence_lexed(tokens)
         .then(|| parse_activation_restriction_surface_tokens(tokens))
+}
+
+/// "You can't activate this ability during combat." (Djinn of Infinite
+/// Deceits): the negation of an activation window. The window is read with the
+/// ordinary "Activate only <window>" timing grammar and kept as a negated
+/// activation condition; the ability's own timing is unchanged.
+fn parse_cant_activate_this_ability_window_restriction(
+    tokens: &[OwnedLexToken],
+) -> Option<ParsedActivationRestriction> {
+    let word_positions = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.as_word().map(|word| (index, word)))
+        .collect::<Vec<_>>();
+    let words = word_positions.iter().map(|(_, word)| *word).collect::<Vec<_>>();
+    if !matches!(
+        words.get(..5),
+        Some(["you", "can't" | "cant" | "cannot", "activate", "this", "ability"])
+    ) || words.len() <= 5
+    {
+        return None;
+    }
+    let tail_start = word_positions[5].0;
+    let mut synthetic = crate::lexer::synthetic_word_tokens(["activate", "only"]);
+    synthetic.extend_from_slice(&tokens[tail_start..]);
+    let window = abilities::parse_activate_only_timing_lexed(&synthetic)?;
+    if matches!(window, ActivationTiming::AnyTime | ActivationTiming::OncePerTurn) {
+        return None;
+    }
+    Some(ParsedActivationRestriction {
+        presentation_text: normalized_surface(tokens),
+        timing: None,
+        condition: Some(PredicateAst::Not(Box::new(PredicateAst::ActivationTiming(window)))),
+        text_only_condition: None,
+        normalization: ActivationRestrictionNormalizationFact::Preserve,
+        mana_usage_restriction: None,
+        once_per_turn_after_other_restrictions: false,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

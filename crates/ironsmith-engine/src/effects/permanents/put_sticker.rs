@@ -55,6 +55,10 @@ fn place_sheet_ability_sticker(
         return Ok(None);
     }
     let cap = match &effect.max_ticket_cost {
+        // Pin Collection's enters trigger reads the X paid to cast it (the
+        // trigger inherits the permanent's cast X). Put onto the battlefield
+        // without being cast, X is 0 (CR 107.3m) rather than unresolvable.
+        Some(crate::effect::Value::X) if ctx.x_value.is_none() => Some(0),
         Some(value) => Some(crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?),
         None => None,
     };
@@ -106,6 +110,31 @@ fn place_sheet_ability_sticker(
     Ok(Some(EffectOutcome::with_objects(vec![object_id])))
 }
 
+fn place_sheet_pt_sticker(effect: &PutStickerEffect, game: &mut GameState,
+    ctx: &mut ExecutionContext, object_id: crate::ids::ObjectId) -> Result<EffectOutcome, ExecutionError> {
+    use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
+    let sheets = game.available_pt_stickers(ctx.controller);
+    let tickets = game.player(ctx.controller).map_or(0, |player|
+        player.counter_count(crate::object::CounterType::Named("ticket".into())));
+    let cap = effect.max_ticket_cost.as_ref().map(|value|
+        crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)).transpose()?;
+    let options = sheets.iter().filter(|entry| cap.is_none_or(|cap| entry.1 <= cap))
+        .filter(|entry| effect.without_paying_ticket_cost || entry.1 <= tickets)
+        .map(|entry| (entry.0, format!("{}/{} ({} tickets)", entry.2, entry.3, entry.1))).collect::<Vec<_>>();
+    let Some(id) = select_typed_option(game, ctx, ctx.controller, "Choose a power and toughness sticker", &options, SingleChoicePolicy::First)?
+        else { return Ok(EffectOutcome::impossible()); };
+    if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+    let cost = sheets.iter().find(|entry| entry.0 == id).map_or(0, |entry| entry.1);
+    if !effect.without_paying_ticket_cost && cost > 0 {
+        let payment = crate::effects::RemoveCountersEffect::new(crate::object::CounterType::Named("ticket".into()),
+            i32::try_from(cost).map_err(|_| ExecutionError::UnresolvableValue("sticker ticket cost exceeds supported range".into()))?,
+            ChooseSpec::SpecificPlayer(ctx.controller)).execute_child(game, ctx)?;
+        if payment.count_or_zero() < i64::from(cost) { return Ok(EffectOutcome::impossible()); }
+    }
+    Ok(if game.apply_pt_sticker(object_id, id).is_some() { EffectOutcome::with_objects(vec![object_id]) }
+        else { EffectOutcome::impossible() })
+}
+
 impl EffectExecutor for PutStickerEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -117,6 +146,29 @@ impl EffectExecutor for PutStickerEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         crate::effects::composition::execute_compound(game, ctx, |game, ctx| {
+            if self.action == KeywordActionKind::Sticker {
+                use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
+                let mut options = Vec::new();
+                let tickets = game.player(ctx.controller).map_or(0, |player|
+                    player.counter_count(crate::object::CounterType::Named("ticket".into())));
+                if !game.available_art_stickers(ctx.controller).is_empty() {
+                    options.push((KeywordActionKind::ArtSticker, "Art sticker".to_string()));
+                }
+                if !game.available_name_stickers(ctx.controller).is_empty() {
+                    options.push((KeywordActionKind::NameSticker, "Name sticker".to_string()));
+                }
+                if game.available_ability_stickers(ctx.controller).iter().any(|entry| self.without_paying_ticket_cost || entry.ticket_cost <= tickets) {
+                    options.push((KeywordActionKind::AbilitySticker, "Ability sticker".to_string()));
+                }
+                if game.available_pt_stickers(ctx.controller).iter().any(|entry| self.without_paying_ticket_cost || entry.1 <= tickets) {
+                    options.push((KeywordActionKind::PowerToughnessSticker, "Power and toughness sticker".to_string()));
+                }
+                let Some(action) = select_typed_option(game, ctx, ctx.controller, "Choose a sticker kind", &options, SingleChoicePolicy::First)?
+                    else { return Ok(EffectOutcome::impossible()); };
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                let mut concrete = self.clone(); concrete.action = action;
+                return concrete.execute_child(game, ctx);
+            }
             let object_id = match resolve_single_object_from_spec(game, &self.target, ctx) {
                 Ok(id) => id,
                 Err(ExecutionError::InvalidTarget) if self.target.is_target() => {
@@ -206,6 +258,19 @@ impl EffectExecutor for PutStickerEffect {
                     sticker_id: sticker_id,
                     name,
                 })
+            } else if self.action == KeywordActionKind::ArtSticker {
+                use crate::effects::composition::scoped_choice::{SingleChoicePolicy, select_typed_option};
+                let options = game.available_art_stickers(ctx.controller).into_iter()
+                    .map(|id| (id, format!("Art sticker {id}"))).collect::<Vec<_>>();
+                let Some(id) = select_typed_option(game, ctx, ctx.controller, "Choose an art sticker", &options, SingleChoicePolicy::First)?
+                    else { return Ok(EffectOutcome::impossible()); };
+                if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
+                if game.apply_art_sticker(object_id, id).is_none() { return Ok(EffectOutcome::impossible()); }
+                None
+            } else if self.action == KeywordActionKind::PowerToughnessSticker {
+                let placed = place_sheet_pt_sticker(self, game, ctx, object_id)?;
+                if placed.objects().is_none() || ctx.decision_maker.awaiting_choice() { return Ok(placed); }
+                None
             } else if self.action == KeywordActionKind::AbilitySticker
                 && let Some(placed) = place_sheet_ability_sticker(self, game, ctx, object_id)?
             {

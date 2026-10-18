@@ -2,7 +2,7 @@
 
 use crate::events::EventKind;
 use crate::events::other::LandPlayedEvent;
-use crate::filter::ObjectFilterExt as _;
+
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};

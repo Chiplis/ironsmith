@@ -22,7 +22,7 @@ use ironsmith::object::CounterType;
 use ironsmith::target::ObjectFilter;
 use ironsmith::target::PlayerFilter;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardId, CardType, GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
+use ironsmith::{CardId, CardType, GameProgress, GameState, ObjectId, PlayerId, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;

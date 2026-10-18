@@ -1,3 +1,4 @@
+use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbRoleAst};
 use crate::effect::Value;
 use crate::host::{
     CardTextError, ConditionalEffectAst, EffectAst, OwnedLexToken, PlayerAst, SubjectAst, TagKey,
@@ -271,6 +272,12 @@ pub fn parse_add_mana(
         return Ok(EffectAst::subject_verb_add_mana_deck_construction_chosen_colors(
             player, amount,
         ));
+    }
+    if clause_words.ends_with(&["last", "noted", "type", "and", "amount", "of", "mana"]) {
+        return Ok(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, player,
+            SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::AddManaNotedType {
+                amount: Value::Fixed(0), use_noted_amount: true,
+            })));
     }
     // "Add one mana of this artifact's last noted type."
     if clause_words.ends_with(&["last", "noted", "type"]) && clause_words.contains(&"mana") {

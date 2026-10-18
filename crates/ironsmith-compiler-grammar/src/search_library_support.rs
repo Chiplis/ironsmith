@@ -66,7 +66,11 @@ pub(crate) fn parse_land_quality_union_filter(tokens: &[OwnedLexToken]) -> Optio
         if *word == "basic" {
             arm = arm.with_supertype(crate::types::Supertype::Basic);
         } else {
-            let subtype = crate::util::parse_subtype_word(word)?;
+            // The shared "land card" head makes each listed word a land
+            // subtype, so English-noun subtypes ("Sphere") keep their Magic
+            // meaning here like on a type line.
+            let subtype = crate::util::parse_subtype_word(word)
+                .or_else(|| crate::grammar::leaf::classify_token_definition_subtype(word))?;
             if !subtype.is_land_subtype() {
                 return None;
             }
@@ -490,6 +494,13 @@ pub fn split_search_different_name_reference_filter(
         &["that", "don't", "have", "the", "same", "name", "as"],
         &["that", "dont", "have", "the", "same", "name", "as"],
         &["that", "do", "not", "have", "the", "same", "name", "as"],
+        // "an Aura card with mana value ... and with a different name than
+        // each Aura you control" (Light-Paws): the reference set is every
+        // matching permanent (tagged all at once), so "each" is dropped.
+        &["and", "with", "a", "different", "name", "than", "each"],
+        &["with", "a", "different", "name", "than", "each"],
+        &["and", "with", "a", "different", "name", "from", "each"],
+        &["with", "a", "different", "name", "from", "each"],
         &["with", "a", "different", "name", "from"],
         &["with", "different", "name", "from"],
     ];

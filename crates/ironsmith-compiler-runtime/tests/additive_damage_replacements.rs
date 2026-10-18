@@ -19,7 +19,7 @@ use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::ObjectFilter;
 use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
+use ironsmith::triggers::{TriggerQueue, check_triggers};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;

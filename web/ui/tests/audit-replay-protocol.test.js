@@ -99,32 +99,32 @@ test("a failed initial checkpoint comparison cannot authorize a later action", a
   assert.deepEqual(h.calls, []);
 });
 
-test("current replay requires v11 checkpoint exports before start and per-action mutation", async () => {
-  for (const version of [undefined, null, 2, 3, 4, 5, 6, 7, 8, 9, 10, "9", "10", "11", 12]) {
+test("current replay requires v12 checkpoint exports before start and per-action mutation", async () => {
+  for (const version of [undefined, null, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, "9", "10", "11", "12", 13]) {
     for (const entry of [startAuditTranscriptReplayWithGame, replayAuditTranscriptWithGame,
       verifyEndOfMatchDisclosuresWithGame]) {
       const h = replayGame();
       h.setCheckpoint({ version });
-      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 11/);
+      await assert.rejects(entry({ game: h.game, transcript: transcript() }), /checkpoint version 12/);
       assert.deepEqual(h.calls, ["export"]);
     }
   }
-  for (const version of [undefined, null, 7, 8, 9, 10, "9", "10", "11", 12]) {
+  for (const version of [undefined, null, 7, 8, 9, 10, 11, "9", "10", "11", "12", 13]) {
     const h = replayGame();
     await startAuditTranscriptReplayWithGame({ game: h.game, transcript: transcript(), cryptoImpl: webcrypto });
     h.calls.length = 0;
     h.setCheckpoint({ version });
-    await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 11/);
+    await assert.rejects(applyAuditReplayActionWithGame({ game: h.game, action }), /checkpoint version 12/);
     assert.deepEqual(h.calls, ["export"]);
   }
 });
 
 test("current signed replay refuses a historical final digest before invoking its replay callback", async () => {
   let callbacks = 0;
-  for (const version of [undefined, null, 7, 8, 9, 10, "9", "10", "11", 12]) {
+  for (const version of [undefined, null, 7, 8, 9, 10, 11, "9", "10", "11", "12", 13]) {
     await assert.rejects(verifyLiveAuditTranscript({ ...transcript(), finalPublicCheckpoint: { version } }, webcrypto, {
       requireEngineReplay: false, replayTranscript: async () => { callbacks++; },
-    }), /checkpoint version 11/);
+    }), /checkpoint version 12/);
   }
   assert.equal(callbacks, 0);
 });

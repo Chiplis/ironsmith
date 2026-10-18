@@ -8,6 +8,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     {
         return parse_trigger_subject_player_filter(prefix).map(TriggerSpec::PlayerPaysLife);
     }
+    if let Some(source) = words.strip_suffix(&["cumulative", "upkeep", "is", "paid"]) {
+        let source = crate::util::possessive_normalized_word_refs(source);
+        crate::util::source_reference_surface_for_possessive_words(&source)?;
+        return Some(TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::CumulativeUpkeepPaid,
+            player: PlayerFilter::Any,
+        });
+    }
     if let Some(source) = words.strip_suffix(&["echo", "cost", "is", "paid"]) {
         let source = crate::util::possessive_normalized_word_refs(source);
         crate::util::source_reference_surface_for_possessive_words(&source)?;

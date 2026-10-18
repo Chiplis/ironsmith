@@ -34,7 +34,7 @@ fn modify(g: &mut GameState, id: ObjectId, modification: Modification) {
     ApplyContinuousEffect::new(EffectTarget::Specific(id), modification, Until::Forever)
         .execute(g, &mut ExecutionContext::new_default(id, A))
         .unwrap();
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
 }
 fn upkeep(g: &mut GameState) {
     g.mark_upkeep_began(A);
@@ -251,7 +251,7 @@ fn tc5_training_completion_requires_counters_and_tc6_accepts_team_attacker() {
             for id in [id, friend] {
                 g.remove_summoning_sickness(id);
             }
-            g.refresh_continuous_state();
+            g.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
             g.take_pending_trigger_events();
             g.turn.phase = ironsmith::game_state::Phase::Combat;
             g.turn.step = Some(ironsmith::game_state::Step::DeclareAttackers);
@@ -294,7 +294,7 @@ fn tc7_suspect_grants_follow_timestamps_and_designation_survives_ability_loss() 
         if !suspect_first {
             g.set_suspected(id);
         }
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
         assert!(g.is_suspected(id));
         assert_eq!(
             g.current_has_static_ability_id(id, StaticAbilityId::Menace),
@@ -305,10 +305,10 @@ fn tc7_suspect_grants_follow_timestamps_and_designation_survives_ability_loss() 
             !suspect_first
         );
         g.clear_suspected(id);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
         assert!(!g.current_has_static_ability_id(id, StaticAbilityId::Menace));
         g.set_suspected(id);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("integration fixture continuous state refresh succeeds");
         assert!(g.current_has_static_ability_id(id, StaticAbilityId::Menace));
     }
 }

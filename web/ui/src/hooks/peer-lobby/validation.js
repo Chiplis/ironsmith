@@ -1,3 +1,4 @@
+import { isOwnPassCancellation } from "../../lib/sync-commands.js";
 import { isOpaqueExilePlayCommand, localOpaqueExilePlayCommand } from "../../lib/sync-object-identity.js";
 import { createOperationRevealBatch } from "../../lib/ziffle-operation-reveal-batch.js";
 import { assertMatchNotDisputed, isMatchDisputed } from "./match-lifecycle.js";
@@ -547,6 +548,9 @@ export function usePeerLobbyValidation(base, servicesRef) {
         const actorName = playerNameForIndex(session.players, message.actorIndex);
         throw new Error(`Unauthorized add-card action from ${actorName}`);
       }
+      if (message.command?.type === "cancel_priority_yield" && !isOwnPassCancellation(message.command, message.actorIndex)) {
+        throw new Error("A player can only cancel their own passing intention");
+      }
       const expectedActor = gameRef.current
         ? (await gameRef.current.uiState())?.decision?.player
         : null;
@@ -584,6 +588,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
         });
       } else if (
         !isSelfForfeit
+        && !isOwnPassCancellation(message.command, message.actorIndex)
         && expectedActor !== null
         && expectedActor !== undefined
         && Number(expectedActor) !== Number(message.actorIndex)
@@ -734,6 +739,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
       const expectedActorBeforeApply = liveStateBeforeApply?.decision?.player;
       if (
         !isSelfForfeit
+        && !isOwnPassCancellation(message.command, message.actorIndex)
         && expectedActorBeforeApply !== null
         && expectedActorBeforeApply !== undefined
         && Number(expectedActorBeforeApply) !== Number(message.actorIndex)
@@ -1958,6 +1964,7 @@ export function usePeerLobbyValidation(base, servicesRef) {
     // A peer-local ID is translated only by its frozen public incarnation.
     // Keep the signed wire command unchanged for signature and head checks.
     const localCommand = await localOpaqueExilePlayCommand(gameRef.current, auth.command);
+    if (auth.command?.type === "cancel_priority_yield" && !isOwnPassCancellation(auth.command, auth.actorIndex)) return reject("actor_index_mismatch");
     const compatible = isDecisionCommandCompatible(liveState?.decision, localCommand);
     if (debug) {
       debug.liveDecisionKind = String(liveState?.decision?.kind || "");
@@ -1966,7 +1973,8 @@ export function usePeerLobbyValidation(base, servicesRef) {
     }
     if (!compatible) return reject("command_not_compatible_with_live_decision");
     if (
-      auth.actorIndex !== null
+      !isOwnPassCancellation(auth.command, auth.actorIndex)
+      && auth.actorIndex !== null
       && auth.actorIndex !== undefined
       && liveState?.decision?.player !== null
       && liveState?.decision?.player !== undefined

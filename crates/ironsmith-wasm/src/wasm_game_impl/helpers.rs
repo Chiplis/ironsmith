@@ -61,8 +61,8 @@ pub(super) fn priority_action_ref_for_game(
         casting_method,
         ..
     } = &mut action_ref
-        && let (CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
-            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. }) = casting_method.origin_method_mut()
+        && let CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. } = casting_method.origin_method_mut()
         && let Some(spell) = game.object(ObjectId::from_raw(*spell_id))
     {
         let kind = ironsmith::decision::face_down_cast_kind(game, spell);
@@ -82,8 +82,8 @@ fn action_ref_for_matching(action_ref: &PriorityActionRef) -> PriorityActionRef 
         casting_method,
         ..
     } = &mut normalized
-        && let (CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
-            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. }) = casting_method.origin_method_mut()
+        && let CastingMethodRef::FaceDown { face_down_kind, face_down_permission_source }
+            | CastingMethodRef::FaceDownPlayFrom { face_down_kind, face_down_permission_source, .. } = casting_method.origin_method_mut()
     {
         *face_down_kind = None;
         *face_down_permission_source = None;
@@ -98,17 +98,6 @@ mod exact_permission_adapter_tests {
     use ironsmith::game_state::FaceDownCastKind;
     use ironsmith::grant_registry::{GrantPermissionIdentity, GrantSource, PlayFromConstraints};
     use ironsmith_core::value_model::ManaSpendMode;
-
-    fn exact_action(spell: ObjectId, source: ObjectId, index: usize, identity: u64) -> LegalAction {
-        LegalAction::CastSpell {
-            spell_id: spell,
-            from_zone: Zone::Exile,
-            casting_method: CastingMethod::ExactPermission {
-                origin: Box::new(CastingMethod::PlayFrom { source, zone: Zone::Exile, use_alternative: None }),
-                permission: GrantSelection { identity: GrantPermissionIdentity::Stored(identity), source, index },
-            },
-        }
-    }
 
     #[test]
     fn complete_menu_matching_rechecks_live_permissions_and_ignores_a_stale_action_index() {
@@ -686,6 +675,7 @@ fn pregame_action_kind(
     static_ability.pregame_action_kind()
 }
 
+#[cfg(test)]
 pub(super) fn describe_action(game: &GameState, action: &LegalAction)
     -> Result<String, ironsmith::static_ability_processor::StaticEffectDiscoveryError> {
     let checked = game.continuous_query_snapshot()?;
@@ -913,7 +903,7 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
         }
         LegalAction::TurnFaceUp {
             creature_id,
-            method,
+            ..
         } => {
             let cost_prefix =
                 face_up_cost
@@ -931,7 +921,7 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             }
             ironsmith::special_actions::SpecialAction::TurnFaceUp {
                 permanent_id,
-                method,
+                ..
             } => {
                 let cost_prefix = face_up_cost
                 .map(|cost| format!("{cost}: "))
@@ -1482,8 +1472,8 @@ pub(super) fn resolve_priority_action(
 ) -> Result<Option<LegalAction>, ironsmith::effects::ExecutionError> {
     if let Some(action_ref) = action_ref {
         let action_ref = &action_ref_for_matching(action_ref);
-        if let (PriorityActionRef::OpenExiledCardForPlay { card_id, incarnation, .. }
-            | PriorityActionRef::CastExiledCardFaceDown { card_id, incarnation, .. }) = action_ref {
+        if let PriorityActionRef::OpenExiledCardForPlay { card_id, incarnation, .. }
+            | PriorityActionRef::CastExiledCardFaceDown { card_id, incarnation, .. } = action_ref {
             // Even a completed cached menu is not authority to open a stale
             // incarnation/grant. Re-derive only the face-independent action.
             if game.turn.priority_player != Some(priority.player) { return Ok(None); }

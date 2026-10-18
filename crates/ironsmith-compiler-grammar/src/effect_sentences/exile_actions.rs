@@ -511,6 +511,17 @@ pub fn parse_exile(
     {
         return Ok(effect);
     }
+    // "exile up to one target artifact, up to one target creature, up to one
+    // target enchantment, up to one target planeswalker" (Chaotic
+    // Transformation, after a serial "and" split): each "up to one target"
+    // slot is its own independent target, never one union-typed target.
+    if subject.is_none() {
+        let mut sentence = crate::lexer::synthetic_word_tokens(["exile"]);
+        sentence.extend_from_slice(tokens);
+        if let Ok(Some(effects)) = crate::effect_sentences::parse_exile_up_to_one_each_target_type_sentence(&sentence) {
+            return Ok(EffectAst::Sequence { effects });
+        }
+    }
     // "exile Ajani and each artifact and creature your opponents control"
     // (Ajani, Strength of the Pride; Fraying Line): the source and an
     // each-set are two recipients of one exile instruction. The set's own

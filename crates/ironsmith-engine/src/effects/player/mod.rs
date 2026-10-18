@@ -178,3 +178,9 @@ pub(crate) use grant_exact_objects::GrantExactObjects;
 
 mod resolved_cast_offer;
 mod library_cast_program;
+
+mod register_extra_die_replacement;
+pub use register_extra_die_replacement::RegisterExtraDieReplacementEffect;
+
+mod cast_face_down_using_activation_mana;
+pub use cast_face_down_using_activation_mana::CastFaceDownUsingActivationManaEffect;

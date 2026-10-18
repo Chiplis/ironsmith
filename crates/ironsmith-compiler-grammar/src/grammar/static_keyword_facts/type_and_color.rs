@@ -132,11 +132,24 @@ pub fn parse_subject_type_addition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectTypeAdditionFact<'_>> {
     if tokens.iter().any(|token| token.kind == TokenKind::Quote) { return None; }
-    crate::grammar::primitives::probe_all(
+    let fact: SubjectTypeAdditionFact<'_> = crate::grammar::primitives::probe_all(
         tokens,
         parse_subject_type_addition,
         "static subject type addition",
-    )
+    )?;
+    // "It has flying and is an Angel in addition to its other types."
+    // (Valkyrie's Call): a copula continuing a coordinated predicate has no
+    // object subject of its own ("it has flying and" is not a noun phrase).
+    if fact
+        .subject_tokens
+        .iter()
+        .rev()
+        .find(|token| !token.is_comma())
+        .is_some_and(|token| token.is_word("and"))
+    {
+        return None;
+    }
+    Some(fact)
 }
 
 pub fn parse_subject_card_type_identity_tokens(

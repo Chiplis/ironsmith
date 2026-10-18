@@ -86,6 +86,22 @@ pub(super) fn try_parse_combat_damage_trigger_lexed(
     if matches!(words.as_slice(), [.., "or", "dies" | "die"]) {
         return Ok(None);
     }
+    // "Whenever a creature you control deals combat damage during your turn"
+    // (Quilled Greatwurm, The Aetherspark): the turn restriction qualifies
+    // the event instead of being dropped with the damage recipient words.
+    if let Some(without_turn) = crate::grammar::primitives::strip_lexed_suffix_phrase(
+        tokens,
+        &["during", "your", "turn"],
+    ) {
+        let without_turn = without_turn.to_vec();
+        let core_words = crate::lexer::token_word_refs(&without_turn);
+        let trigger = parse_combat_damage_trigger_lexed(&without_turn, &core_words)?;
+        return Ok(Some(TriggerSpec::ConditionQualified {
+            trigger: Box::new(trigger),
+            condition: crate::cards::builders::PredicateAst::YourTurn,
+            surface: "during your turn".to_string(),
+        }));
+    }
     parse_combat_damage_trigger_lexed(tokens, &words).map(Some)
 }
 
@@ -623,7 +639,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     .is_some_and(|word| matches!(*word, "another" | "other"));
                 let is_unqualified_spell =
                     trigger_pattern_accepts(&filter_words, UNQUALIFIED_SPELL_FILTER_PATTERN);
-                if filter_tokens.is_empty() || is_unqualified_spell {
+                // "a modal spell" / "a spell using teamwork" leave a bare
+                // "a spell" once the marker words are stripped; the marker
+                // still needs a filter to live on (an unqualified spell
+                // trigger has none).
+                if filter_tokens.is_empty() || (is_unqualified_spell && !modal && !using_teamwork) {
                     return Ok(None);
                 }
                 parse_object_filter_lexed(filter_tokens, other)
@@ -1196,6 +1216,75 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             return Ok(triggers.fold(first, |left, right| {
                 TriggerSpec::Either(Box::new(left), Box::new(right))
             }));
+        }
+    }
+    // "an opponent scries, surveils, or searches their library" (River
+    // Song): a serial keyword-action list whose final arm is a different
+    // complete player action. Every arm shares the subject; the final arm is
+    // read as its own complete clause with that subject restored.
+    if let Some(or_idx) = tokens.iter().rposition(|token| token.is_word("or"))
+        && or_idx + 1 < tokens.len()
+        && tokens
+            .get(or_idx + 1)
+            .and_then(|token| token.as_word())
+            .and_then(crate::events::KeywordActionKind::from_trigger_word)
+            .is_none()
+    {
+        let mut left_end = or_idx;
+        while left_end > 0 && tokens[left_end - 1].is_comma() {
+            left_end -= 1;
+        }
+        let action_at = |index: usize| {
+            tokens
+                .get(index)
+                .and_then(|token| token.as_word())
+                .and_then(crate::events::KeywordActionKind::from_trigger_word)
+        };
+        let list_start = (1..left_end).find(|&start| {
+            let mut index = start;
+            let mut count = 0usize;
+            while index < left_end {
+                if action_at(index).is_none() {
+                    return false;
+                }
+                count += 1;
+                index += 1;
+                if index < left_end {
+                    if !tokens[index].is_comma() {
+                        return false;
+                    }
+                    index += 1;
+                }
+            }
+            count >= 2
+        });
+        if let Some(start) = list_start
+            && let Some(player) =
+                parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..start]))
+        {
+            let mut last_arm = tokens[..start].to_vec();
+            last_arm.extend_from_slice(&tokens[or_idx + 1..]);
+            if let Ok(last_trigger) = parse_trigger_clause_lexed(&last_arm) {
+                let mut combined: Option<TriggerSpec> = None;
+                for index in start..left_end {
+                    let Some(action) = action_at(index) else {
+                        continue;
+                    };
+                    let trigger = TriggerSpec::KeywordAction {
+                        action,
+                        player: player.clone(),
+                        source_filter: None,
+                        during_your_turn: false,
+                    };
+                    combined = Some(match combined {
+                        Some(left) => TriggerSpec::Either(Box::new(left), Box::new(trigger)),
+                        None => trigger,
+                    });
+                }
+                if let Some(left) = combined {
+                    return Ok(TriggerSpec::Either(Box::new(left), Box::new(last_trigger)));
+                }
+            }
         }
     }
     if let Some(alternatives) =
@@ -3795,7 +3884,65 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         });
     }
 
-    if let Some(becomes_idx) = trigger_atom_word(&words, TriggerClauseAtom::Becomes)
+    // State conditions on arbitrary permanents are evaluated once per
+    // object, independently of the permanent carrying this ability.
+    if let Some(has) = words.iter().position(|word| *word == "has")
+        && words.ends_with(&["counters", "on", "it"])
+        && words.get(has + 1..).is_some_and(|tail| tail.contains(&"more"))
+        && !is_source_reference_words(&words[..has])
+    {
+        let head_end = trigger_word_token_start(tokens, has).unwrap_or(tokens.len());
+        let tail_start = trigger_word_token_start(tokens, has + 1).unwrap_or(tokens.len());
+        let tail_end = trigger_word_token_start(tokens, words.len() - 2).unwrap_or(tokens.len());
+        let mut filter_tokens = tokens[..head_end].to_vec();
+        filter_tokens.extend(crate::lexer::synthetic_word_tokens(["with"]));
+        filter_tokens.extend_from_slice(&tokens[tail_start..tail_end]);
+        let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+        return Ok(TriggerSpec::StateBasedObjects {
+            filter, display: format!("Whenever {}", words.join(" ")),
+        });
+    }
+
+    if words.as_slice() == ["a", "spell", "or", "ability", "is", "put", "onto", "the", "stack"] {
+        return Ok(TriggerSpec::StackObjectAdded);
+    }
+
+    // Object-only targeting batches: "one or more" produces one trigger
+    // for an activation even when it targets several matching permanents.
+    if let Some(index) = words.iter().position(|word| matches!(*word, "become" | "becomes"))
+        && words[..index].starts_with(&["one", "or", "more"])
+    {
+        let source_kind = match &words[index + 1..] {
+            ["the", "target", "of", "an", "activated", "ability"] =>
+                Some(ironsmith_core::filter_model::StackObjectKind::ActivatedAbility),
+            ["the", "target", "of", "a", "triggered", "ability"] =>
+                Some(ironsmith_core::filter_model::StackObjectKind::TriggeredAbility),
+            _ => None,
+        };
+        if let Some(source_kind) = source_kind {
+            let start = trigger_word_token_start(tokens, 3).unwrap_or(tokens.len());
+            let end = trigger_word_token_start(tokens, index).unwrap_or(tokens.len());
+            let object = parse_object_filter_lexed(&tokens[start..end], false)?;
+            return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+                player: PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Any),
+                object,
+                source_controller: PlayerFilter::Any,
+                source_kind,
+                once_per_stack_object: true,
+            });
+        }
+    }
+
+    // "Whenever one or more creatures you control become the target of ..."
+    // (Professor Hojo): the plural verb of a one-or-more subject.
+    let becomes_target_idx = trigger_atom_word(&words, TriggerClauseAtom::Becomes).or_else(|| {
+        if words.starts_with(&["one", "or", "more"]) {
+            words.iter().position(|word| *word == "become")
+        } else {
+            None
+        }
+    });
+    if let Some(becomes_idx) = becomes_target_idx
         && trigger_pattern_accepts(&words[becomes_idx + 1..], BECOMES_TARGET_OF_PREFIX_PATTERN)
     {
         let subject_words = &words[..becomes_idx];
@@ -3925,6 +4072,17 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 && let Some(filter) = subject_filter
             {
                 return Ok(TriggerSpec::BecomesTargeted(filter));
+            }
+            // "... become the target of an activated ability" (Professor
+            // Hojo): only activated abilities (CR 113.3b), not spells or
+            // triggered abilities.
+            if matches!(tail_words, ["an" | "a", "activated", "ability"])
+                && let Some(target) = subject_filter.clone()
+            {
+                return Ok(TriggerSpec::BecomesTargetedByStackObject {
+                    target,
+                    stack_object: ObjectFilter::activated_ability(),
+                });
             }
             if trigger_pattern_accepts(tail_words, BACKUP_ABILITY_TARGET_TAIL_PATTERN)
                 && let Some(filter) = subject_filter
@@ -4858,7 +5016,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     ] = words.as_slice()
     {
         return Ok(TriggerSpec::ConditionQualified {
-            trigger: Box::new(TriggerSpec::PlayerTapsForMana {
+            trigger: Box::new(TriggerSpec::PlayerAddsManaFromSource {
                 player: PlayerFilter::You,
                 filter: ObjectFilter::land(),
             }),

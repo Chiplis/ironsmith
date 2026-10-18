@@ -60,10 +60,21 @@ pub fn parse_damage_amount_replacement(
     let action = if self_recipient { &action[..action.len() - 2] } else { action };
     // The entire action ends at `damage`: explicit destinations, additional
     // instructions, riders and repeated `instead` markers belong elsewhere.
-    if !action.last()?.is_word("damage") || deal + 2 >= action.len() {
-        return None;
-    }
-    let amount_tokens = &action[deal + 1..action.len() - 1];
+    let amount_tokens = if action.get(deal + 1)?.is_word("damage")
+        && action.get(deal + 2)?.is_word("equal")
+        && action.get(deal + 3)?.is_word("to")
+    {
+        // A repeated amount may follow "damage equal to" as well as
+        // precede "damage". The dependent clause still has no recipient.
+        let amount = &action[deal + 4..];
+        if amount.is_empty() { return None; }
+        amount
+    } else {
+        if !action.last()?.is_word("damage") || deal + 2 >= action.len() {
+            return None;
+        }
+        &action[deal + 1..action.len() - 1]
+    };
     Some(DamageAmountReplacementShape {
         predicate_tokens,
         amount_tokens,

@@ -2480,7 +2480,7 @@ mod tests {
             Zone::Battlefield,
         );
         game.remove_summoning_sickness(attacker);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         declare_attackers(
@@ -2544,7 +2544,7 @@ mod tests {
                 StaticAbility::max_blockers_each_combat(1),
             ));
         game.remove_summoning_sickness(attacker);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
         let mut combat = CombatState::default();
         declare_attackers(
@@ -2587,7 +2587,7 @@ mod tests {
                     toughness: 1,
                 },
             ));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let before = game.work_counters();
         let mut combat = CombatState {
             attackers: vec![AttackerInfo {
@@ -3049,7 +3049,7 @@ mod tests {
                 crate::target::ObjectFilter::specific(leader),
                 StaticAbility::banding(),
             )));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let mut combat = CombatState {
             attackers: vec![
                 AttackerInfo {

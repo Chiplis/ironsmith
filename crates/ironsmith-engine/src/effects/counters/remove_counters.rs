@@ -1481,7 +1481,7 @@ mod counter_removal_replacement_owner_tests {
 
 #[cfg(test)]
 mod removed_counter_removal_selected_api_tests {
-    use super::*;
+
     #[test]
     fn selected_zero_counter_removal_preserves_one_shot_until_positive_proposal() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();

@@ -6,12 +6,17 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 /// A trigger whose condition is checked during state-based action scans.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateTrigger {
-    description: String,
+    pub description: String,
+    pub objects: Option<crate::target::ObjectFilter>,
 }
 
 impl StateTrigger {
+    pub fn matching_objects(filter: crate::target::ObjectFilter, description: String) -> Self {
+        Self { description, objects: Some(filter) }
+    }
+
     pub fn new(description: String) -> Self {
-        Self { description }
+        Self { description, objects: None }
     }
 }
 

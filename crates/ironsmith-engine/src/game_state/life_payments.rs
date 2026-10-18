@@ -323,7 +323,7 @@ impl GameState {
             self,
             ctx,
             crate::events::Event::new_with_provenance(
-                LifeLossEvent::from_effect(player, amount),
+                LifeLossEvent::from_payment(player, amount),
                 provenance,
             ),
         )?;

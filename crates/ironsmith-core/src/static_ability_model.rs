@@ -1906,6 +1906,18 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         filter: ObjectFilter,
         display: String,
     },
+    RevealCardsDrawn { player: PlayerFilter },
+    /// Damage from one chosen player's source to a distinct chosen player or
+    /// a permanent that player controls. Correlation is evaluated per event.
+    DamageBetweenChosenPlayers { factor: u32, display: String },
+    /// One grouped continuous rule spanning type and ability layers.
+    AddSubtypesAndGrantAbilities {
+        filter: ObjectFilter, subtypes: Vec<Subtype>,
+        abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>, display: String,
+    },
+    /// A planar roll batch gains one physical die; its roller chooses one
+    /// result to ignore before any roll event or planar consequence occurs.
+    ExtraPlanarDieIgnoreOne { player: PlayerFilter },
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -2552,6 +2564,9 @@ where
             StaticAbilityPayload::FirstCoinBatchHeadsWin { player } => StaticAbilityPayload::FirstCoinBatchHeadsWin { player },
             StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional } => {
                 StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional }
+            }
+            StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player } => {
+                StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player }
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -3371,6 +3386,13 @@ where
             StaticAbilityPayload::AdditionalLandPlays(count) => {
                 StaticAbilityPayload::AdditionalLandPlays(count)
             }
+            StaticAbilityPayload::RevealCardsDrawn { player } => StaticAbilityPayload::RevealCardsDrawn { player },
+            StaticAbilityPayload::DamageBetweenChosenPlayers { factor, display } => StaticAbilityPayload::DamageBetweenChosenPlayers { factor, display },
+            StaticAbilityPayload::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, display } => StaticAbilityPayload::AddSubtypesAndGrantAbilities {
+                filter, subtypes, display,
+                abilities: abilities.into_iter().map(|ability|
+                    map_ability(ability, map_trigger, map_effect, map_cost, map_intervening)).collect::<Result<Vec<_>, _>>()?,
+            },
             StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
@@ -4267,6 +4289,14 @@ impl<
             id: Some(StaticAbilityId::ExtraDieIgnoreLowest),
             label: display.into(),
             payload: StaticAbilityPayload::ExtraDieIgnoreLowest { player, additional },
+        }
+    }
+
+    pub fn extra_planar_die_ignore_one(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self {
+            id: Some(StaticAbilityId::ExtraPlanarDieIgnoreOne),
+            label: display.into(),
+            payload: StaticAbilityPayload::ExtraPlanarDieIgnoreOne { player },
         }
     }
 
@@ -6732,6 +6762,20 @@ impl<
             label: "add supertypes".to_string(),
             payload: StaticAbilityPayload::AddSupertypes { filter, supertypes },
         }
+    }
+    pub fn add_subtypes_and_grant_abilities(filter: ObjectFilter, subtypes: Vec<Subtype>, abilities: Vec<AbilityModel<T, E, C, Cond, ICond>>, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::AddSubtypes), label: display.clone(),
+            payload: StaticAbilityPayload::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, display } }
+    }
+    pub fn damage_between_chosen_players(factor: u32, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self { id: Some(StaticAbilityId::ModifyDamageAmountReplacement), label: display.clone(),
+            payload: StaticAbilityPayload::DamageBetweenChosenPlayers { factor, display } }
+    }
+    pub fn reveal_cards_drawn(player: PlayerFilter, display: impl Into<String>) -> Self {
+        Self { id: Some(StaticAbilityId::RevealCardsDrawn), label: display.into(),
+            payload: StaticAbilityPayload::RevealCardsDrawn { player } }
     }
     pub fn reveal_first_card_you_draw_each_turn(optional: bool, your_turns_only: bool) -> Self {
         Self {

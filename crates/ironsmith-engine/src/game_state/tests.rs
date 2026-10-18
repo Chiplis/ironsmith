@@ -410,7 +410,7 @@ fn summoning_sickness_change_rebuilds_continuous_state() {
     game.create_object_from_definition(&banner, alice, Zone::Battlefield);
     let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
     game.set_summoning_sick(bear_id);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     assert!(game.continuous_state_is_clean());
     assert!(game.current_has_static_ability_id(bear_id, StaticAbilityId::Haste));
@@ -420,7 +420,7 @@ fn summoning_sickness_change_rebuilds_continuous_state() {
     // No per-object recompute: a full layer pass is the only derivation that
     // stays correct when objects' characteristics depend on each other.
     assert!(!game.continuous_state_is_clean());
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert!(game.current_has_static_ability_id(bear_id, StaticAbilityId::Haste));
 }
 
@@ -453,7 +453,7 @@ fn turn_context_neutral_effects_reuse_characteristic_cache_across_phase_changes(
                 toughness: 1,
             },
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     assert_eq!(
         game.calculated_characteristics(bear_id)
@@ -515,7 +515,7 @@ fn absent_payment_restriction_skips_layered_battlefield_scans() {
             EffectTarget::AllCreatures,
             Modification::AddAbility(StaticAbility::flying()),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     let before = game.work_counters();
 
     for _ in 0..4 {
@@ -548,7 +548,7 @@ fn payment_restriction_presence_cache_invalidates_for_printed_ability_changes() 
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
     let source = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert!(!game.player_cant_pay_life_to_cast_or_activate(alice));
 
     game.object_mut(source)
@@ -577,7 +577,7 @@ fn continuously_granted_payment_restriction_uses_layered_characteristics() {
         .build();
     let source = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
     let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert!(!game.player_cant_pay_life_to_cast_or_activate(alice));
 
     game.effect_store
@@ -613,7 +613,7 @@ fn temporary_static_grant_participates_in_sparse_cant_scan() {
         StaticAbilityId::CantBlock,
         Some(StaticAbility::cant_block()),
     );
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     game.update_cant_effects();
 
@@ -642,7 +642,7 @@ fn active_level_grant_participates_in_sparse_cant_scan() {
         .build();
     let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
     let _ = game.add_counters(target, CounterType::Level, 1);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     game.update_cant_effects();
 
@@ -676,7 +676,7 @@ fn set_abilities_removal_uses_layered_cant_scan() {
             EffectTarget::Specific(target),
             Modification::SetAbilities(vec![Ability::static_ability(StaticAbility::flying())]),
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     game.update_cant_effects();
 
@@ -717,7 +717,7 @@ fn active_player_filters_still_invalidate_characteristic_cache() {
                 toughness: 1,
             },
         ));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     assert_eq!(
         game.calculated_characteristics(bear_id)
@@ -1715,7 +1715,7 @@ fn azusa_after_first_land_grants_two_remaining_land_plays() {
     );
 
     game.create_object_from_definition(&azusa, alice, Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     assert_eq!(
         game.player(alice)
@@ -2284,7 +2284,7 @@ fn multiplayer_leave_game_800_4i_k_m_preserves_lki_and_expires_at_would_be_turn(
     game.turn.priority_player = Some(alice);
     game.set_monarch(Some(bob)).expect("checked designation/departure fixture");
     game.set_initiative(Some(bob));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert_eq!(game.calculated_power(target), Some(4));
 
     assert!(game.leave_game(bob).expect("checked designation/departure fixture"));
@@ -2604,7 +2604,7 @@ fn ordinary_untap_keeps_unrelated_characteristics_warm_and_clones_independent() 
         .map(|_| game.create_object_from_definition(&creature, alice, Zone::Battlefield))
         .collect();
     game.tap(ids[0]);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     game.prewarm_calculated_characteristics(&ids);
     let before = game.work_counters();
     let mut branch = game.clone();
@@ -2642,7 +2642,7 @@ fn clearing_goad_ends_prior_sources_but_allows_later_goad() {
     );
     game.add_goad_effect(target, carol, Until::YourNextTurn, source);
     game.add_goad_effect(untouched, carol, Until::YourNextTurn, source);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert_eq!(
         game.active_goaders_for(target),
         [bob, carol].into_iter().collect()

@@ -5,7 +5,7 @@ use super::battlefield_entry::{
     prepare_battlefield_entry_batch, resolve_battlefield_entry_counters,
 };
 use crate::effect::EffectOutcome;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
+use crate::effects::helpers::{ resolve_player_filter};
 use crate::effects::{
     CompletedEffectOutputs, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectProposal,
 };
@@ -578,7 +578,7 @@ mod replacement_battlefield_owner_contract_tests {
     use super::*;
     use crate::ids::{CardId, ObjectId, PlayerId, StableId};
     use crate::target::ObjectFilter;
-    use crate::filter::ObjectFilterExt as _;
+
     use crate::types::CardType;
     use crate::zone::Zone;
     use crate::effect::{Effect, Value};

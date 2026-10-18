@@ -2,8 +2,6 @@
 
 use crate::decision::FallbackStrategy;
 use crate::effect::{Effect, EffectOutcome, ExecutionFact, OutcomeValue};
-#[cfg(test)]
-use crate::effects::execute_effect;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};

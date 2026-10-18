@@ -33,21 +33,22 @@ pub use planner::{
     plan_prompt_mana_payment, unfunded_mana_payment_plan,
 };
 pub(crate) use planner::{
-    execute_mana_payment_plan_in_context, execute_mana_payment_plan_in_context_with_outputs,
+     execute_mana_payment_plan_in_context_with_outputs,
 };
 
 mod waterbend;
 pub(crate) use waterbend::{
-    maximum_waterbend_x, record_waterbend_payment, record_waterbend_payment_with_outputs,
+    maximum_waterbend_x,  record_waterbend_payment_with_outputs,
     validate_waterbend_scope, validate_waterbend_taps, waterbend_sources,
 };
 
 mod interactive;
 pub(crate) use interactive::activate_mana_during_payment_with_outputs;
 pub(crate) use interactive::{
-    activate_mana_during_payment, pay_mana_interactively, pay_mana_interactively_in_context,
     pay_mana_interactively_in_context_with_outputs,
 };
+#[cfg(test)]
+pub(crate) use interactive::activate_mana_during_payment;
 pub use interactive::{manual_mana_abilities, manual_mana_abilities_checked};
 
 pub(crate) use sources::{has_mana_modifying_replacements, has_potential_mana_triggers};

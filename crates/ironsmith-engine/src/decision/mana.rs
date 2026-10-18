@@ -1768,7 +1768,10 @@ where
             }
         }
         if let Some(hypothetical) = hypothetical_storage.as_mut() {
-            hypothetical.refresh_continuous_state();
+            if let Err(error) = hypothetical.refresh_continuous_state() {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+                return false;
+            }
         }
         let hypothetical = hypothetical_storage.as_ref().unwrap_or(game);
 
@@ -1861,7 +1864,10 @@ where
             if let Some(game_spell) = x_game.object_mut(spell.id) {
                 game_spell.x_value = Some(x_value);
             }
-            x_game.refresh_continuous_state();
+            if let Err(error) = x_game.refresh_continuous_state() {
+                game.record_token_resource_failure(&crate::effects::ExecutionError::ContinuousDiscovery(error));
+                return false;
+            }
             let x_view = DerivedGameView::new(&x_game);
             if predicate(&x_game, &x_proposal, effective_cost.as_ref(), &x_view) {
                 return true;

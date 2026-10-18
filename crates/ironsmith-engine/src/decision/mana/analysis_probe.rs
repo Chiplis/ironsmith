@@ -207,7 +207,7 @@ pub(crate) fn probe_board(
     game.turn.priority_player = Some(player);
     game.turn.phase = crate::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
 
     ProbeBoard {
         game,
@@ -453,7 +453,7 @@ fn mono_color_board(
     game.turn.priority_player = Some(player);
     game.turn.phase = crate::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     (game, player, adept_id)
 }
 
@@ -637,7 +637,7 @@ fn heterogeneous_board(
     game.turn.priority_player = Some(player);
     game.turn.phase = crate::game_state::Phase::FirstMain;
     game.turn.step = None;
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     (game, player, adept_id)
 }
 

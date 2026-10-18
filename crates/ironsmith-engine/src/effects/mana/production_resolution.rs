@@ -455,6 +455,10 @@ impl ManaProduction<'_> {
                     }
                 }
             }
+            Self::NotedType { use_noted_amount: true, .. } => {
+                Exact(game.noted_mana_payment_for_source(ctx.source)
+                    .map(crate::mana_payment::program::pool_symbols).unwrap_or_default())
+            }
             Self::NotedType { amount: value, .. } => {
                 let count = amount(value)?;
                 Exact(

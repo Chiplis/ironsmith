@@ -25,7 +25,7 @@ fn shared_type_copy_opponents_draw_independently_of_retarget_choice() {
                 20,
             );
             let alice = game.players[0].id;
-            let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+            game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             let spell_def =
                 crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Cast Spell")
                     .card_types(vec![CardType::Sorcery])

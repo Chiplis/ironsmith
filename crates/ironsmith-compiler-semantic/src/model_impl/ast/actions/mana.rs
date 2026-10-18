@@ -26,6 +26,7 @@ pub enum ManaActionAst {
     /// "Add one mana of this artifact's last noted type."
     AddManaNotedType {
         amount: Value,
+        use_noted_amount: bool,
     },
     /// "you add the mana lost this way" (Drain Power): `amount` is the
     /// preceding mana-loss metric; the lost mana's types are added.

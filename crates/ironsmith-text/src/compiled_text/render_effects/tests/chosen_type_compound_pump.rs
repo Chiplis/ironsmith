@@ -76,7 +76,7 @@ fn chosen_type_compound_pump_restricts_both_changes_to_the_chosen_type() {
         }
         drop(ctx);
         assert_eq!(dm.calls, 1, "the resolution must ask for one creature type");
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for (id, subtype, base) in &creatures {
             let matches = *subtype == chosen;
             assert_eq!(
@@ -101,7 +101,7 @@ fn chosen_type_compound_pump_restricts_both_changes_to_the_chosen_type() {
             .power_toughness(crate::card::PowerToughness::fixed(3, 3))
             .build();
         let late = game.create_object_from_card(&late_card, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(late), Some(3));
         assert!(!game.current_has_static_ability_id(
             late,
@@ -109,7 +109,7 @@ fn chosen_type_compound_pump_restricts_both_changes_to_the_chosen_type() {
         ));
         creatures.push((late, chosen, 3));
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for (id, _, base) in creatures {
             assert_eq!(game.calculated_power(id), Some(base));
             assert_eq!(game.calculated_toughness(id), Some(base));
@@ -165,7 +165,7 @@ fn chosen_type_compound_pump_also_scopes_keyword_removal() {
     }
     drop(ctx);
     assert_eq!(dm.calls, 1);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     for (id, subtype) in &creatures {
         assert_eq!(
             game.calculated_power(*id),
@@ -180,7 +180,7 @@ fn chosen_type_compound_pump_also_scopes_keyword_removal() {
         );
     }
     game.effect_store.continuous_effects.cleanup_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     for (id, _) in creatures {
         assert_eq!(game.calculated_power(id), Some(3));
         assert!(

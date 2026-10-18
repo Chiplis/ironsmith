@@ -16,7 +16,7 @@ use ironsmith::game_loop::{
 };
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ChooseSpec, PlayerFilter};
+use ironsmith::target::{ChooseSpec};
 use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
 use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;

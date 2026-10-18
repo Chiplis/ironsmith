@@ -21,6 +21,55 @@ pub fn parse_become_clause(
             }
         }
     }
+    // "Target creature becomes an enchantment and loses all abilities until a
+    // player casts a creature spell." (Soul Sculptor): one subject, two
+    // continuous changes sharing the trailing duration. Read the become part
+    // with the duration kept, then remove every ability (an empty list is
+    // "all abilities") from the same object for that duration.
+    {
+        let lose_view = crate::lexer::TokenWordView::new(rest_tokens);
+        let lose_words = lose_view.word_refs();
+        if let Some(start) = lose_words
+            .windows(4)
+            .position(|window| window == ["and", "loses", "all", "abilities"])
+            && start > 0
+        {
+            let starts = lose_view.token_start_indices();
+            let head_end = starts[start];
+            let tail_start = starts.get(start + 4).copied().unwrap_or(rest_tokens.len());
+            let mut reduced = rest_tokens[..head_end].to_vec();
+            reduced.extend_from_slice(&rest_tokens[tail_start..]);
+            let become_effect = parse_become_clause(subject_tokens, &reduced)?;
+            let (leading_duration, subject_core) =
+                match parse_restriction_duration(subject_tokens)? {
+                    Some((duration, remainder)) => (Some(duration), remainder),
+                    None => (None, subject_tokens.to_vec()),
+                };
+            let duration = match leading_duration {
+                Some(duration) => duration,
+                None => parse_restriction_duration(&reduced)?
+                    .map(|(duration, _)| duration)
+                    .unwrap_or(Until::Forever),
+            };
+            // A declared target is chosen once; the second change names the
+            // same object through the first change's reference.
+            let target = if subject_core.iter().any(|token| token.is_word("target")) {
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
+            } else {
+                parse_target_phrase(&subject_core)?
+            };
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    become_effect,
+                    EffectAst::subject_verb_remove_abilities_from_target(
+                        target,
+                        Vec::new(),
+                        duration,
+                    ),
+                ],
+            });
+        }
+    }
     // "until this creature is turned face down, it becomes a copy of that
     // creature" (Vesuvan Shapeshifter): the copy lasts while the named
     // permanent stays face up, and "it" is that permanent, not the copied one.
@@ -398,6 +447,26 @@ pub fn parse_become_clause(
         && let Ok(recovered_target) = parse_target_phrase(recovered_tokens)
     {
         target = recovered_target;
+    }
+
+    // A type-setting instruction and ability loss share the same affected
+    // object and lifetime, including event-ended lifetimes (CR 611.2b).
+    if let [kind, "and", "lose" | "loses", "all", "abilities"] = become_words
+        && let Some(kind) = crate::util::parse_card_type(kind)
+    {
+        let alias = if matches!(&target, TargetAst::Source(_))
+            || matches!(&target, TargetAst::Object(filter, _, _) if filter.source)
+        {
+            target.clone()
+        } else {
+            TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
+        };
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_set_card_types(target, vec![kind], duration.clone()),
+                EffectAst::subject_verb_remove_abilities_from_target(alias, Vec::new(), duration),
+            ],
+        });
     }
 
     if let Some((colors, kind)) =
@@ -1005,12 +1074,22 @@ pub fn parse_become_clause(
             (1..base_pt_words.len()).rev().find_map(|split| {
                 let pt = become_grammar::parse_become_base_pt_words(&base_pt_words[..split])?;
                 let ability_tokens = &base_pt_tokens[positions[split].0..];
-                let ability_tokens = crate::util::trim_edge_punctuation_tokens(ability_tokens);
+                // Quotes own nested ability boundaries. Trimming them here
+                // removes the final quote of a mixed keyword/trigger grant,
+                // letting a prefix-only keyword reader swallow the trigger.
+                fn trim_separators(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+                    let first = tokens.iter().position(|token| !matches!(token.kind,
+                        TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)).unwrap_or(tokens.len());
+                    let end = tokens.iter().rposition(|token| !matches!(token.kind,
+                        TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon)).map_or(first, |index| index + 1);
+                    &tokens[first..end]
+                }
+                let ability_tokens = trim_separators(ability_tokens);
                 let ability_tokens = if ability_tokens
                     .first()
                     .is_some_and(|token| token.is_word("and"))
                 {
-                    crate::util::trim_edge_punctuation_tokens(&ability_tokens[1..])
+                    trim_separators(&ability_tokens[1..])
                 } else {
                     ability_tokens
                 };

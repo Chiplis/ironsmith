@@ -7,9 +7,7 @@ use ironsmith::{GameState, ObjectId, PlayerId, Zone};
 
 const WORD_OF_COMMAND: &str = "Mana cost: {B}{B}\nType: Instant\nLook at target opponent's hand and choose a card from it. You control that player until Word of Command finishes resolving. The player plays that card if able. While doing so, the player can activate mana abilities only if they're from lands that player controls and only if mana they produce is spent to activate other mana abilities of lands the player controls and/or to play that card. If the chosen card is cast as a spell, you control the player while that spell is resolving.";
 
-const DURESS: &str = "Mana cost: {B}\nType: Sorcery\nTarget opponent reveals their hand. You choose a noncreature, nonland card from it. That player discards that card.";
 
-const SOL_RING: &str = "Mana cost: {1}\nType: Artifact\n{T}: Add {C}{C}.";
 
 fn p24_land(mana: ironsmith::mana::ManaSymbol) -> ironsmith::cards::CardDefinition {
     ironsmith::cards::builders::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Land mana witness")

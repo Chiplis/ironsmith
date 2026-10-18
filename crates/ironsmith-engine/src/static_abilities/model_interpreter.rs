@@ -2982,6 +2982,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        if let ironsmith_core::StaticAbilityPayload::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. } = &self.model.payload {
+            let target = crate::continuous::EffectTarget::Filter(filter.clone());
+            let mut effects = vec![ContinuousEffect::new(source, controller, target.clone(),
+                crate::continuous::Modification::AddSubtypes(subtypes.clone()))
+                .with_source_type(crate::continuous::EffectSourceType::StaticAbility)];
+            effects.extend(abilities.iter().map(|ability| ContinuousEffect::new(source, controller, target.clone(),
+                crate::continuous::Modification::AddAbilityGeneric(Self::ability_from_model(ability)))
+                .with_source_type(crate::continuous::EffectSourceType::StaticAbility)));
+            return effects;
+        }
+
         // Entry-copy conditions belong to the replacement occurrence. Turning
         // them into a layer-6 self-grant would duplicate that occurrence when
         // true, while the cached outer copy specification also remains visible.
@@ -3111,6 +3122,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
+        if let ironsmith_core::StaticAbilityPayload::DamageBetweenChosenPlayers { factor, .. } = &self.model.payload {
+            return Some(ReplacementEffect::with_matcher(source, controller,
+                super::misc::replacements_and_rules::ChosenPlayersDamageMatcher { ability_source: source },
+                crate::replacement::ReplacementAction::Modify(crate::replacement::EventModification::Multiply(*factor))));
+        }
+
         if let ironsmith_core::StaticAbilityPayload::RedirectZoneChange {
             filter,
             from_zone,
@@ -3808,11 +3825,15 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn reveal_drawn_card_spec(&self) -> Option<super::RevealDrawnCardSpec> {
         match self.payload() {
+            ironsmith_core::StaticAbilityPayload::RevealCardsDrawn { player } => Some(super::RevealDrawnCardSpec {
+                player: Some(player.clone()), card_number: 0, optional: false, your_turns_only: false, linked_reveal_pair: None,
+            }),
             ironsmith_core::StaticAbilityPayload::RevealFirstCardYouDrawEachTurn {
                 optional,
                 your_turns_only,
                 linked_reveal_pair,
             } => Some(super::RevealDrawnCardSpec {
+                player: None,
                 card_number: 1,
                 optional: *optional,
                 your_turns_only: *your_turns_only,

@@ -137,7 +137,7 @@ fn lethal_meld_sba_waits_for_graveyard_order_without_replacement_effects() {
     }
     game.set_melded_permanent(melded, components);
     game.mark_damage(melded, 2);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state refresh succeeds");
     assert!(game.effect_store.replacement_effects.effects().is_empty());
     let mut runner = TurnRunner::new();
     let mut tq = TriggerQueue::new();

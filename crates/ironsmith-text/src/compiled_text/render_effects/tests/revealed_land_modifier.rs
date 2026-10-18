@@ -115,7 +115,7 @@ fn revealed_land_modifier_checks_top_card_and_expires() {
             );
             assert_eq!(game.current_has_static_ability_id(source, ability_id), land);
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             assert_eq!(game.calculated_power(source), Some(power));
             assert!(!game.current_has_static_ability_id(source, ability_id));
         }

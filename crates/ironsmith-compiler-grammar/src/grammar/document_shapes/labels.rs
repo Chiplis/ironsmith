@@ -48,6 +48,11 @@ pub fn parse_label_prefix_kind_tokens(tokens: &[OwnedLexToken]) -> Option<LabelP
 pub fn parse_preserved_keyword_label_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<PreservedKeywordLabelKind> {
+    // "Echo of the First Murder — When ..." (Drach'Nyen): a flavor-word
+    // label that merely starts with a keyword name is not that keyword.
+    if tokens.get(1).is_some_and(|token| token.is_word("of")) {
+        return None;
+    }
     match parse_label_prefix_kind_tokens(tokens)? {
         LabelPrefixKind::PreservedKeyword(kind) => Some(kind),
         LabelPrefixKind::CouncilChoice => None,

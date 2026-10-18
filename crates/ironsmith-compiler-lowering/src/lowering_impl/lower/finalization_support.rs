@@ -2084,14 +2084,34 @@ fn correlate_additional_cost_chosen_type_search_destination(
     else {
         return;
     };
-    if !conditional.if_false.is_empty()
-        || conditional.if_true.len() != 1
-        || !matches!(
-            &conditional.condition,
+    let paid_additional = |condition: &crate::effect::Condition| {
+        matches!(
+            condition,
             crate::effect::Condition::ThisSpellPaidLabel(label)
                 if label.kind == crate::cost::OptionalCostKind::Additional
         )
-    {
+    };
+    // "If this spell's additional cost was paid and the revealed card is the
+    // chosen type" (Celestial Reunion): the chosen-type test on the searched
+    // card is exactly the replacement's chosen-creature-type filter below,
+    // so only the paid-cost half remains the branch condition.
+    let tests_chosen_type = |condition: &crate::effect::Condition| match condition {
+        crate::effect::Condition::TaggedObjectMatches(_, filter)
+        | crate::effect::Condition::TargetMatches(filter) => {
+            filter.chosen_creature_type || filter.chosen_card_type
+        }
+        _ => false,
+    };
+    let branch_condition = match &conditional.condition {
+        condition if paid_additional(condition) => condition.clone(),
+        crate::effect::Condition::And(left, right)
+            if paid_additional(left) && tests_chosen_type(right) =>
+        {
+            left.as_ref().clone()
+        }
+        _ => return,
+    };
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
         return;
     }
     let Some(tagged_move) = conditional.if_true[0].downcast_ref::<crate::effects::TaggedEffect>()
@@ -2137,7 +2157,7 @@ fn correlate_additional_cost_chosen_type_search_destination(
     segment
         .self_replacements
         .push(crate::resolution::SelfReplacementBranch::new(
-            conditional.condition.clone(),
+            branch_condition,
             vec![rewritten_search],
         ));
     *program = crate::resolution::ResolutionProgram::new(vec![segment]);
@@ -2549,7 +2569,19 @@ fn link_alternative_cast_condition_references(builder: &mut CardDefinitionBuilde
                 }
                 link_program(&mut activated.effects, method_name, mana_cost, header_matched);
             }
-            _ => {}
+            // "If Scarlet Spider was cast using web-slinging, he enters with X
+            // +1/+1 counters on him": an entry replacement keyed to the card's
+            // own alternative casting method.
+            crate::ability::AbilityKind::Static(static_ability) => {
+                if let crate::static_abilities::StaticAbilityPayload::EntersWithCountersIfCondition {
+                    condition,
+                    ..
+                } = &mut static_ability.payload
+                    && let Some(linked) = link_condition(condition, method_name, mana_cost, false)
+                {
+                    *condition = linked;
+                }
+            }
         }
     }
 }

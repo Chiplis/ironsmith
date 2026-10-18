@@ -150,6 +150,9 @@ pub enum EffectAst {
     ResolvesDespiteIllegalTargets,
     /// "Note the type of mana spent to pay this activation cost."
     NoteActivationManaType,
+    NoteActivationManaPayment,
+    CastFaceDownUsingActivationMana { player: PlayerFilter, filter: ObjectFilter, turn_face_up_before_action: bool },
+    RegisterExtraDieReplacement { player: TargetAst, chooser: PlayerFilter, additional: u32 },
     /// "Note one of its creature types that hasn't been noted for this
     /// artifact": records one of the triggering object's creature types on
     /// the ability's source.
@@ -1560,6 +1563,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter: None,
                 alternative_cost: None,
                 tag,
                 player,
@@ -1590,6 +1594,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter: None,
                 alternative_cost: None,
                 tag,
                 player,
@@ -1619,6 +1624,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter: None,
                 alternative_cost: None,
                 tag,
                 player,
@@ -1650,6 +1656,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilEndOfTurn {
+                spell_filter: None,
                 alternative_cost: None,
                 tag,
                 player,
@@ -2181,6 +2188,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            retained_reference_tags: Vec::new(),
                 target,
                 source_top_only: false,
                 tagged_destinations: Vec::new(),
@@ -2220,6 +2228,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            retained_reference_tags: Vec::new(),
                 target,
                 source_top_only: false,
                 tagged_destinations: Vec::new(),
@@ -3444,6 +3453,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                accumulated_match_tag: None,
                 player,
                 mode,
                 filter,
@@ -3468,6 +3478,7 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                accumulated_match_tag: None,
                 player,
                 mode,
                 filter,
@@ -4845,7 +4856,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount }),
+            SubjectVerbActionAst::Mana(ManaActionAst::AddManaNotedType { amount, use_noted_amount: false }),
         )
     }
 
@@ -5904,7 +5915,7 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag }),
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseCardName { filter, tag, options: Vec::new(), exclude_source_history: false }),
         )
     }
 

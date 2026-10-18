@@ -100,11 +100,16 @@ pub(super) fn read(
             player: PlayerAst::You,
             tag: yours.clone(),
         }));
-        // "they control": relative to the delegated chooser (the target
-        // player), as the typed "with the greatest mana value among
-        // creatures they control" choice reads it.
+        // "you each control": the other participant's own permanents. The
+        // participant is named directly by its target filter; an
+        // IteratedPlayer outside any player loop lowers to "you", which made
+        // the target player choose among the caster's permanents.
+        let their_controller = match other {
+            PlayerAst::TargetOpponent => PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
+            _ => PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+        };
         effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
-            filter: greatest_of(card_type, PlayerFilter::IteratedPlayer),
+            filter: greatest_of(card_type, their_controller),
             count: ChoiceCount::exactly(1),
             count_value: None,
             player: other,

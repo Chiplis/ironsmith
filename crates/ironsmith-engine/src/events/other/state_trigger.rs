@@ -11,11 +11,13 @@ use crate::ids::{ObjectId, PlayerId};
 pub struct StateTriggerEvent {
     /// The object whose state-triggered ability fired.
     pub source: ObjectId,
+    pub watched_object: Option<ObjectId>,
+    pub snapshot: Option<crate::snapshot::ObjectSnapshot>,
 }
 
 impl StateTriggerEvent {
     pub fn new(source: ObjectId) -> Self {
-        Self { source }
+        Self { source, watched_object: None, snapshot: None }
     }
 }
 
@@ -43,6 +45,7 @@ impl GameEventType for StateTriggerEvent {
     }
 
     fn object_id(&self) -> Option<ObjectId> {
-        Some(self.source)
+        Some(self.watched_object.unwrap_or(self.source))
     }
+    fn snapshot(&self) -> Option<&crate::snapshot::ObjectSnapshot> { self.snapshot.as_ref() }
 }

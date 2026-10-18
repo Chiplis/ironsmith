@@ -1397,9 +1397,7 @@ fn read_coordinated_and_segments(
     }
     // "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
     // Sauron) lists mana symbols; the conjunction is not a chain boundary.
-    if tokens.windows(3).any(|window| {
-        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
-    }) {
+    if super::super::lex_chain_helpers::lists_mana_combination_without_chain_boundary(tokens) {
         return Ok(None);
     }
     let split_segments = split_effect_chain_on_and_lexed(tokens);
@@ -1464,6 +1462,16 @@ fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>
     let body = &tokens[start + 1..];
     let Some(shape) = crate::grammar::effects::misc_action_shapes::parse_roll_die_prefix_tokens(body) else { return Ok(None); };
     let tail = &body[shape.consumed..];
+    // "roll a d20 for each player being attacked and ignore all but the
+    // highest roll" (Iron Mastiff): the "and ignore" belongs to the roll, not
+    // a sibling action; the roll reader owns the whole clause.
+    if matches!(
+        crate::lexer::token_word_refs(tail).as_slice(),
+        ["for", "each", "player" | "opponent", "being", "attacked", "and", "ignore", "all", "but", "the", "highest", "roll"]
+    ) {
+        return super::super::zone_handlers::misc_actions::parse_roll(body, None)
+            .map(|effect| Some(vec![effect]));
+    }
     if !tail.first().is_some_and(|token| token.is_word("and"))
         || !tail.get(1).is_some_and(|token| token.is_any_word(&["add", "subtract"]))
         || tail.get(2).is_some_and(|token| token.kind == crate::lexer::TokenKind::ManaGroup)

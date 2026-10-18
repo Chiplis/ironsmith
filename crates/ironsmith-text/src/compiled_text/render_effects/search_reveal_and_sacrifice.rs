@@ -1827,12 +1827,42 @@ pub(crate) fn describe_choose_same_controller_sacrifice_one_return_other(
         return None;
     }
 
-    let plural_noun = simple_filter_plural_noun(target_filter)?;
+    // "controlled by the same opponent" (Retribution) narrows the shared
+    // controller to an opponent; the noun itself stays the simple one.
+    let (plural_noun, same_controller_noun) =
+        if target_filter.controller == Some(PlayerFilter::Opponent) {
+            let mut uncontrolled = target_filter.clone();
+            uncontrolled.controller = None;
+            (simple_filter_plural_noun(&uncontrolled)?, "opponent")
+        } else {
+            (simple_filter_plural_noun(target_filter)?, "player")
+        };
     let Some(return_effect) = return_effect else {
         return Some(format!(
-            "Choose two target {plural_noun} controlled by the same player. That player sacrifices one of them of their choice"
+            "Choose two target {plural_noun} controlled by the same {same_controller_noun}. That player sacrifices one of them of their choice"
         ));
     };
+    // "Put a -1/-1 counter on the other" (Retribution) is the counter
+    // variant of the trailing other-target clause.
+    if let Some(put) = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+    {
+        let ChooseSpec::Object(put_filter) = &put.target else {
+            return None;
+        };
+        if put.target_count.is_some()
+            || put.distributed
+            || put.maximum_total.is_some()
+            || put.completion_action.is_some()
+            || !is_tagged_only_filter_except_tag(put_filter, &tagged.tag, &choose.tag)
+        {
+            return None;
+        }
+        return Some(format!(
+            "Choose two target {plural_noun} controlled by the same {same_controller_noun}. That player chooses and sacrifices one of those {plural_noun}. Put {} on the other",
+            describe_put_counter_phrase(&put.amount, put.counter_type)
+        ));
+    }
     let return_to_hand = unwrap_basic_tag_wrappers(return_effect)
         .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
     let ChooseSpec::Object(return_filter) = return_to_hand.spec.base() else {
@@ -1843,7 +1873,7 @@ pub(crate) fn describe_choose_same_controller_sacrifice_one_return_other(
     }
 
     Some(format!(
-        "Choose two target {plural_noun} controlled by the same player. Their controller chooses and sacrifices one of them. Return the other to its owner's hand"
+        "Choose two target {plural_noun} controlled by the same {same_controller_noun}. Their controller chooses and sacrifices one of them. Return the other to its owner's hand"
     ))
 }
 

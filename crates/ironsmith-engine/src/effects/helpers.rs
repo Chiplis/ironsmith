@@ -753,16 +753,20 @@ fn resolve_effect_metric(
     }
     // "For each different result" (Circuits Act): the retained dice live in
     // the roll's completion child, so read the aggregated outcome's events.
-    if metric == EffectMetric::DistinctDieResults {
+    if matches!(metric, EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::DieResultsEqual(_)) {
         let Some(outcome) = ctx.get_outcome(effect_id) else {
             return Ok(0);
         };
-        let results: std::collections::BTreeSet<u32> = outcome
+        let results = outcome
             .events_of_type::<crate::events::other::DieRolledEvent>()
             .filter(|event| !event.is_planar)
-            .map(|event| event.result)
-            .collect();
-        return Ok(results.len() as i64);
+            .map(|event| event.result);
+        return Ok(match metric {
+            EffectMetric::DistinctDieResults => results.collect::<std::collections::BTreeSet<_>>().len() as i64,
+            EffectMetric::EvenDieResults => results.filter(|result| result % 2 == 0).count() as i64,
+            EffectMetric::DieResultsEqual(face) => results.filter(|result| *result == face).count() as i64,
+            _ => unreachable!("guarded numeric die metric"),
+        });
     }
     // A metric over an instruction that never ran counts nothing.
     let Some(outcome) = ctx.get_outcome(effect_id) else {
@@ -778,7 +782,7 @@ fn resolve_effect_metric(
         | EffectMetric::CoinFlipsLost
         | EffectMetric::CoinHeads
         | EffectMetric::CoinTails => unreachable!("coin metrics handled before generic outcomes"),
-        EffectMetric::DistinctDieResults => {
+        EffectMetric::DistinctDieResults | EffectMetric::EvenDieResults | EffectMetric::DieResultsEqual(_) => {
             unreachable!("die-result metrics handled before generic outcomes")
         }
         EffectMetric::Count => effect_metric_object_count(game, outcome, source),
@@ -2925,26 +2929,24 @@ fn matching_object_targets_for_spec(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     if !ctx.target_assignments.is_empty() {
-        let assigned: Vec<ObjectId> = ctx
-            .target_assignments
-            .iter()
-            .filter(|assignment| {
+        let assignments: Vec<_> = ctx.target_assignments.iter().filter(|assignment| {
                 assignment.spec == *spec
                     || assignment.spec.base() == spec.base()
                     || crate::targeting::target_spec_matches_chooser_assignment(
                         spec,
                         &assignment.spec,
                     )
-            })
+            }).collect();
+        let assigned: Vec<ObjectId> = assignments.iter()
             .flat_map(|assignment| ctx.targets[assignment.range.clone()].iter())
             .filter_map(|target| match target {
                 ResolvedTarget::Object(id) => Some(*id),
                 ResolvedTarget::Player(_) => None,
             })
             .collect();
-        if !assigned.is_empty() {
-            return assigned;
-        }
+        // An empty retained assignment means that target became illegal.
+        // It cannot borrow another slot's surviving target as a replacement.
+        if !assignments.is_empty() { return assigned; }
     }
 
     ctx.targets
@@ -3980,7 +3982,7 @@ pub fn apply_to_selected_objects_with_choice_description(
     spec: &ChooseSpec,
     result_policy: ObjectApplyResultPolicy,
     choice_description: Option<String>,
-    mut apply: impl FnMut(
+    apply: impl FnMut(
         &mut GameState,
         &mut ExecutionContext,
         ObjectId,

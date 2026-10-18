@@ -2760,7 +2760,7 @@ mod retained_casting_payload_codec_tests {
         let program = definition.spell_effect.unwrap();
         let effect = program
             .all_effects()
-            .iter()
+            .into_iter()
             .find(|effect| {
                 matches!(
                     effect.0.get_target_spec(),
@@ -2793,54 +2793,6 @@ mod retained_casting_payload_codec_tests {
         );
     }
 }
-
-
-#[cfg(test)]
-mod retained_registered_card_graph_codec_tests {
-    use super::*;
-    use ironsmith_runtime_catalog::artifact_materializer::*;
-    fn fixture() -> (
-        ironsmith::GameState,
-        ironsmith::ObjectId,
-        ironsmith::CardId,
-        ironsmith::CardId,
-    ) {
-        let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
-        let alice = game.players[0].id;
-        let card = ironsmith::card::CardBuilder::new(ironsmith::CardId::new(), "Origin carrier")
-            .card_types(vec![ironsmith::types::CardType::Artifact])
-            .build();
-        let source = game.create_object_from_card(&card, alice, ironsmith::Zone::Battlefield);
-        let face = ironsmith::CardId::new();
-        let level_face = ironsmith::CardId::new();
-        let flying = ironsmith::static_abilities::StaticAbility::flying();
-        let mut effect = ironsmith::continuous::ContinuousEffect::new(
-            source,
-            alice,
-            ironsmith::continuous::EffectTarget::Specific(source),
-            ironsmith::continuous::Modification::SetColors(ironsmith::color::ColorSet::RED),
-        );
-        effect.originating_static_ability = Some(flying);
-        effect.originating_ability = Some(Box::new(ironsmith::continuous::ContinuousAbilityOrigin {
-            host: source,
-            printed_face: Some(face),
-            branch: 3,
-            ability: ironsmith::continuous::AbilityOrigin::Level {
-                printed_face: Some(level_face),
-                parent: Box::new(ironsmith::continuous::AbilityOrigin::Printed(4)),
-                tier: 5,
-                slot: 6,
-            },
-        }));
-        game.effect_store.continuous_effects.add_effect(effect);
-        (game, source, face, level_face)
-    }
-
-
-
-}
-
-
 
 
 #[cfg(test)]
@@ -2997,7 +2949,6 @@ mod retained_copy_defense_payload_tests {
 
 #[cfg(test)]
 mod retained_intrinsic_starting_counter_rule_tests {
-use super::*;
 use ironsmith::ability::{Ability, AbilityKind};
 use ironsmith::static_abilities::StaticAbility;
 use ironsmith::{ObjectId, PlayerId};
@@ -3262,7 +3213,6 @@ mod compiled_counter_transfer_mode_tests {
         let definition = compile_to_runtime_definition("Bioshift",
             "Mana cost: {G/U}\nType: Instant\nMove any number of +1/+1 counters from target creature onto another target creature with the same controller.", false).unwrap();
         let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         game.turn.phase = ironsmith::game_state::Phase::FirstMain;
         game.player_mut(alice).unwrap().mana_pool.add(ironsmith::mana::ManaSymbol::Green, 1);
@@ -3527,7 +3477,6 @@ mod compiled_counter_transfer_mode_tests {
 
 #[cfg(test)]
 mod retained_unsigned_quantity_codec_tests {
-    use super::*;
     use ironsmith::{GameState,PlayerId,Zone};
     use ironsmith::effect::{EffectOutcome,EffectId,Value};
     use ironsmith::effects::{PutCountersEffect,RemoveCountersEffect,MoveAllCountersEffect};
@@ -3597,7 +3546,6 @@ mod retained_unsigned_quantity_codec_tests {
 
 #[cfg(test)]
 mod retained_unsigned_counter_cost_codec_tests {
-    use super::*;
     use ironsmith::{GameState,PlayerId,Zone};
     use ironsmith::object::CounterType;
     fn restored(cost:&ironsmith::costs::Cost)->ironsmith::costs::Cost {
@@ -3629,7 +3577,6 @@ mod retained_unsigned_counter_cost_codec_tests {
 
 #[cfg(test)]
 mod retained_unsigned_player_counter_codec_tests {
-    use super::*;
     use ironsmith::{GameState,PlayerId,Zone};
     use ironsmith::effect::{EffectOutcome,EffectId,Value};
     use ironsmith::object::CounterType;
@@ -3676,7 +3623,6 @@ mod retained_unsigned_player_counter_codec_tests {
 
 #[cfg(test)]
 mod retained_wide_removal_and_pending_result_contract_tests {
-    use super::*;
     use ironsmith::{GameState,PlayerId,ObjectId,Zone};
     use ironsmith::effect::{EffectOutcome,EffectId,Value};
     use ironsmith::effects::{EffectContext,PutCountersEffect,GainLifeEffect};
@@ -3997,3 +3943,63 @@ mod claude_completion_runtime_tests_p65;
 
 #[cfg(test)]
 mod claude_completion_runtime_tests_p66;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p67;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p68;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p69;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p70;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p71;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p72;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p73;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p74;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p75;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p76;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p77;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p78;
+
+#[cfg(test)]
+mod sol_78_triggers_references;
+
+#[cfg(test)]
+mod unbound_x_tests;
+
+#[cfg(test)]
+mod sol_78_static_random;
+
+#[cfg(test)]
+mod sol_78_procedures;
+
+#[cfg(test)]
+mod sol_78_root;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p79;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p80;
+
+#[cfg(test)]
+mod claude_completion_runtime_tests_p81;

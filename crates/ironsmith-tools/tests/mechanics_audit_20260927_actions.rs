@@ -163,7 +163,7 @@ fn a3_cipher_ends_on_exile_departure_and_does_not_revive_after_reexile() {
     assert_eq!(encoded_trigger_count(&g, bearer), 1);
     let grave = g.move_object_by_effect(exiled, Zone::Graveyard).unwrap();
     let _new_exile = g.move_object_by_effect(grave, Zone::Exile).unwrap();
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert_eq!(encoded_trigger_count(&g, bearer), 0);
     let mut dm = Dm::default();
     CastEncodedCardCopyEffect::new(exiled)
@@ -188,9 +188,9 @@ fn a3_cipher_survives_bearer_control_type_and_phasing_changes_but_is_not_copiabl
     g.set_current_controller(bearer, BOB).expect("finite controller fixture must refresh successfully");
     assert_eq!(encoded_trigger_count(&g, bearer), 1);
     g.phase_out(bearer);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     g.phase_in(bearer);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert_eq!(encoded_trigger_count(&g, bearer), 1);
     let copy = CreateTokenCopyEffect::new(ChooseSpec::SpecificObject(bearer), 1, PlayerFilter::You)
         .execute(&mut g, &mut ExecutionContext::new_default(bearer, BOB))

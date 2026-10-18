@@ -621,7 +621,7 @@ fn foreign_owned_disclosure_survives_move_and_native_checkpoint_rollback() {
         owner, Zone::Battlefield, 4, "foreign-source-position".into(),
     );
     wasm.game.set_face_down(source);
-    wasm.game.set_current_controller(source, payer);
+    wasm.game.set_current_controller(source, payer).expect("fixture control change should succeed");
     let mut checkpoint = wasm.capture_replay_checkpoint();
     let stable = checkpoint.game.object(source).unwrap().stable_id;
     wasm.game.reveal_hidden_card_with_definition(source, &definition).unwrap();
@@ -651,7 +651,7 @@ fn foreign_disclosed_source_snapshot_fixture() -> (WasmGame, ObjectId) {
     let definition = ironsmith_registry_test::cards::definitions::ornithopter();
     let source = wasm.game.create_object_from_definition(&definition, owner, Zone::Battlefield);
     wasm.game.set_face_down(source);
-    wasm.game.set_current_controller(source, PlayerId(0));
+    wasm.game.set_current_controller(source, PlayerId(0)).expect("fixture control change should succeed");
     wasm.payment_disclosure = Some(PaymentDisclosureCommitment {
         source, payer: PlayerId(0), disclosed_objects: [source].into_iter().collect(), required_retry: None,
     });

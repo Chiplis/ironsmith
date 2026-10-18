@@ -55,7 +55,19 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         return parse_target_phrase_inner(&tokens[1..]);
     }
 
-    if let Some(dynamic) = parse_dynamic_target_count_prefix(tokens) {
+    // A plain "[up to] X target <filter>" (no multiplier) is the ordinary
+    // dynamic-X target count that the general target-head parser below has
+    // always read as `WithCount(_, dynamic_x)`; consumers such as restriction
+    // subjects ("X target creatures can't block this turn") only understand
+    // that shape. Only scaled X counts, bare "X targets" and "that many"
+    // need the explicit count value.
+    let plain_x_target_count = |dynamic: &crate::grammar::targets::DynamicTargetCountPrefix<'_>| {
+        dynamic.value == crate::effect::Value::XTimes(1)
+            && crate::lexer::parser_token_word_refs(dynamic.target_tokens) != ["targets"]
+    };
+    if let Some(dynamic) = parse_dynamic_target_count_prefix(tokens)
+        && !plain_x_target_count(&dynamic)
+    {
         let target = if crate::lexer::parser_token_word_refs(dynamic.target_tokens) == ["targets"] {
             TargetAst::AnyTarget(token_slice_span(dynamic.target_tokens))
         } else {

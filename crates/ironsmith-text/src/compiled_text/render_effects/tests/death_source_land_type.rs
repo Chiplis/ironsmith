@@ -28,7 +28,7 @@ fn death_source_land_type_changes_only_the_land_and_exiles_the_dead_source() {
         ctx.snapshot_targets(&game);
         for effect in &trigger.effects { crate::effects::execute_effect(&mut game, effect, &mut ctx)
             .unwrap_or_else(|e| panic!("moved_again={moved_again}: {e:?}")); }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_subtypes(target), vec![Subtype::Swamp]);
         assert_eq!(game.calculated_subtypes(other), vec![Subtype::Forest]);
         let characteristics = game.calculated_characteristics(target).unwrap();
@@ -42,7 +42,7 @@ fn death_source_land_type_changes_only_the_land_and_exiles_the_dead_source() {
         if let Some(returned) = returned { assert_eq!(game.object(returned).unwrap().zone, Zone::Battlefield); }
         else { assert_eq!(game.objects_in_zone(Zone::Exile).len(), 1); assert!(game.object(graveyard).is_none()); }
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_subtypes(target), vec![Subtype::Swamp]);
     }
 }

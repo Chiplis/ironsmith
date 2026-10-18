@@ -7,18 +7,15 @@ use ironsmith::color::ColorSet;
 use ironsmith::decision::SelectFirstDecisionMaker;
 use ironsmith::effects::{AttachToEffect, EffectContext, EffectExecutor};
 use ironsmith::game_loop::{
-    extract_target_requirements_from_program_with_modes, put_triggers_on_stack_with_dm,
-    resolve_stack_entry_with,
-};
-use ironsmith::game_state::{StackEntry, TargetAssignment};
+    put_triggers_on_stack_with_dm,
+    resolve_stack_entry_with};
+use ironsmith::game_state::StackEntry;
 use ironsmith::object::CounterType;
-use ironsmith::resolution::ResolutionProgram;
 use ironsmith::static_abilities::StaticAbility;
 use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
 use ironsmith::{
-    CardId, CardType, GameState, ObjectId, PlayerId, Subtype, Supertype, Target, Zone,
-};
+    CardId, CardType, GameState, ObjectId, PlayerId, Subtype, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::compile_to_artifact;
 use ironsmith_runtime_catalog::artifact_materializer::materialize_artifact;

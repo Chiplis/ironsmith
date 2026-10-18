@@ -377,6 +377,18 @@ fn explicit_damage_source_effect(
         }
         other => other,
     };
+    // "Target creature deals 6 damage to itself" (Asmoranomardicadaistinaculdacar):
+    // the reflexive recipient is the explicit damage source, not the
+    // resolving ability's source object that a bare "itself" target reads as.
+    let target = if matches!(target, TargetAst::Source(_))
+        && crate::util::trim_edge_punctuation_tokens(action_tokens)
+            .last()
+            .is_some_and(|token| token.is_word("itself"))
+    {
+        source.clone()
+    } else {
+        target
+    };
     // Within an explicit damage-source clause, "its" names the grammatical
     // subject, not an older object in reference memory. Preserve that
     // relationship as Source until lowering assigns the target a stable tag.

@@ -2897,6 +2897,16 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             "the target is paired with another creature".to_string()
         }
         Condition::TaggedObjectMatches(tag, filter) => {
+            if tag.as_str() == ironsmith_core::tag::SURVEIL_PUT_INTO_GRAVEYARD_TAG {
+                let mut card = filter.clone();
+                card.zone = None;
+                card.tagged_constraints.clear();
+                card.set_prior_effect_action_surface(None);
+                return format!(
+                    "you put {} into your graveyard this way",
+                    ensure_indefinite_article(&card.description())
+                );
+            }
             if filter.zone == Some(Zone::Battlefield)
                 && filter.prior_effect_action_surface()
                     == Some(crate::effect::PriorEffectAction::PutOntoBattlefield)

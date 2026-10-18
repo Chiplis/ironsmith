@@ -1,3 +1,4 @@
+mod co_target_combat_history;
 mod ability_loss_templates;
 mod hand_reveal_clause;
 mod bounded_number_choice;

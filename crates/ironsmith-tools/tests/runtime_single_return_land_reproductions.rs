@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-use ironsmith::color::Color;
+
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith::turn_runner::{TurnAction, TurnRunner, TurnState};
 

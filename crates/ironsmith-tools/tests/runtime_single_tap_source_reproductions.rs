@@ -291,13 +291,6 @@ fn activate(
     )
 }
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -403,15 +396,6 @@ fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
     compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
 }
 
-fn get_stable(g: &GameState, id: ObjectId) -> u64 {
-    g.object(id).unwrap().stable_id.0.0
-}
-fn find_stable(g: &GameState, stable: u64) -> Option<ObjectId> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.stable_id.0.0 == stable)
-        .map(|o| o.id)
-}
 fn new_game(defs: &HashMap<String, CardDefinition>) -> GameState {
     let mut g = setup(2, 0);
     for p in 0..2 {

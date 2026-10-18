@@ -225,7 +225,7 @@ fn announce(
     if g.stack.is_empty() {
         return Err("announcement budget".into());
     }
-    let mut evidence = json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
+    let evidence = json!({"spell":def.name(),"mana_paid":mana-g.player(PlayerId(actor)).unwrap().mana_pool.total(),"announced_targets":format!("{:?}",g.stack.last().unwrap().targets),"resolution_error":null});
     if !g.stack.last().is_some_and(|entry| {
         g.object(entry.object_id)
             .is_some_and(|o| o.name == def.name())

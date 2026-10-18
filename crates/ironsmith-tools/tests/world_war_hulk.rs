@@ -63,7 +63,7 @@ fn resolve_chapter(
     for effect in triggered.effects.all_effects() {
         ironsmith::effects::execute_effect(game, effect, &mut ctx).unwrap();
     }
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
 }
 
 fn creature(name: &str, color: ManaSymbol) -> CardDefinition {

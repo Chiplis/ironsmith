@@ -57,7 +57,7 @@ fn leading_duration_covers_both_pump_and_quoted_death_trigger() {
         assert!(format!("{granted:#?}").contains("tapped: true"));
         assert!(game.current_abilities(other).unwrap().is_empty());
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.current_power(target), Some(1));
         assert!(game.current_abilities(target).unwrap().is_empty());
         assert_eq!(

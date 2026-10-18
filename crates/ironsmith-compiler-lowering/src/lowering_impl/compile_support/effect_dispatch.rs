@@ -1671,6 +1671,18 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
+    if let EffectAst::CastFaceDownUsingActivationMana { player, filter, turn_face_up_before_action } = effect {
+        return Ok((vec![Effect::new(crate::effects::CastFaceDownUsingActivationManaEffect { player: player.clone(), filter: filter.clone(), turn_face_up_before_action: *turn_face_up_before_action })], Vec::new()));
+    }
+    if let EffectAst::RegisterExtraDieReplacement { player, chooser, additional } = effect {
+        let (spec, choices) = resolve_target_spec_with_choices(player, &current_reference_env(ctx))?;
+        return Ok((vec![Effect::new(crate::effects::RegisterExtraDieReplacementEffect {
+            player: spec, chooser: chooser.clone(), additional: *additional,
+        })], choices));
+    }
+    if let EffectAst::NoteActivationManaPayment = effect {
+        return Ok((vec![Effect::new(crate::effects::NoteActivationManaPaymentEffect::default())], Vec::new()));
+    }
     if let EffectAst::NoteActivationManaType = effect {
         return Ok((vec![Effect::note_activation_mana_type()], Vec::new()));
     }
@@ -2885,6 +2897,30 @@ fn try_compile_simple_source_sacrifice(
     if !filter.source {
         return Ok(None);
     }
+    // "{7}: Hold for Ransom's controller sacrifices it and draws a card." in
+    // a quoted ability Hold for Ransom grants: the named object's controller
+    // sacrifices that named object. With no explicit player the sacrifice is
+    // performed by the object's controller (CR 701.21a), which is exactly the
+    // authored chooser, and the granted-ability lowering rebinds the named
+    // source to the granting Aura.
+    if subject_verb.subject.player == PlayerAst::ItsController
+        && matches!(
+            filter.source_surface,
+            Some(
+                crate::target::SourceReferenceSurface::FullName(_)
+                    | crate::target::SourceReferenceSurface::ShortName(_)
+            )
+        )
+    {
+        let surface = filter.source_surface.clone().expect("checked named surface");
+        let source = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(surface),
+        );
+        return Ok(Some((
+            vec![Effect::new(crate::effects::SacrificeTargetEffect::new(source))],
+            Vec::new(),
+        )));
+    }
 
     let subject = resolve_subject_verb_subject(
         subject_verb_role(subject_verb.subject.role),
@@ -2920,6 +2956,7 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError> {
     let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+        retained_reference_tags,
         target,
         source_top_only: false,
         zone,
@@ -2947,7 +2984,9 @@ fn try_compile_plain_all_move_to_nonbattlefield_zone(
     else {
         return Ok(None);
     };
-    if *zone == Zone::Battlefield || !tagged_destinations.is_empty() {
+    if *zone == Zone::Battlefield || !tagged_destinations.is_empty()
+        || !retained_reference_tags.is_empty()
+    {
         return Ok(None);
     }
 
@@ -3490,15 +3529,17 @@ where
         }
         push_choice(&mut merged_choices, choice);
     }
-    if let Some(spec) = value_object_target_spec(&value)
-        && ctx.auto_tag_object_targets
-    {
-        let effect = tag_object_target_effect(
-            Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
-            &spec,
-            ctx,
-            "targeted",
-        );
+    if let Some(spec) = value_object_target_spec(&value) {
+        // The target is announced whether or not a later sentence refers back
+        // to it ("{2}, {T}: Draw a card for each creature type noted for
+        // target permanent you control named Volo's Journal" has no follow-up
+        // reference, and without the declaration the value has no target).
+        let target_only = Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone()));
+        let effect = if ctx.auto_tag_object_targets {
+            tag_object_target_effect(target_only, &spec, ctx, "targeted")
+        } else {
+            target_only
+        };
         prelude_effects.push(effect);
         push_choice(&mut merged_choices, spec);
     }

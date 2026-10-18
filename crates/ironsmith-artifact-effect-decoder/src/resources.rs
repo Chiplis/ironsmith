@@ -110,6 +110,9 @@ pub fn decode(kind: &str, payload: Value) -> Result<Option<ErasedPayload>, Strin
         "AddManaOfNotedTypeEffect" => {
             decode_as::<ironsmith_core::AddManaOfNotedTypeEffect>(payload).map(Some)
         }
+        "CastFaceDownUsingActivationManaEffect" => decode_as::<ironsmith_core::CastFaceDownUsingActivationManaEffect>(payload).map(Some),
+        "RegisterExtraDieReplacementEffect" => decode_as::<ironsmith_core::RegisterExtraDieReplacementEffect>(payload).map(Some),
+        "NoteActivationManaPaymentEffect" => decode_as::<ironsmith_core::NoteActivationManaPaymentEffect>(payload).map(Some),
         "NoteActivationManaTypeEffect" => {
             decode_as::<ironsmith_core::NoteActivationManaTypeEffect>(payload).map(Some)
         }
@@ -289,6 +292,9 @@ pub(super) fn map_card_ids(
             ironsmith_core::AddManaOfNotedTypeEffect,
         >(payload, context)
         .map(Some),
+        "CastFaceDownUsingActivationManaEffect" => super::card_graph::map_payload_as::<ironsmith_core::CastFaceDownUsingActivationManaEffect>(payload, context).map(Some),
+        "RegisterExtraDieReplacementEffect" => super::card_graph::map_payload_as::<ironsmith_core::RegisterExtraDieReplacementEffect>(payload, context).map(Some),
+        "NoteActivationManaPaymentEffect" => super::card_graph::map_payload_as::<ironsmith_core::NoteActivationManaPaymentEffect>(payload, context).map(Some),
         "NoteActivationManaTypeEffect" => super::card_graph::map_payload_as::<
             ironsmith_core::NoteActivationManaTypeEffect,
         >(payload, context)

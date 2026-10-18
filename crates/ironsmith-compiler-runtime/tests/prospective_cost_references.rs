@@ -17,7 +17,7 @@ use ironsmith::game_state::{Phase, Step};
 use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::object::CounterType;
 use ironsmith::target::ChooseSpec;
-use ironsmith::triggers::{TriggerQueue, check_triggers};
+use ironsmith::triggers::{TriggerQueue};
 use ironsmith::{CardId, CardType, GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};

@@ -1412,8 +1412,16 @@ impl GameState {
 
     /// Apply day/nightbound transformations for the current day/night designation.
     pub fn apply_day_nightbound_transformations(&mut self) {
-        self.refresh_continuous_state();
+        self.try_apply_day_nightbound_transformations()
+            .expect("day/night transformations require successful continuous discovery");
+    }
+
+    pub fn try_apply_day_nightbound_transformations(
+        &mut self,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        self.refresh_continuous_state()?;
         self.apply_day_nightbound_transformations_with_current_restrictions();
+        Ok(())
     }
 
     pub(super) fn apply_day_nightbound_transformations_with_current_restrictions(
@@ -2208,6 +2216,7 @@ impl GameState {
         self.object_annotations_mut().noted_life_totals.remove(&id);
         self.object_annotations_mut().noted_creature_types.remove(&id);
         self.object_annotations_mut().stored_die_results.remove(&id);
+        self.object_annotations_mut().turn_face_up_before_action.remove(&id);
         {
             let choices = self.choice_store_mut();
             choices.chosen_colors.remove(&id);
@@ -3088,6 +3097,9 @@ impl GameState {
 
     /// Record that `exiled_card_id` was exiled by `source_id`.
     pub fn add_exiled_with_source_link(&mut self, source_id: ObjectId, exiled_card_id: ObjectId) {
+        // The last linked incarnation remains the last even after it leaves
+        // exile; deleting an active link must not revive an older card.
+        self.object_annotations_mut().last_exiled_with_source.insert(source_id, exiled_card_id);
         let inserted = {
             let entry = self
                 .exile_tracking_mut()
@@ -5072,4 +5084,49 @@ impl GameState {
 /// Hand-built flip fixtures carry a linked face with no layout at all.
 fn is_flip_card_layout(layout: LinkedFaceLayout) -> bool {
     matches!(layout, LinkedFaceLayout::Flip | LinkedFaceLayout::None)
+}
+
+impl GameState {
+    /// A face-down casting instruction can require exposure before the next
+    /// damage assignment, damage event, or tap. This follows only resolution
+    /// of that spell into its permanent, never later unrelated zone objects.
+    pub fn object_requires_turn_face_up_before_action(&self, object: crate::ids::ObjectId) -> bool {
+        self.object_annotations.turn_face_up_before_action.contains(&object) && self.is_face_down(object)
+    }
+
+    pub fn register_turn_face_up_before_action(&mut self, object: crate::ids::ObjectId) {
+        self.object_annotations_mut().turn_face_up_before_action.insert(object);
+    }
+
+    /// Returns false when a required authenticated identity or characteristic
+    /// choice suspends the action. Callers must preserve their enclosing action
+    /// checkpoint and resume the original action after the choice completes.
+    pub fn prepare_turn_face_up_before_action(
+        &mut self,
+        object: crate::ids::ObjectId,
+        dm: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<bool, crate::effects::ExecutionError> {
+        if !self.object_annotations.turn_face_up_before_action.contains(&object)
+            || !self.is_face_down(object)
+        {
+            return Ok(!dm.awaiting_choice());
+        }
+        let Some(controller) = self.current_controller(object) else {
+            return Ok(true);
+        };
+        use crate::effects::EffectExecutor;
+        let mut ctx = crate::effects::ExecutionContext::new(object, controller, dm);
+        crate::effects::permanents::TurnFaceUpEffect::new(crate::target::ChooseSpec::Source)
+            .execute(self, &mut ctx)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(false);
+        }
+        if self.is_face_down(object) {
+            return Err(crate::effects::ExecutionError::Impossible(
+                "required face-up transition could not complete".into(),
+            ));
+        }
+        self.object_annotations_mut().turn_face_up_before_action.remove(&object);
+        Ok(true)
+    }
 }

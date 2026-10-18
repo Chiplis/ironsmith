@@ -10,7 +10,7 @@ use ironsmith::effects::ExecutionError;
 use ironsmith::game_loop::{apply_attacker_declarations, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::{Phase, Step};
 use ironsmith::mana::ManaSymbol;
-use ironsmith::target::{ObjectFilter, PlayerFilter};
+use ironsmith::target::{ObjectFilter};
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{Effect, GameState, ObjectId, PlayerId, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;

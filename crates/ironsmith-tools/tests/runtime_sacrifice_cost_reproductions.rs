@@ -8,14 +8,14 @@ use ironsmith::decisions::context::{
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
-    apply_priority_response_with_dm, drain_pending_trigger_events, put_triggers_on_stack_with_dm,
-    resolve_stack_entry_with,
+    apply_priority_response_with_dm,
+
 };
 use ironsmith::game_state::Target;
-use ironsmith::mana::{ManaCost, ManaSymbol};
+use ironsmith::mana::{ ManaSymbol};
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType,  GameState, ObjectId, PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -42,9 +42,6 @@ fn hash(path: &std::path::Path) -> Value {
 
 fn alice() -> PlayerId {
     PlayerId::from_index(0)
-}
-fn bob() -> PlayerId {
-    PlayerId::from_index(1)
 }
 fn setup() -> GameState {
     let mut g = GameState::new(vec!["Alice".into(), "Bob".into()], 20);

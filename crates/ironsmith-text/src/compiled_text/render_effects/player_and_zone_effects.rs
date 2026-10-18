@@ -1281,6 +1281,14 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::EqualTo) || value_prefers_where_x(value) {
         return None;
     }
+    if let Value::EventValue(EventValueSpec::ManaSpentOnKeyword { colors }) = value.unhinted() {
+        let symbols = [(crate::color::Color::White, "{W}"), (crate::color::Color::Blue, "{U}"),
+            (crate::color::Color::Black, "{B}"), (crate::color::Color::Red, "{R}"),
+            (crate::color::Color::Green, "{G}")].into_iter()
+            .filter(|(color, _)| colors.contains(*color)).map(|(_, symbol)| symbol)
+            .collect::<Vec<_>>().join(" or ");
+        return Some(format!("{symbols} spent this way"));
+    }
     if let Some(counters) = describe_counters_among_players_and_permanents(value) {
         return Some(counters);
     }
@@ -2532,8 +2540,21 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
             crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
             crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+            crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
         };
-        if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes
+        if let crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric
+            && let Some(minimum) = constraint.minimum.as_ref()
+        {
+            // "with fifteen or more black mana symbols among their mana costs"
+            let minimum = match minimum.unhinted() {
+                Value::Fixed(minimum) => number_word(*minimum).unwrap_or_else(|| minimum.to_string()),
+                _ => describe_value(minimum),
+            };
+            selection.push_str(&format!(
+                " with {minimum} or more {} mana symbols among their mana costs",
+                color.name()
+            ));
+        } else if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes
             && let Some(Value::Fixed(minimum)) = constraint.minimum.as_ref().map(Value::unhinted)
         {
             // CR 205.2a phrasing: "with four or more card types among them".
@@ -5700,7 +5721,20 @@ pub(super) fn describe_choice_aggregate_constraint_suffix(
         crate::effect::ChoiceAggregateMetric::Toughness => "toughness",
         crate::effect::ChoiceAggregateMetric::ManaValue => "mana value",
         crate::effect::ChoiceAggregateMetric::DistinctCardTypes => "distinct card types",
+        crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(_) => "mana symbols",
     };
+    if let crate::effect::ChoiceAggregateMetric::ManaSymbolsOfColor(color) = constraint.metric
+        && let Some(minimum) = constraint.minimum.as_ref()
+    {
+        let minimum = match minimum.unhinted() {
+            Value::Fixed(minimum) => number_word(*minimum).unwrap_or_else(|| minimum.to_string()),
+            _ => describe_value(minimum),
+        };
+        return format!(
+            " with {minimum} or more {} mana symbols among their mana costs",
+            color.name()
+        );
+    }
     if constraint.metric == crate::effect::ChoiceAggregateMetric::DistinctCardTypes
         && let Some(Value::Fixed(minimum)) = constraint.minimum.as_ref().map(Value::unhinted)
     {

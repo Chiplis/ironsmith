@@ -195,7 +195,32 @@ pub fn aggregate_object_value(
             .mana_cost
             .as_ref()
             .map_or(0, |cost| cost.mana_value() as i32),
+        ChoiceAggregateMetric::ManaSymbolsOfColor(color) => object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |cost| mana_symbols_of_color(cost, color)),
     }
+}
+
+/// Mana symbols of one color in a mana cost; a hybrid or Phyrexian pip that
+/// includes the color is one symbol of it.
+pub fn mana_symbols_of_color(cost: &crate::mana::ManaCost, color: crate::color::Color) -> i32 {
+    use crate::mana::ManaSymbol;
+    cost.pips()
+        .iter()
+        .filter(|pip| {
+            pip.iter().any(|symbol| {
+                matches!(
+                    (symbol, color),
+                    (ManaSymbol::White, crate::color::Color::White)
+                        | (ManaSymbol::Blue, crate::color::Color::Blue)
+                        | (ManaSymbol::Black, crate::color::Color::Black)
+                        | (ManaSymbol::Red, crate::color::Color::Red)
+                        | (ManaSymbol::Green, crate::color::Color::Green)
+                )
+            })
+        })
+        .count() as i32
 }
 
 /// The result of attempting to target something.

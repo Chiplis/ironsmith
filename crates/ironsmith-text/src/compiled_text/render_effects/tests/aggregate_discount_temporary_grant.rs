@@ -105,7 +105,7 @@ fn aggregate_discount_and_temporary_combat_draw_use_correct_creatures() {
     }
     assert_eq!(game.player(alice).unwrap().hand.len(), 3);
     game.effect_store.continuous_effects.cleanup_end_of_turn();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert_eq!(game.current_power(target), Some(1));
     assert!(game.current_abilities(target).unwrap().is_empty());
 }

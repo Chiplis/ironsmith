@@ -108,6 +108,22 @@ fn condition_that_many_value(predicate: &PredicateAst) -> Option<Value> {
     }
 }
 
+/// "At the beginning of each end step, if you gained life this turn,
+/// distribute up to that many +1/+1 counters ..." (Lathiel): a triggered
+/// line whose intervening-if was split off by the document recognizer still
+/// reads "that many" as the life gained this turn.
+pub(crate) fn bind_intervening_life_gained_that_many(
+    predicate: &PredicateAst,
+    effects: &mut [EffectAst],
+) {
+    if predicate_counts_creatures_died_this_turn(predicate) {
+        return;
+    }
+    if let Some(replacement) = condition_that_many_value(predicate) {
+        bind_creatures_died_condition_amounts(effects, &replacement);
+    }
+}
+
 fn bind_event_amount_to_creatures_died_this_turn(value: &mut Value, replacement: &Value) {
     match value {
         Value::EventValue(EventValueSpec::Amount)
@@ -155,6 +171,9 @@ fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst], replacement:
             }) => {
                 bind_creatures_died_condition_amounts(if_true, replacement);
                 bind_creatures_died_condition_amounts(if_false, replacement);
+            }
+            EffectAst::SourceSentence { effects, .. } | EffectAst::Sequence { effects } => {
+                bind_creatures_died_condition_amounts(effects, replacement);
             }
             _ => {}
         }
@@ -456,6 +475,7 @@ pub fn validate_protection_static_line(tokens: &[OwnedLexToken]) -> Result<(), C
             if words.get(2).is_some_and(|word| matches!(*word, "doesn't" | "doesnt"))
                 && words.get(3) == Some(&"remove")
                 && crate::grammar::keyword_static_lines::parse_static_text_marker_kind_tokens(sentence).is_none()
+                && crate::keyword_static::parse_untapped_attachment_control_protection(tokens)?.is_none()
                 && words.get(4..) != Some(&["auras", "and", "equipment", "you", "control", "that", "are", "already", "attached", "to", "it"][..])
             {
                 return Err(CardTextError::ParseError("unsupported protection attachment exception".into()));

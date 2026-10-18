@@ -291,12 +291,6 @@ fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
         .map(|o| o.id)
         .ok_or(format!("missing {n} in {z:?}"))
 }
-fn count(g: &GameState, n: &str, z: Zone) -> usize {
-    g.objects_in_deterministic_order()
-        .iter()
-        .filter(|o| o.name == n && o.zone == z)
-        .count()
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,

@@ -258,57 +258,7 @@ fn finish(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(
     }
     Err("finish budget".into())
 }
-fn activate(
-    g: &mut GameState,
-    source: ObjectId,
-    index: usize,
-    dm: &mut Choices,
-) -> Result<Value, String> {
-    let initial_stack_len = g.stack.len();
-    g.turn.priority_player = Some(PlayerId(0));
-    let action=compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::ActivateAbility{source:s,ability_index}if *s==source&&*ability_index==index)).ok_or("intended activation unavailable")?;
-    let before = g.player(PlayerId(0)).unwrap().mana_pool.total();
-    let mut q = TriggerQueue::new();
-    let mut st = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        &mut q,
-        &mut st,
-        &PriorityResponse::PriorityAction(action.clone()),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..24 {
-        if st.pending_activation.is_none() && g.stack.len() > initial_stack_len {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            return Err(format!("activation stopped:{progress:?}"));
-        };
-        if matches!(ctx, DecisionContext::Priority(_)) {
-            return Err("activation returned priority without stack".into());
-        }
-        progress = apply_decision_context_with_dm(g, &mut q, &mut st, &ctx, dm)
-            .map_err(|e| e.to_string())?;
-    }
-    let paid = before - g.player(PlayerId(0)).unwrap().mana_pool.total();
-    let announced_x = g.stack.last().and_then(|e| e.x_value);
-    let source_present_at_announcement = g
-        .object(source)
-        .is_some_and(|o| o.zone == Zone::Battlefield);
-    let error = finish(g, &mut q, dm).err();
-    Ok(
-        json!({"action":format!("{action:?}"),"mana_paid":paid,"resolution_error":error,"announced_x":announced_x,"source_present_at_announcement":source_present_at_announcement}),
-    )
-}
 
-fn find(g: &GameState, n: &str, z: Zone) -> Result<ObjectId, String> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.name == n && o.zone == z)
-        .map(|o| o.id)
-        .ok_or(format!("missing {n} in {z:?}"))
-}
 fn paid(
     g: &mut GameState,
     defs: &HashMap<String, CardDefinition>,
@@ -410,19 +360,7 @@ fn priority(g: &mut GameState, q: &mut TriggerQueue, p: u8, d: &mut Choices) -> 
     }
     Err("priority unavailable".into())
 }
-fn offered(g: &GameState, s: ObjectId, index: usize) -> bool {
-    compute_legal_actions(g,PlayerId(0)).expect("fixture has complete replacement state").iter().any(|a|matches!(a,LegalAction::ActivateAbility{source,ability_index}if *source==s&&*ability_index==index))
-}
 
-fn get_stable(g: &GameState, id: ObjectId) -> u64 {
-    g.object(id).unwrap().stable_id.0.0
-}
-fn find_stable(g: &GameState, stable: u64) -> Option<ObjectId> {
-    g.objects_in_deterministic_order()
-        .iter()
-        .find(|o| o.stable_id.0.0 == stable)
-        .map(|o| o.id)
-}
 fn new_game(defs: &HashMap<String, CardDefinition>) -> GameState {
     let mut g = setup(2, 0);
     for p in 0..2 {

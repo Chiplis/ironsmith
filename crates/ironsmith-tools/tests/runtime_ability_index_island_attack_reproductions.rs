@@ -26,7 +26,6 @@ struct Choices {
     trace: Vec<Value>,
     resources: Vec<ObjectId>,
     x: u32,
-    activation_hint: Option<&'static str>,
 }
 impl DecisionMaker for Choices {
     fn decide_number(&mut self, _: &GameState, c: &ironsmith::decisions::context::NumberContext) -> u32 {
@@ -181,38 +180,6 @@ fn resolve_all(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Res
     }
     Err("bounded resolution did not empty stack".into())
 }
-fn announce(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-    action: LegalAction,
-) -> Result<(), String> {
-    g.turn.priority_player = Some(PlayerId(0));
-    eprintln!("AUDIT_STAGE activate {action:?}");
-    let old = g.stack.len();
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    dm.trace
-        .push(json!({"stage":"activation_action","action":format!("{action:?}")}));
-    let mut p = apply_priority_response_with_dm(
-        g,
-        q,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        if state.pending_activation.is_none() && g.stack.len() > old {
-            return Ok(());
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = p else {
-            return Err(format!("activation stalled:{p:?}"));
-        };
-        p = apply_decision_context_with_dm(g, q, &mut state, &ctx, dm)
-            .map_err(|e| e.to_string())?;
-    }
-    Err("activation bound".into())
-}
 
 fn mana(g: &mut GameState) {
     for p in (0..g.players_in_game()).map(|n|PlayerId(n as u8)) {
@@ -252,66 +219,7 @@ fn advance_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Re
     mana(g);
     Ok(())
 }
-fn announce_mana(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-    action: LegalAction,
-) -> Result<(), String> {
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        q,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        if let GameProgress::NeedsDecisionCtx(ctx) = progress {
-            if matches!(
-                ctx,
-                ironsmith::decisions::context::DecisionContext::Priority(_)
-            ) {
-                return Ok(());
-            }
-            progress = apply_decision_context_with_dm(g, q, &mut state, &ctx, dm)
-                .map_err(|e| e.to_string())?;
-        } else {
-            return Ok(());
-        }
-    }
-    Err("mana announcement bound".into())
-}
 
-fn activation(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-    source: ObjectId,
-) -> Result<Value, String> {
-    g.turn.priority_player = Some(PlayerId(0));
-    let a = compute_legal_actions(g, PlayerId(0)).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::ActivateAbility{source:s,..}|LegalAction::ActivateManaAbility{source:s,..}if *s==source) && dm.activation_hint.is_none_or(|hint| match a { LegalAction::ActivateAbility{ability_index,..}|LegalAction::ActivateManaAbility{ability_index,..} => g.current_abilities(source).is_some_and(|abilities|abilities.get(*ability_index).is_some_and(|a|format!("{a:?}").contains(hint))), _=>false }));
-    let before = g.player(PlayerId(0)).unwrap().mana_pool.total() as i64;
-    let mut error = None;
-    let mut resolution_error = None;
-    if let Some(action) = a.clone() {
-        dm.trace.push(json!({"stage":"advertised_source_action","action":format!("{action:?}"),"abilities":format!("{:?}",g.current_abilities(source))}));
-        error = if matches!(action, LegalAction::ActivateManaAbility { .. }) {
-            announce_mana(g, q, dm, action).err()
-        } else {
-            announce(g, q, dm, action).err()
-        };
-        if error.is_none() {
-            resolution_error = resolve_all(g, q, dm).err();
-        }
-    }
-    Ok(
-        json!({"offered":a.is_some(),"announcement_error":error,"resolution_error":resolution_error,"mana_paid":before-g.player(PlayerId(0)).unwrap().mana_pool.total() as i64,"remaining_stack":g.stack.len()}),
-    )
-}
 fn play_land(g:&mut GameState,def:&CardDefinition,actor:PlayerId,q:&mut TriggerQueue,dm:&mut Choices)->Result<ObjectId,String>{
  if g.turn.active_player!=actor{return Err("land producer wrong turn".into());}let id=g.create_object_from_definition(def,actor,Zone::Hand);g.turn.priority_player=Some(actor);let action=compute_legal_actions(g,actor).expect("fixture has complete replacement state").into_iter().find(|a|matches!(a,LegalAction::PlayLand{land_id}if *land_id==id)).ok_or("land producer unavailable")?;let mut state=PriorityLoopState::new(g.players_in_game());apply_priority_response_with_dm(g,q,&mut state,&PriorityResponse::PriorityAction(action),dm).map_err(|e|e.to_string())?;resolve_all(g,q,dm)?;g.battlefield.iter().copied().find(|id|g.object(*id).is_some_and(|o|o.name==def.name())&&g.current_controller(*id)==Some(actor)).ok_or("land producer absent".into())
 }
@@ -334,7 +242,7 @@ fn attack_probe(g:&mut GameState,q:&mut TriggerQueue,_dm:&mut Choices,source:Obj
 fn run(def:&CardDefinition,defs:&std::collections::HashMap<&str,CardDefinition>,mode:usize)->Result<Value,String>{
  let count=if mode>=2{3}else{2};let mut g=GameState::new((0..count).map(|n|format!("Player{n}")).collect(),20);g.set_random_seed(71757432704855);g.turn.turn_number=3;g.turn.active_player=PlayerId(0);g.turn.priority_player=Some(PlayerId(0));g.turn.phase=ironsmith::Phase::FirstMain;g.turn.step=None;mana(&mut g);
  let filler=CardDefinitionBuilder::new(CardId::new(),"Neutral library artifact").card_types(vec![CardType::Artifact]).build();for p in (0..count).map(|n|PlayerId(n as u8)){for _ in 0..12{g.create_object_from_definition(&filler,p,Zone::Library);}}
- let mut q=TriggerQueue::new();let mut dm=Choices{accept:true,target:None,trace:vec![],resources:vec![],x:0,activation_hint:None};
+ let mut q=TriggerQueue::new();let mut dm=Choices{accept:true,target:None,trace:vec![],resources:vec![],x:0};
  // Own Island is present in every case so the separate no-Islands sacrifice
  // rule cannot remove a source and masquerade as its attack restriction.
  let own_island=play_land(&mut g,&defs["Island"],PlayerId(0),&mut q,&mut dm)?;

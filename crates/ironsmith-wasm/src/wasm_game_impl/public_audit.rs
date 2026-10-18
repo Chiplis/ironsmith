@@ -4,10 +4,10 @@ use ironsmith::game_state::{ArchenemyVariant, Phase, Step, TurnState};
 use ironsmith::object::{AttachmentTarget, Object};
 use ironsmith::player::ManaPool;
 use ironsmith::types::Subtype;
-// Coordinated with artifact17 and signed audit31. Nested counter riders and
-// canonical counter text extend the public vocabulary through existing carriers.
+// Signed audit32 includes authenticated pass intentions in the public runtime.
+// Compiled card artifacts retain their existing vocabulary.
 // Historical digests retain their bytes; this is never a gameplay importer.
-const PUBLIC_AUDIT_VERSION: u32 = 11;
+const PUBLIC_AUDIT_VERSION: u32 = 12;
 type SyncRestrictedManaUnit = ironsmith_core::RestrictedManaUnit<ironsmith_compiled_artifact::WireEffect>;
 use sha2::{Digest, Sha256};
 
@@ -831,6 +831,7 @@ struct SyncVanguard {
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncPriorityRuntime {
+    pass_intents: std::collections::BTreeMap<u8, PassIntent>,
     #[serde(default)]
     runner_awaiting_priority: bool,
     #[serde(default)]
@@ -1852,6 +1853,7 @@ impl WasmGame {
                     .collect(),
             },
             priority_runtime: SyncPriorityRuntime {
+                pass_intents: self.pass_intents.clone(),
                 runner_awaiting_priority: self.runner_awaiting_priority,
                 runner_pending_decision: self.runner_pending_decision,
                 turn_runner_state: self
@@ -1993,7 +1995,7 @@ mod public_audit_tests {
         let evidence = |wasm: &WasmGame| serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
         wasm.game.combat = Some(ironsmith::combat_state::CombatState::default());
         let absent = evidence(&wasm);
-        assert_eq!(PUBLIC_AUDIT_VERSION, 11);
+        assert_eq!(PUBLIC_AUDIT_VERSION, 12);
         assert_eq!(absent["version"], PUBLIC_AUDIT_VERSION);
         assert!(absent.as_object().unwrap().contains_key("lastAttackDeclarationStepPlayers"));
         assert!(absent["lastAttackDeclarationStepPlayers"].is_null());

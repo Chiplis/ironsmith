@@ -132,7 +132,6 @@ fn ability_requires_number(ability: &Ability) -> bool {
                 _ => false,
             }),
         AbilityKind::Activated(ability) => program_uses_source_number(&ability.effects),
-        _ => false,
     }
 }
 pub(crate) fn ability_pair(ability:&Ability)->Option<LinkedExilePair>{
@@ -140,7 +139,6 @@ pub(crate) fn ability_pair(ability:&Ability)->Option<LinkedExilePair>{
         AbilityKind::Triggered(ability)=>ability.effects.source_number_pair,
         AbilityKind::Activated(ability)=>ability.effects.source_number_pair,
         AbilityKind::Static(ability)=>static_pair(ability),
-        _=>None,
     }
 }
 fn from_snapshot(source:ObjectId,pair:LinkedExilePair,snapshot:&ObjectSnapshot)->Result<NumberChoiceOwner,ExecutionError>{

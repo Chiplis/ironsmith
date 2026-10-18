@@ -389,7 +389,46 @@ pub fn parse_reveal_source_exiled_permanents_sentence_lexed(
     })])
 }
 
+/// The target is announced even when the controller later declines the
+/// optional copy. Keep its controller exclusion relative to the entering
+/// token, before creation changes the ordinary object antecedent.
+pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.word_refs();
+    let prefix: &[&str] = &["you", "may", "have", "target", "player", "other", "than", "its", "controller"];
+    if !words.starts_with(prefix) || words.get(prefix.len()) != Some(&"create") {
+        return Ok(None);
+    }
+    let start = view.token_index_after_words(prefix.len()).unwrap_or(tokens.len());
+    let mut effects = parse_effect_chain_lexed(&tokens[start..])?;
+    let mut found = false;
+    let mut bind_copy = |effects: &mut Vec<EffectAst>| {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(subject) = effect {
+                if let SubjectVerbActionAst::Tokens(crate::cards::builders::TokenActionAst::CreateTokenCopy { player, .. }) = &mut subject.action {
+                    *player = PlayerAst::That;
+                    subject.subject.player = PlayerAst::That;
+                    found = true;
+                }
+            }
+        }
+    };
+    bind_copy(&mut effects);
+    for effect in &mut effects {
+        for_each_nested_effect_vec_mut(effect, true, &mut bind_copy);
+    }
+    drop(bind_copy);
+    if !found { return Ok(None); }
+    let entering_controller = PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+        crate::tag::CompilerReferenceTag::Triggering.bind()));
+    let target = TargetAst::Player(PlayerFilter::excluding(PlayerFilter::Any, entering_controller),
+        crate::util::span_from_tokens(tokens));
+    Ok(Some(vec![EffectAst::subject_verb_explicit_target_only(target),
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May { effects })]))
+}
+
 pub fn parse_effect_chain_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = parse_optional_other_player_token_copy(tokens)? { return Ok(effects); }
     crate::grammar::shared_util::value_expr::validate_result_quantity_bindings(tokens)?;
     super::pair_procedure::validate_discard_replacements(tokens)?;
     super::local_self_replacement::validate(tokens)?;
@@ -530,10 +569,15 @@ pub(super) fn parse_atomic_permanent_and_suspended_counter_sentence(
     {
         return Ok(None);
     }
+    // The verb helpers read the clause after its verb.
+    if !tokens.first().is_some_and(|token| token.is_word(verb)) {
+        return Ok(None);
+    }
+    let after_verb = &tokens[1..];
     let effect = if verb == "remove" {
-        super::zone_handlers::parse_remove(tokens)?
+        super::zone_handlers::parse_remove(after_verb)?
     } else {
-        super::zone_counter_helpers::parse_put_counters(tokens)?
+        super::zone_counter_helpers::parse_put_counters(after_verb)?
     };
     Ok(Some(effect))
 }
@@ -625,6 +669,7 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
             player: PlayerAst::You,
         },
         action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+            retained_reference_tags: Vec::new(),
             target: TargetAst::Object(filter, None, None),
             source_top_only: false,
             tagged_destinations: Vec::new(),
@@ -1266,6 +1311,36 @@ pub fn parse_or_action_clause_lexed(
         let first_starts_effect = find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
             || has_effect_head_without_verb_lexed(first);
         let second_gain_effect = parse_simple_gain_ability_clause_lexed(second)?;
+        // "exile up to one target legendary artifact card or legendary land
+        // card from a graveyard and put a counter on it" (Lara Croft): the
+        // `or` joins two nouns of one object phrase. A second branch that
+        // opens with a bare noun phrase (no subject determiner) and whose
+        // first verb only follows a coordinating "and" is not an action.
+        if second_gain_effect.is_none() {
+            let second_words = crate::lexer::token_word_refs(second);
+            let opens_with_subject = second_words.first().is_some_and(|word| {
+                matches!(
+                    *word,
+                    "that" | "it" | "its" | "target" | "each" | "you" | "they" | "this"
+                        | "enchanted" | "equipped" | "the" | "those" | "their" | "his" | "her"
+                )
+            });
+            let verb_only_after_and = match find_verb_lexed(second) {
+                None => true,
+                Some((_, verb_idx)) => {
+                    verb_idx > 0
+                        && second_words
+                            .get(verb_idx - 1)
+                            .is_some_and(|word| matches!(*word, "and" | "then"))
+                }
+            };
+            if !opens_with_subject
+                && verb_only_after_and
+                && crate::lexer::token_word_refs(first).contains(&"target")
+            {
+                continue;
+            }
+        }
         let second_starts_effect = find_verb_lexed(second)
             .is_some_and(|(_, verb_idx)| verb_idx == 0)
             || has_effect_head_without_verb_lexed(second)
@@ -1734,9 +1809,8 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let mut effects = Vec::new();
     // "Add two mana in any combination of {U}, {B}, and/or {R}." (Relic of
     // Sauron) lists mana symbols; its conjunctions never coordinate actions.
-    let lists_mana_combination = effect_chain_tokens.windows(3).any(|window| {
-        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
-    });
+    let lists_mana_combination =
+        super::lex_chain_helpers::lists_mana_combination_without_chain_boundary(effect_chain_tokens);
     // "sacrifices a Plains or a white permanent" (Omen of Fire) names one
     // sacrificed object chosen from a union; the bare noun phrase after
     // "or" has no verb of its own, so it never coordinates a second action.
@@ -2409,6 +2483,20 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 continue;
             }
         }
+        // "... loses all abilities and has \"{T}: Add {C}.\"" retains an
+        // explicit copular grant head. `has` is deliberately not an effect
+        // verb, so it must be read before the bare-keyword fallback prepends
+        // another subject and grant verb. Quoted activated rules remain whole.
+        if segment.iter().take(3).any(|token| token.is_any_word(&["has", "have"]))
+            && let Some(mut effect) = parse_simple_gain_ability_clause_lexed(&segment)?
+        {
+            if let Some(duration) = &carried_duration {
+                apply_carried_effect_duration(&mut effect, duration);
+            }
+            effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
+        }
         // Coordinated ability lists commonly omit the repeated "gains":
         // `gains flying, double strike, and vigilance until end of turn`.
         // The comma splitter leaves the later arms as bare keyword phrases;
@@ -2911,6 +2999,7 @@ mod chain_carry_condition_programs;
 use chain_carry_condition_programs::{parse_carried_cant_effects, trailing_if_predicate_supported};
 pub use chain_carry_condition_programs::{
     parse_effect_clause_with_trailing_if, parse_effect_clause_with_trailing_if_lexed,
+    sink_delayed_trailing_ifs,
 };
 #[path = "chain_carry/chain_carry_core.rs"]
 mod chain_carry_core_programs;
@@ -4286,12 +4375,37 @@ pub(crate) fn parse_duration_goaded_and_restricted_sentence(
     {
         return Ok(None);
     }
-    let mut restriction_tokens = crate::lexer::synthetic_word_tokens(["it"]);
-    restriction_tokens.extend(after_goaded.iter().cloned());
-    let Some(mut restrictions) = super::parse_cant_effect_sentence_lexed(&restriction_tokens)?
-    else {
+    // Read each "can't ..." item of the serial list as its own "it can't
+    // ..." sentence: the compound ", and can't" list is not a shape the
+    // can't-sentence reader owns, and a failure here would hand the sentence
+    // to the static-line probe (which then compiles it as statics).
+    let starts = after_goaded
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_any_word(&["can't", "cant"]))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let mut restrictions = Vec::new();
+    for (position, start) in starts.iter().enumerate() {
+        let end = starts.get(position + 1).copied().unwrap_or(after_goaded.len());
+        let mut item = trim_lexed_commas(&after_goaded[*start..end]);
+        while item
+            .last()
+            .is_some_and(|token| token.is_word("and") || token.is_word("or"))
+        {
+            item = trim_lexed_commas(&item[..item.len() - 1]);
+        }
+        let mut restriction_tokens = crate::lexer::synthetic_word_tokens(["it"]);
+        restriction_tokens.extend(item.iter().cloned());
+        let parsed = match super::parse_cant_effect_sentence_lexed(&restriction_tokens) {
+            Ok(Some(parsed)) => parsed,
+            Ok(None) | Err(_) => return Ok(None),
+        };
+        restrictions.extend(parsed);
+    }
+    if restrictions.is_empty() {
         return Ok(None);
-    };
+    }
     for effect in &mut restrictions {
         apply_carried_effect_duration(effect, &shape.duration);
     }

@@ -594,9 +594,15 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BlockWithMoreThan { player, .. }
         | LoseUnspentMana(player, _)
         | BeTargetedPlayer(player) => player.mentions_iterated_player(),
-        PlayLandsMatching(player, filter)
-        | CastSpellsMatching(player, filter)
-        | CastMoreThanOneSpellEachTurn(player, filter)
+        // "Other players can't play lands or cast spells from their
+        // graveyards this turn" (Shaman's Trance): with no enclosing loop,
+        // the land-play and cast checks bind an unbound iterated player to
+        // the restricted player itself (`iterated_player.or(Some(player))`),
+        // so only the restricted-player filter needs an outer binder.
+        PlayLandsMatching(player, _) | CastSpellsMatching(player, _) => {
+            player.mentions_iterated_player()
+        }
+        CastMoreThanOneSpellEachTurn(player, filter)
         | CastMoreThanNSpellsEachTurn {
             player,
             spells: filter,
@@ -659,7 +665,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         } => object_filter_mentions_iterated_player(filter),
         AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
         | AttackPlayer { attackers, player }
-        | MustAttackPlayer { attackers, player } => {
+        | MustAttackPlayer { attackers, player }
+        | GainControl(attackers, player) => {
             object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
         }
         BlockSpecificAttacker { blockers, attacker }
@@ -669,6 +676,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeTargetedFrom(blockers, attacker)
         | BeTargetedByRequirementsLimitedTo(blockers, attacker)
         | BeAttachedBy(blockers, attacker)
+        | BeAttachedByNew(blockers, attacker)
         | AttackPermanents {
             attackers: blockers,
             permanents: attacker,

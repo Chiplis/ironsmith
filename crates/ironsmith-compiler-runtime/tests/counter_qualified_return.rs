@@ -87,7 +87,7 @@ fn complete_wave_uses_only_plus_one_counters_and_returns_cards_to_their_owners()
         let land = object(&mut game, B, CardType::Land);
         game.add_counters(plus, CounterType::PlusOnePlusOne, 1);
         game.add_counters(charge, CounterType::Charge, 1);
-        game.set_current_controller(stolen, A);
+        game.set_current_controller(stolen, A).expect("test controller change succeeds");
         assert_eq!(game.current_controller(stolen), Some(A));
         game.object_mut(stolen).unwrap().abilities_mut().push(ironsmith::ability::Ability::static_ability(
             ironsmith::static_abilities::StaticAbility::shroud()));

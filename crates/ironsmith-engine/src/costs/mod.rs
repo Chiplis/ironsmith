@@ -63,7 +63,7 @@ pub use dynamic_mana::DynamicManaPaymentCost;
 pub use mana::ManaPaymentCost;
 pub(crate) use mana::{
     pay_mana_cost_with_choices, pay_mana_cost_with_choices_and_outputs,
-    pay_mana_cost_with_choices_in_context,
+
 };
 
 use crate::color::ColorSet;

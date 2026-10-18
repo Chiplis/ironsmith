@@ -8,7 +8,6 @@ use ironsmith::effects::{EffectContext, ExecutionError, execute_effect};
 use ironsmith::game_loop::{PriorityLoopState, PriorityResponse, apply_attacker_declarations, apply_blocker_declarations,
     apply_priority_response_with_dm, apply_decision_context_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::{Phase, Step};
-use ironsmith::mana::ManaSymbol;
 use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
 use ironsmith::target::{ChooseSpec, ObjectFilter};
 use ironsmith::triggers::TriggerQueue;

@@ -107,10 +107,6 @@ impl Dm {
         self.prefer.push(name);
         self
     }
-    fn no(mut self) -> Self {
-        self.yes = false;
-        self
-    }
 }
 
 impl DecisionMaker for Dm {
@@ -352,7 +348,7 @@ mod cost_ordering {
             game.create_object_from_definition(&def(tax), BOB, Zone::Battlefield);
         }
         let spell = game.create_object_from_definition(&def(spell), ALICE, Zone::Hand);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let object = game.object(spell).unwrap().clone();
         ironsmith::decision::calculate_effective_mana_cost(&game, ALICE, &object, object.mana_cost.as_ref().unwrap())
             .to_oracle()
@@ -459,7 +455,7 @@ mod cycling {
         }
         add_mana(game, ALICE, ManaSymbol::White, 3);
         add_mana(game, ALICE, ManaSymbol::Green, 3);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let action = compute_legal_actions(game, ALICE).expect("fixture has complete replacement state")
             .into_iter()
             .find(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == card))
@@ -593,7 +589,7 @@ mod aftermath {
         fixture(&mut game, "Bear", vec![CardType::Creature], BOB, Zone::Battlefield);
         add_mana(&mut game, ALICE, ManaSymbol::Black, 4);
         add_mana(&mut game, ALICE, ManaSymbol::Red, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         (game, card)
     }
 
@@ -719,7 +715,7 @@ mod granted_rebound {
         let spell = game.create_object_from_definition(&salve, ALICE, Zone::Hand);
         let stable = game.object(spell).unwrap().stable_id;
         add_mana(&mut game, ALICE, ManaSymbol::White, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         cast(&mut game, ALICE, spell);
         ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut Dm::new()).unwrap();
         assert_eq!(game.player(ALICE).unwrap().life, 23);
@@ -745,7 +741,7 @@ mod twobrid_with_improvise {
             .improvise()
             .build();
         let spell = game.create_object_from_definition(&def, ALICE, Zone::Hand);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         can_cast(&game, ALICE, spell, any_method)
     }
 
@@ -771,12 +767,12 @@ mod cipher {
         fixture(&mut game, "Library Card", vec![CardType::Sorcery], ALICE, Zone::Library);
         let spell = game.create_object_from_definition(&def("Last Thoughts"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Blue, 4);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let printed = game.object(creature).unwrap().abilities.len();
         let mut dm = Dm::new().prefer("Carrier");
         cast_with(&mut game, ALICE, spell, any_method, &mut dm);
         resolve_top_with(&mut game, &mut dm);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(
             game.object(creature).unwrap().abilities.len(),
             printed,
@@ -831,11 +827,11 @@ mod awaken {
         fixture(&mut game, "Bear", vec![CardType::Creature], BOB, Zone::Battlefield);
         let spell = game.create_object_from_definition(&def("Ruinous Path"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Black, 7);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let mut dm = Dm::new();
         cast_with(&mut game, ALICE, spell, alternative, &mut dm);
         resolve_top_with(&mut game, &mut dm);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(game.object_has_card_type(land, CardType::Creature));
         assert!(game.current_subtypes(land).unwrap_or_default().contains(&Subtype::Elemental));
         assert_eq!(game.calculated_power(land), Some(4));
@@ -864,7 +860,7 @@ mod casualty_x {
         let ob = game.create_object_from_definition(&def("Ob Nixilis, the Adversary"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Black, 2);
         add_mana(&mut game, ALICE, ManaSymbol::Red, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         (game, ob, ogre)
     }
 
@@ -910,7 +906,7 @@ mod granted_casualty {
             .build();
         let spell = game.create_object_from_definition(&salve, ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::White, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let mut dm = Dm::new().pick("Granted Casualty").prefer("Ogre");
         cast_with(&mut game, ALICE, spell, any_method, &mut dm);
         assert!(!game.battlefield.contains(&ogre), "sacrificed while casting: {:?}", dm.seen_options);
@@ -937,7 +933,7 @@ mod prowl {
         let goblin = game.create_object_from_definition(&goblin, ALICE, Zone::Battlefield);
         let bandit = game.create_object_from_definition(&def("Stinkdrinker Bandit"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Black, 2);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!can_cast(&game, ALICE, bandit, any_method), "no prowl yet, and {{3}}{{B}} is unaffordable");
         // Combat damage from the Goblin to Bob.
         let mut combat = CombatState::default();
@@ -985,14 +981,14 @@ mod prototype {
             ))
             .build();
         let fleshgorger = game.create_object_from_definition(&def, ALICE, Zone::Hand);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let free = |method: &CastingMethod, _: Zone| !matches!(method, CastingMethod::Alternative(_) | CastingMethod::Normal);
         let mut dm = Dm::new().pick("Prototype");
         cast_with(&mut game, ALICE, fleshgorger, free, &mut dm);
         let spell = game.stack.last().unwrap().object_id;
         assert_eq!(pool(&game, ALICE), 0);
         resolve_top_with(&mut game, &mut dm);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let permanent = game
             .battlefield
             .iter()
@@ -1012,7 +1008,7 @@ mod entwine {
         let mut game = game(2);
         let spell = game.create_object_from_definition(&def("Barbed Lightning"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Red, 5);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         let mut dm = Dm::new().pick("Entwine");
         cast_with(&mut game, ALICE, spell, any_method, &mut dm);
         let entwine = dm.seen_options.iter().find(|option| option.starts_with("Entwine"));
@@ -1061,7 +1057,7 @@ mod emerge {
         let fiend = game.create_object_from_definition(&def("Elder Deep-Fiend"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Blue, 2);
         add_mana(&mut game, ALICE, ManaSymbol::Colorless, 5);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         cast_with(&mut game, ALICE, fiend, alternative, &mut Dm::new());
         assert!(!game.battlefield.contains(&small), "sacrificed for emerge");
         assert_eq!(pool(&game, ALICE), 4, "{{5}}{{U}}{{U}} reduced by mana value 4 costs {{1}}{{U}}{{U}}");
@@ -1078,7 +1074,7 @@ mod surge {
         game.set_teams(vec![vec![ALICE, PlayerId(2)], vec![BOB, PlayerId(3)]]).unwrap();
         let crush = game.create_object_from_definition(&def("Crush of Tentacles"), ALICE, Zone::Hand);
         add_mana(&mut game, ALICE, ManaSymbol::Blue, 5);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         assert!(!can_cast(&game, ALICE, crush, any_method), "{{4}}{{U}}{{U}} is unaffordable");
         add_mana(&mut game, PlayerId(2), ManaSymbol::Red, 1);
         let spell = filler(&mut game, PlayerId(2));

@@ -703,6 +703,7 @@ pub enum ActivatedAbilityKeyword {
     Ninjutsu,
     Boast,
     Exhaust,
+    Craft,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

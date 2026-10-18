@@ -97,6 +97,47 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     if let Some((value, used)) = linked_characteristic {
         return Some((value, offset + used));
     }
+    // "If the discovered card's mana value is less than 10" (Hit the Mother
+    // Lode): Discover's primary result (CR 701.57a) is the card it exiled and
+    // cast or put into hand, the same antecedent "that card" binds. It is not
+    // a source-linked exile.
+    let discovered = |axis: &str| {
+        let spec = tagged(Tag::It, "the discovered card");
+        match axis {
+            "power" => Value::PowerOf(spec),
+            "toughness" => Value::ToughnessOf(spec),
+            _ => Value::ManaValueOf(spec),
+        }
+    };
+    let discovered_characteristic = match rest {
+        ["discovered", "card" | "card's" | "cards", "s", "power", ..] => {
+            Some((discovered("power"), 4))
+        }
+        ["discovered", "card" | "card's" | "cards", "s", "toughness", ..] => {
+            Some((discovered("toughness"), 4))
+        }
+        ["discovered", "card" | "card's" | "cards", "s", "mana", "value", ..] => {
+            Some((discovered("mana value"), 5))
+        }
+        ["discovered", "card" | "card's" | "cards", "power", ..] => Some((discovered("power"), 3)),
+        ["discovered", "card" | "card's" | "cards", "toughness", ..] => {
+            Some((discovered("toughness"), 3))
+        }
+        ["discovered", "card" | "card's" | "cards", "mana", "value", ..] => {
+            Some((discovered("mana value"), 4))
+        }
+        ["power", "of", "the", "discovered", "card", ..] => Some((discovered("power"), 5)),
+        ["toughness", "of", "the", "discovered", "card", ..] => {
+            Some((discovered("toughness"), 5))
+        }
+        ["mana", "value", "of", "the", "discovered", "card", ..] => {
+            Some((discovered("mana value"), 6))
+        }
+        _ => None,
+    };
+    if let Some((value, used)) = discovered_characteristic {
+        return Some((value, offset + used));
+    }
     let bearer_len = if rest.starts_with(&["your", "ring"])
         && rest
             .get(2)

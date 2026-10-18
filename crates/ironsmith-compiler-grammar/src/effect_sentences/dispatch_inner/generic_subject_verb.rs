@@ -3230,7 +3230,18 @@ pub fn parse_vote_affinity_subject_verb(
         })]));
     }
     if let Some(shape) = effect_grammar::parse_voted_with_you_effects_shape(tokens) {
-        let effect_tokens = trim_commas(shape.effect_tokens);
+        let mut effect_tokens = trim_commas(shape.effect_tokens).to_vec();
+        // "each opponent who voted for a choice you voted for creates a
+        // Treasure token" (Erestor of the Council): the subjectless action is
+        // performed by the iterated opponent. Restore that subject so actions
+        // whose implicit actor defaults to you (token creation) bind to them.
+        if effect_tokens.first().is_some_and(|token| {
+            token.is_any_word(&["creates", "puts", "gains", "draws", "returns", "searches"])
+        }) {
+            let span = effect_tokens[0].span;
+            effect_tokens.insert(0, OwnedLexToken::word("player", span));
+            effect_tokens.insert(0, OwnedLexToken::word("that", span));
+        }
         let effects = parse_effect_chain_lexed(&effect_tokens)?;
         return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
             require_evidence: false,

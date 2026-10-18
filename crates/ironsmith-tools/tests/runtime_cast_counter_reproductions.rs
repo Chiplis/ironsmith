@@ -17,7 +17,7 @@ use ironsmith::mana::{ManaCost, ManaSymbol};
 use ironsmith::object::CounterType;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
-    CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,
+    CardDefinition, CardId, CardType,  GameState, ObjectId, PlayerId, PowerToughness, Zone,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

@@ -44,7 +44,7 @@ fn setup(face_down: bool) -> (GameState, ObjectId, ObjectId) {
         &mut ctx,
     )
     .unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     (game, target, aura)
 }
 #[test]
@@ -81,7 +81,7 @@ fn aura_adds_types_removes_abilities_and_sets_base_stats_until_it_leaves() {
     assert!(!game.object_has_static_ability_id(target, StaticAbilityId::Vigilance));
     assert_eq!(game.controller_of_id(target), Some(PlayerId::from_index(1)));
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let chars = game.calculated_characteristics(target).unwrap();
     assert!(!chars.card_types.contains(&CardType::Artifact));
     assert!(!chars.subtypes.contains(&Subtype::Toy));
@@ -95,7 +95,7 @@ fn face_up_prohibition_applies_only_while_attached_source_remains() {
     assert!(!game.set_face_up(target).expect("fixture has complete replacement state"));
     assert!(game.is_face_down(target));
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(game.can_turn_face_up_permanent(target));
     assert!(game.set_face_up(target).expect("fixture has complete replacement state"));
     assert!(!game.is_face_down(target));
@@ -123,7 +123,7 @@ fn generic_filtered_face_up_prohibition_blocks_mutation_and_expires_with_source(
         )))
         .build();
     let source = game.create_object_from_definition(&rule, alice, Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(!game.can_turn_face_up_permanent(yours));
     assert!(game.can_turn_face_up_permanent(theirs));
     assert!(!game.set_face_up(yours).expect("fixture has complete replacement state"));
@@ -145,13 +145,13 @@ fn manifested_face_up_special_action_is_unavailable_until_aura_leaves() {
         .unwrap()
         .mana_pool
         .add(ironsmith::mana::ManaSymbol::Blue, 1);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let available = |game: &GameState| {
         compute_legal_actions(game, bob).expect("fixture has complete replacement state").iter().any(|action|
         matches!(action, LegalAction::TurnFaceUp { creature_id, .. } if *creature_id == target))
     };
     assert!(!available(&game));
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(available(&game));
 }

@@ -441,9 +441,28 @@ pub(crate) fn describe_player_exile_controlled_creature_and_graveyard_bundle(
     ))
 }
 
+/// Divvy programs append a textless `GroupIntoPiles` keyword-action record
+/// (CR 700.3 turn-history instrumentation). Pile bundles match the program
+/// topology without it.
+pub(crate) fn without_pile_grouping_record<'a, 'b>(filtered: &'b [&'a Effect]) -> &'b [&'a Effect] {
+    match filtered.split_last() {
+        Some((last, rest))
+            if last
+                .downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                .is_some_and(|emit| {
+                    emit.action == crate::events::KeywordActionKind::GroupIntoPiles
+                }) =>
+        {
+            rest
+        }
+        _ => filtered,
+    }
+}
+
 pub(crate) fn describe_exile_split_pile_opponent_choice_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
+    let filtered = without_pile_grouping_record(filtered);
     let [exile_effect, tag_effect, choose_effect, unless_effect] = filtered else {
         return None;
     };
@@ -568,6 +587,7 @@ pub(crate) fn describe_cross_zone_target_swap_bundle(filtered: &[&Effect]) -> Op
 pub(crate) fn describe_chosen_opponent_face_down_piles_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
+    let filtered = without_pile_grouping_record(filtered);
     let [
         choose_player,
         look,
@@ -623,6 +643,7 @@ pub(crate) fn describe_chosen_opponent_face_down_piles_bundle(
 pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
+    let filtered = without_pile_grouping_record(filtered);
     let filtered = if let [first, rest @ ..] = filtered {
         if first
             .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
@@ -720,6 +741,7 @@ pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bundle(
 pub(crate) fn describe_exiled_collection_opponent_split_you_choose_pile_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
+    let filtered = without_pile_grouping_record(filtered);
     let [
         exile_effect,
         tag_effect,

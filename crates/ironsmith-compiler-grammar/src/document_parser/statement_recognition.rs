@@ -47,6 +47,7 @@ fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
     statement_shapes::is_extra_coin_ignore_one(tokens)
         || statement_shapes::is_first_coin_batch_heads_win(tokens)
         || statement_shapes::is_extra_die_ignore_lowest(tokens)
+        || statement_shapes::is_extra_planar_die_ignore_one(tokens)
         || statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
         || statement_shapes::parse_die_roll_exchange_with_source_base_pt(tokens).is_some()
 }
@@ -610,6 +611,21 @@ fn recognize_statement_line_general(
     for group_tokens in &parse_groups {
         let effects = match parse_effect_sentences_committing_loss_on_success(group_tokens) {
             Ok(effects) => effects,
+            // "For as long as that creature has a duty counter on it, it is
+            // goaded, ..." (Immortal Obligation): a carried duration over the
+            // pronoun "it" continues the previous instruction's object; it is
+            // never a standalone static ability of the card.
+            Err(err)
+                if parsed_effect_groups.len() > 0
+                    && crate::grammar::effects::chain_carry::parse_carry_duration_prefix_tokens(
+                        group_tokens,
+                    )
+                    .is_some_and(|shape| {
+                        shape.rest.first().is_some_and(|token| token.is_word("it"))
+                    }) =>
+            {
+                return Err(err);
+            }
             Err(_) if probe_is_static_ability_line(group_tokens) => {
                 every_group_is_effects = false;
                 continue;
@@ -733,9 +749,21 @@ fn has_local_die_result_owner(tokens: &[OwnedLexToken]) -> bool {
         }
         None
     }
+    // Rows already appended to this owner may contain several sentences.
+    // Their final sentence is still a consequence of the table, not a new
+    // result producer. Check the actual owner before the first numeric row;
+    // the complete table is parsed and validated by the normal effect pass.
+    let sentences = split_lexed_sentences(tokens);
+    let row_start = sentences.iter().find(|sentence|
+        super::document_grammar::parse_numeric_result_prefix_tokens(sentence).is_some());
+    let owner_tokens = if let Some(row) = row_start {
+        let start = tokens.iter().position(|token| std::ptr::eq(token, &row[0]))
+            .expect("sentence slices borrow the owner tokens");
+        &tokens[..start]
+    } else { tokens };
     // Optional, conditional, iterated, or quoted rolls do not export one
     // unconditional immediate result for a following table.
-    probe_effect_sentences_lexed(tokens).is_ok_and(|effects| matches!(
+    probe_effect_sentences_lexed(owner_tokens).is_ok_and(|effects| matches!(
         last_non_row(&effects),
         Some(EffectAst::SubjectVerb(crate::model::ast::SubjectVerbEffectAst {
             action: crate::model::ast::SubjectVerbActionAst::Random(

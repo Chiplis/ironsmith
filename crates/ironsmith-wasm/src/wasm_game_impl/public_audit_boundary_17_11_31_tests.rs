@@ -40,7 +40,7 @@ fn digest11_checkpoint_distinguishes_exact_counter_rider_shape_and_values() {
         assert_eq!(restored.exile_permission, permission);
         assert_eq!(effects[0].payload().get("exile_permission").is_some(), permission.is_some());
         let checkpoint = serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap();
-        assert_eq!(PUBLIC_AUDIT_VERSION, 11);
+        assert_eq!(PUBLIC_AUDIT_VERSION, 12);
         assert_eq!(checkpoint["version"], 11);
         assert_eq!(checkpoint, serde_json::to_value(wasm.build_public_audit_checkpoint()).unwrap());
         assert!(projections.iter().all(|old| old != &checkpoint));

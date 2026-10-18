@@ -200,7 +200,7 @@ fn minus_five_turns_your_artifacts_into_five_five_creatures_until_end_of_turn() 
         game.create_object_from_definition(&artifact("Their Relic", 1), bob, Zone::Battlefield);
     let mut dm = Choices::default();
     activate(&mut game, tezzeret, 2, &mut dm);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(game.object_has_card_type(mine, CardType::Creature));
     assert!(game.object_has_card_type(mine, CardType::Artifact));
     assert_eq!(game.calculated_power(mine), Some(5));
@@ -210,7 +210,7 @@ fn minus_five_turns_your_artifacts_into_five_five_creatures_until_end_of_turn() 
         "only your artifacts"
     );
     ironsmith::turn::execute_cleanup_step(&mut game);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !game.object_has_card_type(mine, CardType::Creature),
         "until end of turn"

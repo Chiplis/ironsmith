@@ -177,7 +177,7 @@ mod additional_move_owner_contract_tests {
     use crate::effect::{Effect, EffectOutcome, Value};
     use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
     use crate::game_state::GameState;
-    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::ids::{CardId,  PlayerId};
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::snapshot::ObjectSnapshot;
     use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};

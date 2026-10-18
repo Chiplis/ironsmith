@@ -7,7 +7,7 @@ use crate::effects::{
     EffectExecutor, ExchangeValueOperand, ExchangeValuesEffect, ExecutionContext, RadiationEffect,
 };
 use crate::events::life::matchers::{WouldGainLifeMatcher, WouldLoseLifeMatcher};
-use crate::events::{EventContext, GameEventType, ReplacementMatcher};
+use crate::events::{ GameEventType, ReplacementMatcher};
 use crate::game_state::GameState;
 use crate::ids::{CardId, ObjectId, PlayerId};
 use crate::object::CounterType;

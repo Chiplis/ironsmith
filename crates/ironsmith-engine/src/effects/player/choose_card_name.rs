@@ -104,17 +104,28 @@ impl EffectExecutor for ChooseCardNameEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
-            .with_placeholder("Enter a card name")
-            .require_known_value(true);
-        let chosen_name = ctx.decision_maker.decide_text(game, &choice_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
+        let history = game.chosen_named_option(ctx.source)
+            .map(split_chosen_card_names).unwrap_or_default();
+        let chosen_name = if self.options.is_empty() {
+            let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
+                .with_placeholder("Enter a card name").require_known_value(true);
+            ctx.decision_maker.decide_text(game, &choice_ctx)
+        } else {
+            let menu = self.options.iter()
+                .filter(|name| !self.exclude_source_history || !history.iter().any(|prior| prior.eq_ignore_ascii_case(name)))
+                .map(|name| (name.clone(), name.clone())).collect::<Vec<_>>();
+            if menu.is_empty() { return Ok(EffectOutcome::count(0)); }
+            use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
+            let Some(chosen) = select_typed_option(game, ctx, chooser, "Choose a card name", &menu, SingleChoicePolicy::First)? else {
+                return Ok(EffectOutcome::count(0));
+            };
+            chosen
+        };
+        if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         let chosen_name = chosen_name.trim();
-        if chosen_name.is_empty() {
-            return Ok(EffectOutcome::count(0));
-        }
+        if chosen_name.is_empty()
+            || (self.exclude_source_history && history.iter().any(|name| name.eq_ignore_ascii_case(chosen_name)))
+        { return Ok(EffectOutcome::count(0)); }
 
         let mut registry = CardRegistry::new();
         registry.ensure_cards_loaded([chosen_name]);

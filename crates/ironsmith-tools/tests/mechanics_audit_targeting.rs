@@ -595,7 +595,7 @@ mod b9_hexproof_from_permission {
             .unwrap()
             .mana_pool
             .add(ManaSymbol::Black, 1);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
         find_cast(&game, ALICE, disfigure).is_some()
     }
 

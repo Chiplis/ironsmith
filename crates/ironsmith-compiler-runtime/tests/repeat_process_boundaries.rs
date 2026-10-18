@@ -235,7 +235,7 @@ fn countryside_consumes_each_land_and_stops_on_nonland_or_empty_latest_reveal() 
             if stop_nonland { card(&mut g, A, Zone::Library, "Stop", "Type: Sorcery"); }
             for i in 0..3 { card(&mut g, A, Zone::Library, &format!("Land {i}"), "Type: Land"); }
             let mut dm = Decisions::default();
-            let outcome = execute(&definition, "Countryside Crusher", &mut g, source, &mut dm, 0, None);
+            execute(&definition, "Countryside Crusher", &mut g, source, &mut dm, 0, None);
             assert_eq!(g.player(A).unwrap().graveyard.len(), 3);
             assert_eq!(g.player(A).unwrap().library.len(), usize::from(stop_nonland));
             assert_eq!(g.turn_store.turn_history.event_records.iter().map(|record| &record.event)
@@ -314,7 +314,7 @@ fn another_round_blinks_initial_and_x_additional_passes_with_fresh_choices_and_o
             let borrowed_stable = g.object(borrowed).unwrap().stable_id;
             g.object_mut(borrowed).unwrap().initial_controller = A;
             let mut dm = Decisions::default();
-            let outcome = execute(&definition, "Another Round", &mut g, source, &mut dm, x, None);
+            execute(&definition, "Another Round", &mut g, source, &mut dm, x, None);
             let current_own = g.find_object_by_stable_id(own_stable).unwrap();
             let current_borrowed = g.find_object_by_stable_id(borrowed_stable).unwrap();
             assert_ne!(current_own, own);

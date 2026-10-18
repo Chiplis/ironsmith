@@ -1,6 +1,6 @@
 //! Discard hand effect implementation.
 
-use crate::effect::{EffectOutcome, ObjectSnapshot};
+use crate::effect::{EffectOutcome, };
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};

@@ -197,6 +197,11 @@ path = "src/bin/probe_turn_phases.rs"
 test = false
 
 [[bin]]
+name = "probe_static_conditions"
+path = "src/bin/probe_static_conditions.rs"
+test = false
+
+[[bin]]
 name = "probe_tap_differential"
 path = "src/bin/probe_tap_differential.rs"
 test = false

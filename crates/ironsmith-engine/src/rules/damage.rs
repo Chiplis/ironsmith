@@ -11,7 +11,7 @@ use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
 use crate::static_abilities::StaticAbilityId;
-use crate::types::CardType;
+
 
 /// The target of damage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

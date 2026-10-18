@@ -76,7 +76,7 @@ fn untap(orb_tapped: bool) -> (Vec<bool>, usize) {
             id
         })
         .collect();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     let mut dm = PickNamed("Land B", 0);
     game.turn.phase = ironsmith::game_state::Phase::Beginning;
     game.turn.step = Some(ironsmith::game_state::Step::Untap);

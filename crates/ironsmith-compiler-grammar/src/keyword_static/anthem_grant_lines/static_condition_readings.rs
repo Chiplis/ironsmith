@@ -220,7 +220,12 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("conjoined-static-condition"),
         head: HeadDiscriminator::Any,
-        admits: |_| true,
+        // "an instant card and a sorcery card are in your graveyard" is one
+        // existential condition per independently articled card; a generic
+        // split of the same words is a weaker reading of it.
+        admits: |input| {
+            !input.read_by("independently-articled-graveyard-cards-static-condition")
+        },
         read: |input| input.outcome(read_conjoined_static_condition(input)),
     },
 ];

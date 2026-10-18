@@ -328,6 +328,7 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                 let source_before_payment =
                     crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                         .or_else(|| ctx.source_snapshot.clone());
+                let mana_before_payment = ctx.mana.effect_payment.clone();
                 let Some(mut outcome) =
                     execute_payment_atomically(game, ctx, &payment, count, reason)?
                 else {
@@ -355,12 +356,20 @@ impl EffectExecutor for CumulativeUpkeepEffect {
                 };
                 let snapshot = crate::snapshot::ObjectSnapshot::from_object_id(game, ctx.source)
                     .or(source_before_payment);
+                let mut mana_spent = crate::player::ManaPool::default();
+                for symbol in [crate::mana::ManaSymbol::White, crate::mana::ManaSymbol::Blue,
+                    crate::mana::ManaSymbol::Black, crate::mana::ManaSymbol::Red,
+                    crate::mana::ManaSymbol::Green, crate::mana::ManaSymbol::Colorless] {
+                    mana_spent.add(symbol, ctx.mana.effect_payment.amount(symbol)
+                        .saturating_sub(mana_before_payment.amount(symbol)));
+                }
                 outcome = super::complete_keyword_action_with_outputs(
                     game,
                     ctx,
                     outcome,
                     crate::events::other::KeywordActionEvent::new(action, player, ctx.source, 1)
-                        .with_snapshot(snapshot),
+                        .with_snapshot(snapshot)
+                        .with_mana_spent(mana_spent),
                 )?;
                 crate::effects::runtime::capture_triggers_before_added_program(
                     game,

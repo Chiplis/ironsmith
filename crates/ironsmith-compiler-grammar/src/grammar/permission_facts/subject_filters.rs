@@ -249,6 +249,9 @@ fn parse_subject_separator_fact(tokens: &[OwnedLexToken]) -> Option<ListSeparato
             primitives::comma().value(ListSeparator::Comma),
             primitives::kw("and").value(ListSeparator::And),
             primitives::kw("or").value(ListSeparator::Or),
+            // "instant and/or sorcery spells" is a disjunction of card types,
+            // never an "instant sorcery" conjunction.
+            primitives::kw("and/or").value(ListSeparator::Or),
         ))
     })
     .map(|(_, separator, _)| separator)

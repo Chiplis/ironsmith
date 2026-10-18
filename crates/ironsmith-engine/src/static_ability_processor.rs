@@ -35,8 +35,9 @@ use crate::FxMap;
 use crate::ability::AbilityKind;
 use crate::continuous::{
     ContinuousEffect, ContinuousEffectGroupId, EffectSourceType, EffectTarget, Layer, Modification,
-    TextBoxOverlay,
 };
+#[cfg(test)]
+use crate::continuous::TextBoxOverlay;
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::zone::Zone;
@@ -1100,7 +1101,7 @@ mod tests {
                     modification,
                 ));
             assert_eq!(game.calculated_power(source), Some(3));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             assert_eq!(game.calculated_power(source), Some(3));
             game.effect_store
                 .continuous_effects
@@ -1112,7 +1113,7 @@ mod tests {
                 ));
             game.mark_continuous_state_dirty();
             assert_eq!(game.calculated_power(source), Some(2));
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             assert_eq!(game.calculated_power(source), Some(2));
         }
     }
@@ -1269,7 +1270,7 @@ mod inferred_group_occurrence_gameplay_tests {
                 let expected = if !combined && remove { 2 } else { 7 };
                 // Dirty/wholesale and refreshed/cached readers must agree.
                 for refreshed in [false, true] {
-                    if refreshed { game.refresh_continuous_state(); }
+                    if refreshed { game.refresh_continuous_state().expect("test continuous state refresh succeeds"); }
                     let chars = game.current_characteristics(source).unwrap();
                     assert_eq!(chars.power, Some(expected), "combined={combined},remove={remove},refreshed={refreshed}");
                     assert_eq!(chars.toughness, Some(expected));
@@ -1296,7 +1297,7 @@ mod inferred_group_occurrence_gameplay_tests {
         assert_eq!(before.len(), 4);
         assert_eq!(groups.len(), 2);
         for group in &groups { assert_eq!(before.iter().filter(|effect| effect.group == Some(*group)).count(), 2); }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let after = game.all_continuous_effects();
         assert_eq!(after.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>(), groups);
         let checkpoint = game.clone();
@@ -1321,7 +1322,7 @@ mod inferred_group_occurrence_gameplay_tests {
                     Ability::static_ability(StaticAbility::new(Emits(vec![modification]))));
             }
             for refreshed in [false, true] {
-                if refreshed { game.refresh_continuous_state(); }
+                if refreshed { game.refresh_continuous_state().expect("test continuous state refresh succeeds"); }
                 let chars = game.current_characteristics(source).unwrap();
                 assert_eq!((chars.power, chars.toughness), (Some(7), Some(7)),
                     "compiled_marker={compiled_marker},refreshed={refreshed}");
@@ -1356,7 +1357,7 @@ mod inferred_group_occurrence_gameplay_tests {
         assert_eq!(groups.len(), 2);
         assert_eq!(origins.len(), 4, "components keep their independent occurrence identities");
         for group in &groups { assert_eq!(before.iter().filter(|effect| effect.group == Some(*group)).count(), 2); }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         let after = game.all_continuous_effects();
         assert_eq!(after.iter().filter_map(|effect| effect.group).collect::<std::collections::HashSet<_>>(), groups);
         assert_eq!(after.iter().filter_map(|effect| effect.originating_ability.clone())

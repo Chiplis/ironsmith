@@ -64,7 +64,7 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
     // Bog Wraith: swampwalk.
     let wraith = game.create_object_from_definition(&load("Bog Wraith"), bob, Zone::Battlefield);
     let angel = game.create_object_from_definition(&load("Serra Angel"), bob, Zone::Battlefield);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         has(&game, wraith, StaticAbilityId::Landwalk),
         "Bog Wraith has swampwalk"
@@ -100,7 +100,7 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
     }
     assert_eq!(game.stack.len(), 1, "{result:?}");
     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         !has(&game, wraith, StaticAbilityId::Landwalk),
         "swampwalk is gone"
@@ -111,7 +111,7 @@ fn target_creature_loses_every_landwalk_ability_until_end_of_turn() {
     );
     // The effect ends at end of turn.
     ironsmith::turn::execute_cleanup_step(&mut game);
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(
         has(&game, wraith, StaticAbilityId::Landwalk),
         "swampwalk returns after the turn"

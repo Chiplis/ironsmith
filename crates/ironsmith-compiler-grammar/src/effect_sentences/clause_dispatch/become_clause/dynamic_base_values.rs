@@ -115,6 +115,16 @@ fn complete_value(tokens: &[OwnedLexToken]) -> Option<Value> {
 fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
+    if matches!(words.as_slice(), ["the", "total", "power" | "toughness", "of", "all", "stickers", "on", "permanents", "you", "control"]
+        | ["those", "stickers", "total", "toughness"]
+        | ["those", "stickers", "s", "total", "toughness"])
+    {
+        return Some(Quantity {
+            power: Value::StickerCharacteristicTotal { filter: ObjectFilter::permanent().controlled_by(crate::PlayerFilter::You),
+                toughness: words.iter().any(|word| *word == "toughness") },
+            toughness: None, declared_reference: None,
+        });
+    }
     // Pair references share one antecedent: "that creature's power and
     // toughness" is not two unrelated scalar expressions or their sum.
     if let Some((power, toughness)) =

@@ -1,7 +1,5 @@
 //! Heal marked damage by composing removal with the keyword-action envelope.
 
-#[cfg(test)]
-use crate::effect::Effect;
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::{resolve_bounded_nonnegative_u32, resolve_single_object_for_effect};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};

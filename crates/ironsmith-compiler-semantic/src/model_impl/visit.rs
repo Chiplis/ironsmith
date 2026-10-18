@@ -292,7 +292,9 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::TagLastDamageSource(_) => {}
         EffectAst::ControlVotesThisTurn => {}
         EffectAst::ResolvesDespiteIllegalTargets => {}
-        EffectAst::NoteActivationManaType => {}
+        EffectAst::NoteActivationManaType | EffectAst::NoteActivationManaPayment => {}
+        EffectAst::CastFaceDownUsingActivationMana { .. } => {}
+        EffectAst::RegisterExtraDieReplacement { .. } => {}
         EffectAst::NoteTriggeringCreatureType => {}
         EffectAst::NoteCounters { .. } => {}
         EffectAst::PutTriggeringCounterKind { .. } => {}

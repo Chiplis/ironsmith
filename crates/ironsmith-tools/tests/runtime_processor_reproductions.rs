@@ -10,11 +10,11 @@ use ironsmith::decisions::context::{
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
     apply_priority_response_with_dm, drain_pending_trigger_events, put_triggers_on_stack_with_dm,
-    resolve_stack_entry_with,
+
 };
 use ironsmith::game_state::Target;
 use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::object::CounterType;
+
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
     CardDefinition, CardId, CardType, Effect, GameState, ObjectId, PlayerId, PowerToughness, Zone,

@@ -1429,9 +1429,12 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
     // target: the definite article names the spell already in view (the
     // triggering spell, or the spell targeted earlier), exactly like "that
     // spell".
-    let words = crate::lexer::token_word_refs(tokens);
-    if matches!(words.as_slice(), ["the", "spell"]) && tokens.len() == 2 {
-        let mut anaphoric = tokens.to_vec();
+    // The clause may still carry its sentence-final period ("counter the
+    // spell."), so compare the punctuation-trimmed words.
+    let anaphoric_tokens = crate::util::trim_edge_punctuation_tokens(tokens);
+    let words = crate::lexer::token_word_refs(anaphoric_tokens);
+    if matches!(words.as_slice(), ["the", "spell"]) && anaphoric_tokens.len() == 2 {
+        let mut anaphoric = anaphoric_tokens.to_vec();
         anaphoric[0] = OwnedLexToken::word("that".to_string(), tokens[0].span());
         let mut target = parse_target_phrase(&anaphoric)?;
         preserve_stack_kind_on_copy_target(&mut target);
@@ -2639,7 +2642,31 @@ pub fn parse_choose_target_prelude_sentence(
         ));
     }
 
-    let target = parse_target_phrase(target_tokens)?;
+    let mut target = parse_target_phrase(target_tokens)?;
+    // "Choose two target blocking creatures controlled by the same opponent."
+    // (Sorrow's Path): a relation over the whole target set (CR 115.3), not
+    // a per-candidate controller; the generic target reader keeps only the
+    // opponent controller.
+    if matches!(
+        crate::lexer::token_word_refs(target_tokens).as_slice(),
+        [.., "controlled", "by", "the" | "a", "same", "opponent"]
+    ) {
+        fn mark(target: &mut TargetAst) -> bool {
+            match target {
+                TargetAst::Object(filter, _, _)
+                    if filter.controller == Some(crate::target::PlayerFilter::Opponent) =>
+                {
+                    filter.target_set_same_controller = true;
+                    true
+                }
+                TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                    mark(inner)
+                }
+                _ => false,
+            }
+        }
+        mark(&mut target);
+    }
     Ok(Some(vec![EffectAst::subject_verb_explicit_target_only(
         target,
     )]))
@@ -2931,10 +2958,15 @@ pub fn parse_keyword_mechanic_clause(
             )
         }
         clause_shapes::KeywordMechanicShape::RollD6 { count_tokens } => {
-            EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-                count: parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
-                effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
-            })
+            // Multiple dice form one simultaneous roll (CR 706.2). A repeat
+            // wrapper exposes only its last instruction and loses the other
+            // results needed by "each different result" and result totals.
+            EffectAst::subject_verb_roll_dice_total_with_surface(
+                PlayerAst::Implicit,
+                parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
+                6,
+                None,
+            )
         }
         clause_shapes::KeywordMechanicShape::OddEvenResult { odd, action_tokens } => {
             let predicate = if odd {

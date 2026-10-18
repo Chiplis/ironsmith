@@ -35,7 +35,7 @@ fn verify_block_comparison(definition: &crate::cards::CardDefinition, counted: C
             }
         }
         game.turn.active_player = carol;
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for (attacker, count) in [(bob_attacker, bob_count), (carol_attacker, carol_count)] {
             assert_eq!(
                 game.can_block_attacker(source, attacker),
@@ -65,7 +65,7 @@ fn verify_block_comparison(definition: &crate::cards::CardDefinition, counted: C
             if !increased {
                 game.move_object_by_effect(support, Zone::Graveyard);
             }
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
             let actual_own = own + if increased { 1 } else { 0 };
             let options = crate::decision::compute_legal_blockers(&game, &combat, alice);
             for (attacker, opposing) in [(bob_attacker, bob_count), (carol_attacker, carol_count)] {

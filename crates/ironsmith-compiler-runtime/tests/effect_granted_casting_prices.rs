@@ -1,7 +1,7 @@
 //! UNVALIDATED source-authored effect-granted price scenarios; no execution.
 use ironsmith::alternative_cast::CastingMethod;
 use ironsmith::card::LinkedFaceLayout;
-use ironsmith::cards::{CardDefinition, builders::CardDefinitionBuilder};
+use ironsmith::cards::CardDefinition;
 use ironsmith::decision::{
     DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
 };
@@ -11,11 +11,9 @@ use ironsmith::game_loop::{
     apply_priority_response_with_dm, put_triggers_on_stack, resolve_stack_entry,
 };
 use ironsmith::game_state::{Phase, Step};
-use ironsmith::grant::{GrantSpec, GrantUsageLimit, Grantable};
-use ironsmith::mana::{ManaCost, ManaSymbol};
-use ironsmith::static_abilities::StaticAbility;
+use ironsmith::mana::ManaCost;
 use ironsmith::triggers::TriggerQueue;
-use ironsmith::{CardId, CardType, CounterType, GameState, ObjectId, PlayerId, Target, Zone};
+use ironsmith::{CardType, GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 const A: PlayerId = PlayerId(0);
@@ -109,7 +107,7 @@ impl DecisionMaker for Choices {
     fn decide_boolean(
         &mut self,
         _: &GameState,
-        context: &ironsmith::decisions::context::BooleanContext,
+        _context: &ironsmith::decisions::context::BooleanContext,
     ) -> bool {
         self.accept.unwrap_or(true)
     }

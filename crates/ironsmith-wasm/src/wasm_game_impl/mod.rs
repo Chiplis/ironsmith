@@ -17,6 +17,7 @@ mod manabrew_payment_conformance;
 include!("priority_analysis.rs");
 
 include!("runtime_savepoint.rs");
+include!("priority_yield.rs");
 include!("payment_disclosure_transaction.rs");
 include!("blind_exile_play.rs");
 

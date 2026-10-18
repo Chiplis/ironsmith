@@ -22,8 +22,12 @@ const decision = {kind: "select_objects", player: 0, min: 0, max: 2, description
 
 function Fixture() {
   const [commands, setCommands] = useState([]);
-  const player = {id: 0, index: 0, name: "Alice", battlefield: [fieldCard], graveyard_size: graveyardCards.length, graveyard_cards: graveyardCards, exile_cards: []};
-  const viewed_cards = new URLSearchParams(window.location.search).has("look") ? { cards: graveyardCards } : null;
+  const looking = new URLSearchParams(window.location.search).has("look");
+  const graveyard = looking ? [] : graveyardCards;
+  const player = {id: 0, index: 0, name: "Alice", battlefield: [fieldCard], graveyard_size: graveyard.length, graveyard_cards: graveyard, exile_cards: []};
+  // A look at the top of Alice's library: the Deck chip holds these cards.
+  const viewed_cards = looking ? { subject: 0, zone: "library",
+    cards: graveyardCards.map((card, position) => ({ ...card, zone: "library", position })) } : null;
   const state = {viewed_cards, players: [player], perspective: 0, priority_player: 0, active_player: 0, decision, stack: []};
   const context = {state, multiplayer: {mode: "idle"}, playerAccentOverrides: {}, game: null,
     dispatch: (command) => setCommands(old => [...old, command]), dispatchInBackground: () => {}};

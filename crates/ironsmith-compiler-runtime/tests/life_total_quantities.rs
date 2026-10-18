@@ -243,17 +243,6 @@ impl DecisionMaker for Choices {
         }
     }
 }
-fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut Choices) {
-    let mut queue = TriggerQueue::new();
-    // Checked execution already captures some triggers in the original observer frame.
-    ironsmith::game_loop::drain_pending_trigger_events(game, &mut queue);
-    for event in outcome.events {
-        for entry in check_triggers(game, &event) {
-            queue.add(entry);
-        }
-    }
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-}
 fn apply(game: &mut GameState, source: ObjectId, effect: Effect) -> EffectOutcome {
     let mut dm = SelectFirstDecisionMaker;
     let controller = game.current_controller(source).unwrap_or(A);
@@ -320,34 +309,6 @@ fn cast(
         .object_id;
     put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
     spell
-}
-fn activate(game: &mut GameState, source: ObjectId, ability_index: usize, dm: &mut Choices) {
-    let action = LegalAction::ActivateAbility {
-        source,
-        ability_index,
-    };
-    assert!(compute_legal_actions(game, A).unwrap().contains(&action));
-    let mut queue = TriggerQueue::new();
-    let mut state = PriorityLoopState::new(3);
-    let mut progress = apply_priority_response_with_dm(
-        game,
-        &mut queue,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .unwrap();
-    for _ in 0..50 {
-        if state.pending_activation.is_none() {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            panic!("{progress:?}");
-        };
-        progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
-    }
-    assert!(state.pending_activation.is_none());
-    assert_eq!(game.stack.len(), 1);
 }
 use ironsmith::static_abilities::StaticAbilityId;
 fn game() -> GameState {

@@ -353,7 +353,7 @@ export const ui = {
   "; skipped unsupported cards: {0}": "; skipped unsupported cards: {0}",
   "mutations replayed in order": "mutations replayed in order",
   "no": "no",
-  "peer match: card identities are withheld, so the report profiles but cannot replay": "peer match: card identities are withheld, so the report profiles but cannot replay",
+  "Trusted match: card identities are withheld, so the report profiles but cannot replay": "Trusted match: card identities are withheld, so the report profiles but cannot replay",
   "replay data carried in the download": "replay data carried in the download",
   "Replayable": "Replayable",
   "Report size": "Report size",

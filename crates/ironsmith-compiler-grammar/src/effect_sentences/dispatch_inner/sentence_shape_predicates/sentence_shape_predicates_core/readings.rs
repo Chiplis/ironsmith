@@ -88,6 +88,48 @@ pub(super) const COMPOSITION_REGISTRY: RuleId = RuleId::new("sentence-compositio
 
 /// The readings, in the order they were ranked.
 const SENTENCE_READINGS: &[Reading] = &[
+    // "Until that player's next end step, they may play that card ..."
+    // (Casey & Raph): the leading holder-relative duration owns the comma;
+    // the chain parser would read "end" as a verb.
+    // "~ deals X damage divided evenly, rounded down, among all creatures
+    // target opponent controls" (Dwarven Catapult): the commas belong to the
+    // division phrase; the chain parser would split the damage at them.
+    Reading {
+        id: RuleId::new("source-damage-divided-evenly-among-all"),
+        head: HeadDiscriminator::Words(&["this"]),
+        admits: |_| true,
+        read: |input| {
+            let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
+            let words = crate::lexer::token_word_refs(tokens);
+            let shaped = words.starts_with(&["this", "deals"])
+                && words.windows(2).any(|pair| pair == ["divided", "evenly"])
+                && words.windows(2).any(|pair| pair == ["rounded", "down"])
+                && words
+                    .windows(2)
+                    .any(|pair| pair[0] == "among" && matches!(pair[1], "all" | "each"))
+                && tokens.len() > 2;
+            if !shaped {
+                return ParseOutcome::NoMatch;
+            }
+            input.outcome(
+                crate::effect_sentences::verb_handlers::parse_deal_damage(&tokens[2..])
+                    .map(|effect| Some(vec![effect])),
+            )
+        },
+    },
+    Reading {
+        id: RuleId::new("until-player-next-end-step-play-permission"),
+        head: HeadDiscriminator::Words(&["until"]),
+        admits: |_| true,
+        read: |input| {
+            input.outcome(
+                crate::effect_sentences::clause_primitives::parse_until_player_next_end_step_play_permission(
+                    input.tokens,
+                )
+                .map(|effect| effect.map(|effect| vec![effect])),
+            )
+        },
+    },
     Reading {
         id: RuleId::new("pay-to-end-this-effect"),
         head: HeadDiscriminator::Any,

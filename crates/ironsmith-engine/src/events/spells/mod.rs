@@ -12,3 +12,6 @@ pub use ability_triggered::{AbilityTriggerZoneChangeCause, AbilityTriggeredEvent
 pub use becomes_targeted::BecomesTargetedEvent;
 pub use spell_cast::SpellCastEvent;
 pub use spell_copied::SpellCopiedEvent;
+
+mod stack_object_added;
+pub use stack_object_added::StackObjectAddedEvent;

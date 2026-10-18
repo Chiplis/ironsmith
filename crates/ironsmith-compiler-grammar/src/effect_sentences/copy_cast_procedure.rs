@@ -26,7 +26,7 @@ use crate::activation_and_restrictions::{
 };
 use crate::cards::builders::{
     CardTextError, ChoiceCount, ConditionalEffectAst, EffectAst, IfResultPredicate,
-    ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst, PlayerAst,
+    ObjectChoiceEffectAst, ObjectFilter, PermissionEffectAst, PlayerAst, PredicateAst,
 };
 use crate::grammar::effects::{CopyCardReferenceShape, parse_copy_card_reference_shape};
 use crate::tag::{CompilerReferenceTag, TagKey};
@@ -671,7 +671,9 @@ pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
 pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<EffectAst>> {
     let [copy, cast] = sentences else { return None; };
     let copy_words = crate::lexer::parser_token_word_refs(copy.lowered());
-    if copy_words != ["you", "may", "copy", "the", "card", "with", "the", "noted", "name"] { return None; }
+    if copy_words != ["you", "may", "copy", "the", "card", "with", "the", "noted", "name"]
+        && copy_words != ["you", "may", "create", "a", "copy", "of", "the", "card", "with", "the", "noted", "name"]
+    { return None; }
     let cast_words = crate::lexer::parser_token_word_refs(cast.lowered());
     if cast_words != ["you", "may", "cast", "the", "copy", "without", "paying", "its", "mana", "cost"] { return None; }
     Some(vec![build_may_cast_tagged_effect(&MayCastTaggedSpec {
@@ -1026,4 +1028,235 @@ pub(super) fn visit_linked_copy_cast(
         }),
         2,
     ))
+}
+
+/// Choose a previously unchosen printed name from a finite list and offer a
+/// copy of that printed card for casting. The copy exists only for the
+/// resolution's cast offer (CR 707.12), so a declined offer leaves no object.
+pub(super) fn fixed_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<EffectAst>> {
+    let [choose, copy, cast] = sentences else { return None; };
+    let choose_tokens = crate::util::trim_edge_punctuation_tokens(choose.lowered());
+    let words = crate::lexer::parser_token_word_refs(choose_tokens);
+    if !words.starts_with(&["choose", "a", "card", "name", "that", "hasnt", "been", "chosen", "from", "among"])
+        && !words.starts_with(&["choose", "a", "card", "name", "that", "hasn't", "been", "chosen", "from", "among"])
+    { return None; }
+    let list_start = crate::lexer::parser_token_word_positions(choose_tokens).get(10)?.0;
+    let mut options = Vec::new();
+    let mut current = Vec::new();
+    let mut conjunction = false;
+    for token in &choose_tokens[list_start..] {
+        if token.is_comma() || token.is_word("and") {
+            if token.is_word("and") { conjunction = true; }
+            if !current.is_empty() {
+                options.push(current.join(" "));
+                current.clear();
+            }
+        } else {
+            current.push(token.as_word()?.to_string());
+        }
+    }
+    if !current.is_empty() { options.push(current.join(" ")); }
+    if !conjunction || options.len() < 2 { return None; }
+    if crate::lexer::parser_token_word_refs(copy.lowered()) != ["create", "a", "copy", "of", "the", "card", "with", "the", "chosen", "name"]
+        || crate::lexer::parser_token_word_refs(cast.lowered()) != ["you", "may", "cast", "the", "copy"]
+    { return None; }
+    let choice = EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Chooser, PlayerAst::You,
+        crate::cards::builders::SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseCardName {
+            filter: None, tag: CompilerReferenceTag::ChosenName.bind(),
+            options, exclude_source_history: true,
+        }),
+    );
+    let offer = build_may_cast_tagged_effect(&MayCastTaggedSpec {
+        tag: CompilerReferenceTag::ChosenName.key(), alternative_cost: None,
+        player: PlayerAst::You,
+        verb: crate::activation_and_restrictions::trigger_subject_filters::MayCastItVerb::Cast,
+        as_copy: true, without_paying_mana_cost: false,
+        copy_instruction_surface: None, predicate: None, cost_reduction: None,
+    });
+    Some(vec![choice, EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+        predicate: IfResultPredicate::Did, effects: vec![offer],
+    })])
+}
+
+/// Independent one-spell budgets for each nonland card type. A multitype
+/// spell consumes the permission used to cast it, leaving the other type's
+/// permission available; each grant therefore owns a separate usage budget.
+pub(super) fn per_card_type_exile_permissions(sentences: &[SentenceInput]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{GrantActionAst, LibraryActionAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst};
+    use crate::types::CardType;
+    let [exile, land, permission] = sentences else { return Ok(None); };
+    let words = crate::lexer::parser_token_word_refs(exile.lowered());
+    let Some(rest) = words.strip_prefix(&["exile", "the", "top"][..]) else { return Ok(None); };
+    let Some((count, used)) = crate::grammar::leaf::parse_leaf_number_prefix_words(rest).and_then(|number| number.into_fixed()) else { return Ok(None); };
+    if rest.get(used..) != Some(&["cards", "of", "your", "library"][..])
+        || crate::lexer::parser_token_word_refs(land.lowered()) != ["you", "may", "put", "a", "land", "card", "from", "among", "them", "onto", "the", "battlefield"]
+        || crate::lexer::parser_token_word_refs(permission.lowered()) != ["until", "end", "of", "turn", "for", "each", "nonland", "card", "type", "you", "may", "cast", "a", "spell", "of", "that", "type", "from", "among", "the", "exiled", "cards", "without", "paying", "its", "mana", "cost"]
+    { return Ok(None); }
+    let count = i32::try_from(count).map_err(|_| CardTextError::ParseError("library count exceeds supported range".into()))?;
+    let pool = helper_tag_for_tokens(exile.lowered(), "exiled_type_permission_pool");
+    let mut effects = vec![EffectAst::subject_verb(SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
+        SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+            count: crate::effect::Value::Fixed(count), surface: None,
+            tags: vec![pool.clone()], accumulated_tags: vec![], face_down: false,
+        }))];
+    // Resolve the optional land selection in the ordinary sequential scope.
+    // Its collection reference names the preceding exile while any per-chosen
+    // object `it` inside the selection keeps its own iteration binding.
+    effects.extend(super::parse_effect_sentence_lexed(land.lowered())?);
+    for card_type in [CardType::Creature, CardType::Artifact, CardType::Enchantment,
+        CardType::Planeswalker, CardType::Instant, CardType::Sorcery, CardType::Battle,
+        CardType::Kindred, CardType::Plane, CardType::Phenomenon, CardType::Vanguard,
+        CardType::Scheme, CardType::Conspiracy, CardType::Dungeon]
+    {
+        let mut grant = EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+            pool.clone(), PlayerAst::You, false, true, false, None,
+        );
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Grants(
+            GrantActionAst::GrantPlayTaggedUntilEndOfTurn { spell_filter, max_plays, .. }), .. }) = &mut grant
+        {
+            *spell_filter = Some(ObjectFilter::default().with_type(card_type));
+            *max_plays = Some(1);
+        }
+        effects.push(grant);
+    }
+    Ok(Some(effects))
+}
+
+/// One mandatory permanent target for each player, followed by an owner
+/// shuffle and a per-former-controller library consult. The target snapshot
+/// loop preserves controllers across movement to their owners' libraries.
+pub(super) fn per_player_target_shuffle_consult(sentences: &[SentenceInput]) -> Option<Vec<EffectAst>> {
+    use crate::cards::builders::{LibraryActionAst, LibraryBottomOrderAst, LibraryConsultModeAst,
+        LibraryConsultStopRuleAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst, TextSpan};
+    use crate::types::CardType;
+    let [declare, shuffle, consult, cast] = sentences else { return None; };
+    let words = |sentence: &SentenceInput| crate::lexer::parser_token_word_refs(sentence.lowered()).join(" ");
+    if words(declare) != "for each player choose target nonenchantment nonland permanent that player controls"
+        || words(shuffle) != "those permanents owners shuffle them into their libraries"
+        || words(consult) != "each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card then puts the rest on the bottom of their library in a random order"
+        || words(cast) != "each player may cast the nonland card they exiled without paying its mana cost"
+    { return None; }
+    let targets = helper_tag_for_tokens(declare.lowered(), "participant_permanent_targets");
+    let exposed = helper_tag_for_tokens(consult.lowered(), "consult_all");
+    let matched = helper_tag_for_tokens(consult.lowered(), "consult_match");
+    let all_matches = helper_tag_for_tokens(consult.lowered(), "all_participant_matches");
+    let selected = helper_tag_for_tokens(cast.lowered(), "participant_cast_choice");
+    let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield)
+        .without_type(CardType::Enchantment).without_type(CardType::Land);
+    filter.target_set_different_controllers = true;
+    filter.target_controller_fixed_on_announcement = true;
+    let declaration = EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_target_only(TargetAst::WithCountValue(
+            Box::new(TargetAst::Object(filter, Some(TextSpan::synthetic()), None)),
+            ChoiceCount::dynamic_x(), crate::effect::Value::CountPlayers(crate::target::PlayerFilter::Any),
+        ))), tag: targets.clone(),
+    };
+    Some(vec![
+        declaration,
+        EffectAst::subject_verb_shuffle_all_objects_into_owner_library(TargetAst::Tagged(targets.clone(), None)),
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+            tag: targets,
+            effects: vec![
+                EffectAst::subject_verb(SubjectVerbRoleAst::LibraryOwner, PlayerAst::That,
+                    SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                        accumulated_match_tag: Some(all_matches.clone()),
+                        player: PlayerAst::That, mode: LibraryConsultModeAst::Exile,
+                        filter: ObjectFilter::default().without_type(CardType::Land),
+                        stop_rule: LibraryConsultStopRuleAst::FirstMatch, max_exposed: None,
+                        all_tag: exposed.clone(), match_tag: matched.clone(),
+                    })),
+                EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                    exposed, Some(matched.clone()), LibraryBottomOrderAst::Random, PlayerAst::That,
+                ),
+            ],
+        }),
+        // All libraries have been consulted before anyone receives a cast
+        // offer. The player loop uses APNAP order and each player sees only
+        // the exact exiled incarnation from their own library.
+        EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayer {
+            effects: vec![
+                EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+                    filter: ObjectFilter::tagged(all_matches).in_zone(Zone::Exile)
+                        .owned_by(crate::target::PlayerFilter::IteratedPlayer),
+                    count: ChoiceCount::up_to(1), player: PlayerAst::That,
+                    tag: selected.clone(), zone: Zone::Exile,
+                }),
+                EffectAst::subject_verb_cast_tagged(selected, PlayerAst::That, false, false, true, None),
+            ],
+        }),
+    ])
+}
+
+/// Entry-time mandatory exile with a failure destination and an independent
+/// counter-kind choice for each actual exiled card. Counter placement and
+/// entry redirection remain ordinary independently reusable instructions.
+pub(super) fn entry_exile_counter_choices(sentences: &[SentenceInput]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{CounterActionAst, GameActionAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst};
+    let [exile, fallback, counters] = sentences else { return Ok(None); };
+    let words = |sentence: &SentenceInput| crate::lexer::parser_token_word_refs(sentence.lowered()).join(" ");
+    if words(exile) != "exile x creature cards from your graveyard"
+        || words(fallback) != "if you cant put this creature into its owners graveyard instead of onto the battlefield"
+        || words(counters) != "for each creature card exiled this way this creature enters with a +2/+0 +1/+1 or +0/+2 counter on it"
+    { return Ok(None); }
+    let tag = helper_tag_for_tokens(exile.lowered(), "entry_exiled_cards");
+    let mut effects = vec![EffectAst::TagAffected {
+        effect: Box::new(EffectAst::Sequence { effects: super::parse_effect_sentence_lexed(exile.lowered())? }),
+        tag: tag.clone(),
+    }];
+    let complete = PredicateAst::Bound(Box::new(crate::ConditionExpr::ValueComparison {
+        left: crate::effect::Value::TaggedSnapshotCount { tag: tag.key.clone(), filter: ObjectFilter::default() },
+        operator: ironsmith_core::ValueComparisonOperator::Equal,
+        right: crate::effect::Value::X,
+    }));
+    effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        predicate: complete,
+        if_true: vec![EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachTagged {
+            tag,
+            effects: vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+                SubjectVerbActionAst::Counters(CounterActionAst::PutCounterChoice {
+                    counter_types: vec![crate::object::CounterType::PlusTwoPlusZero,
+                        crate::object::CounterType::PlusOnePlusOne, crate::object::CounterType::PlusZeroPlusTwo],
+                    count: crate::effect::Value::Fixed(1), mode_texts: Vec::new(),
+                    target: TargetAst::Source(None), target_count: None,
+                }))],
+        })],
+        if_false: vec![EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
+            SubjectVerbActionAst::Game(GameActionAst::RedirectEnteringSource { destination: Zone::Graveyard }))],
+    }));
+    Ok(Some(effects))
+}
+
+/// Capture a targeted card's original name before moving it face down, then
+/// retain that resolution reference on the permanent that actually arrives.
+pub(super) fn noted_target_face_down_program(sentences: &[SentenceInput]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst, ZoneMoveActionAst};
+    let Some(first) = sentences.first() else { return Ok(None); };
+    let tokens = crate::util::trim_edge_punctuation_tokens(first.lowered());
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if !words.starts_with(&["note", "the", "name", "of", "target"])
+        || !words.ends_with(&["and", "put", "it", "onto", "the", "battlefield", "face", "down"])
+    { return Ok(None); }
+    let positions = crate::lexer::parser_token_word_positions(tokens);
+    let and = positions.get(words.len() - 8).map(|(index, _)| *index).unwrap();
+    let target_start = positions[4].0;
+    let target = crate::util::parse_target_phrase(&tokens[target_start..and])?;
+    let original = helper_tag_for_tokens(tokens, "noted_target_card");
+    let noted = CompilerReferenceTag::NotedCardName.bind();
+    let mut effects = vec![EffectAst::TagAffected {
+        effect: Box::new(EffectAst::subject_verb_target_only(target)), tag: original,
+    }, EffectAst::SnapshotLastObjectTag { into: noted.clone() }];
+    let mut movement = super::parse_effect_sentence_lexed(&tokens[and + 1..])?;
+    fn retain(effects: &mut [EffectAst], tag: &crate::tag::TagRef) {
+        for effect in effects {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::ZoneMoves(
+                ZoneMoveActionAst::MoveToZone { retained_reference_tags, zone: Zone::Battlefield, .. }), .. }) = effect
+            { retained_reference_tags.push(tag.clone()); }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| retain(nested, tag));
+        }
+    }
+    retain(&mut movement, &noted);
+    effects.extend(movement);
+    for sentence in &sentences[1..] { effects.extend(super::parse_effect_sentence_lexed(sentence.lowered())?); }
+    Ok(Some(effects))
 }

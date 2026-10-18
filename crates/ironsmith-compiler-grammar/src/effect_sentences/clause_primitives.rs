@@ -563,6 +563,11 @@ pub fn run_clause_primitives(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
             super::bounded_number_choice::parse
         ),
         specific_primitive!(
+            "player-chooses-number-clause",
+            &["target", "that"],
+            parse_player_chooses_number_clause,
+        ),
+        specific_primitive!(
             "choose-card-name-clause",
             &["choose", "that", "target"],
             parse_choose_card_name_clause,
@@ -1116,6 +1121,16 @@ pub fn parse_time_travel_clause(
 /// attacking" (Portal Mage) / "reselect which player this creature is
 /// attacking" (Capricopian): the creature stays attacking; its controller
 /// chooses anew among what it could attack (CR 508.1b).
+/// "Target opponent chooses a number." (Choice of Damnations): the chosen
+/// number is the chooser's own result. As a clause primitive it keeps the
+/// target-only reading from claiming "target opponent" with a dangling verb.
+pub fn parse_player_chooses_number_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    Ok(super::bounded_number_choice::parse_player_chooses_sentence(tokens)?
+        .and_then(|mut effects| (effects.len() == 1).then(|| effects.remove(0))))
+}
+
 /// "Until that player's next end step, they may play that card [without
 /// paying its mana cost]" (Casey & Raph): a play permission for the named
 /// player lasting until that player's own next end step.
@@ -2200,6 +2215,13 @@ pub fn parse_deal_damage_equal_to_power_clause(
     let Some(shape) = clause_shapes::parse_power_damage_shape(tokens)? else {
         return Ok(None);
     };
+    // A possessive optional actor ("that creature's controller may have it
+    // deal ...") is not covered by the leading-may shape above, but a damage
+    // source never contains the optional-action modal; the player-may
+    // readings own the clause.
+    if shape.source_tokens.iter().any(|token| token.is_word("may")) {
+        return Ok(None);
+    }
     let demonstrative_source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
     let source_result = if shape.source_is_tagged
         && crate::word_primitives::parse_any_sequence_complete(

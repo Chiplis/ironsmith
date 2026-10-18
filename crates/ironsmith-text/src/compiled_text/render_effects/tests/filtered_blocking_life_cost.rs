@@ -52,7 +52,7 @@ fn filtered_blocking_life_cost_respects_color_controller_count_and_affordability
                             blocking: attacker,
                         })
                         .collect();
-                    game.refresh_continuous_state();
+                    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                     let mut combat = crate::combat_state::CombatState::default();
                     combat.attackers.push(crate::combat_state::AttackerInfo {
                         creature: attacker,

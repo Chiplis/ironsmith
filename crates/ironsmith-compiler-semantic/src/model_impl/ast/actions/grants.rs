@@ -18,6 +18,7 @@ pub enum GrantActionAst {
         also_each: Option<ObjectFilter>,
     },
     GrantPlayTaggedUntilEndOfTurn {
+        spell_filter: Option<ObjectFilter>,
         tag: TagRef,
         player: PlayerAst,
         allow_land: bool,

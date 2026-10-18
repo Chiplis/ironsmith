@@ -379,6 +379,7 @@ impl WasmGame {
         starting_life: i32,
         seed: u64,
     ) {
+        self.pass_intents.clear();
         self.runtime_identity_origin_available = false;
         self.priority_affordability_cache.clear();
         self.priority_affordability_seed_key = None;

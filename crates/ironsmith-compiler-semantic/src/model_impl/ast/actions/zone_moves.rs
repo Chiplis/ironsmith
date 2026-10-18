@@ -75,6 +75,7 @@ pub enum ZoneMoveActionAst {
         explicit_return_surface: bool,
     },
     MoveToZone {
+        retained_reference_tags: Vec<TagRef>,
         target: TargetAst,
         /// The target is selected from the first matching object in its ordered source zone.
         source_top_only: bool,

@@ -66,6 +66,30 @@ fn build_target_assignments(
         .collect())
 }
 
+
+// Bind target-relative participants when targets are announced, before any
+// payment can change those objects' controllers.
+fn retain_announced_target_controllers(
+    game: &GameState,
+    targets: &[Target],
+    assignments: &[crate::game_state::TargetAssignment],
+    retained: &mut std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    for assignment in assignments {
+        if !matches!(assignment.spec.base(), crate::target::ChooseSpec::Object(filter)
+            if filter.target_controller_fixed_on_announcement) { continue; }
+        for index in assignment.range.clone() {
+            if let Some(Target::Object(id)) = targets.get(index)
+                && let Some(object) = game.object(*id)
+                && let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(object, game)
+            {
+                retained.entry(crate::tag::TagKey::from(format!("__announced_target_controller_{index}__")))
+                    .or_insert_with(|| vec![snapshot]);
+            }
+        }
+    }
+}
+
 #[cfg(feature = "serialization")]
 use serde::Serialize;
 use std::cell::RefCell;
@@ -1462,7 +1486,7 @@ pub(super) fn apply_admitted_priority_action(
                     .with_tagged_objects(granting_source_tags);
                 entry.linked_exile_owner = linked_exile_owner;
                 entry.source_number_owner = source_number_owner;
-                game.push_to_stack(entry);
+                game.try_push_to_stack(entry).map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
                 game.finish_library_top_announcement(
                     crate::game_state::LibraryTopAnnouncement::Activation(activation_provenance),
                 );
@@ -1675,6 +1699,7 @@ pub(super) fn apply_targets_response(
                 build_target_assignments(&requirements, targets, pending.chosen_targets.len())?;
             // Combine previously chosen targets with new ones
             pending.chosen_targets.extend(targets.iter().cloned());
+            retain_announced_target_controllers(game, &pending.chosen_targets, &assignments, &mut pending.tagged_objects);
             pending
                 .chosen_target_assignments
                 .extend(assignments.iter().cloned());
@@ -1843,6 +1868,7 @@ pub(super) fn apply_targets_response(
         .chosen_target_assignments
         .extend(assignments.iter().cloned());
     pending.chosen_targets = all_targets.clone();
+    retain_announced_target_controllers(game, &pending.chosen_targets, &assignments, &mut pending.tagged_objects);
     if let Err(error) = append_target_distribution_requirements(
         game,
         pending.spell_id,
@@ -2312,5 +2338,32 @@ mod replacement_ownerless_choice_contract_tests {
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert!(game.take_pending_trigger_events().is_empty());
         assert!(queue.entries.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod sol_78_announced_participants {
+    use super::*;
+    #[test]
+    fn participant_snapshot_precedes_cost_time_controller_changes() {
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Announcement witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let mut filter = crate::filter::ObjectFilter::default();
+        filter.target_controller_fixed_on_announcement = true;
+        let spec = crate::target::ChooseSpec::Object(filter);
+        let assignments = vec![crate::game_state::TargetAssignment { spec, range: 0..1 }];
+        let targets = vec![Target::Object(object)];
+        let mut retained = std::collections::HashMap::new();
+        retain_announced_target_controllers(&game, &targets, &assignments, &mut retained);
+        game.object_mut(object).unwrap().initial_controller = bob;
+        let entry = StackEntry::new(object, alice).with_targets(targets)
+            .with_target_assignments(assignments).with_tagged_objects(retained);
+        game.push_to_stack(entry);
+        let key = crate::tag::TagKey::from("__announced_target_controller_0__");
+        assert_eq!(game.stack.last().unwrap().tagged_objects[&key][0].controller, alice);
     }
 }

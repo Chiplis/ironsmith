@@ -64,7 +64,7 @@ fn sticker_target_modifier_targets_only_other_art_sticker_creatures() {
         for effect in &ability.effects {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for id in [source, own, opponent, unstickered, wrong_sticker] {
             assert_eq!(
                 game.calculated_power(id),
@@ -80,7 +80,7 @@ fn sticker_target_modifier_targets_only_other_art_sticker_creatures() {
             );
         }
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(target), Some(2));
         assert!(!game.current_has_static_ability_id(
             target,
@@ -158,7 +158,7 @@ fn leading_target_modifier_excludes_an_embedded_source_reference() {
         for effect in &ability.effects {
             crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for id in [source, own, opponent] {
             assert_eq!(
                 game.calculated_power(id),
@@ -177,7 +177,7 @@ fn leading_target_modifier_excludes_an_embedded_source_reference() {
             );
         }
         game.effect_store.continuous_effects.cleanup_end_of_turn();
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         assert_eq!(game.calculated_power(target), Some(4));
         assert_eq!(game.calculated_toughness(target), Some(4));
         assert!(!game.current_has_static_ability_id(

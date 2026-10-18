@@ -25,6 +25,8 @@ pub struct SpellCastEvent {
     /// All chosen target slots at completion. None means unavailable evidence;
     /// Some(empty) proves a cast without targets. Kept after stack departure.
     pub targets: Option<Vec<Target>>,
+    /// Exact selected permission, frozen when the cast completes.
+    pub play_permission: Option<crate::grant_registry::GrantPermissionIdentity>,
 }
 
 impl SpellCastEvent {
@@ -45,6 +47,9 @@ impl SpellCastEvent {
     {
         Ok(Self {
             spell, caster, from_zone,
+            play_permission: game.object(spell).and_then(|object|
+                object.cast_play_permission.as_ref().map(|receipt| receipt.identity.clone())
+                    .or_else(|| object.cast_grant_usage_identity.as_deref().cloned())),
             snapshot: game.object(spell).filter(|object| object.zone == Zone::Stack)
                 .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)).transpose()?,
             targets: game.stack.iter().find(|entry| entry.object_id == spell && !entry.is_ability)
@@ -105,6 +110,7 @@ impl SpellCastEvent {
             from_zone,
             snapshot: None,
             targets: None,
+            play_permission: None,
         }
     }
 
@@ -120,6 +126,7 @@ impl SpellCastEvent {
             from_zone,
             snapshot: Some(snapshot),
             targets: None,
+            play_permission: None,
         }
     }
 }

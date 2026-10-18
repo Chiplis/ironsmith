@@ -494,6 +494,9 @@ pub(crate) fn interpret_trigger_model(
             caused_by_effect,
             source_controller_shuffles,
         ),
+        TriggerKind::PlayerAddsManaFromSource { player, filter } => {
+            crate::triggers::Trigger::player_adds_mana_from_source(player, filter)
+        }
         TriggerKind::PlayerTapsForMana { player, filter } => {
             crate::triggers::Trigger::player_taps_for_mana(player, filter)
         }
@@ -530,6 +533,9 @@ pub(crate) fn interpret_trigger_model(
             loyalty_only,
             activation_cost_has_tap,
         ),
+        TriggerKind::StateBasedObjects { filter, display } =>
+            crate::triggers::Trigger::state_based_objects(filter, display),
+        TriggerKind::StackObjectAdded => crate::triggers::Trigger::stack_object_added(),
         TriggerKind::AbilityTriggered {
             another,
             source_filter,
@@ -1165,6 +1171,9 @@ impl super::Trigger {
                 Self::deals_damage_to(source, target)
             }
             ironsmith_core::DelayedTriggerSpec::AttacksAlone(filter) => Self::attacks_alone(filter),
+            ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission => {
+                Self::new(crate::triggers::SpellCastThroughPermissionTrigger { permissions: Vec::new() })
+            }
             ironsmith_core::DelayedTriggerSpec::DamagePreventedThisWay { source_filter } => {
                 Self::new(crate::triggers::DamagePreventedThisWayTrigger { source_filter })
             }

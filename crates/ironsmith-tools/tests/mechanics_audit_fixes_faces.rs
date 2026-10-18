@@ -480,7 +480,7 @@ fn f29_day_and_night_skip_phased_out_permanents_then_catch_up_on_phase_in() {
         assert_eq!(g.object(id).unwrap().name, before);
         assert_eq!(g.transform_count(id), count);
         g.phase_in(id);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(g.transform_count(id), count + 1);
     }
 }
@@ -506,7 +506,7 @@ fn f29_day_and_night_use_current_abilities_and_catch_up_when_removal_expires() {
         assert_eq!(g.object(id).unwrap().name, before);
         assert_eq!(g.transform_count(id), count);
         ironsmith::turn::execute_cleanup_step(&mut g);
-        g.refresh_continuous_state();
+        g.refresh_continuous_state().expect("test continuous state should refresh");
         assert_eq!(g.transform_count(id), count + 1);
     }
 }
@@ -535,14 +535,14 @@ fn f29_initial_designation_ignores_phased_out_or_removed_keywords() {
             }
             std::sync::Arc::make_mut(&mut g.object_mut(id).unwrap().abilities)
                 .push(Ability::static_ability(keyword.clone()));
-            g.refresh_continuous_state();
+            g.refresh_continuous_state().expect("test continuous state should refresh");
             assert!(!g.has_day_night());
             if phase {
                 g.phase_in(id);
             } else {
                 ironsmith::turn::execute_cleanup_step(&mut g);
             }
-            g.refresh_continuous_state();
+            g.refresh_continuous_state().expect("test continuous state should refresh");
             assert!(g.has_day_night());
             assert_eq!(g.is_daytime(), daytime);
         }
@@ -588,10 +588,10 @@ fn f29_day_night_transitions_emit_once_and_initial_designation_is_not_a_transiti
     g.phase_out(id);
     std::sync::Arc::make_mut(&mut g.object_mut(id).unwrap().abilities)
         .push(Ability::static_ability(StaticAbility::daybound()));
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     g.take_pending_trigger_events();
     g.phase_in(id);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert!(g.is_daytime());
     let count = |events: Vec<ironsmith::triggers::TriggerEvent>| {
         events
@@ -606,11 +606,11 @@ fn f29_day_night_transitions_emit_once_and_initial_designation_is_not_a_transiti
     assert_eq!(count(g.take_pending_trigger_events()), 0);
     g.set_daytime(false);
     g.set_daytime(false);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert_eq!(count(g.take_pending_trigger_events()), 1);
     g.set_daytime(true);
     g.set_daytime(true);
-    g.refresh_continuous_state();
+    g.refresh_continuous_state().expect("test continuous state should refresh");
     assert_eq!(count(g.take_pending_trigger_events()), 1);
 }
 

@@ -414,6 +414,17 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
         if let Some(effect) = crate::effect_sentences::clause_primitives::parse_attack_player_if_able_clause(tokens)? {
             return Ok(Some(vec![effect]));
         }
+        // "Choose new targets for target spell or ability if it's controlled
+        // by <player> [and if it targets ...]" (Emissary of Grudges): the
+        // trailing if qualifies the retargeted stack object, so the retarget
+        // reader owns it; a generic control-flow split would test the source.
+        if crate::lexer::token_word_refs(tokens).starts_with(&["choose", "new", "targets"])
+            && tokens.iter().any(|token| token.is_word("if"))
+            && let Ok(Some(effect)) =
+                crate::effect_sentences::clause_primitives::parse_choose_new_targets_clause(tokens)
+        {
+            return Ok(Some(vec![effect]));
+        }
         match super::super::super::grammar::effects::control_flow::recognize_control_flow(tokens) {
             crate::recognition::ParseOutcome::Match(matched) => {
                 let plan = matched.value;

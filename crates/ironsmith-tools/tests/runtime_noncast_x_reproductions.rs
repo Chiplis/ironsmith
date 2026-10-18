@@ -19,7 +19,7 @@ use ironsmith::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+
 use std::io::Read;
 fn hash(path: &std::path::Path) -> Value {
     let mut file = std::fs::File::open(path).unwrap();

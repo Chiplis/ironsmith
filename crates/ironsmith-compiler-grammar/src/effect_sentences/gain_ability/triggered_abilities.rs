@@ -620,6 +620,21 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
     if !has_colon && !looks_like_trigger {
         return Ok(None);
     }
+    // "loses all abilities and is a Citizen with base power and toughness
+    // 1/1 and "{T}: Add {C}" named Humble Merchant" (Honest Work): the colon
+    // belongs to a quoted ability embedded mid-clause, so the component is
+    // not itself an activated ability. A real granted activation has no
+    // opening quote before its cost colon once its edge quotes are trimmed.
+    if !looks_like_trigger
+        && let Some(colon_idx) = ability_tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Colon)
+        && ability_tokens[..colon_idx]
+            .iter()
+            .any(|token| token.kind == TokenKind::Quote)
+    {
+        return Ok(None);
+    }
 
     let display = display_text_for_tokens(&ability_tokens);
     // Nested quoted rules use apostrophes when their enclosing granted

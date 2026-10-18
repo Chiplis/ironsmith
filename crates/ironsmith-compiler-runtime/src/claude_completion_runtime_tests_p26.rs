@@ -198,6 +198,85 @@ fn caged_sun_adds_chosen_color_when_your_land_produces_it() {
     .unwrap();
     let debug = format!("{definition:?}");
     assert!(debug.contains("TriggeringManaIncludesSourceChosenColor"), "{debug}");
-    assert!(debug.contains("TapForMana") || debug.contains("PlayerTapsForMana"), "{debug}");
+    assert!(debug.contains("ManaFromSourceTrigger"), "{debug}");
+    assert!(!debug.contains("TapForManaTrigger"), "{debug}");
+    let ironsmith::ability::AbilityKind::Triggered(ability) = &definition.abilities[2].kind else {
+        panic!("expected a triggered mana ability");
+    };
+    assert_eq!(ability.trigger.display(), "Whenever a land's ability causes you to add one or more mana of the chosen color");
     assert!(debug.contains("AddMana"), "{debug}");
+}
+
+#[test]
+fn caged_sun_toph_mana_loop_and_finite_controls() {
+    use ironsmith::{GameState, CardId, CardBuilder, Color};
+    use ironsmith::types::CardType;
+    use ironsmith::mana::ManaSymbol;
+    use ironsmith::events::ManaAddedEvent;
+    use ironsmith::triggers::{check_triggers, TriggerQueue};
+    use ironsmith::game_loop::{put_triggers_on_stack_with_dm, GameLoopError};
+
+    let sun = compile_to_runtime_definition("Caged Sun",
+        "Mana cost: {6}\nType: Artifact\nAs this artifact enters, choose a color.\nCreatures you control of the chosen color get +1/+1.\nWhenever a land's ability causes you to add one or more mana of the chosen color, add an additional one mana of that color.", false).unwrap();
+    let toph = compile_to_runtime_definition("Toph, the First Metalbender",
+        "Mana cost: {1}{R}{G}{W}\nType: Legendary Creature — Human Ally\nPower/Toughness: 3/3\nNontoken artifacts you control are lands in addition to their other types.\nAt the beginning of your end step, earthbend 2.", false).unwrap();
+    // Both ordinary land production and Sun's own triggered production must
+    // match. Wrong colors, other recipients, and nonlands must not match.
+    for (with_toph, source_is_sun, color, opponent, expected) in [
+        (true, false, ManaSymbol::Green, false, 1),
+        (true, true, ManaSymbol::Green, false, 1),
+        (false, false, ManaSymbol::Green, false, 1),
+        (false, true, ManaSymbol::Green, false, 0),
+        (true, false, ManaSymbol::Blue, false, 0),
+        (true, false, ManaSymbol::Green, true, 0),
+    ] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let sun_id = game.create_object_from_definition(&sun, alice, Zone::Battlefield);
+        game.set_chosen_color(sun_id, Color::Green);
+        if with_toph { game.create_object_from_definition(&toph, alice, Zone::Battlefield); }
+        let land = CardBuilder::new(CardId::new(), "Test Land")
+            .card_types(vec![CardType::Land]).build();
+        let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+        let source = if source_is_sun { sun_id } else { land_id };
+        let recipient = if opponent { bob } else { alice };
+        // No tap provenance: this also exercises non-tapping mana abilities.
+        let event = ManaAddedEvent::trigger_event(source, alice, recipient, vec![color]);
+        let entries = check_triggers(&game, &event);
+        assert_eq!(entries.len(), expected, "toph={with_toph}, sun={source_is_sun}, color={color:?}, opponent={opponent}");
+        let mut queue = TriggerQueue::new();
+        for entry in entries { queue.add(entry); }
+        let result = put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut ironsmith::decision::AutoPassDecisionMaker);
+        if with_toph && expected == 1 {
+            assert_eq!(result, Err(GameLoopError::MandatoryLoopDraw));
+        } else {
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(game.player(alice).unwrap().mana_pool.amount(ManaSymbol::Green), expected as u32);
+        }
+        assert!(game.stack.is_empty(), "mana triggers never use the stack");
+    }
+
+    // Exercise the user-facing activation route as well as trigger dispatch.
+    let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.priority_player = Some(alice);
+    let sun_id = game.create_object_from_definition(&sun, alice, Zone::Battlefield);
+    game.set_chosen_color(sun_id, Color::Green);
+    game.create_object_from_definition(&toph, alice, Zone::Battlefield);
+    let forest = CardBuilder::new(CardId::new(), "Forest")
+        .card_types(vec![CardType::Land]).subtypes(vec![ironsmith::types::Subtype::Forest]).build();
+    let land_id = game.create_object_from_card(&forest, alice, Zone::Battlefield);
+    let action = ironsmith::decision::compute_legal_actions(&game, alice).unwrap().into_iter()
+        .find(|action| matches!(action, ironsmith::decision::LegalAction::ActivateManaAbility { source, .. } if *source == land_id))
+        .expect("the land's mana ability remains legal even though it causes a draw");
+    let mut queue = TriggerQueue::new();
+    let mut state = ironsmith::game_loop::PriorityLoopState::new(game.players_in_game());
+    let progress = ironsmith::game_loop::apply_priority_response_with_dm(
+        &mut game, &mut queue, &mut state,
+        &ironsmith::game_loop::PriorityResponse::PriorityAction(action),
+        &mut ironsmith::decision::AutoPassDecisionMaker,
+    ).unwrap();
+    assert!(matches!(progress, ironsmith::decision::GameProgress::GameOver(ironsmith::decision::GameResult::Draw)), "{progress:?}");
+
 }

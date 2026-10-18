@@ -1,9 +1,9 @@
 //! Opt-in canonical runtime evidence. Passing means reports were generated.
-use ironsmith::ability::AbilityKind;
+
 use ironsmith::cards::builders::CardDefinitionBuilder;
-use ironsmith::combat_state::{AttackTarget, CombatState};
+
 use ironsmith::decision::{
-    AttackerDeclaration, BlockerDeclaration, DecisionMaker, GameProgress, LegalAction,
+      DecisionMaker, GameProgress, LegalAction,
     SelectFirstDecisionMaker, compute_legal_actions,
 };
 use ironsmith::decisions::context::{
@@ -11,14 +11,14 @@ use ironsmith::decisions::context::{
 };
 use ironsmith::game_loop::{
     PriorityLoopState, PriorityResponse, advance_priority_with_dm,
-    apply_attacker_declarations_with_dm, apply_blocker_declarations,
+
     apply_decision_context_with_dm, apply_priority_response_with_dm, resolve_stack_entry_with,
 };
 use ironsmith::mana::ManaSymbol;
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
     CardDefinition, CardId, CardType, GameState, ObjectId, Phase, PlayerId, PowerToughness, Step,
-    Subtype, Zone,
+     Zone,
 };
 use serde_json::{Value, json};
 
@@ -154,19 +154,6 @@ fn announce(
     }
     Err("announcement exceeded24 decisions".into())
 }
-fn cast(
-    game: &mut GameState,
-    def: &CardDefinition,
-    dm: &mut impl DecisionMaker,
-) -> Result<TriggerQueue, String> {
-    game.turn.priority_player = Some(alice());
-    let id = game.create_object_from_definition(def, alice(), Zone::Hand);
-    let action = compute_legal_actions(game, alice()).expect("fixture has complete replacement state")
-        .into_iter()
-        .find(|a| matches!(a,LegalAction::CastSpell{spell_id,..}if *spell_id==id))
-        .ok_or_else(|| format!("no legal cast of {}", def.name()))?;
-    announce(game, action, dm)
-}
 fn finish(
     game: &mut GameState,
     q: &mut TriggerQueue,
@@ -184,59 +171,6 @@ fn finish(
         resolve_stack_entry_with(game, dm).map_err(|e| e.to_string())?;
     }
     Err("resolution exceeded32 steps".into())
-}
-fn attack(
-    game: &mut GameState,
-    attackers: &[ObjectId],
-    defender: PlayerId,
-) -> Result<TriggerQueue, String> {
-    game.turn.phase = Phase::Combat;
-    game.turn.step = Some(Step::DeclareAttackers);
-    for id in attackers {
-        game.remove_summoning_sickness(*id);
-    }
-    let declarations = attackers
-        .iter()
-        .map(|id| AttackerDeclaration {
-            creature: *id,
-            target: AttackTarget::Player(defender),
-        })
-        .collect::<Vec<_>>();
-    let mut combat = CombatState::default();
-    let mut queue = TriggerQueue::new();
-    apply_attacker_declarations_with_dm(
-        game,
-        &mut combat,
-        &mut queue,
-        &declarations,
-        &mut SelectFirstDecisionMaker,
-    )
-    .map_err(|e| e.to_string())?;
-    game.combat = Some(combat);
-    Ok(queue)
-}
-fn block(
-    game: &mut GameState,
-    queue: &mut TriggerQueue,
-    blocker: ObjectId,
-    attacker: ObjectId,
-    defender: PlayerId,
-) -> Result<(), String> {
-    game.turn.step = Some(Step::DeclareBlockers);
-    let mut combat = game.combat.take().ok_or("missing combat")?;
-    let result = apply_blocker_declarations(
-        game,
-        &mut combat,
-        queue,
-        &[BlockerDeclaration {
-            blocker,
-            blocking: attacker,
-        }],
-        defender,
-    )
-    .map_err(|e| e.to_string());
-    game.combat = Some(combat);
-    result
 }
 fn compile(names: &[String]) -> HashMap<String, (CardDefinition, String)> {
     let input = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

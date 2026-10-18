@@ -1,7 +1,7 @@
 //! Reveal cards from hand.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::context::{SelectionRevealPolicy, ViewCardsContext};
+use crate::decisions::context::{SelectionRevealPolicy, };
 use crate::decisions::{ChooseObjectsSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
@@ -10,6 +10,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
+#[cfg(test)]
 use crate::tag::TagKey;
 use crate::zone::Zone;
 

@@ -229,22 +229,6 @@ fn find(g: &GameState, name: &str) -> Result<ObjectId, String> {
         .ok_or_else(|| format!("{name} absent from battlefield"))
 }
 
-fn advance_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Result<(), String> {
-    g.next_turn();
-    ironsmith::turn::execute_untap_step(g);
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    ironsmith::turn::advance_step(g).map_err(|e| e.to_string())?;
-    for e in ironsmith::turn::execute_draw_step_with(g, dm).unwrap() {
-        for t in ironsmith::triggers::check_triggers(g, &e) {
-            q.add(t);
-        }
-    }
-    resolve_all(g, q, dm)?;
-    ironsmith::turn::advance_phase(g).map_err(|e| e.to_string())?;
-    g.turn.priority_player = Some(PlayerId(0));
-    mana(g);
-    Ok(())
-}
 fn announce_mana(
     g: &mut GameState,
     q: &mut TriggerQueue,

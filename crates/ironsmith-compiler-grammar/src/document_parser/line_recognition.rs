@@ -703,6 +703,10 @@ pub(super) fn recognize_static_line(
             Some(
                 semantic_lowering::StaticSpecialLineShape::HiddenAgenda
                     | semantic_lowering::StaticSpecialLineShape::DoubleAgenda
+                    // Oath of Teferi: the typed reading lives in
+                    // parse_static_line_impl; the document boundary must
+                    // admit the line as static first.
+                    | semantic_lowering::StaticSpecialLineShape::LoyaltyTwice
             )
         )
     {

@@ -2464,6 +2464,14 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     _ => "as long as that player hasn't cast a spell this turn".to_string(),
                 };
             }
+            // "can't be the target of spells unless it attacked or blocked
+            // this turn" (Lurker).
+            if matches!(
+                inner.as_ref(),
+                crate::ConditionExpr::SourceAttackedOrBlockedThisTurn
+            ) {
+                return "unless it attacked or blocked this turn".to_string();
+            }
             if let crate::ConditionExpr::CountComparison { display, .. } = inner.as_ref() {
                 let condition_text = display
                     .clone()

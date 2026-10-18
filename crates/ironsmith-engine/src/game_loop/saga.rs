@@ -917,7 +917,7 @@ mod entry_eligibility_tests {
                     },
                 ),
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let entrant = game
                 .move_object_with_etb_processing(card, Zone::Battlefield).expect("replacement operation must execute successfully in this scenario")
                 .assert_completed_without_additions().unwrap()

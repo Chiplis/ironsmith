@@ -972,7 +972,7 @@ fn prepared_copy_native_origin_is_not_general_exile_access() {
         g.create_object_from_definition(&definitions("As Foretold")[0], A, Zone::Battlefield);
     g.add_counters(price, CounterType::Time, 4);
     let source = spell(&mut g, A, Zone::Battlefield, "{1}");
-    let copy = printed(
+    printed(
         &mut g,
         A,
         Zone::Exile,

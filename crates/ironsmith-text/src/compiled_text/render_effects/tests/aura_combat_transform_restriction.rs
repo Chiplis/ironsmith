@@ -25,7 +25,7 @@ fn aura_combat_transform_restriction_tracks_the_enchanted_creature() {
     let aura = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
     for enchanted in [first, second] {
         game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(enchanted));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         for creature in [first, second] {
             assert_eq!(game.can_attack(creature), creature != enchanted);
             assert_eq!(game.can_block(creature), creature != enchanted);
@@ -33,7 +33,7 @@ fn aura_combat_transform_restriction_tracks_the_enchanted_creature() {
         }
     }
     game.move_object_by_effect(aura, Zone::Graveyard).unwrap();
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     for creature in [first, second] {
         assert!(game.can_attack(creature));
         assert!(game.can_block(creature));
@@ -59,7 +59,7 @@ fn aura_combat_transform_restriction_does_not_add_unlisted_actions() {
     let creature = game.create_object_from_card(&creature, alice, Zone::Battlefield);
     let aura = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
     game.attach_object_to_target(aura, crate::object::AttachmentTarget::Object(creature));
-    game.refresh_continuous_state();
+    game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
     assert!(!game.can_transform(creature));
     assert!(!game.can_attack(creature));
     assert!(game.can_block(creature));

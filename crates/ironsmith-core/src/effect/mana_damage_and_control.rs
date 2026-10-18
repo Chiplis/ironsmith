@@ -3927,6 +3927,10 @@ pub struct ChooseCardNameEffect {
     pub chooser: PlayerFilter,
     pub filter: Option<ObjectFilter>,
     pub tag: TagKey,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub options: Vec<String>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub exclude_source_history: bool,
 }
 
 impl ChooseCardNameEffect {
@@ -3939,6 +3943,8 @@ impl ChooseCardNameEffect {
             chooser,
             filter,
             tag: tag.into(),
+            options: Vec::new(),
+            exclude_source_history: false,
         }
     }
 }
@@ -5704,6 +5710,8 @@ impl ExileInsteadOfGraveyardEffect {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ConsultTopOfLibraryEffect {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub accumulated_match_tag: Option<TagKey>,
     pub player: PlayerFilter,
     pub mode: LibraryConsultMode,
     pub filter: ObjectFilter,
@@ -5725,6 +5733,7 @@ impl ConsultTopOfLibraryEffect {
         match_tag: impl Into<TagKey>,
     ) -> Self {
         Self {
+            accumulated_match_tag: None,
             player,
             mode,
             filter,

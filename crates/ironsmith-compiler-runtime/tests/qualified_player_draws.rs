@@ -275,7 +275,7 @@ fn wiretapping_hideaway_free_play_and_first_card_are_scoped_to_each_actual_draw_
         cast(&mut game, &definition, &mut dm);
         let source = battlefield(&game, "Wiretapping", A)[0];
         assert_eq!(game.get_exiled_with_source_links(source).len(), 1);
-        game.empty_mana_pools();
+        game.empty_mana_pools().expect("draw scenario mana cleanup succeeds");
         for _ in 0..8 {
             resource(&mut game, A, Zone::Hand, "Type: Land");
         }

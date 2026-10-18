@@ -447,7 +447,7 @@ fn cohort_combined_combat_and_activation_restrictions_apply_only_to_the_selected
             let mut ctx = crate::effects::EffectContext::new_default(source, alice);
             crate::effects::execute_effect(&mut game, counter_effect, &mut ctx).unwrap();
         }
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
         let actions = crate::decision::compute_actions_for_source(&game, alice, Some(source)).expect("fixture has complete replacement state");
         assert_eq!(actions.iter().any(|action| matches!(action, crate::decision::LegalAction::ActivateAbility { source: id, ability_index: 1 } if *id == source)), counters >= 3);
     }

@@ -311,6 +311,10 @@ pub(in super::super) fn parse_object_filter_inner(
         if parse_phrase_whole(&attached_to_words, THAT_PLAYER_ATTACHMENT_TAIL).is_some() {
             filter.attached_to_player =
                 Some(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
+        } else if attached_to_words == ["you"] {
+            // "a Curse attached to you" (Lynde, Cheerful Tormentor): an Aura
+            // enchanting the ability's controller, not an object.
+            filter.attached_to_player = Some(PlayerFilter::You);
         } else {
             let attached_to = if crate::word_primitives::parse_any_sequence_complete(
                 &attached_to_words,

@@ -130,19 +130,19 @@ fn assigned_counter_transfer_pair(ctx: &ExecutionContext) -> Option<(ObjectId, O
 mod prepared_placement;
 pub(crate) use prepared_placement::{
     PreparedCounterPlacement, commit_prepared_counter_original_with_outputs,
-    commit_scoped_counter_placement_originals_with_outputs, execute_scoped_counter_placements,
+    commit_scoped_counter_placement_originals_with_outputs,
     prepare_counter_placement,
 };
 
 mod placement;
 pub(crate) use placement::{
     execute_counter_batch_with_outputs, execute_counter_placement_with_outputs,
-    execute_counter_removal_cost, execute_counter_removal_cost_with_outputs,
+     execute_counter_removal_cost_with_outputs,
     execute_counter_removal_with_outputs, execute_player_counter_removal_with_outputs,
-    prepare_counter_removal_cost,
+
 };
 pub(crate) use placement::{
-    execute_counter_removal_cost_batch, execute_counter_removal_cost_batch_with_outputs,
+     execute_counter_removal_cost_batch_with_outputs,
 };
 
 /// Commit one transfer budget. Live transfers have independently replaceable

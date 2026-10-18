@@ -360,7 +360,7 @@ export const ui = {
   "; skipped unsupported cards: {0}": "; cartas no compatibles omitidas: {0}",
   "mutations replayed in order": "mutaciones reproducidas en orden",
   "no": "no",
-  "peer match: card identities are withheld, so the report profiles but cannot replay": "partida entre pares: las cartas se omiten, así que el informe mide pero no puede reproducir",
+  "Trusted match: card identities are withheld, so the report profiles but cannot replay": "partida de confianza: las cartas se omiten, así que el informe mide pero no puede reproducir",
   "replay data carried in the download": "datos de reproducción incluidos en la descarga",
   "Replayable": "Reproducible",
   "Report size": "Tamaño del informe",

@@ -1594,6 +1594,15 @@ impl GameState {
         &mut self,
         extra_turn_override: Option<bool>,
     ) {
+        self.try_next_turn_single_lane_with_extra_turn_override(extra_turn_override)
+            .expect("beginning a turn requires successful continuous discovery");
+    }
+
+    pub(crate) fn try_next_turn_single_lane_with_extra_turn_override(
+        &mut self,
+        extra_turn_override: Option<bool>,
+    ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        let checkpoint = self.clone();
         let completed_turn_players = self.turn_players();
         let completed_turn_players_for_durations = completed_turn_players.clone();
         self.seed_turns_taken();
@@ -1863,7 +1872,10 @@ impl GameState {
         // Turn-relative durations can change control exactly at this boundary.
         // Reconcile them before the untap step establishes which permanents
         // have been continuously controlled since this turn began (CR 302.6).
-        self.refresh_continuous_state();
+        if let Err(error) = self.refresh_continuous_state() {
+            self.restore_execution_checkpoint(checkpoint, false);
+            return Err(error);
+        }
         self.establish_turn_start_continuous_control();
         self.activate_restrictions_starting_this_turn();
 
@@ -1874,6 +1886,7 @@ impl GameState {
         // the cant tracker for them. Keep direct legality queries made at the
         // new-turn boundary in sync with the newly selected turn.
         self.update_cant_effects();
+        Ok(())
     }
 
     /// CR 302.6 is tied to the beginning of an actual turn, not to untapping.
@@ -3567,7 +3580,30 @@ impl GameState {
     }
 
     /// Pushes a spell or ability onto the stack.
-    pub fn push_to_stack(&mut self, mut entry: StackEntry) {
+    pub fn push_to_stack(&mut self, entry: StackEntry) {
+        self.try_push_to_stack(entry)
+            .expect("adding a stack object requires successful continuous discovery");
+    }
+
+    pub fn try_push_to_stack(&mut self, mut entry: StackEntry)
+        -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError>
+    {
+        let checkpoint = self.clone();
+        // Target-relative participant bindings are announcement facts. Store
+        // them in the entry's existing retained-reference map so copies and
+        // retargeting retain the same designated players for each slot.
+        for assignment in &entry.target_assignments {
+            if !matches!(assignment.spec.base(), crate::target::ChooseSpec::Object(filter)
+                if filter.target_controller_fixed_on_announcement) { continue; }
+            for index in assignment.range.clone() {
+                let key = crate::tag::TagKey::from(format!("__announced_target_controller_{index}__"));
+                if entry.tagged_objects.contains_key(&key) { continue; }
+                if let Some(crate::game_state::Target::Object(id)) = entry.targets.get(index)
+                    && let Some(object) = self.object(*id)
+                    && let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(object, self)
+                { entry.tagged_objects.insert(key, vec![snapshot]); }
+            }
+        }
         if !entry.is_ability {
             self.stage_initial_controller_for_assembly(entry.object_id, entry.controller);
         }
@@ -3600,7 +3636,11 @@ impl GameState {
             && let Some(source) = self.object(entry.object_id)
         {
             let Some(snapshot) = crate::snapshot::ObjectSnapshot::capture_for_execution(source, self) else {
-                return;
+                let error = crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics {
+                    object: entry.object_id,
+                };
+                self.restore_execution_checkpoint(checkpoint, false);
+                return Err(error);
             };
             entry.source_stable_id.get_or_insert(snapshot.stable_id);
             entry
@@ -3661,13 +3701,21 @@ impl GameState {
             }
         }
         self.record_grand_melee_stack_provenance(entry.provenance);
+        let added = crate::events::spells::StackObjectAddedEvent::from_entry(&entry);
+        let added_provenance = entry.provenance;
         self.stack.push(entry);
+        self.queue_trigger_event(added_provenance,
+            crate::triggers::TriggerEvent::new_with_provenance(added, added_provenance));
         // Stack filters inspect the entry, not just the object's zone. The
         // source snapshot above may have cached characteristics before this
         // entry existed. Invalidate before regenerating replacement abilities.
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
-        self.refresh_continuous_state();
+        if let Err(error) = self.refresh_continuous_state() {
+            self.restore_execution_checkpoint(checkpoint, false);
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Reserve a fresh [`StackEntry::ability_id`].
@@ -4551,7 +4599,7 @@ mod stack_characteristic_invalidation_tests {
             .card_types(vec![CardType::Creature])
             .build();
         let id = game.create_object_from_card(&spell, alice, Zone::Stack);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
         game.push_to_stack(StackEntry::new(id, alice));
         assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
@@ -4564,7 +4612,7 @@ mod stack_characteristic_invalidation_tests {
         );
         assert_eq!(game.pop_from_stack().unwrap().object_id, id);
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
     }
     #[test]
@@ -4592,7 +4640,7 @@ mod stack_characteristic_invalidation_tests {
             .card_types(vec![CardType::Creature])
             .build();
         let id = game.create_object_from_card(&spell, alice, Zone::Stack);
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
         game.stack.push(StackEntry::new(id, alice));
         assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
@@ -4621,7 +4669,7 @@ mod stack_characteristic_invalidation_tests {
         assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
         assert_eq!(game.stack.remove(0).object_id, id);
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
-        game.refresh_continuous_state();
+        game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
     }
 }

@@ -108,6 +108,8 @@ pub enum EventValueSpec {
     /// one or more permanents were sacrificed to activate it", Ashnod the
     /// Uncaring). Appended.
     PermanentsSacrificedToActivate,
+    /// Actual colored mana spent on the completed keyword-action cost.
+    ManaSpentOnKeyword { colors: crate::color::ColorSet },
 }
 
 #[cfg(test)]

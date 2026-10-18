@@ -246,37 +246,6 @@ fn advance_turn(g: &mut GameState, q: &mut TriggerQueue, dm: &mut Choices) -> Re
     mana(g);
     Ok(())
 }
-fn announce_mana(
-    g: &mut GameState,
-    q: &mut TriggerQueue,
-    dm: &mut Choices,
-    action: LegalAction,
-) -> Result<(), String> {
-    let mut state = PriorityLoopState::new(g.players_in_game());
-    let mut progress = apply_priority_response_with_dm(
-        g,
-        q,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .map_err(|e| e.to_string())?;
-    for _ in 0..32 {
-        if let GameProgress::NeedsDecisionCtx(ctx) = progress {
-            if matches!(
-                ctx,
-                ironsmith::decisions::context::DecisionContext::Priority(_)
-            ) {
-                return Ok(());
-            }
-            progress = apply_decision_context_with_dm(g, q, &mut state, &ctx, dm)
-                .map_err(|e| e.to_string())?;
-        } else {
-            return Ok(());
-        }
-    }
-    Err("mana announcement bound".into())
-}
 
 fn activation(
     g: &mut GameState,

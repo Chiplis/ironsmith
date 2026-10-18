@@ -1,23 +1,16 @@
 //! UNVALIDATED exact-source quantity and live-versus-LKI reference regressions.
-use ironsmith::alternative_cast::CastingMethod;
+
 use ironsmith::cards::CardDefinition;
-use ironsmith::decision::{
-    DecisionMaker, LegalAction, SelectFirstDecisionMaker, compute_legal_actions,
-};
-use ironsmith::decisions::context::{
-    NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext, ViewCardsContext,
-};
+use ironsmith::decision::{DecisionMaker, SelectFirstDecisionMaker};
+use ironsmith::decisions::context::{NumberContext, SelectObjectsContext, SelectOptionsContext, TargetsContext, ViewCardsContext};
 use ironsmith::effect::{Effect, EffectOutcome, Until};
 use ironsmith::effects::{EffectContext, execute_effect};
-use ironsmith::game_loop::{
-    PriorityLoopState, PriorityResponse, apply_decision_context_with_dm,
-    apply_priority_response_with_dm, put_triggers_on_stack_with_dm, resolve_stack_entry_with,
-};
+use ironsmith::game_loop::{put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::Phase;
 use ironsmith::mana::ManaSymbol;
 use ironsmith::target::{ChooseSpec, PlayerFilter};
-use ironsmith::triggers::{TriggerEvent, TriggerQueue, check_triggers};
-use ironsmith::{GameProgress, GameState, ObjectId, PlayerId, Target, Zone};
+use ironsmith::triggers::{TriggerQueue, check_triggers};
+use ironsmith::{GameState, ObjectId, PlayerId, Target, Zone};
 use ironsmith_compiled_artifact::CompiledCardArtifact;
 use ironsmith_compiler::parse_loss;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
@@ -174,15 +167,6 @@ impl DecisionMaker for Choices {
         }
     }
 }
-fn queue_event(game: &mut GameState, event: TriggerEvent, dm: &mut impl DecisionMaker) -> usize {
-    let mut queue = TriggerQueue::new();
-    for entry in check_triggers(game, &event) {
-        queue.add(entry);
-    }
-    let count = queue.entries.len();
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-    count
-}
 fn queue_outcome(game: &mut GameState, outcome: EffectOutcome, dm: &mut impl DecisionMaker) {
     let mut queue = TriggerQueue::new();
     // Checked execution already captures some triggers in the original observer frame.
@@ -215,49 +199,6 @@ fn resolve_all(game: &mut GameState, dm: &mut impl DecisionMaker) {
         resolve(game, dm);
     }
     panic!("unexpected continuing trigger chain");
-}
-fn cast(
-    game: &mut GameState,
-    definition: &CardDefinition,
-    method: CastingMethod,
-    dm: &mut impl DecisionMaker,
-) -> ObjectId {
-    let id = game.create_object_from_definition(definition, A, Zone::Hand);
-    let action = LegalAction::CastSpell {
-        spell_id: id,
-        from_zone: Zone::Hand,
-        casting_method: method,
-    };
-    assert!(compute_legal_actions(game, A).unwrap().contains(&action));
-    let mut queue = TriggerQueue::new();
-    let mut state = PriorityLoopState::new(3);
-    let mut progress = apply_priority_response_with_dm(
-        game,
-        &mut queue,
-        &mut state,
-        &PriorityResponse::PriorityAction(action),
-        dm,
-    )
-    .unwrap();
-    for _ in 0..60 {
-        if state.pending_cast.is_none() && state.pending_method_selection.is_none() {
-            break;
-        }
-        let GameProgress::NeedsDecisionCtx(ctx) = progress else {
-            panic!("{progress:?}");
-        };
-        progress = apply_decision_context_with_dm(game, &mut queue, &mut state, &ctx, dm).unwrap();
-    }
-    assert!(state.pending_cast.is_none() && state.pending_method_selection.is_none());
-    let spell = game
-        .stack
-        .iter()
-        .rev()
-        .find(|entry| !entry.is_ability)
-        .unwrap()
-        .object_id;
-    put_triggers_on_stack_with_dm(game, &mut queue, dm).unwrap();
-    spell
 }
 #[derive(Default)]
 struct TapChoices {

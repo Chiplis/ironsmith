@@ -70,6 +70,21 @@ pub fn parse_effect_sentence_lexed(
 fn parse_effect_sentence_lexed_uncached(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // "Then for each card you put on top of your library, you draw a card
+    // and you lose 3 life." (Starving Revenant): the whole coordinated body
+    // repeats per card the preceding surveil kept on top. The and-split
+    // composition would otherwise read "for each card you" as a subject.
+    if tokens
+        .iter()
+        .take(2)
+        .any(|token| token.is_word("for"))
+        && let Some(effects) =
+            crate::effect_sentences::subject_verb_primitives::parse_sentence_for_each_card_kept_on_top_of_library(
+                crate::effect_sentences::SubjectVerbPrimitiveClause::new(tokens),
+            )?
+    {
+        return Ok(effects);
+    }
     // A quantified collection and whole graveyards are operands of the
     // same exile instruction, not independent carried-verb clauses.
     if tokens.first().is_some_and(|token| token.is_word("exile"))
@@ -89,6 +104,28 @@ fn parse_effect_sentence_lexed_uncached(
     // The second possessive axis belongs to the first subject; ordinary
     // coordination must not bind it to the revealed card used as the value.
     if tokens.first().is_some_and(|token| token.is_word("change")) {
+        // "change Halfdane's base power and toughness to the power and
+        // toughness of target creature other than Halfdane until the end of
+        // your next upkeep": the imperative form of "<subject>'s base power
+        // and toughness become <quantity>", whose become reading owns
+        // dynamic target quantities and the next-upkeep-end duration.
+        if let Some(to_idx) = tokens.windows(5).position(|words| {
+            words[0].is_word("base")
+                && words[1].is_word("power")
+                && words[2].is_word("and")
+                && words[3].is_word("toughness")
+                && words[4].is_word("to")
+        }).map(|base| base + 4)
+            && to_idx > 4
+            && crate::lexer::token_word_refs(&tokens[to_idx + 1..])
+                .starts_with(&["the", "power", "and", "toughness", "of"])
+            && let Ok(effect) = crate::effect_sentences::clause_dispatch::parse_become_clause(
+                &tokens[1..to_idx],
+                &tokens[to_idx + 1..],
+            )
+        {
+            return Ok(vec![effect]);
+        }
         if let Some(effect) = crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(tokens)? {
             return Ok(vec![effect]);
         }
@@ -117,6 +154,15 @@ fn parse_effect_sentence_lexed_uncached(
     if tokens.first().is_some_and(|token| token.is_word("for"))
         && let Some(effect) =
             crate::permission_helpers::effect_cast_prices::parse_control_source_priced_permission(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
+    // "For as long as you control Kotose, you may play one of the exiled
+    // cards, and you may spend mana as though ..." is a lasting permission;
+    // the generic leading-duration reader would play the card now.
+    if tokens.first().is_some_and(|token| token.is_word("for"))
+        && let Some(effect) =
+            crate::permission_helpers::effect_cast_prices::parse_control_source_leading_permission(tokens)?
     {
         return Ok(vec![effect]);
     }
@@ -852,7 +898,10 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
             }
             TargetAst::WithCountValue(inner, _, value) => {
                 bind_dynamic_target_count(inner, replacement);
-                if matches!(value, Value::X) {
+                // The dynamic target-count prefix reads a plain "X target"
+                // as `XTimes(1)` (Mogis's Marauder, Agility Bobblehead): it is
+                // the same unbound X the where-X clause defines.
+                if matches!(value, Value::X | Value::XTimes(1)) {
                     *value = replacement.clone();
                 }
             }

@@ -150,14 +150,14 @@ fn snow_cast_entry_requires_matching_snow_mana_and_survives_source_removal() {
                 );
                 game.object_mut(spell).unwrap().color_override =
                     Some(crate::color::ColorSet::default());
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert!(
                     !crate::condition_eval::evaluate_condition_resolution(&game, condition, &ctx)
                         .unwrap(),
                     "intervening condition must use the spell's current colors"
                 );
                 game.object_mut(spell).unwrap().color_override = None;
-                game.refresh_continuous_state();
+                game.refresh_continuous_state().expect("text regression fixture continuous state refresh succeeds");
                 assert!(
                     crate::condition_eval::evaluate_condition_resolution(&game, condition, &ctx)
                         .unwrap()

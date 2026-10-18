@@ -115,7 +115,7 @@ fn counter_replacement_game() -> (GameState, ObjectId, PlayerId, PlayerId) {
             .abilities_mut()
             .push(Ability::static_ability(ability));
     }
-    game.update_replacement_effects();
+    game.update_replacement_effects().expect("test replacement effect discovery succeeds");
     let source = game.new_object_id();
     (game, source, alice, bob)
 }

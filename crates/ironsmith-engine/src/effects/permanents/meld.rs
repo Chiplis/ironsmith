@@ -1491,7 +1491,7 @@ mod tests {
                     },
                 ),
             );
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             assert_eq!(
                 game.current_power(permanent),
                 Some(8),
@@ -1500,7 +1500,7 @@ mod tests {
         }
         if copy_mode == 2 {
             game.effect_store.continuous_effects.cleanup_end_of_turn();
-            game.refresh_continuous_state();
+            game.refresh_continuous_state().expect("test continuous state refresh succeeds");
             let restored = ObjectSnapshot::from_object_with_calculated_characteristics(
                 game.object(permanent).unwrap(),
                 &game,

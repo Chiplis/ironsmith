@@ -1,7 +1,7 @@
 use super::*;
 use crate::effect::Until;
 use crate::prevention::{
-    PreventionEffectManager, PreventionShield, PreventionShieldId, PreventionTarget,
+     PreventionShield, PreventionShieldId, PreventionTarget,
 };
 
 fn game_with_combat_shield() -> (GameState, crate::ids::ObjectId, PreventionShieldId) {
