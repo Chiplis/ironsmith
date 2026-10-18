@@ -595,17 +595,17 @@ fn execute_planned_waterbend_taps(
         ));
     }
     let mut taps =
-        crate::effects::permanents::TapAction::new(game, payment.request.payer, Default::default());
+        crate::effects::permanents::TapAction::new(game, payment.request.payer, Default::default())?;
     for allocation in &payment.plan.allocations {
         if let crate::mana_payment::PlannedPipPayment::Waterbend(id) = allocation.payment {
-            if !taps.tap(game, id) {
+            if !taps.tap(game, id)? {
                 return Err(GameLoopError::InvalidState(
                     "planned Waterbend permanent could not be tapped".into(),
                 ));
             }
         }
     }
-    let outputs = taps.finish_with_outputs(game);
+    let outputs = taps.finish_with_outputs(game)?;
     for event in outputs.outcome.events.iter().cloned() {
         game.queue_trigger_event(event.provenance(), event);
     }
@@ -646,12 +646,12 @@ fn execute_planned_keyword_payments(
     // together, as one event ("whenever one or more cards leave your
     // graveyard").
     let mut taps =
-        crate::effects::permanents::TapAction::new(game, pending.caster, pending.provenance);
+        crate::effects::permanents::TapAction::new(game, pending.caster, pending.provenance)?;
     let opened_batch = game.open_simultaneous_action();
     let result = (|| -> Result<(), GameLoopError> {
         for allocation in &payment.plan.allocations {
             if let crate::mana_payment::PlannedPipPayment::Waterbend(id) = allocation.payment {
-                if !taps.tap(game, id) {
+                if !taps.tap(game, id)? {
                     return Err(GameLoopError::InvalidState(
                         "planned Waterbend permanent could not be tapped".into(),
                     ));
@@ -700,7 +700,7 @@ fn execute_planned_keyword_payments(
             let tap_provenance = game
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::PermanentTapped);
-            if !taps.tap_with_event_provenance(game, permanent_id, tap_provenance) {
+            if !taps.tap_with_event_provenance(game, permanent_id, tap_provenance)? {
                 return Err(GameLoopError::InvalidState(format!(
                     "planned {effect:?} permanent {permanent_id:?} could not be tapped"
                 )));
@@ -732,11 +732,12 @@ fn execute_planned_keyword_payments(
         }
         Ok(())
     })();
-    if result.is_ok() {
-        for event in taps.finish(game).events {
+    let result = result.and_then(|()| {
+        for event in taps.finish(game)?.events {
             game.queue_trigger_event(event.provenance(), event);
         }
-    }
+        Ok(())
+    });
     game.close_simultaneous_action(opened_batch);
     result?;
     try_drain_pending_trigger_events(game, trigger_queue)?;

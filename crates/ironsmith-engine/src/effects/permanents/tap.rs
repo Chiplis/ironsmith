@@ -29,17 +29,17 @@ impl TapAction {
         game: &GameState,
         actor: crate::ids::PlayerId,
         provenance: crate::provenance::ProvNodeId,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ExecutionError> {
+        Ok(Self {
             cost_kind: None,
-            before: crate::events::other::before_tap_state_snapshots(game),
+            before: crate::events::other::before_tap_state_snapshots(game)?,
             events: Vec::new(),
             objects: Vec::new(),
             memory: Vec::new(),
             actor,
             provenance,
             attack_declaration: false,
-        }
+        })
     }
 
     /// Mark every tap in this batch as an attack-declaration tap (CR 508.1f).
@@ -53,7 +53,7 @@ impl TapAction {
         self
     }
 
-    pub(crate) fn tap(&mut self, game: &mut GameState, id: crate::ids::ObjectId) -> bool {
+    pub(crate) fn tap(&mut self, game: &mut GameState, id: crate::ids::ObjectId) -> Result<bool, ExecutionError> {
         self.tap_with_event_provenance(game, id, self.provenance)
     }
 
@@ -64,42 +64,43 @@ impl TapAction {
         game: &mut GameState,
         id: crate::ids::ObjectId,
         event_provenance: crate::provenance::ProvNodeId,
-    ) -> bool {
+    ) -> Result<bool, ExecutionError> {
         if game.object(id).is_none() || game.is_tapped(id) {
-            return false;
+            return Ok(false);
         }
-        let memory = self
-            .before
-            .get(&id)
-            .cloned()
-            .or_else(|| ObjectSnapshot::from_object_id(game, id));
+        let memory = match self.before.get(&id) {
+            Some(snapshot) => Some(snapshot.clone()),
+            None => ObjectSnapshot::try_from_object_id(game, id)?,
+        };
         game.tap(id);
         if !game.is_tapped(id) {
-            return false;
+            return Ok(false);
         }
         self.objects.push(id);
         self.memory.extend(memory);
-        let mut event = PermanentTappedEvent::capture(game, id, Some(self.actor));
+        let mut event = PermanentTappedEvent::new(id);
+        event.actor = Some(self.actor);
+        event.snapshot = ObjectSnapshot::try_from_object_id(game, id)?;
         event.cost_kind = self.cost_kind.clone();
         event.attack_declaration = self.attack_declaration;
         self.events.push(TriggerEvent::new_with_provenance(
             event,
             event_provenance,
         ));
-        true
+        Ok(true)
     }
 
-    pub(crate) fn finish(self, game: &mut GameState) -> EffectOutcome {
-        self.finish_with_outputs(game).outcome
+    pub(crate) fn finish(self, game: &mut GameState) -> Result<EffectOutcome, ExecutionError> {
+        Ok(self.finish_with_outputs(game)?.outcome)
     }
 
     pub(crate) fn finish_with_outputs(
         mut self,
         game: &mut GameState,
-    ) -> crate::effects::CompletedEffectOutputs {
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
         crate::events::other::bind_before_tap_state_snapshots(&mut self.events, &self.before);
-        crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance);
-        crate::effects::CompletedEffectOutputs::aggregate_only(
+        crate::events::other::group_tap_state_events(game, &mut self.events, self.provenance)?;
+        Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(self.objects.len() as i32)
                 .with_events(self.events)
                 .with_action_objects(
@@ -109,7 +110,7 @@ impl TapAction {
                 )
                 .with_affected_objects(self.objects)
                 .with_affected_object_memory(self.memory),
-        )
+        ))
     }
 }
 
@@ -176,15 +177,15 @@ fn commit_tap_cost_objects_for_kind(
                 return Ok(EffectOutcome::count(0));
             }
         }
-        let mut action = TapAction::new(game, ctx.controller, ctx.provenance).with_cost_kind(cost_kind);
+        let mut action = TapAction::new(game, ctx.controller, ctx.provenance)?.with_cost_kind(cost_kind);
         for id in objects {
-            if !action.tap(game, *id) {
+            if !action.tap(game, *id)? {
                 return Err(ExecutionError::Impossible(
                     "Tap cost was not completed".into(),
                 ));
             }
         }
-        Ok(action.finish(game))
+        action.finish(game)
     })
 }
 
@@ -232,16 +233,16 @@ impl EffectExecutor for TapEffect {
             }
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
             // The original tap batch begins after its mandatory face-up actions.
-            let mut action = TapAction::new(game, actor, ctx.provenance);
+            let mut action = TapAction::new(game, actor, ctx.provenance)?;
             let result_policy = if self.target.is_target() && self.target.is_single() {
                 ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid
             } else { ObjectApplyResultPolicy::CountApplied };
             let apply_result = crate::effects::helpers::apply_to_selected_objects_with_prepared(
                 game, ctx, &self.target, result_policy, None, Some(selected.clone()),
-                |game, _ctx, object| Ok(action.tap(game, object)),
+                |game, _ctx, object| action.tap(game, object),
             )?;
             if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
-            let taps = action.finish(game);
+            let taps = action.finish(game)?;
             Ok(EffectOutcome::aggregate_with_primary_result(apply_result.outcome, [taps])
                 .with_result_objects(selected))
         })
@@ -850,5 +851,37 @@ mod tests {
 
         // No event when already tapped
         assert!(result.events.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod checked_snapshot_transaction_tests {
+    use super::*;
+
+    #[test]
+    fn final_tap_snapshot_failure_restores_native_instruction_without_publishing_events() {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        let actor = crate::ids::PlayerId::from_index(0);
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Checked tap witness")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let permanent = game.create_object_from_card(&card, actor, crate::zone::Zone::Battlefield);
+        let pending_before = game.effect_store.pending_trigger_events.len();
+        let mut ctx = ExecutionContext::new_default(permanent, actor);
+        let result = crate::effects::composition::execute_transaction(
+            &mut game, &mut ctx, || EffectOutcome::count(0), |game, ctx| {
+                let mut action = TapAction::new(game, actor, ctx.provenance)?;
+                assert!(action.tap(game, permanent)?);
+                // The before-state was complete; a later invalid world must
+                // fail final observation capture without escaping the owner.
+                game.player_mut(actor).unwrap().mana_pool.white = i32::MAX as u32 + 1;
+                action.finish(game)
+            },
+        );
+        assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
+            crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { .. }
+        ))));
+        assert!(!game.is_tapped(permanent));
+        assert_eq!(game.player(actor).unwrap().mana_pool.white, 0);
+        assert_eq!(game.effect_store.pending_trigger_events.len(), pending_before);
     }
 }

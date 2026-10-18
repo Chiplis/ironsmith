@@ -121,12 +121,12 @@ impl GameEventType for PermanentTappedEvent {
 /// state. Redirected recipients and chosen-cost recipients share the same view.
 pub(crate) fn before_tap_state_snapshots(
     game: &GameState,
-) -> std::collections::HashMap<ObjectId, ObjectSnapshot> {
+) -> Result<std::collections::HashMap<ObjectId, ObjectSnapshot>, crate::effects::ExecutionError> {
     game.battlefield
         .iter()
         .filter_map(|id| game.object(*id))
-        .filter_map(|object| {
-            ObjectSnapshot::capture_for_execution(object, game)
+        .map(|object| {
+            ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
                 .map(|snapshot| (object.id, snapshot))
         })
         .collect()
@@ -167,7 +167,7 @@ pub(crate) fn group_tap_state_events(
     game: &mut GameState,
     events: &mut [crate::triggers::TriggerEvent],
     provenance: crate::provenance::ProvNodeId,
-) {
+) -> Result<(), crate::effects::ExecutionError> {
     let state_change = |event: &crate::triggers::TriggerEvent| {
         matches!(
             event.kind(),
@@ -179,8 +179,17 @@ pub(crate) fn group_tap_state_events(
         .find(|event| state_change(event) && event.simultaneous_batch().is_none())
         .map(|event| event.kind())
     else {
-        return;
+        return Ok(());
     };
+    // Freeze the complete final world before allocating a batch or editing
+    // any event. An incomplete member cannot publish a partial receipt.
+    let snapshots = events.iter().filter(|event| state_change(event) && event.simultaneous_batch().is_none())
+        .filter_map(|event| event.downcast::<PermanentTappedEvent>().map(|event| event.permanent)
+            .or_else(|| event.downcast::<super::PermanentUntappedEvent>().map(|event| event.permanent)))
+        .filter_map(|id| game.object(id))
+        .map(|object| ObjectSnapshot::try_from_object_with_calculated_characteristics(object, game)
+            .map(|snapshot| (object.id, snapshot)))
+        .collect::<Result<std::collections::HashMap<_, _>, _>>()?;
     let batch = game.alloc_child_event_provenance(provenance, kind);
     for event in events.iter_mut().filter(|event| state_change(event)) {
         if event.simultaneous_batch().is_some() {
@@ -190,18 +199,14 @@ pub(crate) fn group_tap_state_events(
         // rather than a partially tapped/untapped intermediate battlefield.
         if let Some(tapped) = event.downcast::<PermanentTappedEvent>() {
             let mut tapped = tapped.clone();
-            if let Some(object) = game.object(tapped.permanent) {
-                tapped.snapshot = Some(
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game),
-                );
+            if let Some(snapshot) = snapshots.get(&tapped.permanent) {
+                tapped.snapshot = Some(snapshot.clone());
             }
             *event = event.with_inner_event(tapped);
         } else if let Some(untapped) = event.downcast::<super::PermanentUntappedEvent>() {
             let mut untapped = untapped.clone();
-            if let Some(object) = game.object(untapped.permanent) {
-                untapped.snapshot = Some(
-                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game),
-                );
+            if let Some(snapshot) = snapshots.get(&untapped.permanent) {
+                untapped.snapshot = Some(snapshot.clone());
             }
             *event = event.with_inner_event(untapped);
         }
@@ -209,6 +214,7 @@ pub(crate) fn group_tap_state_events(
             *event = event.clone().with_simultaneous_batch(batch);
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

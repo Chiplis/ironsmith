@@ -857,7 +857,7 @@ fn execute_untap_step_inner(
     // Every replacement choice precedes the simultaneous original untaps.
     // CR 502.3 / 122.1d includes stun-counter replacement. There is no
     // priority here; published events wait for the upkeep trigger drain.
-    let before = crate::events::other::before_tap_state_snapshots(game);
+    let before = crate::events::other::before_tap_state_snapshots(game)?;
     let mut prepared = Vec::new();
     for id in permanents {
         if !should_untap.contains(&id) {
@@ -911,7 +911,7 @@ fn execute_untap_step_inner(
                 .flat_map(|receipt| receipt.outcome.outcome.events.iter().cloned())
                 .collect();
             crate::events::other::bind_before_tap_state_snapshots(&mut observed, &before);
-            crate::events::other::group_tap_state_events(game, &mut observed, Default::default());
+            crate::events::other::group_tap_state_events(game, &mut observed, Default::default())?;
             for receipt in receipts {
                 crate::effects::composition::inherit_original_observations(
                     &mut receipt.outcome.outcome,
@@ -930,7 +930,7 @@ fn execute_untap_step_inner(
         .flat_map(|output| output.outcome.events)
         .collect();
     crate::events::other::bind_before_tap_state_snapshots(&mut untap_events, &before);
-    crate::events::other::group_tap_state_events(game, &mut untap_events, Default::default());
+    crate::events::other::group_tap_state_events(game, &mut untap_events, Default::default())?;
     for event in untap_events {
         game.queue_trigger_event(event.provenance(), event);
     }

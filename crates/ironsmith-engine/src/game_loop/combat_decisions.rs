@@ -1081,47 +1081,50 @@ fn tap_prepared_attackers(
 ) -> Result<(Vec<TriggerEvent>, bool), GameLoopError> {
     let game_checkpoint = game.clone();
     let queue_checkpoint = trigger_queue.clone();
-    // CR 508.1f taps every chosen attacker before attack costs are paid. Use
-    // the pre-cost vigilance result prepared from the same derived state as
-    // attack legality; paying a cost can remove the source of that ability.
-    let mut taps = crate::effects::permanents::TapAction::new(
-        game,
-        game.turn.active_player,
-        Default::default(),
-    )
-    .as_attack_declaration();
-    for prepared_decl in &prepared.declarations {
-        let creature = prepared_decl.declaration.creature;
-        if prepared_decl.has_vigilance
-            || game.object(creature).is_none()
-            || game.is_tapped(creature)
-        {
-            continue;
+    let result = (|| -> Result<(Vec<TriggerEvent>, bool), GameLoopError> {
+        // CR 508.1f taps every chosen attacker before attack costs are paid. Use
+        // the pre-cost vigilance result prepared from the same derived state as
+        // attack legality; paying a cost can remove the source of that ability.
+        let mut taps = crate::effects::permanents::TapAction::new(
+            game,
+            game.turn.active_player,
+            Default::default(),
+        )?
+        .as_attack_declaration();
+        for prepared_decl in &prepared.declarations {
+            let creature = prepared_decl.declaration.creature;
+            if prepared_decl.has_vigilance
+                || game.object(creature).is_none()
+                || game.is_tapped(creature)
+            {
+                continue;
+            }
+
+            let event_provenance = game
+                .provenance_graph_mut()
+                .alloc_root_event(crate::events::EventKind::PermanentTapped);
+            taps.tap_with_event_provenance(game, creature, event_provenance)?;
         }
 
-        let event_provenance = game
-            .provenance_graph_mut()
-            .alloc_root_event(crate::events::EventKind::PermanentTapped);
-        taps.tap_with_event_provenance(game, creature, event_provenance);
-    }
+        let tapped_events = taps.finish(game)?.events;
 
-    let tapped_events = taps.finish(game).events;
-
-    // If costs can change the battlefield or other trigger-relevant state,
-    // match the simultaneous tap events against the pre-cost state. Otherwise
-    // they can share the post-declaration refresh below.
-    let queued_tapped_events_before_costs =
-        prepared.has_post_tap_attack_costs && !tapped_events.is_empty();
-    if queued_tapped_events_before_costs {
-        if let Err(error) = game.refresh_continuous_state() {
-            *game = game_checkpoint;
-            *trigger_queue = queue_checkpoint;
-            return Err(crate::effects::ExecutionError::ContinuousDiscovery(error).into());
+        // If costs can change the battlefield or other trigger-relevant state,
+        // match the simultaneous tap events against the pre-cost state. Otherwise
+        // they can share the post-declaration refresh below.
+        let queued_tapped_events_before_costs =
+            prepared.has_post_tap_attack_costs && !tapped_events.is_empty();
+        if queued_tapped_events_before_costs {
+            game.refresh_continuous_state().map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events.clone(), true);
         }
-        super::targeting::queue_triggers_from_reported_events(game, trigger_queue, tapped_events.clone(), true);
-    }
 
-    Ok((tapped_events, queued_tapped_events_before_costs))
+        Ok((tapped_events, queued_tapped_events_before_costs))
+    })();
+    if result.is_err() {
+        *game = game_checkpoint;
+        *trigger_queue = queue_checkpoint;
+    }
+    result
 }
 
 fn apply_prepared_attacker_declarations_with_dm(

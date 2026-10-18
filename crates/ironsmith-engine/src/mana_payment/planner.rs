@@ -816,12 +816,18 @@ fn execute_mana_payment_plan_inner_with_outputs(
             game,
             request.payer,
             cost_context.provenance,
-        );
+        ).map_err(|error| {
+            *game = checkpoint.clone();
+            ManaPaymentFailure::EffectExecutionFailed(error)
+        })?;
         for allocation in &current.allocations {
             let success = match allocation.payment {
                 super::PlannedPipPayment::Convoke(source)
                 | super::PlannedPipPayment::Waterbend(source)
-                | super::PlannedPipPayment::Improvise(source) => taps.tap(game, source),
+                | super::PlannedPipPayment::Improvise(source) => taps.tap(game, source).map_err(|error| {
+                    *game = checkpoint.clone();
+                    ManaPaymentFailure::EffectExecutionFailed(error)
+                })?,
                 super::PlannedPipPayment::Delve(source) => {
                     if !delve_cards(game, request).contains(&source) {
                         false
@@ -859,7 +865,10 @@ fn execute_mana_payment_plan_inner_with_outputs(
             }
         }
         (
-            taps.finish_with_outputs(game),
+            taps.finish_with_outputs(game).map_err(|error| {
+                *game = checkpoint.clone();
+                ManaPaymentFailure::EffectExecutionFailed(error)
+            })?,
             cost_context.capture_execution_context(),
         )
     };

@@ -190,7 +190,7 @@ impl crate::effects::composition::OriginalOutcomeAdapter for UntapSelection {
     ) -> Result<EffectOutcome, ExecutionError> {
         let mut outcome = result?;
         self.bind_actor(&mut outcome);
-        crate::events::other::group_tap_state_events(game, &mut outcome.events, ctx.provenance);
+        crate::events::other::group_tap_state_events(game, &mut outcome.events, ctx.provenance)?;
         Ok(outcome)
     }
 }
@@ -223,7 +223,7 @@ impl crate::effects::SimultaneousEffectProposal for UntapInstructionProposal {
             .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))
             .transpose()?
             .unwrap_or(ctx.controller);
-        let before = crate::events::other::before_tap_state_snapshots(game);
+        let before = crate::events::other::before_tap_state_snapshots(game)?;
 
         self.selection = Some(UntapSelection {
             objects,
