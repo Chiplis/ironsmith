@@ -416,9 +416,9 @@ pub(super) fn compile_target_only_action(
     let role = subject_verb.subject.role;
     let (mut spec, mut choices) =
         resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-    if matches!(spec.base(), ChooseSpec::Source) {
-        return Ok((Vec::new(), choices));
-    }
+    // A source reference can still establish an antecedent: an enclosing
+    // TagAffected captures its object/controller for later instructions.
+    // TargetOnly already resolves Source without announcing a target.
 
     let delegated_chooser =
         if matches!(role, SubjectVerbRoleAst::Chooser) && !matches!(player, PlayerAst::Implicit) {

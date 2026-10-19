@@ -4019,6 +4019,26 @@ mod nested_result_value_link_tests {
     }
 
     #[test]
+    fn source_reference_capture_retains_an_executable_tagged_effect() {
+        let ast = EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_explicit_target_only(
+                TargetAst::Object(ObjectFilter::source(), None, None),
+            )),
+            tag: ironsmith_compiler_semantic::tag::declared_key("source_antecedent"),
+        };
+        let mut ctx = EffectLoweringContext::new();
+        let (effects, choices) = compile_effect(&ast, &mut ctx).expect("source capture");
+        assert!(choices.is_empty(), "source capture must not announce a target");
+        let [effect] = effects.as_slice() else {
+            panic!("expected a source capture: {effects:#?}");
+        };
+        let tagged = effect.as_tagged().expect("source reference tag");
+        let capture = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .expect("source capture action");
+        assert!(matches!(capture.target.base(), ChooseSpec::Source));
+    }
+
+    #[test]
     fn chosen_collection_wrapper_keeps_an_explicit_target_slot_tag() {
         let target = TargetAst::Object(
             ObjectFilter::creature(),

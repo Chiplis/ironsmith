@@ -256,3 +256,79 @@ fn uvilda_attaches_its_cast_this_way_reduction_to_the_permitted_cast() {
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(debug.contains("cost_reduction: Some"), "the {{4}} reduction belongs to the granted cast: {debug}");
 }
+
+#[test]
+fn vault_112_energy_payment_gates_shuffle_and_exiles_the_paid_amount() {
+    let definition = compile_to_runtime_definition("Vault 112: Sadistic Simulation",
+        "Mana cost: {3}{B}\nType: Enchantment — Saga\nI, II — Tap up to one target creature and put a stun counter on it. You get {E}{E}.\nIII — Pay any amount of {E}. If you paid one or more {E} this way, shuffle your library, then exile that many cards from the top. You may play one of those cards without paying its mana cost.", false)
+        .expect("Vault 112 should compile strictly");
+    let debug = format!("{:?}", definition.abilities);
+    assert!(debug.contains("PayAnyEnergyEffect") && debug.contains("min_amount: 0"), "{debug}");
+    assert!(debug.contains("GreaterThan(0)"), "zero energy must not shuffle or exile: {debug}");
+    assert!(debug.contains("ShuffleLibraryEffect"), "{debug}");
+    assert!(debug.contains("ExileTopOfLibraryEffect"), "{debug}");
+    let rendered = ironsmith_text::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("paid one or more {E} this way"), "{rendered}");
+    assert!(rendered.contains("without paying"), "{rendered}");
+}
+
+#[test]
+fn energy_payment_shuffle_sequence_retains_payment_reference_without_a_comma() {
+    for connective in [", then", " then"] {
+        let source = format!("Mana cost: {{1}}\nType: Sorcery\nPay any amount of {{E}}. If you paid one or more {{E}} this way, shuffle your library{connective} exile that many cards from the top. You may play one of those cards without paying its mana cost.");
+        let definition = compile_to_runtime_definition("Energy sequence probe", &source, false)
+            .expect("shuffle then exile should compile");
+        let effects = definition.spell_effect.as_ref().unwrap().all_effects();
+        fn collect<'a>(effects: &'a [Effect], out: &mut Vec<&'a Effect>) {
+            for effect in effects {
+                out.push(effect);
+                if let Some(with_id) = effect.downcast_ref::<ironsmith::effects::WithIdEffect>() {
+                    collect(std::slice::from_ref(&with_id.effect), out);
+                } else if let Some(sequence) = effect.downcast_ref::<ironsmith::effects::SequenceEffect>() {
+                    collect(&sequence.effects, out);
+                } else if let Some(branch) = effect.downcast_ref::<ironsmith::effects::IfEffect>() {
+                    collect(&branch.then, out);
+                } else if let Some(each) = effect.downcast_ref::<ironsmith::effects::ForEachTaggedEffect>() {
+                    collect(&each.effects, out);
+                } else if let Some(may) = effect.downcast_ref::<ironsmith::effects::MayEffect>() {
+                    collect(&may.effects, out);
+                } else if let Some(tag) = effect.downcast_ref::<ironsmith::effects::TaggedEffect>() {
+                    collect(std::slice::from_ref(&tag.effect), out);
+                } else if let Some(tag) = effect.downcast_ref::<ironsmith::effects::TagAllEffect>() {
+                    collect(std::slice::from_ref(&tag.effect), out);
+                }
+            }
+        }
+        let mut all = Vec::new();
+        for effect in effects {
+            collect(std::slice::from_ref(effect), &mut all);
+        }
+        let payment = all.iter().find_map(|effect| {
+            let with_id = effect.downcast_ref::<ironsmith::effects::WithIdEffect>()?;
+            with_id.effect.downcast_ref::<ironsmith::effects::PayAnyEnergyEffect>()
+                .map(|_| with_id.id)
+        }).expect("identified energy payment");
+        let branch = all.iter().find_map(|effect| effect.downcast_ref::<ironsmith::effects::IfEffect>())
+            .expect("numeric payment gate");
+        assert_eq!(branch.condition, payment);
+        assert_eq!(branch.predicate, ironsmith::effect::EffectPredicate::Value(ironsmith::effect::Comparison::GreaterThan(0)));
+        let exile = all.iter().find_map(|effect| effect.downcast_ref::<ironsmith::effects::ExileTopOfLibraryEffect>())
+            .expect("top-library exile");
+        assert_eq!(exile.count.unhinted(), &ironsmith::effect::Value::EffectValue(payment),
+            "shuffle must not replace the payment as the amount antecedent");
+        let cast = all.iter().find_map(|effect| effect.downcast_ref::<ironsmith::effects::CastTaggedEffect>())
+            .expect("immediate play of one exiled card");
+        assert!(cast.allow_land, "play includes lands");
+        assert!(cast.without_paying_mana_cost);
+        let choose = all.iter().find_map(|effect| effect.downcast_ref::<ironsmith::effects::ChooseObjectsEffect>())
+            .expect("one optional card choice");
+        assert_eq!(choose.count.min, 0, "playing the exiled card is optional");
+        assert_eq!(choose.count.max, Some(1), "at most one card may be played");
+        assert!(!choose.filter.source, "choice must not select the source");
+        assert!(choose.filter.tagged_constraints.iter().any(|constraint| exile.moved_tags.contains(&constraint.tag)),
+            "choice must reference the actual exiled set");
+        let each = all.iter().find_map(|effect| effect.downcast_ref::<ironsmith::effects::ForEachTaggedEffect>())
+            .expect("play the selected card only");
+        assert_eq!(each.tag, choose.tag);
+    }
+}

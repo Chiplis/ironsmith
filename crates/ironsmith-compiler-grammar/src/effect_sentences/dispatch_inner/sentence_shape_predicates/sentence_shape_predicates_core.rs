@@ -111,6 +111,21 @@ fn parse_effect_sentence_lexed_uncached(
     // The second possessive axis belongs to the first subject; ordinary
     // coordination must not bind it to the revealed card used as the value.
     if tokens.first().is_some_and(|token| token.is_word("change")) {
+        // A single-axis assignment may read another announced target's
+        // characteristic. Reuse the dynamic become reader so that target is
+        // declared independently of the permanent receiving the assignment.
+        if let Some(to_idx) = tokens.windows(3).position(|words| {
+            words[0].is_word("base")
+                && (words[1].is_word("power") || words[1].is_word("toughness"))
+                && words[2].is_word("to")
+        }).map(|base| base + 2)
+            && to_idx > 2
+            && let Ok(effect) = crate::effect_sentences::clause_dispatch::parse_become_clause(
+                &tokens[1..to_idx], &tokens[to_idx + 1..],
+            )
+        {
+            return Ok(vec![effect]);
+        }
         // "change Halfdane's base power and toughness to the power and
         // toughness of target creature other than Halfdane until the end of
         // your next upkeep": the imperative form of "<subject>'s base power

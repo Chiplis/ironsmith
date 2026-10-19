@@ -4872,24 +4872,40 @@ fn try_merge_collection_cast_count_instead_of_one(
     // Looked-card procedures retain an explicit-zone choice followed by a
     // single-card cast. Promote that pair to the same collection program
     // before restating its count, so every selected card is actually cast.
-    let mut index = 0;
-    while index + 1 < effects.len() {
-        let pair_tag = match (&effects[index], &effects[index + 1]) {
-            (EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, tag, .. }),
-             EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag: cast_tag, .. }), .. }))
-                if *count == crate::effect::ChoiceCount::up_to(1) && tag == cast_tag => Some(tag.clone()),
-            _ => None,
-        };
-        if let Some(tag) = pair_tag {
-            let mut cast = effects.remove(index + 1);
-            if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }), .. }) = &mut cast {
-                *tag = crate::tag::CompilerReferenceTag::It.bind();
+    fn promote_collection_casts(effects: &mut Vec<EffectAst>) {
+        for effect in effects.iter_mut() {
+            if let EffectAst::Sequence { effects } = effect {
+                promote_collection_casts(effects);
+            } else {
+                crate::model::visit::for_each_nested_effects_mut(effect, false, |nested| {
+                    for effect in nested {
+                        if let EffectAst::Sequence { effects } = effect {
+                            promote_collection_casts(effects);
+                        }
+                    }
+                });
             }
-            let choice = std::mem::replace(&mut effects[index], EffectAst::Sequence { effects: Vec::new() });
-            effects[index] = EffectAst::Sequence { effects: vec![choice, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects: vec![cast] })] };
         }
-        index += 1;
+        let mut index = 0;
+        while index + 1 < effects.len() {
+            let pair_tag = match (&effects[index], &effects[index + 1]) {
+                (EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count, tag, .. }),
+                 EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag: cast_tag, .. }), .. }))
+                    if *count == crate::effect::ChoiceCount::up_to(1) && tag == cast_tag => Some(tag.clone()),
+                _ => None,
+            };
+            if let Some(tag) = pair_tag {
+                let mut cast = effects.remove(index + 1);
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Stack(StackActionAst::CastTagged { tag, .. }), .. }) = &mut cast {
+                    *tag = crate::tag::CompilerReferenceTag::It.bind();
+                }
+                let choice = std::mem::replace(&mut effects[index], EffectAst::Sequence { effects: Vec::new() });
+                effects[index] = EffectAst::Sequence { effects: vec![choice, EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects: vec![cast] })] };
+            }
+            index += 1;
+        }
     }
+    promote_collection_casts(&mut effects);
     fn is_single_collection_cast(effect: &EffectAst) -> bool {
         let EffectAst::Sequence { effects } = effect else { return false };
         matches!(effects.as_slice(), [

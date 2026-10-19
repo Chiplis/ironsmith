@@ -4596,3 +4596,22 @@ fn coordinated_card_types_share_the_trailing_card_noun() {
         assert!(filter.nontoken);
     }
 }
+
+#[test]
+fn demonstrative_greater_power_than_source_preserves_the_comparison() -> Result<(), CardTextError> {
+    for text in [
+        "that creature has greater power than this creature",
+        "it has greater power than this creature",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else {
+            panic!("expected object comparison: {text}");
+        };
+        assert_eq!(
+            filter.power,
+            Some(crate::filter::Comparison::GreaterThanExpr(Box::new(Value::SourcePower))),
+            "{text}"
+        );
+    }
+    Ok(())
+}

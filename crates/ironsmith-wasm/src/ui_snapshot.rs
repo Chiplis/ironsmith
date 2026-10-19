@@ -2073,6 +2073,12 @@ fn grouped_battlefield_for_ids(
                 count: member_ids.len().max(1),
                 member_ids,
                 member_stable_ids,
+                attached_to_ids: members.iter()
+                    .filter_map(|view| game.object(ObjectId(view.id)))
+                    .filter_map(|object| object.attached_to.and_then(|target| target.object_id()))
+                    .map(|id| id.0)
+                    .collect(),
+                battle_protector: game.battle_protector(ObjectId(id)).map(|player| player.0),
                 lane: key.lane.as_str().to_string(),
                 mana_cost,
                 oracle_text: compiled_card_text,
@@ -2327,6 +2333,12 @@ pub(super) struct PermanentSnapshot {
     pub(super) count: usize,
     pub(super) member_ids: Vec<u64>,
     pub(super) member_stable_ids: Vec<u64>,
+    /// Public attachment edges for every member of a visual group. The client
+    /// may fan the group behind a host only when all edges resolve to that host.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(super) attached_to_ids: Vec<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) battle_protector: Option<u8>,
     pub(super) lane: String,
     pub(super) mana_cost: Option<String>,
     pub(super) oracle_text: String,
@@ -2502,6 +2514,7 @@ pub(super) struct GameSnapshot {
     pub(super) snapshot_id: u64,
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
+    pub(super) storm_count: u32,
     pub(super) active_player: u8,
     pub(super) active_players: Vec<u8>,
     pub(super) priority_player: Option<u8>,
@@ -3423,6 +3436,7 @@ impl GameSnapshot {
             perspective: perspective.0,
             pass_intents: Vec::new(),
             turn_number: game.turn.turn_number,
+            storm_count: game.turn_store.turn_history.total_spells_cast_this_turn(),
             active_player: game.turn.active_player.0,
             active_players: game
                 .active_players()
@@ -5567,6 +5581,10 @@ mod tests {
         );
 
         let (battlefield, _) = grouped_battlefield_for_player(&game, alice, &protected_ids);
+        let attached_host_ids: HashSet<_> = battlefield.iter()
+            .flat_map(|permanent| permanent.attached_to_ids.iter().copied())
+            .collect();
+        assert_eq!(attached_host_ids, enchanted_bears.iter().map(|id| id.0).collect());
         let bear_groups: Vec<_> = battlefield
             .iter()
             .filter(|permanent| permanent.name == "Grizzly Bears")

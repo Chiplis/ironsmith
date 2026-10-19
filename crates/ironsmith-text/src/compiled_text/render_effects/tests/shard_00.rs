@@ -5451,6 +5451,51 @@ pub(super) fn target_only_exchange_control_renders_selected_permanents() {
 }
 
 #[test]
+fn tagged_exchange_pair_renders_across_target_declaration_segments() {
+    let entering = TagKey::from("triggering");
+    let counterpart = TagKey::from("chosen_counterpart");
+    let chooser = PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(entering.clone()));
+    let mut filter = ObjectFilter::permanent();
+    filter.card_types = ObjectFilter::permanent_card().card_types;
+    filter.controller = Some(PlayerFilter::excluding(PlayerFilter::Any, chooser.clone()));
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: entering.clone(),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: entering.clone(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+    let target = Effect::new(crate::effects::TargetOnlyEffect::explicit(
+        ChooseSpec::target(ChooseSpec::Object(filter)),
+    ).with_chooser(chooser)).tag(counterpart.clone());
+    let exchange = Effect::new(crate::effects::ExchangeControlEffect::new(
+        ChooseSpec::Tagged(entering.clone()), ChooseSpec::Tagged(counterpart),
+    )).tag("exchanged_pair");
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![
+            Effect::new(crate::effects::TagTriggeringObjectEffect::new(entering)), target,
+        ]),
+        crate::resolution::ResolutionSegment::from_effects(vec![exchange]),
+    ]);
+    let rendered = super::super::ast_render::describe_resolution_program(&program);
+    assert_eq!(rendered, "Its controller chooses target permanent another player controls that shares a card type with it. Exchange control of those permanents");
+    assert!(!rendered.contains("tagged object"));
+}
+
+#[test]
+fn parsed_entering_permanent_exchange_hides_redundant_identity_exclusion() {
+    let oracle = "Whenever an artifact, creature, or enchantment enters, its controller chooses target permanent another player controls that shares a card type with it. Exchange control of those permanents.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Exchange probe")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("the chooser and exchange should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert_eq!(rendered, oracle);
+    assert!(!rendered.contains("tagged object"));
+}
+
+#[test]
 pub(super) fn target_most_common_color_conditional_return_renders_as_if_clause() {
     let target_tag = TagKey::from("targeted_0");
     let target_spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::permanent()));

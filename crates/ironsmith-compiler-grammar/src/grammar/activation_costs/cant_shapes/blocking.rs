@@ -247,9 +247,16 @@ fn parse_except_keyword_blockers<'a>(input: &mut LexStream<'a>) -> WResult<Block
     parse_creature_noun.parse_next(input)?;
     primitives::kw("with").parse_next(input)?;
     let ability = parse_blocker_keyword.parse_next(input)?;
-    Ok(BlockingCantTail::DisallowedBlockers(
-        ObjectFilter::creature().without_static_ability(ability),
-    ))
+    let mut forbidden = ObjectFilter::creature().without_static_ability(ability);
+    // The complement of an allowed keyword disjunction excludes every arm:
+    // a creature with either keyword remains a legal blocker.
+    while let Some(ability) = opt((primitives::kw("or"), parse_blocker_keyword))
+        .parse_next(input)?
+        .map(|(_, ability)| ability)
+    {
+        forbidden = forbidden.without_static_ability(ability);
+    }
+    Ok(BlockingCantTail::DisallowedBlockers(forbidden))
 }
 
 fn parse_except_color_blockers<'a>(input: &mut LexStream<'a>) -> WResult<BlockingCantTail> {

@@ -17039,40 +17039,41 @@ fn parse_exile_one_revealed_card_per_color(
     Some((program, consumed))
 }
 
-/// "Shuffle your library, then reveal cards from the top of it until ..."
-/// (Creative Technique): the shuffle is its own instruction; the procedure
-/// after "then" reads "it" as the shuffled library, so it is parsed as the
-/// complete document it would be with that library named.
+/// A shuffle followed by another instruction owns two sibling effects.
+/// A subsequent "top of it" refers to the shuffled library, while a bare
+/// "the top" is understood by the library-exile grammar. Parse the rest as
+/// a document so later choices retain the exiled or revealed set.
 fn parse_shuffle_library_then_document(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let [shuffle, your, library, comma, then, rest @ ..] = tokens else {
+    let [shuffle, your, library, tail @ ..] = tokens else {
         return Ok(None);
     };
-    if !shuffle.is_word("shuffle")
-        || !your.is_word("your")
-        || !library.is_word("library")
-        || comma.kind != crate::lexer::TokenKind::Comma
-        || !then.is_word("then")
-        || rest.is_empty()
-    {
+    if !shuffle.is_word("shuffle") || !your.is_word("your") || !library.is_word("library") {
+        return Ok(None);
+    }
+    // Clause assembly can strip the comma before handing a sequence back to
+    // the document parser. The connective still separates two instructions.
+    let tail = crate::lexer::trim_lexed_commas(tail);
+    let Some((then, rest)) = tail.split_first() else { return Ok(None); };
+    if !then.is_word("then") || rest.is_empty() {
         return Ok(None);
     }
     let first_sentence_end = rest
         .iter()
         .position(|token| token.kind == crate::lexer::TokenKind::Period)
         .unwrap_or(rest.len());
-    let Some(it_index) = rest[..first_sentence_end].windows(3).position(|window| {
+    let first_sentence = &rest[..first_sentence_end];
+    let mut rewritten = rest.to_vec();
+    if let Some(it_index) = first_sentence.windows(3).position(|window| {
         window[0].is_word("top") && window[1].is_word("of") && window[2].is_word("it")
-    }) else {
-        return Ok(None);
-    };
-    let it_index = it_index + 2;
-    let mut rewritten = Vec::with_capacity(rest.len() + 1);
-    rewritten.extend_from_slice(&rest[..it_index]);
-    rewritten.push(OwnedLexToken::word("your", rest[it_index].span()));
-    rewritten.push(OwnedLexToken::word("library", rest[it_index].span()));
-    rewritten.extend_from_slice(&rest[it_index + 1..]);
+    }) {
+        let it_index = it_index + 2;
+        rewritten.splice(it_index..=it_index, [
+            OwnedLexToken::word("your", rest[it_index].span()),
+            OwnedLexToken::word("library", rest[it_index].span()),
+        ]);
+    }
     let mut effects = parse_effect_sentences_lexed(&tokens[..3])?;
     effects.extend(parse_effect_sentences_lexed(&rewritten)?);
     Ok(Some(effects))

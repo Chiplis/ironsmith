@@ -81,12 +81,22 @@ fn parse_base_axis_clause_shape<'a>(
         let Some(base) = tokens.windows(3).position(|words| words[0].is_word("base")
             && words[1].is_word(axis) && words[2].is_word("to")) else { return Ok(None); };
         if base <= 1 { return Ok(None); }
-        let value_tokens = &tokens[base + 3..];
+        // The assignment owns its duration. Aggregate values consume their
+        // complete scope, so detach the duration before reading quantities
+        // such as "1 plus the greatest power among other creatures you control".
+        let assignment = trim_edge_punctuation_tokens(&tokens[base + 3..]);
+        let (value_tokens, duration) = if let Some(start) = assignment.iter()
+            .position(|token| token.is_word("until"))
+        {
+            let Some(duration) = complete_duration(&assignment[start..]) else {
+                return Ok(None);
+            };
+            (trim_edge_punctuation_tokens(&assignment[..start]), duration)
+        } else {
+            (assignment, Until::Forever)
+        };
         let Some((power, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(value_tokens) else { return Ok(None); };
-        let tail = trim_edge_punctuation_tokens(&value_tokens[used..]);
-        let duration = if tail.is_empty() { Until::Forever }
-            else if let Some(duration) = complete_duration(tail) { duration }
-            else { return Ok(None); };
+        if used != value_tokens.len() { return Ok(None); }
         return Ok(Some(BasePowerClauseShape { power, target_tokens: &tokens[1..base], duration }));
     }
     let Some((subject, rest)) = split_subject_and_rest(tokens) else {

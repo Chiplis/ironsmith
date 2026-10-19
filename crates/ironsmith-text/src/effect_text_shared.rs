@@ -74,6 +74,9 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | "other_attacker"
             // The copy a copy effect just created ("the copy", "it").
             | "__copied_stack_object__"
+            // A captured original-name snapshot also refers to the selected
+            // card when a later instruction moves that same card.
+            | "__noted_card_name__"
             | "blocking"
             | "blocked"
             | "searched_face_down" // "<verbed>_this_way" helper tags back-reference an object the same

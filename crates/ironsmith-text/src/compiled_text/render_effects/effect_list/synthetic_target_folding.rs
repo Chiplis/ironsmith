@@ -536,6 +536,11 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
 }
 
 fn synthetic_target_identity<'a>(effect: &'a Effect) -> Option<SyntheticTargetIdentity<'a>> {
+    // A noted-name capture is an authored semantic action, even though its
+    // runtime implementation reuses a target-only snapshot producer.
+    if wrapped_effect_tag(effect).is_some_and(|tag| tag.as_str() == "__noted_card_name__") {
+        return None;
+    }
     let target_only = structural_unwrap_render_wrappers(effect)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let count = target_only.target.count();

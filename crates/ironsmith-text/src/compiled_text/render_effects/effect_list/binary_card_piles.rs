@@ -68,6 +68,7 @@ fn describe_graveyard_partition(effects: &[&Effect]) -> Option<String> {
 }
 
 pub(super) fn describe(effects: &[&Effect]) -> Option<String> {
+    if let Some(text) = describe_exiled_partition_free_plays(effects) { return Some(text); }
     if let Some(text) = describe_graveyard_partition(effects) { return Some(text); }
     if let Some(text) = describe_exile(effects) { return Some(text); }
     if let Some(text) = describe_face_down_then_face_up_exile(effects) { return Some(text); }
@@ -258,4 +259,66 @@ fn describe_exile(effects: &[&Effect]) -> Option<String> {
         text.push('.');
     }
     Some(text)
+}
+
+/// A finite exiled pool is partitioned by an opponent, then the controller
+/// repeatedly selects and immediately plays one card from the chosen pile.
+fn describe_exiled_partition_free_plays(effects: &[&Effect]) -> Option<String> {
+    let [exile, opponent, partition, complement, pick] = effects else { return None; };
+    let exile = unwrap_tag_wrappers(exile).downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let opponent = unwrap_tag_wrappers(opponent).downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let partition = unwrap_tag_wrappers(partition).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let complement = unwrap_tag_wrappers(complement).downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let pick = unwrap_tag_wrappers(pick).downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let [pool] = exile.moved_tags.as_slice() else { return None; };
+    let [split] = partition.effects.as_slice() else { return None; };
+    let split = unwrap_tag_wrappers(split).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if exile.player != PlayerFilter::You || exile.face_down || !exile.accumulated_tags.is_empty()
+        || opponent.chooser != PlayerFilter::You || opponent.filter != PlayerFilter::Opponent || opponent.random
+        || partition.filter != PlayerFilter::TaggedPlayer(opponent.tag.clone())
+        || split.chooser != PlayerFilter::IteratedPlayer || !split.count.is_any_number() || split.is_search
+        || !captured_in(&split.filter, pool, Zone::Exile)
+        || !captured_in(&complement.filter, pool, Zone::Exile)
+        || !complement.filter.tagged_constraints.iter().any(|constraint|
+            constraint.tag == split.tag && constraint.relation == crate::target::TaggedOpbjectRelation::IsNotTaggedObject)
+        || pick.chooser != Some(PlayerFilter::You) || pick.modes.len() != 2
+    { return None; }
+    for (mode, pile) in pick.modes.iter().zip([&split.tag, &complement.tag]) {
+        let [repeat] = mode.effects.as_slice() else { return None; };
+        let repeat = unwrap_tag_wrappers(repeat).downcast_ref::<crate::effects::RepeatProcessEffect>()?;
+        let [choose, cast] = repeat.effects.as_slice() else { return None; };
+        let choose = unwrap_tag_wrappers(choose).downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let with_id = cast.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let cast = unwrap_tag_wrappers(&with_id.effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        if choose.chooser != PlayerFilter::You || choose.count != crate::effect::ChoiceCount::up_to(1)
+            || choose.is_search || !captured_in(&choose.filter, pile, Zone::Exile)
+            || cast.tag != choose.tag || cast.player != PlayerFilter::You || !cast.allow_land
+            || !cast.without_paying_mana_cost || cast.as_copy || cast.copy_named_definition
+            || cast.alternative_cost.is_some() || cast.alternative_payment.is_some()
+            || cast.additional_mana_cost.is_some() || cast.cost_reduction.is_some()
+            || cast.caster_land_mana_abilities_only || cast.control_caster_while_spell_resolves
+            || repeat.condition != with_id.id || repeat.predicate != EffectPredicate::Happened
+            || repeat.max_iterations.is_some() || !repeat.choice_history.is_empty()
+        { return None; }
+    }
+    let count = describe_value(&exile.count);
+    Some(format!("Exile the top {count} cards of your library. An opponent separates those cards into two piles. You may play lands and cast spells from one of those piles. If you cast a spell this way, you cast it without paying its mana cost"))
+}
+
+#[cfg(test)]
+mod exiled_partition_free_play_tests {
+    #[test]
+    fn repeated_pile_plays_preserve_the_free_cast_price() {
+        for count in [5, 7] {
+            let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Pile spell")
+                .card_types(vec![crate::types::CardType::Sorcery])
+                .parse_text(&format!("Exile the top {count} cards of your library. An opponent separates those cards into two piles. You may play lands and cast spells from one of those piles. If you cast a spell this way, you cast it without paying its mana cost."))
+                .expect("exiled partition compiles");
+            let text = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert!(text.contains("An opponent separates those cards into two piles"), "{text}");
+            assert!(text.contains("You may play lands and cast spells from one of those piles"), "{text}");
+            assert!(text.contains("without paying its mana cost"), "{text}");
+            assert!(!text.contains("binary_") && !text.contains("tagged object"), "{text}");
+        }
+    }
 }

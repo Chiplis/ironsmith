@@ -6094,6 +6094,16 @@ pub(super) fn describe_correlated_created_token_fight(
 }
 
 pub(crate) fn describe_effect(effect: &Effect) -> String {
+    // This tag records the selected card's original identity before a
+    // characteristic-changing move. Render the authored name instruction,
+    // rather than its synthetic target-only implementation.
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && tagged.tag.as_str() == "__noted_card_name__"
+        && let Some(target) = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && target.chooser.is_none()
+    {
+        return format!("Note the name of {}", describe_choose_spec(&target.target));
+    }
     if let Some(scope) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
         && let Some(condition) = scope
             .effect
@@ -6773,6 +6783,44 @@ pub(crate) fn describe_put_or_remove_counter_mode(
     }
 
     Some(format!("{put_clause} or {remove_clause}"))
+}
+
+/// Restating a selection limit replaces the original selection and its
+/// follow-up, rather than executing both branches.
+pub(crate) fn describe_conditional_choice_count_instead(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let [changed, changed_followup] = conditional.if_true.as_slice() else { return None; };
+    let [original, original_followup] = conditional.if_false.as_slice() else { return None; };
+    let changed = structural_unwrap_render_wrappers(changed)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let original = structural_unwrap_render_wrappers(original)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if changed.count == original.count { return None; }
+    let mut same_choice = changed.clone();
+    same_choice.count = original.count;
+    if same_choice != *original { return None; }
+    // Effect equality is executor identity, not structural equality. Compare
+    // the typed collection cast fields across the independently lowered arms.
+    let changed_loop = structural_unwrap_render_wrappers(changed_followup)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let original_loop = structural_unwrap_render_wrappers(original_followup)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if changed_loop.tag != changed.tag || original_loop.tag != original.tag
+        || changed_loop.controller_at_last_blocked_by != original_loop.controller_at_last_blocked_by
+    { return None; }
+    let [changed_cast] = changed_loop.effects.as_slice() else { return None; };
+    let [original_cast] = original_loop.effects.as_slice() else { return None; };
+    let changed_cast = structural_unwrap_render_wrappers(changed_cast)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let original_cast = structural_unwrap_render_wrappers(original_cast)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if changed_cast != original_cast { return None; }
+    Some(format!("{}. If {}, {} instead",
+        describe_effect_list(&conditional.if_false),
+        describe_condition(&conditional.condition),
+        lowercase_first(&describe_effect_list(&conditional.if_true)),
+    ))
 }
 
 pub(crate) fn describe_conditional_damage_instead(

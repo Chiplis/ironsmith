@@ -82,6 +82,9 @@
 
 
 
+    if let Some(compact) = damage_recipient_choice::describe(&filtered) {
+        return compact;
+    }
     if let Some(compact) = binary_card_piles::describe(&filtered) {
         return compact;
     }

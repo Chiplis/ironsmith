@@ -1,4 +1,6 @@
 use super::*;
+#[path = "effect_list/energy_payment_threshold.rs"]
+mod energy_payment_threshold;
 #[path = "effect_list/reciprocal_power_damage.rs"]
 mod reciprocal_power_damage;
 pub(in crate::compiled_text) use reciprocal_power_damage::describe_reciprocal_group_power_damage;
@@ -39,6 +41,8 @@ mod basic_land_type_choices;
 mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
 mod helpers_01;
+#[path = "effect_list/damage_recipient_choice.rs"]
+mod damage_recipient_choice;
 #[path = "effect_list/binary_card_piles.rs"]
 mod binary_card_piles;
 #[path = "effect_list/helpers_02.rs"]
@@ -15053,6 +15057,9 @@ fn describe_optional_looked_choice_then_exile(
 }
 
 pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(text) = energy_payment_threshold::describe_energy_payment_threshold(effects) {
+        return text;
+    }
     let text = describe_effect_list_inner(effects);
     let text = refer_back_to_declared_chosen_object(effects, text);
     let text = refer_back_to_declared_player(effects, text);

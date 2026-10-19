@@ -495,7 +495,9 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     { return ProtectionTargetKind::ExiledCardTypes; }
     if matches!(tail, ["the", "chosen", "card", "type"] | ["the", "chosen", "type"])
     { return ProtectionTargetKind::ChosenCardType; }
-    if tail == ["each", "of", "its", "colors"] { return ProtectionTargetKind::OwnColors; }
+    if matches!(tail, ["each", "of", "its", "colors"] | ["its", "colors"]) {
+        return ProtectionTargetKind::OwnColors;
+    }
     if word_phrase_prefix(tail, &["each", "color", "among"]) {
         return ProtectionTargetKind::EachColorAmong { filter_word_first: target_word + 3 };
     }

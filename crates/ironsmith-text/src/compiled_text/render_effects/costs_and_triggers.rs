@@ -6949,6 +6949,28 @@ pub(crate) fn describe_tagged_target_then_cant_restriction(
 pub(super) fn describe_except_by_characteristic_blockers(
     blockers: &ObjectFilter,
 ) -> Option<String> {
+    // A conjunction of absent abilities prohibits only creatures lacking
+    // every listed keyword; its complement allows any of those keywords.
+    if !blockers.excluded_static_abilities.is_empty() {
+        let mut expected = ObjectFilter::creature();
+        expected.excluded_static_abilities = blockers.excluded_static_abilities.clone();
+        expected.set_union_connective(blockers.union_connective());
+        if *blockers != expected {
+            return None;
+        }
+        let mut names = Vec::new();
+        for id in &blockers.excluded_static_abilities {
+            use crate::static_abilities::StaticAbilityId;
+            names.push(match id {
+                StaticAbilityId::Flying => "flying",
+                StaticAbilityId::Reach => "reach",
+                StaticAbilityId::Haste => "haste",
+                StaticAbilityId::Defender => "defender",
+                _ => return None,
+            });
+        }
+        return Some(format!("creatures with {}", names.join(" or ")));
+    }
     let allowed_types = blockers
         .excluded_card_types
         .iter()
@@ -7065,6 +7087,32 @@ mod except_by_blocker_tests {
             describe_except_by_characteristic_blockers(&blockers).as_deref(),
             Some("artifact creatures and/or red creatures")
         );
+    }
+
+    #[test]
+    fn keyword_blocker_exceptions_render_from_restriction_filters() {
+        use crate::static_abilities::StaticAbilityId;
+        for (ids, allowed) in [
+            (vec![StaticAbilityId::Haste], "haste"),
+            (vec![StaticAbilityId::Defender], "defender"),
+            (vec![StaticAbilityId::Flying, StaticAbilityId::Reach], "flying or reach"),
+        ] {
+            let mut blockers = ObjectFilter::creature();
+            blockers.excluded_static_abilities = ids;
+            assert_eq!(describe_except_by_characteristic_blockers(&blockers),
+                Some(format!("creatures with {allowed}")));
+            let effect = Effect::cant_until(
+                crate::effect::Restriction::BlockSpecificAttacker {
+                    blockers: blockers.clone(), attacker: ObjectFilter::source(),
+                }, Until::EndOfTurn,
+            );
+            assert_eq!(describe_effect(&effect),
+                format!("This creature can't be blocked this turn except by creatures with {allowed}"));
+            // An extra constraint is not the complement of a simple keyword
+            // exception and must retain the generic restriction description.
+            blockers.controller = Some(PlayerFilter::Opponent);
+            assert!(describe_except_by_characteristic_blockers(&blockers).is_none());
+        }
     }
 
     #[test]

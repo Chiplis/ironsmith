@@ -1085,3 +1085,55 @@ fn tarmogoyf_nest_grants_to_the_lands_controller_and_token_cda_counts_card_types
         );
     }
 }
+
+#[path = "p02_line_families/compile.rs"]
+mod printed_gingerbrute_compile;
+
+#[test]
+fn printed_gingerbrute_restriction_checks_current_haste_and_expires_at_cleanup() {
+    use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+    use ironsmith::static_abilities::StaticAbility;
+
+    let text = "Mana cost: {1}\nType: Artifact Creature — Food Golem\nPower/Toughness: 1/1\nHaste\n{1}: This creature can't be blocked this turn except by creatures with haste.\n{2}, {T}, Sacrifice this creature: You gain 3 life.";
+    for definition in printed_gingerbrute_compile::compile_both("Gingerbrute", text) {
+        let mut game = game();
+        let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
+        let other_attacker = card(&mut game, A, "Other attacker",
+            "Type: Creature\nPower/Toughness: 2/2", Zone::Battlefield);
+        let ordinary = card(&mut game, B, "Slow blocker",
+            "Type: Creature\nPower/Toughness: 2/2", Zone::Battlefield);
+        assert!(game.can_block_attacker(ordinary, source));
+        fund(&mut game, A, 1);
+        activate(&mut game, source, 0, &mut Choices::default());
+        assert!(!game.can_block_attacker(ordinary, source));
+        assert!(game.can_block_attacker(ordinary, other_attacker));
+
+        // Blocker characteristics stay live after resolution, including
+        // creatures that were not present when the ability resolved.
+        let late_slow_definition = compile_to_runtime_definition("Late slow blocker",
+            "Type: Creature\nPower/Toughness: 2/2", false).unwrap();
+        let late_hasty_definition = compile_to_runtime_definition("Late fast blocker",
+            "Type: Creature\nPower/Toughness: 2/2\nHaste", false).unwrap();
+        // Use the entry pipeline: direct fixture insertion does not refresh
+        // the derived rule-restriction tracker.
+        let late_slow = enter(&mut game, &late_slow_definition, B, &mut Choices::default());
+        let late_hasty = enter(&mut game, &late_hasty_definition, B, &mut Choices::default());
+        assert!(!game.can_block_attacker(late_slow, source));
+        assert!(game.can_block_attacker(late_hasty, source));
+
+        let grant_source = game.new_object_id();
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            grant_source, B, EffectTarget::Specific(ordinary),
+            Modification::AddAbility(StaticAbility::haste()),
+        ));
+        game.refresh_continuous_state().unwrap();
+        assert!(game.can_block_attacker(ordinary, source));
+        game.effect_store.continuous_effects.remove_effects_from_source(grant_source);
+        game.refresh_continuous_state().unwrap();
+        assert!(!game.can_block_attacker(ordinary, source));
+
+        cleanup(&mut game);
+        assert!(game.can_block_attacker(ordinary, source));
+        assert!(game.can_block_attacker(late_slow, source));
+    }
+}

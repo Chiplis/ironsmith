@@ -401,3 +401,132 @@ fn p22_sen_triplets_locks_out_reveals_and_opens_the_chosen_opponents_hand_this_t
     game.turn.turn_number += 1;
     assert!(!game.hand_revealed_by_effect(bob), "the reveal lasts only this turn");
 }
+
+#[test]
+fn sentinel_imperative_base_toughness_snapshots_its_combat_partners_power_forever() {
+    use ironsmith::combat_state::{AttackTarget, AttackerInfo, CombatState};
+    use ironsmith::effects::{EffectContext, ResolvedTarget, TargetOnlyEffect, execute_effect};
+    use ironsmith::{CounterType, Target};
+
+    let (result, loss) = ironsmith_compiler::parse_loss::capture(|| {
+        compile_to_runtime_definition("Sentinel",
+            "Mana cost: {4}\nType: Artifact Creature — Shapeshifter\nPower/Toughness: 1/1\n{0}: Change this creature's base toughness to 1 plus the power of target creature blocking or blocked by this creature.", false)
+    });
+    let definition = result.expect("imperative base toughness assignment compiles");
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let activated = definition.abilities.iter().find_map(|ability| match &ability.kind {
+        ironsmith::ability::AbilityKind::Activated(activated) => Some(activated),
+        _ => None,
+    }).expect("zero-cost activated ability");
+    let debug = format!("{:?}", activated.effects);
+    for required in ["SetToughness", "PowerOf", "Fixed(1)", "Forever", "in_combat_with_source: true"] {
+        assert!(debug.contains(required), "missing {required}: {debug}");
+    }
+    assert!(!debug.contains("SetPower") && !debug.contains("SetPowerToughness"), "{debug}");
+    let mut target_spec = None;
+    for effect in activated.effects.all_effects() {
+        p22_visit(effect, &mut |effect| {
+            if let Some(target) = effect.downcast_ref::<TargetOnlyEffect>() {
+                target_spec = Some(target.target.clone());
+            }
+        });
+    }
+    let target_spec = target_spec.expect("the value's creature is an explicit target");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for source_attacks in [true, false] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+        let partner = p22_creature(&mut game, "Combat partner", bob, 5, 8);
+        let bystander = p22_creature(&mut game, "Bystander", bob, 9, 9);
+        let (attacker, blocker, defender) = if source_attacks {
+            (source, partner, bob)
+        } else { (partner, source, alice) };
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo { creature: attacker, target: AttackTarget::Player(defender) });
+        combat.blockers.insert(attacker, vec![blocker]);
+        combat.block_declaration_complete = true;
+        game.combat = Some(combat);
+        game.refresh_continuous_state().unwrap();
+        let legal = ironsmith::targeting::compute_legal_targets(&game, &target_spec, alice, Some(source));
+        assert!(legal.contains(&Target::Object(partner)), "combat partner must be legal in either direction: {legal:?}");
+        assert!(!legal.contains(&Target::Object(bystander)) && !legal.contains(&Target::Object(source)), "{legal:?}");
+        let mut ctx = EffectContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(partner)]);
+        for effect in activated.effects.all_effects() {
+            execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        drop(ctx);
+        assert_eq!(game.calculated_power(source), Some(1));
+        assert_eq!(game.calculated_toughness(source), Some(6));
+        assert_eq!(game.calculated_toughness(partner), Some(8));
+        game.add_counters(partner, CounterType::PlusOnePlusOne, 3);
+        game.combat = None;
+        game.effect_store.continuous_effects.cleanup_end_of_turn();
+        game.refresh_continuous_state().unwrap();
+        assert_eq!(game.calculated_power(partner), Some(8));
+        assert_eq!(game.calculated_power(source), Some(1));
+        assert_eq!(game.calculated_toughness(source), Some(6), "the resolved value persists after combat and turn cleanup, without following later power changes");
+    }
+}
+
+#[test]
+fn p22_tin_street_dodger_defender_exception_is_source_scoped_and_expires() {
+    use ironsmith::ability::AbilityKind;
+    use ironsmith::effects::{EffectContext, execute_effect};
+    use ironsmith_compiled_artifact::CompiledCardArtifact;
+
+    let text = "Mana cost: {R}\nType: Creature — Goblin Rogue\nPower/Toughness: 1/1\nHaste\n{R}: This creature can't be blocked this turn except by creatures with defender.";
+    let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| {
+        compile_to_runtime_definition("Tin Street Dodger", text, false)
+    });
+    assert!(!loss.is_lossy(), "{}", loss.reasons_text());
+    let direct = direct.unwrap();
+    let (artifact, _) = crate::compile_to_artifact("Tin Street Dodger", text, false).unwrap();
+    let restored = CompiledCardArtifact::from_json(&artifact.to_json().unwrap()).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(artifact, restored);
+    let decoded = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(&restored).unwrap();
+
+    for definition in [direct, decoded] {
+        assert!(!ironsmith::cards::generated_definition_has_unimplemented_content(&definition));
+        let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n").to_ascii_lowercase();
+        assert!(rendered.contains("defender"), "{rendered}");
+        assert!(rendered.contains("this turn"), "{rendered}");
+        assert!(rendered.contains("can't block") || rendered.contains("can't be blocked"), "{rendered}");
+        assert!(!rendered.contains("unimplemented"), "{rendered}");
+
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let source = game.create_object_from_definition(&definition, a, Zone::Battlefield);
+        let other = p22_creature(&mut game, "Other attacker", a, 1, 1);
+        assert!(game.object_has_static_ability_id(source, ironsmith::static_abilities::StaticAbilityId::Haste));
+        let ordinary = p22_creature(&mut game, "Ordinary blocker", b, 2, 2);
+        let wall = compile_to_runtime_definition("Defender blocker", "Type: Creature — Wall\nPower/Toughness: 0/4\nDefender", false).unwrap();
+        let defender = game.create_object_from_definition(&wall, b, Zone::Battlefield);
+        for blocker in [ordinary, defender] {
+            assert!(game.can_block_attacker(blocker, source));
+        }
+        // Isolate resolution from payment/priority, covered by other activation tests.
+        let activation = definition.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(ability) => Some(ability),
+            _ => None,
+        }).unwrap();
+        let mut context = EffectContext::new_default(source, a);
+        for effect in activation.effects.iter() {
+            execute_effect(&mut game, effect, &mut context).unwrap();
+        }
+        game.refresh_continuous_state().unwrap();
+        assert!(!game.can_block_attacker(ordinary, source));
+        assert!(game.can_block_attacker(defender, source));
+        for blocker in [ordinary, defender] {
+            assert!(game.can_block_attacker(blocker, other));
+        }
+        ironsmith::turn::execute_cleanup_step(&mut game);
+        game.refresh_continuous_state().unwrap();
+        for blocker in [ordinary, defender] {
+            assert!(game.can_block_attacker(blocker, source));
+        }
+    }
+}

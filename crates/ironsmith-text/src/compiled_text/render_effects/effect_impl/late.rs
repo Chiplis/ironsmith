@@ -1373,6 +1373,21 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if cant.start == crate::effect::RestrictionStart::Immediate
+            && cant.duration == Until::EndOfTurn
+            && let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = &cant.restriction
+            && (ObjectFilter { source_surface: None, ..attacker.clone() }) == ObjectFilter::source()
+            && let Some(allowed) = describe_except_by_characteristic_blockers(blockers)
+                .or_else(|| describe_except_by_subtype_blockers(blockers))
+        {
+            let subject = attacker.source_surface.as_ref()
+                .map(|surface| surface.display_text().to_string())
+                .unwrap_or_else(|| "This creature".to_string());
+            if cant.duration_surface == crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn {
+                return format!("Until end of turn, {} can't be blocked except by {allowed}", lowercase_first(&subject));
+            }
+            return format!("{} can't be blocked this turn except by {allowed}", capitalize_first(&subject));
+        }
         // "That creature doesn't untap during its controller's untap step for
         // as long as this Equipment remains on the battlefield" (Neko-Te):
         // the untap restriction only applies in its controller's untap step.

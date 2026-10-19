@@ -92,6 +92,21 @@ fn talent_of_the_telepath_spell_mastery_restates_the_collection_cast_with_two() 
     let debug = format!("{:?}", definition.spell_effect);
     assert_eq!(debug.matches("ChooseObjectsEffect").count(), 2, "{debug}");
     assert_eq!(debug.matches("LookAtTopCardsEffect").count(), 1, "one reveal shared by both branches: {debug}");
+    let mut choices = Vec::new();
+    let mut casts = Vec::new();
+    for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+        p18_find_effects::<ironsmith::effects::ChooseObjectsEffect>(effect, &mut choices);
+        p18_find_effects::<ironsmith::effects::CastTaggedEffect>(effect, &mut casts);
+    }
+    let mut maxima = choices.iter().map(|choice| choice.count.max).collect::<Vec<_>>();
+    maxima.sort();
+    assert_eq!(maxima, vec![Some(1), Some(2)], "{debug}");
+    assert!(choices.iter().all(|choice| choice.count.min == 0), "{debug}");
+    assert_eq!(casts.len(), 2, "both branches cast their selected collection: {debug}");
+    assert!(casts.iter().all(|cast| cast.without_paying_mana_cost), "{debug}");
+    assert!(debug.contains("Graveyard"), "uncast revealed cards go to the graveyard: {debug}");
+    let text = ironsmith_text::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(text.contains("instead"), "conditional count replacement must remain explicit: {text}");
 }
 
 #[test]

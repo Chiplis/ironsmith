@@ -67,7 +67,8 @@ fn custom(name: &str, types: Vec<CardType>, text: &str) -> CardDefinition {
     // Grammar and compiler-to-runtime adapters hold large typed enum values
     // in debug builds. Keep their stack separate from the gameplay scenario.
     std::thread::Builder::new()
-        .stack_size(16 * 1024 * 1024)
+        // Match .cargo/config.toml; an explicit smaller stack overrides it.
+        .stack_size(64 * 1024 * 1024)
         .spawn(move || {
             ironsmith_registry::cards::builders::CardDefinitionBuilder::new(CardId::new(), name)
                 .card_types(types)

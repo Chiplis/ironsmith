@@ -124,3 +124,60 @@ fn changing_one_base_axis_without_duration_is_permanent() {
     assert!(matches!(shape.power.unhinted(), Value::Add(_, _)), "{:?}", shape.power);
     assert_eq!(crate::effect_sentences::parse_effect_sentence_lexed(&tokens).unwrap().len(), 1);
 }
+
+
+#[test]
+fn changing_one_base_axis_preserves_aggregate_scope_and_duration() {
+    for (axis, duration_text, duration) in [
+        ("power", " until end of turn", Until::EndOfTurn),
+        ("toughness", " until your next turn", Until::YourNextTurn),
+        ("power", "", Until::Forever),
+    ] {
+        let tokens = lex_line(&format!(
+            "Change this creature's base {axis} to 1 plus the greatest power among other creatures you control{duration_text}."
+        ), 0).unwrap();
+        let shape = if axis == "power" {
+            parse_base_power_clause_shape(&tokens)
+        } else {
+            parse_base_toughness_clause_shape(&tokens)
+        }.unwrap().expect("aggregate base assignment");
+        assert_eq!(shape.duration, duration);
+        let Value::Add(one, greatest) = shape.power.unhinted() else {
+            panic!("expected sum: {:?}", shape.power);
+        };
+        assert_eq!(one.unhinted(), &Value::Fixed(1));
+        let Value::GreatestPower(filter) = greatest.unhinted() else {
+            panic!("expected greatest power: {greatest:?}");
+        };
+        assert!(filter.other);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
+        let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens).unwrap();
+        let debug = format!("{effects:?}");
+        assert_eq!(effects.len(), 1, "{debug}");
+        assert!(debug.contains(if axis == "power" { "SetBasePower" } else { "SetBaseToughness" }), "{debug}");
+        assert!(!debug.contains("SetBasePowerToughness"), "{debug}");
+    }
+}
+
+#[test]
+fn changing_one_base_axis_rejects_incomplete_quantity_or_duration() {
+    for text in [
+        "Change this creature's base power to 1 plus until end of turn.",
+        "Change this creature's base power to 1 mystery until end of turn.",
+        "Change this creature's base power to 1 plus the greatest power among other creatures you control until mystery.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(parse_base_power_clause_shape(&tokens).unwrap().is_none(), "{text}");
+    }
+}
+
+#[test]
+fn changing_one_base_axis_declares_a_separate_characteristic_target() {
+    let tokens = lex_line("Change this creature's base toughness to 1 plus the power of target creature blocking or blocked by this creature.", 0).unwrap();
+    let effects = crate::effect_sentences::parse_effect_sentence_lexed(&tokens).unwrap();
+    let debug = format!("{effects:?}");
+    assert!(debug.contains("SetBaseToughness"), "{debug}");
+    assert!(debug.contains("Target"), "{debug}");
+    assert!(debug.contains("Forever"), "{debug}");
+    assert!(!debug.contains("SetBasePowerToughness"), "{debug}");
+}

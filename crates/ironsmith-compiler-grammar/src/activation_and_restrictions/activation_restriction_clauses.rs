@@ -1714,6 +1714,21 @@ pub fn parse_negated_object_restriction_clause(
             if remainder_words.len() > payload_words =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
+            // Reuse the typed keyword restriction reader before the general
+            // object-filter path, whose conjunction cannot invert an OR list.
+            let mut blocking_clause = crate::lexer::synthetic_word_tokens(&[
+                "can't", "be", "blocked", "except", "by",
+            ]);
+            blocking_clause.extend_from_slice(&blocker_tokens);
+            if let Some(crate::grammar::activation_costs::cant_shapes::BlockingCantFact::DisallowedBlockers {
+                filter: blockers, ..
+            }) = crate::grammar::activation_costs::cant_shapes::parse_blocking_cant_fact_tokens(&blocking_clause)
+            {
+                return Ok(Some(ParsedCantRestriction {
+                    restriction: Restriction::block_specific_attacker(blockers, filter),
+                    target,
+                }));
+            }
             let allowed_blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
                 .or(parse_subject_object_filter(&blocker_tokens)?)
                 .or_else(|| {
@@ -2104,6 +2119,21 @@ mod blocker_union_tests {
             panic!("expected a blocker restriction");
         };
         blockers
+    }
+
+    #[test]
+    fn except_by_keyword_disjunction_excludes_neither_allowed_keyword() {
+        let tokens = lex_line(
+            "Target Frog you control can't be blocked except by creatures with flying or reach.", 0,
+        ).unwrap();
+        let parsed = parse_negated_object_restriction_clause(&tokens).unwrap().unwrap();
+        assert!(parsed.target.is_some(), "the Frog remains a target");
+        let crate::effect::Restriction::BlockSpecificAttacker { blockers, .. } = parsed.restriction else {
+            panic!("expected a blocker restriction");
+        };
+        assert!(blockers.excluded_static_abilities.contains(&crate::static_abilities::StaticAbilityId::Flying));
+        assert!(blockers.excluded_static_abilities.contains(&crate::static_abilities::StaticAbilityId::Reach));
+        assert!(blockers.static_abilities.is_empty());
     }
 
     #[test]

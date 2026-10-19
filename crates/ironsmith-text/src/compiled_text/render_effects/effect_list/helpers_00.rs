@@ -3677,12 +3677,17 @@ pub(crate) fn describe_target_only_then_exchange_control(effects: &[&Effect]) ->
         return None;
     };
     let expected_controller = PlayerFilter::excluding(PlayerFilter::Any, chooser.clone());
-    let [shares_constraint] = target_filter.tagged_constraints.as_slice() else {
-        return None;
-    };
     if target_filter.controller.as_ref() != Some(&expected_controller)
-        || shares_constraint.relation != crate::filter::TaggedOpbjectRelation::SharesCardType
-        || shares_constraint.tag != tag_triggering.tag
+        || !target_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == tag_triggering.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+        })
+        || target_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag != tag_triggering.tag
+                || !matches!(constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::SharesCardType
+                        | crate::filter::TaggedOpbjectRelation::IsNotTaggedObject)
+        })
         || !is_permanent_filter_in_zone(target_filter, Zone::Battlefield)
     {
         return None;
@@ -3694,6 +3699,16 @@ pub(crate) fn describe_target_only_then_exchange_control(effects: &[&Effect]) ->
     if plain_target_filter != ObjectFilter::permanent() {
         return None;
     }
+    // A permanent another player controls already cannot be the triggering
+    // permanent. Lowering can retain that redundant identity exclusion;
+    // omit it from the surface so it doesn't add a second "another".
+    let mut surface_filter = target_filter.clone();
+    surface_filter.tagged_constraints.retain(|constraint| {
+        constraint.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    });
+    let target_choice = describe_exchange_target_choice(&ChooseSpec::target(
+        ChooseSpec::Object(surface_filter),
+    ));
 
     let exchange = unwrap_render_wrappers(exchange_effect)
         .downcast_ref::<crate::effects::ExchangeControlEffect>()?;
@@ -3709,7 +3724,7 @@ pub(crate) fn describe_target_only_then_exchange_control(effects: &[&Effect]) ->
         return Some(format!(
             "{} chooses {}. Exchange control of those permanents",
             capitalize_first(&describe_player_filter(chooser)),
-            describe_exchange_target_choice(&target_only.target)
+            target_choice
         ));
     }
     if exchange.permanent1 != exchange.permanent2 {
@@ -3746,7 +3761,7 @@ pub(crate) fn describe_target_only_then_exchange_control(effects: &[&Effect]) ->
     Some(format!(
         "{} chooses {}. Exchange control of those permanents",
         capitalize_first(&describe_player_filter(chooser)),
-        describe_exchange_target_choice(&target_only.target)
+        target_choice
     ))
 }
 

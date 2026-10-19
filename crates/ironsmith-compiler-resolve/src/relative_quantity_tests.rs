@@ -191,3 +191,52 @@ fn existential_group_comparisons_do_not_invent_one_compared_opponent() {
         assert!(predicate_comparison_operands(&predicate, &ReferenceEnv::default()).is_none());
     }
 }
+
+#[test]
+fn tagged_power_comparison_binds_difference_to_the_tested_creature() {
+    let compared = crate::tag::declared_key("tapped_creature");
+    let predicate = PredicateAst::TaggedMatches(
+        compared.clone(),
+        ObjectFilter {
+            power: Some(Comparison::GreaterThanExpr(Box::new(Value::SourcePower))),
+            ..Default::default()
+        },
+    );
+    let mut env = ReferenceEnv::default();
+    // A later antecedent must not redirect the explicitly tagged comparison.
+    env.last_object_tag = RefState::Known(crate::tag::declared_key("other_creature").into());
+    let expected = (
+        Value::PowerOf(Box::new(ChooseSpec::Tagged(compared.into()))),
+        Value::SourcePower,
+    );
+    assert_eq!(predicate_comparison_operands(&predicate, &env), Some(expected.clone()));
+    env.last_value_comparison = RefState::Known(expected.clone());
+    assert_eq!(
+        crate::reference_helpers::resolve_value_it_tag(&Value::PendingComparisonDifference, &env)
+            .unwrap(),
+        Value::absolute_difference(expected.0, expected.1).with_surface_hints([
+            ValueSurfaceHint::Difference,
+            ValueSurfaceHint::ComparisonDifferenceReference,
+        ])
+    );
+}
+
+#[test]
+fn tagged_base_power_comparison_retains_the_base_power_reader() {
+    let compared = crate::tag::declared_key("compared_creature");
+    let predicate = PredicateAst::TaggedMatches(
+        compared.clone(),
+        ObjectFilter {
+            power: Some(Comparison::LessThanExpr(Box::new(Value::SourcePower))),
+            power_reference: ironsmith_core::PtReference::Base,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        predicate_comparison_operands(&predicate, &ReferenceEnv::default()),
+        Some((
+            Value::BasePowerOf(Box::new(ChooseSpec::Tagged(compared.into()))),
+            Value::SourcePower,
+        ))
+    );
+}

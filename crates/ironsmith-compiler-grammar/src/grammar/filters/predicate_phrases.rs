@@ -1806,6 +1806,8 @@ fn parse_triggering_object_source_stat_predicate(tokens: &[OwnedLexToken]) -> Op
                 "creatures",
             ],
             &["its", "power", "is", "greater", "than", "this", "creatures"],
+            &["that", "creature", "has", "greater", "power", "than", "this", "creature"],
+            &["it", "has", "greater", "power", "than", "this", "creature"],
         ],
     );
     if single_stat {

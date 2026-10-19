@@ -3881,7 +3881,9 @@ pub fn predicate_comparison_operands(
 ) -> Option<(Value, Value)> {
     let mut values = match predicate {
         PredicateAst::ValueComparison { left, right, .. } => (left.clone(), right.clone()),
-        PredicateAst::ItMatchedLastKnown(filter) | PredicateAst::ItMatches(filter)
+        PredicateAst::TaggedMatches(_, filter)
+        | PredicateAst::ItMatchedLastKnown(filter)
+        | PredicateAst::ItMatches(filter)
             if filter.power.is_some() && filter.toughness.is_none() && filter.mana_value.is_none() =>
         {
             let right = match filter.power.as_ref()? {
@@ -3893,7 +3895,13 @@ pub fn predicate_comparison_operands(
                 | Comparison::GreaterThanExpr(value) | Comparison::GreaterThanOrEqualExpr(value) => (**value).clone(),
                 Comparison::OneOf(_) => return None,
             };
-            let object = Box::new(ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind().into()));
+            // A resolved demonstrative keeps its own object identity even if
+            // a later instruction changes the current "it" antecedent.
+            let tag = match predicate {
+                PredicateAst::TaggedMatches(tag, _) => tag.into(),
+                _ => crate::tag::CompilerReferenceTag::It.bind().into(),
+            };
+            let object = Box::new(ChooseSpec::Tagged(tag));
             let left = match filter.power_reference {
                 ironsmith_core::PtReference::Effective => Value::PowerOf(object),
                 ironsmith_core::PtReference::Base => Value::BasePowerOf(object),
@@ -5540,6 +5548,14 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
     }
     if effect_references_pending_effect_metric(consumer) {
         return effect_can_supply_prior_effect_memory(effect);
+    }
+    // Shuffling a library changes order, not a numeric amount. An unqualified
+    // "that many" after a shuffle keeps the earlier quantity (for example a
+    // resource payment). Explicit shuffled-action metrics were handled above.
+    if matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary), ..
+    })) {
+        return false;
     }
     true
 }
@@ -7278,7 +7294,15 @@ fn advance_reference_env_for_effect(
                 id_gen,
             )?;
             let mut out_env = nested.final_env;
-            if matches!(
+            // A later ordinary object reference may name cards exiled inside
+            // this numeric branch. Export that exact collection when demanded;
+            // restoring the incoming trigger object would select the source.
+            let exports_exiled_collection = auto_tag_object_targets
+                && out_env.snapshot_tag_aliases.iter().any(|(alias, tag)| {
+                    alias == &crate::tag::CompilerReferenceTag::ExiledThisWay.key()
+                        && !env.snapshot_tag_aliases.iter().any(|entry| entry == &(alias.clone(), tag.clone()))
+                });
+            if !exports_exiled_collection && matches!(
                 predicate,
                 IfResultPredicate::Value(_) | IfResultPredicate::DieValue(_)
                     | IfResultPredicate::PriorEffectResult(_)

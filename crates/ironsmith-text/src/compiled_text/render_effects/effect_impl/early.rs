@@ -7804,6 +7804,9 @@ if filter.zone == Some(Zone::Hand)
         if let Some(compact) = describe_conditional_damage_instead(conditional) {
             return compact;
         }
+        if let Some(compact) = describe_conditional_choice_count_instead(conditional) {
+            return compact;
+        }
         if let Some(compact) = describe_conditional_token_entry_modification(conditional) {
             return compact;
         }

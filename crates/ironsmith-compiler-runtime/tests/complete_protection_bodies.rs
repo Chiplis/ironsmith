@@ -22,6 +22,9 @@ fn definitions(name: &str) -> [CardDefinition; 3] {
     let rows: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../fixtures/complete_protection_bodies.json.fixture")).unwrap();
     let row = rows.iter().find(|row| row["name"] == name).unwrap();
     let text = row["text"].as_str().unwrap();
+    definitions_from_text(name, text)
+}
+fn definitions_from_text(name: &str, text: &str) -> [CardDefinition; 3] {
     let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| compile_to_runtime_definition(name, text, false));
     let direct = direct.unwrap();
     assert!(!loss.is_lossy(), "{name}: {}", loss.reasons_text());
@@ -144,7 +147,9 @@ fn sources_use_current_layers_and_exact_departed_source_lki() {
 }
 #[test]
 fn fellowship_reads_each_recipients_colors_and_obeys_grant_and_ability_lifetime() {
-    for definition in definitions("Earnest Fellowship") {
+    let current = definitions_from_text("Own-color protection grant",
+        "Type: Enchantment\nEach creature has protection from its colors.");
+    for definition in definitions("Earnest Fellowship").into_iter().chain(current) {
         let mut game = game();
         let grant = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let protected = creature(&mut game, B, ColorSet::BLUE);

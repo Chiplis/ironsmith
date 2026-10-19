@@ -136,6 +136,12 @@ fn face_down_arrival_retains_the_original_name_for_its_own_granted_trigger() {
     assert!(debug.contains("retained_reference_tags: [TagKey(\"__noted_card_name__\")]"), "{debug}");
     assert!(debug.contains("copy_named_definition: true"), "the trigger copies the original printed card: {debug}");
     assert!(debug.contains("enters_face_down: true"), "{debug}");
+    assert!(debug.contains("SetPowerToughness") && debug.contains("SetCardTypes"), "face-down creatures receive the structured animation: {debug}");
+    let definition = compile_to_runtime_definition("Magar of the Magic Strings", case("Magar of the Magic Strings"), false).unwrap();
+    let text = ironsmith_text::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(text.contains("Note the name of target instant or sorcery card in your graveyard"), "{text}");
+    assert!(!text.contains("tagged object") && !text.contains("__noted_card_name__"), "execution references must remain internal: {text}");
+    assert!(text.contains("3/3") && text.contains("exile it instead"), "animation and the granted leave replacement remain visible: {text}");
 }
 
 #[test]

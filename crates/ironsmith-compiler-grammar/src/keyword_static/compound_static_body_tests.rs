@@ -196,6 +196,7 @@ fn complete_protection_lists_and_live_color_scopes_share_keyword_owners() {
         ("Protection from blue, from black, and from red", 3),
         ("Protection from Vampires, from Werewolves, and from Zombies", 3),
         ("Protection from each of its colors", 1),
+        ("Protection from its colors", 1),
         ("Protection from each color among permanents you control", 1),
     ] {
         let tokens = crate::lexer::lex_line(text, 0).unwrap();
@@ -208,6 +209,7 @@ fn complete_protection_lists_and_live_color_scopes_share_keyword_owners() {
         KeywordAction::ProtectionFromFilter(ObjectFilter::default().with_supertype(crate::types::Supertype::Snow))]));
     let own = parse("Each creature has protection from each of its colors.");
     assert!(!own.is_empty());
+    assert_eq!(own, parse("Each creature has protection from its colors."));
     let population = parse("This creature has protection from each color among permanents you control.");
     assert!(!population.is_empty());
     let pledge = parse("Enchanted creature has protection from each color among permanents you control. This effect doesn't remove this Aura.");

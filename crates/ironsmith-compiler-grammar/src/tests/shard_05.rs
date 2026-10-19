@@ -3075,7 +3075,9 @@ pub(super) fn rewrite_lowered_former_section9_cases_parse_without_fallback_text(
 -> Result<(), CardTextError> {
     std::thread::Builder::new()
         .name("former_section9_regression".to_string())
-        .stack_size(32 * 1024 * 1024)
+        // Explicit thread sizes override RUST_MIN_STACK. Match the workspace's
+        // debug-test budget for the large typed parser values.
+        .stack_size(64 * 1024 * 1024)
         .spawn(rewrite_lowered_former_section9_cases_parse_without_fallback_text_inner)
         .expect("former section-9 regression thread should spawn")
         .join()
