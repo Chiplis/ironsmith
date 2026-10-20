@@ -372,6 +372,7 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
         | PlayerFilter::Opponent
         | PlayerFilter::Teammate
         | PlayerFilter::PlayerToYourLeft
+        | PlayerFilter::OpponentToYourLeft
         | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active
         | PlayerFilter::Defending
@@ -915,7 +916,39 @@ pub fn resolve_it_tag(
     let mut resolved = resolve_it_tag_inner(filter, refs)?;
     bind_other_to_related_it_object(filter, &mut resolved);
     exclude_this_resolution_source_exiles(&mut resolved);
+    rebind_pool_self_creature_type_relation_to_source(filter, &mut resolved);
     Ok(resolved)
+}
+
+/// "You may put a card that shares a creature type with it from among them
+/// into your hand" (Tajuru Paragon): when `it` resolved to the very pool the
+/// choice is drawn from, every candidate would trivially share a type with
+/// itself. A singular `it` beside a plural `them` pool names the source.
+fn rebind_pool_self_creature_type_relation_to_source(
+    original: &ObjectFilter,
+    resolved: &mut ObjectFilter,
+) {
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    if !original.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == it
+            && constraint.relation == TaggedOpbjectRelation::SharesSubtypeWithTagged
+    }) {
+        return;
+    }
+    let pool_tags = resolved
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+        .map(|constraint| constraint.tag.clone())
+        .collect::<Vec<_>>();
+    let before = resolved.tagged_constraints.len();
+    resolved.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == TaggedOpbjectRelation::SharesSubtypeWithTagged
+            && pool_tags.contains(&constraint.tag))
+    });
+    if resolved.tagged_constraints.len() != before {
+        resolved.shares_creature_type_with_source = true;
+    }
 }
 
 /// "target creature and each other creature that shares a color with it":
@@ -1652,6 +1685,11 @@ pub fn resolve_restriction_it_tag(
         Restriction::ActivateNonManaAbilities(player) => Restriction::activate_non_mana_abilities(
             resolve_contextual_player_filter(player, refs)?,
         ),
+        // "that player can't cast spells or activate abilities" shares one
+        // discourse player across both restrictions.
+        Restriction::ActivateAbilities(player) => Restriction::activate_abilities(
+            resolve_contextual_player_filter(player, refs)?,
+        ),
         Restriction::DamageAsThoughInfect(player) => Restriction::damage_as_though_infect(
             resolve_contextual_player_filter(player, refs)?,
         ),
@@ -2346,6 +2384,26 @@ fn resolve_choose_spec_it_tag_preserving_selection(
     }
 }
 
+/// "return target artifact card ... if its mana value is less than or equal
+/// to their total power" (Vulpine Harvester): a plural "their" sum never
+/// names the single object the same instruction just targeted. With only
+/// that singular target as the ordinary antecedent, the plural set is the
+/// trigger's own object group.
+fn plural_sum_trigger_group(filter: &ObjectFilter, refs: &ReferenceEnv) -> Option<ObjectFilter> {
+    if *filter != ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+        || refs.last_it_choice_is_set
+    {
+        return None;
+    }
+    let last = refs.known_last_object_tag()?;
+    if !last.as_str().starts_with("targeted_") {
+        return None;
+    }
+    Some(ObjectFilter::tagged(
+        crate::tag::CompilerReferenceTag::Triggering.bind(),
+    ))
+}
+
 pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value, CardTextError> {
     match value {
         Value::EventValue(EventValueSpec::DieResultsAtLeast(_) | EventValueSpec::DieBatchTotal) => {
@@ -2501,9 +2559,13 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::GreatestSharedCreatureTypeCount(filter) => Ok(
             Value::GreatestSharedCreatureTypeCount(resolve_it_tag(filter, refs)?),
         ),
-        Value::TotalPower(filter) => Ok(Value::TotalPower(resolve_it_tag(filter, refs)?)),
+        Value::TotalPower(filter) => Ok(Value::TotalPower(
+            plural_sum_trigger_group(filter, refs).unwrap_or(resolve_it_tag(filter, refs)?),
+        )),
         Value::StickerCharacteristicTotal { filter, toughness } => Ok(Value::StickerCharacteristicTotal { filter: resolve_it_tag(filter, refs)?, toughness: *toughness }),
-        Value::TotalToughness(filter) => Ok(Value::TotalToughness(resolve_it_tag(filter, refs)?)),
+        Value::TotalToughness(filter) => Ok(Value::TotalToughness(
+            plural_sum_trigger_group(filter, refs).unwrap_or(resolve_it_tag(filter, refs)?),
+        )),
         Value::TotalManaValue(filter) => Ok(Value::TotalManaValue(resolve_it_tag(filter, refs)?)),
         Value::GreatestPower(filter) => Ok(Value::GreatestPower(resolve_it_tag(filter, refs)?)),
         Value::GreatestToughness(filter) => {
@@ -2931,22 +2993,82 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
     }
 }
 
+/// Resolve a payment's pronoun against the unique object target of the
+/// instruction it qualifies. Only the authored standalone "it" hint is
+/// rebound; explicit source references such as "this spell" keep their source.
+fn bind_payment_it_to_target(value: &Value, target: Option<&ChooseSpec>) -> Value {
+    fn bind_spec(spec: &ChooseSpec, target: Option<&ChooseSpec>) -> ChooseSpec {
+        let Some(target) = target else { return spec.clone(); };
+        let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec else {
+            return spec.clone();
+        };
+        if inner.as_ref() != &ChooseSpec::Source
+            || hints.len() != 1
+            || !matches!(&hints[0], ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::ThisPermanentType(noun)
+            ) if noun.eq_ignore_ascii_case("it"))
+        {
+            return spec.clone();
+        }
+        ChooseSpec::SurfaceHinted { spec: Box::new(target.clone()), hints: hints.clone() }
+    }
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_payment_it_to_target(value, target)), hints: hints.clone(),
+        },
+        Value::PowerOf(spec) => Value::PowerOf(Box::new(bind_spec(spec, target))),
+        Value::BasePowerOf(spec) => Value::BasePowerOf(Box::new(bind_spec(spec, target))),
+        Value::ToughnessOf(spec) => Value::ToughnessOf(Box::new(bind_spec(spec, target))),
+        Value::ManaValueOf(spec) => Value::ManaValueOf(Box::new(bind_spec(spec, target))),
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_payment_it_to_target(left, target)),
+            Box::new(bind_payment_it_to_target(right, target)),
+        ),
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_payment_it_to_target(left, target)),
+            Box::new(bind_payment_it_to_target(right, target)),
+        ),
+        Value::Scaled(inner, scale) => Value::Scaled(
+            Box::new(bind_payment_it_to_target(inner, target)), *scale,
+        ),
+        Value::DividedRoundedDown(inner, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_payment_it_to_target(inner, target)), *divisor,
+        ),
+        Value::HalfRoundedDown(inner) => Value::HalfRoundedDown(
+            Box::new(bind_payment_it_to_target(inner, target)),
+        ),
+        Value::PowerOfTwo(inner) => Value::PowerOfTwo(
+            Box::new(bind_payment_it_to_target(inner, target)),
+        ),
+        _ => value.clone(),
+    }
+}
+
 pub fn resolve_total_cost_it_tags(
     cost: &crate::cost::TotalCost,
     refs: &ReferenceEnv,
 ) -> Result<crate::cost::TotalCost, CardTextError> {
+    resolve_total_cost_it_tags_with_enclosing_target(cost, refs, None)
+}
+
+pub fn resolve_total_cost_it_tags_with_enclosing_target(
+    cost: &crate::cost::TotalCost,
+    refs: &ReferenceEnv,
+    enclosing_target: Option<&ChooseSpec>,
+) -> Result<crate::cost::TotalCost, CardTextError> {
     fn resolve_cost_effect(
         effect: &crate::effect::Effect,
         refs: &ReferenceEnv,
+        enclosing_target: Option<&ChooseSpec>,
     ) -> Result<crate::effect::Effect, CardTextError> {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
             let mut tagged = tagged.clone();
-            tagged.effect = Box::new(resolve_cost_effect(&tagged.effect, refs)?);
+            tagged.effect = Box::new(resolve_cost_effect(&tagged.effect, refs, enclosing_target)?);
             return Ok(crate::effect::Effect::new(tagged));
         }
         if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
             let mut with_id = with_id.clone();
-            with_id.effect = Box::new(resolve_cost_effect(&with_id.effect, refs)?);
+            with_id.effect = Box::new(resolve_cost_effect(&with_id.effect, refs, enclosing_target)?);
             return Ok(crate::effect::Effect::new(with_id));
         }
         if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
@@ -2954,9 +3076,23 @@ pub fn resolve_total_cost_it_tags(
             sequence.effects = sequence
                 .effects
                 .iter()
-                .map(|effect| resolve_cost_effect(effect, refs))
+                .map(|effect| resolve_cost_effect(effect, refs, enclosing_target))
                 .collect::<Result<Vec<_>, _>>()?;
             return Ok(crate::effect::Effect::new(sequence));
+        }
+        if let Some(payment) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+            let mut payment = payment.clone();
+            payment.amount = resolve_value_it_tag(
+                &bind_payment_it_to_target(&payment.amount, enclosing_target), refs,
+            )?;
+            return Ok(crate::effect::Effect::new(payment));
+        }
+        if let Some(loss) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
+            let mut loss = loss.clone();
+            loss.amount = resolve_value_it_tag(
+                &bind_payment_it_to_target(&loss.amount, enclosing_target), refs,
+            )?;
+            return Ok(crate::effect::Effect::new(loss));
         }
         if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>() {
             let target = resolve_choose_spec_it_tag(&sacrifice.target, refs)?;
@@ -2975,6 +3111,7 @@ pub fn resolve_total_cost_it_tags(
     fn resolve_component(
         component: &crate::costs::Cost,
         refs: &ReferenceEnv,
+        enclosing_target: Option<&ChooseSpec>,
     ) -> Result<crate::costs::Cost, CardTextError> {
         let mut resolved = component.clone();
         match &mut resolved {
@@ -2998,13 +3135,15 @@ pub fn resolve_total_cost_it_tags(
             crate::costs::Cost::Energy(value)
             | crate::costs::Cost::Mill(value)
             | crate::costs::Cost::Life(value) => {
-                *value = resolve_value_it_tag(value, refs)?;
+                *value = resolve_value_it_tag(
+                    &bind_payment_it_to_target(value, enclosing_target), refs,
+                )?;
             }
             crate::costs::Cost::Sacrifice(filter) => {
                 *filter = resolve_it_tag(filter, refs)?;
             }
             crate::costs::Cost::Effect(effect) => {
-                *effect = resolve_cost_effect(effect, refs)?;
+                *effect = resolve_cost_effect(effect, refs, enclosing_target)?;
             }
             _ => {}
         }
@@ -3015,13 +3154,13 @@ pub fn resolve_total_cost_it_tags(
         ironsmith_core::TotalCostKind::All(components) => Ok(crate::cost::TotalCost::from_costs(
             components
                 .iter()
-                .map(|component| resolve_component(component, refs))
+                .map(|component| resolve_component(component, refs, enclosing_target))
                 .collect::<Result<Vec<_>, _>>()?,
         )),
         ironsmith_core::TotalCostKind::OneOf(branches) => Ok(crate::cost::TotalCost::one_of(
             branches
                 .iter()
-                .map(|branch| resolve_total_cost_it_tags(branch, refs))
+                .map(|branch| resolve_total_cost_it_tags_with_enclosing_target(branch, refs, enclosing_target))
                 .collect::<Result<Vec<_>, _>>()?,
         )),
     }
@@ -3783,5 +3922,26 @@ mod target_participant_scalar_tests {
             resolve_value_it_tag(&Value::CardsInHand(PlayerFilter::You), &env).unwrap(),
             Value::CardsInHand(PlayerFilter::You)
         );
+    }
+}
+
+#[cfg(test)]
+mod payment_it_target_tests {
+    use super::*;
+
+    #[test]
+    fn only_an_authored_it_pronoun_binds_to_the_enclosing_target() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+        let pronoun = |noun: &str| Value::ToughnessOf(Box::new(
+            ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::ThisPermanentType(noun.to_string()),
+            )),
+        ));
+        let rebound = bind_payment_it_to_target(&pronoun("it"), Some(&target));
+        let Value::ToughnessOf(spec) = rebound else { panic!("toughness reader"); };
+        assert_eq!(spec.unhinted(), &target);
+        assert_eq!(bind_payment_it_to_target(&pronoun("this spell"), Some(&target)),
+            pronoun("this spell"));
+        assert_eq!(bind_payment_it_to_target(&pronoun("it"), None), pronoun("it"));
     }
 }

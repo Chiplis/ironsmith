@@ -22,6 +22,8 @@ pub(super) struct GraveyardCastGroup {
     when_result: bool,
     /// The rider read "If an instant or sorcery spell cast this way ...".
     cast_this_way: bool,
+    /// The rider specifically says "cast from your graveyard this way".
+    cast_from_your_graveyard: bool,
     /// No exile rider follows the permission.
     permission_only: bool,
     /// "If that spell doesn't target <filter>, it costs {N} more to cast this
@@ -86,6 +88,25 @@ pub(super) fn open(
         permission = crate::util::trim_commas(&permission[you..]);
         for_each_opponent = true;
     }
+    // "Surveil 2. Then you may cast an instant or sorcery spell ... from your
+    // graveyard ... If that spell would be put into your graveyard, exile it
+    // instead." (Sword of Once and Future): a sentence-leading "Then" only
+    // sequences the permission after the previous sentence, which resolution
+    // order already does; without stripping it the rider binds to the prior
+    // sentence's object instead of the cast spell.
+    if !when_result
+        && permission.first().is_some_and(|token| token.is_word("then"))
+        && crate::word_primitives::parse_sequence_prefix(
+            &crate::lexer::token_word_refs(&permission[1..]),
+            &["you", "may", "cast"],
+        )
+        && is_replacement_follow_up(next)
+    {
+        let rest = crate::util::trim_commas(&permission[1..]);
+        if effect_grammar::parse_graveyard_cast_permission_shape(&rest).is_some() {
+            permission = rest;
+        }
+    }
     if !when_result
         && effect_grammar::parse_graveyard_cast_permission_shape(&permission).is_none()
         && let Some(then) = (1..permission.len()).find(|&index| {
@@ -138,9 +159,14 @@ pub(super) fn open(
         return Ok(None);
     }
     let surcharge = if has_replacement { surcharge } else { None };
+    let rider_words = crate::lexer::token_word_refs(&replacement_tokens);
     let cast_this_way = crate::word_primitives::sequence_occurs(
-        &crate::lexer::token_word_refs(&replacement_tokens),
+        &rider_words,
         &["cast", "this", "way"],
+    );
+    let cast_from_your_graveyard = crate::word_primitives::sequence_occurs(
+        &rider_words,
+        &["cast", "from", "your", "graveyard", "this", "way"],
     );
     // The permission must read as a targeted graveyard spell card for the
     // pair to be this procedure; the same check the program made.
@@ -152,6 +178,7 @@ pub(super) fn open(
         shape,
         when_result,
         cast_this_way,
+        cast_from_your_graveyard,
         replaced: permission_only,
         permission_only,
         surcharge_pending: surcharge.is_some(),
@@ -194,6 +221,7 @@ pub(super) fn finish(group: GraveyardCastGroup) -> Vec<EffectAst> {
         &group.permission,
         &group.shape,
         group.cast_this_way,
+        group.cast_from_your_graveyard,
         group.surcharge.clone(),
     )
     .ok()

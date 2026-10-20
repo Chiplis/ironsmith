@@ -540,6 +540,39 @@ pub(super) fn read_into_destination(
                 }
             }
 
+            // "put that many cards from the top of your library into your
+            // hand" (Scroll Rack): an ordered top-of-library selection whose
+            // size is the prior instruction's result, not a filter over
+            // cards already linked to this source.
+            if zone != Zone::Battlefield
+                && matches!(
+                    crate::lexer::token_word_refs(shape.target_tokens).as_slice(),
+                    ["that", "many", "cards", "from", "the", "top", "of", "your", "library"]
+                )
+            {
+                let filter = ObjectFilter::default()
+                    .in_zone(Zone::Library)
+                    .owned_by(PlayerFilter::You);
+                let target = TargetAst::WithCountValue(
+                    Box::new(TargetAst::Object(filter, None, None)),
+                    crate::effect::ChoiceCount::dynamic_x(),
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatManyCards),
+                );
+                let effect = EffectAst::subject_verb_move_to_zone(
+                    target,
+                    zone,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )
+                .with_source_top_only(true)
+                .with_destination_player_surface(destination_player_surface)
+                .with_destination_player_reference_surface(destination_player_reference_surface)
+                .with_move_to_zone_actor_surface(player);
+                return Ok(Some(effect));
+            }
             let (target_tokens, source_top_only) =
                 strip_source_top_only_prefix(shape.target_tokens);
             // "all commanders you own from the command zone and from your

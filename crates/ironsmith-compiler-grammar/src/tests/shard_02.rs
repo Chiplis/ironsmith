@@ -166,6 +166,27 @@ pub(super) fn rewrite_unblockable_line_keeps_full_attacking_alone_condition() {
 }
 
 #[test]
+pub(super) fn shared_type_unless_unblockable_is_a_defender_context_static_rule() {
+    let tokens = lex_line(
+        "This creature can't be blocked unless defending player controls three or more creatures that share a creature type.",
+        0,
+    )
+    .expect("shared-type unblockable line should lex");
+    let parsed =
+        super::super::keyword_static::parse_subject_cant_be_blocked_as_long_as_condition_line(
+            &tokens,
+        )
+        .expect("shared-type unblockable line should parse")
+        .expect("shared-type unblockable line should be recognized");
+    let debug = format!("{parsed:?}");
+    assert!(debug.contains("BeBlocked"), "{debug}");
+    assert!(debug.contains("GreatestSharedCreatureTypeCount"), "{debug}");
+    assert!(debug.contains("Defending"), "{debug}");
+    assert!(debug.contains("Not("), "{debug}");
+    assert!(debug.contains("Fixed(3)"), "{debug}");
+}
+
+#[test]
 pub(super) fn rewrite_anthem_static_descriptor_condition_uses_subject_descriptor_capture() {
     let vehicle_tokens = lex_line("enchanted permanent is a vehicle", 0)
         .expect("rewrite lexer should classify enchanted-permanent descriptor condition");

@@ -709,6 +709,42 @@ pub struct RuleRestriction {
 }
 
 impl RuleRestriction {
+    fn conditional_be_blocked_parts(&self) -> Option<(&ObjectFilter, &crate::ConditionExpr)> {
+        if !self.additional_restrictions.is_empty() {
+            return None;
+        }
+        let Restriction::BeBlocked(attackers) = &self.restriction else {
+            return None;
+        };
+        Some((attackers, self.condition.as_ref()?))
+    }
+
+    fn conditional_be_blocked_tracker(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<CantEffectTracker> {
+        let (attackers, condition) = self.conditional_be_blocked_parts()?;
+        let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
+        let mut tracker = CantEffectTracker::default();
+        for &attacker in &game.battlefield {
+            if let Some(object) = game.object(attacker)
+                && attackers.matches(object, &filter_ctx, game)
+            {
+                tracker.conditional_cant_be_blocked.push(
+                    crate::game_state::ConditionalBeBlockedRestriction {
+                        attacker,
+                        source,
+                        controller,
+                        condition: condition.clone(),
+                    },
+                );
+            }
+        }
+        Some(tracker)
+    }
+
     fn conditional_block_parts(&self) -> Option<(&ObjectFilter, &crate::ConditionExpr)> {
         if !self.additional_restrictions.is_empty() {
             return None;
@@ -956,7 +992,9 @@ impl StaticAbilityKind for RuleRestriction {
         };
         // Blocking conditions are evaluated with the actual opposing player
         // while building the pair restrictions, rather than in a global context.
-        if self.conditional_block_parts().is_some() {
+        if self.conditional_block_parts().is_some()
+            || self.conditional_be_blocked_parts().is_some()
+        {
             return true;
         }
         let controller = match game.object(source) {
@@ -979,6 +1017,10 @@ impl StaticAbilityKind for RuleRestriction {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        if let Some(tracker) = self.conditional_be_blocked_tracker(game, source, controller) {
+            game.effect_store.cant_effects.merge(tracker);
+            return;
+        }
         if let Some(tracker) = self.conditional_block_tracker(game, source, controller) {
             game.effect_store.cant_effects.merge(tracker);
             return;

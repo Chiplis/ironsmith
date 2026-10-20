@@ -1213,7 +1213,27 @@ pub(in super::super) fn parse_object_filter_inner(
             has_idx += 1;
             continue;
         }
-        if filter.with_counter.is_none()
+        // "that doesn't have a midway counter on it" (Myra the Magnificent):
+        // the negation word before has/have excludes the counter.
+        let counter_negated = (has_idx > 0
+            && matches!(
+                all_words[has_idx - 1],
+                "doesn't" | "doesnt" | "don't" | "dont"
+            ))
+            || (has_idx > 1
+                && all_words[has_idx - 1] == "not"
+                && matches!(all_words[has_idx - 2], "does" | "do"));
+        if counter_negated
+            && filter.without_counter.is_none()
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
+        {
+            filter.without_counter = Some(counter_constraint);
+            has_idx += 1 + consumed;
+            continue;
+        }
+        if !counter_negated
+            && filter.with_counter.is_none()
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&all_words[has_idx + 1..])
         {

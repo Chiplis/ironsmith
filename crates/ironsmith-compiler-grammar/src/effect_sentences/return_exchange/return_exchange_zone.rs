@@ -681,9 +681,12 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         return_controller,
                     )
                 }
+                // "Target player returns each commander they control from the
+                // battlefield to the command zone" (Leadership Vacuum): a
+                // return-all moves the whole set, not one chosen object.
                 returned_zone @ (crate::grammar::effects::ReturnZoneShape::Graveyard
                     | crate::grammar::effects::ReturnZoneShape::Command) => {
-                    EffectAst::subject_verb_move_to_zone(
+                    EffectAst::subject_verb_move_all_to_zone(
                         TargetAst::Object(filter, None, None),
                         if returned_zone == crate::grammar::effects::ReturnZoneShape::Command {
                             Zone::Command

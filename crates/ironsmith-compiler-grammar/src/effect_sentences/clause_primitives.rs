@@ -1630,6 +1630,35 @@ pub fn parse_must_block_if_able_clause(
                     },
                 );
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.bind())
+            } else if let ["that", _] =
+                crate::lexer::parser_token_word_refs(attacker_clause.tokens()).as_slice()
+                && blocker_is_target
+            {
+                // "target creature an opponent controls blocks that Wolf this
+                // combat if able" (Tolsimir): "that <noun>" names the object
+                // established before the blocker target, exactly like "it";
+                // resolving it after the blocker declaration would bind the
+                // blocker itself.
+                let named = target_ast_to_object_filter(parse_target_phrase(
+                    attacker_clause.tokens(),
+                )?)
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported attacker target in must-block clause (clause: '{}')",
+                        clause_text
+                    ))
+                })?;
+                target_declarations.insert(
+                    0,
+                    EffectAst::SnapshotLastObjectTag {
+                        into: crate::tag::CompilerReferenceTag::Triggering.bind(),
+                    },
+                );
+                let mut filter =
+                    ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.bind());
+                filter.card_types = named.card_types;
+                filter.subtypes = named.subtypes;
+                filter
             } else if super::super::grammar::activation_restrictions::parse_target_indicator_tokens(
                 attacker_clause.tokens(),
             )

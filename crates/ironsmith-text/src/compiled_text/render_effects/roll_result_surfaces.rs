@@ -1,5 +1,299 @@
 use super::*;
 
+/// A retained roll result metric counts qualifying dice, not repetitions of
+/// the token/counter instruction. Render each outcome as one quantified clause
+/// only when its action's count names this exact roll and its exact metric.
+pub(in crate::compiled_text) fn describe_roll_metric_count_actions_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.iter().any(|segment| {
+        !segment.self_replacements.is_empty() || segment.starts_new_source_line
+    }) {
+        return None;
+    }
+    let effects = program.flattened_default_effects();
+    let rolls = effects.iter().enumerate().filter_map(|(index, effect)| {
+        let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let roll = with_id.effect.downcast_ref::<crate::effects::RollDiceChooseResultEffect>()?;
+        Some((index, with_id.id, roll))
+    }).collect::<Vec<_>>();
+    let [(roll_index, roll_id, roll)] = rolls.as_slice() else {
+        return None;
+    };
+    if roll.player != PlayerFilter::You
+        || !roll.total
+        || roll.ignore_lower
+        || roll.in_order
+        || roll.sides < 2
+    {
+        return None;
+    }
+
+    fn counted_result(value: &Value, roll_id: crate::effect::EffectId)
+        -> Option<(&'static str, i32)>
+    {
+        let (reference, each_count) = match value.unhinted() {
+            Value::Scaled(reference, count) if *count > 0 => (reference.as_ref(), *count),
+            reference => (reference, 1),
+        };
+        let Value::PriorEffectMetric { effect_id, query } = reference.unhinted() else {
+            return None;
+        };
+        let label = match query.metric {
+            crate::effect::EffectMetric::DistinctDieResults => "different",
+            crate::effect::EffectMetric::OddDieResults => "odd",
+            crate::effect::EffectMetric::EvenDieResults => "even",
+            _ => return None,
+        };
+        let expected = crate::effect::PriorEffectMetricQuery::new(
+            crate::effect::EffectMetricSource::Outcome,
+            query.metric,
+        ).with_action(crate::effect::PriorEffectAction::Rolled);
+        (*effect_id == roll_id && *query == expected).then_some((label, each_count))
+    }
+
+    fn counted_action(effect: &Effect, roll_id: crate::effect::EffectId)
+        -> Option<(String, String)>
+    {
+        let action = unwrap_basic_tag_wrappers(effect);
+        if let Some(create) = action.downcast_ref::<crate::effects::CreateTokenEffect>() {
+            let (label, each_count) = counted_result(&create.count, roll_id)?;
+            let mut single = create.clone();
+            single.count = Value::Fixed(each_count);
+            return Some((label.to_string(), describe_effect(&Effect::new(single))));
+        }
+        if let Some(counters) = action.downcast_ref::<crate::effects::PutCountersEffect>() {
+            let (label, each_count) = counted_result(&counters.amount, roll_id)?;
+            let mut single = counters.clone();
+            single.amount = Value::Fixed(each_count);
+            return Some((label.to_string(), describe_effect(&Effect::new(single))));
+        }
+        None
+    }
+
+    let mut parts = Vec::new();
+    if *roll_index > 0 {
+        let prefix = describe_effect_list(&effects[..*roll_index]);
+        if prefix.trim().is_empty() {
+            return None;
+        }
+        parts.push(prefix.trim_end_matches('.').to_string());
+    }
+    parts.push(describe_effect(&effects[*roll_index]).trim_end_matches('.').to_string());
+    let mut tail_index = *roll_index + 1;
+    while let Some(effect) = effects.get(tail_index) {
+        let Some((label, action)) = counted_action(effect, *roll_id) else { break };
+        parts.push(format!(
+            "For each {label} result, {}",
+            lowercase_first(action.trim_end_matches('.')),
+        ));
+        tail_index += 1;
+    }
+    if tail_index == *roll_index + 1 {
+        return None;
+    }
+    if tail_index < effects.len() {
+        let tail = describe_effect_list(&effects[tail_index..]);
+        if tail.trim().is_empty() {
+            return None;
+        }
+        parts.push(tail.trim_end_matches('.').to_string());
+    }
+    Some(parts.join(". "))
+}
+
+/// An ordered two-die roll with one exhaustive, identical result table for
+/// each die and an optional doubles reward is one printed procedure. The
+/// branch pair check ignores only static-ability instance identities: each
+/// roll installs a distinct instance of the same ability.
+pub(in crate::compiled_text) fn describe_per_die_result_ability_table_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.iter().any(|segment| {
+        !segment.self_replacements.is_empty() || segment.starts_new_source_line
+    }) {
+        return None;
+    }
+    let effects = program.flattened_default_effects();
+    let (roll_effect, branches) = effects.split_first()?;
+    let with_id = roll_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let roll = with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDiceChooseResultEffect>()?;
+    if roll.player != PlayerFilter::You
+        || roll.count != 2
+        || !(2..=20).contains(&roll.sides)
+        || roll.die_text.is_some()
+        || roll.ignore_lower
+        || roll.total
+        || roll.count_value.is_some()
+        || !roll.in_order
+        || branches.len() != usize::try_from(roll.sides).ok()?.checked_mul(2)?.checked_add(1)?
+    {
+        return None;
+    }
+
+    fn result_branch<'a>(
+        effect: &'a Effect,
+        roll_id: crate::effect::EffectId,
+        metric: crate::effect::EffectMetric,
+        result: i32,
+    ) -> Option<&'a Effect> {
+        let branch = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let Condition::ValueComparison {
+            left: Value::EffectMetric { effect_id, source, metric: actual_metric },
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(actual_result),
+        } = &branch.condition else { return None };
+        if *effect_id != roll_id
+            || *source != crate::effect::EffectMetricSource::Outcome
+            || *actual_metric != metric
+            || *actual_result != result
+            || !branch.if_false.is_empty()
+            || branch.surface != ironsmith_core::ConditionalSurface::LeadingIf
+            || branch.capture_condition_result
+        {
+            return None;
+        }
+        let [reward] = branch.if_true.as_slice() else { return None };
+        Some(reward)
+    }
+
+    fn equivalent_reward(first: &Effect, second: &Effect) -> bool {
+        let Some(first) = first.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
+            return false;
+        };
+        let Some(second) = second.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
+            return false;
+        };
+        let mut first = first.clone();
+        let mut second = second.clone();
+        // The first die's authored "this creature" hint is presentation only;
+        // the second die uses an unhinted source target. Require both to be
+        // the same executable source before comparing their rewards.
+        for reward in [&mut first, &mut second] {
+            if reward.target_spec.as_ref().is_some_and(|spec| spec.unhinted() == &ChooseSpec::Source) {
+                reward.target_spec = Some(ChooseSpec::Source);
+            }
+        }
+        if first == second {
+            return true;
+        }
+        let (Some(crate::continuous::Modification::AddAbility(first_ability)),
+            Some(crate::continuous::Modification::AddAbility(second_ability))) =
+            (&first.modification, &second.modification)
+        else { return false };
+        if first_ability.compiled_model().is_none()
+            || first_ability.compiled_model() != second_ability.compiled_model()
+        {
+            return false;
+        }
+        first.modification = None;
+        second.modification = None;
+        first == second
+    }
+
+    let sides = usize::try_from(roll.sides).ok()?;
+    let mut rows = Vec::with_capacity(sides);
+    for index in 0..sides {
+        let result = i32::try_from(index + 1).ok()?;
+        let first = result_branch(&branches[index], with_id.id, crate::effect::EffectMetric::Count, result)?;
+        let second = result_branch(&branches[index + sides], with_id.id, crate::effect::EffectMetric::OtherNumber, result)?;
+        if !equivalent_reward(first, second) {
+            return None;
+        }
+        let apply = first.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        if apply.target != crate::continuous::EffectTarget::Source
+            || apply.until != crate::effect::Until::EndOfTurn
+            || apply.condition.is_some()
+            || !apply.additional_modifications.is_empty()
+            || apply.source_type.is_some()
+            || apply.set_quantifier_surface.is_some()
+            || apply.type_retention_surface.is_some()
+            || apply.animation_pt_surface.is_some()
+            || apply.animation_duration_surface.is_some()
+            || apply.lock_filter_at_resolution
+            || apply.resolve_set_pt_values_at_resolution
+            || apply.grant_only_if_absent
+        {
+            return None;
+        }
+        if index == 0 {
+            if apply.modification.is_some()
+                || !matches!(apply.runtime_modifications.as_slice(),
+                    [crate::effects::continuous::RuntimeModification::ModifyPowerToughness { .. }])
+            {
+                return None;
+            }
+        } else if !apply.runtime_modifications.is_empty()
+            || !matches!(&apply.modification, Some(crate::continuous::Modification::AddAbility(_)))
+        {
+            return None;
+        }
+        // Source-reference surface can render an individual reward as
+        // lowercase "this creature ...". Sentence case is presentation only;
+        // the structural checks above already established the same reward
+        // for each die and the exact ordered result table.
+        rows.push(capitalize_first(&describe_effect(first)));
+    }
+    let first_row = rows.first()?;
+    if !first_row.starts_with("This creature gets ") {
+        return None;
+    }
+    let mut ability_rows = Vec::with_capacity(sides - 1);
+    for row in rows.iter().skip(1) {
+        ability_rows.push(row.strip_prefix("This creature gains ")?
+            .strip_suffix(" until end of turn")?);
+    }
+
+    let doubles = branches.last()?.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let die_count = Value::EffectMetric {
+        effect_id: with_id.id,
+        source: crate::effect::EffectMetricSource::Outcome,
+        metric: crate::effect::EffectMetric::Count,
+    };
+    let other_result = Value::EffectMetric {
+        effect_id: with_id.id,
+        source: crate::effect::EffectMetricSource::Outcome,
+        metric: crate::effect::EffectMetric::OtherNumber,
+    };
+    if doubles.condition != (Condition::ValueComparison {
+        left: die_count,
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: other_result,
+    })
+        || !doubles.if_false.is_empty()
+        || doubles.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || doubles.capture_condition_result
+    {
+        return None;
+    }
+    let [doubles_reward] = doubles.if_true.as_slice() else { return None };
+    let doubles_apply = doubles_reward.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if doubles_apply.target != crate::continuous::EffectTarget::Source
+        || doubles_apply.until != crate::effect::Until::EndOfTurn
+        || doubles_apply.condition.is_some()
+        || !doubles_apply.additional_modifications.is_empty()
+        || !doubles_apply.runtime_modifications.is_empty()
+        || !matches!(&doubles_apply.modification, Some(crate::continuous::Modification::AddAbility(_)))
+    {
+        return None;
+    }
+    let doubles_ability = capitalize_first(&describe_effect(doubles_reward))
+        .strip_prefix("This creature gains ")?
+        .strip_suffix(" until end of turn")?
+        .to_string();
+    let sides_word = small_number_word(roll.sides).unwrap_or_else(|| roll.sides.to_string());
+    let mut rendered = format!(
+        "Roll two {sides_word}-sided dice. For each result of 1, {}. For each other result, it gains the indicated ability until end of turn. If you rolled doubles, it also gains {doubles_ability} until end of turn",
+        lowercase_first(first_row.trim_end_matches('.'))
+    );
+    for (index, ability) in ability_rows.iter().enumerate() {
+        rendered.push_str(&format!("\n• {} — {ability}", index + 2));
+    }
+    Some(rendered)
+}
+
 fn complete_die_parity_label(
     predicate: &crate::effect::EffectPredicate,
     sides: u32,
@@ -295,6 +589,144 @@ pub(in crate::compiled_text) fn describe_sequenced_d20_numeric_result_table_prog
     normalized.push(Effect::with_id(setup_with_id.id.0, roll_effect.clone()));
     normalized.extend(branches.iter().cloned());
     describe_roll_die_with_numeric_result_table(&normalized)
+}
+
+/// Result rows of a d20 table cover every possible result exactly once. A
+/// modified roll ("roll a d20 and add ...") can exceed 20, so its top row is
+/// open ("15+"), and its closed rows may extend past 20.
+fn d20_result_branches_cover_results(
+    branches: &[Effect],
+    roll_id: crate::effect::EffectId,
+    modified: bool,
+) -> bool {
+    if branches.len() < 2 {
+        return false;
+    }
+    let mut covered = [false; 101];
+    let mut open_top: Option<usize> = None;
+    let mut max_closed = 0usize;
+    for branch in branches {
+        let Some(if_effect) = unwrap_if_effect(branch) else {
+            return false;
+        };
+        if if_effect.condition != roll_id
+            || !if_effect.else_.is_empty()
+            || if_effect.then.is_empty()
+        {
+            return false;
+        }
+        let crate::effect::EffectPredicate::Value(comparison) = &if_effect.predicate else {
+            return false;
+        };
+        let (min, max) = match comparison {
+            Comparison::Equal(value) => (*value as i64, *value as i64),
+            Comparison::BetweenInclusive(min, max) => (*min as i64, *max as i64),
+            Comparison::GreaterThanOrEqual(min) if modified && open_top.is_none() => {
+                let Ok(min) = usize::try_from(*min as i64) else {
+                    return false;
+                };
+                if min < 2 || min > 100 {
+                    return false;
+                }
+                open_top = Some(min);
+                continue;
+            }
+            _ => return false,
+        };
+        let limit = if modified { 100 } else { 20 };
+        if min < 1 || max > limit || min > max {
+            return false;
+        }
+        for result in min..=max {
+            let Ok(result) = usize::try_from(result) else {
+                return false;
+            };
+            if std::mem::replace(&mut covered[result], true) {
+                return false;
+            }
+            max_closed = max_closed.max(result);
+        }
+    }
+    let top = match open_top {
+        Some(open) => {
+            if max_closed >= open {
+                return false;
+            }
+            open - 1
+        }
+        None if modified => max_closed,
+        None => 20,
+    };
+    top >= 1 && covered[1..=top].iter().all(|covered| *covered)
+}
+
+/// "roll a d20 for each player being attacked and ignore all but the
+/// highest roll" (Iron Mastiff): one retained d20 result feeds the table.
+pub(in crate::compiled_text) fn is_highest_single_d20_result_roll(
+    roll: &crate::effects::RollDiceChooseResultEffect,
+) -> bool {
+    roll.sides == 20
+        && roll.ignore_lower
+        && !roll.total
+        && !roll.in_order
+        // "Roll two d20 and ignore the lower roll" (Berserker's Frenzy)
+        // retains its authored "d20" die name.
+        && matches!(roll.die_text.as_deref(), None | Some("d20"))
+        && roll.player == PlayerFilter::You
+}
+
+/// Rejoin a d20 roll and its numeric result rows when the lowering put the
+/// roll and each row into separate resolution segments ("Roll a d20 and add
+/// the number of creature cards in your graveyard ... 1—14 | ... 15+ | ...",
+/// Revivify, Diviner's Portent, Danse Macabre). The rows' predicates consume
+/// the roll's exact effect id, so the established table compactor applies.
+pub(in crate::compiled_text) fn describe_segmented_d20_numeric_result_table_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.is_empty()
+        || program
+            .segments
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty() || segment.starts_new_source_line)
+    {
+        return None;
+    }
+    let effects = program
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter().cloned())
+        .collect::<Vec<_>>();
+    let roll_idx = effects.iter().position(|effect| {
+        effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .is_some_and(|with_id| {
+                with_id
+                    .effect
+                    .downcast_ref::<crate::effects::RollDieEffect>()
+                    .is_some()
+                    || with_id
+                        .effect
+                        .downcast_ref::<crate::effects::RollDiceChooseResultEffect>()
+                        .is_some_and(is_highest_single_d20_result_roll)
+            })
+    })?;
+    let with_id = effects[roll_idx].downcast_ref::<crate::effects::WithIdEffect>()?;
+    let modified = if let Some(roll) = with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()
+    {
+        if roll.sides != 20 || roll.die_text.is_some() {
+            return None;
+        }
+        roll.result_modifier.is_some()
+    } else {
+        false
+    };
+    let branches = &effects[roll_idx + 1..];
+    if !d20_result_branches_cover_results(branches, with_id.id, modified) {
+        return None;
+    }
+    describe_roll_die_with_numeric_result_table(&effects)
 }
 
 /// Render a die-result backreference and a subsequent random attachment from

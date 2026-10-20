@@ -245,6 +245,11 @@ fn player_attack_target_with_one_or_more_creatures(
     restriction: &ironsmith_core::AttackTargetRestriction,
 ) -> String {
     match restriction {
+        // "Whenever a player attacks one of your opponents" (Breena, Combat
+        // Calligrapher, Ellie): the printed per-defender grouping surface.
+        ironsmith_core::AttackTargetRestriction::Player(PlayerFilter::Opponent) => {
+            "one of your opponents".to_string()
+        }
         ironsmith_core::AttackTargetRestriction::Player(filter) => {
             format!(
                 "{} with one or more creatures",
@@ -457,7 +462,10 @@ impl AttacksTrigger {
             return false;
         }
         let Some(attacked_player_filter) = attacked_player_filter else {
-            return true;
+            // "attack one or more players" (Zurzoth): any attacked player,
+            // never a planeswalker or battle, without per-defender grouping.
+            return !attacked_target_must_be_player
+                || matches!(target, crate::combat_state::AttackTarget::Player(_));
         };
         let attacked_player = match target {
             crate::combat_state::AttackTarget::Player(player) => Some(*player),
@@ -631,8 +639,23 @@ impl TriggerMatcher for AttacksTrigger {
             subject
         };
         let target_tail = match (attacked_player.as_ref(), attacked_target_must_be_player) {
+            // "Whenever a creature attacks one of your opponents" (Calculating
+            // Lich, Genestealer Locus): an unrestricted attacker names the
+            // opponents relative to you; your own attackers and the source
+            // itself attack "an opponent" (Kaalia, Firkraag).
+            (Some(PlayerFilter::Opponent), true)
+                if !display_filter.source
+                    && !display_filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.tag.as_str() == "__it__"
+                    })
+                    && !base_subject.contains(" you control")
+                    && display_filter.controller != Some(PlayerFilter::You) =>
+            {
+                " one of your opponents".to_string()
+            }
             (Some(PlayerFilter::Opponent), true) => " an opponent".to_string(),
             (Some(PlayerFilter::Any), true) => " a player".to_string(),
+            (None, true) if self.one_or_more => " one or more players".to_string(),
             (Some(PlayerFilter::Opponent), false) => {
                 if self.one_or_more {
                     " one of your opponents or a planeswalker they control".to_string()
@@ -705,6 +728,33 @@ impl TriggerMatcher for AttacksTrigger {
             );
         }
 
+        // "Whenever one or more creatures that are enchanted by an Aura you
+        // control attack" (Killian, Decisive Mentor): the relative attachment
+        // surface keeps the authored passive clause.
+        if self.one_or_more
+            && self.min_total_attackers <= 1
+            && self.max_total_attackers.is_none()
+            && target_tail.is_empty()
+            && !display_filter.source
+            && display_filter.has_relative_attachment_state_surface()
+            && let Some(attachment) = display_filter.with_attached_object.as_deref()
+        {
+            let mut host = display_filter.clone();
+            host.with_attached_object = None;
+            host.set_relative_attachment_state_surface(false);
+            let host_subject = pluralize_one_or_more_attack_subject(&host.description());
+            let attachment = attachment.description();
+            let article = if attachment.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'])
+            {
+                "an"
+            } else {
+                "a"
+            };
+            return format!(
+                "Whenever one or more {host_subject} that are enchanted by {article} {attachment} attack"
+            );
+        }
+
         if self.one_or_more {
             if let Some(exact_total) = self.max_total_attackers
                 && exact_total == self.min_total_attackers
@@ -765,6 +815,17 @@ impl TriggerMatcher for AttacksTrigger {
                         "Whenever an opponent attacks you with {min_total} or more {attacker_subject}"
                     );
                 }
+                // "Whenever another player attacks with two or more
+                // creatures" (Firemane Commando): the attacking player is
+                // named, and the effect refers back to that player.
+                if explicit_attack_with_group
+                    && base_subject == "creature you don't control"
+                    && target_tail.is_empty()
+                {
+                    return format!(
+                        "Whenever another player attacks with {min_total} or more creatures"
+                    );
+                }
                 return format!("Whenever {min_total} or more {subject} attack{target_tail}");
             }
             if explicit_attack_with_group && subject.contains(" you control") {
@@ -809,6 +870,16 @@ impl TriggerMatcher for AttacksTrigger {
                 && attacked_target_must_be_player
             {
                 return "Whenever an opponent attacks another one of your opponents".to_string();
+            }
+            // "Whenever a player attacks with one or more creatures" (Total
+            // War): the attacking player is named, and the effect refers back
+            // to "that player".
+            if base_subject == "creature"
+                && explicit_attack_with_group
+                && display_filter.controller == Some(PlayerFilter::Any)
+                && target_tail.is_empty()
+            {
+                return "Whenever a player attacks with one or more creatures".to_string();
             }
             return format!("Whenever one or more {subject} attack{target_tail}");
         }

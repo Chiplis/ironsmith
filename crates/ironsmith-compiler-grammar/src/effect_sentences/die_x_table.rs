@@ -130,4 +130,18 @@ mod tests {
         )));
         assert!(!owner_rolls_before_x_sentences(&lexed("Roll a d20. Draw a card.")));
     }
+
+    #[test]
+    fn die_rows_bind_x_for_bounded_collection_casts() {
+        let tokens = lexed(
+            "Roll a d20. You may cast up to X instant and/or sorcery spells from among cards exiled this way without paying their mana costs. 1—9 | X is one. 10—19 | X is two. 20 | X is three."
+        );
+        let effects = parse(&tokens).unwrap().expect("die X table should parse");
+        let debug = format!("{effects:?}");
+        assert_eq!(debug.matches("up_to_x: true").count(), 3, "{debug}");
+        assert_eq!(debug.matches("dynamic_x: true").count(), 3, "{debug}");
+        for value in 1..=3 {
+            assert!(debug.contains(&format!("value: Fixed({value})")), "{debug}");
+        }
+    }
 }

@@ -631,6 +631,9 @@ pub fn describe_condition(condition: &Condition) -> String {
 pub fn pluralize_noun_phrase_for_trigger(phrase: &str) -> String {
     if phrase.ends_with('s') {
         phrase.to_string()
+    } else if phrase.ends_with('x') || phrase.ends_with("ch") || phrase.ends_with("sh") {
+        // "Sphinxes", "Witches".
+        format!("{phrase}es")
     } else {
         format!("{phrase}s")
     }

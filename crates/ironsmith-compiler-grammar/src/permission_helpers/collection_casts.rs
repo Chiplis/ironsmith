@@ -35,7 +35,7 @@ enum CollectionMarker {
     FromYourGraveyardOrHand,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Collection {
     /// "them", "those cards": the set the previous instruction produced.
     PriorResult,
@@ -44,7 +44,10 @@ enum Collection {
     PriorExiled,
     /// Cards exiled with this source (CR 607.2a), optionally only those the
     /// caster owns.
-    SourceLinked { owned_by_you: bool },
+    SourceLinked {
+        owned_by_you: bool,
+        source: crate::target::SourceReferenceSurface,
+    },
     /// The caster's graveyard.
     YourGraveyard,
     /// The caster's graveyard and hand together: each chosen card may come
@@ -102,6 +105,11 @@ fn parse_cast_count(tokens: &[OwnedLexToken]) -> (Option<ChoiceCount>, &[OwnedLe
     {
         return (Some(ChoiceCount::any_number()), rest);
     }
+    if let Some(((), rest)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["up", "to", "x"]))
+    {
+        return (Some(ChoiceCount::up_to_dynamic_x()), rest);
+    }
     if let Some((count, rest)) = primitives::parse_prefix(
         tokens,
         (
@@ -121,26 +129,89 @@ fn parse_cast_count(tokens: &[OwnedLexToken]) -> (Option<ChoiceCount>, &[OwnedLe
     (None, tokens)
 }
 
+/// A castable "spell" in a non-stack collection is still a card until it is
+/// cast. Permission-subject parsing uses StackKind::Spell to preserve the
+/// noun, but that stack requirement would make every library/exile/graveyard
+/// candidate fail the object filter before the cast action can run.
+fn normalize_castable_card_filter(filter: &mut ObjectFilter) {
+    if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+        filter.stack_kind = None;
+        if filter.zone == Some(Zone::Stack) {
+            filter.zone = None;
+        }
+    }
+    for branch in &mut filter.any_of {
+        normalize_castable_card_filter(branch);
+    }
+}
+
+#[cfg(test)]
+mod dynamic_collection_count_tests {
+    use super::*;
+
+    #[test]
+    fn cast_up_to_x_retains_dynamic_upper_bound() {
+        let tokens = crate::lexer::lex_line(
+            "You may cast up to X instant and/or sorcery spells from among cards exiled this way without paying their mana costs.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_collection_cast_clause(&tokens)
+            .unwrap()
+            .expect("collection cast should parse");
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("dynamic_x: true"), "{debug}");
+        assert!(debug.contains("up_to_x: true"), "{debug}");
+        assert!(debug.contains("ForEachTagged"), "{debug}");
+    }
+
+    #[test]
+    fn fixed_and_unbounded_cast_counts_stay_distinct() {
+        let fixed = crate::lexer::lex_line(
+            "You may cast up to two spells from among cards exiled this way without paying their mana costs.",
+            0,
+        )
+        .unwrap();
+        let any = crate::lexer::lex_line(
+            "You may cast any number of spells from among cards exiled this way without paying their mana costs.",
+            0,
+        )
+        .unwrap();
+        let fixed = format!("{:?}", parse_collection_cast_clause(&fixed).unwrap().unwrap());
+        let any = format!("{:?}", parse_collection_cast_clause(&any).unwrap().unwrap());
+        assert!(fixed.contains("max: Some(2)"), "{fixed}");
+        assert!(fixed.contains("dynamic_x: false"), "{fixed}");
+        assert!(any.contains("max: None"), "{any}");
+        assert!(any.contains("dynamic_x: false"), "{any}");
+    }
+}
+
 /// "this artifact", "this Saga", "this" (a normalized card name), or the
 /// card's authored short name ("Jeleva").
-fn is_this_source_reference(tokens: &[OwnedLexToken]) -> bool {
+fn source_reference_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::SourceReferenceSurface> {
     if tokens.is_empty() {
-        return false;
+        return None;
     }
     let words = token_word_refs(tokens);
-    if crate::util::is_source_reference_words(&words) {
-        return true;
-    }
-    // "cards exiled with it" (Kylox's Voltstrider): inside the source's own
-    // ability the pronoun names the source (CR 607.2a linked pool), the same
-    // reading the source-exiled permission tail already gives it.
     if words.as_slice() == ["it"] {
-        return true;
+        return Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "it".to_string(),
+        ));
     }
+    if let Some(surface) = crate::util::source_reference_surface_for_words(&words) {
+        return Some(surface);
+    }
+    // A proper-name source reference may already have been normalized by the
+    // document parser. Retain the exact typed name only when every token is
+    // a title-cased word, as the existing source-reference validator does.
     tokens.iter().all(|token| {
         matches!(token.kind, TokenKind::Word)
             && token.slice.chars().next().is_some_and(char::is_uppercase)
-    })
+    }).then(|| crate::target::SourceReferenceSurface::FullName(
+        tokens.iter().map(|token| token.slice.as_str()).collect::<Vec<_>>().join(" ")
+    ))
 }
 
 /// Strip a trailing "with total mana value N or less" / "X or less" cap on the
@@ -206,8 +277,8 @@ fn parse_tagged_collection(tokens: &[OwnedLexToken]) -> Option<Collection> {
         if let Some(((), source)) =
             primitives::parse_prefix(rest, primitives::phrase(&["exiled", "with"]))
         {
-            return is_this_source_reference(source)
-                .then_some(Collection::SourceLinked { owned_by_you });
+            return source_reference_surface(source)
+                .map(|source| Collection::SourceLinked { owned_by_you, source });
         }
         if owned_by_you {
             return None;
@@ -261,13 +332,18 @@ pub(crate) fn parse_collection_cast_clause(
 fn parse_unpriced_collection_cast_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let trimmed = trim_commas(tokens);
-    let mut body: &[OwnedLexToken] = &trimmed;
+    // This entry point is also used directly on complete lexed clauses,
+    // whose terminal period is retained. Sentence dispatch has already
+    // stripped it, so normalize both callers before locating the cast tail.
+    let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    let mut body: &[OwnedLexToken] = trimmed;
     let mut mana_spend_mode = ironsmith_core::value_model::ManaSpendMode::Normal;
     if let Some(fact) = strip_allow_any_color_for_cast_suffix_tokens(body) {
         mana_spend_mode = fact.mana_spend_mode;
         body = trim_lexed_commas(fact.body_tokens);
     }
+    let may_cast = primitives::parse_prefix(body, primitives::phrase(&["you", "may", "cast"]))
+        .is_some();
     let rest = match primitives::parse_prefix(body, primitives::phrase(&["you", "may", "cast"]))
     {
         Some(((), rest)) => rest,
@@ -408,6 +484,7 @@ fn parse_unpriced_collection_cast_clause(
     } else {
         (None, marker, after_marker)
     };
+    let from_among = marker == CollectionMarker::FromAmong;
     let Some((reference_tokens, without_paying_mana_cost)) = split_free_cast_tail(after_marker)
     else {
         return Ok(None);
@@ -420,11 +497,12 @@ fn parse_unpriced_collection_cast_clause(
             None => return Ok(None),
         },
         CollectionMarker::OwnedExiledWith | CollectionMarker::ExiledWith => {
-            if !is_this_source_reference(reference_tokens) {
+            let Some(source) = source_reference_surface(reference_tokens) else {
                 return Ok(None);
-            }
+            };
             Collection::SourceLinked {
                 owned_by_you: marker == CollectionMarker::OwnedExiledWith,
+                source,
             }
         }
         CollectionMarker::FromYourGraveyard => {
@@ -445,7 +523,7 @@ fn parse_unpriced_collection_cast_clause(
     // An uncounted permission over the source's linked cards is an
     // ongoing static permission. It must not be folded into a neighboring
     // activated instruction as an immediate collection cast.
-    if matches!(collection, Collection::SourceLinked { .. }) && authored_count.is_none() {
+    if matches!(&collection, Collection::SourceLinked { .. }) && authored_count.is_none() {
         return Ok(None);
     }
     let subject_words = token_word_refs(subject_tokens);
@@ -461,16 +539,25 @@ fn parse_unpriced_collection_cast_clause(
         filter.zone = None;
         filter
     };
-    if matches!(subject_words.as_slice(), ["card"] | ["cards"])
-        || permission_subject_facts::generic_spell_subject_requires_nonland(subject_tokens)
-    {
-        exclude_lands_from_spell_filter(&mut filter);
-    }
+    // Every collection action here casts a spell, including a type-qualified
+    // "artifact spell". An artifact land in the pool is never castable.
+    exclude_lands_from_spell_filter(&mut filter);
     filter.mana_value = mana_value;
+    normalize_castable_card_filter(&mut filter);
     let count = match authored_count {
         Some(count) => count,
         None if plural_subject => ChoiceCount::any_number(),
         None => return Ok(None),
+    };
+    let source_reference = match &collection {
+        Collection::SourceLinked { source, .. } => Some(
+            ironsmith_core::effect::SourceLinkedCollectionCastSurface {
+                source: source.clone(),
+                from_among,
+                may_cast,
+            },
+        ),
+        _ => None,
     };
     match collection {
         Collection::PriorResult => {
@@ -487,7 +574,7 @@ fn parse_unpriced_collection_cast_clause(
             });
             filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Exiled));
         }
-        Collection::SourceLinked { owned_by_you } => {
+        Collection::SourceLinked { owned_by_you, .. } => {
             filter.zone = Some(Zone::Exile);
             if owned_by_you {
                 filter.owner = Some(PlayerFilter::You);
@@ -522,7 +609,20 @@ fn parse_unpriced_collection_cast_clause(
     }
 
     let chosen = super::super::util::helper_tag_for_tokens(tokens, "cast_from_collection");
-    let choose = match total_mana_value_cap {
+    let choose = if let Some(source) = source_reference {
+        EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+                filter,
+                count,
+                player: PlayerAst::You,
+                tag: crate::tag::TagRef::of(chosen.clone()),
+                source,
+                aggregate_constraint: total_mana_value_cap.map(
+                    crate::effect::ChoiceAggregateConstraint::total_mana_value_at_most,
+                ),
+            },
+        )
+    } else { match total_mana_value_cap {
         Some(maximum) => EffectAst::ObjectChoices(
             crate::cards::builders::ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
                 filter,
@@ -541,7 +641,7 @@ fn parse_unpriced_collection_cast_clause(
             player: PlayerAst::You,
             tag: crate::tag::TagRef::of(chosen.clone()),
         }),
-    };
+    }};
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             choose,
@@ -562,4 +662,125 @@ fn parse_unpriced_collection_cast_clause(
             }),
         ],
     }))
+}
+
+#[cfg(test)]
+mod source_linked_surface_tests {
+    use super::*;
+
+    #[test]
+    fn source_linked_cast_keeps_reference_and_aggregate_cap() {
+        let tokens = crate::lexer::lex_line(
+            "You may cast any number of spells from among cards exiled with this artifact with total mana value X or less without paying their mana costs.",
+            0,
+        ).unwrap();
+        let parsed = parse_collection_cast_clause(&tokens).unwrap().unwrap();
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("ChooseSourceLinkedCollection"), "{debug}");
+        assert!(debug.contains("ThisPermanentType(\"this artifact\")"), "{debug}");
+        assert!(debug.contains("from_among: true"), "{debug}");
+        assert!(debug.contains("may_cast: true"), "{debug}");
+        assert!(debug.contains("metric: ManaValue"), "{debug}");
+        assert!(debug.contains("SourceExiled") || debug.contains("__source_exiled__"), "{debug}");
+    }
+
+    #[test]
+    fn imperative_source_linked_cast_keeps_its_distinct_surface() {
+        let tokens = crate::lexer::lex_line(
+            "Cast any number of cards exiled with this creature without paying their mana costs.",
+            0,
+        ).unwrap();
+        let parsed = parse_collection_cast_clause(&tokens).unwrap().unwrap();
+        let debug = format!("{parsed:?}");
+        assert!(debug.contains("ChooseSourceLinkedCollection"), "{debug}");
+        assert!(debug.contains("from_among: false"), "{debug}");
+        assert!(debug.contains("may_cast: false"), "{debug}");
+    }
+}
+
+#[cfg(test)]
+mod castable_card_filter_tests {
+    use super::*;
+
+    use crate::filter::StackObjectKind;
+
+    #[test]
+    fn spell_noun_does_not_require_a_stack_entry_for_collected_cards() {
+        let tokens = crate::lexer::lex_line(
+            "You may cast an instant or sorcery spell from among them without paying its mana cost.",
+            0,
+        ).unwrap();
+        let parsed = parse_collection_cast_clause(&tokens).unwrap().unwrap();
+        let EffectAst::Sequence { effects } = parsed else {
+            panic!("expected collection cast sequence");
+        };
+        let EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects { filter, .. },
+        ) = &effects[0] else {
+            panic!("expected typed card selection");
+        };
+        assert_eq!(filter.card_types.as_slice(), [CardType::Instant, CardType::Sorcery]);
+        assert!(filter.any_of.is_empty(), "the simple type disjunction is flat: {filter:?}");
+        assert!(filter.stack_kind.is_none(),
+            "uncast cards have no stack entry: {filter:?}");
+    }
+
+    #[test]
+    fn normalization_only_removes_spell_stack_requirements_from_card_candidates() {
+        let mut instant = ObjectFilter {
+            zone: Some(Zone::Stack),
+            stack_kind: Some(StackObjectKind::Spell),
+            card_types: vec![CardType::Instant],
+            owner: Some(PlayerFilter::You),
+            ..ObjectFilter::default()
+        };
+        instant.mana_value = Some(Comparison::LessThanOrEqual(3));
+        let ability = ObjectFilter {
+            zone: Some(Zone::Stack),
+            stack_kind: Some(StackObjectKind::Ability),
+            controller: Some(PlayerFilter::Opponent),
+            ..ObjectFilter::default()
+        };
+        let mut filter = ObjectFilter {
+            any_of: vec![instant, ability.clone()],
+            ..ObjectFilter::default()
+        };
+        normalize_castable_card_filter(&mut filter);
+
+        let card = &filter.any_of[0];
+        assert_eq!(card.zone, None);
+        assert_eq!(card.stack_kind, None);
+        assert_eq!(card.card_types.as_slice(), [CardType::Instant]);
+        assert_eq!(card.owner, Some(PlayerFilter::You));
+        assert_eq!(card.mana_value, Some(Comparison::LessThanOrEqual(3)));
+        assert_eq!(filter.any_of[1], ability, "ability and controller restrictions remain intact");
+    }
+}
+
+#[cfg(test)]
+mod typed_spell_collection_tests {
+    use super::*;
+
+    #[test]
+    fn artifact_spell_from_hand_or_graveyard_excludes_artifact_lands() {
+        let tokens = crate::lexer::lex_line(
+            "You may cast an artifact spell from your hand or graveyard by paying life equal to its mana value rather than paying its mana cost.",
+            0,
+        ).unwrap();
+        let parsed = parse_collection_cast_clause(&tokens).unwrap().unwrap();
+        let EffectAst::Sequence { effects } = parsed else {
+            panic!("expected priced collection cast sequence");
+        };
+        let EffectAst::ObjectChoices(
+            crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects { filter, .. },
+        ) = &effects[0] else {
+            panic!("expected typed artifact choice");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        for branch in &filter.any_of {
+            assert_eq!(branch.card_types.as_slice(), [CardType::Artifact]);
+            assert!(branch.excluded_card_types.contains(&CardType::Land));
+            assert_eq!(branch.owner, Some(PlayerFilter::You));
+        }
+    }
 }

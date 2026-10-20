@@ -377,6 +377,14 @@ pub(crate) struct ObjectSelectionProgress {
 /// Source, controller, chooser, subject and authored selection tag bind a cursor.
 pub(crate) type ObjectSelectionProgressKey = (ObjectId, PlayerId, PlayerId, PlayerId, TagKey);
 
+/// The resolving spell's legal target bindings, independent of cost choices.
+#[derive(Debug, Clone)]
+pub(crate) struct PaymentTargetReference {
+    pub controller: PlayerId,
+    pub targets: Vec<ResolvedTarget>,
+    pub assignments: Vec<TargetAssignment>,
+}
+
 /// Context for effect execution.
 pub struct ExecutionContext<'a> {
     /// The source object (spell/ability on stack).
@@ -390,6 +398,7 @@ pub struct ExecutionContext<'a> {
     pub targets: Vec<ResolvedTarget>,
     /// Original spell/ability targets while `targets` holds cost choices.
     pub announced_targets: Option<Vec<ResolvedTarget>>,
+    pub(crate) payment_target_reference: Option<PaymentTargetReference>,
     /// True when `targets` carries preselected cost-payment choices rather than
     /// spell or ability targets.
     pub targets_are_cost_choices: bool,
@@ -403,6 +412,9 @@ pub struct ExecutionContext<'a> {
     /// illegal targets were dropped at resolution (CR 608.2b). Used where the
     /// announced target count fixes a result, e.g. "divided evenly" (601.2d).
     pub announced_target_assignments: Vec<TargetAssignment>,
+    /// Targets in their original announcement positions. Illegal slots remain
+    /// present so ordered instructions can execute non-target riders.
+    pub announced_target_slots: Vec<(ResolvedTarget, bool)>,
     /// X value (for spells with X in cost).
     pub x_value: Option<u32>,
     pub activation_values: Vec<(crate::effect::Value, Option<i32>)>,
@@ -605,11 +617,13 @@ execution_context_checkpoint! {
     controller: PlayerId,
     targets: Vec<ResolvedTarget>,
     announced_targets: Option<Vec<ResolvedTarget>>,
+    payment_target_reference: Option<PaymentTargetReference>,
     targets_are_cost_choices: bool,
     prospective_cost_payment: bool,
     target_assignments: Vec<TargetAssignment>,
     target_distributions: Vec<TargetDistribution>,
     announced_target_assignments: Vec<TargetAssignment>,
+    announced_target_slots: Vec<(ResolvedTarget, bool)>,
     x_value: Option<u32>,
     activation_values: Vec<(crate::effect::Value, Option<i32>)>,
     all_targets_legal: bool,
@@ -680,6 +694,7 @@ macro_rules! payment_execution_inputs {
 
 payment_execution_inputs! {
     inherited {
+        payment_target_reference: Option<PaymentTargetReference>,
         linked_exile_owner: Option<crate::linked_exile::LinkedExileOwner>,
         source_number_owner: Option<crate::linked_exile::LinkedExileOwner>,
         activation_origin: Option<crate::continuous::AbilityOrigin>,
@@ -687,6 +702,7 @@ payment_execution_inputs! {
         prospective_cost_payment: bool,
         all_targets_legal: bool,
         announced_target_assignments: Vec<TargetAssignment>,
+        announced_target_slots: Vec<(ResolvedTarget, bool)>,
         vote_results: HashMap<ObjectId, VoteResult>,
         secret_choice_results: HashMap<ObjectId, SecretChoiceResult>,
         iteration: IterationContext,
@@ -715,6 +731,23 @@ payment_execution_inputs! {
         executing_effect, shared_team_structure_operations, created_extra_turn_index,
         restarted_game, resolution_control, public_search_reveal_tag, pending_entry_attachment,
         created_continuous_effects,
+    }
+}
+
+impl PaymentExecutionInputs {
+    pub(crate) fn capture_for_payment(ctx: &ExecutionContext<'_>) -> Self {
+        let mut inputs = Self::capture(ctx);
+        // Nested payments retain the originating spell bindings. A new payment
+        // from resolution captures the currently legal assignments, including
+        // empty ranges for targets that became illegal.
+        if !ctx.targets_are_cost_choices {
+            inputs.payment_target_reference = Some(PaymentTargetReference {
+                controller: ctx.controller,
+                targets: ctx.targets.clone(),
+                assignments: ctx.target_assignments.clone(),
+            });
+        }
+        inputs
     }
 }
 
@@ -798,11 +831,13 @@ impl<'a> ExecutionContext<'a> {
             controller,
             targets: Vec::new(),
             announced_targets: None,
+            payment_target_reference: None,
             targets_are_cost_choices: false,
             prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
+            announced_target_slots: Vec::new(),
             x_value: None,
             activation_values: Vec::new(),
             all_targets_legal: true,
@@ -869,11 +904,13 @@ impl<'a> ExecutionContext<'a> {
             controller,
             targets: Vec::new(),
             announced_targets: None,
+            payment_target_reference: None,
             targets_are_cost_choices: false,
             prospective_cost_payment: false,
             target_assignments: Vec::new(),
             target_distributions: Vec::new(),
             announced_target_assignments: Vec::new(),
+            announced_target_slots: Vec::new(),
             x_value: None,
             activation_values: Vec::new(),
             all_targets_legal: true,
@@ -930,11 +967,13 @@ impl<'a> ExecutionContext<'a> {
             controller: self.controller,
             targets: self.targets,
             announced_targets: self.announced_targets,
+            payment_target_reference: self.payment_target_reference,
             targets_are_cost_choices: self.targets_are_cost_choices,
             prospective_cost_payment: self.prospective_cost_payment,
             target_assignments: self.target_assignments,
             target_distributions: self.target_distributions,
             announced_target_assignments: self.announced_target_assignments,
+            announced_target_slots: self.announced_target_slots,
             x_value: self.x_value,
             activation_values: self.activation_values.clone(),
             all_targets_legal: self.all_targets_legal,
@@ -1324,6 +1363,14 @@ impl<'a> ExecutionContext<'a> {
     }
 
     /// Record the target assignments as they were announced.
+    pub fn with_announced_target_slots(
+        mut self,
+        slots: Vec<(ResolvedTarget, bool)>,
+    ) -> Self {
+        self.announced_target_slots = slots;
+        self
+    }
+
     pub fn with_announced_target_assignments(
         mut self,
         announced_target_assignments: Vec<TargetAssignment>,
@@ -1988,6 +2035,21 @@ impl<'a> ExecutionContext<'a> {
                 defenders,
             );
         }
+        // "an opponent ... that this creature didn't attack during your last
+        // combat" (Territorial Hellkite): the players this source attacked
+        // in its controller's most recent combat.
+        if let Some((_, attacks)) = game
+            .turn_store
+            .turn_history
+            .last_combat_attacked_players
+            .get(&self.controller)
+            && let Some(attacked) = attacks.get(&self.source)
+        {
+            tagged_players.insert(
+                ironsmith_core::tag::SOURCE_ATTACKED_DURING_YOUR_LAST_COMBAT_TAG.into(),
+                attacked.clone(),
+            );
+        }
         let linked = match &self.linked_exile_owner {
             Some(owner) => match game.linked_exile_pair_members(owner) {
                 Ok(members) => members,
@@ -2443,5 +2505,50 @@ mod tests {
             filter_ctx.tagged_objects[&TagKey::from("blocking")][0].object_id,
             blocker
         );
+    }
+}
+
+#[cfg(test)]
+mod payment_target_reference_tests {
+    use super::*;
+    use crate::effects::helpers::resolve_objects_from_spec;
+    use crate::target::ChooseSpec;
+
+    #[test]
+    fn payment_targets_keep_spell_roles_separate_from_cost_choices_and_payer() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let spell_target = game.new_object_id();
+        let cost_choice = game.new_object_id();
+        let spec = ChooseSpec::Target(Box::new(ChooseSpec::Object(
+            crate::filter::ObjectFilter::creature().you_control(),
+        )));
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        let resolution = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(spell_target)])
+            .with_target_assignments(vec![TargetAssignment { spec: spec.clone(), range: 0..1 }]);
+        let inputs = PaymentExecutionInputs::capture_for_payment(&resolution);
+        let mut payment = ExecutionContext::new(source, bob, &mut decisions)
+            .with_cost_choice_targets(vec![ResolvedTarget::Object(cost_choice)]);
+        inputs.restore_ref(&mut payment);
+        assert_eq!(resolve_objects_from_spec(&game, &spec, &payment).unwrap(), vec![spell_target]);
+        assert_eq!(payment.controller, bob);
+        assert_eq!(payment.targets, vec![ResolvedTarget::Object(cost_choice)]);
+        assert!(payment.targets_are_cost_choices);
+
+        // A second payment cannot replace the spell reference with the first
+        // payment's independently selected object.
+        let nested_inputs = PaymentExecutionInputs::capture_for_payment(&payment);
+        let mut nested = ExecutionContext::new_default(source, bob).with_cost_choice_targets(Vec::new());
+        nested_inputs.restore_ref(&mut nested);
+        assert_eq!(resolve_objects_from_spec(&game, &spec, &nested).unwrap(), vec![spell_target]);
+
+        // Retained empty roles must not borrow another surviving target.
+        let mut invalid_resolution = resolution;
+        invalid_resolution.target_assignments[0].range = 0..0;
+        PaymentExecutionInputs::capture_for_payment(&invalid_resolution).restore_ref(&mut payment);
+        assert!(matches!(resolve_objects_from_spec(&game, &spec, &payment), Err(ExecutionError::InvalidTarget)));
     }
 }

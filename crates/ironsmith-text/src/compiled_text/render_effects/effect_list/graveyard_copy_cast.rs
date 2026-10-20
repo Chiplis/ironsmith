@@ -285,6 +285,32 @@ pub(in crate::compiled_text) fn render_conditional_graveyard_exile_copy_cast_pai
     let [may_cast] = conditional.then.as_slice() else {
         return None;
     };
+    // "If you do, copy it. You may cast the copy by paying {3} rather than
+    // paying its mana cost." (Blue Mage's Cane): the same optional copy-cast
+    // with an alternative price.
+    if exact_optional_cast_copy(may_cast, exiled_tag).is_none()
+        && let Some(may) =
+            structural_unwrap_render_wrappers(may_cast).downcast_ref::<crate::effects::MayEffect>()
+        && matches!(may.decider, None | Some(PlayerFilter::You))
+        && may.fallback == crate::decision::FallbackStrategy::Decline
+        && let [cast_effect] = may.effects.as_slice()
+        && let Some(cast) = structural_unwrap_render_wrappers(cast_effect)
+            .downcast_ref::<crate::effects::CastTaggedEffect>()
+        && let Some(price) = cast.alternative_cost.as_ref()
+        && &cast.tag == exiled_tag
+        && cast.player == PlayerFilter::You
+        && !cast.allow_land
+        && cast.as_copy
+        && !cast.without_paying_mana_cost
+        && cast.cost_reduction.is_none()
+    {
+        let payment = describe_casting_price_payment(price);
+        return Some(format!(
+            "{}. If you do, copy it. You may cast the copy by {} rather than paying its mana cost",
+            describe_graveyard_exile(exile_inner).trim_end_matches('.'),
+            payment.trim_end_matches('.')
+        ));
+    }
     let cast = exact_optional_cast_copy(may_cast, exiled_tag)?;
     let mut cast_text = "You may cast the copy".to_string();
     if cast.without_paying_mana_cost {
@@ -304,6 +330,83 @@ fn is_implicit_trigger_provenance(effect: &Effect) -> bool {
         .is_some()
 }
 
+/// "Copy a card you exiled with cards named Arcane Savant. You may cast the
+/// copy without paying its mana cost.": a single chosen card whose copy the
+/// controller may cast (the cast-copy tag is the chosen card itself).
+fn render_chosen_card_copy_cast_pair(choose_effect: &Effect, may_effect: &Effect) -> Option<String> {
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose.is_search
+        || choose.reveal
+        || choose.filter.zone != Some(crate::zone::Zone::Exile)
+    {
+        return None;
+    }
+    let cast = exact_optional_cast_copy(may_effect, &choose.tag)?;
+    let selection = describe_choose_selection(choose);
+    if selection.contains(". ") || selection.is_empty() {
+        return None;
+    }
+    let mut rendered = format!("Copy {selection}. You may cast the copy");
+    if cast.without_paying_mana_cost {
+        rendered.push_str(" without paying its mana cost");
+    }
+    append_standard_copy_cast_reminder(&mut rendered, cast);
+    Some(rendered)
+}
+
+/// "Create a token that's a copy of a card you exiled with cards named
+/// Caller of the Untamed": the chosen card is only the copy's referent.
+fn render_chosen_card_token_copy_pair(
+    choose_effect: &Effect,
+    create_effect: &Effect,
+) -> Option<String> {
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || choose.is_search
+        || choose.reveal
+        || choose.filter.zone != Some(Zone::Exile)
+        || choose.filter.exiled_with_cards_named.is_none()
+    {
+        return None;
+    }
+    let create = structural_unwrap_render_wrappers(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(create.target.unhinted(), ChooseSpec::Tagged(tag) if *tag == choose.tag) {
+        return None;
+    }
+    let rendered = describe_effect(create_effect);
+    let rendered = rendered.trim().trim_end_matches('.');
+    // "{X}, {T}: Create a token that's a copy of a card you exiled with cards
+    // named Caller of the Untamed. X is the mana value of that card." The
+    // mana value pins the activation's X, so it reads as its own definition.
+    let x_is_mana_value = matches!(
+        choose.filter.mana_value.as_ref(),
+        Some(crate::filter::Comparison::EqualExpr(value)) if matches!(value.as_ref(), crate::effect::Value::X)
+    );
+    let selection = if x_is_mana_value {
+        let mut unpinned = choose.clone();
+        unpinned.filter.mana_value = None;
+        describe_choose_selection(&unpinned)
+    } else {
+        describe_choose_selection(choose)
+    };
+    let replaced = rendered.replacen("a copy of it", &format!("a copy of {selection}"), 1);
+    if replaced == rendered || replaced.contains(". ") {
+        return None;
+    }
+    let replaced = capitalize_first(&replaced);
+    Some(if x_is_mana_value {
+        format!("{replaced}. X is the mana value of that card")
+    } else {
+        replaced
+    })
+}
+
 pub(super) fn describe_graveyard_exile_copy_cast(effects: &[Effect]) -> Option<String> {
     let effects = effects
         .iter()
@@ -311,9 +414,12 @@ pub(super) fn describe_graveyard_exile_copy_cast(effects: &[Effect]) -> Option<S
         .collect::<Vec<_>>();
     match effects.as_slice() {
         [exile_effect, may_effect] => {
-            render_graveyard_exile_copy_cast_pair(exile_effect, may_effect).or_else(|| {
-                render_conditional_graveyard_exile_copy_cast_pair(exile_effect, may_effect)
-            })
+            render_graveyard_exile_copy_cast_pair(exile_effect, may_effect)
+                .or_else(|| {
+                    render_conditional_graveyard_exile_copy_cast_pair(exile_effect, may_effect)
+                })
+                .or_else(|| render_chosen_card_copy_cast_pair(exile_effect, may_effect))
+                .or_else(|| render_chosen_card_token_copy_pair(exile_effect, may_effect))
         }
         [exile_effect, with_id_effect, result_effect] => {
             let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;

@@ -17,7 +17,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, ForEachEffectAst, IfResultPredicate, LibraryActionAst,
     LibraryBottomOrderAst, PermissionEffectAst, PlayerAst, ReturnControllerAst,
     RevealLookActionAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
-    TargetAst,
+    TargetAst, ObjectChoiceEffectAst,
 };
 use ironsmith_core::tag::TagKeyWalk as _;
 
@@ -280,9 +280,37 @@ pub(super) fn continue_with(
     }
     let mut loop_bodies = loop_bodies.into_iter();
     reattach_for_each_tagged_bodies(&mut effects, &mut loop_bodies);
+    // The accumulated tag records the actual exile objects produced by the
+    // repeated instruction. A generic tagged choice otherwise searches every
+    // zone and IsTaggedObject also accepts a later object with the same
+    // stable card id. Casting "from among those cards" needs the original
+    // exile object to still be in exile.
+    bind_accumulated_exile_choices(&mut effects, &accumulated);
     group.effects.extend(effects);
     group.consumed += 1;
     Ok(true)
+}
+
+fn bind_accumulated_exile_choices(effects: &mut [EffectAst], accumulated: &crate::tag::TagRef) {
+    let tag: ironsmith_core::tag::TagKey = accumulated.clone().into();
+    for effect in effects {
+        if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. }) = effect
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == tag
+                    && constraint.relation
+                        == ironsmith_core::TaggedOpbjectRelation::IsTaggedObject
+            })
+            && filter.zone.is_none()
+        {
+            filter.zone = Some(crate::zone::Zone::Exile);
+            *filter = filter.clone().match_tagged(
+                tag.clone(), ironsmith_core::TaggedOpbjectRelation::SameObjectId,
+            );
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            bind_accumulated_exile_choices(nested, accumulated);
+        });
+    }
 }
 
 /// Take the body of every `ForEachTagged` loop (at any depth) out of the

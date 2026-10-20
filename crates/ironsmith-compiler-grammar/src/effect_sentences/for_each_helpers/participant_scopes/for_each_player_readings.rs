@@ -385,9 +385,21 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         }
                         _ => IfResultPredicate::Did,
                     };
+                // "Each player who shuffled ... this way reveals cards from
+                // the top of their library until ..." (Collision of Realms):
+                // a subjectless consult otherwise defaults its library owner
+                // to you; the acting player is the iterated one.
+                let effect_words = crate::lexer::parser_token_word_refs(effect_tokens);
+                let scoped_effect_tokens = (effect_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "reveals" | "exiles" | "mills"))
+                    && effect_words.contains(&"until"))
+                .then(|| prepend_that_player_subject(effect_tokens));
                 return Ok(Some(EffectAst::ForEach(
                     ForEachEffectAst::ForEachPlayerDid {
-                        effects: parse_effect_chain_inner(effect_tokens)?,
+                        effects: parse_effect_chain_inner(
+                            scoped_effect_tokens.as_deref().unwrap_or(effect_tokens),
+                        )?,
                         predicate: tagged_past_action_predicate(
                             tagged_filter_tokens,
                             result_tokens,

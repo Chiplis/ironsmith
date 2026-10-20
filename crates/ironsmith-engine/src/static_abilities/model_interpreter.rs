@@ -2821,8 +2821,33 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                     super::cost_modifiers::describe_spell_filter(&subject_filter)
                 );
             }
-            let (subject, singular) =
+            let (mut subject, singular) =
                 super::continuous::grant_subject_with_set_quantifier(filter, *set_quantifier_surface);
+            // "Each spell you cast that's exactly three colors" (Threefold
+            // Signal): keep the exact color count when the subject text omits it.
+            if let Some(crate::filter::Comparison::Equal(count @ 3..=5)) = filter.color_count
+                && !subject.contains("color")
+            {
+                let count_word = ["three", "four", "five"][(count - 3) as usize];
+                let relation = if singular { "that's" } else { "that are" };
+                subject = format!("{subject} {relation} exactly {count_word} colors");
+            }
+            // "The first spell you cast from anywhere other than your hand
+            // each turn has demonstrate." (The Twelfth Doctor)
+            if filter.excluded_cast_origin_zone == Some(crate::zone::Zone::Hand)
+                && !subject.contains("other than your hand")
+            {
+                subject = match subject.split_once(" each turn") {
+                    Some((head, tail)) => {
+                        format!("{head} from anywhere other than your hand each turn{tail}")
+                    }
+                    None => format!("{subject} from anywhere other than your hand"),
+                };
+            }
+            // "Creature spells you cast gain offspring {2} as you cast them."
+            if keyword.kind == ironsmith_core::GrantedSpellKeywordKind::Offspring && !singular {
+                return format!("{subject} gain {} as you cast them.", keyword.display());
+            }
             let verb = if singular { "has" } else { "have" };
             return format!("{subject} {verb} {}.", keyword.display());
         }
@@ -2852,6 +2877,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                     .map(|first| first.to_lowercase().chain(chars).collect::<String>())
                     .unwrap_or_default();
                 return format!("If {rest}, {lowered}");
+            }
+            // "You may cast this card from your graveyard if a non-Zombie
+            // creature died this turn. If you do, ..." (Undead Sprinter): the
+            // gate qualifies the permission, not the trailing rider.
+            if let Some(rest) = condition.strip_prefix("as long as ")
+                && let Some((permission, rider)) =
+                    body.split_once("You may cast this card from your graveyard")
+                && permission.is_empty()
+            {
+                return format!(
+                    "You may cast this card from your graveyard if {rest}{rider}."
+                );
             }
             return format!("{body} {condition}");
         }
@@ -3023,12 +3060,14 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             if matches!(
                 &inner.payload,
                 ironsmith_core::StaticAbilityPayload::RuleRestriction {
-                    restriction: crate::effect::Restriction::Block(_),
+                    restriction: crate::effect::Restriction::Block(_)
+                        | crate::effect::Restriction::BeBlocked(_),
+                    additional_restrictions,
                     ..
-                }
+                } if additional_restrictions.is_empty()
             ) {
-                // Blocking conditions bind each prospective attacking player,
-                // rather than a single global combat participant.
+                // Block and be-blocked conditions need combat participants;
+                // evaluating them in a source-only frame loses the defender.
                 if let Some(leaf) = self.leaf_static_ability() {
                     leaf.apply_restrictions(game, source, controller);
                 }

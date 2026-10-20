@@ -54,6 +54,7 @@ pub fn parse_delayed_dies_exile_top_power_choose_play(
     Ok(Some(vec![EffectAst::Delayed(
         DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
             filter: None,
+            controller_at_death: None,
             effects: vec![
                 EffectAst::subject_verb_look_at_top_cards(
                     PlayerAst::You,

@@ -1557,6 +1557,7 @@ fn replace_named_source_alias_tokens(
                     &pieces, word_idx, end_word,
                 )
                 || source_alias_occurrence_is_rules_term_lexed(&pieces, word_idx, end_word)
+                || source_alias_occurrence_is_vote_option_lexed(&pieces, word_idx, end_word)
                 || (!pieces[end_word - 1].possessive
                     && matches!(
                         pieces.get(end_word).map(|piece| piece.text),
@@ -1712,8 +1713,14 @@ fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiec
         if matches!(token.kind, TokenKind::Comma | TokenKind::Semicolon) {
             clause += 1;
         }
-        let possessive = crate::string_primitives::contains_char(token.slice.as_str(), '\'')
-            || crate::string_primitives::contains_char(token.slice.as_str(), '’');
+        // Only a trailing "'s" / "s'" marks a possessive: an apostrophe inside
+        // a name ("Amber Gristle O'Maul") is part of the name itself.
+        let slice = token.slice.as_str();
+        let possessive = crate::string_primitives::ends_with(slice, "'s")
+            || crate::string_primitives::ends_with(slice, "’s")
+            || crate::string_primitives::ends_with(slice, "'S")
+            || crate::string_primitives::ends_with(slice, "’S")
+            || crate::string_primitives::ends_with_any_char(slice, &['\'', '’']);
         pieces.extend(
             token
                 .parser_word_pieces()
@@ -1927,6 +1934,28 @@ fn source_alias_occurrence_looks_like_effect_verb_lexed(
             &remainder_tokens,
         )
         .is_some()
+}
+
+/// A named vote option ("votes for truth or consequences", "the number of
+/// truth votes", Truth or Consequences) is option data even when it spells
+/// the card's own name: only players vote, so it never denotes the source.
+fn source_alias_occurrence_is_vote_option_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let previous_previous_word = start_word
+        .checked_sub(2)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let next_word = pieces.get(end_word).map(|piece| piece.text);
+    (previous_word == Some("for")
+        && matches!(previous_previous_word, Some("vote" | "votes")))
+        || matches!(next_word, Some("vote" | "votes"))
 }
 
 fn source_alias_occurrence_should_preserve_surface_lexed(
@@ -3107,6 +3136,20 @@ fn try_parse_labeled_line_dispatch(
                 Ok(parsed) => (parsed.flatten(), None),
                 Err(error) => (None, Some(error)),
             };
+            if labeled_static.is_none() {
+                // When normalization kept an unrecognized flavor label
+                // ("multi-threat eliminator — this creature can't block"),
+                // the whole normalized line would fold the label words into
+                // the subject ("multi-threat eliminator this creature" read
+                // as all creatures). Read the normalized body alone first,
+                // as the unlabeled line would be read.
+                labeled_static =
+                    split_label_prefix_lexed(&line.tokens).and_then(|(_, _, normalized_body)| {
+                        recognize_static_line(&rewrite_line_tokens(line, normalized_body))
+                            .ok()
+                            .flatten()
+                    });
+            }
             if labeled_static.is_none() {
                 labeled_static = match (recognize_static_line(line), builder_aware_error) {
                     (Ok(Some(parsed)), _) => Some(parsed),

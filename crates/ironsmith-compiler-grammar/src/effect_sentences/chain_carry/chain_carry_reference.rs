@@ -638,6 +638,10 @@ pub fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryContext> {
             player,
             ..
         }) => *player,
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            player,
+            ..
+        }) => *player,
         _ => return None,
     };
 
@@ -669,6 +673,10 @@ pub fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             player,
             ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            player,
+            ..
         }) => {
             matches!(*player, PlayerAst::Implicit)
         }
@@ -695,6 +703,10 @@ pub(super) fn effect_uses_that_player(effect: &EffectAst) -> bool {
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             player,
             ..
         }) => {
@@ -961,6 +973,9 @@ pub fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: Carry
                 })
                 | EffectAst::ObjectChoices(
                     ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
+                )
+                | EffectAst::ObjectChoices(
+                    ObjectChoiceEffectAst::ChooseSourceLinkedCollection { player, .. },
                 ) => {
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
@@ -1322,6 +1337,10 @@ pub fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {
             }
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player: effect_player,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             player: effect_player,
             ..
         })

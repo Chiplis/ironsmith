@@ -22,6 +22,12 @@ pub(super) struct IterationInput {
 pub(super) trait SelectedIterationPlan: Send {
     fn len(&self) -> usize;
     fn effects(&self) -> &[Effect];
+    /// Per-announcement target view for an iteration. Ordinary object/player
+    /// iteration inherits the enclosing target set unchanged.
+    fn target_scope(&self, _index: usize) -> Option<(
+        Vec<crate::effects::ResolvedTarget>,
+        Vec<crate::game_state::TargetAssignment>,
+    )> { None }
     fn select(
         &mut self,
         game: &GameState,
@@ -183,6 +189,7 @@ impl ActionProgramCursor for IterationProgramCursor {
             if let Some(effect) = self.plan.effects().get(self.child) {
                 let input = self.input.as_ref().expect("active iteration");
                 let scope = ProgramActionScope {
+                    targets: self.plan.target_scope(self.iteration),
                     iterated_object: input.object.map(Some),
                     iterated_player: Some(Some(input.player)),
                     pending_entry_attachment: self.plan.entry_attachment_hints().then(|| {

@@ -293,3 +293,32 @@ fn runtime_audit_devourer_pregame() {
     .unwrap();
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
 }
+
+/// Keeping one looked-at card already in the library must not make every
+/// looked-at card count as "kept": the rest are still exiled.
+#[test]
+fn devourer_pregame_reveal_exiles_the_cards_not_kept() {
+    let _guard = crate::test_id_counter_guard();
+    let devourer = "Type: Creature — Eldrazi\nPower/Toughness: 6/6\nYou may reveal this card from your opening hand. If you do, at the beginning of your first upkeep, look at the top four cards of your library. You may put one of those cards back on top of your library. Exile the rest.\nWhen you cast this spell, exile target permanent that's one or more colors.";
+    let mut defs = HashMap::new();
+    defs.insert(
+        "Devourer of Destiny".to_string(),
+        ironsmith_registry_test::compile_to_runtime_definition("Devourer of Destiny", devourer, false)
+            .unwrap(),
+    );
+    for land in ["Plains", "Island", "Swamp", "Mountain", "Forest"] {
+        defs.insert(
+            land.to_string(),
+            ironsmith_registry_test::compile_to_runtime_definition(
+                land,
+                format!("Type: Basic Land — {land}"),
+                false,
+            )
+            .unwrap(),
+        );
+    }
+    for keep in [Some("Mountain"), Some("Forest"), None] {
+        let (expected, actual, _) = run(&defs, true, keep).unwrap();
+        assert_eq!(actual, expected, "keep {keep:?}");
+    }
+}

@@ -437,6 +437,21 @@ fn effect_references_identity(effect: &Effect, identity: &SyntheticTargetIdentit
         return value_references_identity(&draw.count, identity)
             || player_filter_references_identity(&draw.player, identity);
     }
+    // "up to one target player's life total becomes half their starting life
+    // total" (Torgaar): the declared player is the life-total change's player.
+    if let Some(set_life) = effect.downcast_ref::<crate::effects::SetLifeTotalEffect>() {
+        // An optional single declaration ("up to one target player") wraps
+        // the target in a count, which the generic player-filter matcher
+        // does not unwrap; the aliased life-total player names it.
+        if let PlayerFilter::AliasedTarget(aliased) = &set_life.player
+            && identity.target.is_target()
+            && matches!(identity.target.base(), ChooseSpec::Player(declared) if declared == aliased.as_ref())
+        {
+            return true;
+        }
+        return value_references_identity(&set_life.amount, identity)
+            || player_filter_references_identity(&set_life.player, identity);
+    }
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         return value_references_identity(&damage.amount, identity)
             || choose_spec_references_identity(&damage.target, identity);
@@ -1013,6 +1028,19 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
     }
 
     if effects.len() == 2
+        && let Some(tag) = identity.tag
+        && let Some(choice) = consumer.downcast_ref::<crate::effects::ChooseModeEffect>()
+        && choice.modes.iter().all(|mode| matches!(mode.effects.as_slice(), [effect]
+            if effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .is_some_and(|apply| matches!(apply.target_spec.as_ref().map(ChooseSpec::unhinted),
+                    Some(ChooseSpec::Tagged(found)) if found == tag))))
+        && let Some(compact) = describe_compact_keyword_change_choice(consumer)
+        && let Some(predicate) = compact.strip_prefix("It ").or_else(|| compact.strip_prefix("it "))
+    {
+        return Some(format!("{} {predicate}", capitalize_first(&describe_choose_spec(identity.target))));
+    }
+
+    if effects.len() == 2
         && let Some(draw) = structural_unwrap_render_wrappers(consumer)
             .downcast_ref::<crate::effects::DrawCardsEffect>()
         && draw.player == PlayerFilter::You
@@ -1024,6 +1052,24 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
         return Some(format!(
             "Draw cards equal to {}",
             describe_value(&draw.count)
+        ));
+    }
+
+    // "Up to one target player's life total becomes half their starting life
+    // total, rounded down." (Torgaar): the declared player is the possessive
+    // subject of the life-total change.
+    if effects.len() == 2
+        && let Some(set_life) = structural_unwrap_render_wrappers(consumer)
+            .downcast_ref::<crate::effects::SetLifeTotalEffect>()
+        && matches!(set_life.player, PlayerFilter::AliasedTarget(_))
+        && matches!(identity.target.base(), ChooseSpec::Player(_))
+        && let Some(rest) = describe_effect(consumer).strip_prefix("their life total becomes ")
+            .map(str::to_string)
+            .or_else(|| describe_effect(consumer).strip_prefix("Their life total becomes ").map(str::to_string))
+    {
+        return Some(format!(
+            "{}'s life total becomes {rest}",
+            capitalize_first(&describe_choose_spec(identity.target))
         ));
     }
 
@@ -1075,7 +1121,53 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
     if let Some(tag) = identity.tag
         && effect_tree_executes_with_tagged_source(consumer, tag)
     {
-        return replace_tagged_source_subject(&rendered, &identity);
+        let replaced = replace_tagged_source_subject(&rendered, &identity)?;
+        // "target creature an opponent controls deals damage equal to its
+        // power to that player" (Dong Zhou): the source's controller is the
+        // opponent the declaration just named.
+        if let ChooseSpec::Object(filter) = identity.target.base()
+            && filter.controller == Some(PlayerFilter::Opponent)
+            && identity.target.is_target()
+        {
+            for ending in [" to its controller.", " to its controller"] {
+                if let Some(head) = replaced.strip_suffix(ending) {
+                    let period = if ending.ends_with('.') { "." } else { "" };
+                    return Some(format!("{head} to that player{period}"));
+                }
+            }
+        }
+        return Some(replaced);
+    }
+    // The consumer names the declared object only through its tagged
+    // reference, which describes as a bare "target permanent" ("Until the
+    // end of your next turn, target creature attacks that player each combat
+    // if able" — Silver Surfer). The declaration is that reference's noun.
+    // "Until your next turn, up to one target creature attacks a player each
+    // combat if able" (Nahiri, the Unforgiving): an optional single target
+    // folds the same way.
+    if (target_text.starts_with("target ") || target_text.starts_with("up to one target "))
+        && !target_text.eq_ignore_ascii_case("target permanent")
+        && matches!(identity.target.base(), ChooseSpec::Object(_))
+        && rendered_consumer
+            .to_ascii_lowercase()
+            .contains("target permanent")
+        && rendered
+            .to_ascii_lowercase()
+            .matches("target permanent")
+            .count()
+            == 1
+        && !rendered
+            .to_ascii_lowercase()
+            .contains(&target_text.to_ascii_lowercase())
+    {
+        if rendered.contains("target permanent") {
+            return Some(rendered.replacen("target permanent", &target_text, 1));
+        }
+        return Some(rendered.replacen(
+            "Target permanent",
+            &capitalize_first(&target_text),
+            1,
+        ));
     }
 
     None
@@ -1085,6 +1177,25 @@ pub(super) fn describe_single_consumer_synthetic_target_fold(effects: &[Effect])
 mod tests {
     use super::*;
     use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+    #[test]
+    fn target_keyword_loss_choice_keeps_chooser_and_shared_identity() {
+        let oracle = "{T}: Target creature loses your choice of flying, first strike, or trample until end of turn.";
+        let definition = crate::compiler_test_support::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(), "Keyword Loss Probe")
+            .card_types(vec![CardType::Creature]).parse_text(oracle).expect("keyword choice parses");
+        assert_eq!(crate::compiled_text::compiled_text_lines(&definition), vec![oracle.to_string()]);
+        let program = definition.abilities.iter().find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(ability) => Some(&ability.effects), _ => None,
+        }).unwrap();
+        let effects = &program.segments[0].default_effects;
+        let mut choice = effects[1].downcast_ref::<crate::effects::ChooseModeEffect>().unwrap().clone();
+        let mut changed = choice.modes[1].effects[0]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>().unwrap().clone();
+        changed.grant_only_if_absent = true;
+        choice.modes[1].effects[0] = Effect::new(changed);
+        assert!(describe_compact_keyword_change_choice(&Effect::new(choice)).is_none());
+    }
 
     #[test]
     fn characteristic_except_by_restriction_folds_to_target_subject() {

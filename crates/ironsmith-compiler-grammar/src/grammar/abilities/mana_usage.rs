@@ -699,10 +699,18 @@ fn parse_cast_or_activate_source(tokens: &[OwnedLexToken]) -> Option<ManaUsageRe
     }
     let spell_tokens = token_slice_for_words(tokens, &view, prefix_end, separator_start)?;
     let source_tokens = token_slice_for_words(tokens, &view, source_start, words.len())?;
+    let mut ability_source_filter = parse_ability_source_filter(source_tokens)?;
+    // "or activate abilities of artifacts" (Grand Architect): the plural
+    // object noun, without a trailing "source(s)", is surface only.
+    if separator.contains(&"abilities")
+        && !words.last().is_some_and(|word| matches!(*word, "source" | "sources"))
+    {
+        ability_source_filter.set_plural_object_noun_surface(true);
+    }
     Some(
         ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
             spell_filter: parse_mana_usage_spell_filter(spell_tokens)?,
-            ability_source_filter: parse_ability_source_filter(source_tokens)?,
+            ability_source_filter,
         },
     )
 }

@@ -416,7 +416,7 @@ impl<'dm> CostContext<'dm> {
             effect_outcomes: execution.effect_outcomes.clone(),
             provenance: execution.provenance,
             interactive_mana_exclusions: None,
-            execution_inputs: Some(Box::new(crate::effects::PaymentExecutionInputs::capture(
+            execution_inputs: Some(Box::new(crate::effects::PaymentExecutionInputs::capture_for_payment(
                 execution,
             ))),
             decision_maker: &mut *execution.decision_maker,

@@ -2123,7 +2123,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::KeywordActions(KeywordActionAst::Fight { creature2, .. }) => {
                     if let Some(filter) = explicit_object_target_filter(creature2)
-                        && let Some(player @ (PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight)) = &filter.controller
+                        && let Some(player @ (PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight)) = &filter.controller
                     {
                         // A named seat is a player antecedent in its own
                         // right, not the later controller of the creature it
@@ -3206,6 +3206,12 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            tag,
+            player,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
             filter,
             tag,
@@ -3591,6 +3597,33 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. }) => {
             advance_effects_preserving_last_effect(effects, id_gen, frame)?;
+        }
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+            target_action, riders, ..
+        }) => {
+            // The target was announced by the preceding TargetOnly effect.
+            // Resolution still executes this action before the independent
+            // riders for every slot, so resolve their lexical references in
+            // that order and keep the loop-local iterated binding local.
+            let saved = frame.clone();
+            let mut nested = saved.clone();
+            nested.iterated_object = true;
+            if !std::iter::once(target_action.as_ref())
+                .chain(riders.iter())
+                .any(effect_references_outer_metric_through_iteration)
+            {
+                nested.last_effect_id = None;
+            }
+            let mut body = Vec::with_capacity(1 + riders.len());
+            body.push(target_action.as_ref().clone());
+            body.extend(riders.iter().cloned());
+            advance_reference_frames(&body, id_gen, &mut nested)?;
+            if saved.last_object_tag != nested.last_object_tag {
+                frame.last_object_tag = nested.last_object_tag;
+            }
+            if saved.last_player_filter != nested.last_player_filter {
+                frame.last_player_filter = nested.last_player_filter;
+            }
         }
         EffectAst::Votes(VoteEffectAst::BidLife { winner_effects, .. }) => {
             advance_effects_preserving_last_effect(winner_effects, id_gen, frame)?;
@@ -4844,6 +4877,10 @@ fn resolve_direct_choice_filter_references(
             filter,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             ..
@@ -5362,6 +5399,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::Control(ControlActionAst::GainControl { .. })
         ),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             ..
         })
@@ -5718,6 +5756,7 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
         return matches!(
             effect,
             EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { .. })
+                | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection { .. })
                 | EffectAst::ObjectChoices(
                     ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary { .. }
                 )
@@ -6144,6 +6183,19 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
             }
             visit_filter_values(filter, visit);
         }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            aggregate_constraint,
+            ..
+        }) => {
+            visit_filter_values(filter, visit);
+            if let Some(constraint) = aggregate_constraint {
+                visit(&constraint.maximum);
+                if let Some(minimum) = &constraint.minimum {
+                    visit(minimum);
+                }
+            }
+        }
         EffectAst::Conditionals(
             ConditionalEffectAst::Conditional { predicate, .. }
             | ConditionalEffectAst::TrailingIf { predicate, .. }
@@ -6160,6 +6212,10 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
             }
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => visit(count),
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { start, count, .. }) => {
+            visit(start);
+            visit(count);
+        },
         // A frozen X ("at the beginning of your next main phase this turn, add
         // an amount of {C} equal to the mana lost this way") reads its
         // producer when the binding runs, not when the delayed body resolves.
@@ -8319,7 +8375,22 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count_value, state)?;
             }
         }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            aggregate_constraint,
+            ..
+        }) => {
+            if let Some(constraint) = aggregate_constraint {
+                resolve_effect_result_value(&mut constraint.maximum, state)?;
+                if let Some(minimum) = constraint.minimum.as_mut() {
+                    resolve_effect_result_value(minimum, state)?;
+                }
+            }
+        }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => {
+            resolve_effect_result_value(count, state)?;
+        }
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { start, count, .. }) => {
+            resolve_effect_result_value(start, state)?;
             resolve_effect_result_value(count, state)?;
         }
         EffectAst::Permissions(
@@ -10234,6 +10305,24 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     .minimum
                     .as_mut()
                     .map(|minimum| bind_unresolved_it_in_value(minimum, seed_tag))
+                    .unwrap_or(0)
+                + bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
+        }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            tag,
+            aggregate_constraint,
+            ..
+        }) => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+                + aggregate_constraint
+                    .as_mut()
+                    .map(|constraint| {
+                        bind_unresolved_it_in_value(&mut constraint.maximum, seed_tag)
+                            + constraint.minimum.as_mut().map(|minimum| {
+                                bind_unresolved_it_in_value(minimum, seed_tag)
+                            }).unwrap_or(0)
+                    })
                     .unwrap_or(0)
                 + bind_unresolved_it_in_tag(&mut tag.key, seed_tag)
         }

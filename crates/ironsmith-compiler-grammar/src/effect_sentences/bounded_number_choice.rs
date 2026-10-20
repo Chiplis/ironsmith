@@ -7,12 +7,12 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,CardTe
     } else { tokens };
     if complete.len() == 3 && complete.iter().zip(["choose", "a", "number"]).all(|(token, word)| token.is_word(word)) {
         return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, PlayerAst::You,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 0, max: None, source_owned: false }))));
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 0, max: None, source_owned: false, draw_count_choice: false }))));
     }
     if complete.len() == 6 && complete.iter().zip(["choose", "a", "number", "greater", "than", "0"])
         .all(|(token, word)| token.is_word(word)) {
         return Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, PlayerAst::You,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 1, max: None, source_owned: false }))));
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min: 1, max: None, source_owned: false, draw_count_choice: false }))));
     }
     let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
     let Some((_,rest))=crate::grammar::primitives::parse_prefix(tokens,crate::grammar::primitives::phrase(&["choose","a","number","between"])) else{return Ok(None)};
@@ -21,7 +21,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,CardTe
     let Some((max,used))=crate::util::parse_number(&rest[1..]) else{return Ok(None)};
     if used+1!=rest.len(){return Ok(None)}
     if min>max{return Err(CardTextError::ParseError("numeric choice minimum exceeds maximum".into()))}
-    Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser,PlayerAst::You,SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber{min,max:Some(max),source_owned:false}))))
+    Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Chooser,PlayerAst::You,SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber{min,max:Some(max),source_owned:false,draw_count_choice:false}))))
 }
 /// "Target opponent chooses a number." (Choice of Damnations): another player
 /// makes the unbounded numeric choice; later "that much"/"that many" read it.
@@ -43,6 +43,7 @@ pub(super) fn parse_player_chooses_sentence(
             min: 0,
             max: None,
             source_owned: false,
+            draw_count_choice: false,
         }),
     )]))
 }
@@ -101,7 +102,7 @@ mod positive_number_tests {
         let parsed=parse_sentence(&crate::lexer::lex_line("Choose a number greater than 0 and a color.",0).unwrap()).unwrap().unwrap();
         assert_eq!(parsed.len(),2);
         assert!(matches!(&parsed[0],EffectAst::SubjectVerb(subject) if matches!(subject.action,
-            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber{min:1,max:None,source_owned:false}))));
+            SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber{min:1,max:None,source_owned:false,draw_count_choice:false}))));
         assert!(matches!(&parsed[1],EffectAst::SubjectVerb(subject) if matches!(subject.action,
             SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseColor))));
         assert!(parse_sentence(&crate::lexer::lex_line("Choose a number greater than 0 and a color except blue.",0).unwrap()).unwrap().is_none());

@@ -259,8 +259,25 @@ fn read_copular_animation(
     if let Some(shape) =
         effect_grammar::clause_dispatch_shapes::parse_copular_animation_shape(tokens)
     {
+        // "You return that card to the battlefield ... The creature is a
+        // Vampire in addition to its other types." (Drana, the Last
+        // Bloodchief): a definite "the <creature|permanent>" subject is the
+        // anaphor for the object just acted on, read as "that <noun>", never
+        // the set of every such object.
+        let definite_subject = match shape.subject_tokens {
+            [article, noun]
+                if article.is_word("the")
+                    && (noun.is_word("creature") || noun.is_word("permanent")) =>
+            {
+                Some(vec![
+                    OwnedLexToken::word("that", article.span()),
+                    noun.clone(),
+                ])
+            }
+            _ => None,
+        };
         let effect = super::super::clause_dispatch::parse_become_clause(
-            shape.subject_tokens,
+            definite_subject.as_deref().unwrap_or(shape.subject_tokens),
             shape.animation_tokens,
         )?;
         return Ok(Some((

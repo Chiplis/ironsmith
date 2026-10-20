@@ -6,7 +6,8 @@
 //! additional cost>, <same verb> another target <same filter>" adds that many
 //! more targets of the same kind. All of them are chosen as the spell is cast
 //! (CR 601.2c), so the program is one instruction over 1 + (each count)
-//! targets. A trailing ", and <rider>" is performed once per counted payment.
+//! targets. The instructions then execute in printed order, with each
+//! trailing ", and <rider>" performed even if its individual target is illegal.
 
 use super::dispatch_entry::SentenceInput;
 use crate::cards::builders::{
@@ -19,8 +20,7 @@ pub(super) struct ExtraTargetsGroup {
     base: EffectAst,
     verb: String,
     filter_words: Vec<String>,
-    extra_counts: Vec<Value>,
-    riders: Vec<EffectAst>,
+    extras: Vec<(Value, Vec<EffectAst>)>,
     pub(super) first_sentence: usize,
     pub(super) consumed: usize,
 }
@@ -170,8 +170,7 @@ pub(super) fn open(
         base,
         verb,
         filter_words,
-        extra_counts: Vec::new(),
-        riders: Vec::new(),
+        extras: Vec::new(),
         first_sentence: sentence_idx,
         consumed: 1,
     }))
@@ -185,34 +184,42 @@ pub(super) fn continue_with(
     else {
         return Ok(false);
     };
-    group.extra_counts.push(count.clone());
-    if !rider.is_empty() {
-        group.riders.push(EffectAst::ForEach(ForEachEffectAst::RepeatEffects {
-            count,
-            effects: rider,
-        }));
-    }
+    group.extras.push((count, rider));
     group.consumed += 1;
     Ok(true)
 }
 
 pub(super) fn finish(group: ExtraTargetsGroup) -> Vec<EffectAst> {
-    let ExtraTargetsGroup {
-        mut base,
-        extra_counts,
-        riders,
-        ..
-    } = group;
-    let total = extra_counts
-        .into_iter()
-        .fold(Value::Fixed(1), |sum, count| {
-            Value::Add(Box::new(sum), Box::new(count))
-        });
-    if let Some(target) = destroy_target_mut(&mut base) {
-        let single = std::mem::replace(target, TargetAst::Source(None));
-        *target = TargetAst::WithCountValue(Box::new(single), ChoiceCount::dynamic_x(), total);
+    let ExtraTargetsGroup { base, extras, .. } = group;
+    let Some(single) = (|| {
+        let mut copy = base.clone();
+        destroy_target_mut(&mut copy).cloned()
+    })() else { return vec![base]; };
+    let total = extras.iter().fold(Value::Fixed(1), |sum, (count, _)| {
+        Value::Add(Box::new(sum), Box::new(count.clone()))
+    });
+    let target_spec = TargetAst::WithCountValue(
+        Box::new(single), ChoiceCount::dynamic_x(), total,
+    );
+    let mut effects = vec![EffectAst::subject_verb_target_only(target_spec.clone())];
+    let mut start = Value::Fixed(0);
+    effects.push(EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+        target_spec: target_spec.clone(),
+        start: start.clone(),
+        count: Value::Fixed(1),
+        target_action: Box::new(base.clone()),
+        riders: Vec::new(),
+    }));
+    start = Value::Fixed(1);
+    for (count, riders) in extras {
+        effects.push(EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+            target_spec: target_spec.clone(),
+            start: start.clone(),
+            count: count.clone(),
+            target_action: Box::new(base.clone()),
+            riders,
+        }));
+        start = Value::Add(Box::new(start), Box::new(count));
     }
-    let mut effects = vec![base];
-    effects.extend(riders);
     effects
 }

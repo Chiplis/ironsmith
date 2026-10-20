@@ -288,6 +288,10 @@ fn materialize_static_abilities(
                     && matches!(
                         ability.payload,
                         ironsmith_core::StaticAbilityPayload::Grants(_)
+                            // A rule restriction carries its own display in
+                            // the payload ("Meet in Reverse — You draw cards
+                            // from the bottom of your library", River Song).
+                            | ironsmith_core::StaticAbilityPayload::RuleRestriction { .. }
                     )
                 {
                     ability.label = format!(
@@ -714,6 +718,23 @@ fn materialize_statement(
             first_segment.starts_new_source_line = true;
         }
         existing.extend(lowered.effects);
+        // "Return target creature card ... to the battlefield. If {G} was
+        // spent to cast this spell, that creature enters with an additional
+        // +1/+1 counter on it." (Vigor Mortis): an authored entry-time
+        // counter statement fuses into the previous statement's move. Only
+        // counters typed as entry-time cross the boundary.
+        let mut fused = crate::resolution::ResolutionProgram::new(existing.segments.clone());
+        crate::battlefield_entry_counter_fusion::fuse_program(&mut fused);
+        let effect_count = |program: &crate::resolution::ResolutionProgram| {
+            program
+                .segments
+                .iter()
+                .map(|segment| segment.default_effects.len())
+                .sum::<usize>()
+        };
+        if effect_count(&fused) < effect_count(&*existing) {
+            existing.replace_segments(fused.segments);
+        }
     } else {
         builder.spell_effect = Some(lowered.effects);
     }

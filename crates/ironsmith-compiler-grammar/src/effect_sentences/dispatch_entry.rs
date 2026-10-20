@@ -1942,17 +1942,28 @@ fn maybe_append_reexile_returned_objects(
     append_reexile_returned_objects_if_missing(sentence_effects);
 }
 
-fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
-    let already_exiles = effects.iter().any(|effect| {
-        matches!(
-            effect,
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
-                    | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
-                ..
-            })
-        )
+fn effect_is_or_contains_exile(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile { .. })
+                | SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileAll { .. }),
+            ..
+        })
+    ) {
+        return true;
+    }
+    // "Return those cards ..., then exile them again" (Lae'zel's
+    // Acrobatics): the re-exile may already sit inside the chained sequence.
+    let mut nested_exile = false;
+    for_each_nested_effects(effect, false, |nested| {
+        nested_exile |= nested.iter().any(effect_is_or_contains_exile);
     });
+    nested_exile
+}
+
+fn append_reexile_returned_objects_if_missing(effects: &mut Vec<EffectAst>) {
+    let already_exiles = effects.iter().any(effect_is_or_contains_exile);
     if already_exiles {
         return;
     }
@@ -8290,6 +8301,7 @@ fn parse_effect_sentences_lexed_legacy(
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
     let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
+    keep_chosen_player_followup_inside_conditional(sentences, &mut effects);
     hoist_put_onto_battlefield_reflexive_before_remainder_cleanup(&mut effects);
     preserve_revealed_same_mana_value_as_another_iterator(tokens, &mut effects);
     transport_optional_search_partition_followup(&mut effects);
@@ -8313,6 +8325,56 @@ fn parse_effect_sentences_lexed_legacy(
         }
     }
     Ok(effects)
+}
+
+/// "If X is 2, you may choose a player. They return a creature they control
+/// to its owner's hand." (Multiple Choice): the second sentence's subject is
+/// the player chosen inside the conditional body, so it acts only when that
+/// branch chose one. Keep it in the same branch.
+fn keep_chosen_player_followup_inside_conditional(
+    sentences: &[&[OwnedLexToken]],
+    effects: &mut Vec<EffectAst>,
+) {
+    fn chooses_player(effect: &EffectAst) -> bool {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Choices(ChoiceActionAst::ChoosePlayer { .. }),
+                ..
+            })
+        ) {
+            return true;
+        }
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            found |= nested.iter().any(chooses_player);
+        });
+        found
+    }
+    let [first, second] = sentences else {
+        return;
+    };
+    if crate::lexer::parser_token_word_refs(first).first() != Some(&"if")
+        || crate::lexer::parser_token_word_refs(second).first() != Some(&"they")
+        || effects.len() != 2
+    {
+        return;
+    }
+    let EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+        if_true, if_false, ..
+    }) = &effects[0]
+    else {
+        return;
+    };
+    if !if_false.is_empty() || !if_true.iter().any(chooses_player) {
+        return;
+    }
+    let followup = effects.remove(1);
+    if let EffectAst::Conditionals(ConditionalEffectAst::Conditional { if_true, .. }) =
+        &mut effects[0]
+    {
+        if_true.push(followup);
+    }
 }
 
 fn dynamic_base_pt_where_x_effect(effect: &EffectAst) -> bool {
@@ -10411,13 +10473,33 @@ pub(crate) fn parse_turn_scoped_enter_tapped_replacement(
     let Some(enter_word) = view.parse_any_word_position(&["enter", "enters"]) else {
         return Ok(None);
     };
-    if !view.parses_complete_at(enter_word + 1, &["tapped", "this", "turn"]) {
-        return Ok(None);
-    }
+    // "Until your next turn, creatures your opponents control enter tapped."
+    // (Cone of Cold): the same entry rule lasting until your next turn.
+    let until_your_next_turn = crate::lexer::parser_token_word_refs(tokens)
+        .starts_with(&["until", "your", "next", "turn"]);
+    let duration = if until_your_next_turn {
+        if !view.parses_complete_at(enter_word + 1, &["tapped"]) {
+            return Ok(None);
+        }
+        ZoneReplacementDurationAst::UntilYourNextTurn
+    } else {
+        if !view.parses_complete_at(enter_word + 1, &["tapped", "this", "turn"]) {
+            return Ok(None);
+        }
+        ZoneReplacementDurationAst::UntilEndOfTurn
+    };
     let Some(enter_index) = view.map_word_to_token_start(enter_word) else {
         return Ok(None);
     };
-    let subject_tokens = trim_edge_punctuation(&tokens[..enter_index]);
+    let subject_start = if until_your_next_turn {
+        let Some(comma) = tokens[..enter_index].iter().position(|token| token.is_comma()) else {
+            return Ok(None);
+        };
+        comma + 1
+    } else {
+        0
+    };
+    let subject_tokens = trim_edge_punctuation(&tokens[subject_start..enter_index]);
     // Only the sentence that states the entry rule supplies its subject
     // ("Sacrifice X lands. ... Lands you control enter tapped this turn."):
     // earlier sentences are their own instructions, owned elsewhere.
@@ -10427,10 +10509,7 @@ pub(crate) fn parse_turn_scoped_enter_tapped_replacement(
     let mut filter = super::parse_object_filter(&subject_tokens, false)?;
     filter.zone = Some(Zone::Battlefield);
     Ok(Some(
-        EffectAst::subject_verb_register_enter_tapped_replacement(
-            filter,
-            ZoneReplacementDurationAst::UntilEndOfTurn,
-        ),
+        EffectAst::subject_verb_register_enter_tapped_replacement(filter, duration),
     ))
 }
 
@@ -14433,6 +14512,19 @@ pub fn replace_unbound_x_in_effect_anywhere(
         }) => {
             replace_in_filter(filter, replacement, clause)?;
         }
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            aggregate_constraint,
+            ..
+        }) => {
+            replace_in_filter(filter, replacement, clause)?;
+            if let Some(constraint) = aggregate_constraint {
+                replace_value(&mut constraint.maximum, replacement, clause)?;
+                if let Some(minimum) = &mut constraint.minimum {
+                    replace_value(minimum, replacement, clause)?;
+                }
+            }
+        }
         EffectAst::Permissions(
             PermissionEffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. },
         ) => {
@@ -14578,6 +14670,12 @@ pub fn replace_unbound_x_in_effect_anywhere(
             })
             | SubjectVerbActionAst::Damage(DamageActionAst::HealDamage {
                 amount: Some(amount),
+                ..
+            })
+            // "Roll X six-sided dice, where X is the number of Bobbleheads
+            // you control" (Luck Bobblehead).
+            | SubjectVerbActionAst::Random(RandomActionAst::RollDiceTotal {
+                count: amount,
                 ..
             }) => {
                 replace_value(amount, replacement, clause)?;

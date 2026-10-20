@@ -317,6 +317,10 @@ pub(super) fn continue_with(
         group.consumed += 1;
         return Ok(true);
     }
+    if group.selected.is_some() && selections::conditional_instead_put(group, sentence)? {
+        group.consumed += 1;
+        return Ok(true);
+    }
     if group.selected.is_some()
         && (revealed::chosen_partition(group, sentence)
             || revealed::chosen_move_followup(group, sentence)?)

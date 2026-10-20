@@ -1111,8 +1111,8 @@ fn resolve_triggered_stack_entry_immediately_with_outputs(
     let mut ctx =
         super::stack_resolution::stack_entry_execution_context(game, &entry, decision_maker)?;
 
-    let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_context(game, &entry, Some(&ctx))?;
+    let (valid_targets, valid_target_assignments, all_targets_invalid, slot_legality) =
+        super::targeting::validate_stack_entry_targets_with_slot_legality_with_context(game, &entry, Some(&ctx))?;
     if !entry.targets.is_empty() && all_targets_invalid {
         return Ok(Vec::new());
     }
@@ -1143,6 +1143,7 @@ fn resolve_triggered_stack_entry_immediately_with_outputs(
         ctx,
         valid_targets,
         &valid_target_assignments,
+        &slot_legality,
     )?;
 
     let effects = if let Some(ref ability_effects) = entry.ability_effects {

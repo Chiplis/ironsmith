@@ -264,6 +264,13 @@ pub struct TurnHistory {
     /// the battlefield attacking never "attacked" (CR 508.4), and removal from
     /// combat doesn't undo the attack (CR 702.121a melee counts these).
     pub players_attacked_in_combat: HashMap<(u32, PlayerId), HashSet<PlayerId>>,
+    /// The players each creature attacked during each active player's most
+    /// recent combat, keyed by that active player and stamped with the
+    /// (turn number, combat phase) the declaration belongs to. Survives turn
+    /// changes: "an opponent ... that this creature didn't attack during your
+    /// last combat" (Territorial Hellkite) reads an earlier turn's combat.
+    pub last_combat_attacked_players:
+        HashMap<PlayerId, ((u32, u32), HashMap<ObjectId, Vec<PlayerId>>)>,
     pub creatures_attacked_battles_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,

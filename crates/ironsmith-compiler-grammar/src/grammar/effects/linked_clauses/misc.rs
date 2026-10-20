@@ -28,6 +28,8 @@ pub struct SameControllerSacrificeShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraveyardCastReplacementShape {
     pub until_end_of_turn: bool,
+    /// The replacement names the spell owner's graveyard, rather than any graveyard.
+    pub replacement_to_your_graveyard: bool,
     /// The duration trails the permission ("... from your graveyard this
     /// turn"); `until_end_of_turn` is also set.
     pub trailing_this_turn: bool,

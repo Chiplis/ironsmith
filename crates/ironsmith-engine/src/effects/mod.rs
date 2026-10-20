@@ -149,7 +149,7 @@ pub use composition::{
     ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
     EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachObjectCorrelatedResultEffect,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect,
+    ForEachAnnouncedTargetSlotEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect,
     GrantEndThisEffectPaymentEffect, GrantRepeatableManaPaymentActionUntilEndOfTurnEffect,
     IfEffect, LifeBidStart, LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,

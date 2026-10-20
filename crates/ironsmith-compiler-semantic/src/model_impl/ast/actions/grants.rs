@@ -49,6 +49,8 @@ pub enum GrantActionAst {
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         until_next_end_step: bool,
         until_next_turn_start: bool,
+        /// "their" duration: use the permission holder, not the effect controller.
+        duration_is_holder_relative: bool,
         /// "During your next turn, you may play ...": usable only during
         /// that turn, not for the rest of the current one.
         during_next_turn: bool,

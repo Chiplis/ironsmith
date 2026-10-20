@@ -1851,6 +1851,7 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             ..
         })
@@ -1904,6 +1905,10 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
             tag,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            tag,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             tag,
             ..
@@ -1950,6 +1955,10 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            tag,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             tag,
             ..
         })
@@ -2246,6 +2255,10 @@ fn choice_collection_producer_matches_object_kind(
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             filter,
             ..
         })

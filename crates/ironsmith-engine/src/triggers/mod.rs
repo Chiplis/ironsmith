@@ -127,6 +127,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         PlayerFilter::Any => "a player".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "the active player".to_string(),
         PlayerFilter::Defending => "the defending player".to_string(),
@@ -180,6 +181,7 @@ pub fn describe_player_filter_possessive(filter: &PlayerFilter) -> String {
         PlayerFilter::Any => "each player's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
+        PlayerFilter::OpponentToYourLeft => "the opponent to your left's".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
@@ -1060,6 +1062,16 @@ impl Trigger {
         ))
     }
 
+    pub fn players_are_dealt_combat_damage_one_or_more(
+        player: PlayerFilter,
+        during_your_turn: bool,
+    ) -> Self {
+        Self::new(DealsCombatDamageToPlayerTrigger::recipient_passive(
+            player,
+            during_your_turn,
+        ))
+    }
+
     /// Create a "whenever one or more [filter] deal combat damage to a
     /// player" trigger: once for each damaged player.
     pub fn deals_combat_damage_to_each_player_one_or_more(
@@ -1167,6 +1179,23 @@ impl Trigger {
             target_filter,
             source_surface,
         ))
+    }
+
+    /// "Whenever <source> deals noncombat damage to <object> equal to that
+    /// object's toughness" (Taii Wakeen): the ordinary damage trigger with
+    /// its event qualifications.
+    pub fn deals_damage_to_qualified(
+        source_filter: ObjectFilter,
+        target_filter: ObjectFilter,
+        source_surface: ironsmith_core::trigger_model::DamageSourceSurface,
+        noncombat_only: bool,
+        amount_equals_target_toughness: bool,
+    ) -> Self {
+        let mut trigger =
+            DealsDamageToTrigger::with_source_surface(source_filter, target_filter, source_surface);
+        trigger.noncombat_only = noncombat_only;
+        trigger.amount_equals_target_toughness = amount_equals_target_toughness;
+        Self::new(trigger)
     }
 
     /// "Whenever <source> deals damage to that <object>": the damaged object

@@ -1068,12 +1068,15 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
                 word_list.join(" ")
             )));
         };
-        effects.append(&mut player_effects);
+        // The permanent half lowers first: the player half's "you" becomes
+        // the newest player antecedent, and "that player" in the permanent
+        // half must still name the earlier player (not "target you").
         effects.push(EffectAst::subject_verb_grant_abilities_all(
             permanent_filter,
             abilities,
             duration,
         ));
+        effects.append(&mut player_effects);
         effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
         return Ok(Some(effects));
     }

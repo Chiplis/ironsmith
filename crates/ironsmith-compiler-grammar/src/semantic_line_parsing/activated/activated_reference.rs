@@ -45,12 +45,45 @@ fn authored_name_tokens_for_span(
         }
     }
     let first_name = first_name?;
-    let name: Vec<OwnedLexToken> = covered[first_name..]
+    // "Put a fire counter on this Vehicle" (War Balloon): a capitalized
+    // subtype after a demonstrative is the source's type noun, not a name.
+    let source_index = info
+        .source_tokens
+        .iter()
+        .position(|token| token.span == covered[first_name].span);
+    let previous = match source_index {
+        Some(index) if index > 0 => info.source_tokens.get(index - 1),
+        _ => None,
+    };
+    if previous.is_some_and(|token| {
+        token.is_any_word(&["this", "that", "target", "enchanted", "equipped", "each", "another"])
+    }) {
+        return None;
+    }
+    let mut name: Vec<OwnedLexToken> = covered[first_name..]
         .iter()
         .take_while(|token| !token.is_word("and"))
         .filter(|token| token.kind != TokenKind::Period)
         .map(|token| (*token).clone())
         .collect();
+    // The mapped span can stop short of the authored name ("Grimoire of the
+    // Dead" mapped from the shorter normalized source reference): continue
+    // through directly following capitalized name words.
+    let last_index = name.last().and_then(|last| {
+        info.source_tokens
+            .iter()
+            .position(|token| token.span == last.span)
+    });
+    if let Some(last_index) = last_index {
+        for token in &info.source_tokens[last_index + 1..] {
+            if token.kind == TokenKind::Period
+                || !token.slice.chars().next().is_some_and(char::is_uppercase)
+            {
+                break;
+            }
+            name.push(token.clone());
+        }
+    }
     (!name.is_empty()).then_some(name)
 }
 

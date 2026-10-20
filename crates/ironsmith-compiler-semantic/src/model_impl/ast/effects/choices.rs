@@ -20,6 +20,16 @@ pub enum ObjectChoiceEffectAst {
         tag: TagRef,
         constraint: crate::effect::ChoiceAggregateConstraint,
     },
+    /// A source-linked exiled pool keeps its authored source reference while
+    /// the filter's tagged membership enforces CR 607.2a at runtime.
+    ChooseSourceLinkedCollection {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        player: PlayerAst,
+        tag: TagRef,
+        source: ironsmith_core::effect::SourceLinkedCollectionCastSurface,
+        aggregate_constraint: Option<crate::effect::ChoiceAggregateConstraint>,
+    },
     ChooseObjectsBottomOfLibrary {
         filter: ObjectFilter,
         count: ChoiceCount,

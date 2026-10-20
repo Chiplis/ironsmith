@@ -4373,6 +4373,11 @@ pub fn player_matches_filter_with_combat(
         PlayerFilter::PlayerToYourLeft => {
             game.closest_in_game_player_to_left_matching(controller, |_| true) == Some(player_id)
         }
+        PlayerFilter::OpponentToYourLeft => {
+            game.closest_in_game_player_to_left_matching(controller, |candidate| {
+                game.are_opponents(controller, candidate)
+            }) == Some(player_id)
+        }
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player_id)
         }
@@ -4765,6 +4770,26 @@ pub(super) fn validate_stack_entry_targets_with_context(
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let view = crate::derived_view::DerivedGameView::from_refreshed_state(&checked);
     validate_stack_entry_targets_with_view(&checked, entry, &view, ctx)
+}
+
+/// Validate targets while retaining legality for each announced slot.
+/// Immediate stack resolution and ordinary priority resolution use the same
+/// boundary so neither can shift payment-indexed target groups.
+pub(super) fn validate_stack_entry_targets_with_slot_legality_with_context(
+    game: &GameState,
+    entry: &StackEntry,
+    ctx: Option<&crate::effects::ExecutionContext>,
+) -> Result<(
+    Vec<ResolvedTarget>,
+    Vec<crate::game_state::TargetAssignment>,
+    bool,
+    Vec<bool>,
+), crate::effects::ExecutionError> {
+    let checked = game
+        .continuous_query_snapshot()
+        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let view = crate::derived_view::DerivedGameView::from_refreshed_state(&checked);
+    validate_stack_entry_targets_with_slot_legality_with_view(&checked, entry, &view, ctx)
 }
 
 fn combat_attacking_player_for_entry(game: &GameState, entry: &StackEntry) -> Option<PlayerId> {
@@ -5473,10 +5498,29 @@ pub(super) fn validate_stack_entry_targets_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     ctx: Option<&crate::effects::ExecutionContext>,
 ) -> Result<
+    (Vec<ResolvedTarget>, Vec<crate::game_state::TargetAssignment>, bool),
+    crate::effects::ExecutionError,
+> {
+    let (targets, assignments, all_invalid, _) =
+        validate_stack_entry_targets_with_slot_legality_with_view(game, entry, view, ctx)?;
+    Ok((targets, assignments, all_invalid))
+}
+
+/// Like the ordinary validator, but retain legality at every announced slot.
+/// Compacted `valid_targets` cannot identify which paid target group lost a
+/// member; per-slot riders still resolve when another target keeps the spell
+/// on the stack.
+pub(super) fn validate_stack_entry_targets_with_slot_legality_with_view(
+    game: &GameState,
+    entry: &StackEntry,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    ctx: Option<&crate::effects::ExecutionContext>,
+) -> Result<
     (
         Vec<ResolvedTarget>,
         Vec<crate::game_state::TargetAssignment>,
         bool,
+        Vec<bool>,
     ),
     crate::effects::ExecutionError,
 > {
@@ -5495,6 +5539,7 @@ fn validate_current_stack_entry_targets_with_view(
         Vec<ResolvedTarget>,
         Vec<crate::game_state::TargetAssignment>,
         bool,
+        Vec<bool>,
     ),
     crate::effects::ExecutionError,
 > {
@@ -5504,7 +5549,7 @@ fn validate_current_stack_entry_targets_with_view(
         });
     }
     if entry.targets.is_empty() {
-        return Ok((Vec::new(), Vec::new(), false));
+        return Ok((Vec::new(), Vec::new(), false, Vec::new()));
     }
 
     if let Some(reference) = entry.defending_player_reference
@@ -5522,6 +5567,8 @@ fn validate_current_stack_entry_targets_with_view(
         let mut valid_targets = Vec::new();
         let mut valid_assignments = Vec::with_capacity(entry.target_assignments.len());
         let mut invalid_count = 0usize;
+        let mut slot_legality = vec![false; entry.targets.len()];
+        let mut covered_slots = vec![false; entry.targets.len()];
         let exchange_specs = stack_entry_exchange_control_specs(game, entry)?;
 
         for (assignment_index, assignment) in entry.target_assignments.iter().enumerate() {
@@ -5537,6 +5584,13 @@ fn validate_current_stack_entry_targets_with_view(
                     "target assignment range is outside its retained targets".into(),
                 )
             })?;
+            for slot in assignment.range.clone() {
+                if std::mem::replace(&mut covered_slots[slot], true) {
+                    return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                        "announced target assignments overlap".into(),
+                    ));
+                }
+            }
             let fixed_participant_slots = matches!(assignment.spec.base(), ChooseSpec::Object(filter)
                 if filter.target_controller_fixed_on_announcement);
             // An announced one-per-player set becomes independent bound
@@ -5579,6 +5633,7 @@ fn validate_current_stack_entry_targets_with_view(
                             view,
                         )))
                 {
+                    slot_legality[assignment.range.start + offset] = true;
                     valid_targets.push(match target {
                         Target::Object(id) => ResolvedTarget::Object(*id),
                         Target::Player(id) => ResolvedTarget::Player(*id),
@@ -5594,8 +5649,13 @@ fn validate_current_stack_entry_targets_with_view(
             });
         }
 
+        if covered_slots.iter().any(|covered| !covered) {
+            return Err(crate::effects::ExecutionError::IncompleteEvidence(
+                "announced target assignments omit target slots".into(),
+            ));
+        }
         let all_invalid = invalid_count == entry.targets.len();
-        return Ok((valid_targets, valid_assignments, all_invalid));
+        return Ok((valid_targets, valid_assignments, all_invalid, slot_legality));
     }
 
     let validation_specs = stack_entry_validation_target_specs(game, entry)?;
@@ -5670,6 +5730,7 @@ fn validate_current_stack_entry_targets_with_view(
 
     let mut valid_targets = Vec::new();
     let mut invalid_count = 0;
+    let mut slot_legality = Vec::with_capacity(entry.targets.len());
 
     for target in &entry.targets {
         let is_valid = if !legal_target_sets.is_empty() {
@@ -5691,6 +5752,7 @@ fn validate_current_stack_entry_targets_with_view(
             }
         };
 
+        slot_legality.push(is_valid);
         if is_valid {
             valid_targets.push(match target {
                 Target::Object(id) => ResolvedTarget::Object(*id),
@@ -5702,7 +5764,7 @@ fn validate_current_stack_entry_targets_with_view(
     }
 
     let all_invalid = invalid_count == entry.targets.len();
-    Ok((valid_targets, Vec::new(), all_invalid))
+    Ok((valid_targets, Vec::new(), all_invalid, slot_legality))
 }
 
 #[cfg(test)]
@@ -6420,13 +6482,15 @@ mod sol_78_procedure_target_bindings {
         game.object_mut(first).unwrap().initial_controller = bob;
         {
             let view = crate::derived_view::DerivedGameView::new(&game);
-            let (valid, _, _) = validate_stack_entry_targets_with_view(&game, &entry, &view, None).unwrap();
+            let (valid, _, _, slots) = validate_stack_entry_targets_with_slot_legality_with_view(&game, &entry, &view, None).unwrap();
             assert_eq!(valid, vec![ResolvedTarget::Object(second)], "only the first slot changed its designated controller");
+            assert_eq!(slots, vec![false, true], "an illegal early slot must not shift the later payment group");
         }
         game.object_mut(second).unwrap().initial_controller = alice;
         let view = crate::derived_view::DerivedGameView::new(&game);
-        let (valid, _, all_invalid) = validate_stack_entry_targets_with_view(&game, &entry, &view, None).unwrap();
+        let (valid, _, all_invalid, slots) = validate_stack_entry_targets_with_slot_legality_with_view(&game, &entry, &view, None).unwrap();
         assert!(valid.is_empty(), "swapping controllers preserves uniqueness but violates both fixed player bindings");
+        assert_eq!(slots, vec![false, false]);
         assert!(all_invalid);
     }
 }

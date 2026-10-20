@@ -131,6 +131,34 @@ fn compose_put_all_filtered_looked_cards_to_zone(
     ]
 }
 
+/// "Put all <filter> from among them into your hand and the rest into your
+/// graveyard." (Tamiyo, Collector of Tales): every matching looked-at card
+/// moves to hand with no choice, then every other looked-at card goes to the
+/// graveyard.
+fn compose_put_all_filtered_looked_cards_into_hand_rest_into_graveyard(
+    filter: ObjectFilter,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+) -> Vec<EffectAst> {
+    let mut effects = compose_put_all_filtered_looked_cards_to_zone(
+        filter,
+        looked_tag.clone(),
+        chosen_tag.clone(),
+        Zone::Hand,
+    );
+    effects.push(EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::Library(LibraryActionAst::PutTaggedRemainderInZone {
+            tag: crate::tag::TagRef::of(looked_tag),
+            keep_tagged: crate::tag::TagRef::of(chosen_tag),
+            zone: Zone::Graveyard,
+            surface: ironsmith_core::LibraryRemainderSurface::Rest,
+        }),
+    ));
+    effects
+}
+
 /// A numeric quantity whose rounding clause follows the life noun.
 fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !tokens.first()?.is_word("half") { return None; }

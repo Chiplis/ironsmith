@@ -478,6 +478,18 @@ pub(super) fn discard_sequence_count(discard: &crate::effects::DiscardEffect) ->
     {
         return "each card with the same name as a card spliced onto that spell".to_string();
     }
+    // "chooses a card in their hand and discards the rest" (Monomania): every
+    // matching card except the chosen ones.
+    if !discard.any_number
+        && let (Value::Count(count_filter), Some(card_filter)) =
+            (&discard.count, discard.card_filter.as_ref())
+        && count_filter == card_filter
+        && card_filter.tagged_constraints.len() == 1
+        && card_filter.tagged_constraints[0].relation
+            == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    {
+        return "the rest".to_string();
+    }
     if discard
         .count
         .has_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand)
@@ -565,6 +577,12 @@ fn describe_discard_draw_pair(first: &Effect, second: &Effect) -> Option<String>
         {
             describe_draw_count_for_each_phrase(&draw.count)
                 .unwrap_or_else(|| describe_card_count(&draw.count))
+        } else if let Value::CardsDiscardedThisTurn(PlayerFilter::You) = draw.count.unhinted()
+            && discard_hand.player == PlayerFilter::You
+        {
+            // "Discard your hand, then draw a card for each card you've
+            // discarded this turn." (Change of Fortune)
+            "a card for each card you've discarded this turn".to_string()
         } else {
             describe_card_count(&draw.count)
         };
@@ -1299,6 +1317,30 @@ pub(super) fn describe_for_players_may_action(
     _filter: &PlayerFilter,
     effects: &[Effect],
 ) -> Option<String> {
+    // "each opponent may discard a card or sacrifice a permanent": a
+    // single-pick choice between two optional actions.
+    if let [only] = effects
+        && let Some(choose) = only.downcast_ref::<crate::effects::ChooseModeEffect>()
+        && let [first, second] = choose.modes.as_slice()
+        && choose.max == Value::Fixed(1)
+        && !choose.random
+        && choose.common_prefix_effects.is_empty()
+    {
+        let render = |mode_effects: &[Effect]| -> Option<String> {
+            let text = describe_effect_list(mode_effects);
+            let text = text.trim().trim_end_matches('.');
+            let text = text
+                .strip_prefix("that player ")
+                .or_else(|| text.strip_prefix("you "))
+                .or_else(|| text.strip_prefix("they "))
+                .unwrap_or(text);
+            let text = lowercase_first(&normalize_you_verb_phrase(text));
+            (!text.is_empty() && !text.contains(". ")).then_some(text)
+        };
+        if let (Some(first), Some(second)) = (render(first.effects.as_slice()), render(second.effects.as_slice())) {
+            return Some(format!("{first} or {second}"));
+        }
+    }
     let mut action = describe_effect_list(effects);
     if let Some(rest) = action.strip_prefix("that player ") {
         action = rest.to_string();
@@ -1414,6 +1456,18 @@ pub(super) fn describe_sequential_any_player_may_action(
         PlayerFilter::Any => "Any player".to_string(),
         PlayerFilter::Opponent => "Any opponent".to_string(),
         PlayerFilter::NotYou => "Any player other than you".to_string(),
+        // "Whenever a player casts a spell, any other player may pay that
+        // spell's mana cost" (Ice Cave): other than the triggering caster.
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(**base, PlayerFilter::Any)
+                && matches!(
+                    &**excluded,
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+                        if tag.as_str() == "triggering"
+                ) =>
+        {
+            "Any other player".to_string()
+        }
         filter => format!("Any {}", describe_for_each_player_filter(filter)),
     };
 
@@ -5515,6 +5569,32 @@ pub(super) fn describe_return_all_to_battlefield_effect(
     } else {
         false
     };
+    // "Return each card chosen this way to the battlefield" (Rejoin the
+    // Fight): the filter is exactly the accumulated per-player choice set.
+    let participant_choice_set = {
+        let mut base = return_all.filter.clone();
+        base.tagged_constraints.clear();
+        base == ObjectFilter::default()
+            && matches!(
+                return_all.filter.tagged_constraints.as_slice(),
+                [constraint] if constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str().starts_with("participant_choice")
+            )
+    };
+    if participant_choice_set
+        && !return_all.face_down
+        && return_all.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Return
+    {
+        let controller_suffix = match return_all.battlefield_controller {
+            crate::effects::BattlefieldController::You => " under your control",
+            _ => " under their owners' control",
+        };
+        return format!(
+            "Return each card chosen this way to the battlefield{}{controller_suffix}",
+            if return_all.tapped { " tapped" } else { "" },
+        );
+    }
     let mut filter_text =
         if helper_linked_exile && return_all.filter.has_plural_pronoun_reference_surface() {
             "them".to_string()
@@ -5540,7 +5620,17 @@ pub(super) fn describe_return_all_to_battlefield_effect(
         .replace("card milled", "cards milled")
         .replace(" card in your hand", " cards in your hand")
         .replace(" card in your graveyard", " cards from your graveyard")
-        .replace(" card in a graveyard", " cards in graveyards");
+        .replace(" card in a graveyard", " cards in graveyards")
+        .replace(
+            " card in an opponent's graveyard",
+            " cards in your opponents' graveyards",
+        );
+    // The pluralized collection keeps a plural relative clause: "all creature
+    // cards in your opponents' graveyards that were put there from the
+    // battlefield this turn" (Supper for Spiders).
+    if filter_text.contains(" cards ") {
+        filter_text = filter_text.replace(" that was put there ", " that were put there ");
+    }
     let controller_suffix = match return_all.battlefield_controller {
         crate::effects::BattlefieldController::Preserve
         | crate::effects::BattlefieldController::Owner => {
@@ -6094,6 +6184,20 @@ pub(in crate::compiled_text) fn describe_coordinated_hand_reveal_choice_exile(
     let look = look.downcast_ref::<crate::effects::LookAtHandEffect>()?;
     let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let action = unwrap_basic_tag_wrappers(action);
+    // "Target player reveals their hand and you choose a card of that color
+    // from it. That player discards that card." (Addle): the coordinated
+    // reveal/choice keeps its "and" join before the revealing player's
+    // discard of the chosen card.
+    if let Some(discard) = action.downcast_ref::<crate::effects::DiscardEffect>() {
+        let (reveal, choice, look_player) = describe_reveal_hand_choose_from_it(look, choose)?;
+        if !look.reveal || !discard_discards_chosen_card(discard, choose, &look_player) {
+            return None;
+        }
+        return Some(format!(
+            "{reveal} and you choose {}. That player discards that card",
+            card_choice_from_it_text(&choice)
+        ));
+    }
     let exile = action.downcast_ref::<crate::effects::ExileEffect>()?;
     if !look.reveal
         || exile.face_down
@@ -7250,6 +7354,14 @@ pub(super) fn hand_choice_from_it_text(
         "card other than a basic land card".to_string()
     } else if filter == ObjectFilter::default() {
         "card".to_string()
+    } else if filter.chosen_color && {
+        // "a card of that color" (Addle): only the chosen-color qualifier.
+        let mut bare = filter.clone();
+        bare.chosen_color = false;
+        bare.union_surface = Default::default();
+        bare == ObjectFilter::default()
+    } {
+        "card of the chosen color".to_string()
     } else if filter.card_types.is_empty()
         && filter.excluded_card_types == vec![CardType::Land]
         && filter.mana_value.is_none()
@@ -7258,7 +7370,11 @@ pub(super) fn hand_choice_from_it_text(
         && filter.colors.is_none()
         && filter.any_of.is_empty()
     {
-        "nonland card".to_string()
+        if filter.chosen_color {
+            "nonland card of the chosen color".to_string()
+        } else {
+            "nonland card".to_string()
+        }
     } else {
         filter.description()
     };
@@ -7293,6 +7409,20 @@ pub(super) fn tagged_move_to_library_nth_from_effect(
 }
 
 pub(super) fn describe_hand_choose_then_zone_move(effects: &[&Effect]) -> Option<String> {
+    // A damage trigger's leading triggering-source tag has no surface
+    // ("that player reveals their hand. You choose a card from it. That
+    // player exiles that card", Ghastlord of Fugue).
+    let effects = match effects {
+        [tag_effect, rest @ ..]
+            if rest.len() == 3
+                && tag_effect
+                    .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+                    .is_some() =>
+        {
+            rest
+        }
+        _ => effects,
+    };
     let [look_effect, choose_effect, move_effect] = effects else {
         return None;
     };

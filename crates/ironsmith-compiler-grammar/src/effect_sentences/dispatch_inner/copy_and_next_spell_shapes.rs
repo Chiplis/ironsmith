@@ -981,17 +981,15 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
         return Ok(None);
     };
     let rebound_remainder: Option<Vec<OwnedLexToken>>;
-    let (delayed_filter, remainder) = match shape {
-        delayed_shapes::DelayedDiesShape::ThatReference { effect_tokens } => (None, effect_tokens),
+    let (delayed_filter, controller_at_death, remainder) = match shape {
+        delayed_shapes::DelayedDiesShape::ThatReference { effect_tokens } =>
+            (None, None, effect_tokens),
         // CR 603.7c / 603.10a: "under your control" is checked against the
         // dying object's last-known controller.
         delayed_shapes::DelayedDiesShape::ItReference {
             under_your_control,
             effect_tokens,
-        } => (
-            under_your_control.then(|| ObjectFilter::default().you_control()),
-            effect_tokens,
-        ),
+        } => (None, under_your_control.then_some(PlayerFilter::You), effect_tokens),
         delayed_shapes::DelayedDiesShape::DefinitePriorTarget {
             subject_tokens,
             effect_tokens,
@@ -1014,6 +1012,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
             rebound_remainder = rebind_definite_delayed_subject_repeats(subject_tokens, effect_tokens);
             (
                 Some(filter),
+                None,
                 rebound_remainder.as_deref().unwrap_or(effect_tokens),
             )
         }
@@ -1022,6 +1021,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
             effect_tokens,
         } => (
             delayed_dies_this_way_filter(subject_tokens, tokens)?,
+            None,
             effect_tokens,
         ),
     };
@@ -1059,6 +1059,7 @@ pub fn parse_delayed_when_that_dies_this_turn_sentence(
 
     Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
         filter: delayed_filter,
+        controller_at_death,
         effects: delayed_effects,
     })]))
 }

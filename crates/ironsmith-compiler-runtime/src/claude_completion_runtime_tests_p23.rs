@@ -131,6 +131,11 @@ fn struggle_for_sanity_alternates_exiles_and_partitions_by_exiler() {
         .expect("the alternating hand exile should compile");
     let debug = format!("{:?}", definition.spell_effect);
     assert!(debug.contains("RepeatProcessEffect"), "{debug}");
+    let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
+    assert_eq!(
+        rendered,
+        "Target opponent reveals their hand. That player exiles a card from it, then you exile a card from it. Repeat this process until all cards in that hand have been exiled. That player returns the cards they exiled this way to their hand and puts the rest into their graveyard."
+    );
 
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);

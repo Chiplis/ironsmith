@@ -283,6 +283,8 @@ fn delayed_on_spend_models_retain_controller_grouping_and_its_tagged_player_body
                 player: PlayerFilter::You,
                 each_damaged_player,
                 per_source_controller,
+                recipient_passive: false,
+                during_your_turn: false,
             };
             let draw = DrawCardsEffect::new(
                 1, PlayerFilter::TaggedPlayer(DAMAGE_SOURCE_CONTROLLER_TAG.into()),

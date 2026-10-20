@@ -90,6 +90,7 @@ pub struct SearchLibrarySlotAst<Filter = crate::target::ObjectFilter> {
 pub enum ZoneReplacementDurationAst {
     OneShot,
     UntilEndOfTurn,
+    UntilYourNextTurn,
     Persistent,
 }
 

@@ -287,6 +287,8 @@ fn with_combat_damage_source_filter(trigger: TriggerSpec, filter: ObjectFilter) 
                 player,
                 each_damaged_player: false,
                 per_source_controller: false,
+                recipient_passive: false,
+                during_your_turn: false,
             }
         }
         other => other,

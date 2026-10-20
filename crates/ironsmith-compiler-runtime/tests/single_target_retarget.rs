@@ -55,3 +55,16 @@ fn quicksilver_dragon_redirects_spells_that_target_only_it() {
         assert!(debug.contains("source: true"), "{debug}");
     }
 }
+
+#[test]
+fn single_target_retarget_text_keeps_resolution_condition() {
+    for (index, old_target) in [(0, "a creature"), (1, "this creature")] {
+        for definition in definitions(index) {
+            let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+            let expected = format!(
+                "If target spell has only one target and that target is {old_target}, change that spell's target to another creature"
+            );
+            assert!(text.contains(&expected), "{text}");
+        }
+    }
+}

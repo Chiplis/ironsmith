@@ -2912,6 +2912,61 @@ pub(crate) fn describe_source_pump_unblockable_bundle(filtered: &[&Effect]) -> O
     ))
 }
 
+/// "This creature has base power and toughness 3/3 until end of turn and
+/// can't be blocked this turn" / "This creature gains shroud until end of turn
+/// and can't be blocked this turn": one end-of-turn continuous change to the
+/// source followed by a this-turn unblockability of that same source. Lowering
+/// may interleave a synthetic, untagged source declaration ("choose it").
+pub(crate) fn describe_source_continuous_unblockable_bundle(
+    filtered: &[&Effect],
+) -> Option<String> {
+    let (apply_effect, cant_effect) = match filtered {
+        [apply_effect, cant_effect] => (*apply_effect, *cant_effect),
+        [apply_effect, declaration, cant_effect] => {
+            let declaration =
+                declaration.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            if declaration.explicit_declaration
+                || declaration.chooser.is_some()
+                || !matches!(declaration.target.base(), ChooseSpec::Source)
+            {
+                return None;
+            }
+            (*apply_effect, *cant_effect)
+        }
+        _ => return None,
+    };
+    let apply = apply_continuous_for_compaction(apply_effect)?;
+    if apply.until != Until::EndOfTurn
+        || apply.condition.is_some()
+        || !matches!(apply.target, crate::continuous::EffectTarget::Source)
+    {
+        return None;
+    }
+    let cant = cant_be_blocked_view(cant_effect)?;
+    let crate::effect::Restriction::BeBlocked(filter) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn
+        || cant.start != crate::effect::RestrictionStart::Immediate
+        || !filter.source
+        || !filter.tagged_constraints.is_empty()
+    {
+        return None;
+    }
+    let rendered = describe_effect(apply_effect);
+    let rendered = rendered.trim().trim_end_matches('.');
+    if !rendered.ends_with(" until end of turn")
+        || rendered.matches("until end of turn").count() != 1
+        || rendered.contains('"')
+    {
+        return None;
+    }
+    Some(format!(
+        "{} and can't be blocked this turn",
+        capitalize_first(rendered)
+    ))
+}
+
 pub(crate) fn describe_target_pump_unblockable_bundle(filtered: &[&Effect]) -> Option<String> {
     let [apply_effect, cant_effect] = filtered else {
         return None;
@@ -2993,8 +3048,17 @@ pub(crate) fn describe_declared_target_for_each_pump_unblockable_bundle(
 }
 
 pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String> {
-    let [tap_effect, cant_effect] = filtered else {
-        return None;
+    // The tapped set may also be snapshotted by a preceding tag-matching
+    // effect over exactly the tapped filter ("Tap all creatures your
+    // opponents control. Those creatures don't untap ...").
+    let (tag_matching, tap_effect, cant_effect) = match filtered {
+        [tap_effect, cant_effect] => (None, *tap_effect, *cant_effect),
+        [tag_effect, tap_effect, cant_effect] => (
+            Some(tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?),
+            *tap_effect,
+            *cant_effect,
+        ),
+        _ => return None,
     };
     let (tap, tagged_tap) =
         if let Some(tagged) = tap_effect.downcast_ref::<crate::effects::TaggedEffect>() {
@@ -3008,6 +3072,16 @@ pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String>
                 None,
             )
         };
+    let tagged_tap = match (tagged_tap, tag_matching) {
+        (None, Some(tag_matching)) => match tap.target.base() {
+            ChooseSpec::All(tap_filter) if *tap_filter == tag_matching.filter => {
+                Some(tag_matching.tag.as_str())
+            }
+            _ => return None,
+        },
+        (Some(_), Some(_)) => return None,
+        (tagged_tap, None) => tagged_tap,
+    };
     let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
     let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
         return None;
@@ -3032,7 +3106,24 @@ pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String>
         && !tap.target.count().is_dynamic_x()
         && tap.target.count().max.is_some_and(|max| max <= 1);
     let followup = if tap.target.is_all() {
-        describe_untap_restriction_oracle(cant)?
+        let followup = describe_untap_restriction_oracle(cant)?;
+        // A tagged back-reference restriction carries no type noun; the
+        // tapped mass selection names it ("Tap all creatures target player
+        // controls. Those creatures don't untap ...").
+        let tapped_noun = match tap.target.base() {
+            ChooseSpec::All(tap_filter) | ChooseSpec::Object(tap_filter)
+                if filter.card_types.is_empty() =>
+            {
+                untap_restriction_filter_noun(tap_filter)
+            }
+            _ => "permanent",
+        };
+        match followup.strip_prefix("Those permanents ") {
+            Some(rest) if tagged_tap.is_some() && tapped_noun != "permanent" => {
+                format!("Those {} {rest}", pluralize_noun_phrase(tapped_noun))
+            }
+            _ => followup,
+        }
     } else {
         let subject_text = if singular_target {
             if target_text == "it" {
@@ -3043,9 +3134,26 @@ pub(crate) fn describe_tap_freeze_bundle(filtered: &[&Effect]) -> Option<String>
                 format!("That {}", untap_restriction_filter_noun(filter))
             }
         } else {
+            // A tagged back-reference restriction carries no type noun of its
+            // own; the tapped selection names the set ("Tap up to two target
+            // creatures. Those creatures don't untap ...").
+            let tapped_filter = match tap.target.base() {
+                ChooseSpec::Object(tap_filter) => Some(tap_filter),
+                ChooseSpec::Target(inner) => match inner.base() {
+                    ChooseSpec::Object(tap_filter) => Some(tap_filter),
+                    _ => None,
+                },
+                _ => None,
+            };
+            let noun_filter = match tapped_filter {
+                Some(tap_filter) if filter.card_types.is_empty() && tagged_tap.is_some() => {
+                    tap_filter
+                }
+                _ => filter,
+            };
             format!(
                 "Those {}",
-                pluralize_noun_phrase(untap_restriction_filter_noun(filter))
+                pluralize_noun_phrase(untap_restriction_filter_noun(noun_filter))
             )
         };
         let subject = if filter.controller == Some(PlayerFilter::You) {

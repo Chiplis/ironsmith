@@ -258,14 +258,38 @@ impl GrantPlayTaggedEffect {
         game.next_turn_number_if_player_stayed(player)
     }
 
+    fn duration_player(
+        &self,
+        controller: crate::ids::PlayerId,
+        holder: crate::ids::PlayerId,
+    ) -> crate::ids::PlayerId {
+        // "Your" names the effect controller, independently of the permission holder.
+        if matches!(
+            self.duration,
+            GrantPlayTaggedDuration::UntilYourNextEndStep
+                | GrantPlayTaggedDuration::UntilYourNextTurnEnd
+                | GrantPlayTaggedDuration::UntilYourNextTurnStart
+                | GrantPlayTaggedDuration::DuringYourNextTurn
+                | GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn
+        ) {
+            controller
+        } else {
+            holder
+        }
+    }
+
     fn expires_end_of_turn(&self, game: &GameState, player: crate::ids::PlayerId) -> u32 {
         match self.duration {
             GrantPlayTaggedDuration::UntilEndOfTurn => game.turn.turn_number,
-            GrantPlayTaggedDuration::UntilYourNextTurnStart => {
+            GrantPlayTaggedDuration::UntilYourNextTurnStart
+            | GrantPlayTaggedDuration::UntilPlayerNextTurnStart => {
                 Self::next_turn_number_for_player(game, player).saturating_sub(1)
             }
             GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            | GrantPlayTaggedDuration::UntilPlayerNextTurnEnd
             | GrantPlayTaggedDuration::DuringYourNextTurn
+            | GrantPlayTaggedDuration::DuringPlayerNextTurn
+            | GrantPlayTaggedDuration::UntilEndOfCombatOnPlayerNextTurn
             | GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn => {
                 Self::next_turn_number_for_player(game, player)
             }
@@ -432,14 +456,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let object_zone = object.zone;
             let object_owner = object.owner;
             let player_id = fixed_player_id.unwrap_or(object_owner);
-            // "Until your next end step, each player may play ..." (Rocco,
-            // Street Chef): the lifetime is the effect controller's next end
-            // step, even for permissions granted to other players.
-            let duration_player = if self.duration == GrantPlayTaggedDuration::UntilYourNextEndStep {
-                ctx.controller
-            } else {
-                player_id
-            };
+            let duration_player = self.duration_player(ctx.controller, player_id);
             let expires_end_of_turn = self.expires_end_of_turn(game, duration_player);
 
             if !self.permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
@@ -483,27 +500,31 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
-                    controller: player_id,
+                    controller: ctx.controller,
                 }
             } else if self.duration == GrantPlayTaggedDuration::UntilSourceExilesAnother {
                 GrantSource::until_source_exiles_another(
                     ctx.source,
                     game.exiled_with_source_revision(ctx.source),
                 )
-            } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnStart {
+            } else if matches!(self.duration, GrantPlayTaggedDuration::UntilYourNextTurnStart | GrantPlayTaggedDuration::UntilPlayerNextTurnStart) {
                 GrantSource::until_player_next_turn_start(
                     ctx.source,
-                    player_id,
+                    duration_player,
                     game.turn.turn_number,
                 )
-            } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
-                GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
-            } else if self.duration == GrantPlayTaggedDuration::DuringYourNextTurn {
-                GrantSource::during_player_next_turn(ctx.source, player_id, expires_end_of_turn)
-            } else if self.duration == GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn {
+            } else if matches!(
+                self.duration,
+                GrantPlayTaggedDuration::UntilYourNextTurnEnd
+                    | GrantPlayTaggedDuration::UntilPlayerNextTurnEnd
+            ) {
+                GrantSource::until_player_next_turn_end(ctx.source, duration_player, expires_end_of_turn)
+            } else if matches!(self.duration, GrantPlayTaggedDuration::DuringYourNextTurn | GrantPlayTaggedDuration::DuringPlayerNextTurn) {
+                GrantSource::during_player_next_turn(ctx.source, duration_player, expires_end_of_turn)
+            } else if matches!(self.duration, GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn | GrantPlayTaggedDuration::UntilEndOfCombatOnPlayerNextTurn) {
                 GrantSource::until_end_of_combat_on_player_next_turn(
                     ctx.source,
-                    player_id,
+                    duration_player,
                     expires_end_of_turn,
                 )
             } else if matches!(
@@ -717,7 +738,9 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     controller: player_id,
                     source: crate::game_state::ManaSpendPermissionSource::Effect {
                         source_id: ctx.source,
-                        expires_end_of_turn: self.expires_end_of_turn(game, player_id),
+                        expires_end_of_turn: self.expires_end_of_turn(
+                            game, self.duration_player(ctx.controller, player_id),
+                        ),
                     },
                 },
             );

@@ -61,6 +61,9 @@ fn convert_zone_change_trigger(
     out = out.this_subject_number(trigger.this_subject_number);
     out = out.count(convert_count_mode(trigger.count));
     out = out.cause_filter(trigger.cause_filter);
+    if trigger.duration_return_from_source {
+        out = out.duration_return_from_source();
+    }
     if trigger.during_own_resolution {
         out = out.during_own_resolution();
     }
@@ -75,6 +78,12 @@ fn convert_zone_change_trigger(
         Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
     ) {
         out = out.during_combat();
+    }
+    if matches!(
+        trigger.timing,
+        Some(ironsmith_core::TriggerTimingRestriction::DuringDeclareAttackersStep)
+    ) {
+        out.timing = Some(ironsmith_core::TriggerTimingRestriction::DuringDeclareAttackersStep);
     }
     if let Some(graveyard_surface) = trigger.graveyard_surface {
         out = out.graveyard_surface(graveyard_surface);
@@ -396,8 +405,18 @@ pub(crate) fn interpret_trigger_model(
             target,
             source_surface,
             recipient_is_source_target,
+            noncombat_only,
+            amount_equals_target_toughness,
         } => {
-            if recipient_is_source_target {
+            if noncombat_only || amount_equals_target_toughness {
+                crate::triggers::Trigger::deals_damage_to_qualified(
+                    source,
+                    target,
+                    source_surface,
+                    noncombat_only,
+                    amount_equals_target_toughness,
+                )
+            } else if recipient_is_source_target {
                 crate::triggers::Trigger::deals_damage_to_source_target(source, target)
             } else {
                 crate::triggers::Trigger::deals_damage_to_with_source_surface(
@@ -463,18 +482,37 @@ pub(crate) fn interpret_trigger_model(
             one_or_more,
             each_damaged_player,
             per_source_controller,
+            recipient_passive,
+            during_your_turn,
         } => {
-            if one_or_more && per_source_controller {
-                crate::triggers::Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player)
+            if recipient_passive && (!one_or_more
+                || each_damaged_player
+                || per_source_controller
+                || source != crate::target::ObjectFilter::default())
+            {
+                return Err(TriggerModelConversionError {
+                    detail: "passive combat-damage recipient requires an unrestricted source and one grouped event".into(),
+                });
+            }
+            let mut matcher = if recipient_passive {
+                crate::triggers::DealsCombatDamageToPlayerTrigger::recipient_passive(
+                    player, during_your_turn,
+                )
+            } else if one_or_more && per_source_controller {
+                crate::triggers::DealsCombatDamageToPlayerTrigger::per_source_controller(
+                    source, player, each_damaged_player,
+                )
             } else if one_or_more && each_damaged_player {
-                crate::triggers::Trigger::deals_combat_damage_to_each_player_one_or_more(
+                crate::triggers::DealsCombatDamageToPlayerTrigger::one_or_more_each_player(
                     source, player,
                 )
             } else if one_or_more {
-                crate::triggers::Trigger::deals_combat_damage_to_player_one_or_more(source, player)
+                crate::triggers::DealsCombatDamageToPlayerTrigger::one_or_more(source, player)
             } else {
-                crate::triggers::Trigger::deals_combat_damage_to_player(source, player)
-            }
+                crate::triggers::DealsCombatDamageToPlayerTrigger::new(source, player)
+            };
+            matcher.during_your_turn = during_your_turn;
+            crate::triggers::Trigger::new(matcher)
         }
         TriggerKind::PlayerPlaysLand { player, filter } => {
             crate::triggers::Trigger::player_plays_land(player, filter)
@@ -918,6 +956,7 @@ pub(crate) fn interpret_trigger_model(
 impl super::Trigger {
     pub fn from_delayed_trigger_spec(spec: ironsmith_core::DelayedTriggerSpec) -> Self {
         match spec {
+            ironsmith_core::DelayedTriggerSpec::ZoneChange(trigger) => convert_zone_change_trigger(trigger),
             ironsmith_core::DelayedTriggerSpec::ConditionQualified {
                 trigger,
                 condition,
@@ -1056,20 +1095,28 @@ impl super::Trigger {
                 source,
                 player,
                 each_damaged_player,
-                per_source_controller: true,
-            } => Self::deals_combat_damage_per_source_controller(source, player, each_damaged_player),
-            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-                source,
-                player,
-                each_damaged_player: false,
-                per_source_controller: false,
-            } => Self::deals_combat_damage_to_player_one_or_more(source, player),
-            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-                source,
-                player,
-                each_damaged_player: true,
-                per_source_controller: false,
-            } => Self::deals_combat_damage_to_each_player_one_or_more(source, player),
+                per_source_controller,
+                recipient_passive,
+                during_your_turn,
+            } => {
+                let mut matcher = if recipient_passive {
+                    crate::triggers::DealsCombatDamageToPlayerTrigger::recipient_passive(
+                        player, during_your_turn,
+                    )
+                } else if per_source_controller {
+                    crate::triggers::DealsCombatDamageToPlayerTrigger::per_source_controller(
+                        source, player, each_damaged_player,
+                    )
+                } else if each_damaged_player {
+                    crate::triggers::DealsCombatDamageToPlayerTrigger::one_or_more_each_player(
+                        source, player,
+                    )
+                } else {
+                    crate::triggers::DealsCombatDamageToPlayerTrigger::one_or_more(source, player)
+                };
+                matcher.during_your_turn = during_your_turn;
+                Self::new(matcher)
+            }
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }
@@ -1202,6 +1249,22 @@ impl super::Trigger {
 #[cfg(test)]
 mod delayed_spec_tests {
     use crate::target::{ObjectFilter, PlayerFilter};
+
+    #[test]
+    fn delayed_zone_change_preserves_duration_return_provenance() {
+        let core = ironsmith_core::trigger_model::ZoneChangeTrigger::new()
+            .from(crate::zone::Zone::Exile)
+            .to(crate::zone::Zone::Battlefield)
+            .duration_return_from_source();
+        let trigger = crate::triggers::Trigger::from_delayed_trigger_spec(
+            ironsmith_core::DelayedTriggerSpec::ZoneChange(core),
+        );
+        let native = trigger.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            .expect("typed delayed zone change must remain a zone change");
+        assert!(native.duration_return_from_source);
+        assert!(native.from.matches(crate::zone::Zone::Exile));
+        assert!(native.to.matches(crate::zone::Zone::Battlefield));
+    }
 
     #[test]
     fn player_plays_land_delayed_spec_uses_land_play_matcher() {

@@ -62,7 +62,7 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
             [
                 "of",
                 "the",
-                "creature" | "creatures" | "permanent" | "permanents" | "artifact" | "card",
+                noun @ ("creature" | "creatures" | "permanent" | "permanents" | "artifact" | "card"),
                 "you",
                 "sacrificed",
                 "this",
@@ -71,7 +71,12 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
             ],
         ) = rest.get(axis_len..)
     {
-        let filter = ObjectFilter::tagged(Tag::It.bind()).controlled_by(PlayerFilter::You);
+        let mut filter = ObjectFilter::tagged(Tag::It.bind()).controlled_by(PlayerFilter::You);
+        match *noun {
+            "creature" | "creatures" => filter = filter.with_type(crate::types::CardType::Creature),
+            "artifact" => filter = filter.with_type(crate::types::CardType::Artifact),
+            _ => {}
+        }
         let value = match characteristic {
             "power" => Value::TotalPower(filter),
             "toughness" => Value::TotalToughness(filter),

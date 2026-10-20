@@ -1,6 +1,22 @@
 use super::*;
 use ironsmith_core::TurnHistoryCount;
 
+#[test]
+fn equal_dynamic_token_characteristics_render_one_shared_basis() {
+    for oracle in [
+        "Create an X/X black and green Spirit Warrior creature token, where X is the greatest toughness among creatures you control.",
+        "Create two X/X green Ooze creature tokens, where X is the number of creatures you control.",
+    ] {
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(), "Dynamic Token Size Probe",
+        )
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("dynamic token size must parse");
+        assert_eq!(crate::compiled_text::compiled_text_lines(&definition).join("\n"), oracle);
+    }
+}
+
 fn creature_token(
     name: &str,
     subtype: Subtype,

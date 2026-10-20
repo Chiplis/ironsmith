@@ -134,6 +134,8 @@ pub struct ZoneChangeTrigger {
     pub player: PlayerRelation,
     /// Optional filter on what caused the zone change.
     pub cause_filter: Option<CauseFilter>,
+    /// Require the event to be the linked exile duration return of this source.
+    pub duration_return_from_source: bool,
     /// Match only a spell changing zones during its own successful resolution.
     pub during_own_resolution: bool,
     /// Optional active-turn qualifier.
@@ -162,6 +164,7 @@ impl Default for ZoneChangeTrigger {
             object_filter: ObjectFilter::default(),
             player: PlayerRelation::Any,
             cause_filter: None,
+            duration_return_from_source: false,
             during_own_resolution: false,
             during_turn: None,
             timing: None,
@@ -179,6 +182,12 @@ impl ZoneChangeTrigger {
     /// Create a new zone change trigger with default settings (matches everything).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Require a linked exile duration return from this trigger source.
+    pub fn duration_return_from_source(mut self) -> Self {
+        self.duration_return_from_source = true;
+        self
     }
 
     /// Require the moving spell to be in its own successful resolution.
@@ -434,6 +443,29 @@ impl ZoneChangeTrigger {
                         Zone::OutsideGame => "outside the game",
                     };
                     Some(format!("from anywhere other than {excluded}"))
+                }
+                // "from your hand or library" (Desert Warfare): a list of
+                // owned card zones shares one possessive.
+                ZonePattern::OneOf(zones)
+                    if zones.len() >= 2
+                        && zones
+                            .iter()
+                            .all(|zone| matches!(zone, Zone::Hand | Zone::Library | Zone::Graveyard)) =>
+                {
+                    let names = zones
+                        .iter()
+                        .map(|zone| match zone {
+                            Zone::Hand => "hand",
+                            Zone::Library => "library",
+                            _ => "graveyard",
+                        })
+                        .collect::<Vec<_>>();
+                    let list = match names.as_slice() {
+                        [first, second] => format!("{first} or {second}"),
+                        [init @ .., last] => format!("{}, or {last}", init.join(", ")),
+                        [] => return None,
+                    };
+                    Some(format!("from {}", owned_zone_phrase(owner, &list)))
                 }
                 ZonePattern::OneOf(_) | ZonePattern::Specific(Zone::OutsideGame) => None,
             }
@@ -968,6 +1000,12 @@ impl ZoneChangeTrigger {
             ) {
                 display.push_str(" during combat");
             }
+            if matches!(
+                self.timing,
+                Some(ironsmith_core::TriggerTimingRestriction::DuringDeclareAttackersStep)
+            ) {
+                display.push_str(" during the declare attackers step");
+            }
             return display;
         }
 
@@ -1063,6 +1101,7 @@ impl ZoneChangeTrigger {
             || filter_desc.starts_with("another ")
             || filter_desc.starts_with("enchanted ")
             || filter_desc.starts_with("equipped ")
+            || filter_desc.starts_with("your ")
             || self.object_filter.source;
         if self.count_mode == CountMode::OneOrMore {
             parts.push("one or more".to_string());
@@ -1304,6 +1343,21 @@ impl ZoneChangeTrigger {
                     parts.push(format!("{verb} put into exile"));
                 }
             }
+            // "Whenever your commander is put into the command zone from
+            // anywhere" (Myth Unbound).
+            (_, ZonePattern::Specific(Zone::Command)) => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "are"
+                } else {
+                    "is"
+                };
+                let origin = match &self.from {
+                    ZonePattern::Any => " from anywhere".to_string(),
+                    ZonePattern::Specific(zone) => format!(" from {}", zone_origin_name(*zone)),
+                    _ => String::new(),
+                };
+                parts.push(format!("{verb} put into the command zone{origin}"));
+            }
             _ => {
                 parts.push("changes zones".to_string());
             }
@@ -1331,6 +1385,12 @@ impl ZoneChangeTrigger {
             Some(ironsmith_core::TriggerTimingRestriction::DuringCombat)
         ) {
             parts.push("during combat".to_string());
+        }
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringDeclareAttackersStep)
+        ) {
+            parts.push("during the declare attackers step".to_string());
         }
 
         let mut display = parts.join(" ");
@@ -1506,6 +1566,12 @@ impl TriggerMatcher for ZoneChangeTrigger {
             return false;
         };
 
+        if self.duration_return_from_source
+            && zc.cause.duration_return_source != Some(ctx.source_id)
+        {
+            return false;
+        }
+
         if self.during_own_resolution {
             let Some(resolving_spell) = zc.cause.resolving_spell else {
                 return false;
@@ -1538,6 +1604,13 @@ impl TriggerMatcher for ZoneChangeTrigger {
         {
             return false;
         }
+        if matches!(
+            self.timing,
+            Some(ironsmith_core::TriggerTimingRestriction::DuringDeclareAttackersStep)
+        ) && ctx.game.turn.step != Some(crate::game_state::Step::DeclareAttackers)
+        {
+            return false;
+        }
 
         // Check zone patterns
         if !self.from.matches(zc.from) {
@@ -1561,13 +1634,55 @@ impl TriggerMatcher for ZoneChangeTrigger {
             return false;
         }
 
+        // A captured "card exiled this way" names an exact exile-zone object,
+        // not merely the physical card's stable identity. If that card leaves
+        // exile and the same source exiles it again, only the new registration
+        // may observe the later duration return. Evaluate the tagged constraint
+        // against origin LKI, then remove it from the destination filter: an
+        // entering object necessarily has a new object ID.
+        let mut destination_filter = self.object_filter.clone();
+        let duration_origins = if self.duration_return_from_source {
+            let exact_origin_tags = self.object_filter.tagged_constraints.iter()
+                .filter(|constraint| constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject)
+                .map(|constraint| &constraint.tag)
+                .collect::<Vec<_>>();
+            if exact_origin_tags.is_empty() {
+                None
+            } else {
+                let origins = zc.snapshots().iter()
+                    .filter(|origin| origin.zone == Zone::Exile
+                        && exact_origin_tags.iter().all(|tag| {
+                            ctx.filter_ctx.tagged_objects.get(*tag).is_some_and(|captured| {
+                                captured.iter().any(|snapshot| snapshot.object_id == origin.object_id)
+                            })
+                        }))
+                    .map(|origin| origin.stable_id)
+                    .collect::<std::collections::HashSet<_>>();
+                if origins.is_empty() {
+                    return false;
+                }
+                destination_filter.tagged_constraints.retain(|constraint| {
+                    !(constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                        && exact_origin_tags.iter().any(|tag| *tag == &constraint.tag))
+                });
+                Some(origins)
+            }
+        } else {
+            None
+        };
+
         // Entry characteristics are fixed when the entry completes. A later
         // grant in the same resolving program cannot retroactively make the
         // entrant satisfy a trigger (for example, entering with haste).
         let use_snapshot = (zc.to == Zone::Battlefield && !zc.destination_snapshots.is_empty())
             || (self.uses_snapshot() && !zc.snapshots().is_empty());
         let matching_snapshots = if use_snapshot {
-            matching_snapshots(&zc, &self.object_filter, ctx)
+            matching_snapshots(&zc, &destination_filter, ctx)
+                .into_iter()
+                .filter(|snapshot| duration_origins.as_ref().is_none_or(|origins| {
+                    origins.contains(&snapshot.stable_id)
+                }))
+                .collect::<Vec<_>>()
         } else {
             Vec::new()
         };
@@ -1585,6 +1700,9 @@ impl TriggerMatcher for ZoneChangeTrigger {
             } else {
                 zc.destination_objects().iter().any(|&id| {
                     if let Some(obj) = ctx.game.object(id) {
+                        if duration_origins.as_ref().is_some_and(|origins| !origins.contains(&obj.stable_id)) {
+                            return false;
+                        }
                         match &self.player {
                             PlayerRelation::You => ctx.game.controller_of(obj) == ctx.controller,
                             PlayerRelation::Opponent => {
@@ -1593,6 +1711,9 @@ impl TriggerMatcher for ZoneChangeTrigger {
                             PlayerRelation::Any => true,
                         }
                     } else if let Some(snapshot) = zc.snapshot.as_ref() {
+                        if duration_origins.as_ref().is_some_and(|origins| !origins.contains(&snapshot.stable_id)) {
+                            return false;
+                        }
                         match &self.player {
                             PlayerRelation::You => snapshot.controller == ctx.controller,
                             PlayerRelation::Opponent => snapshot.controller != ctx.controller,
@@ -1618,15 +1739,17 @@ impl TriggerMatcher for ZoneChangeTrigger {
         } else {
             // Check the post-change object(s) for ETB and destination-zone triggers.
             let filter_matches = if zc.destination_objects().is_empty() {
-                true
+                duration_origins.is_none()
             } else {
                 zc.destination_objects().iter().any(|&id| {
                     if let Some(obj) = ctx.game.object(id) {
-                        self.object_filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                        duration_origins.as_ref().is_none_or(|origins| origins.contains(&obj.stable_id))
+                            && destination_filter.matches(obj, &ctx.filter_ctx, ctx.game)
                     } else if let Some(snapshot) = zc.snapshot.as_ref() {
-                        snapshot_matches_filter(snapshot, &self.object_filter, ctx)
+                        duration_origins.as_ref().is_none_or(|origins| origins.contains(&snapshot.stable_id))
+                            && snapshot_matches_filter(snapshot, &destination_filter, ctx)
                     } else {
-                        self.object_filter == ObjectFilter::default()
+                        duration_origins.is_none() && destination_filter == ObjectFilter::default()
                     }
                 })
             };
@@ -1929,6 +2052,99 @@ mod tests {
                 crate::events::cause::CauseFilter::effect_like()
                     .with_controller(crate::events::cause::ControllerFilter::ContextController),
             ))
+    }
+
+    #[test]
+    fn duration_return_requires_exact_source_and_not_an_external_exile_return() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let other_source = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let externally_returned = create_creature_in_zone(&mut game, alice, Zone::Exile);
+        let duration_member = create_creature_in_zone(&mut game, alice, Zone::Exile);
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Exile)
+            .to(Zone::Battlefield)
+            .duration_return_from_source();
+
+        game.move_object_by_effect(externally_returned, Zone::Battlefield)
+            .expect("ordinary exile return must resolve");
+        let external_event = game.take_pending_trigger_events().into_iter()
+            .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
+                zc.from == Zone::Exile && zc.to == Zone::Battlefield
+            }))
+            .expect("ordinary return event");
+        assert_eq!(external_event.downcast::<ZoneChangeEvent>().unwrap().cause.duration_return_source, None);
+        assert!(!trigger.matches(&external_event, &TriggerContext::for_source(source, alice, &game)));
+
+        game.add_exiled_with_source_link_returning_to(source, duration_member, Zone::Battlefield);
+        game.mark_return_exiled_when_source_leaves(source);
+        game.return_exiled_for_source_leave(source);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker)
+            .expect("duration return must resolve");
+        let duration_event = game.take_pending_trigger_events().into_iter()
+            .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
+                zc.from == Zone::Exile && zc.to == Zone::Battlefield
+            }))
+            .expect("duration return event");
+        assert_eq!(duration_event.downcast::<ZoneChangeEvent>().unwrap().cause.duration_return_source, Some(source));
+        assert!(trigger.matches(&duration_event, &TriggerContext::for_source(source, alice, &game)));
+        assert!(!trigger.matches(&duration_event, &TriggerContext::for_source(other_source, alice, &game)));
+
+        let returned = duration_event.downcast::<ZoneChangeEvent>().unwrap().result_objects[0];
+        let reexiled = game.move_object_by_effect(returned, Zone::Exile)
+            .expect("returned card can later leave");
+        game.take_pending_trigger_events();
+        game.move_object_by_effect(reexiled, Zone::Battlefield)
+            .expect("same physical card can later blink");
+        let later_event = game.take_pending_trigger_events().into_iter()
+            .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
+                zc.from == Zone::Exile && zc.to == Zone::Battlefield
+            }))
+            .expect("later entry event");
+        assert_eq!(later_event.downcast::<ZoneChangeEvent>().unwrap().cause.duration_return_source, None);
+        assert!(!trigger.matches(&later_event, &TriggerContext::for_source(source, alice, &game)));
+    }
+
+    #[test]
+    fn old_exile_registration_does_not_match_later_exile_by_same_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
+        let first_exile = create_creature_in_zone(&mut game, alice, Zone::Exile);
+        let first_snapshot = ObjectSnapshot::from_object(game.object(first_exile).unwrap(), &game);
+        let returned = game.move_object_by_effect(first_exile, Zone::Battlefield)
+            .expect("first exiled incarnation returns externally");
+        game.take_pending_trigger_events();
+        let second_exile = game.move_object_by_effect(returned, Zone::Exile)
+            .expect("same physical card can be exiled again");
+        game.take_pending_trigger_events();
+        let second_snapshot = ObjectSnapshot::from_object(game.object(second_exile).unwrap(), &game);
+        assert_eq!(first_snapshot.stable_id, second_snapshot.stable_id);
+        assert_ne!(first_snapshot.object_id, second_snapshot.object_id);
+
+        game.add_exiled_with_source_link_returning_to(source, second_exile, Zone::Battlefield);
+        game.mark_return_exiled_when_source_leaves(source);
+        game.return_exiled_for_source_leave(source);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker)
+            .expect("second duration return must resolve");
+        let event = game.take_pending_trigger_events().into_iter()
+            .find(|event| event.downcast::<ZoneChangeEvent>().is_some_and(|zc| {
+                zc.from == Zone::Exile && zc.to == Zone::Battlefield
+            }))
+            .expect("second duration return event");
+        let tag = crate::tag::TagKey::from("captured_exile");
+        let trigger = ZoneChangeTrigger::new()
+            .from(Zone::Exile)
+            .to(Zone::Battlefield)
+            .filter(ObjectFilter::tagged(tag.clone()))
+            .duration_return_from_source();
+        let first_tags = std::collections::HashMap::from([(tag.clone(), vec![first_snapshot])]);
+        let second_tags = std::collections::HashMap::from([(tag, vec![second_snapshot])]);
+        assert!(!trigger.matches(&event,
+            &TriggerContext::for_delayed_source(source, alice, &game, &first_tags)));
+        assert!(trigger.matches(&event,
+            &TriggerContext::for_delayed_source(source, alice, &game, &second_tags)));
     }
 
     #[test]

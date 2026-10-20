@@ -160,10 +160,15 @@ fn choose_player_numbers(
     } else {
         None
     };
-    let description = match (choice.guess, choice.secret) {
-        (true, _) => "Guess the chosen number",
-        (false, true) => "Secretly choose a number",
-        (false, false) => "Choose a number",
+    let description = if let Some(surface) = &choice.hidden_items_surface {
+        format!("Hide at least one {}", surface.item_noun)
+    } else {
+        match (choice.guess, choice.secret) {
+            (true, _) => "Guess the chosen number",
+            (false, true) => "Secretly choose a number",
+            (false, false) => "Choose a number",
+        }
+        .to_string()
     };
     let numbers = if available.as_ref().is_some_and(Vec::is_empty) {
         // Every number has been chosen: no one can choose ("If you do" is
@@ -180,23 +185,45 @@ fn choose_player_numbers(
                         game,
                         ctx,
                         participant,
-                        description,
+                        description.as_str(),
                         available,
                         super::scoped_choice::SingleChoicePolicy::FirstOrDefault,
                     )?;
                     return Ok(number.map(|number| (participant, number)));
                 }
+                let legal_max = if choice.draw_count_choice {
+                    if !game.can_draw(participant) {
+                        0
+                    } else if game.can_draw_extra_cards(participant) {
+                        range.max.unwrap_or(u32::MAX)
+                    } else if game
+                        .turn_store
+                        .turn_history
+                        .has_drawn_cards_this_turn(participant)?
+                    {
+                        0
+                    } else {
+                        range.max.unwrap_or(u32::MAX).min(1)
+                    }
+                } else {
+                    range.max.unwrap_or(u32::MAX)
+                };
+                if legal_max < range.min {
+                    return Err(ExecutionError::Impossible(
+                        "draw count choice has no legal value".into(),
+                    ));
+                }
                 let mut prompt = crate::decisions::context::NumberContext::new(
                     participant,
                     Some(ctx.source),
                     range.min,
-                    range.max.unwrap_or(u32::MAX),
-                    description,
+                    legal_max,
+                    description.as_str(),
                 );
                 prompt.authored_max = range.max;
                 let number = ctx.decision_maker.decide_number(game, &prompt);
                 let number = number.max(range.min);
-                let number = range.max.map_or(number, |max| number.min(max));
+                let number = number.min(legal_max);
                 Ok(Some((participant, number)))
             },
         )?

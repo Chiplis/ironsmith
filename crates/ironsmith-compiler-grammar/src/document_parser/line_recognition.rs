@@ -269,7 +269,13 @@ fn recognize_triggered_line_inner(
         // condition's subject, the effect's object pronoun names that card,
         // not the triggering object.
         let rebound_effects =
-            rebind_object_pronoun_to_source_card(&spec.predicate, spec.effects_tokens);
+            rebind_object_pronoun_to_source_card(&spec.predicate, spec.effects_tokens)
+                .or_else(|| {
+                    rebind_plural_pronoun_to_universal_population(
+                        &spec.predicate,
+                        spec.effects_tokens,
+                    )
+                });
         let probe = probe_triggered_split(
             spec.trigger_tokens,
             rebound_effects.as_deref().unwrap_or(spec.effects_tokens),
@@ -1037,6 +1043,42 @@ pub(super) fn recognize_saga_chapter_line(
 
 /// When an intervening-if condition is about the source card's own zone, the
 /// effect's "cast/return/play it" names that card.
+/// "if all lands on the battlefield are Islands, remove all flood counters
+/// from them" (Quicksilver Fountain): the plural pronoun names the whole
+/// population the universal condition quantified over, not the source.
+fn rebind_plural_pronoun_to_universal_population(
+    predicate: &crate::cards::builders::PredicateAst,
+    effects: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    use crate::cards::builders::PredicateAst;
+    let PredicateAst::ValueComparison {
+        left: crate::effect::Value::Count(population),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: crate::effect::Value::Count(_),
+    } = predicate
+    else {
+        return None;
+    };
+    let [card_type] = population.card_types.as_slice() else {
+        return None;
+    };
+    if population.zone != Some(crate::zone::Zone::Battlefield)
+        || population.controller.is_some()
+        || !population.subtypes.is_empty()
+        || !population.all_subtypes.is_empty()
+    {
+        return None;
+    }
+    let index = (1..effects.len()).find(|&index| {
+        effects[index].is_word("them") && effects[index - 1].is_any_word(&["from", "on"])
+    })?;
+    let noun = format!("{}s", format!("{card_type:?}").to_ascii_lowercase());
+    let mut rebound = effects[..index].to_vec();
+    rebound.extend(crate::lexer::synthetic_word_tokens(["all".to_string(), noun]));
+    rebound.extend_from_slice(&effects[index + 1..]);
+    Some(rebound)
+}
+
 fn rebind_object_pronoun_to_source_card(
     predicate: &crate::cards::builders::PredicateAst,
     effects: &[OwnedLexToken],

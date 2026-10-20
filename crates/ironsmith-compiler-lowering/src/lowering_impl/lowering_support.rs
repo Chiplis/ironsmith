@@ -2970,6 +2970,22 @@ fn flatten_top_level_source_sentences(
         }
     }
 
+    fn first_effect_has_nested_participant_order(effects: &[EffectAst]) -> bool {
+        match effects.first() {
+            Some(EffectAst::SourceSentence {
+                effects,
+                starting_with_controller,
+                ..
+            }) => *starting_with_controller || first_effect_has_nested_participant_order(effects),
+            Some(EffectAst::Sequence { effects }
+                | EffectAst::CommaThen { effects }
+                | EffectAst::Coordinated { effects, .. }) => {
+                first_effect_has_nested_participant_order(effects)
+            }
+            _ => false,
+        }
+    }
+
     fn preserve_participant_order_on_first_effect(effects: &mut [EffectAst]) {
         let Some(first) = effects.first_mut() else {
             return;
@@ -3026,6 +3042,12 @@ fn flatten_top_level_source_sentences(
                 leading_then,
                 starting_with_controller,
             } => {
+                // A specialist may wrap the first instruction in its own
+                // authored-order sentence before the document adds the outer
+                // sentence boundary. Carry that order into the materialized
+                // segment, which survives reference annotation.
+                let starting_with_controller = starting_with_controller
+                    || first_effect_has_nested_participant_order(&effects);
                 if starting_with_controller {
                     // Source-sentence grouping may be flattened when later
                     // vote-option sentences must lower with the vote start.
@@ -7680,6 +7702,33 @@ mod tests {
                 && !debug.contains("AliasedControllerOf(Tagged(TagKey(\"tapped_"),
             "nonpayment actor must remain the countered spell's controller: {debug}"
         );
+    }
+
+    #[test]
+    fn nested_ordered_player_sentence_keeps_runtime_order() {
+        let inner = EffectAst::SourceSentence {
+            effects: vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: Vec::new(),
+            })],
+            leading_then: false,
+            starting_with_controller: true,
+        };
+        let effects = vec![EffectAst::SourceSentence {
+            effects: vec![inner],
+            leading_then: false,
+            starting_with_controller: false,
+        }];
+        let (_, segments) = flatten_top_level_source_sentences(effects.clone());
+        assert_eq!(segments.len(), 1);
+        assert!(segments[0].starting_with_controller);
+        let prepared = stage_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("prepare nested ordered player sentence");
+        let lowered = materialize_prepared_statement_effects(&prepared)
+            .expect("lower nested ordered player sentence");
+        assert!(lowered.effects.flattened_default_effects().iter().any(|effect| {
+            effect.downcast_ref::<crate::effects::ForPlayersEffect<crate::effect::Effect>>()
+                .is_some_and(|players| players.starting_with_controller)
+        }));
     }
 
     #[test]

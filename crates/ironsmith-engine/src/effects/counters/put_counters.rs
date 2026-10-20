@@ -57,7 +57,11 @@ fn counter_kind_resolved_from_trigger(
     match placed {
         Some((counter_type, amount)) => {
             resolved.counter_type = counter_type;
-            resolved.amount = Value::Fixed(i32::try_from(amount).unwrap_or(i32::MAX));
+            // A fixed authored amount ("one of each of those kinds") keeps
+            // its count; only the triggering kind is copied.
+            if !matches!(effect.amount.unhinted(), Value::Fixed(_)) {
+                resolved.amount = Value::Fixed(i32::try_from(amount).unwrap_or(i32::MAX));
+            }
         }
         None => resolved.amount = Value::Fixed(0),
     }

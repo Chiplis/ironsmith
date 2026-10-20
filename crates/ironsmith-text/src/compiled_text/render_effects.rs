@@ -67,6 +67,18 @@ pub(super) use clause_and_ability_surfaces::*;
 pub(super) use continuous_and_choices::*;
 pub(crate) use costs_and_triggers::*;
 pub(super) use effect_lists::*;
+
+/// Match a created token and its exact rounded-size damage across segments.
+pub(in crate::compiled_text) fn describe_rounded_token_damage_program(
+    effects: &[Effect],
+) -> Option<String> {
+    effect_lists::describe_rounded_token_damage(effects)
+}
+pub(in crate::compiled_text) fn describe_least_count_equalization_program(
+    effects: &[Effect],
+) -> Option<String> {
+    effect_lists::describe_least_count_equalization(effects)
+}
 pub(super) use effect_lists::{
     describe_face_down_pile_then_manifest, describe_face_down_pile_then_restack,
     rendered_action_target, target_specs_select_same_objects,

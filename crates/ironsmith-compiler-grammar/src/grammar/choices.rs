@@ -324,6 +324,7 @@ pub fn parse_choice_player_clause_tokens(
         ChoicePlayerBase::Opponent => alt((
             parse_opponent_controlled_count_tail_lexed,
             parse_opponent_most_life_among_opponents_tail_lexed,
+            parse_opponent_not_attacked_by_source_last_combat_tail_lexed,
             eof.value(PlayerFilter::Opponent),
         ))
         .parse_next(&mut input)
@@ -775,6 +776,23 @@ fn parse_opponent_most_life_among_opponents_tail_lexed(
     Ok(PlayerFilter::MostLifeTiedAmong {
         base: Box::new(PlayerFilter::Opponent),
     })
+}
+
+/// "choose an opponent at random that this creature didn't attack during your
+/// last combat" (Territorial Hellkite): every opponent except the players the
+/// source attacked in its controller's most recent combat.
+fn parse_opponent_not_attacked_by_source_last_combat_tail_lexed(
+    input: &mut LexStream<'_>,
+) -> WResult<PlayerFilter> {
+    primitives::phrase(&["that", "this", "creature", "didn't", "attack"]).parse_next(input)?;
+    primitives::phrase(&["during", "your", "last", "combat"]).parse_next(input)?;
+    eof.parse_next(input)?;
+    Ok(PlayerFilter::excluding(
+        PlayerFilter::Opponent,
+        PlayerFilter::TaggedPlayer(
+            ironsmith_core::tag::SOURCE_ATTACKED_DURING_YOUR_LAST_COMBAT_TAG.into(),
+        ),
+    ))
 }
 
 /// The complete player phrase "an opponent with the most life among your

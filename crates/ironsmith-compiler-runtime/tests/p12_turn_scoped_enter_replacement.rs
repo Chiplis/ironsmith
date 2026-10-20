@@ -95,3 +95,19 @@ fn hallowed_moonlight_and_mistcaller_exile_uncast_entries_this_turn() {
         }
     }
 }
+
+#[test]
+fn turn_scoped_entry_replacement_text_preserves_cast_and_token_filters() {
+    for (name, text, subject) in [
+        ("Hallowed Moonlight", HALLOWED_MOONLIGHT, "a creature"),
+        ("Mistcaller", MISTCALLER, "a nontoken creature"),
+    ] {
+        for definition in definitions(name, text) {
+            let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
+            let expected = format!(
+                "Until end of turn, if {subject} would enter and it wasn't cast, exile it instead"
+            );
+            assert!(rendered.contains(&expected), "{name}: {rendered}");
+        }
+    }
+}

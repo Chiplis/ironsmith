@@ -5345,6 +5345,7 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::Opponent
         | PlayerFilter::Teammate
         | PlayerFilter::PlayerToYourLeft
+        | PlayerFilter::OpponentToYourLeft
         | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active
         | PlayerFilter::Defending

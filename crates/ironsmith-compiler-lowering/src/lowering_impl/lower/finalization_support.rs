@@ -937,16 +937,21 @@ fn debug_mentions_rest_tag(effect: &crate::effect::Effect) -> (bool, bool) {
 /// rest are the matching objects not chosen).
 fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::effect::Effect> {
     use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
-    let tagged_collection = |tag: &TagKey, zone: Zone| {
+    let tagged_collection = |tag: &TagKey, zone: Zone, picked: Option<&TagKey>| {
         let mut filter = ObjectFilter::default();
         filter.zone = Some(zone);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: tag.clone(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        crate::effect::Effect::new(
-            crate::effects::TagMatchingObjectsEffect::new(filter, REST_TAG).in_zone(zone),
-        )
+        let mut capture = crate::effects::TagMatchingObjectsEffect::new(filter, REST_TAG)
+            .in_zone(zone);
+        if let Some(picked) = picked {
+            // Exclude the chosen physical card even when a replacement
+            // leaves it in the collection's zone under a new object ID.
+            capture = capture.excluding_stable_cards_tagged(picked.clone());
+        }
+        crate::effect::Effect::new(capture)
     };
     fn contains_exile(effect: &crate::effect::Effect) -> bool {
         if effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>().is_some()
@@ -1012,13 +1017,29 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
         flatten(effect, &mut ordered);
     }
     for inner in ordered.iter().rev() {
+        // "Exile cards from the top of your library until you exile a
+        // legendary card. ... Put the rest of those exiled cards on the
+        // bottom" (The Day of the Doctor): the exiled pool minus the found
+        // card.
+        if let Some(consult) = inner.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+            && matches!(
+                consult.mode,
+                crate::effects::consult_helpers::LibraryConsultMode::Exile
+            )
+        {
+            return Some(tagged_collection(
+                &consult.all_tag,
+                Zone::Exile,
+                Some(&consult.match_tag),
+            ));
+        }
         if let Some(exile_top) = inner.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(tag) = exile_top.moved_tags.first()
         {
-            return Some(tagged_collection(tag, Zone::Exile));
+            return Some(tagged_collection(tag, Zone::Exile, None));
         }
         if let Some(look) = inner.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
-            return Some(tagged_collection(&look.tag, Zone::Library));
+            return Some(tagged_collection(&look.tag, Zone::Library, None));
         }
         // "Return two cards exiled with this Saga ... and put the rest ...":
         // a counted pick straight out of a tagged set.
@@ -1032,7 +1053,7 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
                 zone_of_collection(tag)
             };
             if let Some(zone) = zone {
-                return Some(tagged_collection(tag, zone));
+                return Some(tagged_collection(tag, zone, None));
             }
         }
         if let Some(choose) = inner.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
@@ -1047,7 +1068,8 @@ fn rest_complement_producer(earlier: &[crate::effect::Effect]) -> Option<crate::
                     .zone
                     .or_else(|| zone_of_collection(&member.tag))
                     .or(choose.zone)?;
-                return Some(tagged_collection(&member.tag, zone));
+                if choose.tag == member.tag { return None; }
+                return Some(tagged_collection(&member.tag, zone, Some(&choose.tag)));
             }
             let mut filter = choose.filter.clone();
             if filter.zone.is_none() {
@@ -1085,6 +1107,38 @@ fn rest_consumer_for_each(effect: &crate::effect::Effect) -> Option<crate::effec
         REST_TAG,
         vec![crate::effect::Effect::new(per_object)],
     ))
+}
+
+/// A tagged choice of "the rest" uses the zone and the exact objects of its
+/// immediately preceding complement producer. A zone-less card choice can
+/// otherwise search unrelated zones, and IsTaggedObject alone follows a
+/// stable physical card after it becomes a new game object.
+fn bind_rest_collection_choice_to_producer(
+    consumer: &crate::effect::Effect,
+    producer: &crate::effect::Effect,
+) -> Option<crate::effect::Effect> {
+    let produced = producer.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let zone = produced.zone.or(produced.filter.zone)?;
+    let choose = consumer.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.filter.zone.is_some()
+        || (choose.zone.is_some_and(|current| current != Zone::Battlefield)
+            && choose.zone != Some(zone))
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == produced.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+    let mut choose = choose.clone();
+    choose.filter.zone = Some(zone);
+    choose.filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: produced.tag.clone(),
+        relation: crate::filter::TaggedOpbjectRelation::SameObjectId,
+    });
+    choose.zone = Some(zone);
+    choose.additional_zones.clear();
+    Some(crate::effect::Effect::new(choose))
 }
 
 /// Returns `None` when nothing was bound, `Some(None)` when the producer
@@ -1140,6 +1194,9 @@ fn bind_rest_complement_in_list(
     earlier.extend(effects[..consumer_index].iter().cloned());
     let mut producer = rest_complement_producer(&earlier)?;
     exclude_kept_pick_from_rest(&mut effects[..consumer_index], &mut producer);
+    if let Some(bound) = bind_rest_collection_choice_to_producer(&effects[consumer_index], &producer) {
+        effects[consumer_index] = bound;
+    }
     if let Some(for_each) = rest_consumer_for_each(&effects[consumer_index]) {
         effects[consumer_index] = for_each;
     }

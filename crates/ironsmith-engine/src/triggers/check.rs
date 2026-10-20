@@ -4423,6 +4423,11 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::PlayerToYourLeft => {
             game.closest_in_game_player_to_left_matching(controller, |_| true) == Some(player)
         }
+        PlayerFilter::OpponentToYourLeft => {
+            game.closest_in_game_player_to_left_matching(controller, |candidate| {
+                game.are_opponents(controller, candidate)
+            }) == Some(player)
+        }
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player)
         }

@@ -140,6 +140,9 @@ pub(super) fn describe_for_players_coordinated_actions(
     ) {
         return None;
     }
+    if let Some(compact) = describe_turn_order_opponent_unchosen_choice(for_players) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_opponent_discard_lose_exile_top(for_players) {
         return Some(compact);
     }

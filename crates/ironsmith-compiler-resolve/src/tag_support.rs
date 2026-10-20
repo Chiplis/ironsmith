@@ -123,6 +123,8 @@ fn effect_ast_values_any(effect: &EffectAst, predicate: impl Fn(&Value) -> bool 
             subject_verb_action_value(&subject_verb.action).is_some_and(predicate)
         }
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, .. }) => predicate(count),
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { start, count, .. }) =>
+            predicate(start) || predicate(count),
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             count_value: Some(value),
             ..
@@ -165,6 +167,10 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
     match effect {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { tag, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            tag,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             tag,
             ..
         })
@@ -266,6 +272,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
     // "If each of those creatures could block ..." (Sorrow's Path): the
     // exchanged pair is the earlier declared target set, so that declaration
     // must be tagged for this back-reference.
+    if let EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { target_spec, .. }) = effect {
+        visit(target_spec);
+    }
     if let EffectAst::ExchangeBlocks { blockers, .. } = effect {
         visit(blockers);
     }
@@ -987,6 +996,10 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             filter,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             filter,
             ..
@@ -1052,6 +1065,18 @@ pub fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     }
     if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
         constraint,
+        ..
+    }) = effect
+        && (value_references_tag(&constraint.maximum, tag)
+            || constraint
+                .minimum
+                .as_ref()
+                .is_some_and(|minimum| value_references_tag(minimum, tag)))
+    {
+        return true;
+    }
+    if let EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+        aggregate_constraint: Some(constraint),
         ..
     }) = effect
         && (value_references_tag(&constraint.maximum, tag)
@@ -2133,6 +2158,15 @@ pub fn effect_references_event_derived_amount(effect: &EffectAst) -> bool {
             ..
         }) => count_value.as_ref().is_some_and(value_references_event_derived_amount)
             || filter_references_event_derived_amount(filter),
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            aggregate_constraint,
+            ..
+        }) => filter_references_event_derived_amount(filter)
+            || aggregate_constraint.as_ref().is_some_and(|constraint| {
+                value_references_event_derived_amount(&constraint.maximum)
+                    || constraint.minimum.as_ref().is_some_and(value_references_event_derived_amount)
+            }),
         EffectAst::SubjectVerb(subject_verb) => {
             subject_verb_action_value(&subject_verb.action)
                 .is_some_and(value_references_event_derived_amount)
@@ -2319,6 +2353,10 @@ pub fn effect_references_its_controller(effect: &EffectAst) -> bool {
         }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            player,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             player,
             ..
         })

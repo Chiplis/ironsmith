@@ -347,6 +347,18 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
     {
         keywords.push(TokenKeywordShape::Devour(amount));
     }
+    if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["vanishing"])
+        .and_then(|idx| words.get(idx + 1))
+        .and_then(|word| crate::util::decimal_count(word))
+    {
+        keywords.push(TokenKeywordShape::Vanishing(amount));
+    }
+    if let Some(amount) = crate::word_primitives::parse_sequence_start(words, &["fading"])
+        .and_then(|idx| words.get(idx + 1))
+        .and_then(|word| crate::util::decimal_count(word))
+    {
+        keywords.push(TokenKeywordShape::Fading(amount));
+    }
     keywords
 }
 

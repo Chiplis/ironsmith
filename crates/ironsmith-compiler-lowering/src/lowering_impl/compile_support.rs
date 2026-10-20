@@ -47,7 +47,8 @@ use super::reference_helpers::{
     object_filter_as_tagged_reference, player_filter_from_object_filter,
     resolve_attach_object_spec, resolve_choose_spec_it_tag, resolve_it_tag, resolve_it_tag_key,
     resolve_non_target_player_filter, resolve_restriction_it_tag, resolve_target_spec_with_choices,
-    resolve_total_cost_it_tags, resolve_unless_player_filter, resolve_value_it_tag,
+    resolve_total_cost_it_tags, resolve_total_cost_it_tags_with_enclosing_target,
+    resolve_unless_player_filter, resolve_value_it_tag,
     watch_tag_from_filter, with_target_reference_surface_hint,
 };
 use super::reference_resolution::{
@@ -2301,6 +2302,16 @@ pub fn track_selected_object_player_provenance(spec: &ChooseSpec, ctx: &mut Effe
     ) {
         return;
     }
+    // "Target creature you control deals damage equal to its power to each
+    // other creature and each opponent" (Chandra's Ignition): an object you
+    // control never makes "that player" an alias for you, so it must not
+    // displace the enclosing antecedent (here the iterated opponent).
+    if matches!(
+        filter.owner.as_ref().or(filter.controller.as_ref()),
+        Some(PlayerFilter::You)
+    ) {
+        return;
+    }
     let reference = if spec.is_target() && !ctx.auto_tag_object_targets {
         ObjectRef::Target
     } else {
@@ -2438,6 +2449,8 @@ fn static_ability_for_token_keyword(
     Some(match keyword {
         token_grammar::TokenKeywordShape::Firebending(_) => return None,
         token_grammar::TokenKeywordShape::Devour(_) => return None,
+        token_grammar::TokenKeywordShape::Vanishing(_) => return None,
+        token_grammar::TokenKeywordShape::Fading(_) => return None,
         token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
         token_grammar::TokenKeywordShape::WardGeneric(amount) => {
             StaticAbility::ward(TotalCost::mana(ManaCost::from_symbols(vec![
@@ -3363,6 +3376,8 @@ pub fn apply_standard_token_keyword(
         token_grammar::TokenKeywordShape::WardGeneric(amount) => builder.ward_generic(amount),
         token_grammar::TokenKeywordShape::Firebending(amount) => builder.firebending(amount),
         token_grammar::TokenKeywordShape::Devour(amount) => builder.devour(amount),
+        token_grammar::TokenKeywordShape::Vanishing(amount) => builder.vanishing(amount),
+        token_grammar::TokenKeywordShape::Fading(amount) => builder.fading(amount),
         token_grammar::TokenKeywordShape::Defender => builder.defender(),
         token_grammar::TokenKeywordShape::Prowess => builder.prowess(),
         token_grammar::TokenKeywordShape::Vigilance => builder.vigilance(),

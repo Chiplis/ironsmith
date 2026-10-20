@@ -1,4 +1,62 @@
+
+#[test]
+fn public_spell_filter_accepts_mana_costless_spell_on_stack() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let arcane = CardBuilder::new(CardId::new(), "Costless Arcane")
+        .card_types(vec![CardType::Instant])
+        .subtypes(vec![Subtype::Arcane])
+        .build();
+    let stack_id = game.create_object_from_card(&arcane, alice, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(stack_id, alice));
+    let graveyard_id = game.create_object_from_card(&arcane, alice, Zone::Graveyard);
+    let mut filter = ObjectFilter::spell().with_subtype(Subtype::Arcane);
+    // The public spell reader records this discriminator even when Oracle
+    // does not ask for a printed mana cost.
+    filter.has_mana_cost = true;
+    let context = FilterContext::new(alice);
+    assert!(filter.matches(game.object(stack_id).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(graveyard_id).unwrap(), &context, &game));
+}
 use super::*;
+
+#[test]
+fn captured_exile_choice_requires_the_same_current_exile_object() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::new(), "Exiled spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let departing = game.create_object_from_card(&card, alice, Zone::Exile);
+    let remaining = game.create_object_from_card(&card, alice, Zone::Exile);
+    let tag = crate::tag::TagKey::from("captured_exile_pool");
+    let mut ctx = FilterContext::new(alice);
+    ctx.tagged_objects.insert(tag.clone(), vec![
+        ObjectSnapshot::from_object(game.object(departing).unwrap(), &game),
+        ObjectSnapshot::from_object(game.object(remaining).unwrap(), &game),
+    ]);
+    let choice = ObjectFilter::tagged(tag.clone())
+        .without_type(CardType::Land)
+        .in_zone(Zone::Exile)
+        .match_tagged(tag, TaggedOpbjectRelation::SameObjectId);
+    assert!(choice.matches(game.object(departing).unwrap(), &ctx, &game));
+    assert!(choice.matches(game.object(remaining).unwrap(), &ctx, &game));
+
+    let hand_object = game.move_object_by_effect(departing, Zone::Hand).unwrap();
+    assert!(!choice.matches(game.object(hand_object).unwrap(), &ctx, &game));
+    let returned_object = game.move_object_by_effect(hand_object, Zone::Exile).unwrap();
+    assert_ne!(returned_object, departing);
+    assert_eq!(game.object(returned_object).unwrap().stable_id,
+        ctx.tagged_objects.values().next().unwrap()[0].stable_id);
+    assert!(!choice.matches(game.object(returned_object).unwrap(), &ctx, &game));
+    assert!(choice.matches(game.object(remaining).unwrap(), &ctx, &game));
+}
 
 #[test]
 fn test_comparison() {

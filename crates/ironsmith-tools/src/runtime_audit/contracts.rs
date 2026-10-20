@@ -344,6 +344,7 @@ impl Auditor {
             | "TriggeringObjectHadToAttackThisCombat"
             | "TriggeringObjectEnlistedThisCombat"
             | "TriggeringObjectWasCast"
+            | "TriggeringObjectWasCastByController"
             | "TriggeringObjectWasCastFromZone"
             | "TriggeringObjectEnteredFromZone"
             | "TriggeringObjectDied"

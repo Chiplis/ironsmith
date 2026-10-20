@@ -547,17 +547,21 @@ fn parse_effect_sentence_lexed_uncached_inner(
         crate::lexer::trim_lexed_commas(tokens),
         &["then"],
     );
+    use winnow::Parser as _;
     let ordered_rest = crate::grammar::primitives::parse_prefix(
         ordered_tokens,
         winnow::combinator::alt((
-            crate::grammar::primitives::phrase(&["starting", "with", "you"]),
+            crate::grammar::primitives::phrase(&["starting", "with", "you"]).value(false),
             crate::grammar::primitives::phrase(&[
                 "starting", "with", "the", "next", "opponent", "in", "turn", "order",
-            ]),
+            ])
+            .value(true),
         )),
     )
-    .map(|((), rest)| crate::lexer::trim_lexed_commas(rest));
-    if let Some(rest) = ordered_rest
+    .map(|(next_opponent_first, rest)| {
+        (next_opponent_first, crate::lexer::trim_lexed_commas(rest))
+    });
+    if let Some((next_opponent_first, rest)) = ordered_rest
         && rest.first().is_some_and(|token| token.is_word("each"))
         && rest
             .get(1)
@@ -574,6 +578,38 @@ fn parse_effect_sentence_lexed_uncached_inner(
                 ))
             )
         {
+            // "Starting with the next opponent in turn order, each player
+            // chooses ..." (Sadistic Shell Game): the opponents act in turn
+            // order beginning after the controller, and the controller acts
+            // last. Lower that as the ordered opponent loop followed by the
+            // controller's own iteration of the same body.
+            if next_opponent_first
+                && let [
+                    EffectAst::ForEach(crate::cards::builders::ForEachEffectAst::ForEachPlayer {
+                        effects: body,
+                    }),
+                ] = effects.as_slice()
+            {
+                return Ok(vec![
+                    EffectAst::SourceSentence {
+                        effects: vec![EffectAst::ForEach(
+                            crate::cards::builders::ForEachEffectAst::ForEachOpponent {
+                                effects: body.clone(),
+                            },
+                        )],
+                        leading_then: ordered_tokens.len()
+                            != crate::lexer::trim_lexed_commas(tokens).len(),
+                        starting_with_controller: true,
+                    },
+                    EffectAst::ForEach(
+                        crate::cards::builders::ForEachEffectAst::ForEachPlayersFiltered {
+                            sequential: false,
+                            filter: crate::target::PlayerFilter::You,
+                            effects: body.clone(),
+                        },
+                    ),
+                ]);
+            }
             return Ok(vec![EffectAst::SourceSentence {
                 effects,
                 leading_then: ordered_tokens.len()

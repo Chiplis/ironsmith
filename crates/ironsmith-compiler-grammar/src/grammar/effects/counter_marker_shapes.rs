@@ -344,6 +344,10 @@ fn parse_return_with_counters_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<MoveWithCountersShape<'a>> {
     opt(primitives::kw("then")).parse_next(input)?;
+    // "You return that card to the battlefield with an additional +1/+1
+    // counter on it." (Drana, the Last Bloodchief): the explicit actor is the
+    // implicit one.
+    opt(primitives::kw("you")).parse_next(input)?;
     primitives::kw("return").parse_next(input)?;
     let target_tokens = repeat_till(
         1..,

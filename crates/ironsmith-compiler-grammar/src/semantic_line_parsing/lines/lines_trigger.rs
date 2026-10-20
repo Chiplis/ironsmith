@@ -445,6 +445,54 @@ pub(super) fn recognize_triggered_effect_surfaces(
     effect_parse_tokens: &[OwnedLexToken],
     full_parse_tokens: &[OwnedLexToken],
 ) -> LineAst {
+    // The complete target-player reveal program carries a shared tagged
+    // collection across three sentences. The ordinary triggered-line parser
+    // can independently parse the last sentence as an unrestricted owner
+    // filter. That parse is semantically different, so the surface-only
+    // resynchronization below deliberately refuses it. The complete typed
+    // procedure, when it proves the exact revealed-card membership and
+    // iterated owner, is the executable body instead.
+    let sentences = crate::lexer::split_lexed_sentences(effect_parse_tokens);
+    if sentences.len() == 3 {
+        let inputs = sentences.iter()
+            .map(|sentence| crate::effect_sentences::SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+        if let Some(program) = crate::effect_sentences::try_parse_document_program(&inputs, 0)
+            .ok().flatten()
+            .filter(|program| program.name == "each-reveal-procedure"
+                && program.consumed_sentences == sentences.len())
+        {
+            let expected_tag = crate::tag::CompilerReferenceTag::RevealedThisWay.bind();
+            let mut own_reveal = crate::filter::ObjectFilter::tagged(expected_tag);
+            own_reveal.owner = Some(PlayerFilter::IteratedPlayer);
+            let typed_final_move = program.effects.last().is_some_and(|last| {
+                let EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers { effects, .. }) = last else { return false; };
+                let [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(
+                        crate::cards::builders::ZoneMoveActionAst::MoveToZone {
+                            target: TargetAst::Object(filter, None, None),
+                            zone: crate::zone::Zone::Hand,
+                            ..
+                        }),
+                    ..
+                })] = effects.as_slice() else { return false; };
+                filter == &own_reveal
+            });
+            if typed_final_move {
+                match &mut parsed {
+                    LineAst::Triggered { effects, .. } => {
+                        *effects = program.effects;
+                        return parsed;
+                    }
+                    LineAst::Ability(ability) if ability.effects_ast.is_some() => {
+                        ability.effects_ast = Some(program.effects);
+                        return parsed;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
     let Ok(mut surfaced) = parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
     else {
         return parsed;

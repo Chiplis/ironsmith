@@ -577,6 +577,15 @@ impl KeywordAction {
             Self::Frenzy(amount) => format!("Frenzy {amount}"),
             Self::Changeling => "Changeling".to_string(),
             Self::HexproofFrom(filter) => {
+                // "hexproof from each of its colors" (Tam, Mindful
+                // First-Year): the protected object's own colors.
+                if let [constraint] = filter.tagged_constraints.as_slice()
+                    && constraint.tag.as_str() == ironsmith_core::tag::HEXPROOF_PROTECTED_OBJECT_TAG
+                    && constraint.relation
+                        == ironsmith_core::TaggedOpbjectRelation::SharesColorWithTagged
+                {
+                    return "Hexproof from each of its colors".to_string();
+                }
                 let description = filter.description();
                 let fragment = description
                     .strip_suffix(" permanent")

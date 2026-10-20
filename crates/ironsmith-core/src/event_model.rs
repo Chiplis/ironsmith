@@ -279,7 +279,9 @@ impl KeywordActionKind {
             Self::Mill => "mill cards",
             Self::DrawCards => "draw cards",
             Self::CopySpell => "copy a spell",
-            Self::ScryToBottom => "put cards on the bottom of their library while scrying",
+            Self::ScryToBottom => {
+                "choose to put one or more cards on the bottom of your library while scrying"
+            },
             Self::GroupIntoPiles => "group cards or permanents into piles",
             Self::SolveCase => "solve a Case",
             Self::Foretell => "foretell a card",
@@ -362,7 +364,9 @@ impl KeywordActionKind {
             Self::Mill => "mills cards",
             Self::DrawCards => "draws cards",
             Self::CopySpell => "copies a spell",
-            Self::ScryToBottom => "puts cards on the bottom of their library while scrying",
+            Self::ScryToBottom => {
+                "chooses to put one or more cards on the bottom of their library while scrying"
+            },
             Self::GroupIntoPiles => "groups cards or permanents into piles",
             Self::SolveCase => "solves a Case",
             Self::Foretell => "foretells a card",

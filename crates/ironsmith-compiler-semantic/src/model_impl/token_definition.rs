@@ -123,6 +123,10 @@ pub enum TokenKeywordShape {
     Firebending(u32),
     /// "devour N" (CR 702.82a).
     Devour(u32),
+    /// "vanishing N" (CR 702.63a).
+    Vanishing(u32),
+    /// "fading N" (CR 702.32a).
+    Fading(u32),
     Defender,
     Prowess,
     Vigilance,

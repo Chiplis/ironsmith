@@ -363,6 +363,11 @@ fn is_creature_addition_predicate(predicate: &str) -> bool {
 fn subtype_addition_predicate(predicate: &str) -> Option<String> {
     let trimmed = predicate.trim();
     let lower = trimmed.to_ascii_lowercase();
+    // "Creatures you control are the chosen type. The same is true for ..."
+    // (Conspiracy): a replacing chosen-type change shares the same surface.
+    if lower == "the chosen type" {
+        return Some(lower);
+    }
     for suffix in [
         " in addition to its other types",
         " in addition to their other types",
@@ -740,6 +745,61 @@ fn can_merge_conditional_state_bundle(
         && conditioned_conditions_equivalent(&left.condition, &right.condition, &left.subject)
 }
 
+/// "As long as Ezio has two or more counters on it, it has first strike." +
+/// "As long as this permanent has two or more counters on it, Ezio is an
+/// Assassin ..." — the left half's "it" is the condition's own subject, which
+/// the right half names explicitly; one source threshold governs both.
+fn conditioned_pronoun_continues_condition_subject(
+    left: &ConditionalSubjectPredicate,
+    right: &ConditionalSubjectPredicate,
+) -> bool {
+    if !left.condition_precedes_subject
+        || !right.condition_precedes_subject
+        || !left.subject.eq_ignore_ascii_case("it")
+    {
+        return false;
+    }
+    let right_subject = right.subject.trim().to_ascii_lowercase();
+    if right_subject.is_empty()
+        || right_subject == "it"
+        || right_subject.contains(" you ")
+        || right_subject.starts_with("each ")
+        || right_subject.starts_with("all ")
+        || right_subject.starts_with("enchanted ")
+        || right_subject.starts_with("equipped ")
+    {
+        return false;
+    }
+    let key = |condition: &str| {
+        let mut key = condition.trim().to_ascii_lowercase();
+        for source_form in [right_subject.as_str(), "this permanent", "this source"] {
+            key = key.replace(
+                &format!("as long as {source_form} "),
+                "as long as this creature ",
+            );
+        }
+        key
+    };
+    let left_key = key(&left.condition);
+    left_key.starts_with("as long as this creature ")
+        && left_key.ends_with(" on it")
+        && left_key == key(&right.condition)
+}
+
+/// A colon outside quotes is an activated ability's cost boundary; one inside
+/// a granted quoted ability ("has \"{R/W}: ...\"") is not.
+fn has_unquoted_colon(line: &str) -> bool {
+    let mut in_quote = false;
+    for ch in line.chars() {
+        match ch {
+            '"' => in_quote = !in_quote,
+            ':' if !in_quote => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 fn conditioned_subjects_equivalent(left: &str, right: &str) -> bool {
     conditioned_subject_key(left) == conditioned_subject_key(right)
 }
@@ -747,6 +807,11 @@ fn conditioned_subjects_equivalent(left: &str, right: &str) -> bool {
 fn conditioned_subject_key(subject: &str) -> String {
     let lower = subject.trim().to_ascii_lowercase();
     if lower == "this source" {
+        return "this creature".to_string();
+    }
+    // A noncreature source's own noun and the generic "this source" name the
+    // same object (The Aetherspark: "this Equipment" / "this source").
+    if matches!(lower.as_str(), "this equipment" | "this artifact") {
         return "this creature".to_string();
     }
     if let Some(rest) = lower.strip_prefix("each creature ") {
@@ -796,6 +861,14 @@ fn conditioned_conditions_equivalent(left: &str, right: &str, subject: &str) -> 
         );
         // Producers disagree on whether "and/or" keeps its slash.
         key = key.replace("and/or", "and or");
+        // "the permanent this source is attached to is a red permanent" and
+        // "enchanted creature is red" test the same color (Scourge of the
+        // Nobilis).
+        if attached_subject.is_some() {
+            for color in ["white", "blue", "black", "red", "green"] {
+                key = key.replace(&format!(" is a {color} permanent"), &format!(" is {color}"));
+            }
+        }
         // Life-threshold producers word the same comparison two ways:
         // "you have 30 or more life" vs "your life total is 30 or greater".
         if let Some(start) = key.find("your life total is ") {
@@ -1180,6 +1253,18 @@ fn format_conditioned_subject_predicate_merge(
             right_predicate
         );
     }
+    // "As long as The Aetherspark is attached to a creature, The Aetherspark
+    // can't be attacked and has \"...\"": a trailing condition cannot follow
+    // the quoted grant, so it leads.
+    if left.verb == "can't be" && is_trait(right_verb) && right_predicate.trim_end().ends_with('"') {
+        return format!(
+            "{ability_word}As long as {condition}, {} can't be {} and {} {}",
+            lowercase_first(&left.subject),
+            left_predicate,
+            have_verb_for_subject(&left.subject),
+            right_predicate
+        );
+    }
     let is_state = |verb: &str| matches!(verb, "is" | "are");
     if (is_trait(&left.verb) && is_state(right_verb))
         || (is_state(&left.verb) && is_trait(right_verb))
@@ -1289,6 +1374,57 @@ pub(super) fn normalize_keyword_and_phrase(text: &str) -> Option<String> {
             .collect::<Vec<_>>()
             .join(" and "),
     )
+}
+
+/// "If X is 4 or more, do all of the above." (Multiple Choice): a final
+/// conditional line whose bodies repeat, in order, the bodies of every
+/// preceding conditional line names them all at once.
+pub(super) fn collapse_repeated_conditional_bodies(lines: Vec<String>) -> Vec<String> {
+    fn conditional_prefix(line: &str) -> Option<&str> {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("If ") {
+            return None;
+        }
+        let comma = trimmed.find(", ")?;
+        Some(&trimmed[..comma + 2])
+    }
+    fn body_key(body: &str) -> String {
+        body.trim().trim_end_matches('.').trim().to_ascii_lowercase()
+    }
+    if lines.len() < 3 {
+        return lines;
+    }
+    let Some(prefix) = conditional_prefix(&lines[lines.len() - 1]).map(str::to_string) else {
+        return lines;
+    };
+    // The trailing run of lines sharing that condition.
+    let mut last = lines.len() - 1;
+    while last > 0 && conditional_prefix(&lines[last - 1]) == Some(prefix.as_str()) {
+        last -= 1;
+    }
+    let separator = format!(". {prefix}");
+    let mut bodies = Vec::new();
+    for line in &lines[last..] {
+        let text = line.trim().trim_end_matches('.');
+        bodies.extend(text[prefix.len()..].split(separator.as_str()).map(body_key));
+    }
+    if bodies.len() < 2 || bodies.len() != last {
+        return lines;
+    }
+    let earlier = lines[..last]
+        .iter()
+        .map(|line| {
+            conditional_prefix(line)
+                .filter(|earlier_prefix| *earlier_prefix != prefix.as_str())
+                .map(|earlier_prefix| body_key(&line.trim()[earlier_prefix.len()..]))
+        })
+        .collect::<Option<Vec<_>>>();
+    if earlier.as_ref() != Some(&bodies) {
+        return lines;
+    }
+    let mut collapsed = lines[..last].to_vec();
+    collapsed.push(format!("{prefix}do all of the above."));
+    collapsed
 }
 
 pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<String> {
@@ -1466,10 +1602,32 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         if idx + 1 < lines.len() {
             let left = lines[idx].trim().trim_end_matches('.');
             let right = lines[idx + 1].trim().trim_end_matches('.');
+            // "Enchanted creature can't become untapped and can't have
+            // counters put on it" (Blossombind): a counter-placement ban on
+            // the same subject continues its preceding restriction.
+            if let Some((subject, restriction)) = left.split_once(" can't ")
+                && !subject.is_empty()
+                && !subject.contains(',')
+                && !subject.contains(':')
+                && !restriction.contains(" and ")
+                && !restriction.contains(" as long as ")
+                && right == format!("{subject} can't have counters put on it")
+            {
+                merged.push(format!(
+                    "{subject} can't {restriction} and can't have counters put on it"
+                ));
+                idx += 2;
+                continue;
+            }
             if let Some(subject) = left
                 .strip_suffix(" enters tapped")
                 .or_else(|| left.strip_suffix(" enter tapped"))
             {
+                // "Grimgrin enters tapped and doesn't untap during your untap
+                // step" is joined only from its authored source-line group
+                // (ast_render describe_source_line_enters_tapped_untap_restriction_pair);
+                // a line-level join here also fused cards printing the two
+                // rules on separate lines (Deep-Slumber Titan, Time Vault).
                 let counter_clause =
                     right
                         .strip_prefix("Enters the battlefield with ")
@@ -1598,21 +1756,23 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         // subject split below (its first verb hit is the condition's "is"),
         // so try the conditional pairing on its own first.
         if idx + 1 < lines.len()
-            && !lines[idx].contains(':')
-            && !lines[idx + 1].contains(':')
+            && !has_unquoted_colon(&lines[idx])
+            && !has_unquoted_colon(&lines[idx + 1])
             && let (Some(left_conditional), Some(right_conditional)) = (
                 parse_conditional_subject_predicate(&lines[idx]),
                 parse_conditional_subject_predicate(&lines[idx + 1]),
             )
-            && conditioned_subjects_equivalent(
+            && ((conditioned_subjects_equivalent(
                 &left_conditional.subject,
                 &right_conditional.subject,
-            )
-            && conditioned_conditions_equivalent(
+            ) && conditioned_conditions_equivalent(
                 &left_conditional.condition,
                 &right_conditional.condition,
                 &left_conditional.subject,
-            )
+            )) || conditioned_pronoun_continues_condition_subject(
+                &left_conditional,
+                &right_conditional,
+            ))
             && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
         {
             let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
@@ -1649,6 +1809,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             // two triggered abilities never share one resolution.
             && !starts_with_trigger_intro(left_subject)
             && !starts_with_trigger_intro(right_subject)
+            // "If X is 1, ..." / "If X is 3, ...": a leading condition's own
+            // verb is not a subject predicate; separately authored
+            // conditional lines are separate instructions.
+            && !left_subject.starts_with("If ")
+            && !right_subject.starts_with("If ")
             // A separately authored activated-ability grant must not be
             // absorbed into a neighboring blocking restriction merely
             // because both affect the same attached object.
@@ -1732,7 +1897,12 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 let lower = text.to_ascii_lowercase();
                 lower.contains(" as long as ") || lower.contains(" for as long as ")
             };
-            if has_conditional_tail(left_raw) || has_conditional_tail(right_raw) {
+            // "has hexproof unless it's attacking or blocking" (Tromokratis):
+            // a conditional trait would read as also qualifying the joined
+            // predicate, so the separately authored line stays apart.
+            let left_unless_trait = matches!(left_verb, "has" | "have")
+                && left_raw.to_ascii_lowercase().contains(" unless ");
+            if has_conditional_tail(left_raw) || has_conditional_tail(right_raw) || left_unless_trait {
                 merged.push(lines[idx].clone());
                 idx += 1;
                 continue;
@@ -1903,6 +2073,22 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
                 || (left_no_period == "Can't block" && right_no_period == "Can't be blocked")
             {
                 merged.push("This creature can't block and can't be blocked".to_string());
+                idx += 2;
+                continue;
+            }
+            // "must be blocked by exactly one creature if able" already
+            // states the one-blocker cap its second static enforces (Nacatl
+            // War-Pride).
+            if left_no_period
+                .to_ascii_lowercase()
+                .ends_with("must be blocked by exactly one creature if able")
+                && matches!(
+                    right_no_period,
+                    "This creature can't be blocked by more than 1 creature"
+                        | "This creature can't be blocked by more than one creature"
+                )
+            {
+                merged.push(lines[idx].clone());
                 idx += 2;
                 continue;
             }
@@ -3058,6 +3244,60 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
             idx += 1;
             continue;
         }
+        // "All Swamps are 1/1 black creatures ..." / "Forests you control are
+        // 1/1 green Elf creatures ...": a land-type subject animated with a
+        // fixed P/T reads "... that are still lands".
+        if let Some((subject, verb, rest)) =
+            split_subject_predicate_clause(lines[idx].trim().trim_end_matches('.'))
+            && verb == "are"
+            && {
+                let head = subject
+                    .trim()
+                    .trim_start_matches("All ")
+                    .trim_end_matches(" you control");
+                matches!(
+                    head,
+                    "Plains" | "Islands" | "Swamps" | "Mountains" | "Forests" | "Lands"
+                )
+            }
+            && let Some(pt) = rest
+                .trim()
+                .strip_suffix(" creatures in addition to their other types")
+            && pt
+                .split_whitespace()
+                .next()
+                .is_some_and(|first| first.contains('/'))
+        {
+            merged.push(format!(
+                "{} are {pt} creatures that are still lands",
+                subject.trim()
+            ));
+            idx += 1;
+            continue;
+        }
+        // "Lands you control are creatures and have base power and toughness
+        // 2/2 and have first strike." → "Lands you control are 2/2 creatures
+        // with first strike. They're still lands." (Natural Emergence)
+        if let Some((subject, tail)) = lines[idx]
+            .trim()
+            .trim_end_matches('.')
+            .split_once(" are creatures and have base power and toughness ")
+            && matches!(
+                subject.trim().trim_start_matches("All ").trim_end_matches(" you control"),
+                "Lands" | "Plains" | "Islands" | "Swamps" | "Mountains" | "Forests"
+            )
+            && let Some((pt, keywords)) = tail.split_once(" and have ")
+            && pt.contains('/')
+            && !pt.contains(' ')
+            && !keywords.contains('"')
+        {
+            merged.push(format!(
+                "{} are {pt} creatures with {keywords}. They're still lands",
+                subject.trim()
+            ));
+            idx += 1;
+            continue;
+        }
 
         merged.push(lines[idx].clone());
         idx += 1;
@@ -3077,6 +3317,17 @@ fn compact_colored_plural_animation(line: &str) -> Option<String> {
     let (power, toughness) = pt.split_once('/')?;
     power.parse::<i32>().ok()?;
     toughness.parse::<i32>().ok()?;
+    // Animated lands keep their land type: "that are still lands".
+    let subject_lower = subject.to_ascii_lowercase();
+    let animates_lands = subject_lower.split_whitespace().any(|word| {
+        matches!(
+            word,
+            "land" | "lands" | "plains" | "islands" | "swamps" | "mountains" | "forests"
+        )
+    });
+    if animates_lands {
+        return Some(format!("{subject} are {pt} {color} creatures that are still lands"));
+    }
     Some(format!("{subject} are {pt} {color} creatures in addition to their other types"))
 }
 
@@ -3632,7 +3883,11 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     }
     let repeated_cascade = {
         let parts = lower.split(',').map(str::trim).collect::<Vec<_>>();
-        parts.len() >= 2 && parts.iter().all(|part| *part == "cascade")
+        parts.len() >= 2
+            && (parts.iter().all(|part| *part == "cascade")
+                || parts
+                    .iter()
+                    .all(|part| matches!(*part, "convoke" | "delve" | "improvise")))
     };
     if repeated_cascade {
         return true;

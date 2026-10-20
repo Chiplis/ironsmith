@@ -1462,6 +1462,32 @@ fn generic_source_to_player_keeps_authored_surface_in_ast_and_model() {
 }
 
 #[test]
+fn passive_grouped_combat_damage_preserves_recipient_and_turn_qualifiers() {
+    let text = "one or more of your opponents are dealt combat damage during your turn";
+    let tokens = tokenize_line(text, 0);
+    let parsed = crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens)
+        .expect("passive grouped combat damage should parse");
+    let crate::model::ast::TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+        source,
+        player,
+        each_damaged_player,
+        per_source_controller,
+        recipient_passive,
+        during_your_turn,
+    } = parsed.clone() else { panic!("wrong trigger: {parsed:#?}"); };
+    assert_eq!(source, ObjectFilter::default());
+    assert_eq!(player, PlayerFilter::Opponent);
+    assert!(!each_damaged_player && !per_source_controller);
+    assert!(recipient_passive && during_your_turn);
+    let compiled = crate::compile_support::compile_trigger_spec(parsed);
+    assert!(matches!(compiled.kind,
+        crate::triggers::TriggerKind::DealsCombatDamageToPlayer {
+            one_or_more: true, recipient_passive: true, during_your_turn: true, ..
+        }
+    ));
+}
+
+#[test]
 fn grouped_noncombat_damage_to_opponents_during_your_turn_keeps_each_qualifier() {
     let tokens = tokenize_line(
         "a source you control deals noncombat damage to one or more of your opponents during your turn",

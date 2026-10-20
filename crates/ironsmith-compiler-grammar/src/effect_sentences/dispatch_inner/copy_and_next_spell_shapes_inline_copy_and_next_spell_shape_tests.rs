@@ -76,6 +76,23 @@ fn delayed_dies_this_way_uses_captured_filter() {
 }
 
 #[test]
+fn delayed_it_dies_under_your_control_is_an_event_time_predicate() {
+    let tokens = crate::lexer::lex_line(
+        "When it dies under your control this turn, draw two cards.", 0,
+    ).expect("controlled death text should lex");
+    let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+        .expect("controlled death should parse")
+        .expect("controlled death should match");
+    let [EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
+        filter,
+        controller_at_death,
+        ..
+    })] = effects.as_slice() else { panic!("expected one delayed watch: {effects:#?}"); };
+    assert!(filter.is_none(), "controller must not gate watcher registration");
+    assert_eq!(controller_at_death.as_ref(), Some(&PlayerFilter::You));
+}
+
+#[test]
 fn delayed_that_dies_this_turn_uses_captured_effect_tail() {
     let tokens = crate::lexer::lex_line("When that creature dies this turn, draw a card.", 0)
         .expect("that-dies delayed text should lex");
@@ -145,6 +162,7 @@ fn definite_filtered_death_subject_watches_the_prior_object_once() {
         EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
             filter: Some(filter),
             effects,
+            ..
         }),
     ] = effects.as_slice()
     else {

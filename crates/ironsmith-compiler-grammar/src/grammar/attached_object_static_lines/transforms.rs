@@ -91,6 +91,13 @@ pub fn split_attached_base_pt_keyword_tokens(
                 alt((semantic_kw("has"), semantic_kw("have"))),
             )
                 .void(),
+            // "with base power and toughness 4/2, has flying and
+            // deathtouch, and is goaded" (Eye of Nidhogg).
+            (
+                primitives::comma(),
+                alt((semantic_kw("has"), semantic_kw("have"))),
+            )
+                .void(),
         ))
     })?;
     let has_token = tokens.len().checked_sub(after_has.len())?.checked_sub(1)?;

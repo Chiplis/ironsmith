@@ -591,6 +591,8 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     };
     let (left, right) = (&modes[..or_idx], &modes[or_idx + 1..]);
     let discard = ["discard", "a", "card"];
+    // The authored option order is the order the choice is offered in.
+    let discard_first = left == discard;
     let nonland = if left == discard {
         sacrifice_mode(right)
     } else if right == discard {
@@ -655,22 +657,25 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     let sacrifice = EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, 1, None);
     let discard =
         EffectAst::subject_verb_discard(PlayerAst::That, Value::Fixed(1), false, false, None, None);
+    let sacrifice_choice = ChooseOneModeAst {
+        description: if nonland {
+            "Sacrifice a nonland permanent".to_string()
+        } else {
+            "Sacrifice a permanent".to_string()
+        },
+        effects: vec![sacrifice],
+    };
+    let discard_choice = ChooseOneModeAst {
+        description: "Discard a card".to_string(),
+        effects: vec![discard],
+    };
     let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
         chooser: PlayerFilter::IteratedPlayer,
-        modes: vec![
-            ChooseOneModeAst {
-                description: if nonland {
-                    "Sacrifice a nonland permanent".to_string()
-                } else {
-                    "Sacrifice a permanent".to_string()
-                },
-                effects: vec![sacrifice],
-            },
-            ChooseOneModeAst {
-                description: "Discard a card".to_string(),
-                effects: vec![discard],
-            },
-        ],
+        modes: if discard_first {
+            vec![discard_choice, sacrifice_choice]
+        } else {
+            vec![sacrifice_choice, discard_choice]
+        },
     });
     let offer = EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {
@@ -690,6 +695,102 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     });
 
     Ok(Some(vec![offer, consequence]))
+}
+
+/// "Any player may sacrifice two lands of their choice or have this
+/// enchantment deal 5 damage to that player." followed by "If a player does
+/// either, destroy this enchantment." (Worms of the Earth): each player in turn
+/// order may choose one of the two options; the first acceptance destroys the
+/// source.
+pub(super) fn any_player_sacrifice_or_source_damage_destroy_source(
+    first: &SentenceInput,
+    second: &SentenceInput,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_words = crate::lexer::token_word_refs(first.lowered());
+    let Some(rest) = first_words.strip_prefix(&["any", "player", "may", "sacrifice"][..]) else {
+        return Ok(None);
+    };
+    let Some(or_idx) = rest.iter().position(|word| *word == "or") else {
+        return Ok(None);
+    };
+    let (sacrifice_words, damage_words) = (&rest[..or_idx], &rest[or_idx + 1..]);
+    let sacrifice_words = sacrifice_words
+        .strip_suffix(&["of", "their", "choice"][..])
+        .unwrap_or(sacrifice_words);
+    let [count_word, noun] = sacrifice_words else {
+        return Ok(None);
+    };
+    let Some(count) = crate::util::parse_number_word_u32(count_word) else {
+        return Ok(None);
+    };
+    let sacrifice_filter = match *noun {
+        "lands" | "land" => ObjectFilter::land(),
+        "permanents" | "permanent" => ObjectFilter::permanent(),
+        _ => return Ok(None),
+    };
+    let Some(have_rest) = damage_words.strip_prefix(&["have"][..]) else {
+        return Ok(None);
+    };
+    let Some(deal_idx) = have_rest.iter().position(|word| *word == "deal") else {
+        return Ok(None);
+    };
+    if !crate::util::is_source_reference_words(&have_rest[..deal_idx]) {
+        return Ok(None);
+    }
+    let [amount, "damage", "to", "that", "player"] = &have_rest[deal_idx + 1..] else {
+        return Ok(None);
+    };
+    let Some(amount) = crate::util::parse_number_word_u32(amount) else {
+        return Ok(None);
+    };
+
+    let second_words = crate::lexer::token_word_refs(second.lowered());
+    let Some(destroy_rest) = second_words
+        .strip_prefix(&["if", "a", "player", "does", "either", "destroy"][..])
+        .or_else(|| second_words.strip_prefix(&["if", "a", "player", "does", "destroy"][..]))
+    else {
+        return Ok(None);
+    };
+    if !crate::util::is_source_reference_words(destroy_rest) {
+        return Ok(None);
+    }
+
+    let sacrifice_filter = sacrifice_filter
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::IteratedPlayer);
+    let noun_text = if count == 1 {
+        noun.trim_end_matches('s').to_string()
+    } else {
+        (*noun).to_string()
+    };
+    let sacrifice =
+        EffectAst::subject_verb_sacrifice(PlayerAst::That, sacrifice_filter, count, None);
+    let damage = EffectAst::subject_verb_damage(
+        Value::Fixed(amount as i32),
+        TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+    );
+    let choice = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf {
+        chooser: PlayerFilter::IteratedPlayer,
+        modes: vec![
+            ChooseOneModeAst {
+                description: format!("Sacrifice {count_word} {noun_text}"),
+                effects: vec![sacrifice],
+            },
+            ChooseOneModeAst {
+                description: format!("Have this deal {amount} damage to you"),
+                effects: vec![damage],
+            },
+        ],
+    });
+    let offer = EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
+        players: PlayerFilter::Any,
+        effects: vec![choice],
+    });
+    let destroy = EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![EffectAst::subject_verb_destroy(TargetAst::Source(None))],
+    });
+    Ok(Some(vec![offer, destroy]))
 }
 
 /// "For each creature exiled this way, its controller searches their library

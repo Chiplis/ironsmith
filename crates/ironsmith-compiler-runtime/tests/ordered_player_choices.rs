@@ -101,6 +101,54 @@ fn manifold_insights_opponents_choose_different_revealed_cards() {
 }
 
 #[test]
+fn manifold_insights_opponents_choose_distinct_cards_in_turn_order_at_runtime() {
+    use ironsmith::card::CardBuilder;
+    use ironsmith::decision::DecisionMaker;
+    use ironsmith::decisions::context::SelectObjectsContext;
+    use ironsmith::effects::{execute_effect, EffectContext};
+    use ironsmith::ids::{CardId, ObjectId};
+    use ironsmith::types::CardType;
+    use ironsmith::{PlayerId, Zone};
+
+    struct OrderedPicks { players: Vec<PlayerId>, cards: Vec<ObjectId> }
+    impl DecisionMaker for OrderedPicks {
+        fn decide_objects(&mut self, _: &ironsmith::GameState, choice: &SelectObjectsContext) -> Vec<ObjectId> {
+            let selected = choice.candidates.iter().find(|candidate| candidate.legal)
+                .map(|candidate| candidate.id).into_iter().collect::<Vec<_>>();
+            self.players.push(choice.player);
+            self.cards.extend(selected.iter().copied());
+            selected
+        }
+    }
+
+    let definition = support::definitions(&support::row(CLUSTER, "Manifold Insights"))
+        .into_iter().next().expect("compiled spell");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let carol = PlayerId::from_index(2);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+    for (index, card_type) in [CardType::Creature, CardType::Artifact, CardType::Instant, CardType::Land]
+        .into_iter().enumerate() {
+        let card = CardBuilder::new(CardId::new(), format!("Library card {index}"))
+            .card_types(vec![card_type]).build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let mut decisions = OrderedPicks { players: Vec::new(), cards: Vec::new() };
+    {
+        let mut ctx = EffectContext::new_default(source, alice).with_decision_maker(&mut decisions);
+        for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
+            execute_effect(&mut game, effect, &mut ctx).expect("ordered opponent resolution");
+        }
+    }
+    assert_eq!(decisions.players, vec![bob, carol], "the next opponent chooses first");
+    assert_eq!(decisions.cards.len(), 2);
+    assert_ne!(decisions.cards[0], decisions.cards[1], "the running chosen tag excludes the first card");
+    assert_eq!(game.player(alice).unwrap().hand.len(), 2);
+    assert_eq!(game.player(alice).unwrap().library.len(), 2, "unpicked cards remain in the library");
+}
+
+#[test]
 fn thieves_auction_repeats_rounds_until_every_exiled_card_was_chosen_once() {
     for definition in support::definitions(&support::row(CLUSTER, "Thieves' Auction")) {
         assert_eq!(ordered_loops(&definition).len(), 1);

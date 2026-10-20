@@ -561,10 +561,20 @@ pub(super) fn describe_looked_card_selected_partition(
             LookedPartitionDestination::LibraryBottom(_)
         )
     );
+    // "put up to two of them back on top of your library in any order and
+    // the rest into your graveyard" (Rowan's Grim Search).
+    let selected_library_top_then_graveyard = matches!(
+        (selected_destination, remainder_destination),
+        (
+            LookedPartitionDestination::LibraryTop(_),
+            LookedPartitionDestination::Graveyard
+        )
+    );
     if !(selected_then_library_top
         || selected_hand_then_graveyard
         || selected_hand_then_library_bottom
-        || selected_library_top_then_bottom)
+        || selected_library_top_then_bottom
+        || selected_library_top_then_graveyard)
     {
         return None;
     }
@@ -599,7 +609,8 @@ pub(super) fn describe_looked_card_selected_partition(
             } else {
                 order
             };
-            format!("on top of {library}{order}")
+            let back = if selected_library_top_then_graveyard { "back " } else { "" };
+            format!("{back}on top of {library}{order}")
         }
     };
     let remainder_destination_text = match remainder_destination {
@@ -643,8 +654,15 @@ pub(super) fn describe_looked_card_selected_partition(
     };
     let owner = describe_possessive_player_filter(&look.player);
     let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    // An event-amount count reads "look at that many cards from the top of
+    // your library" (Symbiote Spider-Man), not "the top that much cards".
+    let looked_cards = if matches!(count.as_str(), "that much" | "that many") {
+        format!("that many {noun} from the top of {owner} library{where_clause}")
+    } else {
+        format!("the top {count} {noun} of {owner} library{where_clause}")
+    };
     let mut rendered = format!(
-        "Look at the top {count} {noun} of {owner} library{where_clause}. Put {selected_reference} {selected_destination_text} and {remainder_reference} {remainder_destination_text}"
+        "Look at {looked_cards}. Put {selected_reference} {selected_destination_text} and {remainder_reference} {remainder_destination_text}"
     );
     let mut consumed = offset + 5;
     if selected_hand_then_graveyard

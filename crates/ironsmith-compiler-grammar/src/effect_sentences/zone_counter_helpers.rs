@@ -330,6 +330,65 @@ pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
     !tokens[..counter].iter().any(|token| token.is_word("onto"))
 }
 
+/// "put an everything counter on each of up to one target land and up to one
+/// target creature" (Omo, Queen of Vesuva): two independently declared target
+/// slots, each receiving the same counters. One "land or creature" target
+/// would lose the second slot.
+fn parse_put_counters_on_two_independent_targets(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) else {
+        return Ok(None);
+    };
+    let mut start = on_idx + 1;
+    if tokens.get(start).is_some_and(|token| token.is_word("each"))
+        && tokens.get(start + 1).is_some_and(|token| token.is_word("of"))
+    {
+        start += 2;
+    }
+    let target_phrase = crate::util::trim_edge_punctuation_tokens(&tokens[start..]);
+    let opens_target = |segment: &[OwnedLexToken]| {
+        let words = crate::lexer::token_word_refs(segment);
+        matches!(
+            words.as_slice(),
+            ["target", ..] | ["another", "target", ..] | ["up", "to", "one", "target", ..]
+        )
+    };
+    let and_positions = target_phrase
+        .iter()
+        .enumerate()
+        .filter(|(_, token)| token.is_word("and"))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [and_idx] = and_positions.as_slice() else {
+        return Ok(None);
+    };
+    let first = &target_phrase[..*and_idx];
+    let second = &target_phrase[*and_idx + 1..];
+    const VERBS: &[&str] = &[
+        "gain", "gains", "get", "gets", "deal", "deals", "draw", "draws", "return", "returns",
+        "tap", "untap", "destroy", "exile", "sacrifice", "put", "create", "then", "each",
+        "or",
+    ];
+    if first.is_empty()
+        || second.is_empty()
+        || !opens_target(first)
+        || !opens_target(second)
+        || target_phrase
+            .iter()
+            .any(|token| token.is_comma() || token.is_any_word(VERBS))
+    {
+        return Ok(None);
+    }
+    let mut effects = Vec::with_capacity(2);
+    for segment in [first, second] {
+        let mut clause = tokens[..=on_idx].to_vec();
+        clause.extend_from_slice(segment);
+        effects.push(parse_put_counters(&clause)?);
+    }
+    Ok(Some(effects))
+}
+
 pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     // "put a +1/+1 counter on target creature of defending player's choice"
     // (Erithizon): another player announces the target (CR 115.4, 601.2c).
@@ -394,11 +453,34 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             let starts = body_view.token_start_indices();
             if let Some(&start) = starts.get(NOUN) {
                 let target = parse_counter_target_phrase(&body[start..])?;
-                return Ok(EffectAst::PutTriggeringCounterKind { target });
+                return Ok(EffectAst::PutTriggeringCounterKind {
+                    target,
+                    one_of_each: false,
+                });
+            }
+        }
+        // "put one of each of those kinds of counters on <target>"
+        // (Aragorn, Company Leader).
+        const EACH_NOUN: usize = 9;
+        if words.len() > EACH_NOUN
+            && words[..EACH_NOUN]
+                == ["one", "of", "each", "of", "those", "kinds", "of", "counters", "on"]
+        {
+            let body_view = crate::lexer::TokenWordView::new(body);
+            let starts = body_view.token_start_indices();
+            if let Some(&start) = starts.get(EACH_NOUN) {
+                let target = parse_counter_target_phrase(&body[start..])?;
+                return Ok(EffectAst::PutTriggeringCounterKind {
+                    target,
+                    one_of_each: true,
+                });
             }
         }
     }
     if let Some(effects) = super::subject_verb_primitives::parse_shared_counter_target(tokens)? {
+        return Ok(EffectAst::Sequence { effects });
+    }
+    if let Some(effects) = parse_put_counters_on_two_independent_targets(tokens)? {
         return Ok(EffectAst::Sequence { effects });
     }
     if !has_counter_placement_head(tokens) {

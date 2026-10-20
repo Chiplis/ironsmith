@@ -338,6 +338,9 @@ pub(super) fn compiled_comparison_tokens(clause: &str) -> Vec<String> {
         .filter_map(|token| normalize_word(&token))
         .collect();
     let tokens = collapse_named_reference_tokens(tokens);
+    // Same mana-run counting as the oracle side (`comparison_tokens`), so a
+    // repeated symbol cost like "{U}{U}" tokenizes identically on both sides.
+    let tokens = super::count_repeated_mana_symbol_runs(tokens);
     let tokens = collapse_repeated_tokens(tokens);
     let tokens = normalize_turn_frequency_scaffolding(tokens);
     let tokens = normalize_internal_compiler_scaffolding(tokens);
@@ -988,8 +991,31 @@ fn has_you_control_object_scope(clause: &str) -> bool {
     ]
     .into_iter()
     .any(|noun| {
-        lower.contains(&format!("{noun} you control")) || lower.contains(&format!("your {noun}"))
+        lower.contains(&format!("{noun} you control"))
+            || lower.contains(&format!("your {noun}"))
+            || named_then_you_control_scope(&lower, noun)
     })
+}
+
+/// "creature named Seven Dwarves you control" scopes the noun to you exactly
+/// like "creature you control named Seven Dwarves": the card name sits
+/// between the noun and the controller qualifier.
+fn named_then_you_control_scope(lower: &str, noun: &str) -> bool {
+    let needle = format!("{noun} named ");
+    let mut rest = lower;
+    while let Some(idx) = rest.find(&needle) {
+        let tail = &rest[idx + needle.len()..];
+        let segment_end = tail.find(['.', ',', ';']).unwrap_or(tail.len());
+        let segment = &tail[..segment_end];
+        if let Some(pos) = segment.find(" you control")
+            && !segment[..pos].contains(" and ")
+            && !segment[..pos].contains(" or ")
+        {
+            return true;
+        }
+        rest = tail;
+    }
+    false
 }
 
 /// A bare adjacent "creatures get +X/+X" pumps every creature; oracle's
@@ -1226,6 +1252,21 @@ fn merge_blockability_compiled_lines(lines: &[String]) -> Vec<String> {
                     && right.eq_ignore_ascii_case("Can't be blocked"));
             if is_pair {
                 merged.push("This creature can't block and can't be blocked".to_string());
+                idx += 2;
+                continue;
+            }
+            // "Fish you control have haste." + "Fish you control can't be
+            // blocked by Humans." is one line in oracle: "Fish you control
+            // have haste and can't be blocked by Humans."
+            if let Some((subject, _)) = left.split_once(" have ")
+                && !subject.is_empty()
+                && let Some(rest) = right
+                    .strip_prefix(subject)
+                    .and_then(|rest| rest.strip_prefix(" can't "))
+                && !left.contains(". ")
+                && !right.contains(". ")
+            {
+                merged.push(format!("{left} and can't {rest}."));
                 idx += 2;
                 continue;
             }
@@ -1761,7 +1802,7 @@ pub fn compare_card_semantics_scored(
     let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
     let normalized_compiled = compiled_lines
         .iter()
-        .map(|line| normalize_card_self_references_for_compare(line, card_name))
+        .map(|line| normalize_card_self_references_for_compare_in_context(line, card_name, oracle_text))
         .collect::<Vec<_>>();
     compare_semantics_scored(&normalized_oracle, &normalized_compiled, embedding)
 }
@@ -1836,7 +1877,7 @@ pub fn compare_card_semantics_clause_residuals(
     let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
     let normalized_compiled = compiled_lines
         .iter()
-        .map(|line| normalize_card_self_references_for_compare(line, card_name))
+        .map(|line| normalize_card_self_references_for_compare_in_context(line, card_name, oracle_text))
         .collect::<Vec<_>>();
     let prep = prepare_clause_comparison(&normalized_oracle, &normalized_compiled);
     if prep.trivially_equal {

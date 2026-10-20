@@ -564,6 +564,76 @@ fn portent_of_calamity_exiles_one_per_card_type_then_threshold_casts_and_hands_t
 }
 
 #[test]
+fn revealed_type_partition_moves_only_the_unchosen_remainder_and_casts_one_exiled_spell() {
+    use ironsmith::card::CardBuilder;
+    use ironsmith::decision::DecisionMaker;
+    use ironsmith::decisions::context::{BooleanContext, SelectObjectsContext};
+    use ironsmith::effects::{execute_effect, EffectContext};
+    use ironsmith::ids::{CardId, ObjectId};
+    use ironsmith::snapshot::ObjectSnapshot;
+    use ironsmith::types::CardType;
+    use ironsmith::{PlayerId, Zone};
+
+    struct CastOne(ObjectId);
+    impl DecisionMaker for CastOne {
+        fn decide_boolean(&mut self, _: &ironsmith::GameState, _: &BooleanContext) -> bool { true }
+        fn decide_objects(&mut self, _: &ironsmith::GameState, choice: &SelectObjectsContext) -> Vec<ObjectId> {
+            choice.candidates.iter().filter(|candidate| candidate.legal && candidate.id == self.0)
+                .map(|candidate| candidate.id).collect()
+        }
+    }
+
+    let definition = compile_to_runtime_definition("Type Partition Probe",
+        "Type: Sorcery\nReveal the top X cards of your library. For each card type, you may exile a card of that type from among them. Put the rest into your graveyard. You may cast a spell from among the exiled cards without paying its mana cost if you exiled four or more cards this way. Then put the rest of the exiled cards into your hand.", false).unwrap();
+    let effects = definition.spell_effect.as_ref().expect("spell").all_effects();
+    assert_eq!(effects.len(), 6);
+    let look = effects[0].downcast_ref::<ironsmith::effects::LookAtTopCardsEffect>().unwrap();
+    let choice = effects[1].downcast_ref::<ironsmith::effects::ChooseObjectsEffect>().unwrap();
+    let alice = PlayerId::from_index(0);
+    let mut game = ironsmith::GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+    let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let selected_types = [CardType::Artifact, CardType::Creature, CardType::Enchantment, CardType::Instant];
+    let mut original_selected = Vec::new();
+    for (index, kind) in selected_types.into_iter().enumerate() {
+        let card = CardBuilder::new(CardId::new(), format!("Selected {index}"))
+            .card_types(vec![kind]).build();
+        original_selected.push(game.create_object_from_card(&card, alice, Zone::Library));
+    }
+    let unchosen_card = CardBuilder::new(CardId::new(), "Unchosen land")
+        .card_types(vec![CardType::Land]).build();
+    let unchosen = game.create_object_from_card(&unchosen_card, alice, Zone::Library);
+    let unrelated_card = CardBuilder::new(CardId::new(), "Unrelated exile")
+        .card_types(vec![CardType::Sorcery]).build();
+    let unrelated = game.create_object_from_card(&unrelated_card, alice, Zone::Exile);
+    let revealed = original_selected.iter().copied().chain(std::iter::once(unchosen))
+        .map(|id| ObjectSnapshot::from_object_id(&game, id).unwrap()).collect::<Vec<_>>();
+    let selected = original_selected.iter().copied()
+        .map(|id| ObjectSnapshot::from_object_id(&game, id).unwrap()).collect::<Vec<_>>();
+    let cast_stable_id = selected[3].stable_id;
+    let unchosen_stable_id = game.object(unchosen).unwrap().stable_id;
+    let exiled = original_selected.iter().copied().map(|id| {
+        game.move_object(id, Zone::Exile, ironsmith::events::EventCause::effect()).unwrap()
+    }).collect::<Vec<_>>();
+    let mut chooser = CastOne(exiled[3]);
+    let mut ctx = EffectContext::new_default(source, alice).with_decision_maker(&mut chooser);
+    ctx.set_tagged_objects(look.tag.clone(), revealed);
+    ctx.set_tagged_objects(choice.tag.clone(), selected);
+
+    for effect in &effects[3..] {
+        execute_effect(&mut game, effect, &mut ctx).expect("partition follow-up resolves");
+    }
+    assert_eq!(game.player(alice).unwrap().graveyard.len(), 1, "only the unchosen revealed card goes to graveyard");
+    let graveyard_id = *game.player(alice).unwrap().graveyard.first().unwrap();
+    assert_eq!(game.object(graveyard_id).unwrap().stable_id, unchosen_stable_id);
+    assert_eq!(game.player(alice).unwrap().hand.len(), 3, "the three uncast chosen cards go to hand");
+    assert_eq!(game.stack.len(), 1, "one chosen spell was cast");
+    let cast_id = game.stack.last().unwrap().object_id;
+    assert_eq!(game.object(cast_id).unwrap().stable_id, cast_stable_id, "the selected instant was cast");
+    assert!(game.exile.contains(&unrelated), "unrelated exiled card is untouched");
+    assert_eq!(game.exile.len(), 1, "cast card and returned cards leave exile");
+}
+
+#[test]
 fn xanathar_locks_out_the_chosen_opponent_and_opens_their_library_top() {
     use ironsmith::card::CardBuilder;
     use ironsmith::ids::CardId;

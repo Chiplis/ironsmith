@@ -157,11 +157,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::AttackedBySourceThisTurn => {
             "a player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
-            "{} this source has dealt damage to this {}",
-            describe_player_filter(base),
-            if *this_turn { "turn" } else { "game" }
-        ),
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => if *this_turn {
+            format!("{} dealt damage by this source this turn", describe_player_filter(base))
+        } else {
+            format!("{} this source has dealt damage to this game", describe_player_filter(base))
+        },
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { .. } => filter.description(),
         PlayerFilter::LostLifeThisTurn { base } => format!(
             "{} who lost life this turn",
@@ -218,10 +218,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
-            "that player or that object's controller".to_string()
+            "that player or that planeswalker's controller".to_string()
         }
         PlayerFilter::Excluding { .. } if filter.is_opponents_attacking_event_defender() => "opponent attacking that player".into(),
         PlayerFilter::Excluding { base, excluded }
@@ -669,6 +670,21 @@ pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
     if filter == &ObjectFilter::default().of_chosen_card_type() {
         return "spells of the chosen type".to_string();
     }
+    // A bare union of three or more card types reads as an oxford-comma
+    // list: "artifact, creature, or enchantment spells".
+    if filter.card_types.len() >= 3 {
+        let mut rest = filter.clone();
+        rest.card_types.clear();
+        if rest == ObjectFilter::default() {
+            let words = filter
+                .card_types
+                .iter()
+                .map(|card_type| describe_card_type_word_local(*card_type))
+                .collect::<Vec<_>>();
+            let (last, head) = words.split_last().expect("at least three card types");
+            return format!("{}, or {last} spells", head.join(", "));
+        }
+    }
 
     pluralize_cast_spell_description(&describe_cast_limit_spell_filter(filter))
 }
@@ -788,6 +804,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Add"
             | "Attach"
             | "Cast"
+            | "Change"
             | "Choose"
             | "Copy"
             | "Counter"
@@ -800,6 +817,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Fight"
             | "Flip"
             | "Gain"
+            | "Look"
             | "Lose"
             | "Mill"
             | "Move"
@@ -816,6 +834,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Shuffle"
             | "Tap"
             | "Transform"
+            | "Turn"
             | "Untap"
     );
     if should_lowercase {
@@ -1133,6 +1152,21 @@ pub(super) fn describe_create_token_blueprint_with_presentation(
             ),
         };
         let pronoun = if matches!(create.count.unhinted(), Value::Fixed(1)) { "it" } else { "each of them" };
+        // "create a 0/0 green Ooze creature token with trample. The token
+        // enters with X +1/+1 counters on it, where X is ..." (Printlifter
+        // Ooze): a dynamic entry count reads as its own entry sentence.
+        if !matches!(
+            counter.amount.unhinted(),
+            Value::Fixed(_) | Value::X
+        ) && matches!(create.count.unhinted(), Value::Fixed(1))
+            && create.entry_counters.len() == 1
+        {
+            blueprint.push_str(&format!(
+                ". The token enters with X {name} counters on it, where X is {}",
+                describe_value(&counter.amount)
+            ));
+            continue;
+        }
         blueprint.push_str(&format!(" with {phrase} on {pronoun}"));
     }
     blueprint
@@ -1208,6 +1242,17 @@ fn describe_token_blueprint_with_name_role(
             format!("{} Role token", card.name)
         };
     }
+    let every_basic_land_type = card.card_types == [CardType::Land]
+        && card.subtypes.len() == 5
+        && [
+            crate::types::Subtype::Plains,
+            crate::types::Subtype::Island,
+            crate::types::Subtype::Swamp,
+            crate::types::Subtype::Mountain,
+            crate::types::Subtype::Forest,
+        ]
+        .iter()
+        .all(|basic| card.subtypes.contains(basic));
     let mut parts = Vec::new();
     let mut creature_name_prefix: Option<String> = None;
     let mut explicit_named_clause: Option<String> = (name_role == Some(ironsmith_core::TokenNameTextRole::Explicit)
@@ -1345,6 +1390,10 @@ fn describe_token_blueprint_with_name_role(
                 if !subtype_text.is_empty() {
                     parts.push(subtype_text);
                 }
+            } else if every_basic_land_type {
+                // "a tapped colorless land token named Everywhere that is
+                // every basic land type" (Overlord of the Hauntwoods).
+                parts.push("colorless".to_string());
             } else {
                 parts.push(subtype_text);
             }
@@ -1412,9 +1461,24 @@ fn describe_token_blueprint_with_name_role(
     let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
     let has_decayed_marker = token_has_decayed_marker(token);
     let standalone_tail_start = token.abilities.len() - standalone_tail_count;
+    let mut structural_bundle_end = 0usize;
     for (ability_idx, ability) in token.abilities.iter().enumerate() {
         if ability_idx >= standalone_tail_start {
             standalone_ability_texts.push(describe_standalone_token_ability_text(ability));
+            continue;
+        }
+        if ability_idx < structural_bundle_end {
+            continue;
+        }
+        // CR 702.63a / 702.32a: a token's counter keyword (vanishing N,
+        // fading N, modular N, ...) lowers to its expanded static + triggered
+        // abilities; print the keyword rather than the expansion.
+        if let Some((keyword, consumed)) = super::ast_render::describe_structural_counter_keyword_bundle(
+            &token.abilities[ability_idx..standalone_tail_start],
+        ) && consumed > 1
+        {
+            keyword_texts.push(keyword.to_ascii_lowercase());
+            structural_bundle_end = ability_idx + consumed;
             continue;
         }
         match &ability.kind {
@@ -1523,6 +1587,11 @@ fn describe_token_blueprint_with_name_role(
     } else {
         keyword_texts.sort();
         keyword_texts.dedup();
+        // Vehicle and Mount tokens print their crew/saddle keyword after the
+        // evergreen ones ("with flying and crew 2").
+        keyword_texts.sort_by_key(|keyword| {
+            keyword.starts_with("crew ") || keyword.starts_with("saddle ")
+        });
     }
     if matches!(
         grouped_ability_presentation,
@@ -1675,6 +1744,9 @@ fn describe_token_blueprint_with_name_role(
         text.push_str(" named ");
         text.push_str(name);
     }
+    if every_basic_land_type {
+        text.push_str(" that is every basic land type");
+    }
     if all_colors && appositive_named_token {
         text.push_str(" that's all colors");
     }
@@ -1758,7 +1830,7 @@ fn describe_token_leaves_shared_damage_ability(ability: &Ability) -> Option<Stri
     ))
 }
 
-fn token_has_decayed_marker(token: &CardDefinition) -> bool {
+pub(super) fn token_has_decayed_marker(token: &CardDefinition) -> bool {
     token.abilities.iter().any(|ability| {
         matches!(
             &ability.kind,
@@ -1769,7 +1841,7 @@ fn token_has_decayed_marker(token: &CardDefinition) -> bool {
     })
 }
 
-fn is_decayed_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+pub(super) fn is_decayed_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
         || triggered
@@ -2302,6 +2374,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("searches ", "search "),
         ("shuffles ", "shuffle "),
         ("surveils ", "surveil "),
+        ("adds ", "add "),
         ("Behold ", "behold "),
     ];
     for (from, to) in replacements {
@@ -4083,7 +4156,29 @@ fn compact_split_damage_pair_once(line: &str, delimiter: &str) -> Option<String>
         } else {
             normalize_joined_damage_target(second_target)
         };
-        let joined_target = if mass_followup && first.amount == second.amount {
+        // Two creature fanouts with the same amount deal damage twice to a
+        // creature in both sets: "each nonblack creature and an additional 1
+        // damage to each green creature" (Kaervek's Hex).
+        let color_creature_fanout = |target: &str| {
+            target
+                .strip_prefix("each ")
+                .and_then(|rest| rest.strip_suffix(" creature"))
+                .map(|color| color.strip_prefix("non").unwrap_or(color))
+                .is_some_and(|color| {
+                    matches!(color, "white" | "blue" | "black" | "red" | "green")
+                })
+        };
+        let overlapping_creature_fanouts = mass_followup
+            && first.amount == second.amount
+            && suffix.is_empty()
+            && color_creature_fanout(first_target)
+            && color_creature_fanout(second_target);
+        let joined_target = if overlapping_creature_fanouts {
+            format!(
+                "{first_target} and an additional {} damage to {second_target}",
+                second.amount
+            )
+        } else if mass_followup && first.amount == second.amount {
             format!("{first_target} and {second_target}{suffix}")
         } else {
             format!(
@@ -4297,7 +4392,9 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
         || damage.source.eq_ignore_ascii_case("it"))
         || !matches!(
             damage.target,
-            "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
+            "target that player or that planeswalker's controller or planeswalker unless that player or that planeswalker's controller pays {U}"
+                | "a planeswalker unless that player or that planeswalker's controller pays {U}"
+                | "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
                 | "a planeswalker unless that player or that object's controller pays {U}"
         )
     {
@@ -5009,7 +5106,17 @@ fn compact_draw_cards_equal_instant_sorcery_graveyard_surface(line: &str) -> Opt
 
 fn compact_aura_animation_activation_surface(line: &str) -> Option<String> {
     let marker = ", {T}: This creature loses this ability, this creature becomes an enchantment in addition to its other types, isn't an artifact, battle, creature, kindred, land, or planeswalker, becomes an aura in addition to its other types, and has enchant restriction, attach it to target creature, then you may pay ";
-    let (cost, payment_tail) = line.split_once(marker)?;
+    // The Licid creature stops being a creature and becomes an Aura
+    // enchantment; the attachment then refers back to it.
+    let structured_marker = ", {T}: This creature loses this ability and becomes an Aura with enchant creature. Attach this creature to target creature. You may pay ";
+    let (cost, payment_tail) = line
+        .split_once(marker)
+        .or_else(|| line.split_once(structured_marker))?;
+    let payment_tail = payment_tail
+        .strip_suffix(" to end this effect.")
+        .map(|payment| format!("{payment}."))
+        .unwrap_or_else(|| payment_tail.to_string());
+    let payment_tail = payment_tail.as_str();
     let payment = payment_tail.strip_suffix('.')?;
     Some(format!(
         "{cost}, {{T}}: This creature loses this ability and becomes an Aura enchantment with enchant creature. Attach it to target creature. You may pay {payment} to end this effect."

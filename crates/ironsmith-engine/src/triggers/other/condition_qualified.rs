@@ -136,6 +136,8 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
             || condition.starts_with("during ")
             || condition.starts_with("by ")
             || condition == "transformed"
+            // "At end of combat on your turn" (Raid).
+            || condition == "on your turn"
         {
             return format!("{} {}", self.trigger.display(), condition);
         }

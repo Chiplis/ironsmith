@@ -1262,8 +1262,15 @@ fn pre_rule_still_lands_followup(
     let is_still_lands_followup = is_still_lands_followup_sentence(sentence_tokens);
     let previous_sentence_is_land_animation =
         previous_sentence_is_temporary_land_animation(sentences, sentence_idx);
-    let marked_preceding_animation =
-        is_still_lands_followup && mark_last_animation_as_still_a_land(state.effects);
+    let marked_preceding_animation = is_still_lands_followup
+        && match followup_shapes::parse_still_single_subtyped_land_followup(sentence_tokens) {
+            // "It's still a Cave land." (Cavernous Maw)
+            Some(subtype) => mark_last_animation_retaining(
+                state.effects,
+                ironsmith_core::TypeRetentionSurface::StillASubtypedLand(subtype),
+            ),
+            None => mark_last_animation_as_still_a_land(state.effects),
+        };
     if is_still_lands_followup
         && (marked_preceding_animation || previous_sentence_is_land_animation)
     {
@@ -2339,6 +2346,11 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         pre_rule_search_exiled_cards_owner
     ),
     pre_followup_rule!(
+        "source-until-exile-return-enters",
+        &["when", "whenever"],
+        pre_rule_source_until_exile_return_enters
+    ),
+    pre_followup_rule!(
         "prepare-returned-permanent-enters-followup",
         &["when"],
         pre_rule_returned_permanent_enters
@@ -2607,6 +2619,11 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         post_rule_consult_remainder_reference
     ),
     post_followup_rule!(
+        "source-until-exile-return-enters",
+        &["when", "whenever"],
+        post_rule_source_until_exile_return_enters
+    ),
+    post_followup_rule!(
         "returned-permanent-enters",
         &["when"],
         post_rule_returned_permanent_enters
@@ -2739,6 +2756,7 @@ mod subject_verb_followups_zone_programs;
 use subject_verb_followups_zone_programs::{
     is_explicit_return_to_battlefield, is_singular_explicit_return_to_battlefield,
     post_rule_returned_permanent_enters, pre_rule_returned_permanent_enters,
+    post_rule_source_until_exile_return_enters, pre_rule_source_until_exile_return_enters,
 };
 #[path = "subject_verb_followups/subject_verb_followups_library.rs"]
 mod subject_verb_followups_library_programs;

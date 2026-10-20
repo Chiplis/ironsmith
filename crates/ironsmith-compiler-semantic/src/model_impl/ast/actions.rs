@@ -489,7 +489,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 if let Some(domain) = shared_among { debug.field(domain); }
                 debug.finish()
             }
-            Self::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).field("source_owned", source_owned).finish(),
+            Self::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned, draw_count_choice }) => f.debug_struct("ChooseNumber").field("min", min).field("max", max).field("source_owned", source_owned).field("draw_count_choice", draw_count_choice).finish(),
             Self::Choices(ChoiceActionAst::ChooseNamedOption { options }) => {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
@@ -749,6 +749,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 cause_policy,
                 link_exiled_to_source,
                 cast_this_way_surface: _,
+                cast_from_your_graveyard_surface: _,
+                those_spells_surface: _,
             }) => f
                 .debug_struct("RegisterFutureZoneReplacement")
                 .field("filter", filter)
@@ -1358,6 +1360,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_any_color_for_cast,
                 until_next_end_step,
                 until_next_turn_start,
+                duration_is_holder_relative,
                 during_next_turn,
                 until_end_of_combat_next_turn,
                 spell_filter,
@@ -1372,6 +1375,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("until_next_end_step", until_next_end_step)
                 .field("until_next_turn_start", until_next_turn_start)
+                .field("duration_is_holder_relative", duration_is_holder_relative)
                 .field("during_next_turn", during_next_turn)
                 .field("until_end_of_combat_next_turn", until_end_of_combat_next_turn)
                 .field("spell_filter", spell_filter)

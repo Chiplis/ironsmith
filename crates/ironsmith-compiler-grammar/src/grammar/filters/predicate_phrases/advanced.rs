@@ -3377,7 +3377,12 @@ pub(super) fn parse_you_cast_source_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     if !is_source_spell_object_clause(object_clause) {
         return None;
     }
-    Some(PredicateAst::Source(SourcePredicateAst::SourceWasCast))
+    let surface = SourceReferenceSurface::ThisPermanentType(
+        crate::lexer::token_word_refs(object_clause.tokens()).join(" "),
+    );
+    Some(PredicateAst::TurnHistory(
+        TurnHistoryPredicateAst::SourceWasCastByController { surface },
+    ))
 }
 
 pub(super) fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4933,6 +4938,30 @@ pub(super) fn parse_player_controls_fewer_than_you_predicate(
     let player = comparison_player_subject_clause(relation.subject_clause)?;
     let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
     let comparison_player = matched.capture_clause("comparison_player", relation.tail_clause)?;
+    // "If you control fewer creatures than an opponent" (Timely
+    // Reinforcements) is the converse of "an opponent controls more
+    // creatures than you".
+    if player == PlayerAst::You
+        && let Some(other_player @ PlayerAst::Opponent) =
+            comparison_player_subject_clause(comparison_player)
+    {
+        let object =
+            matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
+        if object.tokens().is_empty() {
+            return None;
+        }
+        let filter =
+            crate::grammar::primitives::probe_shape(parse_object_filter(object.tokens(), false))?;
+        if filter == ObjectFilter::default() {
+            return None;
+        }
+        return Some(PredicateAst::Player(
+            PlayerPredicateAst::PlayerControlsMoreThanYou {
+                player: other_player,
+                filter,
+            },
+        ));
+    }
     if !is_you_comparison_tail_clause(comparison_player) {
         return None;
     }
@@ -6389,28 +6418,36 @@ use crate::recognition::ParseOutcome;
 #[path = "advanced/predicate_readings.rs"]
 mod predicate_readings;
 
-/// "you control at least two creatures that share a creature type",
-/// "you control three or more creatures that share a creature type": the
-/// largest group of controlled creatures sharing one creature type.
-fn parse_you_control_shared_creature_type_count_predicate(
+/// "<player> controls at least two creatures that share a creature type":
+/// the largest group of that player's creatures sharing one creature type.
+fn parse_player_controls_shared_creature_type_count_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let view = crate::lexer::TokenWordView::new(tokens);
     let words = view.to_word_refs();
     let suffix: &[&str] = &["that", "share", "a", "creature", "type"];
-    if words.len() < 2 + suffix.len() + 2
-        || words[..2] != ["you", "control"]
-        || !words.ends_with(suffix)
-    {
+    if !words.ends_with(suffix) {
         return None;
     }
-    let body = &words[2..words.len() - suffix.len()];
+    let (player, prefix_len) = if words.starts_with(&["you", "control"]) {
+        (PlayerFilter::You, 2)
+    } else if words.starts_with(&["defending", "player", "controls"])
+        || words.starts_with(&["the", "defending", "player", "controls"])
+    {
+        (PlayerFilter::Defending, if words[0] == "the" { 4 } else { 3 })
+    } else {
+        return None;
+    };
+    if words.len() < prefix_len + suffix.len() + 2 {
+        return None;
+    }
+    let body = &words[prefix_len..words.len() - suffix.len()];
     let (count, filter_start) = match body {
         ["at", "least", amount, ..] => (crate::util::parse_number_word_u32(amount)?, 3),
         [amount, "or", "more", ..] => (crate::util::parse_number_word_u32(amount)?, 3),
         _ => return None,
     };
-    let filter_word_start = 2 + filter_start;
+    let filter_word_start = prefix_len + filter_start;
     let filter_word_end = words.len() - suffix.len();
     if filter_word_start >= filter_word_end {
         return None;
@@ -6423,7 +6460,7 @@ fn parse_you_control_shared_creature_type_count_predicate(
             false,
         ))?;
     if filter.controller.is_none() {
-        filter.controller = Some(PlayerFilter::You);
+        filter.controller = Some(player);
     }
     Some(PredicateAst::ValueComparison {
         left: Value::GreatestSharedCreatureTypeCount(filter),
@@ -7265,7 +7302,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
         return Ok(predicate);
     }
     if let Some(predicate) =
-        parse_you_control_shared_creature_type_count_predicate(predicate_tokens)
+        parse_player_controls_shared_creature_type_count_predicate(predicate_tokens)
     {
         return Ok(predicate);
     }

@@ -137,7 +137,7 @@ mod tests {
         definition.abilities.push(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::as_enters_effect_program(
                 vec![crate::effect::Effect::new(crate::effects::ChooseNumberEffect {
-                    chooser: crate::target::PlayerFilter::You, min: 0, max: Some(7), source_owned: true,
+                    chooser: crate::target::PlayerFilter::You, min: 0, max: Some(7), source_owned: true, draw_count_choice: false,
                 })].into(), "this creature", false, false, None,
             ),
         ));

@@ -55,6 +55,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
             min: 0,
             max: None,
             source_owned: false,
+            draw_count_choice: false,
         }),
     )];
     for piece in pieces {

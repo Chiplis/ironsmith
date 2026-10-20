@@ -1558,6 +1558,7 @@ mod tests {
                     cause_type,
                     source: Some(protector),
                     source_controller: Some(cause_controller),
+                    duration_return_source: None,
                 };
                 let mut ctx = ExecutionContext::new_default(protector, alice).with_cause(cause);
                 if explicit {

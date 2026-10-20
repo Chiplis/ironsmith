@@ -248,6 +248,8 @@ fn describe_damage_to_object_and_player_union(
                     target,
                     source_surface,
                     recipient_is_source_target: false,
+                    noncombat_only: false,
+                    amount_equals_target_toughness: false,
                 },
                 TriggerSpec::DealsDamageToPlayer {
                     source: player_source,
@@ -273,6 +275,8 @@ fn describe_damage_to_object_and_player_union(
                     target,
                     source_surface,
                     recipient_is_source_target: false,
+                    noncombat_only: false,
+                    amount_equals_target_toughness: false,
                 },
             ) => (
                 source,
@@ -661,8 +665,18 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             target,
             source_surface,
             recipient_is_source_target,
+            noncombat_only,
+            amount_equals_target_toughness,
         } => {
-            if recipient_is_source_target {
+            if noncombat_only || amount_equals_target_toughness {
+                Trigger::deals_damage_to_qualified(
+                    source,
+                    target,
+                    source_surface,
+                    noncombat_only,
+                    amount_equals_target_toughness,
+                )
+            } else if recipient_is_source_target {
                 Trigger::deals_damage_to_source_target(source, target)
             } else {
                 Trigger::deals_damage_to_with_source_surface(source, target, source_surface)
@@ -1457,20 +1471,27 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             source,
             player,
             each_damaged_player,
-            per_source_controller: true,
-        } => Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player),
-        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-            source,
-            player,
-            each_damaged_player: false,
-            per_source_controller: false,
-        } => Trigger::deals_combat_damage_to_player_one_or_more(source, player),
-        TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
-            source,
-            player,
-            each_damaged_player: true,
-            per_source_controller: false,
-        } => Trigger::deals_combat_damage_to_each_player_one_or_more(source, player),
+            per_source_controller,
+            recipient_passive,
+            during_your_turn,
+        } => {
+            let mut trigger = if recipient_passive {
+                Trigger::players_are_dealt_combat_damage_one_or_more(player, during_your_turn)
+            } else if per_source_controller {
+                Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player)
+            } else if each_damaged_player {
+                Trigger::deals_combat_damage_to_each_player_one_or_more(source, player)
+            } else {
+                Trigger::deals_combat_damage_to_player_one_or_more(source, player)
+            };
+            if let crate::triggers::TriggerKind::DealsCombatDamageToPlayer {
+                during_your_turn: turn_restricted,
+                ..
+            } = &mut trigger.kind {
+                *turn_restricted = during_your_turn;
+            }
+            trigger
+        },
         TriggerSpec::YouCastThisSpell => Trigger::you_cast_this_spell(),
         TriggerSpec::KeywordAction {
             action,
@@ -1586,6 +1607,11 @@ pub fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTex
         TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
         TriggerSpec::ZoneChange(event)
             if event.this
+                // A source entering the battlefield looks forward, not back:
+                // "When this creature enters during the declare attackers
+                // step" (Portal Mage) is the ordinary ETB shape plus timing.
+                && !(event.from.is_none()
+                    && event.to == Some(crate::zone::Zone::Battlefield))
                 && !matches!(
                     event.from,
                     Some(crate::zone::Zone::Battlefield | crate::zone::Zone::Graveyard)

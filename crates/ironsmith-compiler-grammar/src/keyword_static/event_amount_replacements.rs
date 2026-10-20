@@ -626,9 +626,16 @@ pub fn parse_damage_life_floor_static_line(
     if floor == 0 {
         return Ok(None);
     }
+    // A leading "As long as ..." gate is rendered from the typed condition;
+    // keep it out of the restriction's own display so it isn't doubled.
+    let display = if condition_start == Some(3) {
+        amount_display(clause_tokens)
+    } else {
+        amount_display(&tokens)
+    };
     let ability = StaticAbility::restriction(
         crate::effect::Restriction::damage_reduce_life_below(PlayerFilter::You, floor),
-        amount_display(&tokens),
+        display,
     );
     Ok(Some(match condition_tokens {
         Some(condition) if !condition.is_empty() => {

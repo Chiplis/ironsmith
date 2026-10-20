@@ -1053,6 +1053,9 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::TriggeringObjectWasCast => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast
             }
+            TurnHistoryPredicateAst::TriggeringObjectWasCastByController => {
+                ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastByController
+            }
             TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(zone) => {
                 ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(*zone)
             }

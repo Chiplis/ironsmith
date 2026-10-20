@@ -165,6 +165,24 @@ pub fn parse_search_restriction_duration_shape_lexed(
     }
 
     if primitives::parse_prefix(tokens, as_long_as_marker).is_some() {
+        // "For as long as this creature remains on the battlefield, the
+        // chosen permanents become ..." (Kitesail Larcenist): the leading
+        // source-presence duration owns only the clause before its comma.
+        let head_end = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
+            .unwrap_or(tokens.len());
+        if head_end < tokens.len()
+            && as_long_as_source_remains_on_battlefield(&tokens[..head_end])
+            && let Some(after) = comma_tail(tokens)
+            && !trim_lexed_commas(after).is_empty()
+        {
+            return Ok(Some(SearchRestrictionDurationShape {
+                duration: Until::while_source_remains_on_battlefield(),
+                remainder: trim_lexed_commas(after).to_vec(),
+                placement: SearchRestrictionDurationPlacement::Prefix,
+            }));
+        }
         if !as_long_as_you_control_source(tokens) {
             return Ok(None);
         }

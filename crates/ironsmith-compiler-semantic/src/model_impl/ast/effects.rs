@@ -164,7 +164,9 @@ pub enum EffectAst {
     /// "put the same number and kind of counters on <target>" (Captain
     /// Marvel, Bold Plagiarist): copies the triggering counter placement's
     /// kind and amount onto `target`.
-    PutTriggeringCounterKind { target: TargetAst },
+    /// With `one_of_each`, "put one of each of those kinds of counters on
+    /// <target>" (Aragorn, Company Leader): one counter of the placed kind.
+    PutTriggeringCounterKind { target: TargetAst, one_of_each: bool },
     /// "Target spell's controller exiles it ..." (Ertai's Meddling): keep the
     /// target spell's announced choices (targets, X, modes, optional costs)
     /// with its card, by stable identity, before it leaves the stack.
@@ -1707,6 +1709,7 @@ impl EffectAst {
                 allow_any_color_for_cast,
                 until_next_end_step: false,
                 until_next_turn_start: false,
+                duration_is_holder_relative: false,
                 during_next_turn: false,
                 until_end_of_combat_next_turn: false,
                 spell_filter: None,
@@ -1734,6 +1737,7 @@ impl EffectAst {
                 allow_any_color_for_cast,
                 until_next_end_step: true,
                 until_next_turn_start: false,
+                duration_is_holder_relative: false,
                 during_next_turn: false,
                 until_end_of_combat_next_turn: false,
                 spell_filter: None,
@@ -4140,6 +4144,8 @@ impl EffectAst {
                     cause_policy,
                     link_exiled_to_source,
                     cast_this_way_surface: false,
+                    cast_from_your_graveyard_surface: false,
+                    those_spells_surface: false,
                 },
             ),
         )
@@ -4156,6 +4162,34 @@ impl EffectAst {
             ) = &mut subject_verb.action
         {
             *cast_this_way_surface = true;
+        }
+        self
+    }
+
+    pub fn with_cast_from_your_graveyard_replacement_surface(mut self) -> Self {
+        if let EffectAst::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterFutureZoneReplacement {
+                    cast_from_your_graveyard_surface,
+                    ..
+                },
+            ) = &mut subject_verb.action
+        {
+            *cast_from_your_graveyard_surface = true;
+        }
+        self
+    }
+
+    pub fn with_those_spells_replacement_surface(mut self) -> Self {
+        if let EffectAst::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::Replacements(
+                ReplacementActionAst::RegisterFutureZoneReplacement {
+                    those_spells_surface,
+                    ..
+                },
+            ) = &mut subject_verb.action
+        {
+            *those_spells_surface = true;
         }
         self
     }

@@ -495,12 +495,17 @@ pub(crate) fn prepare_if_branches(
         .unwrap_or_else(EffectOutcome::impossible);
     let outcome = outcome.instruction_result();
 
-    if matches!(
+    // "Each player may draw a card. Each opponent who does ..." (The Second
+    // Doctor): an accepted per-player option is also a per-participant
+    // result when read back inside a player loop.
+    let per_player_chosen = matches!(effect.predicate, EffectPredicate::Chosen)
+        && ctx.iteration.iterated_player.is_some();
+    if (matches!(
         effect.predicate,
         EffectPredicate::Happened
             | EffectPredicate::DidNotHappen
             | EffectPredicate::SearchedLibrary
-    ) && (effect.per_player_result
+    ) || per_player_chosen) && (effect.per_player_result
         || effect_list_mentions_iterated_player(&effect.then)
         || effect_list_mentions_iterated_player(&effect.else_))
         && let Some(player_counts) = outcome.execution_facts.iter().find_map(|fact| match fact {
@@ -535,7 +540,7 @@ pub(crate) fn prepare_if_branches(
         };
         for (player_id, count) in player_counts {
             let predicate_matches = match effect.predicate {
-                EffectPredicate::Happened => count > 0,
+                EffectPredicate::Happened | EffectPredicate::Chosen => count > 0,
                 EffectPredicate::DidNotHappen => count <= 0,
                 EffectPredicate::SearchedLibrary => searched_players.contains(&player_id),
                 _ => false,

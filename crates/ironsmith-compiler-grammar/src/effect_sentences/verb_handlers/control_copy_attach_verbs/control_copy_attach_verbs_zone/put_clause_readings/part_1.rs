@@ -247,6 +247,23 @@ pub(super) fn read_from_among_hand_surface(
                 }
                 return Ok(Some(EffectAst::Sequence { effects }));
             }
+            // "Put all cards with the chosen name from among them into your
+            // hand and the rest into your graveyard." (Tamiyo, Collector of
+            // Tales): every matching card moves, no choice of "up to one".
+            if shape.filter_tokens.first().is_some_and(|token| token.is_word("all"))
+                && shape.filter_tokens.len() > 1
+                && shape.rest_destination == Some(cca_shapes::RestDestinationShape::Graveyard)
+                && let Some(filter) = crate::effect_sentences::parse_looked_card_choice_filter(
+                    &shape.filter_tokens[1..],
+                )
+            {
+                let effects = compose_put_all_filtered_looked_cards_into_hand_rest_into_graveyard(
+                    filter,
+                    (looked_tag).into(),
+                    (chosen_tag).into(),
+                );
+                return Ok(Some(EffectAst::Sequence { effects }));
+            }
             let filter =
                 crate::effect_sentences::parse_looked_card_choice_filter(shape.filter_tokens)
                     .ok_or_else(|| {

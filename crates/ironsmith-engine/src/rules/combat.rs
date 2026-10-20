@@ -125,7 +125,9 @@ pub(crate) fn can_block_with_view(
         blocker_has(StaticAbilityId::Reach) || blocker_has_subtype_scoped_reach;
 
     // Unblockable creatures and live "can't be blocked" restrictions can't be blocked.
-    if attacker_has(StaticAbilityId::Unblockable) || !game.can_be_blocked(attacker.id) {
+    if attacker_has(StaticAbilityId::Unblockable)
+        || !game.can_be_blocked_by_defender(attacker.id, game.controller_of(blocker))
+    {
         return false;
     }
 
@@ -1524,6 +1526,94 @@ mod tests {
             !can_block(&attacker, &blocker, &game),
             "blocker should not be able to block when the game marks the attacker as unblockable"
         );
+    }
+
+    #[test]
+    fn conditional_be_blocked_checks_each_attackers_actual_defender() {
+        use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
+        use crate::effect::{Restriction, Value, ValueComparisonOperator};
+        use crate::target::ObjectFilter;
+
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Carol".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let carol = PlayerId::from_index(2);
+        let mut defender_creatures = ObjectFilter::creature();
+        defender_creatures.controller = Some(PlayerFilter::Defending);
+        let condition = crate::ConditionExpr::Not(Box::new(
+            crate::ConditionExpr::ValueComparison {
+                left: Value::GreatestSharedCreatureTypeCount(defender_creatures),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(3),
+            },
+        ));
+
+        let make_attacker = |name: &str| {
+            let mut attacker = make_creature(name, 2, 2);
+            attacker.owner = alice;
+            attacker.initial_controller = alice;
+            add_ability(
+                &mut attacker,
+                StaticAbility::restriction(
+                    Restriction::be_blocked(ObjectFilter::source()),
+                    "This creature can't be blocked".to_string(),
+                )
+                .with_condition(condition.clone())
+                .expect("rule restriction accepts a condition"),
+            );
+            attacker
+        };
+        let against_bob = make_attacker("Against Bob");
+        let against_carol = make_attacker("Against Carol");
+        game.add_object(against_bob.clone());
+        game.add_object(against_carol.clone());
+
+        // Three creatures total do not satisfy "share a creature type".
+        let mut bob_blocker = None;
+        for subtype in [Subtype::Goblin, Subtype::Elf, Subtype::Human] {
+            let mut creature = make_creature("Bob's creature", 1, 1);
+            creature.owner = bob;
+            creature.initial_controller = bob;
+            creature.subtypes = vec![subtype].into();
+            bob_blocker.get_or_insert(creature.id);
+            game.add_object(creature);
+        }
+        // Carol's three creatures do share a creature type.
+        let mut carol_blocker = None;
+        for _ in 0..3 {
+            let mut creature = make_creature("Carol's creature", 1, 1);
+            creature.owner = carol;
+            creature.initial_controller = carol;
+            creature.subtypes = vec![Subtype::Goblin].into();
+            carol_blocker.get_or_insert(creature.id);
+            game.add_object(creature);
+        }
+        game.combat = Some(CombatState {
+            attackers: vec![
+                AttackerInfo {
+                    creature: against_bob.id,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: against_carol.id,
+                    target: AttackTarget::Player(carol),
+                },
+            ],
+            ..Default::default()
+        });
+        game.refresh_continuous_state().expect("static restrictions refresh");
+
+        // Deliberately pass the other defender as fallback: combat targets
+        // determine the defending player when attackers split in multiplayer.
+        assert!(!game.can_be_blocked_by_defender(against_bob.id, carol));
+        assert!(game.can_be_blocked_by_defender(against_carol.id, bob));
+        let bob_blocker = game.object(bob_blocker.unwrap()).unwrap().clone();
+        let carol_blocker = game.object(carol_blocker.unwrap()).unwrap().clone();
+        assert!(!can_block(&against_bob, &bob_blocker, &game));
+        assert!(can_block(&against_carol, &carol_blocker, &game));
     }
 
     #[test]

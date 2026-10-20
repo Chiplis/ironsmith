@@ -167,10 +167,21 @@ pub fn parse_combat_requirement_static_line(
                 CombatRequirement::Block => vec![Restriction::must_block(filter)],
                 CombatRequirement::AttackOrBlock => vec![Restriction::must_attack(filter.clone()), Restriction::must_block(filter)],
             };
-            let suffix = match shape.clause.requirement {
-                CombatRequirement::Attack => "attack each combat if able",
-                CombatRequirement::Block => "block each combat if able",
-                CombatRequirement::AttackOrBlock => "attack or block each combat if able",
+            // "Enchanted creature attacks each combat if able": a singular
+            // authored subject keeps verb agreement in the display.
+            let singular_subject = matches!(
+                crate::lexer::parser_token_word_refs(shape.clause.subject_tokens).first(),
+                Some(&("enchanted" | "equipped" | "each" | "target" | "fortified"))
+            );
+            let suffix = match (shape.clause.requirement, singular_subject) {
+                (CombatRequirement::Attack, false) => "attack each combat if able",
+                (CombatRequirement::Attack, true) => "attacks each combat if able",
+                (CombatRequirement::Block, false) => "block each combat if able",
+                (CombatRequirement::Block, true) => "blocks each combat if able",
+                (CombatRequirement::AttackOrBlock, false) => "attack or block each combat if able",
+                (CombatRequirement::AttackOrBlock, true) => {
+                    "attacks or blocks each combat if able"
+                }
             };
             result.push(StaticAbilityAst::Static(StaticAbility::restrictions(rules,
                 format!("{} {suffix}", crate::lexer::render_token_slice(shape.clause.subject_tokens)))));

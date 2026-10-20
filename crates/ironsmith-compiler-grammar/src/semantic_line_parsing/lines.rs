@@ -1110,6 +1110,29 @@ pub fn parse_statement_token_groups_to_chunks(
         parse_groups,
     )?;
     recognize_as_transforms_copy_exception_surface(&mut chunks, &source_tokens);
+    // "Each opponent reveals cards ... X can't be 0." (Mind Grind): the
+    // trailing sentence of a spell paragraph constrains the announced X
+    // (CR 107.3, 601.2b). The sentence parses to no effect, so retain it as
+    // the spell's X-minimum rule instead of dropping it.
+    let ends_with_x_cant_be_zero = split_lexed_sentences(&source_tokens)
+        .last()
+        .is_some_and(|sentence| {
+            matches!(
+                crate::lexer::parser_token_word_refs(sentence).as_slice(),
+                ["x", "cant" | "can't", "be", "0"]
+            )
+        });
+    if ends_with_x_cant_be_zero
+        && split_lexed_sentences(&source_tokens).len() > 1
+        && chunks.iter().any(|chunk| matches!(chunk, LineAst::Statement { .. }))
+    {
+        chunks.push(LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(StaticAbility::this_spell_x_minimum(
+                Value::Fixed(1),
+                "X can't be 0.",
+            )),
+        ]));
+    }
     Ok(chunks)
 }
 

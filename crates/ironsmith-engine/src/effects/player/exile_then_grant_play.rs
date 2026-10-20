@@ -87,7 +87,7 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
                 };
                 let player = resolve_player_filter(game, &self.player, ctx)?;
                 let grant_source = crate::effects::player::grant_by_spec::grant_duration_source(
-                    self.duration, game, ctx.source, player);
+                    self.duration, game, ctx.source, ctx.controller);
                 let starts_on_turn = self.available_starting_next_turn.then_some(game.turn.turn_number.saturating_add(1));
                 let request = crate::effects::zones::PreparedZoneMove::capture(
                     game,

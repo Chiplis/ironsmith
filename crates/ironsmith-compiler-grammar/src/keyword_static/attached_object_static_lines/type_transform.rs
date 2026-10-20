@@ -56,6 +56,7 @@ pub fn parse_attached_type_transform_line(
     let mut out = Vec::new();
     let mut preserve_other_types = false;
     let mut loss_consumed = false;
+    let mut goaded_display: Option<String> = None;
 
     if let Some(ability_tokens) = parsed.ability_tokens {
         let ability_tokens = trim_commas(ability_tokens);
@@ -98,7 +99,39 @@ pub fn parse_attached_type_transform_line(
                 loss_consumed = true;
             }
 
-            let Some(actions) = parse_ability_line(split.keyword_tokens) else {
+            // "... 4/2, has flying and deathtouch, and is goaded" (Eye of
+            // Nidhogg): a trailing goad state on the same attached object.
+            let goaded_index = split
+                .keyword_tokens
+                .iter()
+                .enumerate()
+                .find_map(|(index, token)| {
+                    (token.is_word("and")
+                        && split
+                            .keyword_tokens
+                            .get(index + 1)
+                            .is_some_and(|next| matches!(next.parser_text.as_str(), "is" | "are"))
+                        && split
+                            .keyword_tokens
+                            .get(index + 2)
+                            .is_some_and(|next| next.is_word("goaded"))
+                        && trim_edge_punctuation(&split.keyword_tokens[index + 3..]).is_empty())
+                    .then_some(index)
+                });
+            let keyword_tokens = match goaded_index {
+                Some(index) => trim_commas(&split.keyword_tokens[..index]),
+                None => split.keyword_tokens.to_vec(),
+            };
+            if goaded_index.is_some() {
+                if keyword_tokens.is_empty() {
+                    return Ok(None);
+                }
+                goaded_display = Some(format!(
+                    "{} is goaded",
+                    capitalize_display_subject(subject_text)
+                ));
+            }
+            let Some(actions) = parse_ability_line(&keyword_tokens) else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported attached transform granted ability (clause: '{}')",
                     line_text
@@ -202,6 +235,12 @@ pub fn parse_attached_type_transform_line(
         && !loss_consumed
     {
         out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
+    }
+    if let Some(display) = goaded_display {
+        out.push(
+            crate::model::CompilerStaticAbilityCore::attached_goaded_by_source_controller(display)
+                .into(),
+        );
     }
 
     if out.is_empty() {

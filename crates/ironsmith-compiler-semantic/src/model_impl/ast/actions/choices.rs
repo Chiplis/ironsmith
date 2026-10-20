@@ -12,7 +12,7 @@ pub const DISTINCT_FROM_EVERY_PRIOR_PLAYER_CHOICE: usize = usize::MAX;
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ChoiceActionAst {
     ChooseColor,
-    ChooseNumber { min: u32, max: Option<u32>, source_owned: bool },
+    ChooseNumber { min: u32, max: Option<u32>, source_owned: bool, draw_count_choice: bool },
     ChooseCardType {
         options: Vec<CardType>,
         shared_among: Option<(ObjectFilter, u32)>,

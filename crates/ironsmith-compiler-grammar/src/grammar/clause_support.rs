@@ -498,7 +498,9 @@ fn classify_protection_target(words: &[&str], target_word: usize) -> ProtectionT
     if matches!(tail, ["each", "of", "its", "colors"] | ["its", "colors"]) {
         return ProtectionTargetKind::OwnColors;
     }
-    if word_phrase_prefix(tail, &["each", "color", "among"]) {
+    if word_phrase_prefix(tail, &["each", "color", "among"])
+        || word_phrase_prefix(tail, &["the", "colors", "of"])
+    {
         return ProtectionTargetKind::EachColorAmong { filter_word_first: target_word + 3 };
     }
     if word_phrase_prefix(tail, &["each", "color"]) && tail.len() > 2 {

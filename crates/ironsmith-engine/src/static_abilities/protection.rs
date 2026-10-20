@@ -342,6 +342,23 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if *filter == ObjectFilter::spell() {
         return "spells".to_string();
     }
+    // "protection from that player" (Eon Frolicker): everything a referenced
+    // player controls (CR 702.16j).
+    if let Some(player) = filter.controller.as_ref()
+        && (ObjectFilter {
+            controller: None,
+            union_surface: Default::default(),
+            ..filter.clone()
+        }) == ObjectFilter::default()
+    {
+        match player {
+            crate::target::PlayerFilter::Target(_)
+            | crate::target::PlayerFilter::AliasedTarget(_)
+            | crate::target::PlayerFilter::IteratedPlayer => return "that player".to_string(),
+            crate::target::PlayerFilter::ChosenPlayer => return "the chosen player".to_string(),
+            _ => {}
+        }
+    }
     if let Some(chosen) = filter.protection_chosen_card_type_quality() {
         return chosen.to_string();
     }

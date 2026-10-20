@@ -173,6 +173,7 @@ fn explicit_granted_keyword_label(display: &str) -> Option<String> {
             | "extort"
             | "training"
             | "mentor"
+            | "exploit"
     ) {
         return Some(lower);
     }
@@ -1552,6 +1553,20 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Battlefield) => {
             Some(describe_anthem_for_each_matching_filter(filter))
         }
+        // "for each creature you control with base power or toughness 1"
+        // (Sword of the Squeak): an alternative union whose every branch
+        // counts battlefield objects reads as one battlefield noun phrase.
+        AnthemCountExpression::MatchingFilter(filter)
+            if filter.zone.is_none()
+                && filter.any_of.len() >= 2
+                && !filter.has_conjunctive_set_surface()
+                && filter
+                    .any_of
+                    .iter()
+                    .all(|branch| branch.zone == Some(Zone::Battlefield)) =>
+        {
+            Some(describe_anthem_for_each_matching_filter(filter))
+        }
         AnthemCountExpression::GraveyardsWithAtLeastCards { minimum_cards } => {
             let count =
                 number_word_u32(*minimum_cards).unwrap_or_else(|| minimum_cards.to_string());
@@ -1808,6 +1823,14 @@ fn describe_static_value_threshold_condition(
 ) -> Option<String> {
     use crate::effect::ValueComparisonOperator as Op;
     match (left, operator, right) {
+        // "this permanent has five or more counters on it" (Hero of
+        // Bretagard): an any-kind counter total on the source.
+        (Value::CountersOn(spec, None), Op::GreaterThanOrEqual, Value::Fixed(count))
+            if *count >= 1 && matches!(spec.base(), ChooseSpec::Source) =>
+        {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!("this permanent has {count_text} or more counters on it"))
+        }
         (Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
             player, filter,
         }), Op::GreaterThanOrEqual, Value::Fixed(count)) if *count > 0 => {
@@ -2010,6 +2033,23 @@ fn describe_static_turn_history_presence(
         }
         History::Descended(player) => {
             Some(format!("{} descended this turn", subject_have(player)))
+        }
+        // "a creature not named Ebondeath, Dracolich died this turn".
+        History::Died { filter, .. } => {
+            let mut object = filter.clone();
+            object.zone = None;
+            let object = object.description();
+            let object = if ["a ", "an ", "another ", "one "]
+                .iter()
+                .any(|prefix| object.starts_with(prefix))
+            {
+                object
+            } else if object.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                format!("an {object}")
+            } else {
+                format!("a {object}")
+            };
+            Some(format!("{object} died this turn"))
         }
         _ => None,
     }
@@ -2280,6 +2320,52 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if let Some(described) = describe_static_most_common_color_condition(&clauses) {
                 return format!("as long as {described}");
             }
+            // "As long as Kosei is enchanted, equipped, and has a counter on
+            // it": a conjunction of states of the source shares one subject.
+            let source_states = clauses
+                .iter()
+                .map(|clause| match clause {
+                    crate::ConditionExpr::SourceIsEnchanted => Some("is enchanted"),
+                    crate::ConditionExpr::SourceIsEquipped => Some("is equipped"),
+                    crate::ConditionExpr::ValueComparison {
+                        left: crate::effect::Value::CountersOn(spec, None),
+                        operator:
+                            crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                        right: crate::effect::Value::Fixed(1),
+                    } if matches!(spec.base(), ChooseSpec::Source) => {
+                        Some("has a counter on it")
+                    }
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>();
+            if let Some(states) = source_states
+                && states.len() >= 2
+                && states.iter().any(|state| state.starts_with("is "))
+            {
+                let mut parts = states
+                    .iter()
+                    .enumerate()
+                    .map(|(index, state)| {
+                        // Consecutive "is" states share the copula:
+                        // "is enchanted, equipped, and has ...".
+                        if index > 0
+                            && state.starts_with("is ")
+                            && states[index - 1].starts_with("is ")
+                        {
+                            state.trim_start_matches("is ").to_string()
+                        } else {
+                            (*state).to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let joined = if parts.len() == 2 {
+                    parts.join(" and ")
+                } else {
+                    let last = parts.pop().unwrap_or_default();
+                    format!("{}, and {last}", parts.join(", "))
+                };
+                return format!("as long as this creature {joined}");
+            }
             let described = clauses
                 .iter()
                 .map(describe_static_condition)
@@ -2410,6 +2496,27 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::AnyPlayerLostLifeThisTurnOrMore { count } => {
             format!("as long as a player lost {count} or more life this turn")
         }
+        // "As long as an opponent has three or more poison counters"
+        // (Corrupted).
+        crate::ConditionExpr::PlayerHasPoisonCountersOrMore { player, count } => {
+            let count_text =
+                ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string());
+            match player {
+                PlayerFilter::You => {
+                    format!("as long as you have {count_text} or more poison counters")
+                }
+                PlayerFilter::Opponent => {
+                    format!("as long as an opponent has {count_text} or more poison counters")
+                }
+                PlayerFilter::Any => {
+                    format!("as long as a player has {count_text} or more poison counters")
+                }
+                _ => format!(
+                    "as long as {} has {count_text} or more poison counters",
+                    describe_player_filter(player)
+                ),
+            }
+        }
         crate::ConditionExpr::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
             player,
             subtype,
@@ -2470,6 +2577,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     _ => "as long as that player hasn't cast a spell this turn".to_string(),
                 };
             }
+            if let crate::ConditionExpr::PlayerHasEnduringStory {
+                player: crate::target::PlayerFilter::You,
+            } = inner.as_ref()
+            {
+                return "unless you have an enduring story".to_string();
+            }
             // "can't be the target of spells unless it attacked or blocked
             // this turn" (Lurker).
             if matches!(
@@ -2487,7 +2600,17 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     .replace(" dont ", " don't ");
                 return format!("unless {condition_text}");
             }
-            format!("as long as not ({})", describe_static_condition(inner))
+            if matches!(
+                inner.as_ref(),
+                crate::ConditionExpr::SourceHasDealtDamageSinceEntered
+            ) {
+                return "as long as it hasn't dealt damage yet".to_string();
+            }
+            let positive = describe_static_condition(inner);
+            match positive.strip_prefix("as long as ") {
+                Some(body) => format!("as long as it isn't the case that {body}"),
+                None => format!("as long as not ({positive})"),
+            }
         }
         crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
             let subject = describe_static_player(player);
@@ -2625,6 +2748,31 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(4),
         } => "as long as you have max speed".to_string(),
+        // "if a non-Zombie creature died this turn" (Undead Sprinter).
+        crate::ConditionExpr::ValueComparison {
+            left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died { filter, .. }),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        } => {
+            let mut subject = filter.clone();
+            subject.zone = None;
+            let description = subject.description();
+            let description = if description.starts_with("a ")
+                || description.starts_with("an ")
+                || description.starts_with("another ")
+            {
+                description
+            } else if description
+                .chars()
+                .next()
+                .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+            {
+                format!("an {description}")
+            } else {
+                format!("a {description}")
+            };
+            format!("as long as {description} died this turn")
+        }
         crate::ConditionExpr::ValueComparison {
             left:
                 Value::SpellsCastThisTurnMatching {
@@ -2758,6 +2906,20 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             {
                 return format!("as long as {described}");
             }
+            // "as long as a library has twenty or fewer cards in it"
+            // (Isleback Spawn): at least one player is at or under the cap.
+            if let (
+                crate::effect::Value::CountPlayersWithCardsInLibraryAtMost(
+                    crate::target::PlayerFilter::Any,
+                    maximum,
+                ),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                crate::effect::Value::Fixed(1),
+            ) = (left, operator, right)
+            {
+                let maximum = number_word_u32(*maximum).unwrap_or_else(|| maximum.to_string());
+                return format!("as long as a library has {maximum} or fewer cards in it");
+            }
             if let (
                 crate::effect::Value::LifeTotal(player),
                 crate::effect::ValueComparisonOperator::LessThanOrEqual,
@@ -2777,6 +2939,22 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 let subject = describe_static_player(player);
                 let verb = if subject == "you" { "have" } else { "has" };
                 return format!("as long as {subject} {verb} {threshold} or more life");
+            }
+            // "As long as Kosei is enchanted, equipped, and has a counter on
+            // it": any counter on the source.
+            if let (
+                crate::effect::Value::CountersOn(spec, None),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                crate::effect::Value::Fixed(1),
+            )
+            | (
+                crate::effect::Value::CountersOn(spec, None),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                crate::effect::Value::Fixed(0),
+            ) = (left, operator, right)
+                && matches!(spec.as_ref(), crate::target::ChooseSpec::Source)
+            {
+                return "as long as it has a counter on it".to_string();
             }
             let operator_text = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
@@ -2811,6 +2989,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             }
             crate::target::PlayerFilter::PlayerToYourLeft => {
                 "as long as the player to your left is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::OpponentToYourLeft => {
+                "as long as the opponent to your left is the monarch".to_string()
             }
             crate::target::PlayerFilter::PlayerToYourRight => {
                 "as long as the player to your right is the monarch".to_string()
@@ -2973,6 +3154,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             (_, None) => "as long as that player completed a dungeon".to_string(),
             (_, Some(name)) => format!("as long as that player completed {name}"),
         },
+        crate::ConditionExpr::YouHaveFullParty => "as long as you have a full party".to_string(),
         _ => format!(
             "as long as {}",
             crate::runtime_display::describe_condition(condition)
@@ -3753,6 +3935,16 @@ impl Anthem {
 
 /// Preserve a negative X component without negating its binding a second time.
 /// Count-specific/for-each surfaces retain their existing rendering paths.
+/// "the number of Auras you control" -> "Aura": one plural noun counted
+/// among the permanents you control.
+fn anthem_sum_count_noun(text: &str) -> Option<String> {
+    let noun = text
+        .strip_prefix("the number of ")?
+        .strip_suffix(" you control")?
+        .strip_suffix('s')?;
+    (!noun.is_empty() && noun.chars().all(|c| c.is_ascii_alphabetic())).then(|| noun.to_string())
+}
+
 fn signed_dynamic_anthem_basis(value: &Value) -> (&'static str, &Value) {
     match value.unhinted() {
         Value::Scaled(inner, -1) => ("-", inner.as_ref()),
@@ -3808,6 +4000,11 @@ impl StaticAbilityKind for Anthem {
         } else if let Some(subject) =
             exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
         {
+            subject
+        } else if let Some(subject) = grants::source_and_other_grant_subject(&self.filter) {
+            // "this creature and other Vampire creatures you control get
+            // +2/+1" (Vampire Nocturnus): the same plural union subject the
+            // sibling keyword grant prints.
             subject
         } else {
             subtype_creature_anthem_subject(&self.filter)
@@ -3893,9 +4090,15 @@ impl StaticAbilityKind for Anthem {
                 } else {
                     ""
                 };
+                // "gets -0/-1" (Ironclaw Curse): a zero power beside a
+                // negative toughness keeps the printed minus sign.
+                let power_text = if *power == 0 && *toughness < 0 {
+                    "-0".to_string()
+                } else {
+                    signed(*power)
+                };
                 format!(
-                    "{subject} {verb} {additional}{}/{}",
-                    signed(*power),
+                    "{subject} {verb} {additional}{power_text}/{}",
                     signed_toughness(*power, *toughness),
                 )
             }
@@ -3934,6 +4137,27 @@ impl StaticAbilityKind for Anthem {
                     "{subject} {verb} {}/{} for each {basis}",
                     signed(*power),
                     signed_toughness(*power, toughness),
+                )
+            }
+            // "+1/+1 for each creature you control and +1/+1 for each Aura
+            // you control" (Eidolon of Countless Battles): a sum of two
+            // counts authored as two for-each bonuses.
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
+                if power == toughness
+                    && !self.count_uses_where_x
+                    && matches!(power.unhinted(), Value::Add(left, right)
+                        if anthem_sum_count_noun(&crate::runtime_display::describe_value(left)).is_some()
+                            && anthem_sum_count_noun(&crate::runtime_display::describe_value(right)).is_some()) =>
+            {
+                let Value::Add(left, right) = power.unhinted() else {
+                    unreachable!("sum checked in match guard");
+                };
+                let left = anthem_sum_count_noun(&crate::runtime_display::describe_value(left))
+                    .unwrap_or_default();
+                let right = anthem_sum_count_noun(&crate::runtime_display::describe_value(right))
+                    .unwrap_or_default();
+                format!(
+                    "{subject} {verb} +1/+1 for each {left} you control and +1/+1 for each {right} you control"
                 )
             }
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
@@ -4249,6 +4473,28 @@ impl StaticAbilityKind for Anthem {
                 && let Some(rest) = condition_text.strip_prefix("as long as ")
             {
                 return format!("As long as {rest}, {text}");
+            }
+            // "As long as the top card of your library is a creature card,
+            // creatures you control that share a color with that card get
+            // +1/+1." (Crown of Convergence): the shared-color reference
+            // names the top card the condition introduces.
+            if !singular
+                && text.contains(" that shares a color with it ")
+                && let Some(rest) =
+                    condition_text.strip_prefix("as long as the top card of your library is ")
+            {
+                let rest = rest.strip_suffix(" in library").unwrap_or(rest);
+                let body = text.replacen(
+                    " that shares a color with it ",
+                    " that share a color with that card ",
+                    1,
+                );
+                let mut chars = body.chars();
+                let body = match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+                    None => body,
+                };
+                return format!("As long as the top card of your library is {rest}, {body}");
             }
             // Only the "different kinds of counters among ..." count condition reads
             // naturally in the leading form (e.g. Hundred-Battle Veteran). All other
@@ -5796,6 +6042,9 @@ impl StaticAbilityKind for AddCardTypesForFilter {
             && types.len() == 1
         {
             format!("{} {}", indefinite_article_for(&types[0]), types[0])
+        } else if verb == "is" && types.len() > 1 {
+            // "is an artifact creature": stacked card types on one object.
+            format!("{} {}", indefinite_article_for(&types[0]), types.join(" "))
         } else {
             join_with_and(&types)
         };
@@ -6134,6 +6383,21 @@ impl StaticAbilityKind for AddSubtypesForFilter {
             .iter()
             .map(std::string::ToString::to_string)
             .collect::<Vec<_>>();
+        // "Stonework Packbeast is also a Cleric, Rogue, Warrior, and Wizard."
+        // A self-applied list of several creature types is printed as a
+        // serial list after "is also".
+        if self.filter == ObjectFilter::source()
+            && self.condition.is_none()
+            && subtype_words.len() >= 3
+            && self.subtypes.iter().all(Subtype::is_creature_type)
+            && let Some((last, leading)) = subtype_words.split_last()
+        {
+            return format!(
+                "{subject} is also {} {}, and {last}",
+                indefinite_article_for(&subtype_words[0]),
+                leading.join(", ")
+            );
+        }
         let base_phrase = subtype_words.join(" ");
         let subtype_phrase = if verb == "are" {
             pluralize_terminal_word(&base_phrase)
@@ -6237,6 +6501,33 @@ impl StaticAbilityKind for AddAllSubtypesOfFamilyForFilter {
     }
 
     fn display(&self) -> String {
+        // "Each land with an everything counter on it is every land type in
+        // addition to its other types" (Omo): a per-object counter qualifier
+        // ("on it") reads with a distributive singular subject. Land subtypes
+        // otherwise replace (CR 305.7), so the additive grant is explicit.
+        if self.filter.with_counter.is_some() {
+            let mut singular_filter = self.filter.clone();
+            if singular_filter.zone == Some(Zone::Battlefield) {
+                singular_filter.zone = None;
+            }
+            let description = singular_filter.description();
+            let noun = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(description.as_str())
+                .trim();
+            if !noun.is_empty() && !noun.starts_with("each ") {
+                let mut text = format!("Each {noun} is every {}", self.family.type_phrase());
+                if self.family == SubtypeFamily::Land {
+                    text.push_str(" in addition to its other types");
+                }
+                if let Some(condition) = &self.condition {
+                    text.push(' ');
+                    text.push_str(&describe_static_condition(condition));
+                }
+                return text;
+            }
+        }
         let subject = pluralized_subject_text(&self.filter);
         let (verb, _) = subject_verb_and_possessive(&subject);
         let mut text = format!("{subject} {verb} every {}", self.family.type_phrase());
@@ -7254,6 +7545,20 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             let condition_text = attached_subject
                 .and_then(|subject| describe_attached_subject_static_condition(condition, subject))
                 .unwrap_or_else(|| describe_static_condition(condition));
+            // An imperative prevention rule takes its condition first: "As
+            // long as you have a full party, prevent all damage that would be
+            // dealt to equipped creature." (Multiclass Baldric)
+            let body = self.display.trim().trim_end_matches('.');
+            if body.to_ascii_lowercase().starts_with("prevent ")
+                && let Some(rest) = condition_text.strip_prefix("as long as ")
+            {
+                let mut chars = body.chars();
+                let lowered = chars
+                    .next()
+                    .map(|first| first.to_lowercase().chain(chars).collect::<String>())
+                    .unwrap_or_default();
+                return format!("As long as {rest}, {lowered}");
+            }
             text.push_str(&condition_text);
         }
         text

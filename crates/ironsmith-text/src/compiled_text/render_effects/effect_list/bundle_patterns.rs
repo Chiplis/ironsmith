@@ -211,6 +211,9 @@
     if let Some(compact) = describe_source_pump_unblockable_bundle(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_source_continuous_unblockable_bundle(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_target_pump_unblockable_bundle(&filtered) {
         return compact;
     }

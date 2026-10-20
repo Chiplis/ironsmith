@@ -3089,7 +3089,7 @@ impl PlayerFilterExt for PlayerFilter {
 
             // Seat-relative filters require the game's stable physical seat
             // order and are handled by `player_filter_matches_game`.
-            PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => false,
+            PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => false,
 
             PlayerFilter::Active => ctx.active_player.is_some_and(|ap| player == ap),
 
@@ -3354,6 +3354,11 @@ pub(crate) fn player_filter_matches_game(
         }
         PlayerFilter::PlayerToYourLeft => ctx.you.is_some_and(|you| {
             game.closest_in_game_player_to_left_matching(you, |_| true) == Some(player)
+        }),
+        PlayerFilter::OpponentToYourLeft => ctx.you.is_some_and(|you| {
+            game.closest_in_game_player_to_left_matching(you, |candidate| {
+                game.are_opponents(you, candidate)
+            }) == Some(player)
         }),
         PlayerFilter::PlayerToYourRight => ctx.you.is_some_and(|you| {
             game.closest_in_game_player_to_right_matching(you, |_| true) == Some(player)
@@ -4896,7 +4901,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 // "target creature the player to your left controls".
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
@@ -5056,7 +5061,7 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
@@ -6686,6 +6691,10 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             } else if count.min == 0 {
                 Some("with any number of targets".to_string())
+            } else if count.min == 1 {
+                // "a spell with one or more targets" (Voracious
+                // Bibliophile, Wyll's Reversal).
+                Some("with one or more targets".to_string())
             } else {
                 Some(format!("with at least {} targets", count.min))
             };

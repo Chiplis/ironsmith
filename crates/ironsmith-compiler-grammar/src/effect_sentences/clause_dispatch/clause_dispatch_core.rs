@@ -294,14 +294,11 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         let effect = parse_effect_clause_unstacked(&tokens[..unless])?;
         return Ok(EffectAst::Conditionals(
-            crate::cards::builders::ConditionalEffectAst::Conditional {
-                predicate: crate::cards::builders::PredicateAst::Not(Box::new(
-                    crate::cards::builders::PredicateAst::Source(
-                        crate::cards::builders::SourcePredicateAst::SourceCameUnderYourControlThisTurn,
-                    ),
-                )),
-                if_true: vec![effect],
-                if_false: Vec::new(),
+            crate::cards::builders::ConditionalEffectAst::TrailingUnless {
+                predicate: crate::cards::builders::PredicateAst::Source(
+                    crate::cards::builders::SourcePredicateAst::SourceCameUnderYourControlThisTurn,
+                ),
+                effects: vec![effect],
             },
         ));
     }

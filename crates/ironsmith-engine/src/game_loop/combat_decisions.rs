@@ -1312,6 +1312,36 @@ fn apply_prepared_attacker_declarations_after_tapping_with_dm(
     *combat = next_combat;
     game.combat = Some(combat.clone());
 
+    {
+        // "during your last combat" (Territorial Hellkite): this declaration
+        // starts the active player's newest combat record.
+        let combat_key = (
+            game.turn.turn_number,
+            game.turn_store.combat_phases_started_this_turn,
+        );
+        let active_player = game.turn.active_player;
+        let record = game
+            .turn_store
+            .turn_history
+            .last_combat_attacked_players
+            .entry(active_player)
+            .or_insert_with(|| (combat_key, std::collections::HashMap::new()));
+        if record.0 != combat_key {
+            *record = (combat_key, std::collections::HashMap::new());
+        }
+        for prepared_decl in &surviving_declarations {
+            if let AttackTarget::Player(defender) = prepared_decl.declaration.target {
+                let attacked = record
+                    .1
+                    .entry(prepared_decl.declaration.creature)
+                    .or_default();
+                if !attacked.contains(&defender) {
+                    attacked.push(defender);
+                }
+            }
+        }
+    }
+
     if !surviving_declarations.is_empty() {
         let attacking_players = surviving_declarations
             .iter()

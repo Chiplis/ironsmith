@@ -643,6 +643,69 @@ fn each_player_pays_the_chosen_creatures_mana_cost_or_sacrifices_it() {
 }
 
 #[test]
+fn tied_greatest_creatures_offer_only_one_to_each_controller() {
+    use ironsmith::card::{CardBuilder, PowerToughness};
+    use ironsmith::decisions::context::{BooleanContext, SelectObjectsContext};
+    use ironsmith::ids::CardId;
+    use ironsmith::mana::{ManaCost, ManaSymbol};
+    use ironsmith::types::CardType;
+    use ironsmith::{GameState, ObjectId, PlayerId, Zone};
+
+    // Decline both payments so that the chosen-object and sacrifice chain
+    // is observable without any mana-payment decisions.
+    struct DeclinePayment { choices: Vec<(PlayerId, Vec<ObjectId>, ObjectId)> }
+    impl ironsmith::decision::DecisionMaker for DeclinePayment {
+        fn decide_objects(&mut self, _: &GameState, ctx: &SelectObjectsContext) -> Vec<ObjectId> {
+            let legal: Vec<_> = ctx.candidates.iter().filter(|c| c.legal).map(|c| c.id).collect();
+            // Resolve a tie by choosing the last candidate. This distinguishes
+            // the chosen creature from the other tied creature.
+            let chosen = *legal.last().expect("a greatest creature must be legal");
+            self.choices.push((ctx.player, legal, chosen));
+            vec![chosen]
+        }
+        fn decide_boolean(&mut self, _: &GameState, _: &BooleanContext) -> bool { false }
+    }
+
+    let definition = compile_to_runtime_definition(
+        "Tariff",
+        "Mana cost: {1}{W}\nType: Sorcery\nEach player sacrifices the creature they control with the greatest mana value unless they pay that creature's mana cost. If two or more creatures a player controls are tied for greatest, that player chooses one.",
+        false,
+    ).expect("Tariff should compile");
+    let (mut game, alice, bob) = p5_game();
+    let creature = |name: &str, mana_value: u8| {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
+            .power_toughness(PowerToughness::fixed(2, 2)).build()
+    };
+    let a_first = game.create_object_from_card(&creature("Alice first greatest", 4), alice, Zone::Battlefield);
+    let a_second = game.create_object_from_card(&creature("Alice second greatest", 4), alice, Zone::Battlefield);
+    let a_small = game.create_object_from_card(&creature("Alice smaller", 2), alice, Zone::Battlefield);
+    let b_greatest = game.create_object_from_card(&creature("Bob greatest", 5), bob, Zone::Battlefield);
+    let b_small = game.create_object_from_card(&creature("Bob smaller", 1), bob, Zone::Battlefield);
+    let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+    let mut decisions = DeclinePayment { choices: Vec::new() };
+    let mut ctx = ironsmith::effects::EffectContext::new(spell, alice, &mut decisions);
+    for effect in definition.spell_effect.as_ref().expect("spell effect").all_effects() {
+        ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+    }
+    drop(ctx);
+    assert_eq!(decisions.choices.len(), 2, "each player chooses once");
+    let alice_choices = &decisions.choices.iter().find(|(player, _, _)| *player == alice).unwrap().1;
+    let bob_choices = &decisions.choices.iter().find(|(player, _, _)| *player == bob).unwrap().1;
+    assert_eq!(alice_choices.len(), 2, "only tied greatest creatures are candidates");
+    assert!(alice_choices.contains(&a_first) && alice_choices.contains(&a_second));
+    assert_eq!(bob_choices, &vec![b_greatest]);
+    let chosen = decisions.choices.iter().find(|(player, _, _)| *player == alice).unwrap().2;
+    assert_ne!(game.battlefield.contains(&a_first), game.battlefield.contains(&a_second),
+        "exactly one tied creature is sacrificed");
+    assert!(!game.battlefield.contains(&chosen), "the chosen unpaid creature is sacrificed");
+    assert!(game.battlefield.contains(&a_small), "the lower-value creature survives");
+    assert!(!game.battlefield.contains(&b_greatest), "Bob's own greatest is sacrificed");
+    assert!(game.battlefield.contains(&b_small), "Bob's lower-value creature survives");
+}
+
+#[test]
 fn revealed_cards_with_different_names_gate_the_random_pick() {
     let definition = compile_to_runtime_definition(
         "Signal the Clans",

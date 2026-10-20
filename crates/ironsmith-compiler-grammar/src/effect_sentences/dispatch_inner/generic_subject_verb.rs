@@ -528,6 +528,11 @@ const ALL_REVEALED_INTO_GRAVEYARD_PATTERN: effect_grammar::EffectSequence<'stati
         effect_grammar::EffectCaptureKind::OneOfPhrase(ALL_REVEALED_INTO_GRAVEYARD_PHRASES),
     )]);
 const MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES: &[&[&str]] = &[
+    // "... until they reveal a creature card, then puts that card onto the
+    // battlefield and the rest on the bottom ..." (Collision of Realms).
+    &["then", "put", "that", "card", "onto", "the", "battlefield"],
+    &["then", "puts", "that", "card", "onto", "the", "battlefield"],
+    &["puts", "that", "card", "onto", "the", "battlefield"],
     &["put", "it", "onto", "the", "battlefield"],
     &["put", "that", "card", "onto", "the", "battlefield"],
     &[

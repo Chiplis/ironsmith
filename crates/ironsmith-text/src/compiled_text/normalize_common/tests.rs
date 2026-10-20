@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn subtype_qualified_spell_target_places_subtype_before_spell() {
+    let filter = ObjectFilter::spell().with_subtype(crate::types::Subtype::Arcane);
+    let target = ChooseSpec::target(ChooseSpec::Object(filter));
+    assert_eq!(describe_choose_spec(&target), "target Arcane spell");
+
+    let mut public_spell_filter = ObjectFilter::spell().with_subtype(crate::types::Subtype::Arcane);
+    public_spell_filter.has_mana_cost = true;
+    let public_target = ChooseSpec::target(ChooseSpec::Object(public_spell_filter));
+    assert_eq!(describe_choose_spec(&public_target), "target Arcane spell");
+}
+
+#[test]
 fn semantic_phrasing_runs_cross_sentence_regression_repairs() {
     assert_eq!(
         normalize_common_semantic_phrasing(

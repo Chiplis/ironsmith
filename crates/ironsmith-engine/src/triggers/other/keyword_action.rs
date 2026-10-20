@@ -365,6 +365,15 @@ impl TriggerMatcher for KeywordActionTrigger {
                 KeywordActionKind::PowerToughnessSticker => "a power and toughness sticker",
                 _ => unreachable!("guarded by sticker-action match"),
             };
+            // "Whenever you place a sticker" (Wee Champion, Goblin
+            // Airbrusher): an untyped sticker with no recipient filter.
+            if self.action == KeywordActionKind::Sticker && self.source_filter.is_none() {
+                return match &self.player {
+                    PlayerFilter::You => "Whenever you place a sticker".to_string(),
+                    PlayerFilter::Opponent => "Whenever an opponent places a sticker".to_string(),
+                    _ => "Whenever a player places a sticker".to_string(),
+                };
+            }
             let object = self
                 .source_filter
                 .as_ref()

@@ -39,6 +39,13 @@ pub enum PermissionLifetime {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilPlayerNextTurnEnd,
+    UntilPlayerNextTurnStart,
+    UntilPlayerNextEndStep,
+    DuringYourNextTurn,
+    DuringPlayerNextTurn,
+    UntilEndOfCombatOnYourNextTurn,
+    UntilEndOfCombatOnPlayerNextTurn,
     UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
@@ -90,6 +97,7 @@ enum UnsupportedPermissionShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AdditionalLandPlayClause<'a> {
     count_tokens: &'a [OwnedLexToken],
+    up_to: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,11 +229,28 @@ fn tagged_permission_object_surface(
         permission_tagged_facts::TaggedPermissionTargetSurface::ThoseCards => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards)
         }
+        permission_tagged_facts::TaggedPermissionTargetSurface::CardsExiledThisWay => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledThisWay {
+                lands_and_spells: false,
+            })
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::LandsAndSpellsFromAmongCardsExiledThisWay => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledThisWay {
+                lands_and_spells: true,
+            })
+        }
         permission_tagged_facts::TaggedPermissionTargetSurface::SpellsFromAmongThoseCards => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards)
         }
         permission_tagged_facts::TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::CardsExiledWithThisSaga => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource {
+                source: ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                    "this Saga".to_string(),
+                ),
+            })
         }
         permission_tagged_facts::TaggedPermissionTargetSurface::SpellFromAmongSourceExiledCards
         | permission_tagged_facts::TaggedPermissionTargetSurface::Other => None,
@@ -249,6 +274,7 @@ fn parse_additional_land_play_clause(
     let parsed = permission_tagged_facts::parse_additional_land_play_tokens(tokens)?;
     Some(AdditionalLandPlayClause {
         count_tokens: parsed.count_tokens,
+        up_to: parsed.up_to,
     })
 }
 
@@ -260,6 +286,27 @@ fn permission_lifetime_from_tagged_fact(
         permission_tagged_facts::PermissionLifetimeFact::ThisTurn => PermissionLifetime::ThisTurn,
         permission_tagged_facts::PermissionLifetimeFact::UntilEndOfTurn => {
             PermissionLifetime::UntilEndOfTurn
+        }
+        permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextTurnStart => {
+            PermissionLifetime::UntilPlayerNextTurnStart
+        }
+        permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextEndStep => {
+            PermissionLifetime::UntilPlayerNextEndStep
+        }
+        permission_tagged_facts::PermissionLifetimeFact::DuringYourNextTurn => {
+            PermissionLifetime::DuringYourNextTurn
+        }
+        permission_tagged_facts::PermissionLifetimeFact::DuringPlayerNextTurn => {
+            PermissionLifetime::DuringPlayerNextTurn
+        }
+        permission_tagged_facts::PermissionLifetimeFact::UntilEndOfCombatOnYourNextTurn => {
+            PermissionLifetime::UntilEndOfCombatOnYourNextTurn
+        }
+        permission_tagged_facts::PermissionLifetimeFact::UntilEndOfCombatOnPlayerNextTurn => {
+            PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn
+        }
+        permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextTurnEnd => {
+            PermissionLifetime::UntilPlayerNextTurnEnd
         }
         permission_tagged_facts::PermissionLifetimeFact::UntilYourNextTurn => {
             PermissionLifetime::UntilYourNextTurn
@@ -286,6 +333,27 @@ fn permission_lifetime_to_tagged_fact(
         PermissionLifetime::ThisTurn => permission_tagged_facts::PermissionLifetimeFact::ThisTurn,
         PermissionLifetime::UntilEndOfTurn => {
             permission_tagged_facts::PermissionLifetimeFact::UntilEndOfTurn
+        }
+        PermissionLifetime::UntilPlayerNextTurnStart => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextTurnStart
+        }
+        PermissionLifetime::UntilPlayerNextEndStep => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextEndStep
+        }
+        PermissionLifetime::DuringYourNextTurn => {
+            permission_tagged_facts::PermissionLifetimeFact::DuringYourNextTurn
+        }
+        PermissionLifetime::DuringPlayerNextTurn => {
+            permission_tagged_facts::PermissionLifetimeFact::DuringPlayerNextTurn
+        }
+        PermissionLifetime::UntilEndOfCombatOnYourNextTurn => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilEndOfCombatOnYourNextTurn
+        }
+        PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilEndOfCombatOnPlayerNextTurn
+        }
+        PermissionLifetime::UntilPlayerNextTurnEnd => {
+            permission_tagged_facts::PermissionLifetimeFact::UntilPlayerNextTurnEnd
         }
         PermissionLifetime::UntilYourNextTurn => {
             permission_tagged_facts::PermissionLifetimeFact::UntilYourNextTurn
@@ -1577,6 +1645,13 @@ pub fn parse_permission_clause_spec_lexed(
             PermissionLifetime::ThisTurn
                 | PermissionLifetime::UntilEndOfTurn
                 | PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::UntilPlayerNextTurnEnd
+                | PermissionLifetime::UntilPlayerNextTurnStart
+                | PermissionLifetime::UntilPlayerNextEndStep
+                | PermissionLifetime::DuringYourNextTurn
+                | PermissionLifetime::DuringPlayerNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnYourNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn
                 | PermissionLifetime::UntilYourNextEndStep
                 | PermissionLifetime::ForAsLongAsExiled
                 | PermissionLifetime::ForAsLongAsYouControlSource
@@ -1620,6 +1695,7 @@ pub fn parse_permission_clause_spec_lexed(
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell
                         | ironsmith_core::GrantPlayTaggedObjectSurface::Them
                         | ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledThisWay { .. }
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards
                         | ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards
                         | ironsmith_core::GrantPlayTaggedObjectSurface::CardsExiledWithSource { .. }
@@ -1636,7 +1712,15 @@ pub fn parse_permission_clause_spec_lexed(
         }
         if matches!(
             lifetime,
-            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
+            PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::UntilPlayerNextTurnEnd
+                | PermissionLifetime::UntilPlayerNextTurnStart
+                | PermissionLifetime::UntilPlayerNextEndStep
+                | PermissionLifetime::DuringYourNextTurn
+                | PermissionLifetime::DuringPlayerNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnYourNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn
+                | PermissionLifetime::UntilYourNextEndStep
         ) && without_paying_mana_cost
         {
             return Err(CardTextError::ParseError(format!(
@@ -2019,7 +2103,15 @@ pub fn parse_until_your_next_turn_may_play_tagged_clause(
             player, allow_land: true, as_copy: false,
             without_paying_mana_cost: false, lifetime, ..
         }) if matches!(lifetime,
-            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
+            PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::UntilPlayerNextTurnEnd
+                | PermissionLifetime::UntilPlayerNextTurnStart
+                | PermissionLifetime::UntilPlayerNextEndStep
+                | PermissionLifetime::DuringYourNextTurn
+                | PermissionLifetime::DuringPlayerNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnYourNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn
+                | PermissionLifetime::UntilYourNextEndStep
         ) && matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
             // Use the same lifetime and surface lowering for a linked sentence
             // sequence as for an independently parsed permission clause.
@@ -2055,6 +2147,13 @@ pub fn parse_additional_land_plays_clause_lexed(
     if count_words.len() != used {
         return Ok(None);
     }
+    // "play up to three additional lands": the ceiling is presentation; land
+    // plays are always optional.
+    let count = if parsed.up_to {
+        count.with_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo)
+    } else {
+        count
+    };
 
     Ok(Some(EffectAst::subject_verb_additional_land_plays(
         PlayerAst::Implicit,
@@ -2524,10 +2623,20 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
 mod tagged_permission_readings;
 
 pub fn parse_look_tagged_exile_permission(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    if permission_tagged_facts::parse_look_tagged_while_exiled_tokens(tokens).is_none() { return Ok(None); }
+    let Some(reference) = permission_tagged_facts::parse_look_tagged_while_exiled_tokens(tokens) else { return Ok(None); };
+    let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile);
+    // "You may look at those cards for as long as they remain exiled" (Three
+    // Wishes): keep the authored plural reference for presentation.
+    if matches!(
+        reference,
+        permission_tagged_facts::TaggedLookReference::Them
+            | permission_tagged_facts::TaggedLookReference::ThoseCards
+    ) {
+        filter.set_plural_object_noun_surface(true);
+    }
     Ok(Some(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, PlayerAst::You,
         SubjectVerbActionAst::RevealLook(crate::cards::builders::RevealLookActionAst::LookAtObjects {
-            filter: ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile),
+            filter,
             permit_while_exiled: true,
         }))))
 }
@@ -2572,6 +2681,35 @@ fn parse_mandatory_tagged_free_cast(tokens: &[OwnedLexToken]) -> Option<EffectAs
 pub fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "You may play lands and cast spells from among cards exiled this way
+    // without paying their mana costs" (Gix, Yawgmoth Praetor): during
+    // resolution, each exiled card may be played for free, in any number.
+    // A single tagged cast would play at most one card and not optionally.
+    if matches!(
+        token_word_refs(tokens).as_slice(),
+        [
+            "you", "may", "play", "lands", "and", "cast", "spells", "from", "among", "cards",
+            "exiled", "this", "way", "without", "paying", "their", "mana", "costs"
+        ]
+    ) {
+        let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
+            crate::tag::CompilerReferenceTag::It.bind(),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
+            filter,
+            effects: vec![EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![EffectAst::subject_verb_cast_tagged(
+                    crate::tag::CompilerReferenceTag::It.bind(),
+                    PlayerAst::You,
+                    true,
+                    false,
+                    true,
+                    None,
+                )],
+            })],
+        })));
+    }
     if let Some(effect) = parse_mandatory_tagged_free_cast(tokens) { return Ok(Some(effect)); }
     if let Some(effect) = parse_bounded_filtered_exile_free_cast(tokens)? { return Ok(Some(effect)); }
     if let Some(effect) = effect_cast_prices::parse(tokens)? {
@@ -2579,69 +2717,6 @@ pub fn parse_cast_or_play_tagged_clause(
     }
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
-    // "During your next turn, you may play that card." (Galvanic Relay): the
-    // same tagged next-turn permission as "Until the end of your next turn,
-    // ...", except that it cannot be used during the rest of this turn.
-    if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
-        &trimmed,
-        crate::grammar::primitives::phrase(&["during", "your", "next", "turn"]),
-    ) {
-        let mut permission_tokens = crate::lexer::synthetic_word_tokens([
-            "until", "the", "end", "of", "your", "next", "turn",
-        ]);
-        permission_tokens.push(OwnedLexToken::comma(crate::cards::TextSpan::synthetic()));
-        permission_tokens.extend(trim_commas(rest));
-        let Some(mut effect) = parse_cast_or_play_tagged_clause(&permission_tokens)? else {
-            return Ok(None);
-        };
-        let EffectAst::SubjectVerb(subject) = &mut effect else {
-            return Ok(None);
-        };
-        let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
-            until_next_end_step: false,
-            until_next_turn_start: false,
-            during_next_turn,
-            ..
-        }) = &mut subject.action
-        else {
-            return Ok(None);
-        };
-        *during_next_turn = true;
-        return Ok(Some(effect));
-    }
-    // "Until end of combat on your next turn, you may play that card."
-    // (Brazen Cannonade): the next-turn permission, ending once that turn's
-    // combat is over.
-    if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
-        &trimmed,
-        crate::grammar::primitives::phrase(&[
-            "until", "end", "of", "combat", "on", "your", "next", "turn",
-        ]),
-    ) {
-        let mut permission_tokens = crate::lexer::synthetic_word_tokens([
-            "until", "the", "end", "of", "your", "next", "turn",
-        ]);
-        permission_tokens.push(OwnedLexToken::comma(crate::cards::TextSpan::synthetic()));
-        permission_tokens.extend(trim_commas(rest));
-        let Some(mut effect) = parse_cast_or_play_tagged_clause(&permission_tokens)? else {
-            return Ok(None);
-        };
-        let EffectAst::SubjectVerb(subject) = &mut effect else {
-            return Ok(None);
-        };
-        let SubjectVerbActionAst::Grants(GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
-            until_next_end_step: false,
-            until_next_turn_start: false,
-            during_next_turn: false,
-            until_end_of_combat_next_turn,
-            ..
-        }) = &mut subject.action
-        else {
-            return Ok(None);
-        };
-        *until_end_of_combat_next_turn = true;
-        return Ok(Some(effect));
-    }
     if let Some(((), rest)) = crate::grammar::primitives::parse_prefix(
         &trimmed,
         crate::grammar::primitives::phrase(&["you", "may", "look", "at", "and"]),
@@ -2973,20 +3048,28 @@ pub fn parse_cast_or_play_tagged_clause(
             ..
         }) if matches!(
             lifetime,
-            PermissionLifetime::UntilYourNextTurn | PermissionLifetime::UntilYourNextEndStep
-        ) && (player == PlayerAst::Implicit || player == PlayerAst::You) =>
+            PermissionLifetime::UntilYourNextTurn
+                | PermissionLifetime::UntilPlayerNextTurnEnd
+                | PermissionLifetime::UntilPlayerNextTurnStart
+                | PermissionLifetime::UntilPlayerNextEndStep
+                | PermissionLifetime::DuringYourNextTurn
+                | PermissionLifetime::DuringPlayerNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnYourNextTurn
+                | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn
+                | PermissionLifetime::UntilYourNextEndStep
+        ) && matches!(player, PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::TriggeringSourceController) =>
         {
-            let mut effect = if lifetime == PermissionLifetime::UntilYourNextEndStep {
+            let mut effect = if matches!(lifetime, PermissionLifetime::UntilYourNextEndStep | PermissionLifetime::UntilPlayerNextEndStep) {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_end_step(
                     crate::tag::TagRef::of(tag),
-                    PlayerAst::Implicit,
+                    player,
                     allow_land,
                     mana_spend_mode,
                 )
             } else {
                 EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                     crate::tag::TagRef::of(tag),
-                    PlayerAst::Implicit,
+                    player,
                     allow_land,
                     mana_spend_mode,
                 )
@@ -2996,15 +3079,29 @@ pub fn parse_cast_or_play_tagged_clause(
                 && let SubjectVerbActionAst::Grants(
                     GrantActionAst::GrantPlayTaggedUntilYourNextTurn {
                         until_next_turn_start,
+                        duration_is_holder_relative,
+                        during_next_turn,
+                        until_end_of_combat_next_turn,
                         spell_filter,
                         surface: grant_surface,
                         ..
                     },
                 ) = &mut subject.action
             {
-                *until_next_turn_start = lifetime == PermissionLifetime::UntilYourNextTurn
-                    && next_turn_permission_grant_duration(tokens)?
-                        == crate::grant::GrantDuration::UntilYourNextTurn;
+                *duration_is_holder_relative = matches!(lifetime,
+                    PermissionLifetime::UntilPlayerNextTurnEnd
+                        | PermissionLifetime::UntilPlayerNextTurnStart
+                        | PermissionLifetime::UntilPlayerNextEndStep
+                        | PermissionLifetime::DuringPlayerNextTurn
+                        | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn);
+                *until_next_turn_start = lifetime == PermissionLifetime::UntilPlayerNextTurnStart
+                    || (lifetime == PermissionLifetime::UntilYourNextTurn
+                        && next_turn_permission_grant_duration(tokens)?
+                            == crate::grant::GrantDuration::UntilYourNextTurn);
+                *during_next_turn = matches!(lifetime,
+                    PermissionLifetime::DuringYourNextTurn | PermissionLifetime::DuringPlayerNextTurn);
+                *until_end_of_combat_next_turn = matches!(lifetime,
+                    PermissionLifetime::UntilEndOfCombatOnYourNextTurn | PermissionLifetime::UntilEndOfCombatOnPlayerNextTurn);
                 *spell_filter = filter;
                 *grant_surface = surface;
             }
@@ -3099,10 +3196,10 @@ pub fn parse_cast_or_play_tagged_clause(
             surface,
             max_plays: shared_max_plays,
             ..
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => {
+        }) if matches!(player, PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner | PlayerAst::TriggeringSourceController) => {
             let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
                 crate::tag::TagRef::of(tag),
-                PlayerAst::Implicit,
+                player,
                 allow_land,
                 mana_spend_mode,
                 surface,

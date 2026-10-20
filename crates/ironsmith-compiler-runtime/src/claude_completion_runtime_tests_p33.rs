@@ -105,7 +105,7 @@ fn goldberry_moves_one_counter_of_each_absent_kind_and_one_or_more_counters() {
         "Mana cost: {1}{U}\nType: Legendary Creature — Nymph\nPower/Toughness: 1/3\n{T}: Move a counter of each kind not on Goldberry from another target permanent you control onto Goldberry.\n{U}, {T}: Move one or more counters from Goldberry onto another target permanent you control. If you do, draw a card.",
     );
     assert!(debug.contains("OneOfEachKindAbsentFromRecipient"), "{debug}");
-    assert!(debug.contains("AnyNumberOfAnyKind"), "{debug}");
+    assert!(debug.contains("OneOrMoreOfAnyKind"), "{debug}");
 }
 
 #[test]

@@ -588,6 +588,12 @@ pub(crate) fn describe_for_players_damage_and_controlled_damage(
     {
         let player_filter_text = describe_for_each_player_filter(&for_players.filter);
         let each_player = strip_leading_article(&player_filter_text);
+        // A shared dynamic amount keeps its "where X is" tail (Impending Flux).
+        if let (amount, Some(where_x)) = describe_damage_amount_clause(&deal_player.amount) {
+            return Some(format!(
+                "Deal {amount} to each {each_player} and {objects}, where X is {where_x}"
+            ));
+        }
         return Some(format!(
             "Deal {} damage to each {} and {}",
             describe_value(&deal_player.amount),
@@ -1281,6 +1287,18 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::EqualTo) || value_prefers_where_x(value) {
         return None;
     }
+    // "for each {G}{G} spent to cast it" (Clay Champion): pairs of one mana
+    // symbol, lowered as the symbol count divided and rounded down.
+    if let Value::DividedRoundedDown(inner, divisor) = value.unhinted()
+        && *divisor > 0
+        && let Value::ManaSymbolSpentToCastThisSpell { symbol, reference } = inner.unhinted()
+    {
+        return Some(format!(
+            "{} spent to cast {}",
+            describe_mana_symbol(*symbol).repeat(*divisor as usize),
+            reference.text()
+        ));
+    }
     if let Value::EventValue(EventValueSpec::ManaSpentOnKeyword { colors }) = value.unhinted() {
         let symbols = [(crate::color::Color::White, "{W}"), (crate::color::Color::Blue, "{U}"),
             (crate::color::Color::Black, "{B}"), (crate::color::Color::Red, "{R}"),
@@ -1359,6 +1377,16 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
             let ChooseSpec::All(filter) = spec.unhinted() else {
                 return None;
             };
+            let subject = describe_count_filter_value_subject(filter);
+            // "for each green mana symbol in those cards' mana costs"
+            // (Phosphorescent Feast): a bare back-reference to the revealed
+            // set (no authored card noun) reads as the possessive anaphor.
+            if !filter.has_explicit_card_noun() && subject == "cards revealed this way" {
+                return Some(format!(
+                    "{} mana symbol in those cards' mana costs",
+                    color.name()
+                ));
+            }
             Some(format!(
                 "{} mana symbol in the mana costs of {}",
                 color.name(),
@@ -1671,9 +1699,17 @@ fn factor_positive_for_each_value(value: Value) -> Option<(i32, Value)> {
         Value::CountScaled(filter, multiplier) if multiplier > 0 => {
             Some((multiplier, Value::Count(filter)))
         }
-        Value::Add(left, right) if left == right => {
-            let (multiplier, basis) = factor_positive_for_each_value(*left)?;
-            Some((multiplier.checked_mul(2)?, basis))
+        // Repeated equal addends, including left-nested sums ("three +1/+1
+        // counters for each {G}{G}" lowers as `(B + B) + B`).
+        Value::Add(left, right) => {
+            if let (Some((left_multiplier, left_basis)), Some((right_multiplier, right_basis))) = (
+                factor_positive_for_each_value((*left).clone()),
+                factor_positive_for_each_value((*right).clone()),
+            ) && left_basis == right_basis
+            {
+                return Some((left_multiplier.checked_add(right_multiplier)?, left_basis));
+            }
+            Some((1, Value::Add(left, right)))
         }
         basis => Some((1, basis)),
     }
@@ -2340,6 +2376,28 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
         return format!("{count_text} of those cards");
     }
+    // "you choose a card of that color from it" (Addle): one card of the
+    // chosen color from the revealed hand.
+    if choose_exact_count(choose) == Some(1)
+        && choose.filter.chosen_color
+        && choose.filter.zone == Some(Zone::Hand)
+        && let [constraint] = choose.filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && (constraint.tag.as_str() == ironsmith_core::REVEALED_THIS_WAY_TAG
+            || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed"))
+        && {
+            let mut bare = choose.filter.clone();
+            bare.tagged_constraints.clear();
+            bare.zone = None;
+            bare.owner = None;
+            bare.controller = None;
+            bare.chosen_color = false;
+            bare.union_surface = Default::default();
+            bare == crate::target::ObjectFilter::default()
+        }
+    {
+        return "a card of the chosen color from it".to_string();
+    }
 
     // Source-object choices are an implementation detail used to make costs
     // executable. Oracle refers to that object demonstratively ("this"), not
@@ -2436,6 +2494,11 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         && !rest.starts_with("with ")
         && !rest.starts_with("without ")
         && !rest.starts_with("that ")
+        // Relative clauses stay after the noun ("a card you exiled with
+        // cards named Arcane Savant").
+        && !rest.starts_with("you ")
+        // "a card exiled this way", never "an exiled this way card".
+        && !rest.ends_with(" this way")
     {
         card_desc = format!("{rest} card");
     }
@@ -2486,6 +2549,30 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
             selection.push_str(" with a different power");
         }
         selection.push_str(&format!(" for each {basis}"));
+        selection.push_str(&where_x_suffix);
+        return selection;
+    }
+    // Cost choices can retain a singular fallback count alongside an executable
+    // value. The value controls how many objects must be paid, so render it
+    // before consulting the fallback ChoiceCount.
+    if !choose.count.is_dynamic_x()
+        && let Some(count_value) = choose.count_value.as_ref()
+        && !matches!(count_value.unhinted(), Value::Fixed(_))
+    {
+        let mut count_text = describe_value(count_value);
+        if matches!(count_value.unhinted(), Value::CountPlayers(PlayerFilter::Opponent)) {
+            count_text.push_str(" you have");
+        }
+        let mut selection = format!(
+            "{} equal to {count_text}",
+            pluralize_noun_phrase(&card_desc)
+        );
+        if distinct_names_suffix {
+            selection.push_str(" with different names");
+        }
+        if distinct_powers_suffix {
+            selection.push_str(" with different powers");
+        }
         selection.push_str(&where_x_suffix);
         return selection;
     }
@@ -2846,7 +2933,13 @@ pub(crate) fn describe_choose_then_exile(
         }
     }
     let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
-    let owner_text = describe_possessive_player_filter(owner);
+    // The exiling player's own zone reads reflexively: "that player exiles a
+    // card at random from their hand", not "from that player's hand".
+    let owner_text = if *owner == choose.chooser && choose.chooser != PlayerFilter::You {
+        "their".to_string()
+    } else {
+        describe_possessive_player_filter(owner)
+    };
     let origin_zones = if zones.as_slice() == [Zone::Graveyard]
         && choose.filter.single_graveyard
         && choose.filter.owner.is_none()
@@ -2881,12 +2974,30 @@ pub(crate) fn describe_choose_then_exile(
         if let Some(stripped) = chosen.strip_suffix(" you own") {
             chosen = stripped.to_string();
         }
-        if !chosen.contains(" card") && !chosen.contains(" spell") {
+        if !chosen.contains(" card")
+            && !chosen.starts_with("card")
+            && !chosen.contains(" spell")
+            && !chosen.starts_with("spell")
+        {
             chosen.push_str(" card");
         }
     }
+    // The quantified amount follows the origin in exile costs: "Exile
+    // cards from your graveyard equal to the number of opponents you have".
+    let count_suffix = if choose.count_value.is_some() {
+        if let Some((noun, basis)) = chosen.split_once(" equal to ") {
+            let noun = noun.to_string();
+            let basis = basis.to_string();
+            chosen = noun;
+            format!(" equal to {basis}")
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
     Some(format!(
-        "{chooser} {verb} {chosen} {origin_prefix} {origin_zones}{face_state_suffix}"
+        "{chooser} {verb} {chosen} {origin_prefix} {origin_zones}{count_suffix}{face_state_suffix}"
     ))
 }
 
@@ -3041,6 +3152,90 @@ pub(super) fn apply_grants_suspend_to_tag(
         && modifications
             .iter()
             .all(|modification| modification_adds_suspend_exile_trigger(modification))
+}
+
+/// "Each card exiled this way that doesn't have suspend gains suspend."
+/// (Sinister Concierge, The Wedding of River Song): the grammar keeps one
+/// result tag per exile instruction of the ability and iterates each of them
+/// with the same "if it doesn't have suspend, it gains suspend" body. Returns
+/// the shared helper-tag base (without the per-exile ordinal) when `effect`
+/// is one of those loops.
+pub(in crate::compiled_text) fn exiled_this_way_suspend_grant_base(
+    effect: &Effect,
+) -> Option<&str> {
+    const PREFIX: &str = "__sentence_helper_exiled_gains_suspend_";
+    let for_each = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let tag = for_each.tag.as_str();
+    let (base, ordinal) = tag.rsplit_once('_')?;
+    if !base.starts_with(PREFIX)
+        || ordinal.is_empty()
+        || !ordinal.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let [conditional] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let Condition::Not(inner) = &conditional.condition else {
+        return None;
+    };
+    if !matches!(
+        inner.as_ref(),
+        Condition::TaggedObjectMatches(found, filter)
+            if found.as_str() == "__it__" && filter_checks_for_suspend(filter)
+    ) {
+        return None;
+    }
+    let [grant] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let apply = grant.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if apply.until != Until::Forever
+        || apply.condition.is_some()
+        || !apply.runtime_modifications.is_empty()
+        || !matches!(
+            apply.target_spec.as_ref().map(|spec| spec.base()),
+            Some(ChooseSpec::Iterated)
+        )
+    {
+        return None;
+    }
+    let modifications = apply
+        .modification
+        .iter()
+        .chain(apply.additional_modifications.iter())
+        .collect::<Vec<_>>();
+    (modifications.len() == 2
+        && modifications
+            .iter()
+            .all(|modification| modification_adds_suspend_exile_trigger(modification)))
+    .then_some(base)
+}
+
+/// Drops the later per-exile loops of one "Each card exiled this way that
+/// doesn't have suspend gains suspend" instruction: the first loop renders
+/// the whole instruction, which already names every card exiled this way.
+pub(in crate::compiled_text) fn collapse_exiled_this_way_suspend_grant_loops(
+    effects: &[Effect],
+) -> Option<Vec<Effect>> {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut kept = Vec::with_capacity(effects.len());
+    let mut dropped = false;
+    for effect in effects {
+        if let Some(base) = exiled_this_way_suspend_grant_base(effect) {
+            if seen.contains(&base) {
+                dropped = true;
+                continue;
+            }
+            seen.push(base);
+        }
+        kept.push(effect.clone());
+    }
+    dropped.then_some(kept)
 }
 
 pub(in crate::compiled_text) fn describe_put_counters_then_gain_suspend(
@@ -3452,6 +3647,13 @@ pub(super) fn describe_return_to_hand_excluded_subtypes(
 
     let mut base_filter = filter.clone();
     base_filter.excluded_subtypes.clear();
+    // "except for Giants, Wizards, and lands": with several excluded
+    // subtypes, excluded card types join the same exception list.
+    let excluded_types_in_list =
+        filter.excluded_subtypes.len() > 1 && !filter.excluded_card_types.is_empty();
+    if excluded_types_in_list {
+        base_filter.excluded_card_types.clear();
+    }
     let target_text = describe_choose_spec(&ChooseSpec::All(base_filter));
     // A single excluded subtype is the prefix "all non-Horror creatures".
     if let [excluded] = filter.excluded_subtypes.as_slice()
@@ -3463,11 +3665,19 @@ pub(super) fn describe_return_to_hand_excluded_subtypes(
             owner_hand_phrase_for_spec(&return_to_hand.spec)
         ));
     }
-    let excluded = filter
+    let mut excluded = filter
         .excluded_subtypes
         .iter()
         .map(|subtype| pluralize_word(&subtype.to_string()))
         .collect::<Vec<_>>();
+    if excluded_types_in_list {
+        excluded.extend(
+            filter
+                .excluded_card_types
+                .iter()
+                .map(|card_type| pluralize_word(card_type.name())),
+        );
+    }
 
     Some(format!(
         "{target_text} to {} except for {}",
@@ -4180,6 +4390,21 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
         ));
     }
     let put_verb = player_verb(&chooser, "put", "puts");
+    // "put a creature card from it onto the battlefield under your control
+    // tapped and attacking that player or a planeswalker they control"
+    // (Zara, Renegade Recruiter): the attack target follows the entry state.
+    if move_to_zone.enters_attacking
+        && matches!(
+            move_to_zone.attack_target_mode,
+            Some(crate::effects::MoveToZoneAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                PlayerFilter::Defending,
+            ))
+        )
+    {
+        return Some(format!(
+            "{chooser} {put_verb} {chosen} {origin} onto the battlefield{control_suffix}{tapped}{attacking} that player or a planeswalker they control{face_down}{transformed}{where_x_clause}"
+        ));
+    }
     Some(format!(
         "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{face_down}{transformed}{control_suffix}{where_x_clause}"
     ))
@@ -4623,7 +4848,23 @@ pub(super) fn describe_exile_top_clause(
     } else {
         ""
     };
-    let exile_clause = if let Some((multiplier, basis)) = for_each_count {
+    // "exile the top X cards of their library, where X is the amount of
+    // damage dealt": the damage event's amount authored as an X basis.
+    let damage_amount_where_x = value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs)
+        && matches!(
+            exile_top.count.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        )
+        && exile_top.player == PlayerFilter::DamagedPlayer;
+    let exile_clause = if damage_amount_where_x {
+        if suppress_count_where_clause {
+            format!("Exile the top X cards of their library{face_down}")
+        } else {
+            format!(
+                "Exile the top X cards of their library{face_down}, where X is the amount of damage dealt"
+            )
+        }
+    } else if let Some((multiplier, basis)) = for_each_count {
         let cards = if multiplier == 1 {
             "a card".to_string()
         } else {
@@ -4647,6 +4888,8 @@ pub(super) fn describe_exile_top_clause(
             (format!("{word} "), "cards")
         };
         format!("Exile the top {count_text}{noun} of {owner} library{face_down}")
+    } else if let Some(rounding) = half_library_rounding(&exile_top.count, &exile_top.player) {
+        format!("Exile the top half of {owner} library{face_down}, rounded {rounding}")
     } else {
         let value_text = describe_value(&exile_top.count);
         if value_text == "X"
@@ -5403,6 +5646,22 @@ pub(crate) fn describe_look_at_top_then_choose_exile_text(
     ))
 }
 
+/// "exiles the top half of their library, rounded up" (Ulamog, the
+/// Defiler): half the same player's library size, with its rounding.
+fn half_library_rounding(count: &Value, player: &PlayerFilter) -> Option<&'static str> {
+    let Value::HalfRoundedDown(inner) = count.unhinted() else {
+        return None;
+    };
+    let (base, rounding) = match inner.as_ref() {
+        Value::Add(left, right) if matches!(right.as_ref(), Value::Fixed(1)) => {
+            (left.as_ref(), "up")
+        }
+        other => (other, "down"),
+    };
+    matches!(base, Value::CardsInLibrary(library_owner) if library_owner == player)
+        .then_some(rounding)
+}
+
 pub(crate) fn describe_exile_top_of_library(
     player: &PlayerFilter,
     count: &Value,
@@ -5431,6 +5690,10 @@ pub(crate) fn describe_exile_top_of_library(
             (format!("{word} "), "cards")
         };
         return format!("Exile the top {count_text}{noun} of {owner} library{face_down_suffix}");
+    }
+
+    if let Some(rounding) = half_library_rounding(count, player) {
+        return format!("Exile the top half of {owner} library{face_down_suffix}, rounded {rounding}");
     }
 
     if let Some(where_x) = describe_where_x_basis(count) {

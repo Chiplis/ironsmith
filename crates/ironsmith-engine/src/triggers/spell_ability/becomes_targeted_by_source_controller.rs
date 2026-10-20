@@ -71,6 +71,8 @@ impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
         match self.source_kind {
             StackObjectKind::SpellOrAbility => "a spell or ability",
             StackObjectKind::Spell => "a spell",
+            StackObjectKind::ActivatedAbility => "an activated ability",
+            StackObjectKind::TriggeredAbility => "a triggered ability",
             _ => "an ability",
         }
     }
@@ -182,6 +184,33 @@ impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
             && self.source_kind == ironsmith_core::filter_model::StackObjectKind::SpellOrAbility
         {
             return "Whenever a player chooses one or more targets".to_string();
+        }
+        // "Whenever one or more creatures you control become the target of
+        // an activated ability" (Professor Hojo): no player can match, so
+        // only the object group is named.
+        if self.once_per_stack_object
+            && matches!(
+                &self.player_filter,
+                PlayerFilter::Excluding { base, excluded }
+                    if **base == PlayerFilter::Any && **excluded == PlayerFilter::Any
+            )
+        {
+            let object = self.object_filter.description();
+            let object = object
+                .strip_prefix("a ")
+                .or_else(|| object.strip_prefix("an "))
+                .unwrap_or(&object)
+                .to_string();
+            let plural = crate::triggers::combat::pluralize_one_or_more_attack_subject(&object);
+            let tail = if self.source_controller == PlayerFilter::Any {
+                String::new()
+            } else {
+                format!(" {controller}")
+            };
+            return format!(
+                "Whenever one or more {plural} become the target of {}{tail}",
+                self.source_kind_text()
+            );
         }
         if self.once_per_stack_object {
             let object = self.object_filter.description();

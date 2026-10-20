@@ -103,7 +103,19 @@ pub fn parse_for_each_target_players_clause(
     // that its proposed target slice is actually a target phrase before
     // claiming the clause. Otherwise the ordinary action family (for example,
     // discard) must receive the complete `for each` count suffix.
-    let Ok(target) = parse_target_phrase(shape.target_tokens) else {
+    // "Any number of target players may each search their library ..."
+    // (Turtle Tracks): the option word sits between the participant list and
+    // `each`; it belongs to each participant's instruction.
+    let leading_may = shape
+        .target_tokens
+        .last()
+        .is_some_and(|token| token.is_word("may"));
+    let target_tokens = if leading_may {
+        &shape.target_tokens[..shape.target_tokens.len() - 1]
+    } else {
+        shape.target_tokens
+    };
+    let Ok(target) = parse_target_phrase(target_tokens) else {
         return Ok(None);
     };
     // A non-player target slice means the `each` belongs to a later phrase
@@ -122,7 +134,15 @@ pub fn parse_for_each_target_players_clause(
     // Supplying that subject before parsing also lets possessive dynamic
     // values such as "half their library" bind to the iterated player rather
     // than falling back to the spell's controller.
-    let effects = if for_each_shapes::contains_may(shape.effect_tokens) {
+    let effects = if leading_may {
+        let mut with_may = Vec::with_capacity(shape.effect_tokens.len() + 1);
+        with_may.push(OwnedLexToken::word(
+            "may".to_string(),
+            TextSpan::synthetic(),
+        ));
+        with_may.extend_from_slice(shape.effect_tokens);
+        parse_maybe_effects(&with_may, true, true)?
+    } else if for_each_shapes::contains_may(shape.effect_tokens) {
         parse_maybe_effects(shape.effect_tokens, true, true)?
     } else {
         let normalized = prepend_that_player_subject(shape.effect_tokens);

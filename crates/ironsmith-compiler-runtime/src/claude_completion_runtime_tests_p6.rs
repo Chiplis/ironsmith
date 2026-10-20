@@ -534,8 +534,127 @@ fn draw_up_to_with_life_for_each_card_not_drawn() {
         "Type: Instant\nEach player may draw up to two cards. For each card less than two a player draws this way, that player gains 2 life.", false)
         .expect("draw-up-to shortfall should compile");
     let debug = format!("{:?}", definition.spell_effect);
-    assert_eq!(debug.matches("GainLife").count() >= 2 || debug.matches("gain_life").count() >= 2 || debug.matches("Gain").count() >= 2, true, "{debug}");
-    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("ChoosePlayerOptionEffect"), "{debug}");
+    assert!(debug.contains("draw_count_choice: true"), "{debug}");
+    assert!(debug.contains("number: Some(PlayerNumberChoice { min: 0, max: Some(2) })"), "{debug}");
+    assert!(debug.contains("IteratedPlayerChosenNumber"), "{debug}");
+    assert!(debug.contains("action: Some(Drawn)"), "{debug}");
+    assert!(debug.contains("player: Some(IteratedPlayer)"), "{debug}");
+    assert_eq!(debug.matches("DrawCardsEffect").count(), 1, "one draw instruction for each player: {debug}");
+    assert_eq!(debug.matches("GainLifeEffect").count(), 1, "one later life instruction for each player: {debug}");
+}
+
+#[test]
+fn draw_up_to_shortfall_choice_respects_one_draw_per_turn_limit() {
+    use ironsmith::card::CardBuilder;
+    use ironsmith::decisions::context::NumberContext;
+    use ironsmith::ids::{CardId, PlayerId};
+    use ironsmith::types::CardType;
+    use ironsmith::{GameState, Zone};
+
+    struct AttemptTwo { bob_max: u32 }
+    impl ironsmith::decision::DecisionMaker for AttemptTwo {
+        fn decide_number(&mut self, _: &GameState, choice: &NumberContext) -> u32 {
+            assert_eq!(choice.max,
+                if choice.player == PlayerId::from_index(1) { self.bob_max } else { 2 });
+            if choice.player == PlayerId::from_index(1) { 2 } else { 0 }
+        }
+    }
+
+    let definition = compile_to_runtime_definition("Limited draw shortfall",
+        "Type: Sorcery\nEach player may draw up to two cards. For each card less than two a player draws this way, that player gains 2 life.", false)
+        .expect("shortfall procedure should compile");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let filler = CardBuilder::new(CardId::new(), "Filler").card_types(vec![CardType::Land]).build();
+    let restriction = CardBuilder::new(CardId::new(), "One draw per turn")
+        .card_types(vec![CardType::Creature]).build();
+
+    for bob_already_drew in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        for _ in 0..3 { game.create_object_from_card(&filler, bob, Zone::Library); }
+        let source = game.create_object_from_card(&restriction, alice, Zone::Battlefield);
+        game.object_mut(source).unwrap().abilities_mut().push(
+            ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::opponents_cant_draw_extra_cards()
+            )
+        );
+        game.update_cant_effects();
+        assert!(!game.can_draw_extra_cards(bob));
+        if bob_already_drew {
+            let mut ctx = ironsmith::effects::EffectContext::new_default(source, alice);
+            ironsmith::effects::execute_effect(&mut game,
+                &Effect::new(ironsmith::effects::DrawCardsEffect::new(1,
+                    ironsmith::PlayerFilter::Specific(bob))), &mut ctx).unwrap();
+        }
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let mut choices = AttemptTwo { bob_max: if bob_already_drew { 0 } else { 1 } };
+        let mut ctx = ironsmith::effects::EffectContext::new(spell, alice, &mut choices);
+        for effect in definition.spell_effect.as_ref().expect("spell effect").all_effects() {
+            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        drop(ctx);
+        assert_eq!(game.player(bob).unwrap().hand.len(), 1);
+        assert_eq!(game.player(bob).unwrap().life,
+            if bob_already_drew { 24 } else { 22 },
+            "the legal choice is capped before this spell's draw");
+    }
+}
+
+#[test]
+fn draw_up_to_shortfall_uses_each_players_actual_draw_receipt() {
+    use ironsmith::card::CardBuilder;
+    use ironsmith::decisions::context::NumberContext;
+    use ironsmith::ids::{CardId, PlayerId};
+    use ironsmith::types::CardType;
+    use ironsmith::{GameState, Zone};
+
+    struct DrawCounts;
+    impl ironsmith::decision::DecisionMaker for DrawCounts {
+        fn decide_number(&mut self, game: &GameState, choice: &NumberContext) -> u32 {
+            // Both number choices precede every player's draw.
+            assert!(game.player(PlayerId::from_index(0)).unwrap().hand.is_empty());
+            assert!(game.player(PlayerId::from_index(1)).unwrap().hand.is_empty());
+            if choice.player == PlayerId::from_index(0) { 0 } else { 2 }
+        }
+    }
+
+    let definition = compile_to_runtime_definition("Draw shortfall",
+        "Type: Sorcery\nEach player may draw up to two cards. For each card less than two a player draws this way, that player gains 2 life.", false)
+        .expect("shortfall procedure should compile");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let filler = CardBuilder::new(CardId::new(), "Filler").card_types(vec![CardType::Land]).build();
+
+    for replace_bobs_draws in [false, true] {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        for _ in 0..3 {
+            game.create_object_from_card(&filler, alice, Zone::Library);
+            game.create_object_from_card(&filler, bob, Zone::Library);
+        }
+        if replace_bobs_draws {
+            let replacement = CardBuilder::new(CardId::new(), "Draw replacement")
+                .card_types(vec![CardType::Creature]).build();
+            let source = game.create_object_from_card(&replacement, bob, Zone::Battlefield);
+            game.object_mut(source).unwrap().abilities_mut().push(
+                ironsmith::ability::Ability::static_ability(
+                    ironsmith::static_abilities::StaticAbility::draw_replacement_exile_top_face_down()
+                )
+            );
+        }
+        let spell = game.create_object_from_definition(&definition, alice, Zone::Stack);
+        let mut choices = DrawCounts;
+        let mut ctx = ironsmith::effects::EffectContext::new(spell, alice, &mut choices);
+        for effect in definition.spell_effect.as_ref().expect("spell effect").all_effects() {
+            ironsmith::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
+        }
+        drop(ctx);
+        assert_eq!(game.player(alice).unwrap().hand.len(), 0);
+        assert_eq!(game.player(alice).unwrap().life, 24, "choosing zero leaves two-card shortfall");
+        assert_eq!(game.player(bob).unwrap().hand.len(), if replace_bobs_draws { 0 } else { 2 });
+        assert_eq!(game.player(bob).unwrap().life, if replace_bobs_draws { 24 } else { 20 },
+            "only cards actually drawn this way reduce Bob's life gain");
+    }
 }
 
 #[test]

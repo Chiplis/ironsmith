@@ -103,11 +103,16 @@ fn substitute_granting_source_surface(line: String, def: &CardDefinition) -> Str
     .fold(line, |line, surface| line.replace(surface, &def.card.name))
 }
 
+/// Structural renderers use this marker when the modeled effect names its
+/// own source, while only the card-level renderer knows the source's name.
+pub(super) const SOURCE_CARD_NAME_SURFACE: &str = "__compiled_source_card_name__";
+
 fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
         .map(|line| substitute_granting_source_surface(line, def))
+        .map(|line| line.replace(SOURCE_CARD_NAME_SURFACE, &def.card.name))
         .collect()
 }
 
@@ -136,11 +141,101 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(normalize_scored_compiled_line)
         .map(uppercase_standalone_variable_x)
+        .map(attacked_player_back_reference_surface)
+        .map(optional_additional_tapped_mana_surface)
+        .map(quote_granted_cumulative_upkeep_surface)
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
+        .map(|line| restore_lowercased_card_name_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
     let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
     prefix_attraction_visit_surface(def, append_typed_standard_reminder_lines(def, lines))
+}
+
+/// "That creature gains \"Cumulative upkeep {2}.\"" (Dreams of the Dead,
+/// Balduvian Shaman): a granted cumulative upkeep is printed as a quoted
+/// ability, never as a bare keyword after "gains".
+fn quote_granted_cumulative_upkeep_surface(line: String) -> String {
+    const MARKER: &str = " gains cumulative upkeep ";
+    let Some(start) = line.find(MARKER) else {
+        return line;
+    };
+    let rest = &line[start + MARKER.len()..];
+    let end = rest.find('.').unwrap_or(rest.len());
+    let cost = rest[..end].trim();
+    if cost.is_empty() || cost.contains('"') || cost.contains(',') {
+        return line;
+    }
+    let after = rest.get(end + 1..).unwrap_or("");
+    format!(
+        "{} gains \"Cumulative upkeep {cost}.\"{after}",
+        &line[..start]
+    )
+}
+
+/// "Whenever an Island is tapped for mana, its controller may add an
+/// additional {U}. If that Island is snow, its controller may add an
+/// additional {U}{U} instead." (Snowfall): the optional tapped-for-mana
+/// trigger's mana is added on top of the tapped land's own mana, and the
+/// effect's player is the tapped land's controller, so the trigger reads in
+/// the passive voice like the non-optional "adds an additional" family.
+fn optional_additional_tapped_mana_surface(line: String) -> String {
+    const HEAD: &str = "Whenever a player taps ";
+    const ADD: &str = " for mana, its controller may add {";
+    let Some(rest) = line.strip_prefix(HEAD) else {
+        return line;
+    };
+    let Some((object, after)) = rest.split_once(ADD) else {
+        return line;
+    };
+    if object.contains(',') || object.contains(" for ") {
+        return line;
+    }
+    let mut out = format!(
+        "Whenever {object} is tapped for mana, its controller may add an additional {{{after}"
+    );
+    // A follow-up "If it's snow, ... instead" names the tapped object.
+    let noun = object
+        .strip_prefix("an ")
+        .or_else(|| object.strip_prefix("a "))
+        .filter(|noun| !noun.contains(' '));
+    if let Some(noun) = noun {
+        for quality in ["snow", "tapped", "untapped"] {
+            let from = format!(". If it's {quality}, its controller may add {{");
+            let to = format!(". If that {noun} is {quality}, its controller may add an additional {{");
+            out = out.replace(&from, &to);
+        }
+    }
+    out
+}
+
+/// "Whenever a creature attacks one of your opponents, that player loses 1
+/// life." (Calculating Lich): when the trigger itself names the attacked
+/// player, the effect's defending-player reference is that player. Only the
+/// trigger's own sentence is rewritten, and only when the attacked object
+/// must be a player (no "or planeswalker" arm).
+fn attacked_player_back_reference_surface(line: String) -> String {
+    let Some((head, rest)) = line.split_once(", ") else {
+        return line;
+    };
+    if !(head.starts_with("Whenever ") || head.starts_with("When "))
+        || head.contains("defending")
+        || head.contains("planeswalker")
+        || ![" attacks a player", " attacks one of your opponents", " attacks an opponent"]
+            .iter()
+            .any(|marker| head.contains(marker))
+        || !rest.contains("the defending player")
+    {
+        return line;
+    }
+    let (sentence, tail) = match rest.find(". ") {
+        Some(end) => rest.split_at(end),
+        None => (rest, ""),
+    };
+    format!(
+        "{head}, {}{tail}",
+        sentence.replace("the defending player", "that player")
+    )
 }
 
 /// A granted ability's display can carry lowercased source words, so the
@@ -180,6 +275,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .map(normalize_unprocessed_compiled_line)
         .map(|line| normalize_duplicate_optional_subject(&line))
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
+        .map(|line| restore_lowercased_card_name_case(line, &def.card.name))
         .map(restore_cleave_bracket_surface)
         .collect();
     let lines = preserve_as_long_as_its_your_turn_surface(def, lines);
@@ -233,6 +329,47 @@ fn normalize_punctuated_card_name_damage_case(line: String, card_name: &str) -> 
         &format!("{card_name} deals "),
     )
     .replace(&format!("{card_name} Deal "), &format!("{card_name} deal "))
+}
+
+/// A granted ability's display carries lowercased source words, so the card's
+/// own multi-word name inside the quote reads "Hold for ransom's controller".
+/// Restore the printed casing of an occurrence that starts with the name's own
+/// capitalized first letter and differs from it only by case.
+fn restore_lowercased_card_name_case(line: String, card_name: &str) -> String {
+    let name = card_name.split(" // ").next().unwrap_or(card_name);
+    if name.split_whitespace().count() < 2
+        || !name.is_ascii()
+        || !line.is_ascii()
+        || !name.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+    {
+        return line;
+    }
+    let lower_line = line.to_ascii_lowercase();
+    let lower_name = name.to_ascii_lowercase();
+    let mut out = String::with_capacity(line.len());
+    let mut cursor = 0;
+    while let Some(found) = lower_line[cursor..].find(&lower_name) {
+        let start = cursor + found;
+        let end = start + name.len();
+        let occurrence = &line[start..end];
+        let bounded = line[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric())
+            && line[end..]
+                .chars()
+                .next()
+                .is_none_or(|ch| !ch.is_ascii_alphanumeric());
+        out.push_str(&line[cursor..start]);
+        if bounded && occurrence != name && occurrence.as_bytes()[0] == name.as_bytes()[0] {
+            out.push_str(name);
+        } else {
+            out.push_str(occurrence);
+        }
+        cursor = end;
+    }
+    out.push_str(&line[cursor..]);
+    out
 }
 
 fn prefix_attraction_visit_surface(def: &CardDefinition, mut lines: Vec<String>) -> Vec<String> {
@@ -394,7 +531,53 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .flat_map(expand_finalized_ast_surface_line)
         .map(normalize_mass_opponent_controller_surface)
         .collect();
-    compact_threshold_ability_word_lines(compact_station_threshold_lines(lines))
+    compact_threshold_ability_word_lines(compact_station_threshold_lines(
+        collapse_self_other_abilities_grant(lines),
+    ))
+}
+
+/// "It gains this card's other abilities." (Symbiote Spider-Man): a grant
+/// whose quoted ability is exactly the card's only other printed ability.
+fn collapse_self_other_abilities_grant(mut lines: Vec<String>) -> Vec<String> {
+    if lines.len() != 2 {
+        return lines;
+    }
+    for (grant_idx, other_idx) in [(1usize, 0usize), (0, 1)] {
+        let grant = lines[grant_idx].clone();
+        let Some(open) = grant.find(" gains \"") else {
+            continue;
+        };
+        let quote_start = open + " gains \"".len();
+        let Some(close_rel) = grant[quote_start..].find('"') else {
+            continue;
+        };
+        let quoted = grant[quote_start..quote_start + close_rel].trim_end_matches('.');
+        let Some((quoted_head, quoted_tail)) = quoted.split_once("this creature ") else {
+            continue;
+        };
+        let other = lines[other_idx].trim().trim_end_matches('.');
+        if quoted_head.is_empty()
+            || quoted_tail.is_empty()
+            || !other.starts_with(quoted_head)
+            || !other.ends_with(quoted_tail)
+            || other.len() < quoted_head.len() + quoted_tail.len()
+        {
+            continue;
+        }
+        let middle = &other[quoted_head.len()..other.len() - quoted_tail.len()];
+        if middle.trim().is_empty() || middle.contains(", ") || middle.contains(". ") {
+            continue;
+        }
+        let close = quote_start + close_rel + 1;
+        let rest = &grant[close..];
+        let joiner = if rest.is_empty() || rest.starts_with(' ') { "." } else { "" };
+        lines[grant_idx] = format!(
+            "{} gains this card's other abilities{joiner}{rest}",
+            &grant[..open]
+        );
+        break;
+    }
+    lines
 }
 
 fn compact_shared_conditional_pump_and_ability_lines(lines: Vec<String>) -> Vec<String> {
@@ -506,17 +689,48 @@ fn compact_shared_conditional_pump_and_ability(
 
     let conditional_prefix = format!("As long as {condition}, it has ");
     let subject_prefix = format!("{subject} has ");
+    // The attached-grant half names its condition structurally ("As long as
+    // the permanent this source is attached to is a blue permanent,
+    // enchanted creature has \"...\"", Helm of the Ghastlord).
+    let attached_color_prefix = condition
+        .get(subject.len() + " is ".len()..)
+        .filter(|color| {
+            matches!(*color, "white" | "blue" | "black" | "red" | "green")
+        })
+        .map(|color| {
+            format!(
+                "As long as the permanent this source is attached to is a {color} permanent, {} has ",
+                lowercase_first(subject)
+            )
+        });
     let ability = ability
         .strip_prefix(&conditional_prefix)
-        .or_else(|| ability.strip_prefix(&subject_prefix))?
+        .or_else(|| ability.strip_prefix(&subject_prefix))
+        .or_else(|| {
+            attached_color_prefix
+                .as_deref()
+                .and_then(|prefix| ability.strip_prefix(prefix))
+        })?
         .trim();
-    let ability = ability
+    let quoted_ability = ability
         .strip_prefix('"')
-        .and_then(|value| value.strip_suffix('"'))
-        .unwrap_or(ability)
-        .trim_end_matches('.');
+        .and_then(|value| value.strip_suffix('"'));
+    // A quoted triggered or activated ability keeps its quotes; a quoted
+    // keyword reads bare.
+    let keep_quotes = quoted_ability.is_some_and(|inner| {
+        inner.contains(':')
+            || inner.starts_with("When")
+            || inner.starts_with("At ")
+    });
+    let ability = quoted_ability.unwrap_or(ability).trim_end_matches('.');
     if ability.is_empty() {
         return None;
+    }
+    if keep_quotes {
+        return Some(format!(
+            "As long as {condition}, {} gets +1/+1 and has \"{ability}.\"",
+            lowercase_first(subject),
+        ));
     }
 
     Some(format!(
@@ -538,10 +752,47 @@ fn compact_threshold_ability_word_lines(lines: Vec<String>) -> Vec<String> {
             idx += 2;
             continue;
         }
+        if idx + 1 < lines.len()
+            && let Some(compact) =
+                compact_shared_condition_keyword_and_unblockable(&lines[idx], &lines[idx + 1])
+        {
+            compacted.push(compact);
+            idx += 2;
+            continue;
+        }
         compacted.push(lines[idx].clone());
         idx += 1;
     }
     compacted
+}
+
+/// "As long as Ratonhnhaké꞉ton hasn't dealt damage yet, it has hexproof and
+/// can't be blocked.": a keyword grant and an unblockability that share one
+/// source condition are one printed static ability.
+fn compact_shared_condition_keyword_and_unblockable(
+    keyword_line: &str,
+    unblockable_line: &str,
+) -> Option<String> {
+    let keyword_line = keyword_line.trim().trim_end_matches('.');
+    let unblockable_line = unblockable_line.trim().trim_end_matches('.');
+    let (granted, condition) = keyword_line.rsplit_once(" as long as ")?;
+    let (subject, keyword) = granted.split_once(" has ")?;
+    let condition_lower = condition.to_lowercase();
+    let condition_rest = condition_lower.strip_prefix(&subject.to_lowercase())?;
+    let unblockable_condition = unblockable_line
+        .strip_prefix("As long as it")?
+        .strip_suffix(", this creature can't be blocked")?;
+    if condition_rest != unblockable_condition.to_lowercase()
+        || keyword.contains(' ')
+        || keyword.contains(',')
+        || subject.contains(", ")
+        || condition_rest.contains(", ")
+    {
+        return None;
+    }
+    Some(format!(
+        "As long as {condition}, it has {keyword} and can't be blocked."
+    ))
 }
 
 fn compact_threshold_pump_and_cant_block(pump_line: &str, cant_block_line: &str) -> Option<String> {
@@ -575,6 +826,27 @@ fn compact_post_substitution_surface_lines(lines: Vec<String>) -> Vec<String> {
         {
             compacted.push(compact);
             idx += 3;
+            continue;
+        }
+
+        // "As an additional cost to cast this spell, you may sacrifice any
+        // number of creatures. This spell costs {2} less to cast for each
+        // creature sacrificed this way." (Torgaar, Rottenmouth Viper): the
+        // optional any-number sacrifice and the reduction it funds are one
+        // printed paragraph.
+        if idx + 1 < lines.len()
+            && let Some(objects) = lines[idx]
+                .strip_prefix("As an additional cost to cast this spell, sacrifice any number of ")
+            && !objects.trim_end_matches('.').contains(". ")
+            && lines[idx + 1].starts_with("This spell costs ")
+            && lines[idx + 1].contains(" sacrificed this way")
+        {
+            compacted.push(format!(
+                "As an additional cost to cast this spell, you may sacrifice any number of {}. {}",
+                objects.trim_end_matches('.'),
+                lines[idx + 1]
+            ));
+            idx += 2;
             continue;
         }
 
@@ -834,8 +1106,16 @@ fn parse_station_threshold_value(text: &str) -> Option<i32> {
 
 fn is_station_implicit_creature_support(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
-    (lower.contains(" is creature in addition to ")
-        || lower.contains(" is a creature in addition to "))
+    let trimmed = lower.trim().trim_end_matches('.');
+    // The conditional self type-add renders as "this Spacecraft is a
+    // creature" (no "in addition to" tail); it is still the implicit
+    // creature half of the threshold (CR 702.184b), never printed.
+    let bare_self_creature = trimmed.starts_with("this ")
+        && !trimmed.contains(',')
+        && (trimmed.ends_with(" is a creature") || trimmed.ends_with(" is an artifact creature"));
+    bare_self_creature
+        || (lower.contains(" is creature in addition to ")
+            || lower.contains(" is a creature in addition to "))
         || lower.contains(" has base power and toughness ")
 }
 
@@ -916,6 +1196,93 @@ fn restore_recruit_keyword_action(line: String) -> String {
     out
 }
 
+/// A voting ability word heads its whole ability ("Will of the council —
+/// Choose target instant or sorcery spell. Starting with you, ..."), even
+/// when an earlier sentence of the same ability declares the target.
+fn lead_with_embedded_vote_ability_word(line: String) -> String {
+    for label in ["Will of the council — ", "Council's dilemma — "] {
+        if line.starts_with(label) {
+            return line;
+        }
+        let embedded = format!(". {label}");
+        if let Some(position) = line.find(&embedded)
+            && !line[..position].contains(" — ")
+            && !line[..position].contains(':')
+        {
+            let head = &line[..position];
+            let tail = &line[position + embedded.len()..];
+            return format!("{label}{head}. {tail}");
+        }
+    }
+    line
+}
+
+/// "Whenever this creature deals combat damage to a player, copy the next
+/// instant or sorcery spell you cast this turn when you cast it" (Tzaangor
+/// Shaman): a triggered ability whose whole effect is the next-spell copy
+/// watcher reads with the "copy the next ..." surface.
+fn copy_next_spell_triggered_watcher_surface(line: String) -> String {
+    let line = copy_next_loyalty_ability_triggered_watcher_surface(line);
+    const WATCH: &str = ", when you next cast ";
+    const TAIL: &str = " this turn, copy that spell. You may choose new targets for the copy";
+    let Some(position) = line.find(WATCH) else {
+        return line;
+    };
+    let head = &line[..position];
+    let rest = &line[position + WATCH.len()..];
+    let trigger = head.rsplit(" — ").next().unwrap_or(head);
+    if !trigger.starts_with("Whenever ")
+        || trigger.contains(". ")
+        || trigger.contains(", ")
+        || !trigger.contains(" deals combat damage to ")
+    {
+        return line;
+    }
+    let Some(spell) = rest
+        .strip_suffix('.')
+        .unwrap_or(rest)
+        .strip_suffix(TAIL)
+    else {
+        return line;
+    };
+    let spell = spell
+        .strip_prefix("an ")
+        .or_else(|| spell.strip_prefix("a "))
+        .unwrap_or(spell);
+    if !spell.ends_with(" spell") || spell.contains(',') {
+        return line;
+    }
+    let terminal = if line.ends_with('.') { "." } else { "" };
+    format!(
+        "{head}, copy the next {spell} you cast this turn when you cast it. You may choose new targets for the copy{terminal}"
+    )
+}
+
+/// "Whenever this creature deals combat damage to a player or planeswalker,
+/// copy the next loyalty ability you activate this turn when you activate
+/// it" (Jaya's Phoenix): the ability-copy counterpart of the next-spell copy
+/// watcher surface.
+fn copy_next_loyalty_ability_triggered_watcher_surface(line: String) -> String {
+    const WATCH: &str = ", when you next activate a loyalty ability this turn, copy that ability. You may choose new targets for the copy";
+    let Some(position) = line.find(WATCH) else {
+        return line;
+    };
+    let head = &line[..position];
+    let rest = &line[position + WATCH.len()..];
+    let trigger = head.rsplit(" — ").next().unwrap_or(head);
+    if !trigger.starts_with("Whenever ")
+        || trigger.contains(". ")
+        || trigger.contains(", ")
+        || !trigger.contains(" deals combat damage to ")
+        || !(rest.is_empty() || rest == ".")
+    {
+        return line;
+    }
+    format!(
+        "{head}, copy the next loyalty ability you activate this turn when you activate it. You may choose new targets for the copy{rest}"
+    )
+}
+
 fn normalize_scored_compiled_line(line: String) -> String {
     // Effect-list renderers intentionally lowercase clauses when composing
     // them into a larger sentence. At the card-line boundary, restore normal
@@ -927,6 +1294,8 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // final three-sentence surface after the earlier merge passes; fold it
     // to the authored reveal-and-put sentence here.
     let line = normalize_common::normalize_search_outside_game_reveal_surface(&line);
+    let line = lead_with_embedded_vote_ability_word(line);
+    let line = copy_next_spell_triggered_watcher_surface(line);
     let line = elide_repeated_resolution_count_conditions(line);
     let line = restore_recruit_keyword_action(line);
     // A trailing "if" on a targeting instruction ("Destroy target artifact if
@@ -1309,15 +1678,213 @@ fn abbreviate_repeated_resolution_count_conditions(line: String) -> String {
     out
 }
 
+fn fold_choose_any_number_then_each_it(line: String) -> String {
+    const EACH: &str = ". For each of those objects, ";
+    let Some(each_at) = line.find(EACH) else {
+        return line;
+    };
+    let before = &line[..each_at];
+    let (prefix, chosen_sentence) = match before.rfind(". ") {
+        Some(at) => (&before[..at + 2], &before[at + 2..]),
+        None => ("", before),
+    };
+    let Some(selection) = chosen_sentence
+        .strip_prefix("You choose any number of ")
+        .or_else(|| chosen_sentence.strip_prefix("Choose any number of "))
+    else {
+        return line;
+    };
+    if selection.contains(", ") || selection.contains(" target ") || selection.starts_with("target ")
+    {
+        return line;
+    }
+    let after = &line[each_at + EACH.len()..];
+    let sentence_end = after.find(". ").unwrap_or(after.len());
+    let body = after[..sentence_end].trim_end_matches('.');
+    let rest = if sentence_end == after.len() && after.ends_with('.') {
+        "."
+    } else {
+        &after[sentence_end..]
+    };
+    let Some((verb, tail)) = body.split_once(" it") else {
+        return line;
+    };
+    if verb.is_empty()
+        || verb.contains(' ')
+        || !verb.chars().all(|ch| ch.is_ascii_lowercase())
+        || !(tail.is_empty() || tail.starts_with(' '))
+        || tail.contains(" it ")
+        || tail.ends_with(" it")
+        || tail.contains(" its ")
+        || tail.contains(" that ")
+    {
+        return line;
+    }
+    let mut selection = selection.to_string();
+    if prefix.contains(" mill") {
+        selection = selection.replace(" milled this way in a graveyard", " from among them");
+    }
+    format!(
+        "{prefix}{} any number of {selection}{tail}{rest}",
+        capitalize_first(verb)
+    )
+}
+
+/// "If that creature has haste and this creature doesn't, put a haste counter
+/// on it. Do the same for flying, first strike, ... and vigilance."
+/// (Super-Adaptoid): a run of three or more adjacent sentences that differ
+/// only in the keyword they name is one instruction repeated per keyword.
+fn fold_keyword_variant_sentence_run(line: String) -> String {
+    const KEYWORDS: &[&str] = &[
+        "double strike",
+        "first strike",
+        "deathtouch",
+        "defender",
+        "flying",
+        "haste",
+        "hexproof",
+        "indestructible",
+        "lifelink",
+        "menace",
+        "reach",
+        "shroud",
+        "trample",
+        "vigilance",
+    ];
+    fn keyword_of(lower: &str) -> Option<&'static str> {
+        KEYWORDS.iter().copied().find(|keyword| {
+            lower.match_indices(keyword).any(|(at, _)| {
+                let before_ok = lower[..at]
+                    .chars()
+                    .next_back()
+                    .is_none_or(|ch| !ch.is_alphanumeric());
+                let after_ok = lower[at + keyword.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| !ch.is_alphanumeric());
+                before_ok && after_ok
+            })
+        })
+    }
+    fn template(sentence: &str, keyword: &str) -> String {
+        let lower = sentence.trim().trim_end_matches('.').to_ascii_lowercase();
+        let lower = lower.strip_prefix("then ").unwrap_or(&lower).to_string();
+        lower
+            .replace(keyword, "\u{1}")
+            .replace("an \u{1}", "a \u{1}")
+    }
+    let sentences = line.split_inclusive(". ").collect::<Vec<_>>();
+    if sentences.len() < 3 {
+        return line;
+    }
+    let keyed = sentences
+        .iter()
+        .map(|sentence| {
+            let lower = sentence.to_ascii_lowercase();
+            keyword_of(&lower).map(|keyword| (keyword, template(sentence, keyword)))
+        })
+        .collect::<Vec<_>>();
+    let mut out = String::new();
+    let mut changed = false;
+    let mut idx = 0usize;
+    while idx < sentences.len() {
+        let Some((first_keyword, first_template)) = &keyed[idx] else {
+            out.push_str(sentences[idx]);
+            idx += 1;
+            continue;
+        };
+        let mut end = idx + 1;
+        let mut keywords = vec![*first_keyword];
+        while end < sentences.len()
+            && let Some((keyword, template)) = &keyed[end]
+            && template == first_template
+            && !keywords.contains(keyword)
+        {
+            keywords.push(*keyword);
+            end += 1;
+        }
+        if keywords.len() < 3 || !first_template.contains('\u{1}') {
+            out.push_str(sentences[idx]);
+            idx += 1;
+            continue;
+        }
+        let first = sentences[idx].trim_end();
+        let first = first.strip_suffix('.').unwrap_or(first);
+        let rest = &keywords[1..];
+        let list = if rest.len() == 1 {
+            rest[0].to_string()
+        } else {
+            format!(
+                "{}, and {}",
+                rest[..rest.len() - 1].join(", "),
+                rest[rest.len() - 1]
+            )
+        };
+        let last_ends_line = !sentences[end - 1].ends_with(". ");
+        out.push_str(&format!(
+            "{first}. Do the same for {list}.{}",
+            if last_ends_line { "" } else { " " }
+        ));
+        changed = true;
+        idx = end;
+    }
+    if changed { out } else { line }
+}
+
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = abbreviate_repeated_resolution_count_conditions(label_adamant_condition_line(
-        fold_repeated_rounding_into_trailing_sentence(line),
+        fold_repeated_rounding_into_trailing_sentence(fold_keyword_variant_sentence_run(line)),
     ));
     // A merge pass can append a rider after a line that already ends with a
     // sentence-final period, doubling it ("can't be regenerated.. You lose").
     if !line.contains("...") {
         while line.contains("..") {
             line = line.replace("..", ".");
+        }
+    }
+    // An intervening-if trigger whose effect repeats the same condition as a
+    // conditional wrapper prints it twice ("if you control three or more
+    // Wolves or Werewolves, if you control three or more Wolves or
+    // Werewolves, it becomes night", Tovolar). One condition is the rule.
+    let mut search_from = 0;
+    while let Some(found) = line[search_from..].find(", if ") {
+        let clause_start = search_from + found + 2;
+        let Some(clause_len) = line[clause_start..].find(", ") else {
+            break;
+        };
+        let clause = line[clause_start..clause_start + clause_len].to_string();
+        let after = clause_start + clause_len + 2;
+        if line[after..].starts_with(&format!("{clause}, ")) {
+            line.replace_range(after..after + clause.len() + 2, "");
+        } else {
+            search_from = clause_start;
+        }
+    }
+    // "it gets +2/+2 until end of turn and it deals 2 damage to each
+    // opponent" (The Howling Abomination): one subject governs both
+    // predicates, so the second does not restate the pronoun.
+    if let Some(at) = line.find(" until end of turn and it deals ") {
+        let before = &line[..at];
+        let sentence = before.rsplit_once(". ").map_or(before, |(_, tail)| tail);
+        let clause = sentence.rsplit_once(", ").map_or(sentence, |(_, tail)| tail);
+        if clause.starts_with("it gets ") && !clause.contains(" and ") {
+            line = format!(
+                "{before} until end of turn and deals {}",
+                &line[at + " until end of turn and it deals ".len()..]
+            );
+        }
+    }
+    // A subject renderer that adds its own article to a filter whose
+    // description already carries the shared union article ("a Wolf or
+    // Werewolf you control") doubles it ("Whenever an a Wolf ...").
+    for doubled in [" an a ", " a a "] {
+        while let Some(at) = line.find(doubled).filter(|at| {
+            line[at + doubled.len()..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase())
+        }) {
+            line.replace_range(at..at + doubled.len(), " a ");
         }
     }
     // "up to X target creatures, where X is that many" is oracle's inline
@@ -1354,6 +1921,65 @@ fn finalize_ast_surface_line(line: String) -> String {
             fused.push_str(" on it");
             fused.push_str(&line[counter_end + " on the exiled card".len()..]);
             line = fused;
+        }
+    }
+    // "You choose any number of Human Werewolves you control. For each of
+    // those objects, transform it." is oracle's "Transform any number of
+    // Human Werewolves you control" (Tovolar); likewise a put of milled
+    // cards reads "Put any number of land cards from among them onto the
+    // battlefield tapped" (Rampant Frogantua).
+    line = fold_choose_any_number_then_each_it(line);
+    // "Choose a nonland card name and a number greater than 0" (Mindblaze):
+    // the two choices form one instruction.
+    if line.contains(" card name, then choose a number ") {
+        line = line.replacen(" card name, then choose a number ", " card name and a number ", 1);
+    }
+    // After "Target player reveals their hand/library.", later mentions of
+    // the single target player are back-references ("that player").
+    for reveal in [
+        "Target player reveals their hand. ",
+        "Target player reveals their library. ",
+    ] {
+        if let Some(at) = line.find(reveal) {
+            let split = at + reveal.len();
+            let head = line[..split].to_string();
+            let mut tail = line[split..].to_string();
+            if !head.contains("target ") && !tail.contains("another target") {
+                tail = tail
+                    .replace(" to target player", " to that player")
+                    .replace("search target player's ", "search that player's ")
+                    .replace("Search target player's ", "Search that player's ");
+                line = format!("{head}{tail}");
+            }
+        }
+    }
+    // "You may choose a card you own outside the game. Put it on top of its
+    // owner's library." is oracle's "You may put a card you own from outside
+    // the game on top of your library" (The Raven's Warning).
+    if let Some(choose_at) = line.find("choose a card you own outside the game. Put it ") {
+        let head = &line[..choose_at];
+        let tail = &line[choose_at + "choose a card you own outside the game. Put it ".len()..];
+        if (head.is_empty() || head.ends_with("may ") || head.ends_with("— "))
+            && !tail.contains(" it ")
+        {
+            let verb = if head.is_empty() { "Put" } else { "put" };
+            let tail = tail.replacen("its owner's library", "your library", 1);
+            line = format!("{head}{verb} a card you own from outside the game {tail}");
+        }
+    }
+    // "look at that player's hand and you draw a card" (The Raven's
+    // Warning): the imperative look keeps the implicit "you" subject.
+    if let Some(at) = line.find(" and you draw ") {
+        let before = &line[..at];
+        let clause_start = before
+            .rfind(". ")
+            .map(|idx| idx + 2)
+            .into_iter()
+            .chain(before.rfind(", ").map(|idx| idx + 2))
+            .max()
+            .unwrap_or(0);
+        if before[clause_start..].starts_with("look at ") {
+            line = format!("{before} and draw {}", &line[at + " and you draw ".len()..]);
         }
     }
     let lower = line.to_ascii_lowercase();
@@ -1993,11 +2619,154 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
         let merged = merge_conditioned_spell_and_activation_tax_lines(merged);
         let merged = merge_as_enters_color_and_creature_type_choice_lines(merged);
         let merged = merge_cast_permission_any_mana_lines(merged);
+        let merged = merged
+            .into_iter()
+            .map(|line| compact_each_color_target_list(&line).unwrap_or(line))
+            .map(|line| compact_any_number_of_opponents_target(&line).unwrap_or(line))
+            .map(|line| compact_return_target_with_attached_auras(&line).unwrap_or(line))
+            .map(|line| split_friend_or_foe_sentences(&line).unwrap_or(line))
+            .map(|line| {
+                // "An opponent chooses a card at random in your graveyard"
+                // (Search for Survivors): a chosen opponent who only makes
+                // the next choice is that choice's subject.
+                const CHOSEN_OPPONENT_CHOOSES: &str = "Choose an opponent. That player chooses ";
+                if let Some((head, tail)) = line.split_once(CHOSEN_OPPONENT_CHOOSES)
+                    && !tail.contains("that player")
+                    && !tail.contains("That player")
+                    && !tail.contains("the chosen player")
+                    && !tail.contains("the chosen opponent")
+                {
+                    format!("{head}An opponent chooses {tail}")
+                } else {
+                    line
+                }
+            })
+            .map(|line| {
+                // "you may choose a card you own outside the game. Put it
+                // into its owner's hand" is one optional wish: "you may put a
+                // card you own from outside the game into your hand" (Death
+                // Wish, North Wind Avatar).
+                line.replace(
+                    "ou may choose a card you own outside the game. Put it into its owner's hand",
+                    "ou may put a card you own from outside the game into your hand",
+                )
+            })
+            .collect::<Vec<_>>();
         if merged == previous {
             return merged;
         }
         lines = merged;
     }
+}
+
+/// "For each player, choose friend or foe, each friend ..., then each foe
+/// ..." reads as oracle's separate sentences: "For each player, choose
+/// friend or foe. Each friend .... Each foe ...." (Virtus's Maneuver)
+fn split_friend_or_foe_sentences(line: &str) -> Option<String> {
+    const HEAD: &str = "For each player, choose friend or foe, each friend ";
+    // "for each player who chose friend, create <token> under that player's
+    // control" is the friend set creating the token (Zndrsplt's Judgment).
+    const CREATE_HEAD: &str =
+        "For each player, choose friend or foe, for each player who chose friend, create ";
+    if let Some(rest) = line.strip_prefix(CREATE_HEAD)
+        && let Some((token, tail)) = rest.split_once(" under that player's control, then each foe ")
+    {
+        let token = token.replace(" that player controls", " they control");
+        return Some(format!(
+            "For each player, choose friend or foe. Each friend creates {token}. Each foe {tail}"
+        ));
+    }
+    let rest = line.strip_prefix(HEAD)?;
+    let rest = rest.replacen(", then each foe ", ". Each foe ", 1);
+    Some(format!(
+        "For each player, choose friend or foe. Each friend {rest}"
+    ))
+}
+
+/// "Return all Auras attached to target creature to their owners' hands.
+/// Return that creature to its owner's hand." is one bounce of the creature
+/// together with its Auras: "Return target creature and all Auras attached
+/// to it to their owners' hands." (Hubris, Word of Undoing)
+fn compact_return_target_with_attached_auras(line: &str) -> Option<String> {
+    const HEAD: &str = "Return all ";
+    const ATTACHED: &str = " attached to target creature to ";
+    const SECOND: &str = ". Return that creature to its owner's hand";
+    let start = line.find(HEAD)?;
+    if start != 0 && !line[..start].ends_with(". ") {
+        return None;
+    }
+    let after = &line[start + HEAD.len()..];
+    let (auras, rest) = after.split_once(ATTACHED)?;
+    if !auras.ends_with("Auras") && !auras.contains("Auras you own") {
+        return None;
+    }
+    let (destination, tail) = rest.split_once(SECOND)?;
+    if !matches!(destination, "their owners' hands" | "your hand" | "its owner's hand") {
+        return None;
+    }
+    Some(format!(
+        "{}Return target creature and all {auras} attached to it to their owners' hands{tail}",
+        &line[..start]
+    ))
+}
+
+/// "Destroy any number of target nonland permanents an opponent controls
+/// controlled by different players" is one target per chosen opponent:
+/// oracle's "For any number of opponents, destroy target nonland permanent
+/// that player controls" (Windgrace's Judgment).
+fn compact_any_number_of_opponents_target(line: &str) -> Option<String> {
+    const SUFFIX: &str = " an opponent controls controlled by different players";
+    let trimmed = line.trim_end();
+    let (body, period) = match trimmed.strip_suffix('.') {
+        Some(body) => (body, "."),
+        None => (trimmed, ""),
+    };
+    let head = body.strip_suffix(SUFFIX)?;
+    let (verb, objects) = head.split_once(" any number of target ")?;
+    if verb.is_empty() || verb.contains(' ') || verb.contains('.') {
+        return None;
+    }
+    let (rest, last) = match objects.rsplit_once(' ') {
+        Some((rest, last)) => (format!("{rest} "), last),
+        None => (String::new(), objects),
+    };
+    let singular_last = last.strip_suffix('s')?;
+    Some(format!(
+        "For any number of opponents, {} target {rest}{singular_last} that player controls{period}",
+        verb.to_ascii_lowercase()
+    ))
+}
+
+/// "Return up to one target white card, up to one target blue card, ...,
+/// and up to one target green card from your graveyard" is one target per
+/// color: oracle's "For each color, return up to one target card of that
+/// color from your graveyard" (All Suns' Dawn, Rogues' Gallery).
+fn compact_each_color_target_list(line: &str) -> Option<String> {
+    const WHITE: &str = "up to one target white ";
+    let start = line.find(WHITE)?;
+    let after = &line[start + WHITE.len()..];
+    let (noun, rest) = after.split_once(", up to one target blue ")?;
+    let rest = rest
+        .strip_prefix(noun)?
+        .strip_prefix(", up to one target black ")?
+        .strip_prefix(noun)?
+        .strip_prefix(", up to one target red ")?
+        .strip_prefix(noun)?
+        .strip_prefix(", and up to one target green ")?
+        .strip_prefix(noun)?;
+    let prefix = &line[..start];
+    let (sentence_head, verb) = match prefix.rfind(". ") {
+        Some(idx) => (&prefix[..idx + 2], &prefix[idx + 2..]),
+        None => ("", prefix),
+    };
+    let verb = verb.trim();
+    if verb.is_empty() || verb.contains(' ') || noun.contains(',') {
+        return None;
+    }
+    Some(format!(
+        "{sentence_head}For each color, {} up to one target {noun} of that color{rest}",
+        verb.to_ascii_lowercase()
+    ))
 }
 
 fn merge_as_enters_color_and_creature_type_choice_lines(lines: Vec<String>) -> Vec<String> {
@@ -2023,10 +2792,36 @@ fn merge_as_enters_color_and_creature_type_choice_lines(lines: Vec<String>) -> V
                 continue;
             }
         }
-        merged.push(lines[idx].clone());
+        merged.push(join_as_enters_sequential_choices(&lines[idx]));
         idx += 1;
     }
     merged
+}
+
+/// "As this enchantment enters, choose a color and an opponent." (Call to
+/// Arms): two as-enters choices are one coordinated choice; the generic
+/// sequence joiner's ", then choose" never appears in an as-enters line.
+fn join_as_enters_sequential_choices(line: &str) -> String {
+    if !line.starts_with("As ") {
+        return line.to_string();
+    }
+    let Some((head, tail)) = line.split_once(" enters, choose ") else {
+        return line.to_string();
+    };
+    let Some((first, second)) = tail.split_once(", then choose ") else {
+        return line.to_string();
+    };
+    let is_simple_choice = |choice: &str| {
+        let choice = choice.trim_end_matches('.');
+        (choice.starts_with("a ") || choice.starts_with("an "))
+            && !choice.contains(',')
+            && !choice.contains(". ")
+            && choice.split_whitespace().count() <= 3
+    };
+    if !is_simple_choice(first) || !is_simple_choice(second) {
+        return line.to_string();
+    }
+    format!("{head} enters, choose {first} and {second}")
 }
 
 /// Adjacent standalone statics sharing an identical "as long as" condition
@@ -2118,9 +2913,55 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
             .is_some_and(|state| left_cond.eq_ignore_ascii_case(&format!("{subject} is {state}")))
     }
 
+    // "<Subject> has hexproof as long as <Subject> hasn't dealt damage yet." +
+    // "As long as it hasn't dealt damage yet, this creature can't be
+    // blocked." is one authored static: "As long as <Subject> hasn't dealt
+    // damage yet, it has hexproof and can't be blocked."
+    fn merge_leading_pronoun_condition_pair(left: &str, right: &str) -> Option<String> {
+        let (left_head, left_cond, marker) = split_static_condition(left)?;
+        if marker != "as long as" || left_head.contains(" and ") {
+            return None;
+        }
+        let (left_subject, _, _) = split_subject_predicate_clause(left_head)?;
+        let left_predicate = left_head[left_subject.len()..].trim();
+        let cond_rest = left_cond
+            .strip_prefix(left_subject)
+            .and_then(|rest| rest.strip_prefix(' '))?;
+        let right = right.trim().trim_end_matches('.');
+        let right_body = right.strip_prefix("As long as it ")?;
+        let right_tail = right_body.strip_prefix(cond_rest)?.strip_prefix(", ")?;
+        let right_predicate = ["this creature ", "this permanent ", "it "]
+            .iter()
+            .find_map(|prefix| right_tail.strip_prefix(prefix))
+            .or_else(|| {
+                right_tail
+                    .strip_prefix(left_subject)
+                    .and_then(|rest| rest.strip_prefix(' '))
+            })?;
+        if left_predicate.is_empty()
+            || right_predicate.is_empty()
+            || right_predicate.contains(" and ")
+            || right_predicate.contains(", ")
+            || right_predicate.contains(" as long as ")
+        {
+            return None;
+        }
+        Some(format!(
+            "As long as {left_cond}, it {left_predicate} and {right_predicate}."
+        ))
+    }
+
     let mut merged: Vec<String> = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(joined) =
+                merge_leading_pronoun_condition_pair(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(joined);
+            idx += 2;
+            continue;
+        }
         if idx + 1 < lines.len()
             && let (
                 Some((left_head, left_cond, left_marker)),
@@ -2231,6 +3072,23 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+            // "Gorm must be blocked if able, and Gorm must be blocked by two
+            // or more creatures if able": one authored lure-and-menace line.
+            if let Some(subject) = left.strip_suffix(" must be blocked if able")
+                && let Some(rest) = right.strip_prefix(subject)
+                && rest.starts_with(" must be blocked by ")
+                && rest.ends_with(" or more creatures if able")
+                && !subject.contains(',')
+            {
+                merged.push(format!("{left}, and {right}."));
+                idx += 2;
+                continue;
+            }
+            // "This creature enters tapped and doesn't untap during your
+            // untap step" is joined only from its authored source-line group
+            // (ast_render describe_source_line_enters_tapped_untap_restriction_pair);
+            // a line-level merge here also fused cards printing the two rules
+            // on separate lines (Deep-Slumber Titan, Time Vault).
             if left_lower
                 .ends_with("tap each creature that was blocked by one of those creatures this turn")
                 && right_lower == "it doesn't untap during its controller's next untap step"
@@ -2388,11 +3246,15 @@ fn annotate_color_choice_exclusions(mut lines: Vec<String>) -> Vec<String> {
 fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_subject_animation_lines(merge_subject_has_keyword_lines(
-            merge_adjacent_subject_predicate_lines(merge_player_object_subject_union_lines(
-                merge_during_your_turn_subject_union_lines(merge_adjacent_color_cant_block_lines(
-                    merge_adjacent_joined_sentence_lines(previous.clone()),
-                )),
+        let merged = collapse_repeated_conditional_bodies(merge_subject_animation_lines(
+            merge_subject_has_keyword_lines(merge_adjacent_subject_predicate_lines(
+                merge_player_object_subject_union_lines(
+                    merge_during_your_turn_subject_union_lines(
+                        merge_adjacent_color_cant_block_lines(
+                            merge_adjacent_joined_sentence_lines(previous.clone()),
+                        ),
+                    ),
+                ),
             )),
         ));
         if merged == previous {
@@ -2406,6 +3268,13 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
 /// re-join into that sentence. Each entry is (first line, second line,
 /// joined oracle sentence); both lines must appear adjacently and in order.
 const ADJACENT_LINE_JOINS: &[(&str, &str, &str)] = &[
+    // The graveyard self-cast permission plus its graveyard-only cast
+    // restriction (one authored "but not from anywhere else" line).
+    (
+        "You may cast this card from your graveyard.",
+        "You can cast this card only from your graveyard.",
+        "You may cast this card from your graveyard, but not from anywhere else.",
+    ),
     (
         "You may look at the top card of your library any time.",
         "You may look at face-down creatures you don't control any time.",
@@ -2450,6 +3319,11 @@ const ADJACENT_LINE_JOINS: &[(&str, &str, &str)] = &[
         "This gets +2/+2 as long as you control your commander.",
         "As long as you control your commander, other creatures you control get +2/+2 and have trample.",
         "Lieutenant \u{2014} As long as you control your commander, this creature gets +2/+2 and other creatures you control get +2/+2 and have trample.",
+    ),
+    (
+        "You have no maximum hand size.",
+        "You don't lose the game for having 0 or less life.",
+        "You have no maximum hand size and don't lose the game for having 0 or less life.",
     ),
     (
         "You have hexproof.",
@@ -2510,6 +3384,44 @@ fn merge_adjacent_joined_sentence_lines(lines: Vec<String>) -> Vec<String> {
             idx += 2;
             continue;
         }
+        // "{S} can't play lands." + "{S} can't cast {spells}." re-join into
+        // the single authored restriction "{S} can't play lands or cast
+        // {spells}." (Damping Engine)
+        if idx + 1 < lines.len()
+            && let Some(subject) = lines[idx].trim().strip_suffix(" can't play lands.")
+            && let Some(spells) = lines[idx + 1]
+                .trim()
+                .strip_prefix(subject)
+                .and_then(|rest| rest.strip_prefix(" can't cast "))
+                .and_then(|rest| rest.strip_suffix('.'))
+            && !subject.is_empty()
+            && !spells.contains('.')
+        {
+            out.push(format!("{subject} can't play lands or cast {spells}."));
+            idx += 2;
+            continue;
+        }
+        // "If damage would be dealt to this creature, prevent that damage.
+        // When damage is prevented this way, ..." (Phyrexian Vindicator): the
+        // reflexive trigger belongs to the prevention's own line.
+        if idx + 1 < lines.len()
+            && let Some(subject) = lines[idx]
+                .trim()
+                .strip_prefix("Prevent all damage that would be dealt to ")
+                .and_then(|rest| rest.strip_suffix('.'))
+            && subject.starts_with("this ")
+            && subject.matches(' ').count() == 1
+            && lines[idx + 1]
+                .trim()
+                .starts_with("When damage is prevented this way, ")
+        {
+            out.push(format!(
+                "If damage would be dealt to {subject}, prevent that damage. {}",
+                lines[idx + 1].trim()
+            ));
+            idx += 2;
+            continue;
+        }
         out.push(lines[idx].clone());
         idx += 1;
     }
@@ -2555,6 +3467,18 @@ fn normalize_exact_during_your_turn_predicate_surface(line: &str) -> String {
     let without_period = trimmed.trim_end_matches('.');
     if without_period.contains(". ") {
         return line.to_string();
+    }
+    // A conditional permission static ("You may play cards exiled with The
+    // Temporal Anchor as long as it's your turn") leads with its duration as
+    // printed: "During your turn, you may ...".
+    if let Some(permission) = without_period
+        .strip_prefix("You may ")
+        .and_then(|rest| rest.strip_suffix(" as long as it's your turn"))
+        && !permission.contains(" as long as ")
+        && !permission.contains(" during ")
+        && !permission.contains(", ")
+    {
+        return format!("During your turn, you may {permission}.");
     }
     let Some((subject, verb, predicate)) = split_subject_predicate_clause(without_period) else {
         return line.to_string();
@@ -3265,7 +4189,7 @@ mod tests {
             lines,
             vec![
                 "As long as enchanted creature is red, enchanted creature gets +1/+1 and has double strike.".to_string(),
-                "As long as enchanted creature is blue, enchanted creature gets +1/+1 and has whenever this permanent deals damage to an opponent, you draw a card.".to_string(),
+                "As long as enchanted creature is blue, enchanted creature gets +1/+1 and has \"Whenever this permanent deals damage to an opponent, you draw a card.\"".to_string(),
             ]
         );
     }

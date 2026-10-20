@@ -101,3 +101,38 @@ fn singular_or_authored_target_declarations_do_not_use_each_compactor() {
         );
     }
 }
+
+fn reciprocal_control(count: ChoiceCount, duration: ironsmith_core::PlayerControlDuration) -> Vec<Effect> {
+    let mut control = crate::effects::ControlPlayerEffect::new(
+        PlayerFilter::IteratedPlayer, ironsmith_core::PlayerControlStart::NextTurn, duration,
+    );
+    control.controller = Some(PlayerFilter::Excluding {
+        base: Box::new(PlayerFilter::Target(Box::new(PlayerFilter::Any))),
+        excluded: Box::new(PlayerFilter::IteratedPlayer),
+    });
+    vec![
+        Effect::new(crate::effects::TargetOnlyEffect::new(
+            ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any)).with_count(count),
+        )),
+        Effect::new(crate::effects::ForPlayersEffect::new(
+            PlayerFilter::Target(Box::new(PlayerFilter::Any)), vec![Effect::new(control)],
+        )),
+    ]
+}
+
+#[test]
+fn reciprocal_player_control_preserves_both_participant_roles() {
+    let effects = reciprocal_control(ChoiceCount::exactly(2), ironsmith_core::PlayerControlDuration::WholeTurn);
+    assert_eq!(describe_effect_list(&effects),
+        "Choose target player and another target player. The first player controls the second player during the second player's next turn, and the second player controls the first player during the first player's next turn");
+}
+
+#[test]
+fn reciprocal_control_requires_exactly_two_targets_and_whole_turns() {
+    for count in [ChoiceCount::exactly(1), ChoiceCount::exactly(3), ChoiceCount::up_to(2)] {
+        let effects = reciprocal_control(count, ironsmith_core::PlayerControlDuration::WholeTurn);
+        assert!(!describe_effect_list(&effects).contains("The first player controls the second player"));
+    }
+    let effects = reciprocal_control(ChoiceCount::exactly(2), ironsmith_core::PlayerControlDuration::UntilSourceFinishesResolving);
+    assert!(!describe_effect_list(&effects).contains("The first player controls the second player"));
+}

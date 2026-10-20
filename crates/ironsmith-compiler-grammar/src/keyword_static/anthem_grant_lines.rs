@@ -546,6 +546,11 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     }
     let subject_tokens = parsed.subject_tokens;
     let condition = parse_static_condition_clause(parsed.condition_tokens)?;
+    let condition = if tokens.iter().any(|token| token.is_word("unless")) {
+        PredicateAst::Not(Box::new(condition))
+    } else {
+        condition
+    };
 
     let subject = first_spell_each_turn_subject(subject_tokens)
         .map(Ok)
@@ -2334,7 +2339,13 @@ pub fn parse_filtered_blocker_count_restriction_line(
     if matches!(
         *first,
         "this" | "it" | "as" | "if" | "until" | "enchanted" | "equipped" | "during"
-    ) || subject_words.iter().any(|word| matches!(*word, "long" | "turn" | "has" | "have")) {
+    ) || subject_words
+        .iter()
+        .any(|word| matches!(*word, "long" | "turn" | "has" | "have" | "this"))
+    {
+        // "this" anywhere in the subject is the source behind a leading
+        // ability-word/flavor label ("Multi-threat Eliminator — This creature
+        // can't be blocked except by six or more creatures").
         return Ok(None);
     }
     let Some(fact) =
@@ -3750,7 +3761,16 @@ pub fn parse_static_condition_clause(
             tokens[tokens.len() - 1].clone(),
         ];
         rewritten.extend_from_slice(&tokens[1..tokens.len() - 4]);
-        if let Ok(condition) = parse_static_condition_clause(&rewritten) {
+        if let Ok(mut condition) = parse_static_condition_clause(&rewritten) {
+            // The rewrite is only a parsing aid; the condition keeps the
+            // authored "an X you control is attacking" surface.
+            if let PredicateAst::CountComparison {
+                display: shown @ Some(_),
+                ..
+            } = &mut condition
+            {
+                *shown = Some(display.clone());
+            }
             return Ok(condition);
         }
     }

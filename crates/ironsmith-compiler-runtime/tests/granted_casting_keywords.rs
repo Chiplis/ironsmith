@@ -4,6 +4,18 @@
 //! Source-authored, deliberately unrun.
 use ironsmith::static_abilities::StaticAbilityId;
 
+#[test]
+fn owned_nonland_hand_grant_keeps_miracle_price_and_filter() {
+    let definition = ironsmith_compiler_runtime::compile_to_runtime_definition(
+        "Miracle grant",
+        "Mana cost: {6}\nType: Legendary Creature — Human Villain\nPower/Toughness: 6/6\nNonland cards in your hand have miracle {0}.",
+        false,
+    )
+    .unwrap();
+    let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+    assert_eq!(text, "Nonland cards in your hand have miracle {0}.");
+}
+
 #[path = "p02_line_families/compile.rs"]
 mod compile;
 
@@ -67,6 +79,18 @@ fn granted_prowl_and_freerunning_keep_their_casting_conditions() {
                 .find(|debug| debug.contains(method))
                 .unwrap();
             assert!(grant.contains("YouDealtCombatDamageToPlayer"), "{name}: {grant}");
+        }
+    }
+}
+
+#[test]
+fn fixed_miracle_grants_keep_recipient_types_zone_and_price() {
+    for (subject, cost) in [("Each instant and sorcery card in your hand", "{2}"),
+                            ("Each creature card in your hand", "{1}{U}")] {
+        let oracle = format!("{subject} has miracle {cost}.");
+        for definition in compile::compile_both("Fixed miracle probe", &format!("Type: Enchantment\n{oracle}")) {
+            let rendered = ironsmith_text::compiled_text_lines(&definition).join("\n");
+            assert_eq!(rendered, oracle);
         }
     }
 }

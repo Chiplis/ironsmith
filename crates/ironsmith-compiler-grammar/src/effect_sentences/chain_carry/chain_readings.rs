@@ -1332,6 +1332,23 @@ fn read_coordinated_and_segments(
         && and_index > 1
         && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[1..and_index]))
     {
+        // "exile this artifact and each creature without a rope counter on
+        // it, then remove all rope counters from all creatures" (Fraying
+        // Line): the recipient set ends at the comma-then boundary; the
+        // following action is its own effect, never part of the filter.
+        if let Some(comma_index) = tokens[and_index..]
+            .windows(2)
+            .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+            .map(|offset| and_index + offset)
+            && comma_index + 2 < tokens.len()
+        {
+            let mut effects = vec![crate::effect_sentences::zone_handlers::parse_exile(
+                &tokens[1..comma_index],
+                None,
+            )?];
+            effects.extend(parse_effect_chain_inner_lexed(&tokens[comma_index + 2..])?);
+            return Ok(Some(effects));
+        }
         return crate::effect_sentences::zone_handlers::parse_exile(&tokens[1..], None)
             .map(|effect| Some(vec![effect]));
     }
@@ -1453,19 +1470,29 @@ fn read_put_triggering_counter_kind(
     }
     let after = &words[put + 1..];
     const NOUN: usize = 8;
-    if after.len() <= NOUN
-        || !(after[..NOUN] == ["the", "same", "number", "and", "kind", "of", "counters", "on"]
-            || after[..NOUN] == ["the", "same", "kind", "and", "number", "of", "counters", "on"])
+    const EACH_NOUN: usize = 9;
+    let one_of_each = after.len() > EACH_NOUN
+        && after[..EACH_NOUN]
+            == ["one", "of", "each", "of", "those", "kinds", "of", "counters", "on"];
+    let noun = if one_of_each { EACH_NOUN } else { NOUN };
+    if !one_of_each
+        && (after.len() <= NOUN
+            || !(after[..NOUN] == ["the", "same", "number", "and", "kind", "of", "counters", "on"]
+                || after[..NOUN]
+                    == ["the", "same", "kind", "and", "number", "of", "counters", "on"]))
     {
         return Ok(None);
     }
     let token_view = TokenWordView::new(&tokens);
     let starts = token_view.token_start_indices();
-    let Some(&target_start) = starts.get(put + 1 + NOUN) else {
+    let Some(&target_start) = starts.get(put + 1 + noun) else {
         return Ok(None);
     };
     let target = crate::util::parse_target_phrase(&tokens[target_start..])?;
-    Ok(Some(vec![EffectAst::PutTriggeringCounterKind { target }]))
+    Ok(Some(vec![EffectAst::PutTriggeringCounterKind {
+        target,
+        one_of_each,
+    }]))
 }
 
 fn read_die_result_arithmetic(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTextError> {

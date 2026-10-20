@@ -66,6 +66,9 @@ fn parse_move_counted_counters(
     use super::super::grammar::primitives as grammar;
     use winnow::Parser as _;
 
+    let one_or_more =
+        grammar::strip_lexed_prefix_phrase(tokens, &["one", "or", "more", "counters", "from"])
+            .is_some();
     let (count, used) = if grammar::strip_lexed_prefix_phrase(tokens, &["any", "number", "of"]).is_some() {
         (ironsmith_core::effect::CounterMoveAmount::AnyNumber, 3)
     } else if grammar::strip_lexed_prefix_phrase(tokens, &["one", "or", "more", "counters", "from"])
@@ -102,7 +105,11 @@ fn parse_move_counted_counters(
             return Ok(None);
         }
         (
-            ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind,
+            if one_or_more {
+                ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind
+            } else {
+                ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
+            },
             crate::object::CounterType::PlusOnePlusOne,
         )
     } else {
@@ -297,7 +304,7 @@ pub fn parse_draw(
             if let Ok(max) = u32::try_from(maximum) {
                 return Ok(EffectAst::Sequence { effects: vec![
                     EffectAst::subject_verb(SubjectVerbRoleAst::Chooser, player.clone(),
-                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max: Some(max), source_owned: false })),
+                        SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseNumber { min: 0, max: Some(max), source_owned: false, draw_count_choice: true })),
                     subject_verb_player_resource_effect(SubjectVerbRoleAst::AffectedPlayer, player,
                         SubjectVerbActionAst::LifeResources(LifeResourceActionAst::Draw { count: Value::PendingPriorEffectMetric(ironsmith_core::PriorEffectMetricQuery::new(ironsmith_core::EffectMetricSource::Outcome, ironsmith_core::EffectMetric::Count).with_action(ironsmith_core::PriorEffectAction::ChosenNumber)) })),
                 ] });

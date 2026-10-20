@@ -73,7 +73,10 @@ pub enum DelayedEffectAst {
         while_any_tagged_object_in_zone: Option<(TagRef, Zone)>,
     },
     DelayedWhenLastObjectDiesThisTurn {
+        /// Restricts which object is captured when the delayed ability is installed.
         filter: Option<ObjectFilter>,
+        /// Checked against the dying object's last-known battlefield controller.
+        controller_at_death: Option<PlayerFilter>,
         effects: Vec<EffectAst>,
     },
     /// A delayed trigger tied to the object selected or created by the

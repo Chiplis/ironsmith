@@ -2411,6 +2411,15 @@ pub fn resolve_player_filter(
                     "there is no in-game player to the effect controller's left".to_string(),
                 )
             }),
+        PlayerFilter::OpponentToYourLeft => game
+            .closest_in_game_player_to_left_matching(ctx.controller, |candidate| {
+                game.are_opponents(ctx.controller, candidate)
+            })
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "there is no in-game opponent to the effect controller's left".to_string(),
+                )
+            }),
         PlayerFilter::PlayerToYourRight => game
             .closest_in_game_player_to_right_matching(ctx.controller, |_| true)
             .ok_or_else(|| {
@@ -3254,6 +3263,42 @@ pub fn resolve_objects_for_effect(
 }
 
 pub fn resolve_objects_for_effect_with_choice_description(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+    choice_description: Option<String>,
+) -> Result<Vec<ObjectId>, ExecutionError> {
+    let chosen = resolve_objects_for_effect_choice(game, ctx, spec, choice_description)?;
+    // Remember what a non-target bounded choice picked, as it stood when
+    // chosen: an instruction whose outcome names no affected object is still
+    // tagged with exactly these, never with the unchosen pool.
+    if crate::effects::composition::bounded_choice_pool(spec).is_some()
+        && !ctx.decision_maker.awaiting_choice()
+    {
+        let snapshots = chosen
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .map(|object| ObjectSnapshot::from_object(object, game))
+            .collect::<Vec<_>>();
+        ctx.tagged_objects
+            .entry(crate::tag::TagKey::from(
+                crate::effects::composition::BOUNDED_CHOICE_TAG,
+            ))
+            .or_default()
+            .extend(snapshots);
+        // One entry per choice, so a choice of nothing is still on record.
+        let chooser = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        ctx.tagged_players
+            .entry(crate::tag::TagKey::from(
+                crate::effects::composition::BOUNDED_CHOOSERS_TAG,
+            ))
+            .or_default()
+            .push(chooser);
+    }
+    Ok(chosen)
+}
+
+fn resolve_objects_for_effect_choice(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     spec: &ChooseSpec,
@@ -4145,6 +4190,21 @@ pub fn resolve_objects_from_spec(
     spec: &ChooseSpec,
     ctx: &ExecutionContext,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
+    // An explicit target reference inside a cost still names the resolving
+    // spell's target. Untargeted sacrifice/discard choices keep using the
+    // payment frame's own selections and payer-relative filters.
+    if ctx.targets_are_cost_choices && spec.is_target()
+        && let Some(reference) = &ctx.payment_target_reference
+    {
+        let checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        let mut target_ctx = checkpoint.reborrow(&mut decisions);
+        target_ctx.controller = reference.controller;
+        target_ctx.targets = reference.targets.clone();
+        target_ctx.target_assignments = reference.assignments.clone();
+        target_ctx.targets_are_cost_choices = false;
+        return resolve_objects_from_spec(game, spec, &target_ctx);
+    }
     if let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = spec.base()
         && !crate::object_query::require_captured_public_collections(
             game,
@@ -4701,7 +4761,7 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::Specific(id) => Ok(vec![*id]),
-        PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+        PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
             Ok(vec![resolve_player_filter(game, filter, ctx)?])
         }
         PlayerFilter::MostLifeTied => {

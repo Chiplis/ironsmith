@@ -104,6 +104,8 @@ pub enum DamagedBySource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum TriggerTimingRestriction {
     DuringCombat,
+    /// "enters during the declare attackers step" (Portal Mage, CR 508).
+    DuringDeclareAttackersStep,
 }
 
 /// Which kind of defending game object qualifies an attack trigger.
@@ -364,6 +366,12 @@ pub enum TriggerKind {
         /// resolving spell or ability ("deals damage to that creature").
         #[cfg_attr(feature = "serde", serde(default))]
         recipient_is_source_target: bool,
+        /// Only noncombat damage ("deals noncombat damage to").
+        #[cfg_attr(feature = "serde", serde(default))]
+        noncombat_only: bool,
+        /// "damage to a creature equal to that creature's toughness".
+        #[cfg_attr(feature = "serde", serde(default))]
+        amount_equals_target_toughness: bool,
     },
     DealsDamageToPlayer {
         source: ObjectFilter,
@@ -404,6 +412,10 @@ pub enum TriggerKind {
         /// of the controller filter's membership (opponent versus opponents).
         #[cfg_attr(feature = "serde", serde(default))]
         per_source_controller: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        recipient_passive: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        during_your_turn: bool,
     },
     PlayerPlaysLand {
         player: PlayerFilter,
@@ -1557,6 +1569,29 @@ impl Trigger {
                 target,
                 source_surface,
                 recipient_is_source_target: false,
+                noncombat_only: false,
+                amount_equals_target_toughness: false,
+            },
+        )
+    }
+    /// "Whenever <source> deals noncombat damage to <object> equal to that
+    /// object's toughness" (Taii Wakeen).
+    pub fn deals_damage_to_qualified(
+        source: ObjectFilter,
+        target: ObjectFilter,
+        source_surface: DamageSourceSurface,
+        noncombat_only: bool,
+        amount_equals_target_toughness: bool,
+    ) -> Self {
+        Self::typed(
+            "deals_damage_to",
+            TriggerKind::DealsDamageTo {
+                source,
+                target,
+                source_surface,
+                recipient_is_source_target: false,
+                noncombat_only,
+                amount_equals_target_toughness,
             },
         )
     }
@@ -1570,6 +1605,8 @@ impl Trigger {
                 target,
                 source_surface: DamageSourceSurface::Filter,
                 recipient_is_source_target: true,
+                noncombat_only: false,
+                amount_equals_target_toughness: false,
             },
         )
     }
@@ -1694,6 +1731,8 @@ impl Trigger {
                 one_or_more: false,
                 each_damaged_player: false,
                 per_source_controller: false,
+                recipient_passive: false,
+                during_your_turn: false,
             },
         )
     }
@@ -1709,6 +1748,27 @@ impl Trigger {
                 one_or_more: true,
                 each_damaged_player: false,
                 per_source_controller: false,
+                recipient_passive: false,
+                during_your_turn: false,
+            },
+        )
+    }
+    /// A group of players are dealt combat damage during the controller's turn,
+    /// regardless of who controlled the attacking source.
+    pub fn players_are_dealt_combat_damage_one_or_more(
+        player: PlayerFilter,
+        during_your_turn: bool,
+    ) -> Self {
+        Self::typed(
+            "players_are_dealt_combat_damage_one_or_more",
+            TriggerKind::DealsCombatDamageToPlayer {
+                source: ObjectFilter::default(),
+                player,
+                one_or_more: true,
+                each_damaged_player: false,
+                per_source_controller: false,
+                recipient_passive: true,
+                during_your_turn,
             },
         )
     }
@@ -1726,6 +1786,8 @@ impl Trigger {
                 one_or_more: true,
                 each_damaged_player: true,
                 per_source_controller: false,
+                recipient_passive: false,
+                during_your_turn: false,
             },
         )
     }
@@ -1736,6 +1798,7 @@ impl Trigger {
     ) -> Self {
         Self::typed("deals_combat_damage_per_source_controller", TriggerKind::DealsCombatDamageToPlayer {
             source, player, one_or_more: true, each_damaged_player, per_source_controller: true,
+            recipient_passive: false, during_your_turn: false,
         })
     }
     pub fn player_plays_land(player: PlayerFilter, filter: ObjectFilter) -> Self {
@@ -2829,6 +2892,9 @@ pub struct ZoneChangeTrigger {
     pub this_subject_number: TriggerSubjectNumber,
     pub count: CountMode,
     pub cause_filter: Option<CauseFilter>,
+    /// Require a linked exile duration ending for this trigger's captured ability source.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub duration_return_from_source: bool,
     /// Match only a spell changing zones during its own successful resolution.
     #[cfg_attr(feature = "serde", serde(default))]
     pub during_own_resolution: bool,
@@ -2853,12 +2919,18 @@ impl ZoneChangeTrigger {
             this_subject_number: TriggerSubjectNumber::Singular,
             count: CountMode::One,
             cause_filter: None,
+            duration_return_from_source: false,
             during_own_resolution: false,
             during_turn: None,
             timing: None,
             origin_condition: None,
             graveyard_surface: None,
         }
+    }
+
+    pub fn duration_return_from_source(mut self) -> Self {
+        self.duration_return_from_source = true;
+        self
     }
 
     pub fn during_own_resolution(mut self) -> Self {
@@ -2941,6 +3013,11 @@ impl ZoneChangeTrigger {
 
     pub fn during_combat(mut self) -> Self {
         self.timing = Some(TriggerTimingRestriction::DuringCombat);
+        self
+    }
+
+    pub fn during_declare_attackers_step(mut self) -> Self {
+        self.timing = Some(TriggerTimingRestriction::DuringDeclareAttackersStep);
         self
     }
 

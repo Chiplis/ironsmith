@@ -4946,3 +4946,25 @@ pub(super) fn triggering_object_controller_target_choice_keeps_typed_chooser_and
 
     Ok(())
 }
+
+#[test]
+pub(super) fn craft_linked_each_activated_ability_is_a_limited_static_copy() {
+    let text = "This artifact has each activated ability of the exiled cards used to craft it. You may activate each of those abilities only once each turn.";
+    let tokens = lex_line(text, 0).expect("craft-linked ability line should lex");
+    let parsed = super::super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("craft-linked ability line should parse")
+        .expect("craft-linked ability line should produce a static ability");
+    let debug = format!("{parsed:#?}");
+    assert!(debug.contains("CopyActivatedAbilities"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("force_once_each_turn: true"), "{debug}");
+    assert!(matches!(parsed.as_slice(), [crate::cards::builders::StaticAbilityAst::Static(_)]),
+        "a source ability is direct, rather than a filtered grant: {debug}");
+    let front = "This artifact has all activated abilities of the exiled cards used to craft it.";
+    let parsed = super::super::keyword_static::parse_static_ability_ast_line_lexed(
+        &lex_line(front, 0).expect("generic craft-linked line should lex"),
+    )
+    .expect("generic craft-linked line should parse")
+    .expect("generic craft-linked line should be static");
+    assert!(format!("{parsed:#?}").contains("CopyActivatedAbilities"));
+}

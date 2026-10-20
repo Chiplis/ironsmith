@@ -2520,6 +2520,59 @@ pub(super) fn describe_effect_list_compacts_different_name_search_attachment_ref
 }
 
 #[test]
+pub(super) fn direct_different_name_search_names_every_controlled_aura() {
+    let reference_tag = TagKey::from("controlled_auras");
+    let searched_tag = TagKey::from("searched_aura");
+    let reference = crate::effects::TagMatchingObjectsEffect::new(
+        ObjectFilter::default()
+            .with_subtype(Subtype::Aura)
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Battlefield),
+        reference_tag.clone(),
+    )
+    .in_zone(Zone::Battlefield);
+    let mut search_filter = ObjectFilter::default()
+        .with_subtype(Subtype::Aura)
+        .in_zone(Zone::Library);
+    search_filter.set_explicit_card_noun(true);
+    search_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: reference_tag,
+        relation: TaggedOpbjectRelation::DifferentNameFromTagged,
+    });
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zone(Zone::Library)
+    .as_search();
+    let move_and_attach = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(searched_tag.clone()),
+                Zone::Battlefield,
+                false,
+            )),
+            Effect::new(crate::effects::AttachObjectsEffect::new(
+                ChooseSpec::All(ObjectFilter::tagged(searched_tag)),
+                ChooseSpec::Source,
+            )),
+        ],
+    );
+    assert_eq!(
+        describe_effect_list(&[
+            Effect::new(reference),
+            Effect::new(choose),
+            Effect::new(move_and_attach),
+            Effect::new(crate::effects::ShuffleLibraryEffect::new(PlayerFilter::You)),
+        ]),
+        "Search your library for an Aura card with a different name than each Aura you control, put it onto the battlefield attached to this source, then shuffle"
+    );
+}
+
+#[test]
 pub(super) fn plural_token_gain_sentence_keeps_its_number_and_verb() {
     let pluralized = pluralize_token_phrase("1/1 red Elemental creature token. It gains haste");
     assert_eq!(

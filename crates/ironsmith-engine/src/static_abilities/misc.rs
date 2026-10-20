@@ -2727,7 +2727,22 @@ impl StaticAbilityKind for EntersWithCounterChoice {
         let choices = match counter_choices.as_slice() {
             [] => "a counter".to_string(),
             [single] => single.clone(),
-            [head @ .., last] => format!("{} or {last}", head.join(", ")),
+            [first, second] => format!("{first} or {second}"),
+            // "your choice of a +1/+1, first strike, or vigilance counter"
+            // (Denry Klin): three or more kinds share one article and noun.
+            _ => {
+                let names = self
+                    .counter_types
+                    .iter()
+                    .map(|counter_type| counter_type.description().to_string())
+                    .collect::<Vec<_>>();
+                let (last, head) = names.split_last().expect("three or more kinds");
+                let article = match names[0].chars().next().map(|ch| ch.to_ascii_lowercase()) {
+                    Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                    _ => "a",
+                };
+                format!("{article} {}, or {last} counter", head.join(", "))
+            }
         };
         let count_prefix = match &self.count {
             Value::Fixed(1) => String::new(),
@@ -5571,11 +5586,21 @@ impl StaticAbilityKind for LegendRuleDoesntApplyToController {
 
     fn display(&self) -> String {
         let noun = if self.filter.token {
-            "tokens"
+            if self.filter.card_types == [crate::types::CardType::Creature] {
+                "creature tokens".to_string()
+            } else {
+                "tokens".to_string()
+            }
+        } else if let ([], [subtype]) = (
+            self.filter.card_types.as_slice(),
+            self.filter.subtypes.as_slice(),
+        ) {
+            // "doesn't apply to Spiders you control" (Spider-Verse).
+            format!("{subtype}s")
         } else if self.filter.card_types == [crate::types::CardType::Creature] {
-            "creatures"
+            "creatures".to_string()
         } else {
-            "permanents"
+            "permanents".to_string()
         };
         format!("The \"legend rule\" doesn't apply to {noun} you control")
     }

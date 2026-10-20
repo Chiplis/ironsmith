@@ -35,12 +35,17 @@ fn last_on_index(tokens: &[OwnedLexToken]) -> Option<usize> {
 }
 
 fn classify_sticker_action(tokens: &[OwnedLexToken]) -> KeywordActionKind {
-    if marker_anywhere(tokens, || primitives::phrase(&["name", "sticker"]).void()) {
+    // Plural counts ("up to two name stickers") name the same sticker kind.
+    if marker_anywhere(tokens, || {
+        primitives::any_phrase(&[&["name", "sticker"], &["name", "stickers"]]).void()
+    }) {
         KeywordActionKind::NameSticker
-    } else if marker_anywhere(tokens, || primitives::phrase(&["art", "sticker"]).void()) {
+    } else if marker_anywhere(tokens, || {
+        primitives::any_phrase(&[&["art", "sticker"], &["art", "stickers"]]).void()
+    }) {
         KeywordActionKind::ArtSticker
     } else if marker_anywhere(tokens, || {
-        primitives::phrase(&["ability", "sticker"]).void()
+        primitives::any_phrase(&[&["ability", "sticker"], &["ability", "stickers"]]).void()
     }) {
         KeywordActionKind::AbilitySticker
     } else if marker_anywhere(tokens, || {

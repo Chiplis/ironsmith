@@ -9,11 +9,14 @@ mod anaphoric_opponent_actor_surfaces;
 mod any_number_cast_surfaces;
 mod attached_bundle_surfaces;
 mod attached_conditional_otherwise_surfaces;
+mod attached_exile_sequence;
 mod attached_must_block_registry_surfaces;
+mod balance_equalization;
 mod basic_land_type_surfaces;
 mod bounded_x_payment_surfaces;
 mod branch_scoped_collection_unions;
 mod chosen_card_type_phase_out;
+mod cast_exile_riders;
 mod chosen_type_consult_remainder;
 mod coin_flip_target_backrefs;
 mod comma_then_surfaces;
@@ -38,11 +41,13 @@ mod created_token_copy_retarget;
 mod day_black_sun_surfaces;
 mod delayed_destroy_surfaces;
 mod delegated_search_partition_surfaces;
+mod searched_pair_partition_surfaces;
 mod destroy_consult_collection;
 mod destroy_unless_dynamic_life_surfaces;
 mod distinct_player_choices;
 mod draw_step_search_player_surfaces;
 mod draw_then_discard_unless_surfaces;
+mod draw_shortfall_surfaces;
 mod duration_scoped_delayed_triggers;
 mod dynamic_token_count_surfaces;
 mod each_any_number_counter_surfaces;
@@ -57,6 +62,7 @@ mod gain_life_x_plus_surfaces;
 mod goad_surfaces;
 mod graveyard_exception_same_name_exile_surfaces;
 mod hand_choice_shuffle_surfaces;
+mod hand_choice_complement_surfaces;
 mod historical_block_reanimation;
 mod historical_combat_relation;
 mod historical_damage_recipients;
@@ -67,6 +73,7 @@ mod land_animation_surfaces;
 mod linked_counter_unless_surfaces;
 mod looked_cloak_partition;
 mod looked_exile_cast_surfaces;
+mod look_reveal_same_tag;
 mod lowest_life_tie_surfaces;
 mod mana_spent_surfaces;
 mod may_pay_sacrifice_surfaces;
@@ -342,3 +349,15 @@ mod cohort_prevention_and_historical_counts;
 mod cohort_corpus_filter_regressions;
 
 mod zone_bound_self_exile_cost;
+
+mod dynamic_draw_count_surface;
+
+mod counted_attractions;
+
+mod up_to_draw_receipt;
+
+mod additive_commander_draw;
+
+mod counted_restriction;
+
+mod manifest_pile_universal;

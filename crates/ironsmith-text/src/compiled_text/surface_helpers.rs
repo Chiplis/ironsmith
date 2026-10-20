@@ -72,11 +72,22 @@ pub(super) fn normalize_debug_safe_legacy_surface(line: &str) -> String {
 pub(super) fn capitalize_sentence_boundaries(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut capitalize_next = false;
+    // A quoted granted ability ends with its own period; a following
+    // lowercase "and ..." continues the outer sentence
+    // ("gains \"Whenever ... on it.\" and it can't be blocked this turn").
+    let mut closed_quote_after_period = false;
 
-    for ch in input.chars() {
+    for (index, ch) in input.char_indices() {
         if capitalize_next && ch.is_ascii_lowercase() {
+            if closed_quote_after_period && input[index..].starts_with("and ") {
+                output.push(ch);
+                capitalize_next = false;
+                closed_quote_after_period = false;
+                continue;
+            }
             output.push(ch.to_ascii_uppercase());
             capitalize_next = false;
+            closed_quote_after_period = false;
             continue;
         }
 
@@ -84,8 +95,12 @@ pub(super) fn capitalize_sentence_boundaries(input: &str) -> String {
 
         if matches!(ch, '.' | '!' | '?') {
             capitalize_next = true;
+            closed_quote_after_period = false;
+        } else if capitalize_next && ch == '"' {
+            closed_quote_after_period = true;
         } else if capitalize_next && !ch.is_whitespace() && ch != '"' && ch != '\'' {
             capitalize_next = false;
+            closed_quote_after_period = false;
         }
     }
 

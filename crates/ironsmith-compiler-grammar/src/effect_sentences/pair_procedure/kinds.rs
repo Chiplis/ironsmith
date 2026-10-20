@@ -653,6 +653,18 @@ pub(super) fn open_target_opponent_copy_retarget(
     Ok(None)
 }
 
+pub(super) fn open_any_player_sacrifice_or_source_damage(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Pair>, CardTextError> {
+    let (Some(sentence), Some(next)) = (sentences.get(sentence_idx), sentences.get(sentence_idx + 1))
+    else {
+        return Ok(None);
+    };
+    Ok(any_player_sacrifice_or_source_damage_destroy_source(sentence, next)?
+        .map(Pair::AnyPlayerSacrificeOrSourceDamage))
+}
+
 pub(super) fn open_opponents_sacrifice_or_discard_damage(
     sentences: &[SentenceInput],
     sentence_idx: usize,

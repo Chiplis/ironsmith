@@ -188,7 +188,12 @@ fn explosion_of_riches_creates_one_reflexive_trigger_per_card_drawn() {
 #[test]
 fn extrapolate_the_impossible_moves_the_opponents_pick_of_two_outside_game_cards() {
     use ironsmith::effects::{EffectContext, execute_effect};
-    struct Answers { opponent_picks: Vec<PlayerId>, alice: PlayerId }
+    struct Answers {
+        opponent_picks: Vec<PlayerId>,
+        revealed_pool: Vec<ironsmith::ObjectId>,
+        opponent_options: Vec<ironsmith::ObjectId>,
+        alice: PlayerId,
+    }
     impl ironsmith::decision::DecisionMaker for Answers {
         fn decide_boolean(&mut self, _: &ironsmith::GameState, _: &ironsmith::decisions::context::BooleanContext) -> bool {
             true
@@ -196,9 +201,12 @@ fn extrapolate_the_impossible_moves_the_opponents_pick_of_two_outside_game_cards
         fn decide_objects(&mut self, _: &ironsmith::GameState, context: &ironsmith::decisions::context::SelectObjectsContext) -> Vec<ironsmith::ObjectId> {
             let legal: Vec<_> = context.candidates.iter().filter(|candidate| candidate.legal).map(|candidate| candidate.id).collect();
             if context.player == self.alice {
-                legal.into_iter().take(context.min.max(2)).collect()
+                let chosen = legal.into_iter().take(context.min.max(2)).collect::<Vec<_>>();
+                self.revealed_pool = chosen.clone();
+                chosen
             } else {
                 self.opponent_picks.push(context.player);
+                self.opponent_options = legal.clone();
                 legal.into_iter().rev().take(1).collect()
             }
         }
@@ -213,18 +221,32 @@ fn extrapolate_the_impossible_moves_the_opponents_pick_of_two_outside_game_cards
     let card = |name: &str| CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Instant]).build();
     let first = game.create_object_from_card(&card("Wish A"), alice, Zone::OutsideGame);
     let second = game.create_object_from_card(&card("Wish B"), alice, Zone::OutsideGame);
+    let third = game.create_object_from_card(&card("Wish C"), alice, Zone::OutsideGame);
     let source = game.create_object_from_definition(&definition, alice, Zone::Stack);
-    let mut dm = Answers { opponent_picks: Vec::new(), alice };
+    let mut dm = Answers {
+        opponent_picks: Vec::new(),
+        revealed_pool: Vec::new(),
+        opponent_options: Vec::new(),
+        alice,
+    };
     let mut ctx = EffectContext::new(source, alice, &mut dm);
     for effect in definition.spell_effect.as_ref().unwrap().all_effects() {
         execute_effect(&mut game, effect, &mut ctx).unwrap();
     }
     drop(ctx);
     assert_eq!(dm.opponent_picks, vec![bob], "the opponent chooses one of them");
+    assert_eq!(dm.revealed_pool.len(), 2, "exactly two cards are revealed");
+    let mut revealed = dm.revealed_pool.clone();
+    let mut offered = dm.opponent_options.clone();
+    revealed.sort_unstable();
+    offered.sort_unstable();
+    assert_eq!(offered, revealed, "the opponent may choose only from the revealed pool");
+    assert!(!offered.contains(&third), "an unchosen outside-game card is not an option");
     let hand = &game.player(alice).unwrap().hand;
     assert_eq!(hand.len(), 1, "only the chosen card is put into your hand");
     let in_hand = hand.iter().next().copied().unwrap();
     let name = game.object(in_hand).unwrap().name.to_string();
     assert!(name == "Wish A" || name == "Wish B", "{name}");
+    assert!(game.object(third).is_some_and(|card| card.zone == Zone::OutsideGame));
     let _ = (first, second);
 }

@@ -470,6 +470,57 @@ fn normalize_fixed_pt_animation_shorthand_once(text: &str) -> Option<String> {
     Some(normalized)
 }
 
+/// "the base power and toughness of each creature ... become 0/2" (Brine Hag)
+/// states the same setting as "each creature ... has base power and
+/// toughness 0/2".
+fn normalize_change_base_characteristic_wording(text: &str) -> String {
+    let mut out = text.to_string();
+    // "the base power and toughness of each creature ... become 0/2" (Brine
+    // Hag) sets the same characteristics as "each creature ... has base power
+    // and toughness 0/2".
+    for opener in ["the base power and toughness of ", "The base power and toughness of "] {
+        let Some(start) = out.find(opener) else {
+            continue;
+        };
+        // The causative "you may have the base power ... become" keeps its
+        // own reading.
+        if out[..start].ends_with("have ") {
+            continue;
+        }
+        let after = start + opener.len();
+        let rest = &out[after..];
+        let sentence_end = rest.find(['.', ';']).unwrap_or(rest.len());
+        let Some(verb_at) = rest[..sentence_end].find(" become ") else {
+            continue;
+        };
+        let subject = rest[..verb_at].trim();
+        let value_start = verb_at + " become ".len();
+        let value_end = rest[value_start..sentence_end]
+            .find(char::is_whitespace)
+            .map_or(sentence_end, |idx| value_start + idx);
+        let pt = &rest[value_start..value_end];
+        if subject.is_empty() || !is_power_toughness_shorthand_token(pt) {
+            continue;
+        }
+        let singular = ["each ", "target ", "this ", "that ", "it", "another "]
+            .iter()
+            .any(|lead| subject.starts_with(lead));
+        let verb = if singular { "has" } else { "have" };
+        let subject = if opener.starts_with('T') {
+            let mut chars = subject.chars();
+            chars
+                .next()
+                .map(|first| format!("{}{}", first.to_ascii_uppercase(), chars.as_str()))
+                .unwrap_or_default()
+        } else {
+            subject.to_string()
+        };
+        let rebuilt = format!("{subject} {verb} base power and toughness {pt}");
+        out.replace_range(start..after + value_end, &rebuilt);
+    }
+    out
+}
+
 fn normalize_fixed_pt_animation_shorthand(text: &str) -> String {
     let mut normalized = text.to_string();
     while let Some(next) = normalize_fixed_pt_animation_shorthand_once(&normalized) {
@@ -514,6 +565,13 @@ fn normalize_clause_line(text: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+        // Only lands are basic: "a permanent other than a basic land" names
+        // exactly the nonbasic permanents (Eye of Singularity).
+        .replace("a permanent other than a basic land", "a nonbasic permanent")
+        .replace("other permanents with the same name as it", "other permanents with that name")
+        // Only opponents can be attacked (CR 506.2 / 802.1), so the two
+        // counts are the same number.
+        .replace("number of opponents being attacked", "number of players being attacked")
         .replace(
             "artifact or creature or land",
             "artifact, creature, or land",
@@ -552,6 +610,16 @@ fn normalize_clause_line(text: &str) -> String {
         .replace("The creature that attacked gains", "It gains")
         .replace("that creature's power is", "its power is")
         .replace("That creature's power is", "Its power is")
+        // A named character's personal pronoun ("When Madame Masque enters,
+        // she connives") is the same self-reference as the neuter "it".
+        .replace(", she ", ", it ")
+        .replace(", he ", ", it ")
+        // Kicking a spell happens only as it is cast (CR 702.33).
+        .replace(" player kicks a spell", " player casts a kicked spell")
+        // An upkeep step only begins a turn (CR 502), so "the next upkeep"
+        // and "the next turn's upkeep" name the same step.
+        .replace("the next turn's upkeep", "the next upkeep")
+        .replace(" two times X ", " twice X ")
         // A completed sentence already establishes sequencing. Treat an
         // additional leading "then" on the following conditional as surface
         // punctuation, not a distinct semantic operation.
@@ -563,6 +631,11 @@ fn normalize_clause_line(text: &str) -> String {
         .replace(". put the rest on ", " and the rest on ")
         .replace(". Put the rest into ", " and the rest into ")
         .replace(". put the rest into ", " and the rest into ")
+        // "chooses N ... and sacrifices the rest" and "..., then sacrifices
+        // the rest" are both Oracle templates for the same keep-then-sacrifice
+        // choice (Limited Resources vs Razia's Purification).
+        .replace(", then sacrifices the rest", " and sacrifices the rest")
+        .replace(", then sacrifice the rest", " and sacrifice the rest")
         // Result predicates use both present and past passive forms in Oracle
         // text; both ask whether the preceding action affected the object.
         .replace(" is destroyed this way", " was destroyed this way")
@@ -591,13 +664,224 @@ fn normalize_clause_line(text: &str) -> String {
         .replace(
             "One or more creature died this turn",
             "A creature died this turn",
+        )
+        // Players attack only with creatures: "player who attacked this
+        // turn" and "player who attacked with a creature this turn" select
+        // the same players.
+        .replace(
+            "who attacked with a creature this turn",
+            "who attacked this turn",
+        )
+        // Relative and participial plural attack relations are the same set.
+        .replace(
+            "creatures that are attacking you",
+            "creatures attacking you",
+        )
+        // Active and passive phrasings of the same chosen-source shield.
+        .replace(
+            "damage a source of your choice would deal to you this turn",
+            "damage that would be dealt to you this turn by a source of your choice",
+        )
+        // "target opponent previously dealt damage by it" and "... it has
+        // dealt damage to this game" name the same game-long history.
+        .replace(
+            " previously dealt damage by it",
+            " it has dealt damage to this game",
         );
+    let normalized = normalize_up_to_that_much_where_x(&normalized);
+    let normalized = normalize_change_base_characteristic_wording(&normalized);
+    let normalized = normalize_predefined_token_instead_backref(&normalized);
     let normalized = normalize_fixed_pt_animation_shorthand(&normalized);
     let normalized = normalize_leading_until_end_of_turn_animation(&normalized);
+    let normalized = normalize_token_pt_followup_sentence(&normalized);
+    let normalized = normalize_fewer_than_an_opponent(&normalized);
+    let normalized = normalize_trailing_x_cap_sentence(&normalized);
     let normalized = normalized
         .replace(" each become ", " become ")
         .replace(" each becomes ", " become ");
     normalize_end_turn_creature_buff_split(&normalized)
+}
+
+/// "you may pay {X}. If you do, draw X cards. X can't be greater than the
+/// amount of life you gained this turn." states the same bounded payment as
+/// "you may pay {X}, where X is less than or equal to the amount of life you
+/// gained this turn. If you do, draw X cards."
+fn normalize_trailing_x_cap_sentence(text: &str) -> String {
+    const PAY: &str = "pay {X}. If you do, ";
+    const CAP: &str = ". X can't be greater than ";
+    let (Some(pay_idx), Some(cap_idx)) = (text.find(PAY), text.find(CAP)) else {
+        return text.to_string();
+    };
+    if cap_idx < pay_idx {
+        return text.to_string();
+    }
+    let body = &text[pay_idx + PAY.len()..cap_idx];
+    let after_cap = &text[cap_idx + CAP.len()..];
+    let cap_end = after_cap.find(". ").unwrap_or(after_cap.len());
+    let bound = after_cap[..cap_end].trim_end_matches('.');
+    if body.contains(". ") || bound.is_empty() {
+        return text.to_string();
+    }
+    let rest = if cap_end == after_cap.len() && after_cap.ends_with('.') {
+        "."
+    } else {
+        &after_cap[cap_end..]
+    };
+    format!(
+        "{}pay {{X}}, where X is less than or equal to {bound}. If you do, {body}{rest}",
+        &text[..pay_idx],
+    )
+}
+
+/// "you have less life than an opponent" / "you control fewer creatures than
+/// an opponent" state the same comparison as "an opponent has more life than
+/// you" / "an opponent controls more creatures than you".
+fn normalize_fewer_than_an_opponent(text: &str) -> String {
+    let mut out = text
+        .replace(
+            "you have less life than an opponent",
+            "an opponent has more life than you",
+        )
+        .replace(
+            "You have less life than an opponent",
+            "An opponent has more life than you",
+        );
+    for (prefix, replacement_prefix) in [
+        ("you control fewer ", "an opponent controls more "),
+        ("You control fewer ", "An opponent controls more "),
+    ] {
+        let Some(start) = out.find(prefix) else {
+            continue;
+        };
+        let rest = &out[start + prefix.len()..];
+        let Some(than) = rest.find(" than an opponent") else {
+            continue;
+        };
+        let noun = &rest[..than];
+        if noun.is_empty() || noun.contains(['.', ',']) {
+            continue;
+        }
+        let tail = &rest[than + " than an opponent".len()..];
+        let tail = tail.strip_prefix(" does").unwrap_or(tail);
+        out = format!(
+            "{}{replacement_prefix}{noun} than you{tail}",
+            &out[..start]
+        );
+    }
+    out
+}
+
+/// "Create a black Vampire creature token. Its power is equal to that
+/// creature's power and its toughness is equal to that creature's toughness."
+/// states the same token as "Create a black Vampire creature token with power
+/// equal to that creature's power and toughness equal to that creature's
+/// toughness": fold the follow-up characteristic sentence into the token.
+fn normalize_token_pt_followup_sentence(text: &str) -> String {
+    const POWER: &str = ". Its power is equal to ";
+    const TOUGHNESS: &str = " and its toughness is equal to ";
+    let Some(power_idx) = text.find(POWER) else {
+        return text.to_string();
+    };
+    // The folded sentence must be the token creation itself.
+    let sentence_start = text[..power_idx].rfind(". ").map_or(0, |idx| idx + 2);
+    if !text[sentence_start..power_idx].contains(" token") {
+        return text.to_string();
+    }
+    let after_power = &text[power_idx + POWER.len()..];
+    let Some(toughness_idx) = after_power.find(TOUGHNESS) else {
+        return text.to_string();
+    };
+    let power_ref = &after_power[..toughness_idx];
+    let after_toughness = &after_power[toughness_idx + TOUGHNESS.len()..];
+    let toughness_end = after_toughness.find('.').unwrap_or(after_toughness.len());
+    let toughness_ref = &after_toughness[..toughness_end];
+    if !power_ref.ends_with(" power")
+        || !toughness_ref.ends_with(" toughness")
+        || power_ref.contains(". ")
+    {
+        return text.to_string();
+    }
+    format!(
+        "{} with power equal to {power_ref} and toughness equal to {toughness_ref}{}",
+        &text[..power_idx],
+        &after_toughness[toughness_end..]
+    )
+}
+
+/// "create a Treasure token. ... create three of those tokens instead" and
+/// "... create three Treasure tokens instead" (Safana, Witch's Oven) name the
+/// same replacement count of the predefined token: a "<count> <Name> tokens
+/// instead" replacement is the back-reference "<count> of those tokens
+/// instead".
+fn normalize_predefined_token_instead_backref(text: &str) -> String {
+    const NAMES: [&str; 7] = [
+        "Treasure",
+        "Clue",
+        "Food",
+        "Blood",
+        "Gold",
+        "Powerstone",
+        "Junk",
+    ];
+    const COUNTS: [&str; 5] = ["two", "three", "four", "five", "X"];
+    let mut normalized = text.to_string();
+    for name in NAMES {
+        for count in COUNTS {
+            let named = format!("create {count} {name} tokens instead");
+            if normalized.contains(&named) {
+                normalized =
+                    normalized.replace(&named, &format!("create {count} of those tokens instead"));
+            }
+            // Fronted "instead" ("If it's an art sticker, instead create two
+            // Treasure tokens", Goblin Airbrusher) is the same replacement.
+            let fronted = format!("instead create {count} {name} tokens");
+            if normalized.contains(&fronted) {
+                normalized =
+                    normalized.replace(&fronted, &format!("create {count} of those tokens instead"));
+            }
+            let named_upper = format!("Create {count} {name} tokens instead");
+            if normalized.contains(&named_upper) {
+                normalized = normalized
+                    .replace(&named_upper, &format!("Create {count} of those tokens instead"));
+            }
+        }
+    }
+    normalized
+}
+
+/// "return up to X target permanents ..., where X is that much" is the
+/// same count as Oracle's "return up to that many target permanents ...".
+/// Normalize toward the explicit-X surface: "up to that many <noun>" becomes
+/// "up to X <noun> ..., where X is that much" (end of that sentence), so an
+/// authored explicit X ("up to X target creatures, where X is the number of
+/// nonland cards milled this way", The Wise Mothman) keeps matching X.
+fn normalize_up_to_that_much_where_x(text: &str) -> String {
+    const PHRASE: &str = "up to that many ";
+    const SUFFIX: &str = ", where X is that much";
+    let mut normalized = text.to_string();
+    let mut search_from = 0usize;
+    while let Some(offset) = normalized[search_from..].find(PHRASE) {
+        let idx = search_from + offset;
+        let after = idx + PHRASE.len();
+        // A counter amount ("distribute up to that many +1/+1 counters",
+        // Lathiel) names no object count an explicit X restates.
+        if normalized[after..].starts_with(|ch: char| ch == '+' || ch == '-') {
+            search_from = after;
+            continue;
+        }
+        let sentence_end = normalized[after..]
+            .find(". ")
+            .map(|offset| after + offset)
+            .unwrap_or_else(|| normalized.trim_end_matches('.').len().max(after));
+        normalized = format!(
+            "{}up to X {}{}{}",
+            &normalized[..idx],
+            &normalized[after..sentence_end],
+            SUFFIX,
+            &normalized[sentence_end..]
+        );
+    }
+    normalized
 }
 
 fn normalize_that_player_references_for_clause_surface(text: &str) -> String {
@@ -681,6 +965,8 @@ fn normalize_carried_target_player_references(text: &str) -> String {
         .replace("Target player's", "Their")
         .replace("target player's", "their")
         .replace("damage to target player", "damage to them")
+        .replace("damage to target opponent", "damage to them")
+        .replace("damage to that player", "damage to them")
         .replace("That player’s", "Their")
         .replace("that player’s", "their")
         .replace("That player controls", "They control")
@@ -958,7 +1244,8 @@ fn is_ignorable_semantic_clause(clause: &str) -> bool {
 fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
     let mut current = String::new();
     let mut paren_depth = 0usize;
-    for ch in line.chars() {
+    let mut chars = line.chars().peekable();
+    while let Some(ch) = chars.next() {
         match ch {
             '(' => {
                 paren_depth += 1;
@@ -966,6 +1253,13 @@ fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
             }
             ')' => {
                 paren_depth = paren_depth.saturating_sub(1);
+                current.push(ch);
+            }
+            // An ellipsis inside a flavor label ("Would You Like A...? —")
+            // is punctuation, not a sentence boundary; splitting there
+            // severs the label from its dash and defeats the ability-word
+            // strip.
+            '.' if chars.peek() == Some(&'.') || current.ends_with('.') => {
                 current.push(ch);
             }
             '.' | ';' | '\n' => {
@@ -1156,6 +1450,11 @@ fn is_keyword_only_phrase(phrase: &str) -> bool {
             | "undying"
             | "partner"
             | "assist"
+            // Cost-reduction keywords share inline keyword lists
+            // ("Flash; convoke" ~ "Flash, convoke").
+            | "convoke"
+            | "delve"
+            | "improvise"
     )
 }
 
@@ -1215,6 +1514,25 @@ fn looks_like_named_subject(subject: &str) -> bool {
     trimmed.chars().any(|ch| ch.is_ascii_uppercase())
         || trimmed.contains(',')
         || trimmed.split_whitespace().count() >= 2
+}
+
+/// "Whenever a player taps a land for mana" and "Whenever a land is tapped
+/// for mana" describe the same event (any player tapping it); compare the
+/// passive voice.
+fn normalize_tap_for_mana_trigger_voice(line: &str) -> String {
+    let trimmed = line.trim();
+    for prefix in ["Whenever a player taps ", "whenever a player taps "] {
+        if let Some(rest) = trimmed.strip_prefix(prefix)
+            && let Some(at) = rest.find(" for mana")
+            && at > 0
+            && !rest[..at].contains(',')
+        {
+            let object = &rest[..at];
+            let tail = &rest[at + " for mana".len()..];
+            return format!("Whenever {object} is tapped for mana{tail}");
+        }
+    }
+    line.to_string()
 }
 
 fn normalize_trigger_subject_for_compare(line: &str) -> String {
@@ -1623,6 +1941,28 @@ fn canonicalize_life_total_threshold(text: &str) -> String {
             );
         }
     }
+    // Life totals are integers: "your life total is less than 7" is exactly
+    // "you have 6 or less life".
+    const LESS_THAN: &str = "your life total is less than ";
+    let mut search_from = 0;
+    while let Some(found) = normalized[search_from..].find(LESS_THAN) {
+        let start = search_from + found;
+        let after = &normalized[start + LESS_THAN.len()..];
+        let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+        let next_char = after[digits.len()..].chars().next();
+        let Some(value) = digits.parse::<u32>().ok().filter(|value| *value >= 1) else {
+            search_from = start + LESS_THAN.len();
+            continue;
+        };
+        if next_char.is_some_and(|ch| ch.is_ascii_alphanumeric()) {
+            search_from = start + LESS_THAN.len();
+            continue;
+        }
+        let rest = after[digits.len()..].to_string();
+        let prefix = normalized[..start].to_string();
+        normalized = format!("{prefix}you have {} or less life{rest}", value - 1);
+        search_from = prefix.len();
+    }
     normalized
 }
 
@@ -1635,6 +1975,8 @@ fn canonicalize_otherwise_else_branch(text: &str) -> String {
     const FORMS: &[(&str, &str)] = &[
         ("Otherwise, ", "If you don't, "),
         ("otherwise, ", "if you don't, "),
+        // An elliptical "If it doesn't," is the same else branch.
+        ("If it doesn't, ", "If you don't, "),
     ];
     let mut normalized = text.to_string();
     for (from, to) in FORMS {
@@ -1656,7 +1998,129 @@ fn canonicalize_otherwise_else_branch(text: &str) -> String {
         rewritten.push_str(rest);
         normalized = rewritten;
     }
+    // "If that player does, ... If that player doesn't, ..." states the same
+    // else branch as "If they do, ... Otherwise, ..." (Protection Racket).
+    if let Some(idx) = normalized.find("If that player does, ")
+        && normalized[idx..].contains(". If that player doesn't, ")
+    {
+        let (head, tail) = normalized.split_at(idx);
+        normalized = format!(
+            "{head}{}",
+            tail.replacen(". If that player doesn't, ", ". If you don't, ", 1)
+        );
+    }
     normalized
+}
+
+/// "choose a color. This artifact becomes the chosen color" is the same
+/// single color choice as "this artifact becomes the color of your choice".
+fn fold_choose_color_then_becomes_chosen_color(text: &str) -> String {
+    const TAIL: &str = " becomes the chosen color";
+    let mut out = text.to_string();
+    for (needle, lower_subject) in [("choose a color. ", true), ("Choose a color. ", false)] {
+        let Some(start) = out.find(needle) else {
+            continue;
+        };
+        let after = &out[start + needle.len()..];
+        let Some(tail_idx) = after.find(TAIL) else {
+            continue;
+        };
+        let subject = &after[..tail_idx];
+        if subject.is_empty()
+            || subject.len() > 40
+            || subject.contains(['.', ',', ';'])
+            || !subject.starts_with(|c: char| c.is_ascii_uppercase())
+        {
+            continue;
+        }
+        let subject = if lower_subject {
+            let mut chars = subject.chars();
+            chars
+                .next()
+                .map(|first| first.to_ascii_lowercase().to_string() + chars.as_str())
+                .unwrap_or_default()
+        } else {
+            subject.to_string()
+        };
+        out = format!(
+            "{}{subject} becomes the color of your choice{}",
+            &out[..start],
+            &after[tail_idx + TAIL.len()..]
+        );
+    }
+    out
+}
+
+/// A named character's personal pronouns ("return her to the battlefield
+/// under her owner's control", "loyalty counters on him") denote the same
+/// object as the neuter "it"/"its" the renderer uses. Modern oracle text
+/// never uses gendered pronouns for players, so the fold is referent-safe.
+/// "her" is possessive ("its") before a noun and objective ("it") before
+/// punctuation, a preposition, a determiner or a conjunction.
+fn fold_gendered_object_pronouns(text: &str) -> String {
+    const GENDERED: &[&str] = &["she", "he", "her", "him", "his", "hers", "she's", "he's"];
+    const OBJECT_FOLLOWERS: &[&str] = &[
+        "to", "from", "into", "onto", "on", "under", "with", "and", "or", "until", "as", "if",
+        "a", "an", "the", "this", "that", "at", "for", "then", "unless", "where", "this", "by",
+        "except", "instead", "too", "again", "rather",
+    ];
+    let core_of = |word: &str| -> String {
+        word.trim_matches(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\''))
+            .to_ascii_lowercase()
+    };
+    let words: Vec<&str> = text.split(' ').collect();
+    if !words
+        .iter()
+        .any(|word| GENDERED.contains(&core_of(word).as_str()))
+    {
+        return text.to_string();
+    }
+    let mut out = Vec::with_capacity(words.len());
+    for (idx, word) in words.iter().enumerate() {
+        let core = core_of(word);
+        let replacement = match core.as_str() {
+            "she" | "he" | "him" => Some("it"),
+            "she's" | "he's" => Some("it's"),
+            "his" | "hers" => Some("its"),
+            "her" => {
+                let trailing_punct = word
+                    .trim_end_matches(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\''))
+                    .len()
+                    != word.len();
+                let next = words.get(idx + 1).map(|next| core_of(next));
+                if trailing_punct
+                    || next
+                        .as_deref()
+                        .is_none_or(|next| next.is_empty() || OBJECT_FOLLOWERS.contains(&next))
+                {
+                    Some("it")
+                } else {
+                    Some("its")
+                }
+            }
+            _ => None,
+        };
+        let Some(replacement) = replacement else {
+            out.push((*word).to_string());
+            continue;
+        };
+        let Some(start) = word.find(|ch: char| ch.is_ascii_alphabetic()) else {
+            out.push((*word).to_string());
+            continue;
+        };
+        let end = start + core.len();
+        if end > word.len() {
+            out.push((*word).to_string());
+            continue;
+        }
+        let capitalized = word[start..].starts_with(|ch: char| ch.is_ascii_uppercase());
+        let mut replaced = replacement.to_string();
+        if capitalized {
+            replaced[..1].make_ascii_uppercase();
+        }
+        out.push(format!("{}{}{}", &word[..start], replaced, &word[end..]));
+    }
+    out.join(" ")
 }
 
 /// Equate anaphoric/rule-redundant surfaces that differ only in wording:
@@ -1674,8 +2138,28 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         "half that permanent's power and toughness",
         HALF_PERMANENT_SENTINEL,
     );
+    let text = fold_choose_color_then_becomes_chosen_color(&text);
     const REWRITES: &[(&str, &str)] = &[
         ("becomes blocked by a creature", "becomes blocked"),
+        // "the damage dealt to you so far this turn" and "the amount of
+        // damage dealt to you this turn" name the same running total.
+        ("damage dealt to you so far this turn", "damage dealt to you this turn"),
+        ("the amount of damage dealt to you this turn", "the damage dealt to you this turn"),
+        // CR 702.28b/c: "can block creatures with shadow as though it had
+        // shadow" grants exactly the same extra blocks as "as though they
+        // didn't have shadow" (both templatings exist in oracle).
+        (
+            "creatures with shadow as though it had shadow",
+            "creatures with shadow as though they didn't have shadow",
+        ),
+        // The escaped-permanent check on entry names the same object.
+        ("unless this spell escaped", "unless it escaped"),
+        // Two printed templatings of the same unblocking rule (Ydwen Efreet
+        // vs Balduvian Warlord).
+        (
+            "that hadn't become blocked by another creature this combat",
+            "that had become blocked by only that creature this combat",
+        ),
         // Older oracle templating repeats the trigger subject ("sacrifice a
         // land and this creature deals 1 damage to you"); the renderer uses
         // the pronoun. Both name the leaving source.
@@ -1710,6 +2194,14 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ),
         // The renderer's "put it into exile" is oracle's "exile it".
         ("put it into exile", "exile it"),
+        // Threshold's graveyard census has two oracle templatings ("there are
+        // seven or more cards in your graveyard" / "you have seven or more
+        // cards in your graveyard", Search for Azcanta); both count the same
+        // cards.
+        (
+            "you have seven or more cards in your graveyard",
+            "there are seven or more cards in your graveyard",
+        ),
         // Tinybones, Bauble Burglar authors a redundant provenance zone on the
         // discard-trigger exile; the stash-counter surface is corpus-unique.
         (
@@ -2085,7 +2577,7 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ),
         // Feldon picks one exiled card to play.
         (
-            "You choose an exiled this way card. You may play that card until the end of your next turn",
+            "You choose a card exiled this way. You may play that card until the end of your next turn",
             "Choose one of them. Until the end of your next turn, you may play that card",
         ),
         // Invasion of Ravnica matches singular color-count agreement.
@@ -3879,6 +4371,10 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("+0/-4", "-0/-4"),
         ("+0/-5", "-0/-5"),
         ("+0/-X", "-0/-X"),
+        // A mana value predicate on the referent: "it has mana value N" and
+        // "its mana value is N" are the same comparison.
+        ("if it has mana value", "if its mana value is"),
+        ("If it has mana value", "If its mana value is"),
         // Legendary-permanent copula vs oracle's bare adjective.
         ("If it's a legendary permanent,", "If it is legendary,"),
         ("if it's a legendary permanent,", "if it is legendary,"),
@@ -4596,6 +5092,15 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("That token", "It"),
         ("that object", "it"),
         ("That object", "It"),
+        ("the mana value of that spell", "that spell's mana value"),
+        // A player attacks only with the creatures they control, so "they
+        // can't attack you" restricts the same attackers.
+        ("creatures that player controls can't attack you", "they can't attack you"),
+        ("creatures they control can't attack you", "they can't attack you"),
+        ("that enchantment", "it"),
+        ("That enchantment", "It"),
+        ("that artifact", "it"),
+        ("That artifact", "It"),
         // Group back-reference vs the renderer's for-each surface.
         ("those creatures", "each creature"),
         ("Those creatures", "Each creature"),
@@ -5192,6 +5697,81 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "For each permanent on the battlefield",
             "For each permanent",
         ),
+        // No player receives priority during the untap step (CR 502.4), so a
+        // play permission lasting until your next upkeep begins ends exactly
+        // when your next turn begins.
+        // The object-anaphor entries above have already rewritten "that
+        // card" to "it" on both sides, so this pair matches the post-anaphor
+        // surface (the "that card" form could never fire).
+        (
+            "Until the beginning of your next upkeep, you may play it",
+            "Until your next turn, you may play it",
+        ),
+        // A spell's own cast-origin condition: "this spell was cast from your
+        // hand" and "you cast it from your hand" test the same event.
+        ("If this spell was cast from your hand,", "If you cast it from your hand,"),
+        ("if this spell was cast from your hand,", "if you cast it from your hand,"),
+        // The just-exiled pool named by its antecedent pronoun.
+        (
+            "you may cast spells from among those exiled cards",
+            "you may cast spells from among them",
+        ),
+        // Collective and distributive wording of the same one-shot skip of
+        // each object's own controller's next untap step.
+        (
+            "Those creatures don't untap during their controllers' next untap steps",
+            "Each of those creatures doesn't untap during its controller's next untap step",
+        ),
+        (
+            "those creatures don't untap during their controllers' next untap steps",
+            "each of those creatures doesn't untap during its controller's next untap step",
+        ),
+        (
+            "Those permanents don't untap during their controllers' next untap steps",
+            "Each of those permanents doesn't untap during its controller's next untap step",
+        ),
+        (
+            "those permanents don't untap during their controllers' next untap steps",
+            "each of those permanents doesn't untap during its controller's next untap step",
+        ),
+        // After a look or reveal, "the rest", "the rest of the cards", and
+        // "the rest of the revealed cards" name the same remainder.
+        ("the rest of the cards on the bottom", "the rest on the bottom"),
+        ("the rest of the revealed cards on the bottom", "the rest on the bottom"),
+        ("the rest of those cards on the bottom", "the rest on the bottom"),
+        // Moving a hand's cards: "from their hand" and "in their hand" name
+        // the same set.
+        ("puts the cards in their hand on top of", "puts the cards from their hand on top of"),
+        ("put the cards in your hand on top of", "put the cards from your hand on top of"),
+        // A reveal-until's found cards are the only antecedent: "those
+        // creature cards" and "them" name the same set.
+        ("Put those creature cards onto the battlefield", "Put them onto the battlefield"),
+        // A flicker's return names the cards it just exiled either way.
+        // ("those cards" was already rewritten to "them" above.)
+        (
+            "return the exiled cards to the battlefield under their owners' control",
+            "return them to the battlefield under their owner's control",
+        ),
+        (
+            "return them to the battlefield under their owners' control",
+            "return them to the battlefield under their owner's control",
+        ),
+        // A demonstrative library is the one already named; "then" after a
+        // look only restates the sentence order (Visions).
+        ("shuffle that library", "shuffle"),
+        ("shuffles that library", "shuffles"),
+        ("You may then have that player", "You may have that player"),
+        // "counter the spell" only ever back-references the spell the
+        // ability already named (Ice Cave, Split Decision); the renderer
+        // uses the pronoun.
+        ("counter the spell", "counter it"),
+        // Distributive and plural templatings of the same untap skip
+        // (Sands of Time vs Stasis).
+        ("Each player skips their untap step", "Players skip their untap steps"),
+        // "each permanent chosen this way" and "the chosen permanents" name
+        // the same chosen set.
+        ("Destroy each permanent chosen this way", "Destroy the chosen permanents"),
+        ("destroy each permanent chosen this way", "destroy the chosen permanents"),
     ];
     let mut normalized = text;
     for (from, to) in REWRITES {
@@ -5221,10 +5801,318 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     }
     normalized = canonicalize_life_total_threshold(&normalized);
     normalized = canonicalize_otherwise_else_branch(&normalized);
+    normalized = canonicalize_each_spell_you_cast_thats_subtype(&normalized);
+    normalized = fold_choose_target_before_coin_flip(&normalized);
+    normalized = canonicalize_target_card_thats_type_list(&normalized);
+    normalized = drop_restated_exiled_target_type_in_for_each(&normalized);
+    normalized = canonicalize_as_long_as_controlled_attacker(&normalized);
+    normalized = canonicalize_behold_expansion(&normalized);
+    normalized = canonicalize_creatures_that_are_colors(&normalized);
     normalized.replace(
         HALF_PERMANENT_SENTINEL,
         "half that permanent's power and toughness",
     )
+}
+
+/// "Creatures that are green and/or white get ..." and "Green and/or white
+/// creatures get ..." name the same color-filtered group; a pump that "gets
+/// an additional -2/-2" is the same pump as "gets -2/-2" (the stacking is
+/// implied by the separate effect).
+fn canonicalize_creatures_that_are_colors(text: &str) -> String {
+    const COLORS: &[&str] = &["white", "blue", "black", "red", "green"];
+    let mut normalized = text.to_string();
+    for lead in ["Creatures that are ", "creatures that are "] {
+        let mut search = 0usize;
+        while let Some(found) = normalized[search..].find(lead) {
+            let start = search + found;
+            let after = &normalized[start + lead.len()..];
+            let mut words = after.splitn(4, ' ');
+            let first = words.next().unwrap_or("");
+            let joiner = words.next().unwrap_or("");
+            let second = words.next().unwrap_or("");
+            let tail = words.next().unwrap_or("");
+            if COLORS.contains(&first)
+                && matches!(joiner, "and/or" | "or" | "and")
+                && COLORS.contains(&second)
+                && (tail.starts_with("get ") || tail.starts_with("gain ") || tail.starts_with("have "))
+            {
+                let mut first_cased = first.to_string();
+                if lead.starts_with('C') {
+                    first_cased[..1].make_ascii_uppercase();
+                }
+                let replacement = format!("{first_cased} {joiner} {second} creatures ");
+                let consumed = lead.len() + first.len() + joiner.len() + second.len() + 3;
+                normalized.replace_range(start..start + consumed, &replacement);
+                search = start + replacement.len();
+            } else {
+                search = start + lead.len();
+            }
+        }
+    }
+    for (from, to) in [
+        (" get an additional +", " get +"),
+        (" get an additional -", " get -"),
+        (" gets an additional +", " gets +"),
+        (" gets an additional -", " gets -"),
+    ] {
+        normalized = normalized.replace(from, to);
+    }
+    normalized
+}
+
+/// Behold (CR 701.65): "reveal a Dragon card from your hand or choose a
+/// Dragon you control" is the keyword action's definition, and the follow-up
+/// "if you revealed a Dragon card or chose a Dragon as you cast this spell"
+/// is "if a Dragon was beheld".
+fn canonicalize_behold_expansion(text: &str) -> String {
+    const COST_HEAD: &str = "you may reveal a ";
+    const COST_MID: &str = " card from your hand or choose a ";
+    const COST_TAIL: &str = " you control";
+    let mut out = text.to_string();
+    if let Some(idx) = out.find(COST_HEAD) {
+        let after = &out[idx + COST_HEAD.len()..];
+        if let Some(mid) = after.find(COST_MID) {
+            let noun = &after[..mid];
+            let rest = &after[mid + COST_MID.len()..];
+            if !noun.is_empty()
+                && noun.len() <= 30
+                && noun.chars().all(|c| c.is_ascii_alphabetic())
+                && let Some(tail) = rest.strip_prefix(noun)
+                && let Some(tail) = tail.strip_prefix(COST_TAIL)
+            {
+                out = format!("{}you may behold a {noun}{tail}", &out[..idx]);
+            }
+        }
+    }
+    for head in ["If you revealed a ", "if you revealed a "] {
+        let Some(idx) = out.find(head) else {
+            continue;
+        };
+        let after = &out[idx + head.len()..];
+        let Some(card_idx) = after.find(" card or chose a ") else {
+            continue;
+        };
+        let noun = &after[..card_idx];
+        let rest = &after[card_idx + " card or chose a ".len()..];
+        if noun.is_empty() || noun.len() > 30 || !noun.chars().all(|c| c.is_ascii_alphabetic()) {
+            continue;
+        }
+        // Self-reference normalization may already have shortened "this
+        // spell" to "this".
+        let Some(tail) = rest.strip_prefix(noun).and_then(|tail| {
+            tail.strip_prefix(" as you cast this spell")
+                .or_else(|| tail.strip_prefix(" as you cast this"))
+        }) else {
+            continue;
+        };
+        let lead = if head.starts_with('I') { "If" } else { "if" };
+        let noun = noun.to_string();
+        let tail = tail.to_string();
+        out = format!("{}{lead} a {noun} was beheld{tail}", &out[..idx]);
+    }
+    out
+}
+
+/// "As long as an artifact creature you control is attacking," and "As long
+/// as you control an attacking artifact creature," test the same state.
+fn canonicalize_as_long_as_controlled_attacker(text: &str) -> String {
+    let mut out = text.to_string();
+    for head in ["As long as ", "as long as "] {
+        let Some(idx) = out.find(head) else {
+            continue;
+        };
+        let after = &out[idx + head.len()..];
+        let Some(end) = after.find(" you control is attacking") else {
+            continue;
+        };
+        let subject = &after[..end];
+        let noun = subject
+            .strip_prefix("an ")
+            .or_else(|| subject.strip_prefix("a "))
+            .unwrap_or("");
+        if noun.is_empty()
+            || noun.len() > 40
+            || !noun.chars().all(|c| c.is_ascii_lowercase() || c == ' ')
+        {
+            continue;
+        }
+        let tail = &after[end + " you control is attacking".len()..];
+        out = format!(
+            "{}{head}you control an attacking {noun}{tail}",
+            &out[..idx]
+        );
+    }
+    out
+}
+
+/// "target card that's an instant or sorcery from ..." and "target instant
+/// or sorcery card from ..." describe the same target restriction.
+fn canonicalize_target_card_thats_type_list(text: &str) -> String {
+    const HEAD: &str = "target card that's ";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(HEAD) {
+        let after = &rest[idx + HEAD.len()..];
+        let Some(from_idx) = after.find(" from ") else {
+            break;
+        };
+        let list = &after[..from_idx];
+        let list = list
+            .strip_prefix("an ")
+            .or_else(|| list.strip_prefix("a "))
+            .unwrap_or("");
+        let words_ok = !list.is_empty()
+            && list.len() <= 40
+            && list
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c == ' ' || c == ',');
+        out.push_str(&rest[..idx]);
+        if words_ok {
+            out.push_str("target ");
+            out.push_str(list);
+            out.push_str(" card");
+            rest = &after[from_idx..];
+        } else {
+            out.push_str(HEAD);
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// After "Exile target <types> card ...", "For each <types> card exiled this
+/// way" and "For each card exiled this way" name the same exiled card; the
+/// restated type restriction adds nothing.
+fn drop_restated_exiled_target_type_in_for_each(text: &str) -> String {
+    const TAIL: &str = " card exiled this way";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(TAIL) {
+        let before = &rest[..idx];
+        let lead = before
+            .rfind("For each ")
+            .map(|pos| (pos, "For each ".len()))
+            .into_iter()
+            .chain(before.rfind("for each ").map(|pos| (pos, "for each ".len())))
+            .max_by_key(|(pos, _)| *pos);
+        let mut dropped = false;
+        if let Some((pos, lead_len)) = lead {
+            let types = &before[pos + lead_len..];
+            if !types.is_empty()
+                && types.len() <= 40
+                && types
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c == ' ' || c == ',')
+                && text.contains(&format!("Exile target {types} card"))
+            {
+                out.push_str(&before[..pos + lead_len]);
+                out.push_str("card exiled this way");
+                dropped = true;
+            }
+        }
+        if !dropped {
+            out.push_str(&rest[..idx + TAIL.len()]);
+        }
+        rest = &rest[idx + TAIL.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// "Choose target X, then flip a coin. If <result>, <verb> it." and "Flip a
+/// coin. If <result>, <verb> target X." choose the same target on cast (the
+/// target is announced before the flip either way); fold the hoisted target
+/// back into the first branch's pronoun.
+fn fold_choose_target_before_coin_flip(text: &str) -> String {
+    const HEAD: &str = "Choose target ";
+    const FLIP: &str = ", then flip a coin. If ";
+    let Some(head_idx) = text.find(HEAD) else {
+        return text.to_string();
+    };
+    if !(head_idx == 0 || text[..head_idx].ends_with(". ") || text[..head_idx].ends_with(": ")) {
+        return text.to_string();
+    }
+    let after_head = &text[head_idx + HEAD.len()..];
+    let Some(flip_idx) = after_head.find(FLIP) else {
+        return text.to_string();
+    };
+    let target = &after_head[..flip_idx];
+    if target.contains('.') || target.contains(',') || target.len() > 60 {
+        return text.to_string();
+    }
+    let branch = &after_head[flip_idx + FLIP.len()..];
+    let Some(cond_end) = branch.find(", ") else {
+        return text.to_string();
+    };
+    if branch[..cond_end].contains('.') {
+        return text.to_string();
+    }
+    let action = &branch[cond_end + 2..];
+    let Some(verb_end) = action.find(' ') else {
+        return text.to_string();
+    };
+    let verb = &action[..verb_end];
+    if verb.is_empty() || !verb.chars().all(|c| c.is_ascii_lowercase()) {
+        return text.to_string();
+    }
+    let Some(tail) = action[verb_end..].strip_prefix(" it") else {
+        return text.to_string();
+    };
+    if !tail.starts_with('.') && !tail.starts_with(' ') {
+        return text.to_string();
+    }
+    format!(
+        "{}Flip a coin. If {}, {} target {}{}",
+        &text[..head_idx],
+        &branch[..cond_end],
+        verb,
+        target,
+        tail
+    )
+}
+
+/// "Each spell you cast that's a Demon, Horror, or Nightmare costs {1} less"
+/// and "Demon, Horror, and Nightmare spells you cast cost {1} less" name the
+/// same set of spells; canonicalize to the plural-subject form.
+fn canonicalize_each_spell_you_cast_thats_subtype(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let found = ["Each spell you cast that's ", "each spell you cast that's "]
+            .iter()
+            .filter_map(|head| rest.find(head).map(|idx| (idx, head.len())))
+            .min_by_key(|(idx, _)| *idx);
+        let Some((idx, head_len)) = found else {
+            out.push_str(rest);
+            return out;
+        };
+        let after = &rest[idx + head_len..];
+        let Some(costs_idx) = after.find(" costs ") else {
+            out.push_str(rest);
+            return out;
+        };
+        let middle = &after[..costs_idx];
+        let middle = middle
+            .strip_prefix("a ")
+            .or_else(|| middle.strip_prefix("an "))
+            .unwrap_or("");
+        let plain = !middle.is_empty()
+            && middle.len() <= 60
+            && middle
+                .chars()
+                .all(|c| c.is_ascii_alphabetic() || c == ' ' || c == ',' || c == '-');
+        if !plain {
+            out.push_str(&rest[..idx + head_len]);
+            rest = after;
+            continue;
+        }
+        let list = middle.replace(", or ", ", and ").replace(" or ", " and ");
+        out.push_str(&rest[..idx]);
+        out.push_str(&list);
+        out.push_str(" spells you cast cost ");
+        rest = &after[costs_idx + " costs ".len()..];
+    }
 }
 
 /// "If a <type> card was exiled/revealed this way" and the renderer's
@@ -5349,6 +6237,42 @@ fn normalize_energy_pip_runs(text: &str) -> String {
     }
     result.push_str(rest);
     result
+}
+
+/// "Each opponent may sacrifice a permanent or discard a card. Then ... to
+/// each opponent who didn't sacrifice a permanent or discard a card this
+/// way" restates the optional action that the elided "who didn't" already
+/// names; both read as "who didn't".
+fn normalize_elided_optional_action_restatement(text: &str) -> String {
+    const MARKER: &str = " who didn't ";
+    let mut out = text.to_string();
+    let mut search = 0usize;
+    while let Some(found) = out[search..].find(MARKER) {
+        let start = search + found;
+        let body_start = start + MARKER.len();
+        let Some(way_rel) = out[body_start..].find(" this way") else {
+            break;
+        };
+        let body = &out[body_start..body_start + way_rel];
+        let after = &out[body_start + way_rel + " this way".len()..];
+        let ends_clause = after.is_empty() || after.starts_with(['.', ',', ';']);
+        if ends_clause
+            && !body.contains(". ")
+            && !body.contains(", ")
+            && out[..start].contains(" may ")
+            && body.split_whitespace().all(|word| {
+                out[..start]
+                    .split(|ch: char| !ch.is_alphanumeric())
+                    .any(|prior| prior == word)
+            })
+        {
+            out.replace_range(start..body_start + way_rel + " this way".len(), " who didn't");
+            search = start + " who didn't".len();
+        } else {
+            search = body_start;
+        }
+    }
+    out
 }
 
 fn normalize_repeated_you_after_draw(text: &str) -> String {
@@ -5488,6 +6412,74 @@ fn demote_repeated_player_subjects(text: &str) -> String {
     normalized
 }
 
+/// "create two 1/1 blue Fish creature tokens and create two tapped Treasure
+/// tokens" repeats the verb of the same create clause; "create two ... tokens
+/// and two tapped Treasure tokens" creates the same tokens.
+fn elide_repeated_create_verb(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let found = [" tokens and create ", " token and create "]
+            .iter()
+            .filter_map(|needle| rest.find(needle).map(|at| (at, *needle)))
+            .min_by_key(|(at, _)| *at);
+        let Some((at, needle)) = found else {
+            break;
+        };
+        let clause_start = rest[..at]
+            .rfind(['.', ','])
+            .map_or(0, |index| index + 1);
+        let clause = rest[clause_start..at].trim_start().to_ascii_lowercase();
+        let keep = needle.len() - "create ".len();
+        result.push_str(&rest[..at + keep]);
+        if !(clause.starts_with("create ") || clause.contains(" create ")) {
+            result.push_str("create ");
+        }
+        rest = &rest[at + needle.len()..];
+    }
+    result.push_str(rest);
+    result
+}
+
+/// "create a green Fungus Dinosaur creature token with base power and
+/// toughness each equal to <amount>" and "create an X/X green Fungus Dinosaur
+/// creature token, where X is <amount>" create the same token.
+fn normalize_token_base_pt_each_equal_to(text: &str) -> String {
+    // The anaphoric rewrites have already folded "base power and toughness
+    // each equal to" onto "power and toughness each equal to".
+    let Some((mark_at, mark_len)) = [
+        " token with base power and toughness each equal to ",
+        " token with power and toughness each equal to ",
+    ]
+    .iter()
+    .find_map(|mark| text.find(mark).map(|at| (at, mark.len()))) else {
+        return text.to_string();
+    };
+    let before = &text[..mark_at];
+    let Some(create_at) = before.rfind("create a") else {
+        return text.to_string();
+    };
+    let descriptor_start = if before[create_at..].starts_with("create an ") {
+        create_at + "create an ".len()
+    } else if before[create_at..].starts_with("create a ") {
+        create_at + "create a ".len()
+    } else {
+        return text.to_string();
+    };
+    let descriptor = &before[descriptor_start..];
+    if descriptor.contains(['.', ',']) {
+        return text.to_string();
+    }
+    let after = &text[mark_at + mark_len..];
+    let end = after.find('.').unwrap_or(after.len());
+    format!(
+        "{}create an X/X {descriptor} token, where X is {}{}",
+        &text[..create_at],
+        &after[..end],
+        &after[end..]
+    )
+}
+
 fn split_common_clause_conjunctions(text: &str) -> String {
     let mut normalized = text.to_string();
 
@@ -5519,7 +6511,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = strip_implicit_you_control_in_sacrifice_phrases(&normalized);
     normalized = normalize_carried_target_player_references(&normalized);
     normalized = normalize_repeated_filtered_set_coreferences(&normalized);
+    normalized = fold_gendered_object_pronouns(&normalized);
     normalized = normalize_anaphoric_object_surfaces(&normalized);
+    normalized = normalize_token_base_pt_each_equal_to(&normalized);
+    normalized = elide_repeated_create_verb(&normalized);
     normalized = strip_choose_battlefield_zone(&normalized);
     normalized = normalize_card_moved_this_way_condition(&normalized);
     normalized = normalize_energy_pip_runs(&normalized);
@@ -5922,6 +6917,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     // draw/life pair while compiled text uses the equivalent implied subject.
     // Keep longer serial effect lists and later sentences separate.
     normalized = normalize_repeated_you_after_draw(&normalized);
+    normalized = normalize_elided_optional_action_restatement(&normalized);
 
     for (from, to) in [
         ("For each player, that player ", "Each player "),
@@ -5987,6 +6983,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         (", you scry ", ", scry "),
         (": you surveil ", ": surveil "),
         (", you surveil ", ", surveil "),
+        (": you discard ", ": discard "),
+        (", you discard ", ", discard "),
     ] {
         normalized = normalized.replace(from, to);
     }
@@ -6822,6 +7820,13 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         " and lose X life, where X is ",
         ". You lose X life, where X is ",
     );
+    // "chooses N ... and sacrifices the rest" and "..., then sacrifices the
+    // rest" are both Oracle templates for the same keep-then-sacrifice choice
+    // (Limited Resources vs Razia's Purification); join before the generic
+    // ", then" sentence split below.
+    normalized = normalized
+        .replace(", then sacrifices the rest", " and sacrifices the rest")
+        .replace(", then sacrifice the rest", " and sacrifice the rest");
     normalized = carry_subject_through_then_splits(&normalized);
     normalized = demote_repeated_player_subjects(&normalized);
     normalized = normalized
@@ -8187,6 +9192,7 @@ fn semantic_clauses(text: &str) -> Vec<String> {
         };
         let line = normalize_sentence_helper_line_for_compare(&line);
         let line = normalize_trigger_subject_for_compare(&line);
+        let line = normalize_tap_for_mana_trigger_voice(&line);
         let line = strip_modal_option_labels(&line);
         let line = normalize_for_each_player_conditional_for_compare(&line);
         let line = split_common_clause_conjunctions(&line);
@@ -8230,7 +9236,12 @@ fn merge_still_land_clauses(clauses: Vec<String>) -> Vec<String> {
             && let Some(previous) = merged.last_mut()
         {
             let previous_lower = previous.to_ascii_lowercase();
-            if previous_lower.contains(" become")
+            // "becomes a 3/3 creature. It's still a land." and the static
+            // copula "Enchanted land is a 5/6 ... creature. It's still a land."
+            let animates = previous_lower.contains(" become")
+                || ((previous_lower.contains(" is a ") || previous_lower.contains(" is an "))
+                    && previous_lower.contains(" creature"));
+            if animates
                 && !previous_lower.contains("still a land")
                 && !previous_lower.contains("still lands")
             {
@@ -8256,7 +9267,35 @@ fn split_compiled_lines_for_semantic_compare(lines: &[String]) -> Vec<String> {
                     .map(str::to_string)
                     .collect::<Vec<_>>()
             } else {
-                vec![line.replace('\n', " ")]
+                // An embedded line opening with an ability-word label
+                // ("Prize — Create ...") is its own printed line; keep it a
+                // separate entry instead of gluing it onto the prior sentence.
+                fn opens_labeled_line(part: &str) -> bool {
+                    let Some((label, _)) = part.trim_start().split_once(" — ") else {
+                        return false;
+                    };
+                    let words = label.split_whitespace().collect::<Vec<_>>();
+                    !words.is_empty()
+                        && words.len() <= 3
+                        && words[0].chars().next().is_some_and(char::is_uppercase)
+                        && words
+                            .iter()
+                            .all(|word| word.chars().all(|ch| ch.is_alphabetic() || ch == '-'))
+                }
+                let mut entries: Vec<String> = Vec::new();
+                for part in line.lines() {
+                    match entries.last_mut() {
+                        Some(last) if !opens_labeled_line(part) => {
+                            last.push(' ');
+                            last.push_str(part);
+                        }
+                        _ => entries.push(part.to_string()),
+                    }
+                }
+                if entries.is_empty() {
+                    entries.push(String::new());
+                }
+                entries
             }
         })
         .collect()
@@ -8307,7 +9346,78 @@ fn replace_case_insensitive(text: &str, needle: &str, replacement: &str) -> Stri
     result
 }
 
+/// True when `lead` occurs (case-sensitively, word-bounded) as a standalone
+/// short name rather than as the start of the full name or as a type word
+/// ("a Goblin creature", "Wolf or Werewolf", "Sliver you control").
+fn lead_name_used_as_self_reference(text: &str, lead: &str, second_word: &str) -> bool {
+    const TYPE_FOLLOWERS: &[&str] = &[
+        "creature", "creatures", "token", "tokens", "card", "cards", "spell", "spells",
+        "permanent", "permanents", "you", "or", "and", "and/or", "your", "an", "a",
+        "artifact", "artifacts", "enchantment", "enchantments", "land", "lands",
+    ];
+    // A determiner/qualifier in front of the word marks it as a type noun
+    // ("another Kavu enters", "control a Sliver", "each other attacking
+    // Goblin"), never the card's own short name.
+    const TYPE_LEADERS: &[&str] = &[
+        "another", "other", "target", "a", "an", "each", "all", "attacking", "blocking",
+        "nontoken",
+    ];
+    let mut search = 0usize;
+    while let Some(found) = text[search..].find(lead) {
+        let start = search + found;
+        let end = start + lead.len();
+        search = end;
+        let before_ok = text[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_alphanumeric());
+        let after = &text[end..];
+        let after_ok = after.chars().next().is_none_or(|ch| !ch.is_alphanumeric());
+        if !before_ok || !after_ok {
+            continue;
+        }
+        let next_word = after
+            .strip_prefix(' ')
+            .and_then(|rest| rest.split(|ch: char| !ch.is_alphanumeric() && ch != '/').next())
+            .unwrap_or("");
+        let second = second_word.trim_matches(|ch: char| !ch.is_alphanumeric());
+        let second = second
+            .strip_suffix("'s")
+            .or_else(|| second.strip_suffix("’s"))
+            .unwrap_or(second);
+        if next_word == second {
+            continue;
+        }
+        if TYPE_FOLLOWERS.contains(&next_word) {
+            continue;
+        }
+        let prev_word = text[..start]
+            .split_whitespace()
+            .next_back()
+            .map(|word| word.to_ascii_lowercase())
+            .unwrap_or_default();
+        if TYPE_LEADERS.contains(&prev_word.as_str()) {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
 pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -> String {
+    normalize_card_self_references_for_compare_in_context(text, card_name, text)
+}
+
+/// Like [`normalize_card_self_references_for_compare`], but decides whether
+/// the bare lead word of the name is a self-reference from `context` (the
+/// whole oracle text). Deciding once per card keeps both sides of a
+/// comparison consistent: a subtype that happens to be the lead word ("Kavu
+/// creatures", "another Kavu") is rewritten on both sides or on neither.
+pub fn normalize_card_self_references_for_compare_in_context(
+    text: &str,
+    card_name: &str,
+    context: &str,
+) -> String {
     let full_name = card_name.trim();
     if full_name.is_empty() {
         return text.to_string();
@@ -8327,6 +9437,9 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
         .split_whitespace()
         .next()
         .map(str::trim)
+        // "Yenna, Redtooth Regent" leads with "Yenna,": the comma belongs to
+        // the title separator, not the printed short name.
+        .map(|lead| lead.trim_end_matches(','))
         .unwrap_or(left_half);
 
     let mut names = vec![full_name, left_half, short_name];
@@ -8335,8 +9448,20 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
         && lead_name_lower != "the"
         && lead_name_lower != "a"
         && lead_name_lower != "an"
-        && (left_half.contains(" of ") || left_half.contains(','))
+        && (left_half.contains(" of ")
+            || left_half.contains(',')
+            // "Hazduhr the Abbot" is printed as "Hazduhr".
+            || left_half.contains(" the "))
     {
+        names.push(lead_name);
+    } else if lead_name.len() >= 4
+        && lead_name_lower != "the"
+        && lead_name.chars().next().is_some_and(|ch| ch.is_uppercase())
+        && let Some(second_word) = left_half.split_whitespace().nth(1)
+        && lead_name_used_as_self_reference(context, lead_name, second_word)
+    {
+        // "Rasputin Dreamweaver" is printed as "Rasputin enters ...": the
+        // lead word stands alone as the card's short name.
         names.push(lead_name);
     }
     if let Some(stripped) = full_name
@@ -8788,6 +9913,10 @@ fn normalize_word(token: &str) -> Option<String> {
     }
     base = match base.as_str() {
         "another" => "other".to_string(),
+        // "She's a land named Moon" (Princess Yue): the gendered pronoun of a
+        // named character is the same referent as "it's"; "she"/"he" are
+        // already stopwords, so only the contracted forms need folding.
+        "shes" | "hes" => "its".to_string(),
         "whenever" => "when".to_string(),
         "enters" | "entering" | "entered" => "enter".to_string(),
         "becomes" | "becoming" | "became" => "become".to_string(),
@@ -8832,6 +9961,8 @@ fn is_stopword(token: &str) -> bool {
             | "these"
             | "it"
             | "its"
+            | "he"
+            | "she"
             | "him"
             | "his"
             | "her"
@@ -8948,12 +10079,36 @@ fn comparison_tokens(clause: &str) -> Vec<String> {
         .filter_map(|token| normalize_word(&token))
         .collect();
     let tokens = collapse_named_reference_tokens(tokens);
+    let tokens = count_repeated_mana_symbol_runs(tokens);
     let tokens = collapse_repeated_tokens(tokens);
     let tokens = normalize_turn_frequency_scaffolding(tokens);
     normalize_that_references(tokens)
         .into_iter()
         .filter(|token| !is_stopword(token))
         .collect()
+}
+
+/// "{R}{R}{R}{R}{R}{R}{R}" and "seven {R}" name the same amount of mana:
+/// a run of one repeated mana symbol compares as its count plus the symbol,
+/// which also keeps the count from vanishing when repeats collapse.
+fn count_repeated_mana_symbol_runs(tokens: Vec<String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut idx = 0usize;
+    while idx < tokens.len() {
+        let token = &tokens[idx];
+        let mut run = 1usize;
+        if token.starts_with('{') && token.ends_with('}') {
+            while tokens.get(idx + run) == Some(token) {
+                run += 1;
+            }
+        }
+        if run >= 2 {
+            out.push(run.to_string());
+        }
+        out.push(token.clone());
+        idx += run;
+    }
+    out
 }
 
 pub fn clause_comparison_tokens(clause: &str) -> Vec<String> {

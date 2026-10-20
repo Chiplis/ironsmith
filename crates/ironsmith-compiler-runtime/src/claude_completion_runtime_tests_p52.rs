@@ -30,6 +30,25 @@ fn p52_emergent_ultimatum_casts_the_other_exiled_cards_for_free() {
     // The remainder producer reads the exiled collection still in exile.
     let rest_at = debug.find("TagMatchingObjectsEffect").unwrap();
     assert!(debug[rest_at..].contains("Exile"), "{debug}");
+    let cast_segment = &definition.spell_effect.as_ref().unwrap().segments[3];
+    let producer = cast_segment.default_effects[0]
+        .downcast_ref::<ironsmith::effects::TagMatchingObjectsEffect>()
+        .expect("capture the unchosen exile objects");
+    let choose = cast_segment.default_effects[1]
+        .downcast_ref::<ironsmith::effects::ChooseObjectsEffect>()
+        .expect("choose spells from that exact captured collection");
+    assert_eq!(producer.zone, Some(Zone::Exile));
+    let pick = definition.spell_effect.as_ref().unwrap().segments[1].default_effects[1]
+        .downcast_ref::<ironsmith::effects::ChooseObjectsEffect>()
+        .expect("opponent's selected card");
+    assert_eq!(producer.excluded_stable_card_tags.as_slice(), &[pick.tag.clone()],
+        "the opponent's pick is excluded even if its move is redirected");
+    assert_eq!(choose.zone, Some(Zone::Exile));
+    assert_eq!(choose.filter.zone, Some(Zone::Exile));
+    assert!(choose.additional_zones.is_empty());
+    assert!(choose.filter.tagged_constraints.iter().any(|constraint|
+        constraint.relation == ironsmith::filter::TaggedOpbjectRelation::SameObjectId),
+        "the consumer must exclude a card that leaves and returns as a new object");
 }
 
 /// Enthralling Hold: the untapped-creature restriction filters target

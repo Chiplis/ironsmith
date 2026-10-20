@@ -757,7 +757,19 @@ fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<Ow
     let mut rewritten = vec![sentence[0].clone()];
     rewritten.extend_from_slice(collection);
     rewritten.extend(crate::lexer::synthetic_word_tokens(["attached", "to"]));
-    rewritten.extend_from_slice(target);
+    if noun_index == 3 {
+        // "attached to another target permanent" loses its target in the
+        // attachment reading; "attached to target other permanent" keeps
+        // both the declared target and the not-this-source exclusion.
+        rewritten.push(target[1].clone());
+        rewritten.push(crate::lexer::OwnedLexToken::word(
+            "other",
+            crate::cards::TextSpan::synthetic(),
+        ));
+        rewritten.extend_from_slice(&target[2..]);
+    } else {
+        rewritten.extend_from_slice(target);
+    }
     rewritten.push(crate::lexer::OwnedLexToken::word("to", crate::cards::TextSpan::synthetic()));
     rewritten.extend_from_slice(destination);
     rewritten.push(crate::lexer::OwnedLexToken::period(crate::cards::TextSpan::synthetic()));

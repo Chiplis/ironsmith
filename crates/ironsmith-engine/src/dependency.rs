@@ -1073,6 +1073,7 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn { .. }
             | PlayerFilter::Teammate
             | PlayerFilter::PlayerToYourLeft
+            | PlayerFilter::OpponentToYourLeft
             | PlayerFilter::PlayerToYourRight
             | PlayerFilter::Active
             | PlayerFilter::Defending

@@ -13,6 +13,9 @@ pub fn compile_delayed_trigger_spec(
     trigger: &TriggerSpec,
 ) -> Result<ironsmith_core::DelayedTriggerSpec, CardTextError> {
     match trigger {
+        TriggerSpec::ZoneChange(event) => Ok(
+            ironsmith_core::DelayedTriggerSpec::ZoneChange(event.clone()),
+        ),
         TriggerSpec::SpellCastThroughPreviousPermission => Ok(ironsmith_core::DelayedTriggerSpec::SpellCastThroughPreviousPermission),
         TriggerSpec::ConditionQualified {
             trigger,
@@ -225,12 +228,16 @@ pub fn compile_delayed_trigger_spec(
             player,
             each_damaged_player,
             per_source_controller,
+            recipient_passive,
+            during_your_turn,
         } => Ok(
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source: source.clone(),
                 player: player.clone(),
                 each_damaged_player: *each_damaged_player,
                 per_source_controller: *per_source_controller,
+                recipient_passive: *recipient_passive,
+                during_your_turn: *during_your_turn,
             },
         ),
         TriggerSpec::SpellCast {
@@ -941,6 +948,16 @@ fn compile_duration_scoped_delayed_trigger(
     let mut watch_all_object_targets = false;
 
     let delayed_trigger = match trigger_without_intro(trigger) {
+        TriggerSpec::ZoneChange(event) if event.duration_return_from_source => {
+            let tag = event.filter.as_ref().and_then(watch_tag_from_filter).ok_or_else(|| {
+                CardTextError::InvariantViolation(
+                    "duration-return delayed trigger needs captured exiled-card tag".into(),
+                )
+            })?;
+            watched_tag = Some(tag);
+            watch_ability_source = true;
+            ironsmith_core::DelayedTriggerSpec::ZoneChange(event.clone())
+        }
         TriggerSpec::ControlChanged(control) => {
             let mut control = control.clone();
             control.filter = resolve_it_tag(&control.filter, &refs)?;
@@ -1072,6 +1089,8 @@ fn compile_duration_scoped_delayed_trigger(
             player,
             each_damaged_player,
             per_source_controller,
+            recipient_passive,
+            during_your_turn,
         } => {
             let resolved = resolve_it_tag(source, &refs)?;
             if let Some(tag) = watch_tag_from_filter(&resolved) {
@@ -1082,6 +1101,8 @@ fn compile_duration_scoped_delayed_trigger(
                     player: player.clone(),
                     each_damaged_player: *each_damaged_player,
                     per_source_controller: *per_source_controller,
+                    recipient_passive: *recipient_passive,
+                    during_your_turn: *during_your_turn,
                 }
             } else {
                 ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
@@ -1089,6 +1110,8 @@ fn compile_duration_scoped_delayed_trigger(
                     player: player.clone(),
                     each_damaged_player: *each_damaged_player,
                     per_source_controller: *per_source_controller,
+                    recipient_passive: *recipient_passive,
+                    during_your_turn: *during_your_turn,
                 }
             }
         }
@@ -2013,6 +2036,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                     player,
                     each_damaged_player,
                     per_source_controller,
+                    recipient_passive,
+                    during_your_turn,
                 } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
                     let trigger =
@@ -2021,6 +2046,8 @@ pub(super) fn try_compile_timing_and_control_effect(
                             player: player.clone(),
                             each_damaged_player: *each_damaged_player,
                             per_source_controller: *per_source_controller,
+                            recipient_passive: *recipient_passive,
+                            during_your_turn: *during_your_turn,
                         };
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
@@ -2093,6 +2120,7 @@ pub(super) fn try_compile_timing_and_control_effect(
         }
         EffectAst::Delayed(DelayedEffectAst::DelayedWhenLastObjectDiesThisTurn {
             filter,
+            controller_at_death,
             effects,
         }) => {
             let target_tag = ctx.last_object_tag.clone().ok_or_else(|| {
@@ -2126,9 +2154,27 @@ pub(super) fn try_compile_timing_and_control_effect(
                 .until_end_of_turn();
                 return Ok(Some((vec![Effect::new(delayed)], choices)));
             }
+            // The controller in "when it dies under your control" is an
+            // event-time, last-known battlefield condition. It must not be a
+            // target_filter: that filter is checked when the delayed watcher
+            // is installed, before control could change later in the turn.
+            let death_trigger = if let Some(controller) = controller_at_death {
+                ironsmith_core::DelayedTriggerSpec::ZoneChange(
+                    ironsmith_core::trigger_model::ZoneChangeTrigger::new()
+                        .from(Zone::Battlefield)
+                        .to(Zone::Graveyard)
+                        .filter(ObjectFilter::default().controlled_by(controller.clone()))
+                        .graveyard_surface(
+                            ironsmith_core::trigger_model::GraveyardTriggerSurface::Dies,
+                        )
+                        .this(),
+                )
+            } else {
+                ironsmith_core::DelayedTriggerSpec::ThisDies
+            };
             let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                 target_tag.clone().into(),
-                ironsmith_core::DelayedTriggerSpec::ThisDies,
+                death_trigger,
                 delayed_effects,
                 true,
                 Vec::new(),

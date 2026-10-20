@@ -47,6 +47,15 @@ impl EffectExecutor for TagMatchingObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        let mut excluded_stable_ids = Vec::new();
+        for tag in &self.excluded_stable_card_tags {
+            let captured = ctx.get_tagged_all(tag).ok_or_else(|| {
+                ExecutionError::IncompleteEvidence(format!(
+                    "collection complement has no selected-card tag {tag}"
+                ))
+            })?;
+            excluded_stable_ids.extend(captured.iter().map(|snapshot| snapshot.stable_id));
+        }
         if !self.source_tags.is_empty() {
             let mut snapshots = Vec::new();
             let filter_ctx = ctx.filter_context(game);
@@ -60,6 +69,9 @@ impl EffectExecutor for TagMatchingObjectsEffect {
                     continue;
                 };
                 for snapshot in source {
+                    if excluded_stable_ids.contains(&snapshot.stable_id) {
+                        continue;
+                    }
                     if self.filter_source_snapshots
                         && !self.filter.matches_snapshot(snapshot, &filter_ctx, game)
                     {
@@ -91,7 +103,10 @@ impl EffectExecutor for TagMatchingObjectsEffect {
                 .turn_history
                 .spell_cast_snapshot_history()
                 .iter()
-                .filter(|snapshot| self.filter.matches_snapshot(snapshot, &filter_ctx, game))
+                .filter(|snapshot| {
+                    !excluded_stable_ids.contains(&snapshot.stable_id)
+                        && self.filter.matches_snapshot(snapshot, &filter_ctx, game)
+                })
                 .cloned()
                 .collect::<Vec<_>>();
             let object_ids = snapshots
@@ -113,6 +128,9 @@ impl EffectExecutor for TagMatchingObjectsEffect {
             }
         }
 
+        object_ids.retain(|id| game.object(*id).is_some_and(|object| {
+            !excluded_stable_ids.contains(&object.stable_id)
+        }));
         let snapshots = object_ids
             .iter()
             .filter_map(|id| {
@@ -140,6 +158,91 @@ mod tests {
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
             .card_types(vec![CardType::Creature])
             .build()
+    }
+
+    #[test]
+    fn searched_library_cards_moved_to_exile_yield_exact_castable_remainder() {
+        use crate::filter::{ObjectFilter, TaggedOpbjectRelation};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(&make_card("Source"), alice, Zone::Battlefield);
+        let picked = game.create_object_from_card(&make_card("Picked"), alice, Zone::Library);
+        let remaining = game.create_object_from_card(&make_card("Remaining"), alice, Zone::Library);
+        let outsider = game.create_object_from_card(&make_card("Outsider"), alice, Zone::Exile);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("searched", vec![
+            ObjectSnapshot::from_object_id(&game, picked).unwrap(),
+            ObjectSnapshot::from_object_id(&game, remaining).unwrap(),
+        ]);
+        // Search tags are captured in Library; the move creates new exile
+        // object IDs. The producer intentionally follows the stable cards to
+        // Exile, then captures their *current* exact object IDs in `rest`.
+        let picked_exile = game.move_object_by_effect(picked, Zone::Exile).unwrap();
+        let remaining_exile = game.move_object_by_effect(remaining, Zone::Exile).unwrap();
+        ctx.set_tagged_objects("picked", vec![
+            ObjectSnapshot::from_object_id(&game, picked_exile).unwrap(),
+        ]);
+        game.move_object_by_effect(picked_exile, Zone::Library).unwrap();
+        let producer = TagMatchingObjectsEffect::new(
+            ObjectFilter::tagged("searched").in_zone(Zone::Exile), "rest",
+        ).in_zone(Zone::Exile).excluding_stable_cards_tagged("picked");
+        producer.execute(&mut game, &mut ctx).unwrap();
+        let rest = ctx.get_tagged_all("rest").unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].object_id, remaining_exile);
+        let choice = ObjectFilter::tagged("rest")
+            .in_zone(Zone::Exile)
+            .match_tagged("rest", TaggedOpbjectRelation::SameObjectId);
+        {
+            let filter_ctx = ctx.filter_context(&game);
+            assert!(choice.matches(game.object(remaining_exile).unwrap(), &filter_ctx, &game));
+            assert!(!choice.matches(game.object(outsider).unwrap(), &filter_ctx, &game));
+        }
+        let hand = game.move_object_by_effect(remaining_exile, Zone::Hand).unwrap();
+        let returned = game.move_object_by_effect(hand, Zone::Exile).unwrap();
+        assert_ne!(returned, remaining_exile);
+        let filter_ctx = ctx.filter_context(&game);
+        assert!(!choice.matches(game.object(returned).unwrap(), &filter_ctx, &game));
+    }
+
+    #[test]
+    fn redirected_opponent_pick_still_is_not_in_the_other_exiled_cards() {
+        use crate::filter::ObjectFilter;
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_card(&make_card("Source"), alice, Zone::Battlefield);
+        let picked = game.create_object_from_card(&make_card("Picked"), alice, Zone::Library);
+        let other = game.create_object_from_card(&make_card("Other"), alice, Zone::Library);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.set_tagged_objects("searched", vec![
+            ObjectSnapshot::from_object_id(&game, picked).unwrap(),
+            ObjectSnapshot::from_object_id(&game, other).unwrap(),
+        ]);
+        let picked_exile = game.move_object_by_effect(picked, Zone::Exile).unwrap();
+        let other_exile = game.move_object_by_effect(other, Zone::Exile).unwrap();
+        ctx.set_tagged_objects("picked", vec![
+            ObjectSnapshot::from_object_id(&game, picked_exile).unwrap(),
+        ]);
+        let producer = TagMatchingObjectsEffect::new(
+            ObjectFilter::tagged("searched").in_zone(Zone::Exile), "rest",
+        ).in_zone(Zone::Exile).excluding_stable_cards_tagged("picked");
+        // The opponent's pick is excluded even when its attempted shuffle
+        // simply does not move it out of Exile.
+        producer.execute(&mut game, &mut ctx).unwrap();
+        let rest = ctx.get_tagged_all("rest").unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].object_id, other_exile);
+        // Model a redirected move ending in Exile under a new object ID.
+        // The chosen card remains a physical card in the zone, but is still
+        // not one of "the other cards."
+        let redirected_intermediate = game.move_object_by_effect(picked_exile, Zone::Hand).unwrap();
+        let redirected_exile = game.move_object_by_effect(redirected_intermediate, Zone::Exile).unwrap();
+        assert_ne!(redirected_exile, picked_exile);
+        producer.execute(&mut game, &mut ctx).unwrap();
+        let rest = ctx.get_tagged_all("rest").unwrap();
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].object_id, other_exile);
+        assert_ne!(rest[0].object_id, redirected_exile);
     }
 
     #[test]

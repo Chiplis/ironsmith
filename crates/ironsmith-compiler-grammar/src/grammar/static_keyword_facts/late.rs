@@ -1003,7 +1003,10 @@ fn parse_copy_activated_marker_lexed(input: &mut LexStream<'_>) -> WResult<bool>
     alt((
         (
             alt((strict_kw("has"), strict_kw("have"))),
-            semantic_phrase(&["all", "activated", "abilities", "of"]),
+            alt((
+                semantic_phrase(&["all", "activated", "abilities", "of"]),
+                semantic_phrase(&["each", "activated", "ability", "of"]),
+            )),
         )
             .value(false),
         (

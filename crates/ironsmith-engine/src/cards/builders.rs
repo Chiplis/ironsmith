@@ -355,6 +355,13 @@ fn replace_whole_word_case_insensitive(text: &str, from: &str, to: &str) -> Stri
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    // "hexproof from each of its colors" (Tam, Mindful First-Year).
+    if let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.tag.as_str() == crate::tag::HEXPROOF_PROTECTED_OBJECT_TAG
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesColorWithTagged
+    {
+        return "each of its colors".to_string();
+    }
     if !filter.any_of.is_empty() {
         return filter
             .any_of

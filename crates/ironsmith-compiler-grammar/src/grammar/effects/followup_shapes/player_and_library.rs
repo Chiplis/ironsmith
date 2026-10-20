@@ -155,6 +155,26 @@ fn is_still_subtyped_land_followup(tokens: &[OwnedLexToken]) -> bool {
         })
 }
 
+/// "It's still a Cave land." with exactly one restated land subtype.
+pub fn parse_still_single_subtyped_land_followup(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::types::Subtype> {
+    if !is_still_subtyped_land_followup(tokens) {
+        return None;
+    }
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    let [.., subtype, "land"] = words.as_slice() else {
+        return None;
+    };
+    let rest_len = words.len();
+    // "it's still a <Subtype> land" / "it s still a <Subtype> land"
+    let article_index = rest_len.checked_sub(3)?;
+    if !matches!(words.get(article_index), Some(&"a") | Some(&"an")) {
+        return None;
+    }
+    crate::util::parse_subtype_word(subtype)
+}
+
 /// "It's still an enchantment." after an animation of a noncreature
 /// permanent: the card type the animated object keeps.
 pub fn parse_still_card_type_followup(tokens: &[OwnedLexToken]) -> Option<crate::types::CardType> {

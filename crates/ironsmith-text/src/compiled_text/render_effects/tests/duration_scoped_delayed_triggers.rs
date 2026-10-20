@@ -105,3 +105,70 @@ fn permanent_delayed_trigger_does_not_invent_a_duration() {
         "Whenever you cast a spell, you draw a card"
     );
 }
+
+#[test]
+fn linked_exile_duration_return_has_authored_delayed_surface() {
+    let tag = ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG;
+    let trigger = crate::triggers::ZoneChangeTrigger::new()
+        .from(crate::zone::Zone::Exile)
+        .to(crate::zone::Zone::Battlefield)
+        .filter(
+            ObjectFilter::default()
+                .controlled_by(PlayerFilter::You)
+                .match_tagged(tag, TaggedOpbjectRelation::IsTaggedObject),
+        )
+        .duration_return_from_source();
+    let counters = Effect::put_counters(
+        crate::CounterType::PlusOnePlusOne,
+        2,
+        ChooseSpec::Tagged(TagKey::from("triggering")),
+    );
+    let schedule = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        crate::triggers::Trigger::new(trigger.clone()),
+        vec![counters.clone()],
+        true,
+        tag,
+        PlayerFilter::You,
+    )
+    .watch_ability_source();
+    assert_eq!(
+        describe_effect(&Effect::new(schedule)),
+        "When an exiled card enters under your control this way, put two +1/+1 counters on it"
+    );
+
+    let authored = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        crate::triggers::Trigger::new(trigger.clone()),
+        vec![counters.clone()],
+        true,
+        tag,
+        PlayerFilter::You,
+    )
+    .watch_ability_source()
+    .with_leading_duration_surface();
+    assert_eq!(
+        describe_effect(&Effect::new(authored)),
+        "When an exiled card enters under your control this way, put two +1/+1 counters on it",
+        "the lowering presentation bit must not discard the duration provenance"
+    );
+
+    // An ordinary exile-to-battlefield watcher must not claim the linked
+    // duration's "this way" provenance.
+    let ordinary = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+        crate::triggers::Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Exile)
+                .to(crate::zone::Zone::Battlefield)
+                .filter(
+                    ObjectFilter::default()
+                        .controlled_by(PlayerFilter::You)
+                        .match_tagged(tag, TaggedOpbjectRelation::IsTaggedObject),
+                ),
+        ),
+        vec![counters],
+        true,
+        tag,
+        PlayerFilter::You,
+    )
+    .watch_ability_source();
+    assert!(!describe_effect(&Effect::new(ordinary)).contains("this way"));
+}

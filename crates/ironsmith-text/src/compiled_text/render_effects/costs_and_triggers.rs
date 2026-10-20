@@ -1548,20 +1548,44 @@ fn describe_choose_any_number_then_tap_cost(
         || choose.chooser != PlayerFilter::You
         || choose.is_search
         || choose.reveal
-        || choose.aggregate_constraint.is_some()
         || choose_primary_zone(choose).is_some_and(|zone| zone != Zone::Battlefield)
         || tap.actor.is_some()
         || !matches!(tap.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == choose.tag.as_str())
     {
         return None;
     }
-    let description = choose.filter.description();
+    // "with total power 10 or greater" (Mossbridge Troll): a minimum total
+    // power over the tapped set.
+    let aggregate_suffix = match &choose.aggregate_constraint {
+        None => String::new(),
+        Some(constraint) => {
+            let minimum = match constraint.minimum.as_ref().map(|value| value.unhinted()) {
+                Some(Value::Fixed(minimum)) => *minimum,
+                _ => return None,
+            };
+            if constraint.metric != crate::effect::ChoiceAggregateMetric::Power
+                || !matches!(constraint.maximum.unhinted(), Value::Fixed(i32::MAX))
+            {
+                return None;
+            }
+            format!(" with total power {minimum} or greater")
+        }
+    };
+    // "other than this creature" keeps the source exclusion after the noun.
+    let mut filter = choose.filter.clone();
+    let other_than_source = filter.other && !aggregate_suffix.is_empty();
+    if other_than_source {
+        filter.other = false;
+        filter.source_surface = None;
+    }
+    let description = filter.description();
     let mut selected = strip_leading_article(&description).trim().to_string();
     if let Some(rest) = selected.strip_suffix(" on the battlefield") {
         selected = rest.to_string();
     }
+    let other_text = if other_than_source { " other than this creature" } else { "" };
     Some(format!(
-        "Tap any number of {}",
+        "Tap any number of {}{other_text}{aggregate_suffix}",
         pluralize_noun_phrase(&selected)
     ))
 }
@@ -2441,6 +2465,9 @@ pub(super) fn named_artifact_exile_cost_name(
 }
 
 pub(super) fn title_case_card_name_fragment(name: &str) -> String {
+    if name == "{chosen name}" {
+        return "the chosen name".to_string();
+    }
     name.split_whitespace()
         .map(|word| {
             if matches!(word, "a" | "an" | "and" | "of" | "the" | "to") {
@@ -2464,6 +2491,11 @@ pub(super) fn title_case_named_card_selection(selection: &str) -> String {
     let Some((head, name)) = selection.split_once(" named ") else {
         return selection.to_string();
     };
+    // A runtime back-reference to a previously chosen name is not a literal
+    // card name ("cards with the chosen name").
+    if let Some(rest) = name.strip_prefix("{chosen name}") {
+        return format!("{head} with the chosen name{rest}");
+    }
     format!("{head} named {}", title_case_card_name_fragment(name))
 }
 
@@ -3010,7 +3042,13 @@ pub(super) fn this_way_back_reference_filter(filter: &ObjectFilter) -> bool {
     let untap_reference = filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && (constraint.tag.as_str().starts_with("untapped_")
-                || constraint.tag.as_str().starts_with("created_"))
+                || constraint.tag.as_str().starts_with("created_")
+                // "choose any number of target lands you control and put an
+                // awakening counter on each of them" (Liege of the Tangle).
+                || constraint
+                    .tag
+                    .as_str()
+                    .starts_with("__ability_controller_target_choice_"))
     });
     if describe_tagged_this_way_action(filter).is_none() && !untap_reference {
         return false;
@@ -3681,6 +3719,14 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     }
     if let Some(rest) = base.strip_prefix("another ") {
         return format!("other {}{}", pluralize_noun_phrase(rest), trailing);
+    }
+    // "creature cards put into graveyards this way" (Danse Macabre): the
+    // participle qualifies the head noun; the graveyard is per card.
+    if let Some(head) = base.strip_suffix(" put into a graveyard this way") {
+        return format!(
+            "{} put into graveyards this way{trailing}",
+            pluralize_noun_phrase(head.trim())
+        );
     }
     // "Aura cards that were attached to it" (Cass, Hand of Vengeance).
     if let Some((head, predicate)) = base.split_once(" that was ") {
@@ -5117,6 +5163,21 @@ pub(crate) fn describe_split_for_players_choose_then_sacrifice(
         _ => return None,
     };
 
+    // "Each player sacrifices all creatures they control not chosen this way"
+    // (The Eternal Wanderer): the authored complement surface.
+    if slots.len() == 1
+        && comparison_tail.is_empty()
+        && sacrifice.filter.prior_effect_action_surface()
+            == Some(crate::effect::PriorEffectAction::Chosen)
+    {
+        let mut plain_kind = sacrificed.clone();
+        plain_kind.set_prior_effect_action_surface(None);
+        let plain_kind = pluralize_noun_phrase(strip_leading_article(&plain_kind.description()));
+        return Some(format!(
+            "For each player, choose {} that player controls. Each player sacrifices all {plain_kind} they control not chosen this way",
+            with_indefinite_article(&slots[0])
+        ));
+    }
     let choice_clause = if slots.len() == 1 {
         format!(
             "For each player, you choose {} that player controls",
@@ -5674,9 +5735,20 @@ pub(crate) fn describe_for_players_choose_move_then_characteristics(
     let first_apply = tagged_apply_continuous_effect(first_apply_effect)?;
     let second_apply = tagged_apply_continuous_effect(second_apply_effect)?;
     let ability_apply = tagged_apply_continuous_effect(ability_effect)?;
-    if !apply_continuous_is_forever_tagged(first_apply, tag)
-        || !apply_continuous_is_forever_tagged(second_apply, tag)
-        || !apply_continuous_is_forever_tagged(ability_apply, tag)
+    // The characteristics may name the chosen set or the set the move just
+    // put onto the battlefield (Ghouls' Night Out).
+    let moved_tag = move_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.tag.clone());
+    let forever_on_moved = |apply: &crate::effects::ApplyContinuousEffect| {
+        apply_continuous_is_forever_tagged(apply, tag)
+            || moved_tag
+                .as_ref()
+                .is_some_and(|moved| apply_continuous_is_forever_tagged(apply, moved))
+    };
+    if !forever_on_moved(first_apply)
+        || !forever_on_moved(second_apply)
+        || !forever_on_moved(ability_apply)
         || !first_apply.additional_modifications.is_empty()
         || !second_apply.additional_modifications.is_empty()
         || !apply_continuous_grants_decayed(ability_apply)
@@ -6353,7 +6425,14 @@ pub(super) fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String 
         base.tagged_constraints.clear();
         let noun = base.description();
         let noun = strip_leading_article(&noun);
-        let noun = if noun.is_empty() || noun == "permanent" || noun == "permanents" {
+        let created_tokens = constraint.tag.as_str().starts_with("created_");
+        let noun = if (noun.is_empty() || noun == "permanent" || noun == "permanents")
+            && created_tokens
+        {
+            // The tagged set is exactly the tokens an earlier create
+            // instruction made ("Sacrifice those tokens at end of combat").
+            "tokens".to_string()
+        } else if noun.is_empty() || noun == "permanent" || noun == "permanents" {
             "permanents".to_string()
         } else if noun.ends_with("tokens") || noun.ends_with("creatures") || noun.ends_with("permanents") {
             noun.to_string()
@@ -6767,6 +6846,89 @@ pub(crate) fn describe_chosen_added_combat_restriction(
     ))
 }
 
+/// A resolving combat requirement/restriction over exactly the creatures a
+/// prior instruction named ("That creature attacks this turn if able", "They
+/// block this turn if able", "Each of those creatures attacks that combat if
+/// able. They can't attack you or planeswalkers you control that combat.").
+pub(crate) fn describe_referenced_creature_combat_rule(
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
+    use crate::effect::{Restriction, RestrictionStart, Until};
+    let is_referenced_creatures = |filter: &ObjectFilter| {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return false;
+        };
+        if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            || constraint.tag.as_str() == "__chosen_objects__"
+        {
+            return false;
+        }
+        let mut base = filter.clone();
+        base.tagged_constraints.clear();
+        base == ObjectFilter::creature()
+    };
+    let window = match (&cant.start, &cant.duration) {
+        (RestrictionStart::Immediate, Until::EndOfTurn)
+            if cant.duration_surface == crate::effect::RestrictionDurationSurface::Default =>
+        {
+            "this turn"
+        }
+        (RestrictionStart::LastAddedCombatPhase, Until::EndOfCombat) => "that combat",
+        _ => return None,
+    };
+    // The authored back-reference rides on the filter as equality-transparent
+    // surface metadata: "that creature", "those creatures", "it", or "they".
+    let subject = |filter: &ObjectFilter| -> (&'static str, bool) {
+        use ironsmith_core::DemonstrativeAntecedentSurface as Surface;
+        match (
+            filter.demonstrative_antecedent_surface(),
+            filter.has_plural_object_noun_surface(),
+        ) {
+            (Some(Surface::Creature), false) => ("That creature", false),
+            (Some(Surface::Creature), true) => ("Those creatures", true),
+            (Some(Surface::Object), false) => ("It", false),
+            _ => ("They", true),
+        }
+    };
+    match &cant.restriction {
+        Restriction::MustAttack(filter) if is_referenced_creatures(filter) => {
+            let (who, plural) = subject(filter);
+            let verb = if plural { "attack" } else { "attacks" };
+            Some(format!("{who} {verb} {window} if able"))
+        }
+        Restriction::MustBlock(filter) if is_referenced_creatures(filter) => {
+            let (who, plural) = subject(filter);
+            let verb = if plural { "block" } else { "blocks" };
+            Some(format!("{who} {verb} {window} if able"))
+        }
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+            if window == "that combat"
+                && *player == crate::target::PlayerFilter::You
+                && is_referenced_creatures(attackers) =>
+        {
+            let (who, _) = subject(attackers);
+            Some(format!("{who} can't attack you or planeswalkers you control that combat"))
+        }
+        // "Creatures your opponents control block this turn if able".
+        Restriction::MustAttack(filter) | Restriction::MustBlock(filter)
+            if window == "this turn" && filter.tagged_constraints.is_empty() =>
+        {
+            let verb = if matches!(&cant.restriction, Restriction::MustAttack(_)) {
+                "attack"
+            } else {
+                "block"
+            };
+            Some(format!(
+                "{} {verb} this turn if able",
+                capitalize_first(&pluralize_noun_phrase(
+                    &filter.description()
+                ))
+            ))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn describe_for_each_chosen_put_counters_then_gain_keywords(
     for_each: &crate::effects::ForEachObject,
     grant_effect: &Effect,
@@ -6923,6 +7085,20 @@ pub(crate) fn describe_tagged_target_then_cant_restriction(
             ""
         };
         return Some(format!("{subject} can't be countered{suffix}"));
+    }
+    // "+1: Up to one target creature can't attack or block until your next
+    // turn" (Kaito, Dancing Shadow).
+    if let crate::effect::Restriction::AttackOrBlock(filter) = &cant.restriction
+        && cant.duration == crate::effect::Until::YourNextTurn
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == tagged.tag.as_str()
+        })
+    {
+        let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+        return Some(format!(
+            "{subject} can't attack or block until your next turn"
+        ));
     }
     if cant.duration != crate::effect::Until::EndOfTurn {
         return None;
@@ -7445,6 +7621,22 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
         base = format!("the sacrificed {}", base.trim_start_matches("the ").trim());
     }
 
+    // "non-Wall creature the active player has controlled continuously since
+    // the beginning of the turn" (Arcum's Whistle): the continuous-control
+    // history replaces the plain controller scope.
+    if filter.controller == Some(PlayerFilter::Active)
+        && let Some(base_with_history) = base.contains(
+            " that its controller has controlled continuously since the beginning of the turn",
+        )
+        .then(|| {
+            base.replace(
+                " that its controller has controlled continuously since the beginning of the turn",
+                " the active player has controlled continuously since the beginning of the turn",
+            )
+        })
+    {
+        return base_with_history;
+    }
     if let Some(controller) = &filter.controller {
         let controller_suffix = match controller {
             PlayerFilter::You => "you control".to_string(),

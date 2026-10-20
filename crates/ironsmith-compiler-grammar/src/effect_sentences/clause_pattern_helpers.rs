@@ -2965,7 +2965,7 @@ pub fn parse_keyword_mechanic_clause(
                 PlayerAst::Implicit,
                 parse_keyword_value_tokens(count_tokens, "roll-dice", &clause_text)?,
                 6,
-                None,
+                Some(crate::model::ast::DieSurface::Sided(crate::model::ast::DieNoun::Dice)),
             )
         }
         clause_shapes::KeywordMechanicShape::OddEvenResult { odd, action_tokens } => {

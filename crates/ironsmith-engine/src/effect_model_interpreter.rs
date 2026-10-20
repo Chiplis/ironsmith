@@ -1110,6 +1110,16 @@ where
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::ForEachAnnouncedTargetSlotEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::ForEachAnnouncedTargetSlotEffect {
+            target_spec: payload.target_spec.clone(),
+            start: payload.start.clone(),
+            count: payload.count.clone(),
+            effects: convert_effects(payload.effects.iter().cloned(), hooks)?,
+        }));
+    }
+    if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedEffect<M::Effect>>(&effect)
     {
         let mut converted = crate::effects::ForEachTaggedEffect::new(

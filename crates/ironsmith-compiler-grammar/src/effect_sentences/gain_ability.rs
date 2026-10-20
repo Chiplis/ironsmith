@@ -134,6 +134,8 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
             && (gain_shapes::gain_word_is_when_intro(token.parser_text())
                 || gain_shapes::gain_word_is_trigger_intro(token.parser_text()))
     });
+    // "[−8]: ..." keeps its loyalty cost rather than reading "8" as mana.
+    let mut in_loyalty_cost = false;
 
     for (token_idx, token) in tokens.iter().enumerate() {
         if let Some(word) = token.as_word() {
@@ -150,7 +152,9 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
             let rendered = match word {
                 "t" => "{T}".to_string(),
                 "q" => "{Q}".to_string(),
-                _ if (in_effect_text || counts_life) && numeric_like => word.to_string(),
+                _ if (in_loyalty_cost || in_effect_text || counts_life) && numeric_like => {
+                    word.to_string()
+                }
                 _ => parse_mana_symbol(word)
                     .map(|symbol| ManaCost::from_symbols(vec![symbol]).to_oracle())
                     .unwrap_or_else(|_| word.to_ascii_lowercase()),
@@ -176,6 +180,23 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
         } else if token.is_semicolon() {
             text.push(';');
             needs_space = true;
+        } else if token.kind == TokenKind::LBracket {
+            if needs_space && !text.is_empty() {
+                text.push(' ');
+            }
+            text.push('[');
+            needs_space = false;
+            in_loyalty_cost = true;
+        } else if token.kind == TokenKind::RBracket {
+            text.push(']');
+            needs_space = false;
+            in_loyalty_cost = false;
+        } else if in_loyalty_cost && token.kind == TokenKind::Plus {
+            text.push('+');
+            needs_space = false;
+        } else if in_loyalty_cost && token.kind == TokenKind::Dash {
+            text.push('-');
+            needs_space = false;
         }
     }
 
@@ -3217,6 +3238,19 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
     let left = &subject[..*and_idx];
     let right = &subject[*and_idx + 1..];
     if left.is_empty() || right.is_empty() {
+        return None;
+    }
+    // "It's goaded for the rest of the game and it gains "..."" (Jon
+    // Irenicus): a copular state clause coordinated with a grant is not a
+    // recipient noun phrase; the gain reader splits that sentence itself.
+    if subject
+        .iter()
+        .any(|token| token.is_any_word(&["is", "are", "it's", "they're", "theyre"]))
+        || matches!(
+            crate::lexer::token_word_refs(left).as_slice(),
+            ["its", "goaded" | "tapped" | "untapped", ..]
+        )
+    {
         return None;
     }
     let is_anaphor = |conjunct: &[OwnedLexToken]| {

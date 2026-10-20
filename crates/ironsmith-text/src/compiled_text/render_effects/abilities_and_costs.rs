@@ -104,6 +104,22 @@ fn rewrite_removed_counter_type_surface(
     mut effects: String,
     costs: &[crate::costs::Cost],
 ) -> String {
+    // "Add {B}, then add {B} for each charge counter removed this way": the
+    // second, per-counter grant of the same mana is an additional amount on
+    // top of the fixed first grant (Mana Batteries).
+    let additional = effects.strip_prefix("Add ").and_then(|rest| {
+        let (mana, tail) = rest.split_once(", then add ")?;
+        let after = tail.strip_prefix(mana)?;
+        (mana.starts_with('{')
+            && mana.ends_with('}')
+            && !mana.contains(' ')
+            && after.starts_with(" for each ")
+            && after.contains(" removed this way"))
+        .then(|| format!("Add {mana}, then add an additional {mana}{after}"))
+    });
+    if let Some(additional) = additional {
+        effects = additional;
+    }
     let Some(count_phrase) = removed_counters_this_way_x_phrase(costs) else {
         return effects;
     };
@@ -212,6 +228,14 @@ pub(in crate::compiled_text) fn describe_annihilator_keyword(
         return None;
     }
     let Value::Fixed(amount) = count else {
+        // "Ulamog has annihilator X, where X is the number of +1/+1
+        // counters on it" (Ulamog, the Defiler): a dynamic count.
+        if matches!(count.unhinted(), Value::CountersOnSource(_)) {
+            return Some(format!(
+                "This creature has annihilator X, where X is {}",
+                describe_value(count.unhinted())
+            ));
+        }
         return None;
     };
     Some(format!("Annihilator {amount}"))
@@ -1158,6 +1182,7 @@ pub(crate) fn describe_ability(
         && let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } = &model.payload
         && matches!(&ability.payload,
             ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+            | ironsmith_core::StaticAbilityPayload::AddCardTypes { filter, card_types }
                 if filter.source && !card_types.is_empty())
     {
         return vec![format!(
@@ -1316,6 +1341,16 @@ pub(crate) fn describe_ability(
                     | crate::static_abilities::StaticAbilityId::UnsupportedParserLine
             ) || normalized.contains('"')
                 || lower.contains("cycling ");
+            // The marker only changes a negative power (CR 510.1a override,
+            // Loot, the Anomaly); print its gating condition.
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                && lower.trim_end_matches('.')
+                    == "this creature assigns combat damage as though its power were positive"
+            {
+                return vec![format!(
+                    "Static ability {index}: If {subject}'s power is negative, it assigns combat damage as though its power were positive"
+                )];
+            }
             if prefer_safe_label_text && !normalized.is_empty() {
                 let granted_cycling_surface = if (lower.contains(" has ")
                     || lower.contains(" have "))
@@ -1493,6 +1528,15 @@ pub(crate) fn describe_ability(
             } else {
                 None
             };
+            // "This ability triggers only if ..." (Quakebringer) gates the
+            // trigger event itself and is printed as a trailing sentence.
+            let trigger_event_only_condition = match intervening_condition.take() {
+                Some(Condition::TriggerEventOnly(inner)) => Some(*inner),
+                other => {
+                    intervening_condition = other;
+                    None
+                }
+            };
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
@@ -1543,8 +1587,15 @@ pub(crate) fn describe_ability(
                     let only = clauses[0].trim_start();
                     if triggered.trigger.saga_chapters().is_some() {
                         // A chapter line always reads "III — If ...".
+                        // A leading chooser is the imperative "Choose ..."
+                        // (The Day of the Doctor: "IV — Choose up to three
+                        // Doctors.").
+                        let only = only.strip_prefix("you choose ").map_or_else(
+                            || only.to_string(),
+                            |rest| format!("choose {rest}"),
+                        );
                         line.push_str(" — ");
-                        line.push_str(&capitalize_first(only));
+                        line.push_str(&capitalize_first(&only));
                     } else if let Some(rest) = only.strip_prefix("If ") {
                         line.push_str(", if ");
                         line.push_str(rest.trim_start());
@@ -1619,6 +1670,12 @@ pub(crate) fn describe_ability(
                 }
                 _ => {}
             }
+            if let Some(condition) = trigger_event_only_condition.as_ref() {
+                line.push_str(". This ability triggers only if ");
+                line.push_str(&describe_trigger_intervening_condition(
+                    condition, triggered, None,
+                ));
+            }
             line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
             line = normalize_redundant_short_name_etb_surface(line, triggered, subject);
             line = normalize_modal_named_source_etb_surface(line, triggered, subject);
@@ -1626,6 +1683,20 @@ pub(crate) fn describe_ability(
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);
             line = deduplicate_triggered_presentation_label(triggered, line);
+            line = name_trigger_attachment_references(triggered, line);
+            // "If this creature's sneak cost was paid" (Turncoat Kunoichi): a
+            // permanent's own triggered ability names the permanent, not the
+            // spell it was.
+            if !subject.is_empty() && subject != "this spell" {
+                line = line.replace(
+                    "this spell's sneak cost was paid",
+                    &format!("{subject}'s sneak cost was paid"),
+                );
+                line = line.replace(
+                    "this spell's emerge cost was paid",
+                    &format!("{subject}'s emerge cost was paid"),
+                );
+            }
             vec![line]
         }
         AbilityKind::Activated(activated) if activated.is_mana_ability() => {
@@ -2323,7 +2394,8 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
     // is authored as one coordinated instruction. The executable
     // DestroyNoRegeneration effect deliberately renders the reusable default
     // as two sentences, so rejoin only this exact conditional surface.
-    if normalized.contains("If you don't, destroy ")
+    if (normalized.contains("If you don't, destroy ")
+        || normalized.contains(", then destroy that creature. It can't be regenerated"))
         && normalized.ends_with(". It can't be regenerated")
     {
         return normalized.replacen(
@@ -2552,6 +2624,8 @@ pub(crate) fn rewrite_damage_phrases_for_permanent_abilities(
             " otherwise, deal ",
             &format!(" otherwise, {subject} deals "),
         )
+        .replace(". Then Deal ", &format!(". Then {subject} deals "))
+        .replace(". Then deal ", &format!(". Then {subject} deals "))
         .replace(". Deal ", &format!(". {capitalized_subject} deals "))
         .replace(". deal ", &format!(". {subject} deals "))
         .replace("| Deal ", &format!("| {capitalized_subject} deals "))
@@ -2562,6 +2636,53 @@ pub(crate) fn rewrite_damage_phrases_for_permanent_abilities(
         .replace(", deal ", &format!(", {subject} deals "))
         .replace(" and Deal ", &format!(" and {subject} deals "))
         .replace(" and deal ", &format!(" and {subject} deals "));
+    // "deals X damage to each creature with flying and 1 damage to each blue
+    // creature" (Tropical Storm): a second damage clause joined to the same
+    // subject's damage clause in one sentence does not restate the subject.
+    for repeated_subject in [format!(" and {subject} deals "), " and this deals ".to_string()] {
+    if out.contains(&repeated_subject) {
+        let mut rebuilt = String::with_capacity(out.len());
+        let mut rest = out.as_str();
+        while let Some(at) = rest.find(&repeated_subject) {
+            let before = &rest[..at];
+            let sentence = before.rsplit_once(". ").map_or(before, |(_, tail)| tail);
+            rebuilt.push_str(before);
+            if sentence.contains(" deals ")
+                && sentence.contains(" damage to ")
+                && !sentence.contains(", then ")
+                && rest[at + repeated_subject.len()..]
+                    .split_once(' ')
+                    .is_some_and(|(_, after)| after.starts_with("damage to "))
+            {
+                rebuilt.push_str(" and ");
+            } else {
+                rebuilt.push_str(&repeated_subject);
+            }
+            rest = &rest[at + repeated_subject.len()..];
+        }
+        rebuilt.push_str(rest);
+        out = rebuilt;
+    }
+    }
+    // "it gets +2/+2 until end of turn and deals 2 damage to each opponent"
+    // (The Howling Abomination): one subject governs both predicates.
+    for joined in [
+        " until end of turn and it deals ".to_string(),
+        format!(" until end of turn and {subject} deals "),
+    ] {
+        if let Some(at) = out.find(joined.as_str()) {
+            let before = &out[..at];
+            let sentence = before.rsplit_once(". ").map_or(before, |(_, tail)| tail);
+            let clause = sentence.rsplit_once(", ").map_or(sentence, |(_, tail)| tail);
+            if clause.starts_with("it gets ") && !clause.contains(" and ") {
+                out = format!(
+                    "{before} until end of turn and deals {}",
+                    &out[at + joined.len()..]
+                );
+                break;
+            }
+        }
+    }
     if rewrite_it_deals {
         out = out
             .replace(". It deals ", &format!(". {capitalized_subject} deals "))
@@ -2986,6 +3107,30 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         return describe_blight_cost(&describe_value(&put.amount));
     }
 
+    // "choose a creature you control or a warped creature card you own in
+    // exile" (Close Encounter): one choice over a union of object domains.
+    // The choice is a cost only in that it must be made; nothing moves.
+    if let [single] = costs
+        && let Some(choose) = single
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        && choose.chooser == PlayerFilter::You
+        && !choose.is_search
+        && !choose.reveal
+        && choose.count.is_single()
+        && choose.filter.any_of.len() >= 2
+    {
+        let options = choose
+            .filter
+            .any_of
+            .iter()
+            .map(|branch| {
+                with_indefinite_article(strip_indefinite_article(&branch.description()))
+            })
+            .collect::<Vec<_>>();
+        return format!("choose {}", join_with_or(&options));
+    }
+
     if costs.len() == 1
         && let Some(may) = costs[0]
             .effect_ref()
@@ -3279,6 +3424,17 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             .as_all()
             .map(describe_cost_list)
             .unwrap_or_else(|| describe_total_cost_payment(&cost.cost));
+        // A tap-creatures flash cost reads as a gerund rider: "by tapping
+        // three untapped creatures you control with flying in addition to
+        // paying its other costs" (Tegwyll's Scouring).
+        let lowered = lowercase_first(&payment);
+        if let Some(tapped) = lowered.strip_prefix("tap ")
+            && !tapped.contains(" and ")
+        {
+            return format!(
+                "You may cast this spell as though it had flash by tapping {tapped} in addition to paying its other costs"
+            );
+        }
         return format!(
             "You may cast this spell as though it had flash if you {} as an additional cost to cast it",
             lowercase_first(&payment)
@@ -3340,6 +3496,12 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         } else {
             action
         };
+        // A bare mana payment reads "you may pay {2}{R}".
+        let action = if action.starts_with('{') {
+            format!("pay {action}")
+        } else {
+            action
+        };
         return format!("As an additional cost to cast this spell, you may {}", lowercase_first(&action));
     }
     if cost.kind == OptionalCostKind::Casualty
@@ -3355,6 +3517,25 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             "Casualty {power} {STANDARD_REMINDER_OPEN_SENTINEL}As you cast this spell, you may sacrifice a creature with power {power} or greater. When you do, copy this spell and you may choose a new target for the copy.{STANDARD_REMINDER_CLOSE_SENTINEL}"
         );
     }
+    // "Casualty X. The copy isn't legendary and has starting loyalty X."
+    // (Ob Nixilis, the Adversary): any creature may be sacrificed, and X is
+    // its power.
+    if cost.kind == OptionalCostKind::Casualty
+        && let Some([sacrifice]) = cost.cost.as_all()
+        && let Some(filter) = sacrifice.sacrifice_filter()
+        && filter.power.is_none()
+        && filter.card_types.as_slice() == [CardType::Creature]
+        && {
+            let mut base = filter.clone();
+            base.zone = None;
+            base.controller = None;
+            base.card_types.clear();
+            base.union_surface = ObjectFilter::default().union_surface;
+            base == ObjectFilter::default()
+        }
+    {
+        return "Casualty X. The copy isn't legendary and has starting loyalty X".to_string();
+    }
     // "Goblin offering": the keyword names the sacrificed subtype.
     if cost.kind == OptionalCostKind::Offering
         && let Some([sacrifice]) = cost.cost.as_all()
@@ -3362,6 +3543,15 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
         && let [subtype] = filter.subtypes.as_slice()
     {
         return format!("{subtype} offering");
+    }
+    // "Artifact offering" (Blast-Furnace Hellkite): a card-type offering.
+    if cost.kind == OptionalCostKind::Offering
+        && let Some([sacrifice]) = cost.cost.as_all()
+        && let Some(filter) = sacrifice.sacrifice_filter()
+        && filter.subtypes.is_empty()
+        && let [card_type] = filter.card_types.as_slice()
+    {
+        return format!("{} offering", capitalize_first(card_type.name()));
     }
     if matches!(cost.kind, OptionalCostKind::Conspire) {
         let reminder_cost = cost_text
@@ -3392,6 +3582,10 @@ pub(crate) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
             | OptionalCostKind::Entwine => {
                 if cost_text.trim().is_empty() {
                     label.to_string()
+                } else if !cost_text.trim_start().starts_with('{') {
+                    // A non-mana payload follows an em dash: "Kicker—Sacrifice
+                    // a land" (Pollen Remedy), "Buyback—Sacrifice a land".
+                    format!("{label}—{}", capitalize_first(cost_text.trim()))
                 } else {
                     format!("{label} {cost_text}")
                 }
@@ -3671,4 +3865,32 @@ mod conditional_source_type_surface_tests {
         assert!(lower.contains("is an artifact creature"), "{text}");
         assert!(!text.contains("__ironsmith"), "{text}");
     }
+}
+
+/// "Whenever an Aura you control becomes attached to a nonland permanent ...
+/// with mana value less than or equal to that Aura's mana value, gain control
+/// of that permanent for as long as that Aura is attached to it." (Eriette):
+/// references to the trigger's attachment participant name its one subtype.
+fn name_trigger_attachment_references(
+    triggered: &crate::ability::TriggeredAbility,
+    line: String,
+) -> String {
+    let Some(trigger) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::AttachmentChangedTrigger>()
+    else {
+        return line;
+    };
+    let [subtype] = trigger.attachment.subtypes.as_slice() else {
+        return line;
+    };
+    let noun = subtype.to_string();
+    line.replace(
+        "with mana value less than or equal to its mana value",
+        &format!("with mana value less than or equal to that {noun}'s mana value"),
+    )
+    .replace(
+        "for as long as that object is attached to it",
+        &format!("for as long as that {noun} is attached to it"),
+    )
 }

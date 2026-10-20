@@ -125,7 +125,7 @@ impl EffectExecutor for GrantBySpecEffect {
             return effect.execute_child(game, ctx);
         }
 
-        let grant_source = grant_duration_source(self.duration, game, ctx.source, player_id);
+        let grant_source = grant_duration_source(self.duration, game, ctx.source, ctx.controller);
 
         let shared_budget = self.spec.max_plays.map(|uses| {
             game.effect_store

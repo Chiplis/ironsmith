@@ -97,6 +97,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ForEachControllerOfTaggedEffect"
         | "ForEachObject"
         | "ForEachObjectCorrelatedResultEffect"
+        | "ForEachAnnouncedTargetSlotEffect"
         | "ForEachTaggedEffect"
         | "ForEachTaggedPlayerEffect"
         | "ForPlayersEffect"

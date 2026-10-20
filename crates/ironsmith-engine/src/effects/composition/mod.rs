@@ -50,6 +50,7 @@ pub(crate) mod execute_with_source;
 mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
+mod for_each_announced_target_slot;
 mod for_players;
 mod grant_repeatable_mana_payment_action;
 mod if_effect;
@@ -168,6 +169,7 @@ pub(crate) use reflexive_trigger::{
     PendingReflexiveTrigger, queue_reflexive_trigger, queue_reflexive_trigger_with_source_snapshot,
     reflexive_trigger_stack_entry,
 };
+pub use for_each_announced_target_slot::ForEachAnnouncedTargetSlotEffect;
 pub use repeat_effects::RepeatEffectsEffect;
 pub use repeat_process::RepeatProcessEffect;
 pub use repeat_process_prompt::RepeatProcessPromptEffect;
@@ -209,7 +211,9 @@ pub(crate) use conditional::prepare_conditional_branch;
 pub(crate) use execute_with_source::resolve_source_binding;
 pub(crate) use may::is_object_selection;
 pub(crate) use tagged::apply_outcome_tags;
-pub(crate) use tagging_runtime::{TaggedRuntimeState, capture_tagged_runtime_state};
+pub(crate) use tagging_runtime::{
+    BOUNDED_CHOICE_TAG, BOUNDED_CHOOSERS_TAG, TaggedRuntimeState, bounded_choice_pool, capture_tagged_runtime_state,
+};
 
 pub(crate) use if_effect::{
     PreparedIfBranch, execute_if_branches_with_outputs, prepare_if_branches,

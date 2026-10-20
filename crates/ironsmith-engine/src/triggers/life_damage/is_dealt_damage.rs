@@ -196,6 +196,13 @@ impl TriggerMatcher for IsDealtDamageTrigger {
             ChooseSpec::SpecificPlayer(_) => {
                 format!("Whenever that player is dealt {damage_text}")
             }
+            // "Whenever damage is dealt to one of the chosen players" (Sower
+            // of Discord): the players chosen as the source entered.
+            ChooseSpec::Player(crate::target::PlayerFilter::TaggedPlayer(tag))
+                if tag.as_str() == ironsmith_core::tag::SOURCE_CHOSEN_PLAYERS_TAG =>
+            {
+                format!("Whenever {damage_text} is dealt to one of the chosen players")
+            }
             ChooseSpec::Player(filter) => {
                 format!("Whenever {} is dealt {damage_text}", filter.description())
             }

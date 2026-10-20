@@ -518,6 +518,24 @@ fn is_referenced_creatures_subject(subject: &[OwnedLexToken]) -> bool {
     )
 }
 
+/// The surface of a back-referenced creature subject: a demonstrative noun
+/// ("that creature" / "those creatures"), a bare singular pronoun ("it",
+/// recorded as an `Object` antecedent), or a bare plural pronoun ("they").
+fn referenced_creatures_subject_surface(
+    subject: &[OwnedLexToken],
+) -> (Option<ironsmith_core::DemonstrativeAntecedentSurface>, bool) {
+    use ironsmith_core::DemonstrativeAntecedentSurface as Surface;
+    let words = crate::lexer::parser_token_word_refs(subject);
+    match words.as_slice() {
+        ["that", "creature"] | ["the", "creature"] => (Some(Surface::Creature), false),
+        ["it"] => (Some(Surface::Object), false),
+        ["those", "creatures"]
+        | ["each", "of", "those", "creatures"]
+        | ["the", "chosen", "creatures"] => (Some(Surface::Creature), true),
+        _ => (None, true),
+    }
+}
+
 /// "Each of those creatures attacks that combat if able.", "They can't attack
 /// you or planeswalkers you control that combat." and "They block this turn
 /// if able.": a combat requirement or restriction over exactly the creatures
@@ -565,10 +583,15 @@ pub(super) fn parse_referenced_combat_requirement(tokens: &[OwnedLexToken]) -> O
     if !is_referenced_creatures_subject(&body[..index]) {
         return None;
     }
-    let creatures = crate::target::ObjectFilter::creature().match_tagged(
+    let mut creatures = crate::target::ObjectFilter::creature().match_tagged(
         crate::tag::CompilerReferenceTag::It.bind(),
         crate::target::TaggedOpbjectRelation::IsTaggedObject,
     );
+    // Keep the authored back-reference ("that creature", "those creatures",
+    // "it", "they") as equality-transparent presentation metadata.
+    let (antecedent, plural) = referenced_creatures_subject_surface(&body[..index]);
+    creatures.set_demonstrative_antecedent_surface(antecedent);
+    creatures.set_plural_object_noun_surface(plural);
     Some(match rule {
         ReferencedCombatRule::MustAttackThatCombat => EffectAst::subject_verb_cant_starting(
             Restriction::must_attack(creatures),

@@ -652,6 +652,25 @@ impl GrantObjectAbilityForFilter {
         } else {
             grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface)
         };
+        // "For each creature you control with no abilities, you may have that
+        // creature assign its combat damage as though it weren't blocked"
+        // (Ruxa, Patient Professor): a per-creature combat-damage option,
+        // printed as its own rule rather than a quoted granted ability.
+        if !applies_to_source
+            && self.condition.is_none()
+            && granted.id() == StaticAbilityId::MayAssignDamageAsUnblocked
+        {
+            let description = self.filter.description();
+            let noun = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(&description);
+            if noun.starts_with("creature") {
+                return format!(
+                    "For each {noun}, you may have that creature assign its combat damage as though it weren't blocked"
+                );
+            }
+        }
         if applies_to_source
             && granted.id() == StaticAbilityId::CanAttackAsThoughHaste
             && let Some(crate::ConditionExpr::Not(inner)) = &self.condition
@@ -663,6 +682,43 @@ impl GrantObjectAbilityForFilter {
         {
             return format!(
                 "{subject} can attack as though it had haste unless it entered this turn"
+            );
+        }
+        // "As long as this artifact is untapped, each player chooses artifact,
+        // creature, or land during their untap step. ..." (Storage Matrix):
+        // a conditional rule of the game, not an ability the source "has".
+        if applies_to_source
+            && granted.id() == StaticAbilityId::UntapStepChosenCardTypeOnly
+            && let Some(condition) = &self.condition
+        {
+            let condition_text = describe_static_condition(condition);
+            if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                let rule = granted
+                    .display()
+                    .trim()
+                    .trim_end_matches('.')
+                    .split(". ")
+                    .map(capitalize_first)
+                    .collect::<Vec<_>>()
+                    .join(". ");
+                return format!("As long as {rest}, {}", lowercase_first_ascii(&rule));
+            }
+        }
+        // "Tapped creatures you control can block as though they were
+        // untapped" (Masako the Humorless): a blocking permission reads as
+        // the recipients' own predicate, not a quoted ability.
+        if !applies_to_source
+            && self.condition.is_none()
+            && granted.id() == StaticAbilityId::CanBlockAsThoughUntapped
+        {
+            let (pronoun, verb) = if explicitly_singular_subject {
+                ("it", "were")
+            } else {
+                ("they", "were")
+            };
+            return format!(
+                "{} can block as though {pronoun} {verb} untapped",
+                capitalize_first(&subject)
             );
         }
         let raw_ability_text = granted.display();
@@ -836,6 +892,19 @@ impl GrantObjectAbilityForFilter {
                 return format!("During your turn, {text}");
             }
             if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                // A prevention shield is an instruction, not a quality the
+                // source "has" ("As long as ..., prevent all damage that
+                // would be dealt to Sanwell").
+                if applies_to_source
+                    && let Some(shield) = ability_text
+                        .strip_prefix("Prevent all damage ")
+                        .or_else(|| ability_text.strip_prefix("prevent all damage "))
+                {
+                    return format!(
+                        "as long as {rest}, prevent all damage {}",
+                        shield.trim_end_matches('.')
+                    );
+                }
                 if applies_to_source {
                     return format!("{text} as long as {rest}");
                 }
@@ -1051,7 +1120,12 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             }
             return rendered;
         }
+        let source_and_others = source_and_other_grant_subject(&self.filter);
         let (mut subject, explicitly_singular_subject) = if let Some(subject) =
+            source_and_others.clone()
+        {
+            (subject, false)
+        } else if let Some(subject) =
             exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
         {
             (subject, true)
@@ -1060,7 +1134,9 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         } else {
             grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface)
         };
-        let verb = if explicitly_singular_subject {
+        let verb = if source_and_others.is_some() {
+            "have"
+        } else if explicitly_singular_subject {
             "has"
         } else if grant_subject_is_plural(&subject) {
             "have"
@@ -1281,6 +1357,28 @@ fn loyalty_activated_ability_display(
         }
     };
     Some(format!("[{cost}]: {tail}"))
+}
+
+/// "Henry Wu and other Human creatures you control have exploit": a union
+/// of exactly the source and an `other`-qualified set is one plural subject.
+pub(super) fn source_and_other_grant_subject(filter: &ObjectFilter) -> Option<String> {
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+    if !first.source
+        || first.other
+        || !first.card_types.is_empty()
+        || !first.subtypes.is_empty()
+        || first.controller.is_some()
+        || second.source
+        || !second.other
+        || second.controller.is_none()
+    {
+        return None;
+    }
+    let mut rest = second.clone();
+    rest.other = false;
+    Some(format!("this creature and other {}", pluralized_subject_text(&rest)))
 }
 
 fn grant_subject_is_plural(subject: &str) -> bool {

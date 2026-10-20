@@ -73,7 +73,7 @@ pub(crate) fn rewrite_player_filter_words(player: &PlayerFilter, change: TextCha
             **excluded = rewrite_player_filter_words(excluded, change)?;
         }
         PlayerFilter::Any | PlayerFilter::You | PlayerFilter::NotYou | PlayerFilter::Opponent
-        | PlayerFilter::Teammate | PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight
+        | PlayerFilter::Teammate | PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active | PlayerFilter::Defending | PlayerFilter::Attacking
         | PlayerFilter::DamagedPlayer | PlayerFilter::EffectController | PlayerFilter::Specific(_)
         | PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied | PlayerFilter::MostCardsInHand
@@ -513,6 +513,7 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::SourceWasCastByController { .. } | TurnHistoryCondition::SourceWasKicked { .. }
         | TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. } | TurnHistoryCondition::SourceAttackedThisTurn { .. }
         | TurnHistoryCondition::TriggeringObjectEnlistedThisCombat | TurnHistoryCondition::TriggeringObjectWasCast
+        | TurnHistoryCondition::TriggeringObjectWasCastByController
         | TurnHistoryCondition::TriggeringObjectWasCastFromZone(_) | TurnHistoryCondition::TriggeringObjectDied
         | TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn | TurnHistoryCondition::TriggeringPlayersTurn { .. }
         | TurnHistoryCondition::ControllerTeamGainedLifeThisTurn | TurnHistoryCondition::TriggeringObjectsNoneWereCastOrNoManaSpent

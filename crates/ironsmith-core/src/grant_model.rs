@@ -16,6 +16,10 @@ pub trait GrantStaticAbility: Clone + PartialEq {
     fn grant_is_source_owner_graveyard_exile(&self) -> bool {
         false
     }
+    /// Whether this payload replaces its own arrival in any graveyard with exile.
+    fn grant_is_source_any_graveyard_exile(&self) -> bool {
+        false
+    }
 }
 
 /// A granted alternative cast whose exact cost is derived from the granted card.
@@ -874,15 +878,48 @@ where
     /// Get a display string for this grant specification.
     pub fn display(&self) -> String {
         if let Some(surface) = &self.filtered_zone_surface {
+            // A captured permission sentence that omits the per-cast extra
+            // cost ("You may cast spells from the top of your library" +
+            // sacrificing a nonland permanent, Into the Pit) still names it.
+            let omits_additional_costs = matches!(
+                &self.grantable,
+                Grantable::DerivedAlternativeCast(
+                    DerivedAlternativeCast::ZoneCastFromCardManaCost { additional_costs, .. }
+                ) if !additional_costs.is_empty()
+            ) && !surface.contains(" by ")
+                && !surface.contains("in addition to");
             // A rider attached after the permission sentence was captured
             // ("If you do, it enters with a finality counter on it").
-            if self.cast_this_way_grants.is_empty()
-                || surface.contains(" this way")
-                || surface.contains("If you do")
+            if !omits_additional_costs
+                && (self.cast_this_way_grants.is_empty()
+                    || surface.contains(" this way")
+                    || surface.contains("If you do"))
             {
                 return surface.clone();
             }
             return self.display_base();
+        }
+        // "During your turn, you may cast cards exiled with Azula and you may
+        // cast them as though they had flash. Mana of any type can be spent to
+        // cast those spells." (Azula, Cunning Usurper)
+        if self.instant_timing
+            && matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && matches!(self.beneficiary, PlayerFilter::You)
+            && matches!(self.usage_limit, Some(GrantUsageLimit::DuringYourTurns))
+            && matches!(
+                self.cast_mana_spend_mode,
+                crate::value_model::ManaSpendMode::AnyType
+            )
+            && self.cast_this_way_grants.is_empty()
+            && let Some(surface) = self.source_exiled_surface.as_ref()
+            && surface.generic_card_pool
+        {
+            let source = surface.source.display_text();
+            let source = if source == "this" { "this permanent".to_string() } else { source };
+            return format!(
+                "During your turn, you may cast cards exiled with {source} and you may cast them as though they had flash. Mana of any type can be spent to cast those spells"
+            );
         }
         let text = self.display_base();
         if self.instant_timing {
@@ -1281,7 +1318,17 @@ where
                 {
                     let mut merged = first.clone();
                     merged.card_types = vec![first.card_types[0], second.card_types[0]];
-                    return merged.description();
+                    // The grant's own zone and owner ("in your graveyard")
+                    // live on the outer filter, not on the type branches.
+                    if merged.zone.is_none() {
+                        merged.zone = filter.zone;
+                    }
+                    if merged.owner.is_none() {
+                        merged.owner = filter.owner.clone();
+                    }
+                    // "Each instant and sorcery card ...": the quantifier
+                    // distributes over both card types.
+                    return merged.description().replacen(" or ", " and ", 1);
                 }
             }
             filter.description()
@@ -1295,6 +1342,7 @@ where
                 PlayerFilter::Opponent => "Opponent may".to_string(),
                 PlayerFilter::Teammate => "A teammate may".to_string(),
                 PlayerFilter::PlayerToYourLeft => "The player to your left may".to_string(),
+                PlayerFilter::OpponentToYourLeft => "The opponent to your left may".to_string(),
                 PlayerFilter::PlayerToYourRight => "The player to your right may".to_string(),
                 PlayerFilter::Active => "The active player may".to_string(),
                 PlayerFilter::Defending => "The defending player may".to_string(),
@@ -1387,7 +1435,9 @@ where
 
             let owner_words = match normalized.owner.take() {
                 None => String::new(),
-                Some(PlayerFilter::NotYou) if matches!(beneficiary, PlayerFilter::Any) => {
+                Some(PlayerFilter::NotYou)
+                    if matches!(beneficiary, PlayerFilter::Any | PlayerFilter::Active) =>
+                {
                     "they don't own ".to_string()
                 }
                 Some(PlayerFilter::NotYou) => "you don't own ".to_string(),
@@ -1524,7 +1574,21 @@ where
                     // "play cards": "you may play cards you don't own with
                     // stash counters on them from exile" (Tinybones).
                     if owner_clause.is_empty() {
-                        return None;
+                        // "You may play a card from exile with a discovery
+                        // counter on it this turn." (Lara Croft, Tomb Raider)
+                        let counter_name = counter_type.description().to_string();
+                        let article = if counter_name
+                            .chars()
+                            .next()
+                            .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
+                        {
+                            "an"
+                        } else {
+                            "a"
+                        };
+                        return Some(format!(
+                            "{may_prefix} play a card from exile with {article} {counter_name} counter on it"
+                        ));
                     }
                     return Some(format!(
                         "{may_prefix} play cards {owner_clause} with {} from exile",
@@ -1669,6 +1733,7 @@ where
                 // An authored permission sentence already names what may be
                 // cast; its rider reads "If you cast a spell this way".
                 if self.filtered_zone_surface.is_some()
+                    || self.top_card_only
                     || self
                         .source_exiled_surface
                         .as_ref()
@@ -1679,6 +1744,14 @@ where
                     cast_this_way_spell_subject(cast_filter)
                 }
             };
+            if self.cast_this_way_grants.len() == 1
+                && self.cast_this_way_grants[0].grant_is_source_any_graveyard_exile()
+            {
+                let spell_text = cast_spell_text();
+                return format!(
+                    ". If {spell_text} cast this way would be put into a graveyard, exile it instead"
+                );
+            }
             if self.cast_this_way_grants.len() == 1
                 && self.cast_this_way_grants[0].grant_is_source_owner_graveyard_exile()
             {
@@ -1831,14 +1904,64 @@ where
                 self.source_exiled_surface.as_ref(),
             )
         {
-            let prefix = if matches!(self.beneficiary, PlayerFilter::Any)
-                && matches!(self.filter.owner, Some(PlayerFilter::NotYou))
+            let prefix = if matches!(self.beneficiary, PlayerFilter::Active)
+                || (matches!(self.beneficiary, PlayerFilter::Any)
+                    && matches!(self.filter.owner, Some(PlayerFilter::NotYou)))
             {
                 "During each player's turn, that player may".to_string()
             } else {
                 may_prefix.clone()
             };
+            // Lands are played, never cast: "You may play lands from among
+            // cards exiled with this enchantment" (Hedonist's Trove).
+            if let Some(rest) = cast_subject.strip_prefix("a land spell ") {
+                return format!("{prefix} play lands {rest}{}", cast_this_way_suffix());
+            }
+            // "You may cast spells from among cards exiled with this
+            // enchantment. You can't cast more than one spell this way each
+            // turn." (Hedonist's Trove): a plural pool with a once-each-turn
+            // budget states the budget as its own sentence.
+            if matches!(self.usage_limit, Some(GrantUsageLimit::OnceEachTurn))
+                && matches!(self.beneficiary, PlayerFilter::You)
+                && cast_subject.starts_with("spells ")
+                && prefix.starts_with("Once each turn, you may")
+            {
+                return format!(
+                    "You may cast {cast_subject}{}. You can't cast more than one spell this way each turn",
+                    cast_this_way_suffix()
+                );
+            }
             return format!("{prefix} cast {cast_subject}{}", cast_this_way_suffix());
+        }
+        // "During each of your turns, you may play a land and cast a spell
+        // from among cards in graveyards that were put there from libraries
+        // this turn" (Coram, the Undertaker): one land and one spell, each
+        // from the recently milled pool of every graveyard.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter.entered_graveyard_from_library_this_turn
+            && self.filter.owner.is_none()
+            && matches!(self.beneficiary, PlayerFilter::You)
+            && matches!(
+                self.usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            )
+        {
+            let mut rest = self.filter.clone();
+            rest.entered_graveyard_from_library_this_turn = false;
+            rest.union_surface = Default::default();
+            let action = if rest == ObjectFilter::default().with_type(CardType::Land) {
+                Some("play a land")
+            } else if rest == ObjectFilter::default().without_type(CardType::Land) {
+                Some("cast a spell")
+            } else {
+                None
+            };
+            if let Some(action) = action {
+                return format!(
+                    "During each of your turns, you may {action} from among cards in graveyards that were put there from libraries this turn"
+                );
+            }
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
@@ -1870,10 +1993,41 @@ where
             && self.zone == Zone::Graveyard
             && !filter_can_include_lands(&self.filter)
         {
-            let spell_subject = simple_ability_marker_spell_subject(&self.filter)
-                .unwrap_or_else(|| unlimited_zone_castable_filter_description(&self.filter));
+            // "instant and sorcery spells from the top of your graveyard"
+            // (Bösium Strip): a bare two-type union reads as one plural noun.
+            let bare_type_union = (self.top_card_only && self.filter.any_of.len() == 2)
+                .then(|| {
+                    self.filter
+                        .any_of
+                        .iter()
+                        .map(|branch| {
+                            let [card_type] = branch.card_types.as_slice() else {
+                                return None;
+                            };
+                            let mut bare = branch.clone();
+                            bare.card_types.clear();
+                            bare.zone = None;
+                            bare.union_surface = Default::default();
+                            (bare == ObjectFilter::default()).then(|| card_type.name())
+                        })
+                        .collect::<Option<Vec<_>>>()
+                })
+                .flatten();
+            let spell_subject = if let Some(names) = bare_type_union {
+                format!("{} spells", names.join(" and "))
+            } else {
+                simple_ability_marker_spell_subject(&self.filter)
+                    .unwrap_or_else(|| unlimited_zone_castable_filter_description(&self.filter))
+            };
+            // "from the top of your graveyard" (Bösium Strip): only the
+            // topmost graveyard card is castable.
+            let origin = if self.top_card_only {
+                "from the top of your graveyard"
+            } else {
+                "from your graveyard"
+            };
             return format!(
-                "{may_prefix} cast {spell_subject} from your graveyard{}",
+                "{may_prefix} cast {spell_subject} {origin}{}",
                 cast_this_way_suffix()
             );
         }
@@ -1973,6 +2127,25 @@ where
                 "{may_prefix} cast spells from your hand without paying their mana costs"
             );
         }
+        // "The first spell each player casts during each of their turns may
+        // be cast without paying its mana cost." (Weftwalking)
+        if let Grantable::AlternativeCast(method) = &self.grantable
+            && self.zone == Zone::Hand
+            && self.filter.first_spell_cast_each_turn
+            && self.filter.cast_by == Some(PlayerFilter::Active)
+            && self.beneficiary == PlayerFilter::Any
+            && method.cast_from_zone() == Zone::Hand
+            && method.mana_cost().is_none()
+            && method.non_mana_costs().is_empty()
+            && method.cast_condition().is_none()
+        {
+            let mut rest = self.filter.clone();
+            rest.first_spell_cast_each_turn = false;
+            rest.cast_by = None;
+            if rest == ObjectFilter::default() {
+                return "The first spell each player casts during each of their turns may be cast without paying its mana cost".to_string();
+            }
+        }
         // "You may cast Dragon spells without paying their mana costs."
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
@@ -2008,6 +2181,27 @@ where
             };
             return format!(
                 "{may_prefix} cast {spells} from your hand without paying their mana costs"
+            );
+        }
+        // "Dinosaur spells you cast have prowl {2}{R}." (Hunting
+        // Velociraptor): a granted named alternative cost reads as its keyword.
+        if let Grantable::AlternativeCast(
+            method @ AlternativeCastingMethod::Composed { name, .. },
+        ) = &self.grantable
+            && (name.eq_ignore_ascii_case("prowl") || name.eq_ignore_ascii_case("freerunning"))
+            && self.zone == Zone::Hand
+            && method.cast_from_zone() == Zone::Hand
+            && method.non_mana_costs().is_empty()
+            && let Some(mana_cost) = method.mana_cost()
+        {
+            // "Assassin spells you cast have freerunning {B}{B}." (Ezio
+            // Auditore da Firenze) shares the conditional-keyword surface.
+            let spells = castable_filter_description(&self.filter);
+            let spells = spells.strip_suffix(" you cast").unwrap_or(&spells);
+            return format!(
+                "{spells} you cast have {} {}",
+                name.to_ascii_lowercase(),
+                mana_cost.to_oracle()
             );
         }
         if let Grantable::AlternativeCast(method @ AlternativeCastingMethod::Composed { .. }) =
@@ -2084,7 +2278,75 @@ where
             {
                 filter_desc = format!("nonland permanent card{rest}");
             }
+            // "Merfolk and Druid cards in your graveyard have retrace"
+            // (Deeproot Historian): graveyard recipients are cards, not spells.
+            if filter_desc.contains(" spell in your graveyard") {
+                let plural = filter_desc
+                    .replacen(" spell in your graveyard", " cards in your graveyard", 1)
+                    .replacen(" or ", " and ", 1);
+                let mut chars = plural.chars();
+                let subject = match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                    None => plural.clone(),
+                };
+                return format!("{subject} have retrace");
+            }
             return format!("Each {filter_desc} has retrace");
+        }
+        if let Grantable::AlternativeCast(AlternativeCastingMethod::Miracle { cost }) =
+            &self.grantable
+            && self.zone == Zone::Hand
+            && self.additional_zones.is_empty()
+            && self.beneficiary == PlayerFilter::You
+            && self.usage_limit.is_none()
+            && self.max_plays.is_none()
+            && self.cast_this_way_grants.is_empty()
+            && self.permanent_this_way_grants.is_empty()
+            && self.cast_this_way_filter.is_none()
+            && self.on_use_effects.is_empty()
+            && !self.requires_linked_exile_pair
+            && !self.may_look_at_linked_exile
+            && self.cast_mana_spend_mode.is_normal()
+            && self.linked_exile_pair.is_none()
+            && self.linked_exile_class_level.is_none()
+            && self.source_exiled_surface.is_none()
+            && !self.top_card_only
+            && !self.may_look_at_top
+        {
+            let mut nonland_owned = ObjectFilter::nonland().owned_by(PlayerFilter::You);
+            nonland_owned.set_explicit_card_noun(true);
+            if self.filter == nonland_owned {
+                return format!(
+                    "Nonland cards in your hand have miracle {}",
+                    cost.to_oracle()
+                );
+            }
+            if self.filter.zone.is_none_or(|zone| zone == Zone::Hand) {
+                let mut recipient = self.filter.clone();
+                recipient.zone = Some(Zone::Hand);
+                recipient.set_explicit_card_noun(true);
+                return format!("Each {} has miracle {}", recipient.description(), cost.to_oracle());
+            }
+        }
+        if matches!(
+            self.grantable,
+            Grantable::DerivedAlternativeCast(DerivedAlternativeCast::MadnessFromCardManaCost)
+        ) && self.zone == Zone::Hand
+            && self.filter.zone.is_none()
+            && self.additional_zones.len() == 4
+            && [Zone::Exile, Zone::Graveyard, Zone::Library, Zone::Command]
+                .iter()
+                .all(|zone| self.additional_zones.contains(zone))
+        {
+            let description = self.filter.description();
+            let description = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(&description);
+            return format!(
+                "Each {} that isn't on the battlefield has madness. The madness cost is equal to its mana cost",
+                description
+            );
         }
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::BlitzFromCardManaCost) =
             &self.grantable
@@ -2303,6 +2565,128 @@ where
                 "{may_prefix} cast {} as though they had flash",
                 pluralize_castable_spell_subject(castable_filter_description(&self.filter))
             );
+        }
+        // "Artifact cards and red creature cards in your hand have warp
+        // {2}{R}" (Tannuk, Steadfast Second): a union of typed hand cards
+        // names each branch in the plural, and a warp grant keeps its cost.
+        if self.zone == Zone::Hand
+            && self.filter.zone.is_none()
+            && self.filter.owner == Some(PlayerFilter::You)
+            && self.filter.any_of.len() >= 2
+            && self.filter.card_types.is_empty()
+            && self.filter.any_of.iter().all(|branch| {
+                branch.zone.is_none()
+                    && branch.owner.is_none()
+                    && branch.controller.is_none()
+                    && branch.any_of.is_empty()
+                    && !branch.card_types.is_empty()
+            })
+        {
+            let branches = self
+                .filter
+                .any_of
+                .iter()
+                .map(|branch| {
+                    let description = branch.description();
+                    let description = description
+                        .strip_prefix("a ")
+                        .or_else(|| description.strip_prefix("an "))
+                        .unwrap_or(&description)
+                        .to_string();
+                    description
+                        .strip_suffix(" card")
+                        .map(|stem| format!("{stem} cards"))
+                })
+                .collect::<Option<Vec<_>>>();
+            if let Some(branches) = branches {
+                let ability = match &self.grantable {
+                    Grantable::AlternativeCast(AlternativeCastingMethod::Warp { cost, .. }) => {
+                        format!("warp {}", cost.to_oracle())
+                    }
+                    other => {
+                        let ability = other.display();
+                        let mut chars = ability.chars();
+                        match chars.next() {
+                            Some(first) => {
+                                format!("{}{}", first.to_ascii_lowercase(), chars.as_str())
+                            }
+                            None => ability,
+                        }
+                    }
+                };
+                let subject = branches.join(" and ");
+                let mut chars = subject.chars();
+                let subject = match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                    None => subject.clone(),
+                };
+                return format!("{subject} in your hand have {ability}");
+            }
+        }
+        // A typed recipient set keeps its filter: "Instant or sorcery cards
+        // in your graveyard that are exactly two colors have jump-start"
+        // (Niv-Mizzet, Supreme), "Creature cards in your graveyard have
+        // sneak" — not the unfiltered "Cards in graveyard have ...".
+        let mut typed = self.filter.clone();
+        typed.zone = None;
+        typed.owner = None;
+        if typed != ObjectFilter::default()
+            && !self.filter.source
+            && matches!(self.zone, Zone::Graveyard | Zone::Hand)
+        {
+            let description = filter_desc.clone();
+            let description = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(&description);
+            let plural = if let Some(rest) = description.strip_prefix("card") {
+                format!("cards{rest}")
+            } else if description.contains(" card ") || description.ends_with(" card") {
+                description.replacen(" card", " cards", 1)
+            } else {
+                String::new()
+            };
+            if !plural.is_empty() {
+                let mut plural = plural.replace(" that's ", " that are ");
+                // "Instant and sorcery cards in your graveyard that are
+                // exactly two colors" (Niv-Mizzet, Supreme): the zone phrase
+                // stays with the noun, ahead of the relative clause.
+                let reordered = [" in your graveyard", " in your hand"]
+                    .into_iter()
+                    .find_map(|zone_phrase| {
+                        let head = plural.strip_suffix(zone_phrase)?;
+                        let (noun, relative) = head.split_once(" that are ")?;
+                        Some(format!("{noun}{zone_phrase} that are {relative}"))
+                    });
+                if let Some(reordered) = reordered {
+                    plural = reordered;
+                }
+                let ability = self.grantable.display();
+                let mut chars = ability.chars();
+                let ability = match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+                    None => ability,
+                };
+                let mut chars = plural.chars();
+                let subject = match chars.next() {
+                    Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                    None => plural.clone(),
+                };
+                return format!("{subject} have {ability}");
+            }
+        }
+        // "it has flashback {2}{G}" (Viral Spawning): a grant to this card
+        // only while it is in its owner's graveyard.
+        if self.filter.source
+            && self.filter.any_of.is_empty()
+            && self.zone == Zone::Graveyard
+            && let Grantable::AlternativeCast(method) = &self.grantable
+        {
+            let name = method.name().to_ascii_lowercase();
+            return match method.mana_cost() {
+                Some(cost) => format!("it has {name} {}", cost.to_oracle()),
+                None => format!("it has {name}"),
+            };
         }
         format!(
             "Cards in {} have {}",

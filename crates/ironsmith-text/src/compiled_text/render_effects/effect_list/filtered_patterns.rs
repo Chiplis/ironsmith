@@ -191,6 +191,18 @@
     {
         return compact;
     }
+    // A triggered ability's internal triggering-object snapshot has no
+    // printed surface (Null Summoner: "When this creature enters, if you cast
+    // it, target opponent reveals their hand. You choose a nonland card from
+    // it. Exile that card.").
+    if filtered.len() == 4
+        && filtered[0]
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+        && let Some(compact) = describe_look_hand_choose_then_discard_or_exile(&filtered[1..])
+    {
+        return compact;
+    }
     if filtered.len() == 4
         && let Some(compact) = describe_reveal_hand_choose_two_filters_then_discard(&filtered)
     {
@@ -219,6 +231,12 @@
     }
     if filtered.len() == 4
         && let Some(compact) = describe_hideaway_effects(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 5
+        && let Some(compact) =
+            describe_reveal_top_matching_into_graveyard_rest_bottom(&filtered)
     {
         return compact;
     }

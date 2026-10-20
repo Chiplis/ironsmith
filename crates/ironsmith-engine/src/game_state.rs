@@ -2067,6 +2067,14 @@ pub struct ScopedCastOrActivatePaymentRestriction {
 /// Per Rule 614.17, "can't" effects are not replacement effects - they are
 /// prohibitions that prevent events from happening at all. They must be
 /// checked BEFORE attempting an action or event.
+#[derive(Debug, Clone)]
+pub struct ConditionalBeBlockedRestriction {
+    pub attacker: ObjectId,
+    pub source: ObjectId,
+    pub controller: PlayerId,
+    pub condition: crate::ConditionExpr,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct CantEffectTracker {
     pub cast_or_activate_payment_restrictions: Vec<ScopedCastOrActivatePaymentRestriction>,
@@ -2285,6 +2293,10 @@ pub struct CantEffectTracker {
     /// Creatures that can't be blocked.
     /// Example: Whispersilk Cloak, Invisible Stalker
     pub cant_be_blocked: HashSet<ObjectId>,
+
+    /// Static "can't be blocked if/unless" rules evaluated for the actual
+    /// defending player of each attacker at block declaration.
+    pub conditional_cant_be_blocked: Vec<ConditionalBeBlockedRestriction>,
 
     /// Permanents that can't have counters placed on them.
     /// Example: Melira, Sylvok Outcast (for -1/-1 counters on creatures you control)
@@ -3199,6 +3211,8 @@ impl CantEffectTracker {
         self.cant_get_counters.extend(other.cant_get_counters);
         self.radiation_gains_life.extend(other.radiation_gains_life);
         self.cant_be_blocked.extend(other.cant_be_blocked);
+        self.conditional_cant_be_blocked
+            .extend(other.conditional_cant_be_blocked);
         self.cant_have_counters_placed
             .extend(other.cant_have_counters_placed);
         self.cant_have_counter_types_placed
@@ -3323,6 +3337,7 @@ impl CantEffectTracker {
         self.cant_get_counters.clear();
         self.radiation_gains_life.clear();
         self.cant_be_blocked.clear();
+        self.conditional_cant_be_blocked.clear();
         self.cant_have_counters_placed.clear();
         self.cant_have_counter_types_placed.clear();
         self.cant_have_counter_types_removed.clear();
@@ -9769,6 +9784,50 @@ impl GameState {
     /// Can the creature be blocked?
     pub fn can_be_blocked(&self, creature: ObjectId) -> bool {
         self.effect_store.cant_effects.can_be_blocked(creature)
+    }
+
+    /// Check contextual static blocking restrictions against the player this
+    /// attacker is attacking. In multiplayer combat that player can differ
+    /// from the controller of an individual blocking creature.
+    pub fn can_be_blocked_by_defender(
+        &self,
+        attacker: ObjectId,
+        fallback_defender: PlayerId,
+    ) -> bool {
+        if !self.can_be_blocked(attacker) {
+            return false;
+        }
+        let defender = self
+            .combat
+            .as_ref()
+            .and_then(|combat| {
+                crate::combat_state::defending_player_for_attacker(self, combat, attacker)
+            })
+            .unwrap_or(fallback_defender);
+        !self
+            .effect_store
+            .cant_effects
+            .conditional_cant_be_blocked
+            .iter()
+            .filter(|restriction| restriction.attacker == attacker)
+            .any(|restriction| {
+                crate::condition_eval::evaluate_condition_external(
+                    self,
+                    &restriction.condition,
+                    &crate::condition_eval::ExternalEvaluationContext {
+                        controller: restriction.controller,
+                        source: restriction.source,
+                        defending_player: Some(defender),
+                        attacking_player: self.controller_of_id(attacker),
+                        filter_source: Some(restriction.source),
+                        iterated_player: None,
+                        triggering_event: None,
+                        trigger_identity: None,
+                        ability_index: None,
+                        options: Default::default(),
+                    },
+                )
+            })
     }
 
     /// Can the player lose the game?

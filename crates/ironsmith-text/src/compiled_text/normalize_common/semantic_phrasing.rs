@@ -128,6 +128,7 @@ fn normalize_irregular_creature_type_plurals(line: &str) -> String {
         .replace_lit("Funguses", "Fungi")
         .replace_lit("Mouses", "Mice")
         .replace_lit("Samurais", "Samurai")
+        .replace_lit("Fishes", "Fish")
 }
 
 fn restore_draw_exile_time_counter_granted_cast_surface(line: &str) -> Option<String> {
@@ -1214,8 +1215,116 @@ fn compact_player_choice_then_generic_sacrifice(line: &str) -> Option<String> {
     None
 }
 
+/// "if you sacrificed one or more permanents this turn, this creature deals
+/// that much damage to any target" (Sawblade Skinripper): the intervening
+/// census and the damage amount count the same sacrifices.
+fn restore_sacrificed_count_that_much_damage_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let period = if trimmed.ends_with('.') { "." } else { "" };
+    let body = trimmed.trim_end_matches('.');
+    let (head, rest) = body.split_once("if you sacrificed a ")?;
+    let (singular, rest) = rest.split_once(" this turn, ")?;
+    let (action, plural) = rest.rsplit_once(", where X is the number of ")?;
+    let plural = plural.strip_suffix(" you've sacrificed this turn")?;
+    if singular.contains(' ') || plural.contains(' ') || !plural.starts_with(singular) {
+        return None;
+    }
+    let (subject, target) = action.split_once(" deals X damage to ")?;
+    if subject.contains(", ") || target.contains(" X ") {
+        return None;
+    }
+    Some(format!(
+        "{head}if you sacrificed one or more {plural} this turn, {subject} deals that much damage to {target}{period}"
+    ))
+}
+
+/// "you may tap X untapped Myr you control. If you do, this creature gets
+/// +X/+0 until end of turn and deals X damage ..." (Myr Battlesphere): the
+/// tapped count is the X the follow-up uses.
+fn restore_tap_x_untapped_surface(line: &str) -> Option<String> {
+    let (head, rest) = line.split_once("you may tap any number of untapped ")?;
+    let (tapped, followup) = rest.split_once(". If you do, ")?;
+    if tapped.contains(". ") || !followup.contains("+X/") {
+        return None;
+    }
+    let followup = followup.replacen(
+        " and this creature deals that much damage ",
+        " and deals X damage ",
+        1,
+    );
+    Some(format!(
+        "{head}you may tap X untapped {tapped}. If you do, {followup}"
+    ))
+}
+
+/// "Whenever an Aura you control enters, ... mana value less than or equal
+/// to that Aura's mana value" (Light-Paws, Boxing Ring, Arni Metalbrow): the
+/// triggering-object mana value is spelled "that spell's" by the typed value
+/// renderer, which has no trigger context. When the trigger event is about a
+/// permanent named by an indefinite noun phrase (not a cast), the
+/// back-reference names that noun.
+fn restore_triggering_permanent_mana_value_reference(line: &str) -> Option<String> {
+    const SPELL_REF: &str = "that spell's mana value";
+    if !line.contains_lit(SPELL_REF) {
+        return None;
+    }
+    let trigger_start = if line.starts_with("When") {
+        0
+    } else {
+        line.find("— When").map(|idx| idx + "— ".len())?
+    };
+    let trigger_line = &line[trigger_start..];
+    let (head, _) = trigger_line.split_once(", ")?;
+    if head.contains("cast") || head.contains("spell") || head.contains("copy") {
+        return None;
+    }
+    let subject = ["Whenever a ", "Whenever an ", "Whenever another ", "When a ", "When an ", "When another "]
+        .into_iter()
+        .find_map(|prefix| head.strip_prefix(prefix))?;
+    let subject_end = [" you control", " an opponent controls", " enters", " dies", " attacks", " is put"]
+        .into_iter()
+        .filter_map(|marker| subject.find(marker))
+        .min()?;
+    let noun = subject[..subject_end].rsplit(' ').next()?;
+    if noun.is_empty() || !noun.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return None;
+    }
+    Some(line.replacen(SPELL_REF, &format!("that {noun}'s mana value"), 1))
+}
+
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    if let Some(compact) = restore_triggering_permanent_mana_value_reference(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_tap_x_untapped_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = restore_sacrificed_count_that_much_damage_surface(&normalized) {
+        normalized = compact;
+    }
+    // "Its controller searches their library for a basic land card, puts it
+    // onto the battlefield tapped, then shuffles" (Magmatic Hellkite, Winds
+    // of Abandon): the controller is the searching actor of all three verbs.
+    for (head, actor) in [
+        ("Search its controller's library for ", "Its controller"),
+        ("search its controller's library for ", "its controller"),
+    ] {
+        if let Some((before, after)) = normalized.split_once_lit(head)
+            && let Some((selection, rest)) = after.split_once_lit(", put ")
+            && let Some((moved, tail)) = rest.split_once_lit(". Then that player shuffles")
+            && !selection.contains_lit(". ")
+            && !moved.contains_lit(". ")
+            && let Some(placement) = moved
+                .strip_prefix("it onto the battlefield")
+                .or_else(|| moved.strip_prefix("that card onto the battlefield"))
+        {
+            normalized = format!(
+                "{before}{actor} searches their library for {selection}, puts it onto the battlefield{placement}, then shuffles{tail}"
+            );
+            break;
+        }
+    }
     normalized = normalized.replace_lit(" have \"Prowess.\"", " have prowess");
     if normalized.contains_lit("attach it to target creature") {
         normalized = normalized
@@ -1560,10 +1669,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace_lit(
             "put this enchantment into your hand. If you don't, put it on the bottom of your library",
             "put one of those cards into your hand. If you don't, put one of those cards on the bottom of your library",
-        )
-        .replace_lit(
-            "you may copy the exiled card. If you do, you may cast the copy",
-            "you may choose a card exiled with this artifact. If you do, copy it. You may cast a copy of it",
         )
         .replace_lit(
             "the card in your graveyard you chose from your graveyard",
@@ -3162,6 +3267,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     normalized = normalize_create_named_token_article(&normalized);
     normalized = normalize_exile_named_token_until_source_leaves(&normalized);
+    normalized = normalize_lose_all_then_gain_abilities(&normalized);
+    normalized = normalize_unless_pay_and_repeat_process(&normalized);
+    normalized = normalize_returned_object_type_addition_without_abilities(&normalized);
     normalized = normalize_granted_named_token_leaves_sacrifice_source(&normalized);
     if let Some(rewritten) = normalize_zero_zero_token_with_base_pt(&normalized) {
         normalized = rewritten;
@@ -5022,6 +5130,17 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return format!(
             "{} doesn't untap during your untap step if {}",
+            subject.trim(),
+            condition.trim()
+        );
+    }
+    if let Some((subject, condition)) =
+        normalized.split_once_lit(" has Doesn't untap during your untap step unless ")
+        && !subject.trim().is_empty()
+        && !condition.trim().is_empty()
+    {
+        return format!(
+            "{} doesn't untap during your untap step unless {}",
             subject.trim(),
             condition.trim()
         );
@@ -6941,4 +7060,92 @@ fn normalize_redundant_choose_target_opponent_scaffold(line: &str) -> String {
         }
     }
     normalized
+}
+
+/// "it loses all abilities. It gains equip {3} and ..." → "it gains equip
+/// {3} and ... and loses all other abilities" (The Irencrag): the later grant
+/// survives the earlier loss, which is exactly the printed "all other".
+fn normalize_lose_all_then_gain_abilities(line: &str) -> String {
+    let marker = "it loses all abilities. It gains ";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let before = &line[..start];
+    let after = &line[start + marker.len()..];
+    let mut in_quote = false;
+    let mut end = None;
+    for (index, ch) in after.char_indices() {
+        match ch {
+            '"' => in_quote = !in_quote,
+            '.' if !in_quote => {
+                end = Some(index);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let (granted, rest) = match end {
+        Some(index) => (&after[..index], &after[index..]),
+        None => (after, ""),
+    };
+    let granted = granted.trim_end();
+    if granted.is_empty() || granted.contains(" loses ") {
+        return line.to_string();
+    }
+    // A quoted grant that ends the list keeps its own closing period inside
+    // the quote; move it outside so the joined predicate stays one sentence.
+    let granted = granted
+        .strip_suffix(".\"")
+        .map(|head| format!("{head}\""))
+        .unwrap_or_else(|| granted.to_string());
+    let rest = if rest.is_empty() { "." } else { rest };
+    format!("{before}it gains {granted} and loses all other abilities{rest}")
+}
+
+/// "destroy target creature you control unless you pay {3}. Repeat this
+/// process." → "... unless you pay {3} and repeat this process." (Crooked
+/// Scales): the repeat is the payment's consequence, printed in one clause.
+fn normalize_unless_pay_and_repeat_process(line: &str) -> String {
+    let marker = "}. Repeat this process.";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let head = &line[..start + 1];
+    let Some(unless) = head.rfind(" unless you pay {") else {
+        return line.to_string();
+    };
+    let cost = &head[unless + " unless you pay ".len()..];
+    if cost.contains(' ') || cost.contains('.') {
+        return line.to_string();
+    }
+    format!(
+        "{head} and repeat this process.{}",
+        &line[start + marker.len()..]
+    )
+}
+
+/// "Return target creature card ... It loses all abilities and becomes a
+/// Skeleton in addition to its other types." → "It's a Skeleton in addition
+/// to its other types and has no abilities." (Xu-Ifit, Osteoharmonist): a
+/// permanent characteristic statement about the returned object.
+fn normalize_returned_object_type_addition_without_abilities(line: &str) -> String {
+    let marker = ". It loses all abilities and becomes a";
+    let Some(start) = line.find(marker) else {
+        return line.to_string();
+    };
+    let after = &line[start + marker.len()..];
+    let suffix = " in addition to its other types.";
+    let Some(end) = after.find(suffix) else {
+        return line.to_string();
+    };
+    // "a Skeleton" / "an Elemental": keep the authored article tail.
+    let descriptor = &after[..end];
+    if descriptor.contains('.') || descriptor.contains(',') || !line[..start].contains("Return ") {
+        return line.to_string();
+    }
+    format!(
+        "{}. It's a{descriptor} in addition to its other types and has no abilities.{}",
+        &line[..start],
+        &after[end + suffix.len()..]
+    )
 }

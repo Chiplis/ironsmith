@@ -177,6 +177,69 @@ pub(super) fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
     })
 }
 
+/// "Reveal the top fourteen cards of your library. Put all Doctor cards
+/// revealed this way into your graveyard and the rest on the bottom of your
+/// library in a random order." (The Fourteenth Doctor): a revealed pool, the
+/// matching subset moved to the graveyard one by one, and the exact
+/// complement bottomed.
+pub(super) fn describe_reveal_top_matching_into_graveyard_rest_bottom(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [look_effect, reveal_effect, match_effect, for_each_effect, rest_effect] = effects else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let matched = match_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let rest =
+        rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let [move_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let moved = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let [membership] = matched.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if look.player != PlayerFilter::You
+        || reveal.tag != look.tag
+        || membership.tag != look.tag
+        || membership.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || matched.zone != Some(Zone::Library)
+        || !matched.additional_zones.is_empty()
+        || !matched.source_tags.is_empty()
+        || for_each.tag != matched.tag
+        || for_each.controller_at_last_blocked_by.is_some()
+        || !matches!(moved.target, ChooseSpec::Iterated)
+        || moved.zone != Zone::Graveyard
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&matched.tag)
+        || rest.player != PlayerFilter::You
+    {
+        return None;
+    }
+    let mut noun_filter = matched.filter.clone();
+    noun_filter.tagged_constraints.clear();
+    noun_filter.zone = None;
+    if noun_filter == ObjectFilter::default() {
+        return None;
+    }
+    let description = noun_filter.description();
+    let noun = strip_indefinite_article(&description).trim();
+    if noun.is_empty() || !noun.ends_with("card") {
+        return None;
+    }
+    let plural = pluralize_noun_phrase(noun);
+    let (count_text, count_noun, _) = describe_look_count_and_noun(&look.count);
+    let order = match rest.order {
+        LibraryBottomOrder::Random => "in a random order",
+        LibraryBottomOrder::ChooserChooses => "in any order",
+    };
+    Some(format!(
+        "Reveal the top {count_text} {count_noun} of your library. Put all {plural} revealed this way into your graveyard and the rest on the bottom of your library {order}"
+    ))
+}
+
 /// Recover the keyword surface from Hideaway's fully lowered ETB trigger.
 /// The runtime keeps the expanded effects so the ability remains executable;
 /// this recognizer only changes how that exact rules-defined shape is shown.
@@ -808,6 +871,14 @@ pub(super) fn describe_each_player_may_discard_card_then_draw(
 }
 
 pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Option<String> {
+    // A per-player body lowered as one sequential block ("searches ..., puts
+    // it onto the battlefield, then shuffles") carries the same procedure.
+    if let [only] = effects
+        && let Some(sequence) = structural_unwrap_render_wrappers(only)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        return describe_iterated_player_search_effects(&sequence.effects);
+    }
     let choose = structural_unwrap_render_wrappers(effects.first()?)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !choose.is_search
@@ -838,8 +909,16 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
         if let Some(for_each) = move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
             for_each
         } else {
-            let movement = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-            if !matches!(movement.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+            let movement_target = if let Some(movement) =
+                move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            {
+                &movement.target
+            } else {
+                &move_effect
+                    .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?
+                    .target
+            };
+            if !matches!(movement_target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag) {
                 return None;
             }
             direct_move = crate::effects::ForEachTaggedEffect {
@@ -881,6 +960,225 @@ pub(super) fn describe_iterated_player_search_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
     describe_iterated_player_search_effects(&sequence.effects)
+}
+
+/// "Search your library for a card with the same name as target nontoken
+/// creature, put that card onto the battlefield, then shuffle." (Mask of the
+/// Mimic): a lowering-only target declaration whose sole consumer is the
+/// same-name relation of the following search folds into that relation.
+pub(super) fn describe_target_then_same_name_search(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::CommaThen
+        || sequence.result_label.is_some()
+    {
+        return None;
+    }
+    let [target_effect, search_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let target_tag = target_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.tag.clone())?;
+    let target_only = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target_only.explicit_declaration
+        || target_only.chooser.is_some()
+        || !target_only.target.is_target()
+        || !target_only.target.is_single()
+    {
+        return None;
+    }
+    let search_sequence = structural_unwrap_render_wrappers(search_effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let choose = search_sequence
+        .effects
+        .first()
+        .map(structural_unwrap_render_wrappers)?
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let [same_name] = choose.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if !choose.is_search
+        || same_name.relation != crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        || same_name.tag != target_tag
+    {
+        return None;
+    }
+    let target_text = describe_choose_spec(&target_only.target);
+    if !target_text.starts_with("target ") {
+        return None;
+    }
+    let rendered = describe_effect(search_effect);
+    let rendered = rendered.trim().trim_end_matches('.');
+    let (head, tail) = rendered.split_once(" with the same name as that ")?;
+    let (_, rest) = tail.split_once(',')?;
+    Some(capitalize_first(&format!(
+        "{head} with the same name as {target_text},{rest}"
+    )))
+}
+
+/// "Each player exiles the top card of their library. Until your next end
+/// step, each player may play the card they exiled this way." (Rocco, Street
+/// Chef): every iterated player exiles from their own library and receives a
+/// play permission for exactly the cards they exiled.
+pub(super) fn describe_for_players_exile_top_then_play_own(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    if subject == "You" || for_players.starting_with_controller || for_players.stop_after_first_happened {
+        return None;
+    }
+    let [exile_effect, grant_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    let grant = structural_unwrap_render_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let Value::Fixed(count) = exile.count else {
+        return None;
+    };
+    if count < 1
+        || exile.player != PlayerFilter::IteratedPlayer
+        || exile.face_down
+        || !exile.moved_tags.contains(&grant.tag)
+        || grant.player != PlayerFilter::IteratedPlayer
+        || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+        || grant.allow_any_color_for_cast
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+    {
+        return None;
+    }
+    let duration = match grant.duration {
+        crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "Until end of turn",
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+            "Until the end of your next turn"
+        }
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => "Until your next end step",
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart => "Until your next turn",
+        _ => return None,
+    };
+    let verb = if grant.allow_land { "play" } else { "cast" };
+    let (exiled, reference) = if count == 1 {
+        ("the top card".to_string(), "the card")
+    } else {
+        (
+            format!(
+                "the top {} cards",
+                small_number_word(count as u32).unwrap_or_else(|| count.to_string())
+            ),
+            "cards",
+        )
+    };
+    Some(format!(
+        "{subject} exiles {exiled} of their library. {duration}, {} may {verb} {reference} they exiled this way",
+        lowercase_first(subject)
+    ))
+}
+
+/// "Starting with the next opponent in turn order, each opponent chooses a
+/// creature card in your graveyard that hasn't been chosen." (Rejoin the
+/// Fight): a turn-order opponent loop whose single pick excludes every object
+/// already remembered as chosen.
+pub(super) fn describe_turn_order_opponent_unchosen_choice(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Opponent
+        || !for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+    {
+        return None;
+    }
+    let [choose_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || !choose.count.is_single()
+        || choose.is_search
+        || choose.reveal
+    {
+        return None;
+    }
+    let [exclusion] = choose.filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if exclusion.relation != crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+        || exclusion.tag.as_str() != ironsmith_core::CHOSEN_OBJECTS_TAG
+    {
+        return None;
+    }
+    let mut plain = choose.clone();
+    plain.filter.tagged_constraints.clear();
+    let rendered = describe_effect(&Effect::new(plain));
+    let rendered = rendered.trim().trim_end_matches('.');
+    let selection = rendered
+        .strip_prefix("that player chooses ")
+        .or_else(|| rendered.strip_prefix("That player chooses "))?;
+    Some(format!(
+        "Starting with the next opponent in turn order, each opponent chooses {selection} that hasn't been chosen"
+    ))
+}
+
+/// "For each creature exiled this way, its controller searches their library
+/// for a basic land card. Those players put those cards onto the battlefield
+/// tapped, then shuffle." (Winds of Abandon): a per-exiled-object loop whose
+/// body is one search, put, and shuffle all performed by the iterand's
+/// controller. A controller proves the iterand was a permanent, so the
+/// subject names the permanent type rather than a card.
+pub(super) fn describe_for_each_exiled_controller_search_put_shuffle(
+    subject: &str,
+    body: &[Effect],
+) -> Option<String> {
+    let [sequence_effect] = body else {
+        return None;
+    };
+    let sequence = structural_unwrap_render_wrappers(sequence_effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, put_effect, shuffle_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let put = structural_unwrap_render_wrappers(put_effect)
+        .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let iterand_controller = matches!(
+        &choose.chooser,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)) if tag.as_str() == "__it__"
+    );
+    if !iterand_controller
+        || !choose.is_search
+        || !choose.count.is_single()
+        || choose.filter.owner.as_ref() != Some(&choose.chooser)
+        || choose_search_zones(choose).is_none_or(|zones| zones != [Zone::Library])
+        || !matches!(put.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || put.controller != choose.chooser
+        || !put.enters_with_counters.is_empty()
+        || shuffle.player != choose.chooser
+    {
+        return None;
+    }
+    let subject = subject.strip_suffix(" card exiled this way").map_or_else(
+        || subject.to_string(),
+        |noun| format!("{noun} exiled this way"),
+    );
+    if !subject.ends_with(" exiled this way") {
+        return None;
+    }
+    let rendered = describe_effect_list(body);
+    let rest = rendered
+        .strip_prefix("Search its controller's library for ")
+        .or_else(|| rendered.strip_prefix("search its controller's library for "))?;
+    let (selection, _) = rest.split_once(", put ")?;
+    let tapped = if put.tapped { " tapped" } else { "" };
+    Some(format!(
+        "{subject}, its controller searches their library for {selection}. Those players put those cards onto the battlefield{tapped}, then shuffle"
+    ))
 }
 
 pub(super) fn describe_for_players_may_search_library_then_shuffle(
@@ -1776,9 +2074,80 @@ pub(super) fn describe_choose_two_sacrifice_one_return_other(effects: &[Effect])
     ))
 }
 
+/// "Choose two target creatures controlled by the same opponent. That player
+/// chooses one of those creatures. Trial of Agony deals 5 damage to that
+/// creature, and the other can't block this turn." The chosen half is a
+/// tagged choice among the paired targets; the other half is the targets
+/// minus that choice.
+fn describe_choose_same_controller_damage_one_other_cant_block(
+    effects: &[Effect],
+) -> Option<String> {
+    let [target_effect, choose_effect, damage_effect, cant_effect] = effects else {
+        return None;
+    };
+    let tagged = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !exact_count(&target_only.target.count(), 2) {
+        return None;
+    }
+    let ChooseSpec::Object(target_filter) = target_only.target.base() else {
+        return None;
+    };
+    if !target_filter.target_set_same_controller {
+        return None;
+    }
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.count.is_single()
+        || choose.is_search
+        || choose_primary_zone(choose).is_some_and(|zone| zone != Zone::Battlefield)
+        || !is_tagged_only_filter(&choose.filter, &tagged.tag)
+        || !matches!(
+            &choose.chooser,
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+                if tag == &tagged.tag
+        )
+    {
+        return None;
+    }
+    let damage = unwrap_basic_tag_wrappers(damage_effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let Value::Fixed(amount) = damage.amount else {
+        return None;
+    };
+    if !sacrifices_exactly_chosen(&damage.target, &choose.tag) {
+        return None;
+    }
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::Block(blocked) = &cant.restriction else {
+        return None;
+    };
+    if cant.duration != Until::EndOfTurn
+        || !is_tagged_only_filter_except_tag(blocked, &tagged.tag, &choose.tag)
+    {
+        return None;
+    }
+    let (plural_noun, same_controller_noun) =
+        if target_filter.controller == Some(PlayerFilter::Opponent) {
+            let mut uncontrolled = target_filter.clone();
+            uncontrolled.controller = None;
+            (simple_filter_plural_noun(&uncontrolled)?, "opponent")
+        } else {
+            (simple_filter_plural_noun(target_filter)?, "player")
+        };
+    let singular_noun = plural_noun.strip_suffix('s').unwrap_or(&plural_noun);
+    Some(format!(
+        "Choose two target {plural_noun} controlled by the same {same_controller_noun}. That player chooses one of those {plural_noun}. This spell deals {amount} damage to that {singular_noun}, and the other can't block this turn"
+    ))
+}
+
 pub(crate) fn describe_choose_same_controller_sacrifice_one_return_other(
     effects: &[Effect],
 ) -> Option<String> {
+    if let Some(text) = describe_choose_same_controller_damage_one_other_cant_block(effects) {
+        return Some(text);
+    }
     // "That player sacrifices one of them of their choice" (Incriminate) is
     // the same program without the return of the other target.
     let (target_effect, choose_effect, sacrifice_effect, return_effect) = match effects {
@@ -5451,6 +5820,9 @@ fn describe_iterated_player_for_each_life_amount(amount: &Value, subject: &str) 
         Value::CountScaled(filter, multiplier) => {
             (*multiplier, describe_for_each_count_filter(filter))
         }
+        Value::Scaled(basis, multiplier) if *multiplier > 0 => {
+            (*multiplier, describe_create_for_each_count(basis.as_ref())?)
+        }
         Value::Add(left, right) if left == right => {
             (2, describe_create_for_each_count(left.as_ref())?)
         }
@@ -5657,6 +6029,10 @@ pub(super) fn describe_for_players_simple_iterated_action(
         }
         let count_text = match exile_top.count {
             Value::Fixed(1) => "the top card".to_string(),
+            Value::Fixed(count) if count > 1 => format!(
+                "the top {} cards",
+                small_number_word(count as u32).unwrap_or_else(|| count.to_string())
+            ),
             Value::Fixed(count) => format!("the top {count} cards"),
             _ => format!("the top {} cards", describe_value(&exile_top.count)),
         };
@@ -5770,9 +6146,100 @@ pub(super) fn describe_for_players_simple_iterated_action(
     ))
 }
 
+/// "Starting with you, each player chooses an artifact, a creature, and a
+/// land from among the permanents controlled by the player to their left"
+/// (Grenzo's Rebuttal): one exact single-type choice per type, all from the
+/// left neighbor's battlefield permanents.
+fn describe_for_players_left_neighbor_type_choices(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any
+        || for_players.stop_after_first_happened
+        || for_players.effects.len() < 2
+    {
+        return None;
+    }
+    let nouns = for_players
+        .effects
+        .iter()
+        .map(|effect| {
+            let choose = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            let left_of_iterated = matches!(
+                &choose.filter.controller,
+                Some(PlayerFilter::PlayerToLeftOf(base))
+                    if **base == PlayerFilter::IteratedPlayer
+            );
+            if choose.chooser != PlayerFilter::IteratedPlayer
+                || !left_of_iterated
+                || choose.count.min != 1
+                || choose.count.max != Some(1)
+                || choose.count_value.is_some()
+                || choose.is_search
+                || choose.reveal
+                || choose.filter.zone != Some(Zone::Battlefield)
+                || choose.filter.card_types.len() != 1
+                || !choose.filter.subtypes.is_empty()
+                || !choose.filter.tagged_constraints.is_empty()
+            {
+                return None;
+            }
+            let mut plain = choose.filter.clone();
+            plain.controller = None;
+            let noun = plain.description();
+            let noun = strip_leading_article(&noun).to_string();
+            (!noun.contains(' ')).then(|| with_indefinite_article(&noun))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let lead = if for_players.starting_with_controller {
+        "Starting with you, each player"
+    } else {
+        "Each player"
+    };
+    Some(format!(
+        "{lead} chooses {} from among the permanents controlled by the player to their left",
+        join_with_and(&nouns)
+    ))
+}
+
 pub(super) fn describe_for_players_iterated_action_sequence(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
+    if let Some(compact) = describe_for_players_left_neighbor_type_choices(for_players) {
+        return Some(compact);
+    }
+    // "Each player may pay any amount of mana. Then each player creates a
+    // number of 1/1 green Squirrel creature tokens equal to the amount of
+    // mana they paid this way" (Liege of the Hollows): each player's own
+    // optional X payment counts that player's own tokens.
+    if for_players.filter == PlayerFilter::Any
+        && !for_players.starting_with_controller
+        && !for_players.stop_after_first_happened
+        && let [pay_effect, create_effect] = for_players.effects.as_slice()
+        && let Some(with_id) = pay_effect.downcast_ref::<crate::effects::WithIdEffect>()
+        && let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>()
+        && may.decider == Some(PlayerFilter::IteratedPlayer)
+        && let [pay] = may.effects.as_slice()
+        && let Some(pay) = pay.downcast_ref::<crate::effects::PayManaEffect>()
+        && pay.player == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        && let Some(create) = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+        && create.controller == PlayerFilter::IteratedPlayer
+        && matches!(create.count.unhinted(), Value::EffectValue(id) if *id == with_id.id)
+    {
+        let mut one = create.clone();
+        one.count = Value::Fixed(2);
+        one.controller = PlayerFilter::You;
+        let created = describe_effect(&Effect::new(one));
+        if let Some(tokens) = created
+            .trim()
+            .trim_end_matches('.')
+            .strip_prefix("Create two ")
+            && !tokens.contains(". ")
+        {
+            return Some(format!(
+                "Each player may pay any amount of mana. Then each player creates a number of {tokens} equal to the amount of mana they paid this way"
+            ));
+        }
+    }
     if let Some(compact) =
         super::player_and_zone_effects::describe_for_players_counter_on_chosen_sacrifice_rest(
             for_players,

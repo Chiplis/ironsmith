@@ -2085,6 +2085,7 @@ pub(super) fn compile_subject_verb_late(
                             )
                         }
                         ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
+                        | ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind
                         | ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient => {
                             crate::effects::MoveCountersEffect {
                                 counter_type: *counter_type,
@@ -3395,6 +3396,24 @@ pub(super) fn compile_subject_verb_late(
         }) => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // "Remove all attacking creatures from combat" (Illusionist's
+            // Gambit): a quantified untargeted set is every matching object,
+            // not a selection read from the (empty) target list.
+            let spec = match spec {
+                ChooseSpec::Object(filter)
+                    if filter.tagged_constraints.is_empty()
+                        && matches!(
+                            filter.set_quantifier_surface(),
+                            Some(
+                                ironsmith_core::SetQuantifierSurface::All
+                                    | ironsmith_core::SetQuantifierSurface::Each
+                            )
+                        ) =>
+                {
+                    ChooseSpec::All(filter)
+                }
+                other => other,
+            };
             let effect = tag_object_target_effect(
                 Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
                     spec.clone(),

@@ -614,6 +614,17 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             if filter.stack_kind == Some(StackObjectKind::Spell) {
                 filter.stack_kind = None;
             }
+            // "if one or more creatures would enter from exile or after being
+            // cast from exile" (Don't Blink): with no fixed origin zone, a
+            // non-stack zone on the filter names a resolving spell's cast
+            // origin, so the spell entering from the stack is judged by where
+            // it was cast from.
+            if self.from_zone.is_none()
+                && filter.zone.is_some_and(|zone| zone != Zone::Stack)
+                && filter.stack_kind.is_none()
+            {
+                filter.stack_kind = Some(StackObjectKind::Spell);
+            }
 
             if let Some(snapshot) = zone_change.snapshot.as_ref().or(ctx.event_source_snapshot) {
                 filter_ctx.caster.get_or_insert(snapshot.controller);

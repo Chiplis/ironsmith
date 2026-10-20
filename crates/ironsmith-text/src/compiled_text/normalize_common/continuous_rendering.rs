@@ -649,6 +649,11 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
         ));
     }
     if power_is_variable && toughness_is_variable && power_text == toughness_text {
+        // "Each creature gets twice -X/-X until end of turn" (Nuclear
+        // Fallout): a doubled negative X modifier keeps its printed form.
+        if power_text == "twice -X" {
+            return Some(format!("{target} {gets} twice -X/-X {until_text}"));
+        }
         return Some(format!(
             "{target} {gets} +X/+X {until_text}, where X is {power_text}"
         ));
@@ -869,7 +874,7 @@ pub(crate) fn describe_source_reference_surface_text(
                 "this fortification" => "this Fortification".to_string(),
                 "this saga" => "this Saga".to_string(),
                 "this siege" => "this Siege".to_string(),
-                "this vehicle" => "this Vehicle".to_string(),
+                "this vehicle" | "vehicle" => "this Vehicle".to_string(),
                 _ => surface.display_text().trim_end_matches('.').to_string(),
             }
         }
@@ -907,6 +912,13 @@ pub(crate) fn describe_basic_land_type_pt_for_each(
     power: &Value,
     toughness: &Value,
 ) -> Option<String> {
+    // An authored "+X/+X ..., where X is the number of basic land types"
+    // (Radha, Coalition Warlord) keeps its where-X surface.
+    if power.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        && toughness.has_surface_hint(ValueSurfaceHint::WhereXIs)
+    {
+        return None;
+    }
     let power_multiplier = basic_land_types_multiplier(power);
     let toughness_multiplier = basic_land_types_multiplier(toughness);
 
@@ -1053,6 +1065,21 @@ pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
             describe_value(&amount)
         );
     }
+    // "three +1/+1 counters for each {G}{G} spent to cast it" (Clay
+    // Champion): repeated equal for-each addends are one multiplier.
+    if matches!(count.unhinted(), Value::Add(..))
+        && let Some((multiplier, basis)) =
+            crate::compiled_text::describe_for_each_multiplier_and_basis(count)
+        && multiplier > 0
+    {
+        let counter_phrase = if multiplier == 1 {
+            with_indefinite_article(&format!("{counter_name} counter"))
+        } else {
+            let amount = number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
+            format!("{amount} {counter_name} counters")
+        };
+        return format!("{counter_phrase} for each {basis}");
+    }
     match count.unhinted() {
         Value::Fixed(1) => with_indefinite_article(&format!("{counter_name} counter")),
         Value::Fixed(n) if *n > 1 => {
@@ -1064,6 +1091,12 @@ pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
         Value::EventValue(crate::effect::EventValueSpec::DieResult) => {
             format!("that many {counter_name} counters")
         }
+        // "enters with a +1/+1 counter on it for each mana spent to cast it"
+        // (Verazol): one counter per mana spent.
+        Value::ManaSpentToCastThisSpell => format!(
+            "{} for each mana spent to cast it",
+            with_indefinite_article(&format!("{counter_name} counter"))
+        ),
         _ => format!(
             "{} {counter_name} counters",
             describe_effect_count_backref(count).unwrap_or_else(|| describe_value(count))
@@ -1131,6 +1164,17 @@ pub(crate) fn describe_apply_continuous_target(
         .unwrap_or_else(|| matches!(effect.target, crate::continuous::EffectTarget::Source));
     if targets_source && let Some(surface) = effect.source_reference_surface.as_ref() {
         return (describe_source_reference_surface_text(surface), false);
+    }
+    // "For each player, choose up to one other target artifact or creature
+    // that player controls. ... the chosen permanents become ..." (Kitesail
+    // Larcenist): the per-player target choices are one chosen set.
+    if let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        && constraint.tag.as_str() == effect_text_shared::ABILITY_CONTROLLER_TARGET_CHOICE_TAG
+        && filter.card_types.len() > 1
+    {
+        return ("the chosen permanents".to_string(), true);
     }
     // "gain control of that creature" (Charisma): the trigger's
     // damaged object is the single creature the damage event names.
@@ -1638,6 +1682,43 @@ fn source_linked_exiled_creature_copy_surface(
     })
 }
 
+/// "become a copy of an artifact or creature card from among those cards"
+/// (Spirit of Resilience): a single choice among the triggering event's cards
+/// that also satisfy a characteristic filter.
+fn triggering_group_choice_copy_surface(source: &ChooseSpec) -> Option<String> {
+    let ChooseSpec::WithCount(inner, count) = source.unhinted() else {
+        return None;
+    };
+    if !is_exactly_one_choice(count) {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = inner.unhinted() else {
+        return None;
+    };
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+        || constraint.tag.as_str() != "triggering"
+        || filter.card_types.is_empty()
+        || filter.zone.is_some()
+        || !filter.union_surface.explicit_card_noun()
+    {
+        return None;
+    }
+    let mut residual = filter.clone();
+    residual.tagged_constraints.clear();
+    let description = residual.description();
+    let description = description.trim();
+    if description.is_empty() || description.contains(" that ") {
+        return None;
+    }
+    Some(format!(
+        "{} from among those cards",
+        with_indefinite_article(strip_indefinite_article(description))
+    ))
+}
+
 pub(crate) fn describe_apply_continuous_clauses(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
@@ -1834,6 +1915,21 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             if words.is_empty() {
                 return;
             }
+            // All five basic land types read "gain(s) all basic land types".
+            if subtypes.len() == 5
+                && [
+                    crate::types::Subtype::Plains,
+                    crate::types::Subtype::Island,
+                    crate::types::Subtype::Swamp,
+                    crate::types::Subtype::Mountain,
+                    crate::types::Subtype::Forest,
+                ]
+                .iter()
+                .all(|basic| subtypes.contains(basic))
+            {
+                clauses.push(format!("{gains} all basic land types"));
+                return;
+            }
 
             let descriptor = if plural_target {
                 if let Some(last) = words.last_mut() {
@@ -1893,11 +1989,19 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 .map(|kind| kind.name().to_lowercase())
                 .collect::<Vec<_>>();
             if !names.is_empty() {
-                clauses.push(format!(
-                    "{} {}",
-                    if plural_target { "aren't" } else { "isn't" },
-                    join_with_or(&names)
-                ));
+                // "Target snow land is no longer snow." (Arcum's
+                // Weathervane): an indefinite change to an existing object.
+                let negation = if matches!(effect.until, Until::Forever)
+                    && !has_copy_runtime
+                    && effect.target_spec.as_ref().is_some_and(|spec| spec.is_target())
+                {
+                    if plural_target { "are no longer" } else { "is no longer" }
+                } else if plural_target {
+                    "aren't"
+                } else {
+                    "isn't"
+                };
+                clauses.push(format!("{negation} {}", join_with_or(&names)));
             }
         }
         crate::continuous::Modification::RemoveCardTypes(card_types) => {
@@ -1934,11 +2038,35 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 clauses.push(format!("{verb} base power and toughness X/X"));
                 return;
             }
-            clauses.push(format!(
-                "{verb} base power and toughness {}/{}",
-                describe_value(power),
-                describe_value(toughness)
-            ));
+            // "Its base power becomes the first result and its base
+            // toughness becomes the second result" (Vedalken
+            // Squirrel-Whacker): the two ordered die results of one roll.
+            if let (
+                Value::EffectValue(power_id),
+                Value::EffectMetric {
+                    effect_id: toughness_id,
+                    metric: crate::effect::EffectMetric::OtherNumber,
+                    ..
+                },
+            ) = (power.unhinted(), toughness.unhinted())
+                && power_id == toughness_id
+            {
+                clauses.push(
+                    "base power becomes the first result and its base toughness becomes the second result"
+                        .to_string(),
+                );
+                return;
+            }
+            let pair = describe_base_power_toughness_pair(power, toughness);
+            // "base power and toughness equal to that creature's power and
+            // toughness" (Shape Stealer): another object's P/T pair is a
+            // value, not a literal N/N.
+            let pair = if pair.ends_with("power and toughness") && !pair.starts_with("equal to ") {
+                format!("equal to {pair}")
+            } else {
+                pair
+            };
+            clauses.push(format!("{verb} base power and toughness {pair}"));
         }
         crate::continuous::Modification::SetPower { value, sublayer } => {
             let verb = if *sublayer == crate::continuous::PtSublayer::Setting {
@@ -2005,9 +2133,21 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             }
         }
         crate::continuous::Modification::RemoveStaticAbilityFamily(id) => {
-            let family =
-                ironsmith_core::filter_model::describe_filter_static_ability(*id).unwrap_or("such");
-            clauses.push(format!("{loses} all {family} abilities"));
+            // "lose protection" / "lose ward": every instance of a
+            // parameterized keyword family reads as the bare keyword.
+            match id {
+                crate::static_abilities::StaticAbilityId::Protection => {
+                    clauses.push(format!("{loses} protection"));
+                }
+                crate::static_abilities::StaticAbilityId::Ward => {
+                    clauses.push(format!("{loses} ward"));
+                }
+                _ => {
+                    let family = ironsmith_core::filter_model::describe_filter_static_ability(*id)
+                        .unwrap_or("such");
+                    clauses.push(format!("{loses} all {family} abilities"));
+                }
+            }
         }
         crate::continuous::Modification::RemoveAbilityGeneric { ability, mode } => {
             let prohibition_suffix = |ability_text: &str| match mode {
@@ -2148,13 +2288,59 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     // effect fold into that one clause ("becomes a blue Serpent with base
     // power and toughness 5/5"); the folded clause takes the position of the
     // first folded modification and every other modification keeps its own.
+    // A granted "rampage N" keyword carries its CR 702.23 trigger as a
+    // generic ability grant; the keyword already names it.
+    let grants_rampage_keyword = matches!(
+        &effect.modification,
+        Some(crate::continuous::Modification::AddAbility(ability))
+            if ability.display().trim().to_ascii_lowercase().starts_with("rampage ")
+    );
+    // "lose all creature types" also strips changeling (CR 702.73a) so the
+    // type loss sticks; the type-loss wording already says so.
+    let loses_all_creature_types = effect
+        .modification
+        .iter()
+        .chain(effect.additional_modifications.iter())
+        .any(|modification| {
+            matches!(
+                modification,
+                crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                    crate::types::SubtypeFamily::Creature
+                )
+            )
+        });
+    let is_implied_changeling_loss = |modification: &crate::continuous::Modification| {
+        loses_all_creature_types
+            && matches!(
+                modification,
+                crate::continuous::Modification::RemoveAbilityGeneric { ability, mode }
+                    if *mode == ironsmith_core::AbilityLossMode::Lose
+                        && matches!(&ability.kind, AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == crate::static_abilities::StaticAbilityId::Changeling)
+            )
+    };
     let modifications = effect
         .modification
         .iter()
+        .filter(|modification| !is_implied_changeling_loss(*modification))
         .chain(
             effect
                 .additional_modifications
                 .iter()
+                .filter(|modification| !is_implied_changeling_loss(*modification))
+                .filter(|modification| {
+                    !(grants_rampage_keyword
+                        && matches!(
+                            modification,
+                            crate::continuous::Modification::AddAbilityGeneric(ability)
+                                if matches!(&ability.kind, AbilityKind::Triggered(triggered)
+                                    if triggered
+                                        .trigger
+                                        .downcast_ref::<crate::triggers::ThisBecomesBlockedTrigger>()
+                                        .is_some())
+                        ))
+                })
                 .filter(|modification| {
                     !(has_copy_runtime
                         && matches!(
@@ -2198,6 +2384,7 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             } => {
                 let verb = if plural_target { "become" } else { "becomes" };
                 let copy_source = source_linked_exiled_creature_copy_surface(effect, source)
+                    .or_else(|| triggering_group_choice_copy_surface(source))
                     .unwrap_or_else(|| describe_choose_spec(source));
                 clauses.push(format!("{verb} a copy of {copy_source}"));
             }
@@ -2212,6 +2399,12 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     && power.has_surface_hint(ValueSurfaceHint::WhereXIs)
                 {
                     clauses.push(format!("{gets} +X/+X"));
+                } else if matches!(power.unhinted(), Value::Fixed(_))
+                    && negated_where_x_inner(toughness).is_some()
+                {
+                    // "+4/-X until end of turn, where X is its toughness
+                    // minus 1" (Blood Lust).
+                    clauses.push(format!("{gets} {}/-X", describe_signed_value(power)));
                 } else {
                     clauses.push(format!(
                         "{gets} {}/{}",
@@ -2317,7 +2510,50 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     }
 
     if clauses.len() > 1 {
+        // "lose hexproof, indestructible, protection, shroud, and ward"
+        // (Shay Cormac): bare keyword losses share one verb.
+        let shared_lose_prefix = if plural_target { "lose " } else { "loses " };
+        if clauses.iter().all(|clause| {
+            clause
+                .strip_prefix(shared_lose_prefix)
+                .is_some_and(|rest| !rest.starts_with("all ") && !rest.contains('"'))
+        }) {
+            let lost = clauses
+                .iter()
+                .map(|clause| clause[shared_lose_prefix.len()..].to_string())
+                .collect::<Vec<_>>();
+            return vec![format!(
+                "{shared_lose_prefix}{}",
+                join_granted_ability_list(&lost)
+            )];
+        }
         let shared_gain_prefix = if plural_target { "gain " } else { "gains " };
+        // "becomes a Dragon with base power and toughness 4/4, flying, and
+        // haste" (Bogardan Dragonheart): two or more bare keyword grants after
+        // a with-base-P/T type change extend that "with" list.
+        if clauses.len() >= 3
+            && let Some((first, rest)) = clauses.split_first()
+            && (first.starts_with("becomes ") || first.starts_with("become "))
+            && first.contains(" with base power and toughness ")
+            && !first.contains(',')
+            && rest.iter().all(|clause| {
+                clause.strip_prefix(shared_gain_prefix).is_some_and(|keyword| {
+                    !keyword.contains('"')
+                        && !keyword.contains(',')
+                        && !keyword.contains(" until ")
+                        && keyword.split_whitespace().count() <= 2
+                })
+            })
+        {
+            let mut items = vec![first.clone()];
+            items.extend(
+                rest.iter()
+                    .map(|clause| clause[shared_gain_prefix.len()..].to_string()),
+            );
+            if let Some((last, init)) = items.split_last() {
+                return vec![format!("{}, and {last}", init.join(", "))];
+            }
+        }
         if clauses
             .iter()
             .all(|clause| clause.starts_with(shared_gain_prefix))
@@ -2541,6 +2777,40 @@ pub(crate) fn describe_aura_attachment_filter_inline(
     }
 }
 
+/// The authored copy-exception surface is kept lowercased; the subtypes the
+/// exception adds are proper nouns in oracle text ("he's a legendary Human
+/// Mercenary Villain creature").
+fn recapitalize_copy_exception_subtypes(
+    surface: &str,
+    modifications: &[crate::continuous::Modification],
+) -> String {
+    let names: Vec<String> = modifications
+        .iter()
+        .filter_map(|modification| match modification {
+            crate::continuous::Modification::AddSubtypes(subtypes) => Some(subtypes),
+            _ => None,
+        })
+        .flatten()
+        .map(|subtype| subtype.to_string())
+        .collect();
+    if names.is_empty() {
+        return surface.to_string();
+    }
+    surface
+        .split(' ')
+        .map(|word| {
+            let core = word.trim_end_matches(|ch: char| !ch.is_alphanumeric());
+            let trail = &word[core.len()..];
+            names
+                .iter()
+                .find(|name| !core.is_empty() && name.eq_ignore_ascii_case(core))
+                .map(|name| format!("{name}{trail}"))
+                .unwrap_or_else(|| word.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub(crate) fn describe_copy_exception_tail(
     name_override: &Option<String>,
     name_override_surface: &Option<crate::target::SourceReferenceSurface>,
@@ -2644,7 +2914,12 @@ pub(crate) fn describe_apply_continuous_tail(
             copy_exception_surface,
             ..
         } = runtime
-            && let Some(exception_tail) = copy_exception_surface.clone().or_else(|| {
+            && let Some(exception_tail) = copy_exception_surface
+                .as_deref()
+                .map(|surface| {
+                    recapitalize_copy_exception_subtypes(surface, &effect.additional_modifications)
+                })
+                .or_else(|| {
                 let mut display_modifications = effect.additional_modifications.clone();
                 if let crate::effects::continuous::RuntimeModification::CopyOfWithAbilities {
                     abilities,
@@ -2677,6 +2952,16 @@ pub(crate) fn describe_apply_continuous_tail(
     } else {
         Some(tail_parts.join(", "))
     }
+}
+
+/// The authored where-X basis of a negated "-X" modifier.
+fn negated_where_x_inner(value: &Value) -> Option<&Value> {
+    let Value::Scaled(inner, -1) = value.unhinted() else {
+        return None;
+    };
+    inner
+        .has_surface_hint(ValueSurfaceHint::WhereXIs)
+        .then_some(inner.as_ref())
 }
 
 pub(crate) fn apply_continuous_preserves_source_abilities(
@@ -2809,7 +3094,11 @@ pub(crate) fn plural_non_target_land_animation_target(
     }
     if filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
+            && (matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
+                // Kitesail Larcenist: the per-player chosen set, not every
+                // permanent.
+                || constraint.tag.as_str()
+                    == effect_text_shared::ABILITY_CONTROLLER_TARGET_CHOICE_TAG)
     }) {
         return None;
     }
@@ -3078,6 +3367,17 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                     ability_text.push(format!("\"{rendered}\""));
                 }
             }
+            // "gains vigilance, trample, and melee" (Vivien's Stampede): a
+            // keyword trigger carried by the generic model reads as its
+            // keyword, not a quoted ability.
+            crate::continuous::Modification::AddAbilityGeneric(ability)
+                if matches!(&ability.kind, crate::ability::AbilityKind::Triggered(_))
+                    && describe_keyword_ability(ability)
+                        .is_some_and(|keyword| !keyword.trim_end_matches('.').contains(' ')) =>
+            {
+                let keyword = describe_keyword_ability(ability).unwrap_or_default();
+                ability_text.push(lowercase_first(keyword.trim_end_matches('.')));
+            }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
                 // A bare keyword is quoted only because it travels through the
                 // generic ability model; it is still a clause fragment, so its
@@ -3142,7 +3442,10 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         && card_types.contains(&CardType::Artifact);
     let explicitly_still_a_land = matches!(
         effect.type_retention_surface,
-        Some(ironsmith_core::TypeRetentionSurface::StillALand)
+        Some(
+            ironsmith_core::TypeRetentionSurface::StillALand
+                | ironsmith_core::TypeRetentionSurface::StillASubtypedLand(_)
+        )
     );
     let explicitly_still_card_type = match effect.type_retention_surface {
         Some(
@@ -3189,6 +3492,12 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         ("They".to_string(), true)
     } else if returned_artifact_creature_animation {
         ("they".to_string(), true)
+    } else if returned_permanent_animation
+        && effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
+    {
+        // "Each of them is a 1/1 Spirit with flying in addition to its
+        // other types." (Storm of Souls)
+        ("each of them".to_string(), false)
     } else if returned_permanent_animation {
         ("those permanents".to_string(), true)
     } else {
@@ -3427,6 +3736,26 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {
+            // A plural set becomes plural subtypes: "They become black
+            // Zombies", "become blue Illusions".
+            // "become Treasure artifacts" (Kitesail Larcenist): a trailing
+            // card-type noun after a subtype pluralizes like the subtype.
+            let last_word = noun_phrase.rsplit(' ').next().unwrap_or_default();
+            let ends_with_subtype = last_word
+                .chars()
+                .next()
+                .is_some_and(|first| first.is_ascii_uppercase())
+                || (noun_phrase.contains(' ')
+                    && noun_phrase
+                        .chars()
+                        .next()
+                        .is_some_and(|first| first.is_ascii_uppercase())
+                    && matches!(last_word, "artifact" | "creature" | "enchantment" | "land"));
+            let noun_phrase = if ends_with_subtype {
+                pluralize_noun_phrase(&noun_phrase)
+            } else {
+                noun_phrase.clone()
+            };
             format!("{target_text} become {noun_phrase}")
         } else {
             format!(
@@ -3494,11 +3823,30 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             });
         }
     }
+    // "Target creature becomes a Treasure artifact ... and loses all other
+    // card types and abilities" (Vraska, Betrayal's Sting): a creature whose
+    // card types are replaced by a noncreature set says so explicitly.
+    let replaces_creature_type = replaces_other_types
+        && !card_types.contains(&CardType::Creature)
+        && effect.target_spec.as_ref().is_some_and(|spec| {
+            matches!(
+                spec.base(),
+                ChooseSpec::Object(filter) if filter.card_types.as_slice() == [CardType::Creature]
+            )
+        });
     if removes_other_abilities {
-        text.push_str(if plural_target {
-            " and lose all other abilities"
-        } else {
-            " and loses all other abilities"
+        // A quoted ability that the sentence continues past carries no
+        // closing period ("with \"{T}, Sacrifice this artifact: Add one mana
+        // of any color\" and lose all other abilities", Kitesail Larcenist).
+        if text.ends_with(".\"") {
+            text.truncate(text.len() - 2);
+            text.push('"');
+        }
+        text.push_str(match (plural_target, replaces_creature_type) {
+            (true, true) => " and lose all other card types and abilities",
+            (false, true) => " and loses all other card types and abilities",
+            (true, false) => " and lose all other abilities",
+            (false, false) => " and loses all other abilities",
         });
     }
     let tail = describe_apply_continuous_tail(effect);
@@ -3549,9 +3897,33 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             }
         }
     }
+    // "Each of those lands is an 8/8 green Elemental creature for as long as
+    // it has an awakening counter on it. They're still lands." (Liege of the
+    // Tangle): a distributive animation over a tagged land set.
+    let mut distributive_land_set = false;
+    if explicitly_still_a_land
+        && !returned_permanent_animation
+        && effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
+    {
+        for (from, to) in [
+            ("Each of them becomes ", "Each of those lands is "),
+            ("each of them becomes ", "each of those lands is "),
+        ] {
+            if let Some(rest) = text.strip_prefix(from) {
+                text = format!("{to}{rest}");
+                distributive_land_set = true;
+                break;
+            }
+        }
+    }
     if preserves_land_types && !render_as_addition_to_other_types {
-        if plural_target {
+        if plural_target || distributive_land_set {
             text.push_str(". They're still lands");
+        } else if let Some(ironsmith_core::TypeRetentionSurface::StillASubtypedLand(subtype)) =
+            effect.type_retention_surface
+        {
+            let subtype = subtype.to_string();
+            text.push_str(&format!(". It's still {} land", with_indefinite_article(&subtype)));
         } else {
             text.push_str(". It's still a land");
         }
@@ -3636,9 +4008,79 @@ fn describe_triggered_creature_entry_replacement_grant(
     Some(format!("That creature enters with {tail}"))
 }
 
+/// "that creature's power and toughness" when both values copy the same
+/// object's characteristics; otherwise the ordinary "P/T" pair.
+pub(crate) fn describe_base_power_toughness_pair(power: &Value, toughness: &Value) -> String {
+    let power_text = describe_value(power);
+    let toughness_text = describe_value(toughness);
+    if let Some(owner) = power_text.strip_suffix("'s power")
+        && toughness_text.strip_suffix("'s toughness") == Some(owner)
+        && !owner.is_empty()
+    {
+        return format!("{owner}'s power and toughness");
+    }
+    if power_text == "its power" && toughness_text == "its toughness" {
+        return "its power and toughness".to_string();
+    }
+    // "base power becomes twice that card's power and its base toughness
+    // becomes twice that card's toughness" (Amplifire): one shared scale over
+    // one object's power/toughness pair.
+    if let Some(power_rest) = power_text.strip_prefix("twice ")
+        && let Some(toughness_rest) = toughness_text.strip_prefix("twice ")
+        && let Some(owner) = power_rest.strip_suffix(" power")
+        && toughness_rest.strip_suffix(" toughness") == Some(owner)
+        && (owner == "its" || owner.ends_with("'s"))
+    {
+        return format!("twice {owner} power and toughness");
+    }
+    format!("{power_text}/{toughness_text}")
+}
+
+/// "can block an additional two creatures" for one turn is printed "can
+/// block up to two additional creatures this turn" (Yare).
+pub(crate) fn one_turn_additional_block_rule(rule: &str) -> String {
+    if let Some(rest) = rule.strip_prefix("can block an additional ")
+        && let Some(count) = rest.strip_suffix(" creatures")
+        && !count.is_empty()
+        && !count.contains(' ')
+    {
+        return format!("can block up to {count} additional creatures");
+    }
+    rule.to_string()
+}
+
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    // "Until your next turn, this creature's base power becomes twice that
+    // card's power and its base toughness becomes twice that card's
+    // toughness" (Amplifire): the source's base stats set to a doubled copy
+    // of the card a consult just revealed.
+    if matches!(effect.target, crate::continuous::EffectTarget::Source)
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.condition.is_none()
+        && !effect.grant_only_if_absent
+        && let Some(crate::continuous::Modification::SetPowerToughness {
+            power,
+            toughness,
+            sublayer,
+        }) = effect.modification.as_ref()
+        && *sublayer == crate::continuous::PtSublayer::Setting
+        && let (Value::Scaled(power_inner, 2), Value::Scaled(toughness_inner, 2)) =
+            (power.unhinted(), toughness.unhinted())
+        && let (Value::PowerOf(power_spec), Value::ToughnessOf(toughness_spec)) =
+            (power_inner.unhinted(), toughness_inner.unhinted())
+        && power_spec.unhinted() == toughness_spec.unhinted()
+        && let ChooseSpec::Tagged(tag) = power_spec.base()
+        && tag.as_str().contains("consult_match")
+    {
+        let body = "this creature's base power becomes twice that card's power and its base toughness becomes twice that card's toughness";
+        return Some(match effect.until {
+            Until::Forever => capitalize_first(body),
+            ref until => format!("{}, {body}", capitalize_first(&describe_until(until))),
+        });
+    }
     // "If it doesn't have \"...,\" it gains that ability" (Musician): render
     // the plain grant, then restate its quoted ability as the presence gate.
     if effect.grant_only_if_absent {
@@ -3659,6 +4101,27 @@ pub(crate) fn describe_apply_continuous_effect(
             "If {subject} {negation} have \"{quoted},\" {subject}{verb}that ability"
         ));
     }
+    // A structurally recognized encore activation can use its own mana cost
+    // as the granted price. The keyword phrase alone hides that price relation
+    // when the grant's duration belongs to the outer instruction.
+    if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.until == Until::EndOfTurn
+        && let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &effect.modification
+        && let Some(keyword) = describe_keyword_ability(ability).and_then(|text| {
+            text.strip_suffix(" its mana cost")
+                .filter(|keyword| matches!(*keyword, "Encore" | "Embalm" | "Eternalize"))
+                .map(str::to_ascii_lowercase)
+        })
+    {
+        // "gains embalm until end of turn. The embalm cost is equal to its
+        // mana cost" (Cursecloth Wrappings).
+        let (target, _) = describe_apply_continuous_target(effect);
+        return Some(format!(
+            "{target} gains {keyword} until end of turn. The {keyword} cost is equal to its mana cost"
+        ));
+    }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()
         && effect.runtime_modifications.is_empty()
@@ -3674,7 +4137,7 @@ pub(crate) fn describe_apply_continuous_effect(
         let rule = lowercase_first(&ability.display());
         return Some(format!(
             "{target} {} this turn",
-            rule.trim_end_matches(" each combat")
+            one_turn_additional_block_rule(rule.trim_end_matches(" each combat"))
         ));
     }
     if effect.condition.is_none()
@@ -3705,6 +4168,39 @@ pub(crate) fn describe_apply_continuous_effect(
         return Some(format!(
             "{target} can attack this turn as though {} didn't have defender",
             if plural { "they" } else { "it" }
+        ));
+    }
+    // "X target blocked creatures assign their combat damage this turn as
+    // though they weren't blocked" (Outmaneuver) / "You may have creatures
+    // you control assign their combat damage this turn as though they weren't
+    // blocked" (Predatory Focus): a one-turn combat-damage rule, not a quoted
+    // ability.
+    if effect.condition.is_none()
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.until == Until::EndOfTurn
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && matches!(
+            ability.id(),
+            crate::static_abilities::StaticAbilityId::AssignsDamageAsUnblocked
+                | crate::static_abilities::StaticAbilityId::MayAssignDamageAsUnblocked
+        )
+    {
+        let (target, plural) = describe_apply_continuous_target(effect);
+        let (verb, possessive, pronoun, be) = if plural {
+            ("assign", "their", "they", "weren't")
+        } else {
+            ("assigns", "its", "it", "weren't")
+        };
+        if ability.id() == crate::static_abilities::StaticAbilityId::MayAssignDamageAsUnblocked {
+            return Some(format!(
+                "You may have {} assign {possessive} combat damage this turn as though {pronoun} {be} blocked",
+                lowercase_first(&target)
+            ));
+        }
+        return Some(format!(
+            "{} {verb} {possessive} combat damage this turn as though {pronoun} {be} blocked",
+            capitalize_first(&target)
         ));
     }
     if effect.condition.is_none()
@@ -4003,6 +4499,29 @@ pub(crate) fn describe_apply_continuous_effect(
         clauses = vec!["gains suspend".to_string()];
     }
 
+    // "each gain haste until end of turn and can't be blocked this turn
+    // except by creatures with haste" (Agility Bobblehead): the one-turn
+    // evasion rule reads inline after the keyword grant rather than as a
+    // quoted granted ability.
+    if effect.until == Until::EndOfTurn && effect.condition.is_none() {
+        let joined = join_with_and(&clauses);
+        if let Some((keyword_grant, evasion)) =
+            joined.split_once(" and \"Can't be blocked except by ")
+            && let Some(blockers) = evasion.strip_suffix(".\"")
+            && !keyword_grant.contains('"')
+            && !blockers.contains('"')
+        {
+            let mut text = format!(
+                "{target} {keyword_grant} until end of turn and can't be blocked this turn except by {blockers}"
+            );
+            if let Some(spec) = effect.target_spec.as_ref()
+                && let Some(where_clause) = choose_spec_dynamic_count_value_where_clause(spec)
+            {
+                text.push_str(&where_clause);
+            }
+            return Some(text);
+        }
+    }
     let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
     let mut text = format!("{target} {}", join_with_and(&clauses));
     let tail = describe_apply_continuous_tail(effect);
@@ -4030,6 +4549,11 @@ pub(crate) fn describe_apply_continuous_effect(
             else {
                 return None;
             };
+            if matches!(power.unhinted(), Value::Fixed(_))
+                && let Some(inner) = negated_where_x_inner(toughness)
+            {
+                return describe_where_x_basis(inner);
+            }
             (power.unhinted() == toughness.unhinted()
                 && power.has_surface_hint(ValueSurfaceHint::WhereXIs))
             .then(|| describe_where_x_basis(power))
@@ -4900,6 +5424,24 @@ pub(crate) fn describe_attached_object_type_condition(
         }
     }
 
+    // Combat state on the attached object ("as long as enchanted creature is
+    // attacking alone" — Security Bypass).
+    if filter.attacking && filter.card_types.len() <= 1 {
+        let mut bare = filter.clone();
+        bare.attacking = false;
+        bare.attacking_alone = false;
+        bare.card_types.clear();
+        bare.zone = None;
+        if bare == ObjectFilter::default() {
+            let state = if filter.attacking_alone {
+                "attacking alone"
+            } else {
+                "attacking"
+            };
+            return Some(format!("{subject} is {state}"));
+        }
+    }
+
     // Supertype or ability predicate on the attached creature ("as long as
     // equipped creature is legendary" — Champion's Helm; "as long as
     // equipped creature has defender" — Warmonger's Chariot).
@@ -5158,6 +5700,9 @@ pub(crate) fn untap_restriction_filter_noun(filter: &ObjectFilter) -> &'static s
         [CardType::Enchantment] => "enchantment",
         [CardType::Land] => "land",
         [CardType::Planeswalker] => "planeswalker",
+        // A tagged back-reference keeps its authored noun as surface only
+        // ("Each of those creatures doesn't untap ...").
+        [] if filter.explicit_card_type_noun() == Some(CardType::Creature) => "creature",
         _ => "permanent",
     }
 }
@@ -5205,6 +5750,16 @@ fn default_untap_restriction_subject(filter: &ObjectFilter) -> UntapRestrictionS
         })
         .collect::<Vec<_>>();
     if let [constraint] = tagged.as_slice() {
+        // "Tap it and up to one target creature. They don't untap during
+        // their controllers' next untap steps." (Dragon Turtle): a helper
+        // group tag names several separately chosen objects; with no shared
+        // type noun it reads as the plural pronoun.
+        if constraint.tag.as_str().contains("tapped_group")
+            && filter.card_types.is_empty()
+            && filter.controller != Some(PlayerFilter::You)
+        {
+            return UntapRestrictionSubject::plural("They".to_string(), false);
+        }
         let text = if matches!(constraint.tag.as_str(), "__it__" | "it") {
             "It".to_string()
         } else if filter.has_plural_object_noun_surface() {
@@ -5304,7 +5859,33 @@ pub(crate) fn describe_untap_restriction_oracle(
     let crate::effect::Restriction::Untap(filter) = &cant.restriction else {
         return None;
     };
-    describe_untap_restriction_for_subject(cant, default_untap_restriction_subject(filter))
+    let mut subject = default_untap_restriction_subject(filter);
+    // A one-shot "next untap step" restriction over a set reads in the plural
+    // in oracle ("Those creatures don't untap during their controllers' next
+    // untap steps", "Creatures target player controls don't untap during that
+    // player's next untap step"). Durable restrictions keep the per-object
+    // singular ("Each of those creatures doesn't untap ... for as long as ...").
+    if !subject.plural && !subject.controller_is_you {
+        if let Some(noun) = subject.text.strip_prefix("Each of those ")
+            && matches!(
+                cant.duration,
+                Until::ControllersNextUntapStep | Until::PlayersNextUntapStep { .. }
+            )
+        {
+            subject = UntapRestrictionSubject::plural(format!("Those {noun}"), false);
+        } else if let Some(rest) = subject.text.strip_prefix("Each ")
+            && !rest.starts_with("of ")
+            && !rest.contains(" and each ")
+            && filter.any_of.is_empty()
+            && matches!(cant.duration, Until::PlayersNextUntapStep { .. })
+        {
+            subject = UntapRestrictionSubject::plural(
+                capitalize_first(&pluralize_relative_object_phrase(rest)),
+                false,
+            );
+        }
+    }
+    describe_untap_restriction_for_subject(cant, subject)
 }
 
 pub(crate) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -> String {
@@ -5948,15 +6529,40 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             "All damage is dealt as though its source had wither".to_string()
         }
         crate::effect::Restriction::Attack(filter) => {
-            let subject =
-                restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
+            let subject = restriction_backref_subject(filter).unwrap_or_else(|| {
+                let description = filter.description();
+                // "This turn and next turn, creatures can't attack" (Peace
+                // Talks): an authored plural set stays plural.
+                if filter.has_plural_object_noun_surface()
+                    && description.eq_ignore_ascii_case("creature")
+                {
+                    "creatures".to_string()
+                } else {
+                    description
+                }
+            });
             format!("{subject} can't attack")
         }
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
             player,
         } => {
-            let attacker_text = if attackers
+            // "That player can't attack you or planeswalkers you control"
+            // (Willie Lumpkin): every creature the damaged player controls.
+            let damaged_players_creatures = {
+                let mut rest = attackers.clone();
+                rest.zone = None;
+                rest.card_types.clear();
+                rest.controller = None;
+                rest.union_surface = Default::default();
+                attackers.card_types.as_slice() == [crate::types::CardType::Creature]
+                    && attackers.controller == Some(PlayerFilter::DamagedPlayer)
+                    && matches!(attackers.zone, None | Some(crate::zone::Zone::Battlefield))
+                    && rest == crate::target::ObjectFilter::default()
+            };
+            let attacker_text = if damaged_players_creatures {
+                "that player".to_string()
+            } else if attackers
                 == &crate::target::ObjectFilter::creature()
                     .controlled_by(PlayerFilter::IteratedPlayer)
             {
@@ -5982,6 +6588,15 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_filter(player),
                 planeswalker_controller
             )
+        }
+        crate::effect::Restriction::AttackPlayer { attackers, player }
+            if attackers
+                == &crate::target::ObjectFilter::creature().controlled_by(PlayerFilter::You)
+                && *player != PlayerFilter::You =>
+        {
+            // "You can't attack that player this turn" (Call for Aid): only
+            // creatures you control can attack on your behalf.
+            format!("You can't attack {}", describe_player_filter(player))
         }
         crate::effect::Restriction::AttackPlayer { attackers, player } => {
             let attacker_text = if attackers == &crate::target::ObjectFilter::creature() {
@@ -6153,7 +6768,19 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             permanents.description()
         ),
         crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
-            format!("{} must be blocked by a {} if able", attacker.description(), blockers.description())
+            let subject = attacker.description();
+            // The equipped-creature filter already names the attachment; the
+            // provenance tail is implicit in "equipped creature".
+            let subject = subject
+                .strip_suffix(" with this Equipment attached to it")
+                .filter(|head| head.eq_ignore_ascii_case("equipped creature"))
+                .map(str::to_string)
+                .unwrap_or_else(|| subject.clone());
+            let blockers = blockers.description();
+            format!(
+                "{subject} must be blocked by {} if able",
+                with_indefinite_article(strip_indefinite_article(&blockers))
+            )
         }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
@@ -6266,6 +6893,28 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BecomeSuspected(filter) => {
             format!("{} can't become suspected", filter.description())
         }
+        // "Those creatures can't be sacrificed": a back-reference to objects
+        // an earlier instruction acted on.
+        crate::effect::Restriction::BeSacrificed(filter)
+            if filter.tagged_constraints.len() == 1
+                && filter.tagged_constraints.iter().all(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+                && filter.description().eq_ignore_ascii_case("permanent") =>
+        {
+            "They can't be sacrificed".to_string()
+        }
+        // "You can't sacrifice those creatures": the referenced creatures can
+        // only be sacrificed by their controller (the restricted player).
+        crate::effect::Restriction::BeSacrificed(filter)
+            if filter.tagged_constraints.len() == 1
+                && filter.tagged_constraints.iter().all(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+                && filter.card_types.as_slice() == [CardType::Creature] =>
+        {
+            "You can't sacrifice those creatures".to_string()
+        }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
         }
@@ -6312,6 +6961,16 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())
+        }
+        crate::effect::Restriction::BeTargetedFrom(filter, source_filter)
+            if is_spells_or_activated_abilities_filter(source_filter) =>
+        {
+            let mut subject = filter.clone();
+            subject.zone = None;
+            format!(
+                "{} can't be the targets of spells or activated abilities",
+                pluralize_noun_phrase(strip_leading_article(&subject.description()))
+            )
         }
         crate::effect::Restriction::BeTargetedFrom(filter, source_filter) => {
             if let Some(source_description) = describe_spell_targeting_source_filter(source_filter)
@@ -6377,6 +7036,14 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter)
+            if is_spells_or_activated_abilities_filter(source_filter) =>
+        {
+            format!(
+                "{} can't be the targets of spells or activated abilities",
+                describe_player_set_filter(player)
+            )
+        }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
             format!(
                 "{} can't be the target of spells or abilities from {}",
@@ -6423,6 +7090,26 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
     }
 }
 
+/// "spells or activated abilities": a source union of exactly the spell and
+/// activated-ability stack kinds with no other qualifier.
+fn is_spells_or_activated_abilities_filter(source_filter: &ObjectFilter) -> bool {
+    let [first, second] = source_filter.any_of.as_slice() else {
+        return false;
+    };
+    let mut rest = source_filter.clone();
+    rest.any_of.clear();
+    let kind_only = |filter: &ObjectFilter, kind| {
+        let mut bare = filter.clone();
+        bare.stack_kind = None;
+        filter.stack_kind == Some(kind) && bare == ObjectFilter::default()
+    };
+    rest == ObjectFilter::default()
+        && ((kind_only(first, crate::filter::StackObjectKind::Spell)
+            && kind_only(second, crate::filter::StackObjectKind::ActivatedAbility))
+            || (kind_only(first, crate::filter::StackObjectKind::ActivatedAbility)
+                && kind_only(second, crate::filter::StackObjectKind::Spell)))
+}
+
 pub(crate) fn describe_spell_targeting_source_filter(
     source_filter: &ObjectFilter,
 ) -> Option<String> {
@@ -6452,6 +7139,13 @@ pub(crate) fn describe_spell_targeting_source_filter(
 }
 
 pub(crate) fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    // "hexproof from each of its colors" (Tam, Mindful First-Year).
+    if let [constraint] = filter.tagged_constraints.as_slice()
+        && constraint.tag.as_str() == ironsmith_core::tag::HEXPROOF_PROTECTED_OBJECT_TAG
+        && constraint.relation == ironsmith_core::TaggedOpbjectRelation::SharesColorWithTagged
+    {
+        return "each of its colors".to_string();
+    }
     if !filter.any_of.is_empty() {
         return filter
             .any_of
@@ -6921,6 +7615,40 @@ fn describe_prior_effect_result_surface(
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
     });
     filter.set_prior_effect_action_surface(None);
+    // "If that spell's mana value was 2 or less" (Reject Imperfection): the
+    // one countered spell gated only on a mana-value bound.
+    if surface.action == crate::effect::PriorEffectAction::Countered
+        && surface.actor == crate::effect::PriorEffectResultActor::Passive
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none()
+        && let Some(crate::filter::Comparison::LessThanOrEqual(bound)) = filter.mana_value
+    {
+        let mut unbounded = filter.clone();
+        unbounded.mana_value = None;
+        unbounded.stack_kind = None;
+        if unbounded == ObjectFilter::default() {
+            return format!("that spell's mana value was {bound} or less");
+        }
+    }
+    // "Counter target spell. If that spell is countered this way, ..." (Fold
+    // into Aether): an unqualified countered object is the countered spell,
+    // never "a permanent" (a permanent is never itself countered).
+    if surface.action == crate::effect::PriorEffectAction::Countered
+        && surface.actor == crate::effect::PriorEffectResultActor::Passive
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none()
+    {
+        let mut unqualified = filter.clone();
+        if unqualified.stack_kind == Some(crate::filter::StackObjectKind::Spell) {
+            unqualified.stack_kind = None;
+        }
+        // The countered-object window carries the spell's "has a mana cost"
+        // quality from the counter target; it is not a qualifier.
+        unqualified.has_mana_cost = false;
+        if unqualified == ObjectFilter::default() {
+            return "that spell is countered this way".to_string();
+        }
+    }
     // Casting describes a spell on the stack, including typed spells.
     if surface.action == crate::effect::PriorEffectAction::Cast {
         filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
@@ -6987,6 +7715,12 @@ fn describe_prior_effect_result_surface(
         if object.is_empty() {
             return format!("{actor} {action} this way");
         }
+        // "When you put one or more Equipment onto the battlefield this
+        // way" (Gilgamesh): the object sits between the verb and its
+        // destination.
+        if surface.action == crate::effect::PriorEffectAction::PutOntoBattlefield {
+            return format!("{actor} put {object} onto the battlefield this way");
+        }
         return format!("{actor} {action} {object} this way");
     }
 
@@ -6998,6 +7732,16 @@ fn describe_prior_effect_result_surface(
             "is"
         };
         return format!("{object} {verb} put into exile this way");
+    }
+    // "If an ability of an artifact, creature, or planeswalker is countered
+    // this way" (Tishana's Tidebinder): an ability's source-type gate.
+    if surface.action == crate::effect::PriorEffectAction::Countered
+        && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+        && let Some(source) = object
+            .strip_prefix("an ability from ")
+            .and_then(|rest| rest.strip_suffix(" source"))
+    {
+        return format!("an ability of {source} is countered this way");
     }
     let copula = match (
         surface.action,
@@ -7392,7 +8136,7 @@ pub(crate) fn describe_player_relative_condition(condition: &Condition) -> Optio
             Zone::Hand => "this card is in your hand".to_string(),
             Zone::Graveyard => "this card is in your graveyard".to_string(),
             Zone::Library => "this card is in your library".to_string(),
-            Zone::Exile => "this card is in exile".to_string(),
+            Zone::Exile => "this card is exiled".to_string(),
             Zone::Command => "this card is in the command zone".to_string(),
             _ => return None,
         }),

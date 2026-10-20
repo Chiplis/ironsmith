@@ -263,7 +263,7 @@ fn retain_source_number_choices(
                 *source_owned = true;
             }
             if let crate::cards::builders::SubjectVerbActionAst::Choices(
-                crate::cards::builders::ChoiceActionAst::ChooseNumber { min, max, source_owned },
+                crate::cards::builders::ChoiceActionAst::ChooseNumber { min, max, source_owned, .. },
             ) = &mut subject.action {
                 let domain = (*min, *max);
                 if required_domain.is_none_or(|required| required == domain) {

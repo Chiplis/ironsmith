@@ -1389,10 +1389,10 @@ pub(super) fn compile_subject_verb_early(
                 Effect::new(effect)
             })
         }
-        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned }) => {
+        SubjectVerbActionAst::Choices(ChoiceActionAst::ChooseNumber { min, max, source_owned, draw_count_choice }) => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::new(crate::effects::ChooseNumberEffect {
-                    chooser: subject.into_player_filter(), min: *min, max: *max, source_owned: *source_owned,
+                    chooser: subject.into_player_filter(), min: *min, max: *max, source_owned: *source_owned, draw_count_choice: *draw_count_choice,
                 })
             })
         }
@@ -2058,6 +2058,9 @@ pub(super) fn compile_subject_verb_early(
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
                 }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
+                }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
                 }
@@ -2093,6 +2096,8 @@ pub(super) fn compile_subject_verb_early(
                 cause_policy,
                 link_exiled_to_source,
                 cast_this_way_surface,
+                cast_from_your_graveyard_surface,
+                those_spells_surface,
             },
         ) => {
             let mode = match duration {
@@ -2101,6 +2106,9 @@ pub(super) fn compile_subject_verb_early(
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
@@ -2126,6 +2134,12 @@ pub(super) fn compile_subject_verb_early(
             }
             if *cast_this_way_surface {
                 replacement = replacement.with_cast_this_way_surface();
+            }
+            if *cast_from_your_graveyard_surface {
+                replacement = replacement.with_cast_from_your_graveyard_surface();
+            }
+            if *those_spells_surface {
+                replacement = replacement.with_those_spells_surface();
             }
             let effect = Effect::new(replacement);
             Ok((vec![effect], Vec::new()))
@@ -2161,6 +2175,9 @@ pub(super) fn compile_subject_verb_early(
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
@@ -2293,6 +2310,9 @@ pub(super) fn compile_subject_verb_early(
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
                 }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
+                }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
                 }
@@ -2318,6 +2338,9 @@ pub(super) fn compile_subject_verb_early(
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
                 }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
+                }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
                 }
@@ -2339,6 +2362,9 @@ pub(super) fn compile_subject_verb_early(
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn => {
                     crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                }
+                crate::cards::builders::ZoneReplacementDurationAst::UntilYourNextTurn => {
+                    crate::effects::ReplacementApplyMode::UntilYourNextTurn
                 }
                 crate::cards::builders::ZoneReplacementDurationAst::Persistent => {
                     crate::effects::ReplacementApplyMode::Resolution
@@ -2655,8 +2681,12 @@ pub(super) fn compile_subject_verb_early(
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             // A captured collection identifies the cards independently of the viewer,
             // and a look at face-down permanents ("each face-down creature that's
-            // attacking or blocking") names them whoever controls them.
-            if resolved_filter.zone != Some(Zone::Battlefield)
+            // attacking or blocking") names them whoever controls them. A look
+            // owned by another player ("look at target player's hand ... and
+            // any face-down creatures they control", Spy Network) is limited
+            // to that player's permanents.
+            if (resolved_filter.zone != Some(Zone::Battlefield)
+                || player_filter != PlayerFilter::You)
                 && !resolved_filter.tagged_constraints.iter().any(|constraint| {
                 matches!(
                     constraint.relation,
@@ -2666,6 +2696,16 @@ pub(super) fn compile_subject_verb_early(
                 resolved_filter
                     .controller
                     .get_or_insert(player_filter.clone());
+            }
+            // "Then look at the exiled cards and put them ..." (Scroll Rack):
+            // the looked-at exiled cards become the object antecedent.
+            if filter.prior_effect_action_surface()
+                == Some(ironsmith_core::PriorEffectAction::Exiled)
+                && let [constraint] = resolved_filter.tagged_constraints.as_slice()
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str()
+            {
+                ctx.last_object_tag = Some(constraint.tag.clone());
             }
             let mut look = crate::effects::LookAtObjectsEffect::new(resolved_filter, PlayerFilter::You, player_filter);
             look.permit_while_exiled = *permit_while_exiled;

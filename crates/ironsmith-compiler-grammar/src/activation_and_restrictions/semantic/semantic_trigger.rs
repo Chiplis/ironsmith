@@ -205,6 +205,8 @@ fn parse_combat_damage_trigger_lexed(
                 player,
                 each_damaged_player,
                 per_source_controller,
+                recipient_passive: false,
+                during_your_turn: false,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -223,6 +225,8 @@ fn parse_combat_damage_trigger_lexed(
                 player,
                 each_damaged_player,
                 per_source_controller,
+                recipient_passive: false,
+                during_your_turn: false,
             },
             Some(source) => TriggerSpec::DealsCombatDamageToPlayer { source, player },
             None if player == PlayerFilter::Any => TriggerSpec::ThisDealsCombatDamageToPlayer {
@@ -2182,6 +2186,31 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 trigger = trigger.count(crate::triggers::CountMode::OneOrMore);
             }
             return Ok(TriggerSpec::ZoneChange(trigger));
+        }
+        // "When this creature enters during the declare attackers step"
+        // (Portal Mage, Misleading Signpost): the entering event itself is
+        // restricted to that step (CR 508).
+        if enters_word_idx > 0
+            && enters_word_idx + 6 == words.len()
+            && crate::word_primitives::parse_sequence_suffix(
+                &words,
+                &["during", "the", "declare", "attackers", "step"],
+            )
+        {
+            let enters_token_idx =
+                trigger_word_token_start(tokens, enters_word_idx).unwrap_or(tokens.len());
+            let subject_tokens = &tokens[..enters_token_idx];
+            if let Some(surface) = source_reference_surface_for_trigger_subject(
+                strip_leading_trigger_intro(subject_tokens),
+            ) {
+                let trigger = crate::triggers::ZoneChangeTrigger::new()
+                    .to(Zone::Battlefield)
+                    .this()
+                    .this_surface(surface)
+                    .this_subject_number(enter_trigger_subject_number(words[enters_word_idx]))
+                    .during_declare_attackers_step();
+                return Ok(TriggerSpec::ZoneChange(trigger));
+            }
         }
         let enters_during_turn = trigger_pattern_accepts(&words, DURING_YOUR_TURN_TRIGGER_SUFFIX)
             .then_some(PlayerFilter::You);
@@ -4151,6 +4180,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             target,
             source_surface: crate::triggers::DamageSourceSurface::PassiveBy,
             recipient_is_source_target: false,
+            noncombat_only: false,
+            amount_equals_target_toughness: false,
         });
     }
 
@@ -4201,10 +4232,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         }
     }
 
-    // "When one or more of your opponents are dealt combat damage [during
-    // your turn]" (Fblthp, Impossibly Lost): one batched trigger per combat
-    // damage step for the damaged players (CR 510.2, 603.2c). During your
-    // turn only your attacking creatures can deal combat damage to players.
+    // Passive damage recipients are the trigger subjects: qualify by damaged
+    // player and active turn, not by the combat damage source's controller.
+    // Group all qualifying assignments in a combat damage step (CR 510.2).
     {
         let (core, during_your_turn) = match words.strip_suffix(&["during", "your", "turn"][..]) {
             Some(core) => (core, true),
@@ -4219,16 +4249,14 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 _ => None,
             };
             if let Some(player) = player {
-                let source = if during_your_turn {
-                    ObjectFilter::default().controlled_by(PlayerFilter::You)
-                } else {
-                    ObjectFilter::default()
-                };
+                let source = ObjectFilter::default();
                 return Ok(TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                     source,
                     player,
                     each_damaged_player: false,
                     per_source_controller: false,
+                    recipient_passive: true,
+                    during_your_turn,
                 });
             }
         }
@@ -4498,6 +4526,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     target,
                     source_surface,
                     recipient_is_source_target: false,
+                    noncombat_only: false,
+                    amount_equals_target_toughness: false,
                 };
                 return Ok(if player_first {
                     TriggerSpec::Either(Box::new(player_trigger), Box::new(object_trigger))
@@ -4547,6 +4577,41 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     amount: None,
                 });
             }
+            // "deals noncombat damage to a creature equal to that creature's
+            // toughness" (Taii Wakeen): event qualifications on the ordinary
+            // object-damage trigger.
+            let noncombat_only = amount_words.as_slice() == ["noncombat"];
+            let toughness_stripped = [
+                &["equal", "to", "that", "creatures", "toughness"][..],
+                &["equal", "to", "that", "creature's", "toughness"][..],
+                &["equal", "to", "that", "creature", "s", "toughness"][..],
+                &["equal", "to", "its", "toughness"][..],
+            ]
+            .iter()
+            .find_map(|phrase| {
+                crate::grammar::primitives::strip_lexed_suffix_phrase(&target_tokens, phrase)
+            });
+            let amount_equals_target_toughness = toughness_stripped.is_some();
+            if noncombat_only || amount_equals_target_toughness {
+                let qualified_target_tokens =
+                    toughness_stripped.unwrap_or(target_tokens.as_slice());
+                if let Ok(mut target) = parse_object_filter_lexed(
+                    strip_leading_one_or_more_lexed(qualified_target_tokens),
+                    false,
+                ) && let Some((source, source_surface)) =
+                    parse_damage_source_trigger_filter_lexed(subject_tokens)?
+                {
+                    target.set_union_one_or_more(target_one_or_more);
+                    return Ok(TriggerSpec::DealsDamageTo {
+                        source,
+                        target,
+                        source_surface,
+                        recipient_is_source_target: false,
+                        noncombat_only,
+                        amount_equals_target_toughness,
+                    });
+                }
+            }
             if let Ok(mut target) =
                 parse_object_filter_lexed(strip_leading_one_or_more_lexed(&target_tokens), false)
                 && let Some((source, source_surface)) =
@@ -4558,6 +4623,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     target,
                     source_surface,
                     recipient_is_source_target: false,
+                    noncombat_only: false,
+                    amount_equals_target_toughness: false,
                 });
             }
             if let Ok(mut target) =
@@ -5660,7 +5727,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
                 eprintln!("attacks-tail: {tail:?}");
             }
-            if trigger_pattern_accepts(tail, ATTACKS_A_PLAYER_TAIL_PATTERN) {
+            if crate::word_primitives::parse_sequence_complete(
+                tail,
+                &["one", "or", "more", "players"],
+            ) {
+                // "Whenever one or more Devils you control attack one or more
+                // players" (Zurzoth): one trigger for the whole player-attacking
+                // group, not one per defending player.
+                (&words[..=attacks_word_idx], None, true)
+            } else if trigger_pattern_accepts(tail, ATTACKS_A_PLAYER_TAIL_PATTERN) {
                 (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
             } else if trigger_pattern_accepts(tail, ATTACKS_YOU_TAIL_PATTERN) {
                 (&words[..=attacks_word_idx], Some(PlayerFilter::You), true)
@@ -5820,6 +5895,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                             if attacked_target_must_be_player {
                                 filter.targets_only_player = Some(player_filter);
                             }
+                        } else if attacked_target_must_be_player {
+                            filter.attacking_player_only = true;
                         }
                         if let Some(min_total_attackers) =
                             minimum_attackers.filter(|count| *count > 1)
@@ -6333,6 +6410,8 @@ fn parse_single_target_source_damages_its_target_lexed(
         target,
         source_surface,
         recipient_is_source_target: true,
+        noncombat_only: false,
+        amount_equals_target_toughness: false,
     }))
 }
 

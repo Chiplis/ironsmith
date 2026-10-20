@@ -369,6 +369,19 @@ impl<'a> CanonicalReferenceResolver<'a> {
                     vec![env, branch],
                 )
             }
+            EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+                target_action, riders, ..
+            }) => {
+                // Each slot may be absent, but when present its action runs
+                // before any riders. A rider may consume a binding produced
+                // by that action; neither loop-local binding is guaranteed
+                // after the dynamic slot range ends.
+                let action_env = self.resolve_sequence(
+                    std::slice::from_ref(target_action.as_ref()), env.clone(),
+                );
+                let body = self.resolve_sequence(riders, action_env);
+                self.join(ReferenceJoinKindAst::Iteration, env.clone(), vec![env, body])
+            }
             EffectAst::ForEach(ForEachEffectAst::RepeatEffects { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::RepeatProcess { effects, .. })
             | EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })

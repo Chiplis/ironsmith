@@ -234,7 +234,27 @@ pub(super) fn pre_rule_conditional_optional_result_followup(
     // The authored "if/when you do" refers to the optional action inside the
     // preceding branch, not that branch's original coin flip/clash result.
     // Preserve that scope before both spellings lower to a result predicate.
-    let followup = super::super::super::parse_effect_chain_lexed(sentence_tokens)?;
+    let mut followup = super::super::super::parse_effect_chain_lexed(sentence_tokens)?;
+    // Some chain readings ("If you do, you may play that card without paying
+    // its mana cost", Leaf-Crowned Elder) read past the leading "if you do"
+    // and return the bare action. The continuation is still gated on the
+    // optional action having happened.
+    let has_if_you_do_lead = continuation.len() < sentence_tokens.len()
+        && !is_when_you_do
+        && !is_if_you_dont;
+    if has_if_you_do_lead
+        && matches!(
+            followup.as_slice(),
+            [EffectAst::Permissions(
+                PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
+            )]
+        )
+    {
+        followup = vec![EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects: followup,
+        })];
+    }
     effects.extend(followup);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,

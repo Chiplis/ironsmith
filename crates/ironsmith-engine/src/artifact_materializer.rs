@@ -320,6 +320,10 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
             T,
             ironsmith_core::ForEachObjectCorrelatedResultEffect<wire::WireEffect>,
         >(effect),
+        "ForEachAnnouncedTargetSlotEffect" => decode_as::<
+            T,
+            ironsmith_core::ForEachAnnouncedTargetSlotEffect<wire::WireEffect>,
+        >(effect),
         "ForEachTaggedEffect" => {
             decode_as::<T, ironsmith_core::ForEachTaggedEffect<wire::WireEffect>>(effect)
         }
@@ -1909,6 +1913,17 @@ pub fn encode_runtime_effect(
             .map(|payload| wire::WireEffect::new("ForPlayersEffect", payload))
             .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
     }
+    if let Some(payload) = effect.downcast_ref::<crate::effects::ForEachAnnouncedTargetSlotEffect>() {
+        let converted = ironsmith_core::ForEachAnnouncedTargetSlotEffect {
+            target_spec: payload.target_spec.clone(),
+            start: payload.start.clone(),
+            count: payload.count.clone(),
+            effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
+        };
+        return serde_json::to_value(converted)
+            .map(|payload| wire::WireEffect::new("ForEachAnnouncedTargetSlotEffect", payload))
+            .map_err(|error| RuntimePayloadEncodingError::InvalidEffectModel { detail: error.to_string() });
+    }
     if let Some(payload) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
         let converted = ironsmith_core::ForEachTaggedEffect {
             effects: payload.effects.iter().cloned().map(encode_runtime_effect).collect::<Result<Vec<_>, _>>()?,
@@ -2307,6 +2322,41 @@ mod native_effect_payload_codec_tests {
         let actual = restored.downcast_ref::<crate::effects::CreateTokenEffect>().expect("native token executor");
         let from_actual = encode_runtime_effect(crate::effect::Effect::new(actual.clone())).expect("actual executor reencodes");
         assert_eq!(from_actual, encoded, "retained JSON must not mask field loss in materialization");
+    }
+}
+
+#[cfg(test)]
+mod ordered_target_slot_payload_codec_tests {
+    use super::*;
+
+    #[test]
+    fn ordered_target_slot_action_and_untargeted_rider_survive_artifact_materialization() {
+        let target_spec = crate::target::ChooseSpec::target(
+            crate::target::ChooseSpec::Object(crate::target::ObjectFilter::artifact()),
+        );
+        let destroy = crate::effect::Effect::conditional_only(
+            crate::effect::Condition::TargetMatches(crate::target::ObjectFilter::default()),
+            vec![crate::effect::Effect::new(crate::effects::DestroyEffect::with_spec(
+                crate::target::ChooseSpec::Iterated,
+            ))],
+        );
+        let effect = crate::effect::Effect::new(crate::effects::ForEachAnnouncedTargetSlotEffect {
+            target_spec: target_spec.clone(),
+            start: crate::effect::Value::Fixed(2),
+            count: crate::effect::Value::Fixed(3),
+            effects: vec![destroy, crate::effect::Effect::gain_life(1)],
+        });
+        let encoded = encode_runtime_effect(effect).expect("ordered target slots encode");
+        assert_eq!(encoded.kind(), "ForEachAnnouncedTargetSlotEffect");
+        let restored = materialize_effect(encoded).expect("ordered target slots materialize");
+        let group = restored.downcast_ref::<crate::effects::ForEachAnnouncedTargetSlotEffect>()
+            .expect("generic ordered slot executor survives");
+        assert_eq!(group.target_spec, target_spec);
+        assert_eq!(group.start, crate::effect::Value::Fixed(2));
+        assert_eq!(group.count, crate::effect::Value::Fixed(3));
+        assert_eq!(group.effects.len(), 2);
+        assert!(group.effects[0].downcast_ref::<crate::effects::ConditionalEffect>().is_some());
+        assert!(group.effects[1].downcast_ref::<crate::effects::GainLifeEffect>().is_some());
     }
 }
 

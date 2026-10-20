@@ -1,5 +1,349 @@
 use super::*;
 
+fn ordered_type_sacrifice_choice(types: [CardType; 3]) -> ironsmith_core::ChooseModeEffect<Effect> {
+    let orders = [
+        [0, 1, 2], [0, 2, 1], [1, 0, 2],
+        [1, 2, 0], [2, 0, 1], [2, 1, 0],
+    ];
+    let modes = orders.into_iter().map(|order| {
+        let effects = order.into_iter().enumerate().map(|(rank, index)| {
+            let tag = TagKey::from(format!("chosen_{rank}_{index}"));
+            Effect::new(crate::effects::ForPlayersEffect {
+                filter: PlayerFilter::Any,
+                effects: vec![
+                    Effect::new(crate::effects::ChooseObjectsEffect::new(
+                        ObjectFilter::default()
+                            .with_type(types[index])
+                            .controlled_by(PlayerFilter::IteratedPlayer)
+                            .in_zone(Zone::Battlefield),
+                        ironsmith_core::ChoiceCount::exactly(rank + 1),
+                        PlayerFilter::IteratedPlayer,
+                        tag.clone(),
+                    )),
+                    Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+                        ObjectFilter::tagged(tag),
+                        Value::Fixed((rank + 1) as i32),
+                        PlayerFilter::IteratedPlayer,
+                    )),
+                ],
+                sequential: false,
+                starting_with_controller: false,
+                stop_after_first_happened: false,
+            })
+        }).collect();
+        ironsmith_core::EffectMode::new("untrusted mode label", effects)
+    }).collect();
+    ironsmith_core::ChooseModeEffect::choose_one(modes).with_chooser(PlayerFilter::You)
+}
+
+#[test]
+fn parsed_ordered_type_sacrifices_keep_the_order_instruction() {
+    let oracle = "Choose an order for artifacts, creatures, and lands. Each player sacrifices one permanent of their choice of the first type, sacrifices two of their choice of the second type, then sacrifices three of their choice of the third type.";
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(), "Ordered Sacrifice Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text(oracle)
+    .expect("ordered-type sacrifice should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("Choose an order for artifacts, creatures, and lands"), "{rendered}");
+    assert!(rendered.contains("sacrifices three of their choice of the third type"), "{rendered}");
+    assert!(!rendered.contains("• Artifacts, then"), "{rendered}");
+}
+
+#[test]
+fn ordered_type_sacrifice_modes_render_the_common_order_instruction() {
+    let choose = ordered_type_sacrifice_choice([
+        CardType::Artifact, CardType::Creature, CardType::Land,
+    ]);
+    let effect = Effect::new(choose);
+    let rendered = describe_effect(&effect);
+    assert_eq!(
+        rendered,
+        "Choose an order for artifacts, creatures, and lands. Each player sacrifices one permanent of their choice of the first type, sacrifices two of their choice of the second type, then sacrifices three of their choice of the third type"
+    );
+    assert!(!rendered.contains("untrusted mode label"), "{rendered}");
+    assert_eq!(describe_effect_list(&[effect]), rendered);
+}
+
+#[test]
+fn ordered_type_sacrifice_modes_generalize_and_reject_changed_execution() {
+    let types = [CardType::Enchantment, CardType::Battle, CardType::Land];
+    let choose = ordered_type_sacrifice_choice(types);
+    let rendered = describe_effect_list(&[Effect::new(choose.clone())]);
+    assert!(rendered.starts_with("Choose an order for enchantments, battles, and lands."), "{rendered}");
+
+    let mut duplicate = choose.clone();
+    duplicate.modes[5] = duplicate.modes[0].clone();
+    assert!(super::super::single_effects_early::describe_compact_choose_mode_branch(&[Effect::new(duplicate.clone())]).is_none());
+    assert!(!describe_effect(&Effect::new(duplicate)).starts_with("Choose an order for"));
+
+    let mut wrong_count = choose.clone();
+    let mut for_players = wrong_count.modes[0].effects[1]
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        .expect("second ordered step")
+        .clone();
+    let mut sacrifice = for_players.effects[1]
+        .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
+        .expect("sacrifice step")
+        .clone();
+    sacrifice.count = Value::Fixed(3);
+    for_players.effects[1] = Effect::new(sacrifice);
+    wrong_count.modes[0].effects[1] = Effect::new(for_players);
+    assert!(super::super::single_effects_early::describe_compact_choose_mode_branch(&[Effect::new(wrong_count)]).is_none());
+
+    let mut optional_choice = choose;
+    optional_choice.optional_choice = true;
+    assert!(super::super::single_effects_early::describe_compact_choose_mode_branch(&[Effect::new(optional_choice)]).is_none());
+}
+
+#[test]
+fn unique_reveal_winner_retargets_only_without_a_tie_or_same_name_trigger() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Contest Device",
+    )
+    .card_types(vec![CardType::Enchantment])
+    .parse_text(
+        "Whenever a player chooses one or more targets, each player reveals the top card of their library. The player who reveals the card with the greatest mana value may change the target or targets. If two or more cards are tied for greatest, the target or targets remain unchanged. Changing targets this way doesn't trigger abilities of permanents named Contest Device.",
+    )
+    .expect("unique-winner reveal contest should compile");
+    let structure = format!("{:#?}", definition.abilities);
+    assert!(structure.contains("KeepGreatestManaValuePlayersEffect"), "{structure}");
+    assert!(format!("{:?}", definition.abilities).contains("Equal(1)"), "{structure}");
+    assert!(structure.contains("doesnt_trigger_same_named_sources: true"), "{structure}");
+    assert!(!structure.contains("RepeatProcessEffect"), "{structure}");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains("If two or more cards are tied for greatest, the target or targets remain unchanged"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("Changing targets this way doesn't trigger abilities of permanents named Contest Device"),
+        "{rendered}"
+    );
+    assert!(!rendered.contains("repeat this process"), "{rendered}");
+}
+
+#[test]
+fn each_player_random_pile_sacrifice_keeps_order_and_complement() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Three Pile Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Starting with you, each player separates all permanents they control into three piles. Then each player chooses one of their piles at random and sacrifices those permanents.")
+    .expect("per-player pile procedure compiles");
+    let effects = &definition.spell_effect.as_ref().expect("spell effect").segments[0].default_effects;
+    let separation = effects[0]
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        .expect("per-player separation");
+    assert!(separation.starting_with_controller, "{effects:#?}");
+    assert_eq!(separation.effects.len(), 2, "the third pile is the complement");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("Starting with you, each player separates all permanents they control into three piles"), "{rendered}");
+    assert!(rendered.contains("Then each player chooses one of their piles at random and sacrifices those permanents"), "{rendered}");
+    assert!(!rendered.contains("• Pile 1"), "{rendered}");
+}
+
+#[test]
+fn random_pile_compactor_preserves_a_nonrandom_choice() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Two Pile Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Each player separates all permanents they control into two piles. Then each player chooses one of their piles at random and sacrifices those permanents.")
+    .expect("two-pile procedure compiles");
+    let mut effects = definition.spell_effect.as_ref().expect("spell effect").segments[0].default_effects.clone();
+    let for_players = effects[1]
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        .expect("per-player sacrifice");
+    let mut for_players = for_players.clone();
+    let choice = for_players.effects[0]
+        .downcast_ref::<crate::effects::ChooseModeEffect>()
+        .expect("random pile choice");
+    let mut choice = choice.clone();
+    choice.random = false;
+    for_players.effects[0] = Effect::new(choice);
+    effects[1] = Effect::new(for_players);
+    let rendered = describe_effect_list(&effects[..2]);
+    assert!(!rendered.contains("separates all permanents they control into two piles"), "{rendered}");
+}
+
+#[test]
+fn ordered_dice_with_identical_result_tables_render_each_result_once() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Ordered Dice Probe",
+    )
+    .card_types(vec![CardType::Creature])
+    .parse_text("At the beginning of combat on your turn, roll two six-sided dice. For each result of 1, this creature gets +1/+1 until end of turn. For each other result, it gains the indicated ability until end of turn. If you rolled doubles, it also gains double strike until end of turn.\n• 2 — menace\n• 3 — vigilance\n• 4 — lifelink\n• 5 — flying\n• 6 — indestructible")
+    .expect("ordered die result table compiles");
+    let AbilityKind::Triggered(triggered) = &definition.abilities[0].kind else {
+        panic!("ordered die table must be triggered");
+    };
+    assert!(super::super::roll_result_surfaces::describe_per_die_result_ability_table_program(
+        &triggered.effects
+    ).is_some(), "the typed renderer must recognize the complete program");
+    let mut mismatched = triggered.effects.clone();
+    let second_die_two = mismatched.segments[0].default_effects[8]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("second die result-two branch");
+    let mut second_die_two = second_die_two.clone();
+    if let Condition::ValueComparison { right, .. } = &mut second_die_two.condition {
+        *right = Value::Fixed(3);
+    } else {
+        panic!("result branch must compare a die result");
+    }
+    mismatched.segments[0].default_effects[8] = Effect::new(second_die_two);
+    // Rebuild the program to refresh its flattened default-effect cache.
+    let mismatched = crate::resolution::ResolutionProgram::new(mismatched.segments);
+    assert!(super::super::roll_result_surfaces::describe_per_die_result_ability_table_program(
+        &mismatched
+    ).is_none(), "a non-exhaustive second table must not use the compact surface");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("roll two six-sided dice"), "{rendered}");
+    assert!(rendered.contains("For each other result, it gains the indicated ability"), "{rendered}");
+    assert!(rendered.contains("If you rolled doubles, it also gains double strike"), "{rendered}");
+    assert!(rendered.contains("• 6 — indestructible"), "{rendered}");
+    assert!(!rendered.contains("the other result is equal to"), "{rendered}");
+}
+
+#[test]
+fn repeated_source_loyalty_allowances_render_the_extra_count_once() {
+    let grant = Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(
+        crate::effects::LoyaltyActivationScope::Source,
+        crate::effects::LoyaltyActivationAllowance::ExtraActivation,
+    ));
+    let prefix = Effect::new(crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::Loyalty,
+        Value::Fixed(1),
+        ChooseSpec::Source,
+    ));
+    let effect = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        prefix.clone(), grant.clone(), grant.clone(),
+    ]));
+    let rendered = describe_effect(&effect);
+    assert!(rendered.contains("two more times this turn"), "{rendered}");
+    assert_eq!(rendered.matches("two more times this turn").count(), 1);
+
+    let different = Effect::new(crate::effects::GrantLoyaltyActivationAllowanceEffect::new(
+        crate::effects::LoyaltyActivationScope::ControlledPlaneswalkers { subtype: None },
+        crate::effects::LoyaltyActivationAllowance::ExtraActivation,
+    ));
+    let near_miss = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        prefix, grant, different,
+    ]));
+    assert!(!describe_effect(&near_miss).contains("two more times this turn"));
+}
+
+#[test]
+fn rounded_life_token_size_is_shared_with_its_damage() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Rounded Token Probe",
+    )
+    .card_types(vec![CardType::Enchantment])
+    .subtypes(vec![crate::types::Subtype::Saga])
+    .parse_text("I, II — This Saga deals 2 damage to each opponent and you gain 2 life.\nIII — Create an X/X black Nightmare Horror creature token, where X is half your life total, rounded up. It deals X damage to you.")
+    .expect("rounded token-size Saga compiles");
+    let program = definition.abilities.iter().filter_map(|ability| match &ability.kind {
+        crate::ability::AbilityKind::Triggered(triggered) => Some(&triggered.effects),
+        _ => None,
+    }).last().expect("final chapter ability");
+    assert!(super::super::effect_lists::describe_rounded_token_damage(
+        program.flattened_default_effects(),
+    ).is_some(), "the parsed token/damage chain must match the typed guard: {program:#?}");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("where X is half your life total, rounded up"), "{rendered}");
+    assert!(rendered.contains("It deals X damage to you"), "{rendered}");
+    assert!(!rendered.contains("Round up each time"), "{rendered}");
+}
+
+#[test]
+fn linked_entry_life_payment_names_the_token_size_basis() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Entry Payment Probe",
+    )
+    .card_types(vec![CardType::Artifact])
+    .parse_text("As this artifact enters, pay any amount of life.\n{4}, {T}: Create an X/X black Phyrexian Minion creature token, where X is the life paid as this artifact entered.")
+    .expect("linked entry payment compiles");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("where X is the life paid as this artifact entered"), "{rendered}");
+    assert!(!rendered.contains("last chosen number"), "{rendered}");
+}
+
+#[test]
+fn matching_conditional_token_repeat_uses_a_token_backreference() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Token Repeat Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Corrupted — Create an X/X green Phyrexian Wurm creature token with trample and toxic 1, where X is the amount of mana spent to cast this spell. Then for each opponent with three or more poison counters, you create another one of those tokens.\nFlashback {8}{G}{G}")
+    .expect("conditional token repeat compiles");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("you create another one of those tokens"), "{rendered}");
+    assert_eq!(rendered.matches("where X is the amount of mana spent to cast this spell").count(), 1, "{rendered}");
+}
+
+#[test]
+fn counter_choice_keeps_reflexive_followup_in_compiled_text() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Counter Choice Probe",
+    )
+    .card_types(vec![CardType::Creature])
+    .parse_text(
+        "Whenever this creature enters or attacks, put a charge counter on it or remove one from it. When you remove a counter this way, choose one —\n• This creature deals 4 damage to any target.\n• This creature gains lifelink and indestructible until end of turn.",
+    )
+    .expect("counter choice with a reflexive continuation should compile");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("put a charge counter on it or remove"), "{rendered}");
+    assert!(rendered.contains("When you remove a charge counter this way"), "{rendered}");
+    assert!(rendered.contains("deals 4 damage to any target"), "{rendered}");
+    assert!(rendered.contains("gains lifelink and indestructible until end of turn"), "{rendered}");
+}
+
+#[test]
+fn protection_choice_granted_to_player_and_controlled_permanents_keeps_both_recipients() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Protection Choice Probe",
+    )
+    .card_types(vec![CardType::Instant])
+    .parse_text(
+        "Target permanent you control gains protection from the color of your choice until end of turn.\nFateful hour — If you have 5 or less life, instead you and each permanent you control gain protection from the color of your choice until end of turn.",
+    )
+    .expect("replacement protection choice should compile");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("you and each permanent you control gain protection from the color of your choice until end of turn"), "{rendered}");
+    assert!(!rendered.contains("• White"), "{rendered}");
+}
+
+#[test]
+fn named_card_guess_keeps_optional_reveal_and_wrong_guess_reward() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(),
+        "Guessing Device",
+    )
+    .card_types(vec![CardType::Artifact])
+    .parse_text(
+        "{2}, {T}: Choose a card name. Target opponent guesses whether a card with that name is in your hand. You may reveal your hand. If you do and your opponent guessed wrong, draw a card.",
+    )
+    .expect("named-card guess should compile");
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("Target opponent guesses whether a card with that name is in your hand"), "{rendered}");
+    assert!(rendered.contains("If you do and your opponent guessed wrong, draw a card"), "{rendered}");
+    assert!(!rendered.contains("• It's in their hand"), "{rendered}");
+}
+
 #[test]
 fn put_into_graveyard_history_uses_the_structured_owner_for_each_zone() {
     let your_history =
@@ -1478,4 +1822,89 @@ fn demonstrative_for_each_damage_keeps_each_of_those_surface() {
         describe_effect(&damage),
         "Deal X damage to each of those creatures"
     );
+}
+
+#[test]
+fn blitzwing_random_keyword_choice_keeps_random_marker() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(), "Blitzwing, Adaptive Assailant",
+    )
+    .card_types(vec![CardType::Artifact])
+    .parse_text("At the beginning of combat on your turn, choose flying or indestructible at random. Blitzwing gains that ability until end of turn.")
+    .expect("random keyword choice should compile");
+    let ability = definition.abilities.iter().find_map(|ability| {
+        if let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind {
+            Some(triggered)
+        } else { None }
+    }).unwrap();
+    let effects = ability.effects.flattened_default_effects();
+    let random = effects.iter().find(|effect|
+        effect.downcast_ref::<crate::effects::ChooseModeEffect>().is_some()).unwrap();
+    assert!(describe_compact_keyword_change_choice(random).is_none(),
+        "the earlier generic change renderer must not hide randomness");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("choose flying or indestructible at random"), "{rendered}");
+    assert!(rendered.contains("gains that ability until end of turn"), "{rendered}");
+    assert!(!rendered.contains("your choice of flying or indestructible"), "{rendered}");
+}
+
+#[test]
+fn attached_aura_count_damage_names_each_recipient_and_keeps_multiplier() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(), "Baki's Curse",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Baki's Curse deals 2 damage to each creature for each Aura attached to that creature.")
+    .expect("per-recipient attachment count should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("deals 2 damage to each creature for each Aura attached to that creature"), "{rendered}");
+    assert!(!rendered.contains("attached to its"), "{rendered}");
+
+    let mut count_filter = ObjectFilter::default()
+        .with_subtype(crate::types::Subtype::Aura)
+        .in_zone(Zone::Battlefield);
+    count_filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+        tag: TagKey::from("__it__"),
+        relation: crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject,
+    });
+    let amount = Value::Scaled(
+        Box::new(Value::Count(count_filter.clone()).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)),
+        2,
+    );
+    let mut damage = crate::effects::DealDamageEachEffect {
+        amount,
+        filter: ObjectFilter::creature().in_zone(Zone::Battlefield),
+    };
+    assert!(super::super::single_effects_early::describe_attached_count_damage_each(&damage).is_some());
+    count_filter.tagged_constraints[0].relation = crate::filter::TaggedOpbjectRelation::IsTaggedObject;
+    damage.amount = Value::Scaled(
+        Box::new(Value::Count(count_filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)),
+        2,
+    );
+    assert!(super::super::single_effects_early::describe_attached_count_damage_each(&damage).is_none());
+}
+
+#[test]
+fn compared_land_count_difference_damage_keeps_recipient_before_amount() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(), "Spiteful Repossession",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Spiteful Repossession deals damage to each opponent who controls more lands than you equal to the difference. Then create a number of Treasure tokens equal to the damage dealt this way.")
+    .expect("difference-valued damage should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("deals damage to each opponent who controls more lands than you equal to the difference"), "{rendered}");
+    assert!(!rendered.contains("lands that player controls minus"), "{rendered}");
+
+    let left = Value::Count(ObjectFilter::land().controlled_by(PlayerFilter::IteratedPlayer).in_zone(Zone::Battlefield));
+    let right = Value::Count(ObjectFilter::land().controlled_by(PlayerFilter::You).in_zone(Zone::Battlefield));
+    let condition = crate::effect::Condition::ValueComparison {
+        left: left.clone(),
+        operator: crate::effect::ValueComparisonOperator::GreaterThan,
+        right: right.clone(),
+    };
+    let amount = Value::Add(Box::new(left.clone()), Box::new(Value::Scaled(Box::new(right.clone()), -1)));
+    assert!(super::super::single_effects_early::is_positive_comparison_difference_damage(&condition, &amount));
+    let reversed = Value::Add(Box::new(right), Box::new(Value::Scaled(Box::new(left), -1)));
+    assert!(!super::super::single_effects_early::is_positive_comparison_difference_damage(&condition, &reversed));
 }

@@ -234,6 +234,8 @@ pub enum TurnHistoryPredicateAst {
     },
     TriggeringObjectEnlistedThisCombat,
     TriggeringObjectWasCast,
+    /// The entering object's completed cast was performed by this ability's controller.
+    TriggeringObjectWasCastByController,
     TriggeringObjectWasCastFromZone(Zone),
     /// "it entered from your <zone>": the triggering entry's origin zone.
     TriggeringObjectEnteredFromZone(Zone),

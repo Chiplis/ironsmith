@@ -535,6 +535,12 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
 
     child_list!(SequenceEffect);
     child_list!(ManaRetainedEffect);
+    visit!(ForEachAnnouncedTargetSlotEffect, model, {
+        model.target_spec = rewrite_choose_spec_words(&model.target_spec, change)?;
+        model.start = rewrite_value_words(&model.start, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.effects = rewrite_effects(&model.effects, change)?;
+    });
     child_list!(ForEachTaggedEffect);
     child_list!(ForEachControllerOfTaggedEffect);
     child_list!(ForEachTaggedPlayerEffect);

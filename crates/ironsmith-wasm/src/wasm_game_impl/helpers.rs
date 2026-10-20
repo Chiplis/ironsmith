@@ -29,6 +29,12 @@ pub(super) fn build_action_view(
     let source_visible = object_id
         .map(ObjectId::from_raw)
         .is_none_or(|id| object_visible_to_perspective(game, perspective, viewed_cards, id));
+    // A turn-face-up cost is printed on the hidden face (CR 708.2), so only a
+    // player who may look at that face sees it until the permanent turns over.
+    let face_up_cost = face_up_cost.filter(|_| {
+        turn_face_up_permanent(action)
+            .is_none_or(|id| crate::hidden_object_viewable_by_player(game, id, perspective))
+    });
     ActionView {
         index,
         label: if source_visible {
@@ -1214,6 +1220,17 @@ pub(super) fn object_visible_to_perspective(
     }
 
     visible_via_view_effect
+}
+
+fn turn_face_up_permanent(action: &LegalAction) -> Option<ObjectId> {
+    match action {
+        LegalAction::TurnFaceUp { creature_id, .. } => Some(*creature_id),
+        LegalAction::SpecialAction(ironsmith::special_actions::SpecialAction::TurnFaceUp {
+            permanent_id,
+            ..
+        }) => Some(*permanent_id),
+        _ => None,
+    }
 }
 
 pub(super) fn redacted_action_label(action: &LegalAction) -> String {

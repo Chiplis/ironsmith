@@ -29,6 +29,16 @@ pub enum ForEachEffectAst {
     ForEachPlayer {
         effects: Vec<EffectAst>,
     },
+    /// An announced target set is partitioned into ordered groups. Each slot
+    /// receives its target action if still legal and its independent riders
+    /// even when the slot is illegal (unless every target fizzled the spell).
+    AnnouncedTargetSlotRange {
+        target_spec: TargetAst,
+        start: Value,
+        count: Value,
+        target_action: Box<EffectAst>,
+        riders: Vec<EffectAst>,
+    },
     ForEachTargetPlayers {
         count: ChoiceCount,
         filter: PlayerFilter,

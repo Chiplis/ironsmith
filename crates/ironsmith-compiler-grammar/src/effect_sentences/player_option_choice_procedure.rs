@@ -31,6 +31,7 @@ use ironsmith_core::{
     ChoosePlayerOptionEffect, PlayerNumberChoice, PlayerOptionChooser, player_number_extreme_tag,
     player_option_choice_tag, player_option_participants_tag,
 };
+use ironsmith_core::effect::HiddenItemsChoiceSurface;
 use crate::grammar::primitives;
 use crate::lexer::OwnedLexToken;
 use crate::target::PlayerFilter;
@@ -204,19 +205,26 @@ fn hidden_items_opening(tokens: &[OwnedLexToken]) -> Option<ChoosePlayerOptionEf
         ["each", "opponent", rest @ ..] => (PlayerFilter::Opponent, rest),
         _ => return None,
     };
-    let ["hides", "at", "least", "one", _noun, tail @ ..] = rest else {
+    let ["hides", "at", "least", "one", noun, tail @ ..] = rest else {
         return None;
     };
+    if !noun.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return None;
+    }
     if !matches!(
         tail,
         [] | ["then", "all", "players", "reveal", "them", "simultaneously"]
     ) {
         return None;
     }
-    Some(
+    let mut choice =
         ChoosePlayerOptionEffect::numbers(participants, PlayerNumberChoice { min: 1, max: None })
-            .with_secret(true),
-    )
+            .with_secret(true);
+    choice.hidden_items_surface = Some(HiddenItemsChoiceSurface {
+        item_noun: noun.to_string(),
+        reveal_simultaneously: !tail.is_empty(),
+    });
+    Some(choice)
 }
 
 /// The index of "equal to the number of <noun> they revealed|chose|hid" in
@@ -455,7 +463,11 @@ fn guessers_consequence(
     while idx < tokens.len() {
         let words = crate::lexer::token_word_refs(&tokens[idx..]);
         if idx == 0 && tokens[0].is_word("they") && tokens.len() > 1 {
-            rewritten.extend([synthetic("each"), synthetic("player")]);
+            // "they" names each guesser in turn; the whole consequence is
+            // iterated over the guessers below ("they lose life ... and you
+            // draw a card" draws once per wrong guesser, not once per
+            // player, and only guessers lose life).
+            rewritten.extend([synthetic("that"), synthetic("player")]);
             let verb = tokens[1].as_word().unwrap_or_default();
             let verb = if verb.ends_with('s') {
                 verb.to_string()
@@ -744,7 +756,8 @@ fn restrict_to_players(effects: &mut [EffectAst], players: &PlayerFilter) -> usi
             }
             EffectAst::Sequence { effects: inner }
             | EffectAst::CommaThen { effects: inner }
-            | EffectAst::SourceSentence { effects: inner, .. } => {
+            | EffectAst::SourceSentence { effects: inner, .. }
+            | EffectAst::Coordinated { effects: inner, .. } => {
                 restricted += restrict_to_players(inner, players);
             }
             _ => {}
@@ -764,6 +777,42 @@ fn last_iteration_body(effects: &mut [EffectAst]) -> Option<&mut Vec<EffectAst>>
         | EffectAst::SourceSentence { effects: inner, .. } => last_iteration_body(inner),
         _ => None,
     }
+}
+
+/// The option quantifier scopes both actors in "you and that player each
+/// ...". Parse the joint action as a complete clause inside that iteration;
+/// a broad quantified-sentence reader can otherwise retain only "you".
+fn joint_action_for_option_participant(
+    rewritten: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((_, body)) = primitives::parse_prefix(
+        rewritten,
+        (
+            primitives::phrase(&["for", "each", "player"]),
+            opt(primitives::comma()),
+        ),
+    ) else {
+        return Ok(None);
+    };
+    let body = trim(body);
+    if crate::grammar::effects::subject_verb_registry_shapes::parse_joint_create_shape(body)
+        .is_none()
+        && crate::grammar::effects::subject_verb_registry_shapes::parse_joint_draw_shape(body)
+            .is_none()
+        && crate::grammar::effects::subject_verb_registry_shapes::parse_joint_life_shape(body)
+            .is_none()
+    {
+        return Ok(None);
+    }
+    let actions = super::parse_effect_sentence_lexed(body)?;
+    if actions.len() != 2 {
+        return Err(CardTextError::ParseError(
+            "joint participant action did not preserve both actors".to_string(),
+        ));
+    }
+    Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+        effects: actions,
+    })]))
 }
 
 /// The statement's quantified player set and parsed effects, for a statement
@@ -805,7 +854,10 @@ fn quantified_statement(
     } else {
         None
     };
-    let mut effects = super::parse_effect_sentence_lexed(&rewritten)?;
+    let mut effects = match joint_action_for_option_participant(&rewritten)? {
+        Some(actions) => actions,
+        None => super::parse_effect_sentence_lexed(&rewritten)?,
+    };
     if restrict_to_players(&mut effects, &players) == 0 {
         return Err(CardTextError::ParseError(format!(
             "per-player choice statement did not read as a participant iteration (clause: '{}')",
@@ -1127,6 +1179,35 @@ mod tests {
     }
 
     #[test]
+    fn named_option_joint_actions_keep_both_participants() {
+        for action in [
+            "create a Treasure token",
+            "draw a card",
+            "gain 2 life",
+        ] {
+            let text = format!(
+                "Each opponent chooses money or secrets. For each player who chose money, you and that player each {action}."
+            );
+            let inputs = sentences(&text);
+            let mut group = open(&inputs, 0).unwrap().expect("option procedure opens");
+            assert!(continue_with(&mut group, &inputs[1]).unwrap());
+            let [EffectAst::ChoosePlayerOption(_), EffectAst::ForEach(
+                ForEachEffectAst::ForEachPlayersFiltered { filter, effects, .. }
+            )] = group.effects.as_slice() else {
+                panic!("expected one option-scoped joint action: {:?}", group.effects);
+            };
+            assert_eq!(
+                *filter,
+                PlayerFilter::TaggedPlayer(player_option_choice_tag("money")),
+            );
+            assert_eq!(effects.len(), 2, "both actors must receive the action: {effects:?}");
+            let debug = format!("{effects:?}");
+            assert!(debug.contains("You"), "{debug}");
+            assert!(debug.contains("That"), "{debug}");
+        }
+    }
+
+    #[test]
     fn an_unread_choice_does_not_open() {
         let inputs = sentences("Each opponent chooses fame or fortune. Draw a card.");
         assert!(open(&inputs, 0).unwrap().is_none());
@@ -1138,5 +1219,25 @@ mod tests {
         assert!(named_options(&tokens).is_none());
         let tokens = crate::lexer::lex_line("money, friends, or secrets", 0).unwrap();
         assert_eq!(named_options(&tokens).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn hidden_items_keep_the_item_noun_and_simultaneous_reveal() {
+        let inputs = sentences(
+            "Each player hides at least one item, then all players reveal them simultaneously. Each player loses life equal to the number of items they revealed.",
+        );
+        let group = open(&inputs, 0).unwrap().expect("linked number procedure opens");
+        let [EffectAst::ChoosePlayerOption(choice)] = group.effects.as_slice() else {
+            panic!("expected numeric choice");
+        };
+        assert_eq!(
+            choice.hidden_items_surface,
+            Some(HiddenItemsChoiceSurface {
+                item_noun: "item".to_string(),
+                reveal_simultaneously: true,
+            }),
+        );
+        assert_eq!(choice.number, Some(PlayerNumberChoice { min: 1, max: None }));
+        assert!(choice.secret);
     }
 }

@@ -342,6 +342,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             ..
         }) => {}
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection { .. }) => {}
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             ..
         }) => {}
@@ -364,6 +365,7 @@ pub fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessExcludingPriorChoices) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatThisProcessAdditional { .. }) => {}
         EffectAst::ForEach(ForEachEffectAst::RepeatEffects { .. }) => {}
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::May { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::MayByPlayer { .. }) => {}
         EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { .. }) => {}
@@ -454,6 +456,12 @@ pub fn for_each_nested_effects(
                 visit(&statement.effects);
             }
         }
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+            target_action, riders, ..
+        }) => {
+            visit(std::slice::from_ref(target_action.as_ref()));
+            visit(riders);
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -525,6 +533,12 @@ pub fn for_each_nested_effects_mut(
             for statement in &mut program.statements {
                 visit(&mut statement.effects);
             }
+        }
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+            target_action, riders, ..
+        }) => {
+            visit(std::slice::from_mut(target_action.as_mut()));
+            visit(riders);
         }
         nested_effects_variants!(effects) => {
             visit(effects);
@@ -687,6 +701,12 @@ pub fn try_for_each_nested_effects_mut<E>(
             for statement in &mut program.statements {
                 visit(&mut statement.effects)?;
             }
+        }
+        EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+            target_action, riders, ..
+        }) => {
+            visit(std::slice::from_mut(target_action.as_mut()))?;
+            visit(riders)?;
         }
         nested_effects_variants!(effects) => {
             visit(effects)?;

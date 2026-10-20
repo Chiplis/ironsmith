@@ -34,6 +34,13 @@ pub struct MissingRegistrySyncSummary {
     pub unchanged: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct RegistryTextSyncSummary {
+    pub inserted_names: Vec<String>,
+    pub updated_names: Vec<String>,
+    pub unchanged: usize,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct CardPruneSummary {
     pub distinct_cards_deleted: usize,
@@ -259,6 +266,86 @@ impl StatusDb {
         })
     }
 
+    /// Inserts missing cards and rewrites existing rows whose compile-relevant
+    /// text changed (oracle errata, type line, P/T, ...). Never prunes. Rows
+    /// that differ only in volatile Scryfall metadata (prices, image URLs) are
+    /// left alone, so a fresh download doesn't rewrite the whole registry.
+    pub fn sync_registry_card_text_changes(
+        &mut self,
+        rows: &[RegistryCardRecord],
+    ) -> Result<RegistryTextSyncSummary, Box<dyn Error>> {
+        let normalized_rows = normalize_rows(rows)?;
+        let tx = self.conn.transaction()?;
+        let mut existing = BTreeMap::new();
+        {
+            let mut stmt = tx.prepare(
+                "SELECT card_name, oracle_text, raw_oracle_text, parse_input, mana_cost,
+                        type_line, power, toughness, loyalty, defense, layout
+                 FROM registry_card",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    registry_text_fingerprint(
+                        &row.get::<_, String>(1)?,
+                        &row.get::<_, String>(2)?,
+                        &row.get::<_, String>(3)?,
+                        [
+                            row.get::<_, Option<String>>(4)?,
+                            row.get::<_, Option<String>>(5)?,
+                            row.get::<_, Option<String>>(6)?,
+                            row.get::<_, Option<String>>(7)?,
+                            row.get::<_, Option<String>>(8)?,
+                            row.get::<_, Option<String>>(9)?,
+                            row.get::<_, Option<String>>(10)?,
+                        ],
+                    ),
+                ))
+            })?;
+            for row in rows {
+                let (name, fingerprint) = row?;
+                existing.insert(name, fingerprint);
+            }
+        }
+
+        let mut summary = RegistryTextSyncSummary {
+            inserted_names: Vec::new(),
+            updated_names: Vec::new(),
+            unchanged: 0,
+        };
+        {
+            let mut upsert = tx.prepare(&registry_upsert_sql())?;
+            for row in &normalized_rows {
+                let fingerprint = registry_text_fingerprint(
+                    &strip_parenthetical_text(&row.oracle_text),
+                    &row.raw_oracle_text,
+                    &row.parse_input,
+                    [
+                        row.mana_cost.clone(),
+                        row.type_line.clone(),
+                        row.power.clone(),
+                        row.toughness.clone(),
+                        row.loyalty.clone(),
+                        row.defense.clone(),
+                        row.layout.clone(),
+                    ],
+                );
+                match existing.get(&row.name) {
+                    Some(current) if current == &fingerprint => {
+                        summary.unchanged += 1;
+                        continue;
+                    }
+                    Some(_) => summary.updated_names.push(row.name.clone()),
+                    None => summary.inserted_names.push(row.name.clone()),
+                }
+                execute_registry_write(&mut upsert, row)?;
+                existing.insert(row.name.clone(), fingerprint);
+            }
+        }
+        tx.commit()?;
+        Ok(summary)
+    }
+
     pub fn prune_cards_not_in_names(
         &mut self,
         allowed_names: &[String],
@@ -308,6 +395,23 @@ impl StatusDb {
             tag_rows_deleted,
         })
     }
+}
+
+/// The registry columns that card compilation reads, joined for comparison.
+/// `oracle_text` is passed in its stored (reminder-stripped) form.
+fn registry_text_fingerprint(
+    oracle_text: &str,
+    raw_oracle_text: &str,
+    parse_input: &str,
+    fields: [Option<String>; 7],
+) -> String {
+    let mut parts = vec![
+        oracle_text.to_string(),
+        raw_oracle_text.to_string(),
+        parse_input.to_string(),
+    ];
+    parts.extend(fields.into_iter().map(Option::unwrap_or_default));
+    parts.join("\u{0}")
 }
 
 fn normalize_rows(rows: &[RegistryCardRecord]) -> Result<Vec<RegistryCardRecord>, Box<dyn Error>> {

@@ -65,7 +65,7 @@ fn rewrite_zone_change_words(zone: &mut model::ZoneChangeTrigger, change: TextCh
     let model::ZoneChangeTrigger {
         from: _, from_zones: _, from_excluded: _, to: _, to_excluded: _,
         filter, this: _, this_surface: _, this_subject_number: _, count: _,
-        cause_filter, during_own_resolution: _, during_turn, timing: _,
+        cause_filter, duration_return_from_source: _, during_own_resolution: _, during_turn, timing: _,
         origin_condition, graveyard_surface: _,
     } = zone;
     rewrite_optional_filter(filter, change)?;
@@ -173,7 +173,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
         }
         K::BecomesTargetedObjectByStackObject { target, source }
         | K::BecomesTargetedByAbilitySource { target, source }
-        | K::DealsDamageTo { source, target, source_surface: _, recipient_is_source_target: _ }
+        | K::DealsDamageTo { source, target, .. }
         | K::DealsCombatDamageTo { source, target } => {
             *source = rewrite_filter_words(source, change)?;
             *target = rewrite_filter_words(target, change)?;
@@ -218,7 +218,7 @@ fn rewrite_trigger_model_words(original: &model::Trigger, change: TextChange)
             *player = rewrite_player_filter_words(player, change)?;
         }
         K::DealsDamageToPlayer { source, player, source_surface: _ }
-        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _, per_source_controller: _ } => {
+        | K::DealsCombatDamageToPlayer { source, player, one_or_more: _, each_damaged_player: _, per_source_controller: _, recipient_passive: _, during_your_turn: _ } => {
             *source = rewrite_filter_words(source, change)?;
             *player = rewrite_player_filter_words(player, change)?;
         }
@@ -487,6 +487,7 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
             filter: Some(native.object_filter.clone()), this: native.this_object,
             this_surface: native.this_object_surface.clone(), this_subject_number: native.this_object_subject_number,
             count: native_count(&native.count_mode), cause_filter: native.cause_filter.clone(),
+            duration_return_from_source: native.duration_return_from_source,
             during_own_resolution: native.during_own_resolution, during_turn: native.during_turn.clone(),
             timing: native.timing, origin_condition: native.origin_condition.clone(),
             graveyard_surface: native.graveyard_surface,
@@ -619,6 +620,8 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         source: n.filter.clone(), player: n.player.clone(), one_or_more: n.one_or_more,
         each_damaged_player: n.each_damaged_player,
         per_source_controller: n.per_source_controller,
+        recipient_passive: n.recipient_passive,
+        during_your_turn: n.during_your_turn,
     });
     exact!(ThisDealsCombatDamageToPlayerTrigger, n, K::ThisDealsCombatDamageToPlayer {
         player: n.player.clone(), source_surface: n.source_surface.clone(),
@@ -632,6 +635,8 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
         K::DealsDamageTo {
             source: n.source_filter.clone(), target: n.target_filter.clone(), source_surface: n.source_surface,
             recipient_is_source_target: n.recipient_is_source_target,
+            noncombat_only: n.noncombat_only,
+            amount_equals_target_toughness: n.amount_equals_target_toughness,
         }
     });
     exact!(DealsExactDamageToObjectOrPlayerTrigger, n, K::DealsExactDamageToObjectOrPlayer {

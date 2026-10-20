@@ -2568,10 +2568,28 @@ fn filtered_block_requirement_for_subject(
     blockers: ObjectFilter,
 ) -> StaticAbilityAst {
     let mut attacker = anthem_subject_filter(&clause.subject);
-    if attached_goaded_display_subject(&clause.subject).is_some() {
+    let attached_subject = attached_goaded_display_subject(&clause.subject);
+    if attached_subject.is_some() {
         attacker.with_attached_object = Some(Box::new(ObjectFilter::source()));
     }
-    let display = format!("{} must be blocked by a {} if able", attacker.description(), blockers.description());
+    // "Equipped creature ... must be blocked by an Eldrazi if able": the
+    // attachment provenance is implicit in the authored subject.
+    let subject_text = attached_subject.unwrap_or_else(|| attacker.description());
+    let blocker_text = blockers.description();
+    let blocker_noun = blocker_text
+        .strip_prefix("a ")
+        .or_else(|| blocker_text.strip_prefix("an "))
+        .unwrap_or(&blocker_text);
+    let article = if blocker_noun
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    let display = format!("{subject_text} must be blocked by {article} {blocker_noun} if able");
     let mut ability = StaticAbility::restriction(
         crate::effect::Restriction::MustBeBlockedBy { attacker, blockers }, display,
     );

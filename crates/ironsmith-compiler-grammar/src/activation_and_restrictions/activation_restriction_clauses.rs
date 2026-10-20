@@ -307,9 +307,13 @@ fn player_negated_restriction_from_tail(
             | ["sacrifice", "it"]
             | ["sacrifice", "that", "creature" | "permanent"]
     ) {
-        return Some(Restriction::be_sacrificed(ObjectFilter::tagged(
-            crate::tag::CompilerReferenceTag::It.bind(),
-        )));
+        let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        // Keep the printed noun so the restriction reads back as "those
+        // creatures" (the referenced objects are creatures either way).
+        if matches!(words.last(), Some(&"creatures")) {
+            filter = filter.with_type(CardType::Creature);
+        }
+        return Some(Restriction::be_sacrificed(filter));
     }
 
     // "Players can't pay life to cast spells or to activate abilities that
@@ -1494,11 +1498,23 @@ pub fn parse_negated_object_restriction_clause(
             // blocked, it can't be regenerated this turn"), not a filter over
             // every creature. target=None keeps it on the plain
             // cant-restriction path (no spurious "choose it").
-            (
-                ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-                None,
-                None,
-            )
+            let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+            // "Each of those creatures doesn't untap ..." (Dread Wight): the
+            // authored creature noun names the subject surface only; the
+            // tagged identity stays the executable reference.
+            if tokens[neg_end..].iter().any(|token| token.is_word("untap"))
+                && crate::word_primitives::parse_any_sequence_complete(
+                    &subject_words,
+                    &[
+                        &["that", "creature"],
+                        &["those", "creatures"],
+                        &["each", "of", "those", "creatures"],
+                    ],
+                )
+            {
+                filter.set_explicit_card_type_noun(Some(CardType::Creature));
+            }
+            (filter, None, None)
         } else if crate::word_primitives::parse_sequence_complete(
             &subject_words,
             &["each", "of", "those", "creatures"],

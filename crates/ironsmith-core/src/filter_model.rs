@@ -137,6 +137,36 @@ fn correct_leading_indefinite_article(text: String) -> String {
     }
 }
 
+/// "instant or sorcery card from your graveyard or exiled card with
+/// flashback": adjacent zone-qualified union branches that differ only in
+/// their single card type read as one shared-noun type list ("instant or
+/// sorcery card in your graveyard") instead of repeating the zone.
+fn merge_card_type_only_union_branches(branches: &[ObjectFilter]) -> Vec<ObjectFilter> {
+    let strip = |filter: &ObjectFilter| {
+        let mut stripped = filter.clone();
+        stripped.card_types.clear();
+        stripped.union_surface = ObjectFilterUnionSurface::default();
+        stripped
+    };
+    let mut merged: Vec<ObjectFilter> = Vec::with_capacity(branches.len());
+    for branch in branches {
+        if let Some(last) = merged.last_mut()
+            && branch.zone.is_some()
+            && branch.any_of.is_empty()
+            && branch.card_types.len() == 1
+            && !last.card_types.is_empty()
+            && !last.card_types.contains(&branch.card_types[0])
+            && strip(last) == strip(branch)
+        {
+            last.card_types.push(branch.card_types[0]);
+            last.union_surface = branch.union_surface;
+            continue;
+        }
+        merged.push(branch.clone());
+    }
+    merged
+}
+
 fn describe_filter_union_list(
     mut parts: Vec<String>,
     connective: ObjectFilterUnionConnective,
@@ -1713,6 +1743,11 @@ pub enum PlayerFilter {
     /// filter is evaluated with that player as the iterated player.
     /// Appended to preserve serialized ordinals.
     ControlsMatchingObject { filter: Box<ObjectFilter> },
+    /// "the opponent to your left" (Barroom Brawl): the nearest in-game
+    /// opponent seated to the effect controller's left. Distinct from
+    /// `PlayerToYourLeft` when a teammate sits there. Appended to preserve
+    /// serialized ordinals.
+    OpponentToYourLeft,
 }
 
 /// A per-player quantity compared by [`PlayerFilter::QuantityGreaterThanPlayer`].
@@ -1911,6 +1946,7 @@ impl PlayerFilter {
             | Self::Opponent
             | Self::Teammate
             | Self::PlayerToYourLeft
+            | Self::OpponentToYourLeft
             | Self::PlayerToYourRight
             | Self::Active
             | Self::Defending
@@ -1943,6 +1979,7 @@ impl PlayerFilter {
             Self::Opponent => "an opponent".to_string(),
             Self::Teammate => "a teammate".to_string(),
             Self::PlayerToYourLeft => "the player to your left".to_string(),
+            Self::OpponentToYourLeft => "the opponent to your left".to_string(),
             Self::PlayerToYourRight => "the player to your right".to_string(),
             Self::Active => "the active player".to_string(),
             Self::Defending => "the defending player".to_string(),
@@ -1962,11 +1999,11 @@ impl PlayerFilter {
             Self::AttackedBySourceThisTurn => {
                 "a player this creature attacked this turn".to_string()
             }
-            Self::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
-                "{} this source has dealt damage to this {}",
-                base.description(),
-                if *this_turn { "turn" } else { "game" }
-            ),
+            Self::WasDealtDamageBySourceThisGame { base, this_turn } => if *this_turn {
+                format!("{} dealt damage by this source this turn", base.description())
+            } else {
+                format!("{} this source has dealt damage to this game", base.description())
+            },
             Self::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
                 "{} dealt combat damage this game by {}",
                 base.description(),
@@ -3744,6 +3781,18 @@ impl ObjectFilter {
             spell_cast_ordinal_each_turn: self.spell_cast_ordinal_each_turn,
             spell_cast_minimum_each_turn: self.spell_cast_minimum_each_turn,
             single_graveyard: self.single_graveyard,
+            // Identity membership limits the area being searched; only
+            // characteristic comparisons with tagged objects state qualities
+            // that permit failure to find in a hidden zone.
+            tagged_constraints: self.tagged_constraints.iter()
+                .filter(|constraint| matches!(constraint.relation,
+                    TaggedOpbjectRelation::IsTaggedObject
+                    | TaggedOpbjectRelation::SameObjectId
+                    | TaggedOpbjectRelation::SameStableId
+                    | TaggedOpbjectRelation::IsNotTaggedObject
+                    | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered
+                ))
+                .cloned().collect(),
             ..Self::default()
         };
         self != &generic
@@ -4501,6 +4550,30 @@ impl ObjectFilter {
         // the survivors are the base objects that you don't control or that
         // are nontoken.
         if let [left, right] = self.any_of.as_slice() {
+            // "card other than a basic land card" (Kotose, the Silent
+            // Spider): the nonland-or-nonbasic exception union over one
+            // shared base.
+            if left.excluded_card_types.as_slice() == [CardType::Land]
+                && right.excluded_supertypes.as_slice() == [Supertype::Basic]
+                && left.excluded_supertypes.is_empty()
+                && right.excluded_card_types.is_empty()
+                && (ObjectFilter {
+                    any_of: Vec::new(),
+                    union_surface: Default::default(),
+                    ..self.clone()
+                }) == ObjectFilter::default()
+            {
+                let mut common = left.clone();
+                common.excluded_card_types.clear();
+                let mut other = right.clone();
+                other.excluded_supertypes.clear();
+                if common == other && common.card_types.is_empty() {
+                    let base = common.description();
+                    if let Some(rest) = base.strip_prefix("card") {
+                        return format!("card other than a basic land card{rest}");
+                    }
+                }
+            }
             let not_you = ObjectFilter::default().controlled_by(PlayerFilter::NotYou);
             let mut nontoken = ObjectFilter::default();
             nontoken.nontoken = true;
@@ -4651,8 +4724,8 @@ impl ObjectFilter {
                     .iter()
                     .all(|branch| branch.colors.is_none() || branch.colors == Some(*colors))
             });
-            let branch_descriptions = self
-                .any_of
+            let merged_branches = merge_card_type_only_union_branches(&self.any_of);
+            let branch_descriptions = merged_branches
                 .iter()
                 .map(|branch| {
                     let mut described_branch = branch.clone();
@@ -4678,7 +4751,22 @@ impl ObjectFilter {
                         description
                     }
                 })
-                .collect();
+                .collect::<Vec<String>>();
+            // "creature with power or toughness 1 or less" (Tetsuko Umezawa,
+            // Sword of the Squeak): two branches that differ only in the
+            // compared stat share one noun phrase.
+            if let [left, right] = branch_descriptions.as_slice()
+                && shared_colors.is_none()
+                && !self.has_conjunctive_set_surface()
+                && self.union_connective() == ObjectFilterUnionConnective::Or
+                && self.attached_to_object.is_none()
+                && self.attached_to_player.is_none()
+                && left.matches(" power ").count() == 1
+                && !left.contains("toughness")
+                && left.replacen(" power ", " toughness ", 1) == *right
+            {
+                return left.replacen(" power ", " power or toughness ", 1);
+            }
             let mut description = if self.has_conjunctive_set_surface() {
                 describe_conjunctive_filter_list(branch_descriptions)
             } else {
@@ -4865,6 +4953,17 @@ impl ObjectFilter {
                 PlayerFilter::ControlsMost { .. } | PlayerFilter::ControlsFewestTied { .. } | PlayerFilter::OwnsMatchingObject { .. } | PlayerFilter::ControlsMatchingObject { .. } | PlayerFilter::MostLifeTiedAmong { .. } | PlayerFilter::QuantityGreaterThanPlayer { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                // "any number of target attacking creatures their opponents
+                // control" (Portal Manipulator): the opponents of an
+                // already-named target player.
+                PlayerFilter::OpponentOf(base)
+                    if matches!(
+                        base.as_ref(),
+                        PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+                    ) =>
+                {
+                    controller_suffix = Some("their opponents control".to_string());
+                }
                 PlayerFilter::OpponentOf(_)
                 | PlayerFilter::PlayerToLeftOf(_)
                 | PlayerFilter::MaxSpeed { .. } => {
@@ -4890,7 +4989,7 @@ impl ObjectFilter {
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 // "target creature the player to your left controls".
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
                     }
@@ -5115,7 +5214,7 @@ impl ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
-                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::OpponentToYourLeft | PlayerFilter::PlayerToYourRight => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
@@ -5124,6 +5223,14 @@ impl ObjectFilter {
                 PlayerFilter::IteratedPlayer => "that player owns".to_string(),
                 PlayerFilter::TargetPlayerOrControllerOfTarget => {
                     "that player or that object's controller owns".to_string()
+                }
+                // "a spell they don't own": every owner except the player the
+                // surrounding clause is about.
+                PlayerFilter::Excluding { base, excluded }
+                    if matches!(base.as_ref(), PlayerFilter::Any)
+                        && matches!(excluded.as_ref(), PlayerFilter::IteratedPlayer) =>
+                {
+                    "they don't own".to_string()
                 }
                 PlayerFilter::Excluding { .. } => {
                     format!("{} owns", describe_player_filter(owner))
@@ -5381,6 +5488,14 @@ impl ObjectFilter {
                     post_noun_qualifiers
                         .push("other than the creature tapped this way".to_string());
                 }
+                TaggedOpbjectRelation::IsNotTaggedObject
+                    if constraint.tag.as_str() == crate::tag::PRIOR_PROCESS_CHOICES_TAG =>
+                {
+                    // A repeated process's later rounds exclude earlier
+                    // rounds' choices; the enclosing "repeat this process
+                    // except that ..." clause spells that exclusion, and the
+                    // first round chooses "a card", not "another card".
+                }
                 TaggedOpbjectRelation::IsNotTaggedObject => {
                     // `other` already spells this exclusion adjectivally. The
                     // tagged form carries the executable identity, so naming
@@ -5605,8 +5720,15 @@ impl ObjectFilter {
             }
         }
         if !self.excluded_card_types.is_empty() {
-            for (index, card_type) in self.excluded_card_types.iter().enumerate() {
-                let comma = (index + 1 < self.excluded_card_types.len()).then_some(",");
+            // A repeated exclusion ("nonland, nonland") is one restriction.
+            let mut excluded_card_types: Vec<CardType> = Vec::new();
+            for card_type in &self.excluded_card_types {
+                if !excluded_card_types.contains(card_type) {
+                    excluded_card_types.push(*card_type);
+                }
+            }
+            for (index, card_type) in excluded_card_types.iter().enumerate() {
+                let comma = (index + 1 < excluded_card_types.len()).then_some(",");
                 parts.push(format!(
                     "non{}{}",
                     describe_card_type_word(*card_type),
@@ -6263,6 +6385,33 @@ impl ObjectFilter {
             parts.push("token".to_string());
         }
 
+        // "non-Wall creature the active player has controlled continuously
+        // since the beginning of the turn": the continuous-control history
+        // replaces the plain controller scope instead of restating it with
+        // "that its controller has controlled ...".
+        const CONTINUOUS_CONTROL_QUALIFIER: &str =
+            "that its controller has controlled continuously since the beginning of the turn";
+        if self.controlled_continuously_since_turn_began == Some(true)
+            && owner_suffix.is_none()
+            && post_noun_qualifiers
+                .iter()
+                .any(|qualifier| qualifier == CONTINUOUS_CONTROL_QUALIFIER)
+            && let Some(controller) = controller_suffix.clone()
+            && let Some((player, verb)) = controller
+                .strip_suffix(" controls")
+                .map(|player| (player, "has"))
+                .or_else(|| controller.strip_suffix(" control").map(|player| (player, "have")))
+            && !player.is_empty()
+            && !player.ends_with(" don't")
+            && !player.ends_with(" doesn't")
+            && player != "you"
+        {
+            post_noun_qualifiers.retain(|qualifier| qualifier != CONTINUOUS_CONTROL_QUALIFIER);
+            controller_suffix = Some(format!(
+                "{player} {verb} controlled continuously since the beginning of the turn"
+            ));
+        }
+
         // Oracle places controller and owner scope immediately after the noun,
         // before restrictive qualifiers: "a creature you control with
         // deathtouch", not "a creature with deathtouch you control". Keep the
@@ -6288,6 +6437,11 @@ impl ObjectFilter {
                 if controller == "that player controls" && owner == "that player owns" =>
             {
                 parts.push("that player both owns and controls".to_string());
+            }
+            (Some(controller), Some(owner))
+                if controller == "you don't control" && owner == "you own" =>
+            {
+                parts.push("you own but don't control".to_string());
             }
             (Some(controller), Some(owner)) => {
                 parts.push(format!("{owner} but {controller}"));
@@ -6521,6 +6675,11 @@ impl ObjectFilter {
         if let Some(ref exact_mana_cost) = self.exact_mana_cost {
             parts.push(format!("with mana cost {}", exact_mana_cost.to_oracle()));
         }
+        // "a card with {X} in its mana cost" (Rosheen): the typed axis must
+        // not vanish from the noun phrase.
+        if self.has_x_in_cost {
+            parts.push("with {X} in its mana cost".to_string());
+        }
         if let Some(ref mana_value) = self.mana_value {
             parts.push(
                 describe_extremum_filter_comparison(mana_value, "mana value").unwrap_or_else(
@@ -6728,7 +6887,7 @@ impl ObjectFilter {
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
             } else if let Some(zone_name) = zone_name {
-                if self.foretold && zone == Zone::Exile {
+                if (self.foretold || self.warped) && zone == Zone::Exile {
                     parts.push("in exile".to_string());
                 } else if self.has_owner_before_zone_surface() {
                     parts.push(format!("in {}", zone_name));
@@ -6989,7 +7148,16 @@ impl ObjectFilter {
                 target_fragments.push(text);
             }
             if !target_fragments.is_empty() {
-                let target_text = if target_fragments.len() == 2 {
+                let target_text = if target_fragments.len() == 2
+                    && self.targets_only_any_of
+                    && target_fragments[0] == "a player"
+                    && target_fragments[1].starts_with("a single ")
+                    && matches!(self.union_connective(), ObjectFilterUnionConnective::Or)
+                {
+                    // "targets only a single permanent or player" (Radiate,
+                    // Chef's Kiss): the single-object noun leads.
+                    format!("{} or player", target_fragments[1])
+                } else if target_fragments.len() == 2 {
                     let joiner = if self.targets_only_any_of {
                         match self.union_connective() {
                             ObjectFilterUnionConnective::Or => "or",
@@ -7002,7 +7170,17 @@ impl ObjectFilter {
                 } else {
                     target_fragments[0].clone()
                 };
-                parts.push(format!("that targets only {target_text}"));
+                // "target spell with a single target if that target is you"
+                // (Reflecting Mirror): exactly one target, and that target is
+                // the named player.
+                if self.targets_only_object.is_none()
+                    && target_fragments.len() == 1
+                    && self.target_count.is_some_and(|count| count.is_single() && count.min == 1)
+                {
+                    parts.push(format!("with a single target if that target is {target_text}"));
+                } else {
+                    parts.push(format!("that targets only {target_text}"));
+                }
                 appended_targeting_only = true;
             }
         }
@@ -7022,6 +7200,10 @@ impl ObjectFilter {
                 }
             } else if count.min == 0 {
                 Some("with any number of targets".to_string())
+            } else if count.min == 1 {
+                // "a spell with one or more targets" (Voracious
+                // Bibliophile, Wyll's Reversal).
+                Some("with one or more targets".to_string())
             } else {
                 Some(format!("with at least {} targets", count.min))
             };
@@ -7970,6 +8152,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Opponent => "an opponent's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
+        PlayerFilter::OpponentToYourLeft => "the opponent to your left's".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
@@ -8086,6 +8269,7 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::Opponent => "opponent".to_string(),
         PlayerFilter::Teammate => "teammate".to_string(),
         PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::OpponentToYourLeft => "the opponent to your left".to_string(),
         PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "active player".to_string(),
         PlayerFilter::Defending => "defending player".to_string(),
@@ -8106,11 +8290,11 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::AttackedBySourceThisTurn => {
             "player this creature attacked this turn".to_string()
         }
-        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => format!(
-            "{} this source has dealt damage to this {}",
-            describe_player_filter(base),
-            if *this_turn { "turn" } else { "game" }
-        ),
+        PlayerFilter::WasDealtDamageBySourceThisGame { base, this_turn } => if *this_turn {
+            format!("{} dealt damage by this source this turn", describe_player_filter(base))
+        } else {
+            format!("{} this source has dealt damage to this game", describe_player_filter(base))
+        },
         PlayerFilter::WasDealtCombatDamageBySourcesThisGame { base, sources } => format!(
             "{} dealt combat damage this game by {}",
             describe_player_filter(base),
@@ -8325,7 +8509,14 @@ fn describe_counter_constraint(constraint: CounterConstraint, plural: bool) -> S
             format!("{} counters", counter_type.description())
         }
         CounterConstraint::Typed(counter_type) => {
-            format!("a {} counter", counter_type.description())
+            let name = counter_type.description();
+            // "an everything counter", "an oil counter".
+            let article = if name.starts_with(['a', 'e', 'i', 'o', 'A', 'E', 'I', 'O']) {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {name} counter")
         }
         CounterConstraint::AtLeast {
             counter_type,
@@ -8984,6 +9175,22 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::LifeGainedThisTurn(PlayerFilter::You) => {
                 "the amount of life you gained this turn".to_string()
             }
+            // "power less than or equal to the number of +1/+1 counters
+            // removed this way" (Simic Manipulator): the filter's
+            // prior-action surface supplies "removed this way".
+            Value::PriorEffectMetric { query, .. }
+                if query.metric == EffectMetric::Count
+                    && query.action == Some(PriorEffectAction::Removed)
+                    && query.filter.is_none()
+                    && query.player.is_none()
+                    && query.counter_type.is_some() =>
+            {
+                let counter = query
+                    .counter_type
+                    .map(|counter_type| counter_type.description().into_owned())
+                    .unwrap_or_default();
+                format!("the number of {counter} counters")
+            }
             // "less than the revealed card's mana value": the one card an
             // exact prior action produced.
             Value::PriorEffectMetric { query, .. }
@@ -9137,6 +9344,17 @@ mod tests {
         CardType, ColorSet, CounterConstraint, CounterType, ManaSymbol, ObjectId, Subtype,
         Supertype, TagKey, Value, ValueSurfaceHint, Zone,
     };
+
+    #[test]
+    fn search_quality_distinguishes_tagged_area_from_tagged_characteristic() {
+        let area = ObjectFilter::tagged("pool")
+            .match_tagged("pool", TaggedOpbjectRelation::SameObjectId)
+            .in_zone(Zone::Library)
+            .owned_by(PlayerFilter::You);
+        assert!(!area.has_search_stated_quality());
+        let quality = area.match_tagged("reference", TaggedOpbjectRelation::SharesColorWithTagged);
+        assert!(quality.has_search_stated_quality());
+    }
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {

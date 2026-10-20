@@ -1372,6 +1372,13 @@ impl StaticAbilityKind for Grants {
             if static_condition_is_during_your_turn(condition) {
                 return format!("During your turn, {text}");
             }
+            // "As long as ... and this card is in your graveyard, it has
+            // flashback {2}{G}": the pronoun's antecedent is in the condition.
+            if text.starts_with("it has ")
+                && let Some(rest) = condition_text.strip_prefix("as long as ")
+            {
+                return format!("As long as {rest}, {text}");
+            }
             text.push(' ');
             text.push_str(&condition_text);
         }
@@ -3111,6 +3118,15 @@ impl ExileToExileInsteadOfGraveyard {
     }
 
     fn replacement_subject_phrase(&self) -> String {
+        // A bare "card" noun without the matching nontoken restriction is
+        // oracle's "a card or token" (Rest in Peace, Necrodominance).
+        if self.filter.has_explicit_card_noun() && !self.filter.nontoken {
+            let mut bare_card = ObjectFilter::default();
+            bare_card.set_explicit_card_noun(true);
+            if self.filter == bare_card {
+                return "a card or token".to_string();
+            }
+        }
         // The "card" noun already excludes tokens (CR 108.2), so a nontoken
         // restriction carried for matching isn't spelled out.
         let mut filter = self.filter.clone();
@@ -3143,7 +3159,25 @@ impl ExileToExileInsteadOfGraveyard {
                 return format!("a card that has {article} {marker} ability");
             }
         }
-        filter.description()
+        let description = filter.description();
+        let first_word = description
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if description.is_empty()
+            || matches!(
+                first_word.as_str(),
+                "a" | "an" | "the" | "this" | "that" | "each" | "another" | "one" | "any"
+            )
+        {
+            return description;
+        }
+        let article = match first_word.chars().next() {
+            Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+            _ => "a",
+        };
+        format!("{article} {description}")
     }
 }
 

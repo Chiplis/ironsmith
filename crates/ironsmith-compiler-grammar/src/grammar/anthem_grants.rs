@@ -368,6 +368,10 @@ const CANT_BE_BLOCKED_PHRASES: &[&[&str]] = &[
     &["can", "t", "be", "blocked"],
 ];
 const CANT_BE_BLOCKED_CONDITION_PHRASES: &[&[&str]] = &[
+    &["cant", "be", "blocked", "unless"],
+    &["can't", "be", "blocked", "unless"],
+    &["cannot", "be", "blocked", "unless"],
+    &["can", "t", "be", "blocked", "unless"],
     &["cant", "be", "blocked", "if"],
     &["can't", "be", "blocked", "if"],
     &["cannot", "be", "blocked", "if"],

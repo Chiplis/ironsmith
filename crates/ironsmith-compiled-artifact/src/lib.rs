@@ -12,10 +12,11 @@ use sha2::{Digest, Sha256};
 // Version 19 admits retained-snapshot quantities, dynamic copy loyalty, exact
 // tagged permissions, public selections and source-linked exile programs.
 // Historical artifacts remain unchanged and require recompilation for admission.
-// See architecture/effect-program-composition-schema.descriptor.
+// Next-turn play permissions distinguish the effect controller from the holder.
+// See architecture/relative-permission-boundaries-schema.descriptor.
 pub const FORMAT_VERSION: u32 = 19;
 pub const ENGINE_SCHEMA_HASH: &str =
-    "9a5d92b13554e0c6c9df7210b8e63ebd519b1f32c79b116ecc47a2ecf38a0a0d";
+    "33b646cf7f54b723344f032e2ad2f1ee48846b86ffc8e4f789a8ffa41984649b";
 
 /// A compiler effect transported without linking compiler code into the
 /// engine. The payload is decoded lazily into the exact canonical schema type
@@ -448,7 +449,7 @@ mod tests {
 
     #[test]
     fn current_golden_matches_the_integrated_source() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v19.json");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v19-relative-boundaries.json");
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
         if std::env::var_os("IRONSMITH_UPDATE_ARTIFACT_GOLDEN").is_some() {
             std::fs::write(&path, &actual).unwrap();
@@ -497,8 +498,27 @@ mod tests {
     }
 
     #[test]
-    fn current_descriptor_matches_the_declared_schema_fingerprint() {
+    fn ambiguous_next_turn_permissions_require_recompilation() {
         let descriptor = include_bytes!("../../../architecture/effect-program-composition-schema.descriptor");
+        let mut old = fixture();
+        old.engine_schema_hash = sha256_hex(descriptor);
+        old.refresh_checksum();
+        assert!(matches!(old.validate(), Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
+        assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v19.json")).is_err());
+    }
+
+    #[test]
+    fn preceding_duration_player_artifacts_require_recompilation() {
+        assert!(CompiledCardArtifact::from_json(include_bytes!("../fixtures/v19-duration-player.json")).is_err());
+        let mut old = fixture();
+        old.engine_schema_hash = sha256_hex(include_bytes!("../../../architecture/play-permission-duration-player-schema.descriptor"));
+        old.refresh_checksum();
+        assert!(matches!(old.validate(), Err(ArtifactValidationError::EngineSchemaMismatch { .. })));
+    }
+
+    #[test]
+    fn current_descriptor_matches_the_declared_schema_fingerprint() {
+        let descriptor = include_bytes!("../../../architecture/relative-permission-boundaries-schema.descriptor");
         assert!(!descriptor.ends_with(b"\n"));
         assert_eq!(sha256_hex(descriptor), ENGINE_SCHEMA_HASH);
     }

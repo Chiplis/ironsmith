@@ -1549,18 +1549,33 @@ pub(super) fn run_additional_combat_after_this_phase_line_family(
     )
 }
 
+/// "Minthara has ward {X}, where X is ..." (Minthara, Merciless Soul): the
+/// source's own ward with a where-X cost is the ward keyword line, not a
+/// resolution-time grant.
+fn source_has_where_x_ward_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let tail = crate::grammar::semantic_lowering::parse_source_keyword_tail_tokens(tokens)?
+        .ability_tokens;
+    (tail.first().is_some_and(|token| token.is_word("ward"))
+        && tail.iter().any(|token| token.is_word("where")))
+    .then_some(tail)
+}
+
 pub(super) fn run_ward_or_echo_static_prefix_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> ParseOutcome<LineDispatchResult> {
-    if !is_ward_or_echo_static_prefix_line_lexed(&ctx.line.tokens) {
+    let ward_tokens = if is_ward_or_echo_static_prefix_line_lexed(&ctx.line.tokens) {
+        &ctx.line.tokens[..]
+    } else if let Some(tail) = source_has_where_x_ward_tail(&ctx.line.tokens) {
+        tail
+    } else {
         return ParseOutcome::NoMatch;
-    }
+    };
     line_family_match(
         ctx,
         LineDispatchResult::single(
             RecognizedLine::Static(RecognizedStaticLine {
                 info: ctx.line.info.clone(),
-                parse_tokens: rewrite_keyword_dash_parse_tokens(&ctx.line.tokens),
+                parse_tokens: rewrite_keyword_dash_parse_tokens(ward_tokens),
                 chosen_option: None,
                 parsed: None,
             }),
@@ -2114,6 +2129,7 @@ fn has_specialized_document_line_shape(ctx: &LineDispatchContext<'_>) -> bool {
         || line_grammar::parse_surge_line(tokens).is_some()
         || line_grammar::parse_freerunning_line(tokens).is_some()
         || is_ward_or_echo_static_prefix_line_lexed(tokens)
+        || source_has_where_x_ward_tail(tokens).is_some()
         || line_rewrite_grammar::parse_non_turn_conditional_untap_tokens(tokens).is_some()
         || line_rewrite_grammar::parse_graveyard_cast_control_condition_tokens(tokens).is_some()
         || line_rewrite_grammar::parse_additional_combat_rewrite_tokens(tokens).is_some()

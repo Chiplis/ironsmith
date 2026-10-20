@@ -1206,7 +1206,9 @@ impl StaticAbilityKind for MaxCreaturesCanAttackEachCombat {
         };
         format!(
             "No more than {} {} can attack each combat",
-            self.maximum, noun
+            ironsmith_core::cardinal_word(self.maximum as u32)
+                .unwrap_or_else(|| self.maximum.to_string()),
+            noun
         )
     }
 
@@ -1239,7 +1241,9 @@ impl StaticAbilityKind for MaxCreaturesCanAttackYouEachCombat {
         };
         format!(
             "No more than {} {} can attack you each combat",
-            self.maximum, noun
+            ironsmith_core::cardinal_word(self.maximum as u32)
+                .unwrap_or_else(|| self.maximum.to_string()),
+            noun
         )
     }
 
@@ -1275,7 +1279,9 @@ impl StaticAbilityKind for MaxCreaturesCanAttackSourceEachCombat {
         };
         format!(
             "No more than {} {} can attack this planeswalker each combat",
-            self.maximum, noun
+            ironsmith_core::cardinal_word(self.maximum as u32)
+                .unwrap_or_else(|| self.maximum.to_string()),
+            noun
         )
     }
 
@@ -1308,7 +1314,9 @@ impl StaticAbilityKind for MaxCreaturesCanBlockEachCombat {
         };
         format!(
             "No more than {} {} can block each combat",
-            self.maximum, noun
+            ironsmith_core::cardinal_word(self.maximum as u32)
+                .unwrap_or_else(|| self.maximum.to_string()),
+            noun
         )
     }
 

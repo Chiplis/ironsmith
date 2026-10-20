@@ -454,6 +454,22 @@ fn spell_put_from_among(
             tag: crate::tag::TagRef::of(chosen_tag.clone()),
             effects: chosen_effects,
         }));
+    // "Put any number of land cards from among them onto the battlefield
+    // tapped, then shuffle." (Famished Worldsire): the trailing shuffle is
+    // part of the same statement; the move shape stops reading at the
+    // destination, so spell it here instead of dropping it.
+    let tail_words = put
+        .tail
+        .iter()
+        .filter_map(|token| token.as_word())
+        .collect::<Vec<_>>();
+    if tail_words.ends_with(&["then", "shuffle"]) {
+        group.effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            remainder_owner(group.owner),
+            SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
+        ));
+    }
     group.selected = Some(chosen_tag);
     group.remainder_player = remainder_owner(group.owner);
     true
@@ -831,4 +847,102 @@ pub(super) fn dispose_remainder(
             }),
         )),
     }
+}
+
+/// "Reveal the top eight cards of your library. You may put a creature card
+/// from among them onto the battlefield. If this spell was cast using
+/// teamwork, put any number of creature cards from among them onto the
+/// battlefield instead. Put the rest into your graveyard." (Earth's
+/// Mightiest Heroes): a conditional replacement of the selection just made,
+/// over the same viewed group, choosing into the same selection tag so the
+/// remainder statement still disposes of every card not selected.
+pub(super) fn conditional_instead_put(
+    group: &mut ViewedGroup,
+    sentence: &SentenceInput,
+) -> Result<bool, CardTextError> {
+    let Some(selected) = group.selected.clone() else {
+        return Ok(false);
+    };
+    if group.pending.is_some() {
+        return Ok(false);
+    }
+    let tokens = crate::lexer::trim_lexed_commas(sentence.lexed());
+    if !tokens.first().is_some_and(|token| token.is_word("if")) {
+        return Ok(false);
+    }
+    let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
+        return Ok(false);
+    };
+    if comma <= 1 {
+        return Ok(false);
+    }
+    let predicate_tokens = &tokens[1..comma];
+    let mut body: Vec<OwnedLexToken> =
+        crate::lexer::trim_lexed_commas(&tokens[comma + 1..]).to_vec();
+    while body.last().is_some_and(|token| token.as_word().is_none()) {
+        body.pop();
+    }
+    let leading_instead = body.first().is_some_and(|token| token.is_word("instead"));
+    let trailing_instead = body.last().is_some_and(|token| token.is_word("instead"));
+    if leading_instead == trailing_instead {
+        return Ok(false);
+    }
+    if leading_instead {
+        body.remove(0);
+    } else {
+        body.pop();
+    }
+    let body_input = SentenceInput::from_lexed(&body);
+    let lowered_body = crate::lexer::trim_lexed_commas(body_input.lowered());
+    let Some(action) =
+        sentence_markers::parse_leading_may_action_tokens(lowered_body, &["put"], true)
+    else {
+        return Ok(false);
+    };
+    let Some((_, _, _, zone, ..)) = parse_counted_from_looked_cards_action(action.tail_tokens)
+    else {
+        return Ok(false);
+    };
+    if zone == Zone::Hand {
+        return Ok(false);
+    }
+    let count = group.effects.len();
+    if count < 2
+        || !matches!(
+            &group.effects[count - 1],
+            EffectAst::ForEach(ForEachEffectAst::ForEachTagged { .. })
+        )
+        || !matches!(
+            &group.effects[count - 2],
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. })
+        )
+    {
+        return Ok(false);
+    }
+    let Ok(predicate) =
+        crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)
+    else {
+        return Ok(false);
+    };
+    let replacement = PutFromAmong {
+        actor: action.actor,
+        tail: action.tail_tokens.to_vec(),
+        tag: selected.clone(),
+    };
+    let default_effects = group.effects.split_off(count - 2);
+    if !spell_put_from_among(group, &replacement, false) {
+        group.effects.extend(default_effects);
+        group.selected = Some(selected);
+        return Ok(false);
+    }
+    let instead_effects = group.effects.split_off(count - 2);
+    group.effects.push(EffectAst::Conditionals(
+        crate::cards::builders::ConditionalEffectAst::Conditional {
+            predicate,
+            if_true: instead_effects,
+            if_false: default_effects,
+        },
+    ));
+    group.selected = Some(selected);
+    Ok(true)
 }

@@ -2228,12 +2228,24 @@ pub(crate) fn parse_behold_or_enters_tapped_line(tokens: &[OwnedLexToken]) -> Op
     in_hand.subtypes.push(subtype);
     let mut controlled = ObjectFilter::default().in_zone(Zone::Battlefield);
     controlled.subtypes.push(subtype);
+    let subtype_name = subtype.to_string();
+    let article = if subtype_name
+        .chars()
+        .next()
+        .is_some_and(|ch| "AEIOUaeiou".contains(ch))
+    {
+        "an"
+    } else {
+        "a"
+    };
     Some(StaticAbility::enters_tapped_unless_condition(
         PredicateAst::Or(
             Box::new(PredicateAst::YouHaveCardInHandMatching(in_hand)),
             Box::new(PredicateAst::YouControl(controlled)),
         ),
-        crate::lexer::token_word_refs(without_reminder).join(" "),
+        format!(
+            "As this land enters, you may behold {article} {subtype_name}. If you don't, this land enters tapped"
+        ),
     ))
 }
 
@@ -4051,9 +4063,12 @@ pub fn parse_as_enters_or_turns_face_up_pt_choice_line(
             return Ok(None);
         }
         let subject = subject_clause.text();
+        let retains_types = choice_words
+            .ends_with(&["in", "addition", "to", "its", "other", "types"]);
         let display = format!(
-            "As {subject} enters, it becomes your choice of {}",
-            render_pt_choice_characteristic_options(&options)
+            "As {subject} enters, it becomes your choice of {}{}",
+            render_pt_choice_characteristic_options(&options),
+            if retains_types { " in addition to its other types" } else { "" }
         );
         return Ok(Some(
             StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(

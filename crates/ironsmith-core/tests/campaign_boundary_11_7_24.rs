@@ -283,6 +283,8 @@ fn combat_damage_controller_group_defaults_false_in_direct_and_delayed_named_mod
             one_or_more: true,
             each_damaged_player,
             per_source_controller,
+            recipient_passive: false,
+            during_your_turn: false,
         };
         assert_defaulted_controller_group(
             direct(false), direct(true), "DealsCombatDamageToPlayer",
@@ -292,6 +294,8 @@ fn combat_damage_controller_group_defaults_false_in_direct_and_delayed_named_mod
             player: PlayerFilter::You,
             each_damaged_player,
             per_source_controller,
+            recipient_passive: false,
+            during_your_turn: false,
         };
         assert_defaulted_controller_group(
             delayed(false), delayed(true), "DealsCombatDamageToPlayerOneOrMore",

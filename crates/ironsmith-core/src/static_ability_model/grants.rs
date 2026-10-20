@@ -1177,6 +1177,14 @@ where
                 exclude_cycled: false, link_to_source: false,
             } if *filter == ObjectFilter::source())
     }
+
+    fn grant_is_source_any_graveyard_exile(&self) -> bool {
+        matches!(&self.payload,
+            StaticAbilityPayload::ExileToExileInsteadOfGraveyard {
+                filter, graveyard_owner: PlayerFilter::Any,
+                exclude_cycled: false, link_to_source: false,
+            } if *filter == ObjectFilter::source())
+    }
 }
 
 impl LandwalkKind {

@@ -52,6 +52,19 @@ pub struct ChoosePlayerOptionEffect {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub number: Option<PlayerNumberChoice>,
+    /// An authored hidden-item choice. The numeric decision is the same as
+    /// `number`; this retains the physical-item noun and whether the opening
+    /// explicitly reveals all choices together for rendering and prompts.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub hidden_items_surface: Option<HiddenItemsChoiceSurface>,
+    /// A number chosen as the count of an optional draw instruction. Unlike
+    /// an ordinary numeric choice, its legal maximum respects draw bans and
+    /// one-card-per-turn restrictions at the moment choices are made.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub draw_count_choice: bool,
     /// "an opponent guesses which number you chose" (The Toymaker's Trap):
     /// the number each participant picks is a guess at the number chosen
     /// earlier in this resolution. Guessers are recorded as right or wrong
@@ -88,6 +101,13 @@ pub struct PlayerNumberChoice {
     pub max: Option<u32>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct HiddenItemsChoiceSurface {
+    pub item_noun: String,
+    pub reveal_simultaneously: bool,
+}
+
 impl ChoosePlayerOptionEffect {
     pub fn new(
         participants: PlayerFilter,
@@ -100,6 +120,8 @@ impl ChoosePlayerOptionEffect {
             chooser,
             secret: false,
             number: None,
+            hidden_items_surface: None,
+            draw_count_choice: false,
             guess: false,
             exclude_source_history: false,
             choose_one_participant: false,
@@ -114,10 +136,17 @@ impl ChoosePlayerOptionEffect {
             chooser: PlayerOptionChooser::Participant,
             secret: false,
             number: Some(range),
+            hidden_items_surface: None,
+            draw_count_choice: false,
             guess: false,
             exclude_source_history: false,
             choose_one_participant: false,
         }
+    }
+
+    pub fn for_draw_count(mut self) -> Self {
+        self.draw_count_choice = true;
+        self
     }
 
     pub fn with_secret(mut self, secret: bool) -> Self {
@@ -130,6 +159,29 @@ impl ChoosePlayerOptionEffect {
 /// them", "those players").
 pub fn player_option_participants_tag() -> TagKey {
     TagKey::new("__player_option_choice_participants__")
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod draw_count_choice_serde_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_number_choices_default_to_unconstrained_and_draw_choices_roundtrip() {
+        let ordinary = ChoosePlayerOptionEffect::numbers(
+            PlayerFilter::Any,
+            PlayerNumberChoice { min: 0, max: Some(2) },
+        );
+        let legacy = serde_json::to_value(&ordinary).unwrap();
+        assert!(legacy.get("draw_count_choice").is_none());
+        let restored: ChoosePlayerOptionEffect = serde_json::from_value(legacy).unwrap();
+        assert!(!restored.draw_count_choice);
+
+        let draw = ordinary.for_draw_count();
+        let encoded = serde_json::to_value(&draw).unwrap();
+        assert_eq!(encoded["draw_count_choice"], true);
+        let decoded: ChoosePlayerOptionEffect = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, draw);
+    }
 }
 
 /// The guessers who guessed right (`true`) or wrong (`false`) in a guessing

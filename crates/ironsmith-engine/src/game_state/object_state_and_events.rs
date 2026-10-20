@@ -3267,6 +3267,9 @@ impl GameState {
             return Ok(());
         };
         let mut ctx = crate::effects::ExecutionContext::new(source_id, controller, decision_maker);
+        // Preserve the exact duration that returned these cards through both
+        // battlefield entry and nonbattlefield zone-change event paths.
+        ctx.cause.duration_return_source = Some(source_id);
         let mut battlefield_requests = Vec::new();
         for (object_id, return_zone) in returns {
             if return_zone == Zone::Battlefield {

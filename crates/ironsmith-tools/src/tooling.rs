@@ -493,8 +493,11 @@ pub fn load_card_payloads_by_names(
             && requested.contains(card_name)
             && !out.contains_key(card_name)
         {
-            let payloads = if linked_face_layout_from_card(card).is_some()
-                && let Some(faces) = card.get("card_faces").and_then(Value::as_array)
+            // Comparison must inspect every face, including modal DFCs,
+            // Adventures and prepared spells. Runtime linked-face behavior is
+            // independently selected by build_card_payload_for_face.
+            let payloads = if let Some(faces) = card.get("card_faces").and_then(Value::as_array)
+                && !faces.is_empty()
             {
                 (0..faces.len())
                     .filter_map(|idx| build_card_payload_for_face(card, idx))
@@ -4340,6 +4343,31 @@ CardDefinition {
         assert!(load_card_by_name(file, "Stream Probe").is_err());
         assert!(load_card_payloads_by_name(file, "Stream Probe").is_err());
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn named_comparison_loads_all_faces_independently_of_runtime_layout() {
+        for layout in ["transform", "split", "modal_dfc", "adventure", "prepare"] {
+            let path = unique_temp_path("comparison-all-faces");
+            let cards = serde_json::json!([{
+                "name": "Face One // Face Two", "layout": layout,
+                "card_faces": [
+                    {"name": "Face One", "type_line": "Creature", "oracle_text": "Vigilance"},
+                    {"name": "Face Two", "type_line": "Sorcery", "oracle_text": "Draw a card."}
+                ]
+            }]);
+            fs::write(&path, cards.to_string()).unwrap();
+            let file = path.to_str().unwrap();
+            let payloads = load_card_payloads_by_name(file, "Face One // Face Two").unwrap();
+            assert_eq!(payloads.len(), 2, "layout {layout}");
+            assert_eq!(payloads[0].name, "Face One");
+            assert_eq!(payloads[1].name, "Face Two");
+            assert_eq!(payloads[1].oracle_text, "Draw a card.");
+            let second = load_card_payloads_by_name(file, "Face Two").unwrap();
+            assert_eq!(second.len(), 1);
+            assert_eq!(second[0].name, "Face Two");
+            fs::remove_file(path).unwrap();
+        }
     }
 
     #[test]

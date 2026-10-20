@@ -187,6 +187,7 @@ const ATTACKING_CHOSEN_PLAYER_PHRASES: &[&[&str]] = &[
     &["attacking", "chosen", "player"],
 ];
 const ATTACKING_YOU_PHRASE: &[&str] = &["attacking", "you"];
+const ATTACKING_ENCHANTED_PLAYER_PHRASE: &[&str] = &["attacking", "enchanted", "player"];
 const ATTACKING_THEM_PHRASE: &[&str] = &["attacking", "them"];
 const ATTACKING_OPPONENT_PHRASES: &[&[&str]] = &[
     &["attacking", "opponent"],
@@ -1764,6 +1765,11 @@ pub(super) fn attacking_player_filter_from_words(
     }
     if find_phrase_start(words, ATTACKING_YOU_PHRASE).is_some() {
         return Some(PlayerFilter::You);
+    }
+    // "Creatures attacking enchanted player" (Curse of Hospitality): the
+    // Curse's enchanted player, as in "creatures enchanted player controls".
+    if find_phrase_start(words, ATTACKING_ENCHANTED_PLAYER_PHRASE).is_some() {
+        return Some(PlayerFilter::TaggedPlayer("enchanted".into()));
     }
     if find_phrase_start(words, ATTACKING_THEM_PHRASE).is_some() {
         return Some(pronoun_player_filter.clone());

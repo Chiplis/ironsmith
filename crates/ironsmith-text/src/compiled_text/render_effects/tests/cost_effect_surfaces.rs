@@ -844,3 +844,16 @@ fn conditional_flashback_price_keeps_zero_cost_and_instead() {
         assert!(text.contains(required), "missing {required}: {text}");
     }
 }
+
+#[test]
+fn optional_subtype_spell_retarget_preserves_any_targets_surface() {
+    let text = "You may change any targets of target Arcane spell.";
+    assert_eq!(render(text, vec![CardType::Instant]), text);
+}
+
+#[test]
+fn dynamic_graveyard_exile_cost_renders_opponent_count() {
+    let text = "{T}, Exile cards from your graveyard equal to the number of opponents you have: Target creature card in your graveyard gains encore until end of turn. The encore cost is equal to its mana cost.";
+    let compiled = render(text, vec![CardType::Creature]);
+    assert_eq!(compiled, text);
+}

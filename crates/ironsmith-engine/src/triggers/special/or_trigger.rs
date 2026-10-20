@@ -210,6 +210,43 @@ impl OrTrigger {
         Some(format!("{intro} {}", bodies.join(", or ")))
     }
 
+    /// "Whenever you waterbend, earthbend, firebend, or airbend": a serial
+    /// disjunction of your single-word keyword actions shares one subject.
+    fn you_keyword_actions_display(&self) -> Option<String> {
+        fn collect(trigger: &Trigger, verbs: &mut Vec<String>) -> bool {
+            if let Some(or_trigger) = trigger.downcast_ref::<OrTrigger>() {
+                return or_trigger
+                    .triggers
+                    .iter()
+                    .all(|branch| collect(branch, verbs));
+            }
+            if trigger
+                .downcast_ref::<crate::triggers::KeywordActionTrigger>()
+                .is_none()
+            {
+                return false;
+            }
+            let display = trigger.display();
+            let Some(verb) = display.strip_prefix("Whenever you ") else {
+                return false;
+            };
+            if verb.is_empty() || verb.contains(' ') {
+                return false;
+            }
+            verbs.push(verb.to_string());
+            true
+        }
+        let mut verbs = Vec::new();
+        if !self.triggers.iter().all(|trigger| collect(trigger, &mut verbs)) || verbs.len() < 2 {
+            return None;
+        }
+        let last = verbs.pop()?;
+        if verbs.len() == 1 {
+            return Some(format!("Whenever you {} or {last}", verbs[0]));
+        }
+        Some(format!("Whenever you {}, or {last}", verbs.join(", ")))
+    }
+
     fn reciprocal_enchanted_opponent_attacks_display(&self) -> Option<String> {
         let [you_attack, they_attack] = self.triggers.as_slice() else {
             return None;
@@ -1371,6 +1408,9 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.shared_life_change_display() {
             return display;
         }
+        if let Some(display) = self.you_keyword_actions_display() {
+            return display;
+        }
         if let Some(display) = self.self_attacks_or_blocks_display() {
             return display;
         }
@@ -1513,6 +1553,19 @@ impl TriggerMatcher for OrTrigger {
                     second_words[shared_words..].join(" ")
                 );
             }
+        }
+        // "Whenever a player plays a land from exile or casts a spell from
+        // exile" (Rocco, Street Chef): a repeated player subject prints once.
+        if joiner == " or "
+            && let [first, second] = parts.as_slice()
+            && let Some(subject) = ["a player ", "an opponent "].into_iter().find(|subject| {
+                second.starts_with(subject)
+                    && first
+                        .split_once(' ')
+                        .is_some_and(|(_, body)| body.starts_with(subject))
+            })
+        {
+            return format!("{first} or {}", &second[subject.len()..]);
         }
         if joiner == " or " && parts.len() >= 3 {
             parts.join(", or ")

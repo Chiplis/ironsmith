@@ -10,6 +10,22 @@ use crate::cards::builders::StackActionAst;
 use crate::cards::builders::TokenActionAst;
 use crate::cards::builders::VoteEffectAst;
 
+/// The payment's `it` can name an announced object only when that object is
+/// unambiguous at payment time. One choice specification can still announce
+/// several targets, and a value-based count can vary with the game state.
+fn sole_announced_object_target(choices: &[ChooseSpec]) -> Option<&ChooseSpec> {
+    let targets = choices.iter().filter(|spec| spec.is_target()).collect::<Vec<_>>();
+    let [target] = targets.as_slice() else {
+        return None;
+    };
+    let count = target.count();
+    (matches!(target.base(), ChooseSpec::Object(_))
+        && count.is_single()
+        && !count.dynamic_x
+        && target.count_value().is_none())
+    .then_some(*target)
+}
+
 /// Rebind the actor of an action offered with "any player/opponent may" to the
 /// player currently deciding the sequential offer. The broad offer quantifier
 /// (or an implicit actor) is not itself a player who can act.
@@ -1093,8 +1109,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 cost_reference_env.last_object_tag =
                     crate::model::reference_state::RefState::Known(tag);
             }
-            let resolved_cost =
-                resolve_total_cost_it_tags(&payer_relative_cost, &cost_reference_env)?;
+            // A possessive "it" in a payment for one announced object target
+            // reads that target's characteristic at payment time. Do not
+            // infer a target when multiple distinct object targets exist.
+            let enclosing_target = sole_announced_object_target(&choices);
+            let resolved_cost = resolve_total_cost_it_tags_with_enclosing_target(
+                &payer_relative_cost, &cost_reference_env, enclosing_target,
+            )?;
             let effect = Effect::new(crate::effects::UnlessPaysEffect {
                 player: player_filter,
                 effects: inner_effects,
@@ -1501,6 +1522,38 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     }
                 }
             }
+            // "For each tapped nonland permanent target opponent controls,
+            // search that player's library ..." (Dichotomancy): an object loop
+            // binds no iterated player, so the library owner "that player" is
+            // the iterated set's targeted controller. Left as IteratedPlayer it
+            // would be rebound to the implicit chooser (you) during lowering,
+            // and a later "that player shuffles" would have no antecedent.
+            let iterated_target_controller = match resolved_filter.controller.as_ref() {
+                Some(controller @ (PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)))
+                    if !ctx.iterated_player =>
+                {
+                    Some(as_followup_player_alias(controller.clone()))
+                }
+                _ => None,
+            };
+            let mut bound_iterated_library_owner = false;
+            if let Some(controller) = iterated_target_controller.as_ref() {
+                for effect in &mut scoped_effects {
+                    if let EffectAst::ObjectChoices(
+                        ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                            filter: choice_filter,
+                            zones,
+                            ..
+                        },
+                    ) = effect
+                        && zones.contains(&Zone::Library)
+                        && choice_filter.owner == Some(PlayerFilter::IteratedPlayer)
+                    {
+                        choice_filter.owner = Some(controller.clone());
+                        bound_iterated_library_owner = true;
+                    }
+                }
+            }
             let (inner_effects, mut inner_choices) =
                 compile_effects_in_iterated_object_context(&scoped_effects, ctx)?;
             // "put a -1/-1 counter on each creature target player controls"
@@ -1527,6 +1580,16 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 }
             }
             compiled.push(Effect::for_each(resolved_filter, inner_effects));
+            // The trailing "then that player shuffles" names the same player.
+            if bound_iterated_library_owner
+                && let Some(controller) = iterated_target_controller
+                && ctx
+                    .last_player_filter
+                    .as_ref()
+                    .is_none_or(|player| player.mentions_iterated_player())
+            {
+                ctx.last_player_filter = Some(controller);
+            }
             (compiled, inner_choices)
         }
         EffectAst::ForEach(ForEachEffectAst::ForEachTagged { tag, effects }) => {
@@ -1888,5 +1951,25 @@ mod zipped_self_damage_lowering_tests {
                 assert_eq!(found[0].unpreventable, unpreventable);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod sole_announced_object_target_tests {
+    use super::*;
+
+    #[test]
+    fn one_choice_spec_does_not_imply_one_target() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+        assert!(sole_announced_object_target(&[target.clone()]).is_some());
+        assert!(sole_announced_object_target(&[
+            target.clone().with_count(ChoiceCount::exactly(2))
+        ]).is_none());
+        assert!(sole_announced_object_target(&[
+            target.clone().with_count(ChoiceCount::up_to(1))
+        ]).is_none());
+        assert!(sole_announced_object_target(&[
+            target.with_count_value(ChoiceCount::exactly(1), Value::Fixed(1))
+        ]).is_none());
     }
 }

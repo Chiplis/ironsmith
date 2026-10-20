@@ -1,7 +1,115 @@
 use super::*;
 
+/// "If damage from a creature source is prevented this way, Comeuppance deals
+/// that much damage to that creature. If damage from a noncreature source is
+/// prevented this way, Comeuppance deals that much damage to the source's
+/// controller." (Comeuppance): the prevention's follow-up splits on the
+/// prevented source's card type.
+pub(super) fn describe_prevented_source_type_split_follow_up(
+    effects: &[Effect],
+) -> Option<String> {
+    let [tag_effect, creature_effect, noncreature_effect] = effects else {
+        return None;
+    };
+    tag_effect.downcast_ref::<crate::effects::TagTriggeringSourceEffect>()?;
+    let creature = structural_unwrap_render_wrappers(creature_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let noncreature = structural_unwrap_render_wrappers(noncreature_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let (
+        Condition::TaggedObjectMatches(_, creature_filter),
+        Condition::TaggedObjectMatches(_, noncreature_filter),
+    ) = (&creature.condition, &noncreature.condition)
+    else {
+        return None;
+    };
+    if creature_filter.card_types.as_slice() != [CardType::Creature]
+        || noncreature_filter.excluded_card_types.as_slice() != [CardType::Creature]
+        || !creature.if_false.is_empty()
+        || !noncreature.if_false.is_empty()
+    {
+        return None;
+    }
+    let creature_text = describe_effect_list(&creature.if_true);
+    let creature_text = creature_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_suffix(" to it")?
+        .to_string();
+    let noncreature_text = describe_effect_list(&noncreature.if_true);
+    let noncreature_text = noncreature_text.trim().trim_end_matches('.');
+    let noncreature_text = noncreature_text
+        .strip_suffix(" to that object's controller")
+        .or_else(|| noncreature_text.strip_suffix(" to its controller"))?;
+    if creature_text.contains(". ") || noncreature_text.contains(". ") {
+        return None;
+    }
+    Some(format!(
+        "If damage from a creature source is prevented this way, {}. If damage from a noncreature source is prevented this way, {}",
+        format!("{creature_text} to that creature"),
+        format!("{noncreature_text} to the source's controller"),
+    ))
+}
+
 /// Render a delayed target declaration together with damage executed by that
 /// target, keeping its source distinct from the previously bound recipient.
+/// "At the beginning of the next end step, if the player hasn't played the
+/// card, they put it into their graveyard." (Elkin Lair): the source-linked
+/// exiled card is still in exile exactly when it was not played, and the
+/// delayed move puts that card into its owner's graveyard.
+pub(super) fn describe_delayed_unplayed_source_exiled_card_to_graveyard(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.target_tag.is_some()
+        || !schedule.target_objects.is_empty()
+        || schedule.prepayment.is_some()
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()
+            .is_some_and(|end_step| end_step.player == PlayerFilter::Any)
+    {
+        return None;
+    }
+    let [effect] = schedule.effects.flattened_default_effects() else {
+        return None;
+    };
+    let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+        return None;
+    };
+    if tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        || filter.zone != Some(Zone::Exile)
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let [move_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let moved = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if moved.zone != Zone::Graveyard {
+        return None;
+    }
+    let ChooseSpec::All(moved_filter) = &moved.target else {
+        return None;
+    };
+    if moved_filter.zone != Some(Zone::Exile)
+        || !moved_filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == *tag)
+    {
+        return None;
+    }
+    Some(
+        "At the beginning of the next end step, if the player hasn't played the card, they put it into their graveyard"
+            .to_string(),
+    )
+}
+
 pub(super) fn describe_delayed_targeted_source_damage(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
 ) -> Option<String> {
@@ -475,6 +583,31 @@ pub(super) fn describe_villainous_choice(
             }
         })
         .collect::<Vec<_>>();
+    // "If you gain control of a creature this way, tap it, and it's attacking
+    // that player" (Midnight Crusader Shuttle): the last mode's authored
+    // source text covers only the control change; its tap-and-attack
+    // follow-up is a separate sentence after the choice.
+    let follow_up = villainous.modes.last().and_then(|mode| {
+        let [_, follow_up] = mode.effects.as_slice() else {
+            return None;
+        };
+        let sequence = follow_up.downcast_ref::<crate::effects::SequenceEffect>()?;
+        let [tap, reselect] = sequence.effects.as_slice() else {
+            return None;
+        };
+        let tap = tap
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map_or(tap, |tagged| tagged.effect.as_ref());
+        tap.downcast_ref::<crate::effects::TapEffect>()?;
+        let reselect = reselect.downcast_ref::<crate::effects::ReselectAttackTargetEffect>()?;
+        (reselect.players_only
+            && reselect.enters_combat
+            && reselect.attacked_player == Some(PlayerFilter::IteratedPlayer)
+            && !mode.source_text.trim().is_empty()
+            && mode.source_text.contains("gain control of a creature"))
+        .then_some(". If you gain control of a creature this way, tap it, and it's attacking that player")
+    });
+    let follow_up = follow_up.unwrap_or_default();
 
     // An empty surface elides the chooser shared with the preceding clause.
     let player = if player.is_empty() {
@@ -485,7 +618,7 @@ pub(super) fn describe_villainous_choice(
     match modes.as_slice() {
         [first, second] => {
             format!(
-                "{player}faces a villainous choice — {}, or {}",
+                "{player}faces a villainous choice — {}, or {}{follow_up}",
                 capitalize_first(first),
                 lowercase_first(second)
             )
@@ -830,6 +963,33 @@ fn describe_target_creature_and_blockers_combat_prevention(
     )
 }
 
+/// "prevent all combat damage that would be dealt this combat by it and each
+/// creature it's blocking" (Sewers of Estark): the declared target creature
+/// plus every attacking creature in combat with it, which are exactly the
+/// creatures it blocks.
+fn describe_target_creature_and_blocked_attackers_combat_prevention(
+    source: &ChooseSpec,
+    until: &Until,
+) -> Option<&'static str> {
+    if !matches!(until, Until::EndOfCombat) {
+        return None;
+    }
+    let ChooseSpec::All(filter) = source.base() else {
+        return None;
+    };
+    let mut target_creature = ObjectFilter::creature();
+    target_creature.is_target_object = true;
+    let mut blocked = ObjectFilter::creature();
+    blocked.attacking = true;
+    blocked.in_combat_with = Some(crate::filter::ObjectRef::Target);
+    let mut expected = ObjectFilter::default();
+    expected.any_of = vec![target_creature, blocked];
+    expected.set_conjunctive_set_surface(true);
+    (filter == &expected).then_some(
+        "Prevent all combat damage that would be dealt this combat by it and each creature it's blocking",
+    )
+}
+
 /// Render an optional single-card deployment whose following sentence carries
 /// entry-state and temporary-ability modifiers for that exact moved object.
 /// The distinct choice and moved-result tags are both required: this keeps a
@@ -1031,6 +1191,49 @@ mod moved_object_entry_grant_render_tests {
                 .is_none()
         );
     }
+}
+
+/// Fold the token-copy exception clauses "it's P/T", "it's a <types> in
+/// addition to its other types" (or "it's P/T <types> in addition ..."), and
+/// "it has <keyword>" into "it's a P/T <types> with <keyword> in addition to
+/// its other types". Only applies when those are the only exceptions.
+fn fold_token_copy_pt_types_keyword(clauses: &[String]) -> Option<String> {
+    const ADDITION: &str = " in addition to its other types";
+    fn is_pt(text: &str) -> bool {
+        text.split_once('/').is_some_and(|(power, toughness)| {
+            !power.is_empty()
+                && !toughness.is_empty()
+                && power.chars().all(|ch| ch.is_ascii_digit())
+                && toughness.chars().all(|ch| ch.is_ascii_digit())
+        })
+    }
+    let (pt, descriptor, granted) = match clauses {
+        [pt, types, granted] => {
+            let pt = pt.strip_prefix("it's ")?;
+            let types = types.strip_suffix(ADDITION)?;
+            let descriptor = types
+                .strip_prefix("it's a ")
+                .or_else(|| types.strip_prefix("it's an "))?;
+            (pt, descriptor, granted)
+        }
+        [types, granted] => {
+            let identity = types.strip_prefix("it's ")?.strip_suffix(ADDITION)?;
+            let (pt, descriptor) = identity.split_once(' ')?;
+            (pt, descriptor, granted)
+        }
+        _ => return None,
+    };
+    let keyword = granted.strip_prefix("it has ")?;
+    if !is_pt(pt)
+        || descriptor.is_empty()
+        || descriptor.contains(", ")
+        || keyword.is_empty()
+        || keyword.contains(' ')
+        || keyword.contains('"')
+    {
+        return None;
+    }
+    Some(format!("it's a {pt} {descriptor} with {keyword}{ADDITION}"))
 }
 
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
@@ -1557,6 +1760,25 @@ pub(super) fn describe_mana_usage_restriction(
             spell_filter,
             ability_source_filter,
         } => {
+            // "cast artifact spells or activate abilities of artifacts"
+            // (Grand Architect): the authored plural surface of a bare
+            // card-type source.
+            if ability_source_filter.has_plural_object_noun_surface()
+                && let [card_type] = ability_source_filter.card_types.as_slice()
+                && ability_source_filter.subtypes.is_empty()
+                && ability_source_filter.supertypes.is_empty()
+                && !ability_source_filter.colorless
+                && !ability_source_filter.chosen_creature_type
+                && describe_mana_usage_ability_source_filter(ability_source_filter).is_some()
+                && let Some(spells) =
+                    describe_mana_usage_spell_filter_target_with_options(spell_filter, true)
+                && spells.ends_with(" spells")
+            {
+                return Some(format!(
+                    "Spend this mana only to cast {spells} or activate abilities of {}s",
+                    card_type.name()
+                ));
+            }
             let spell_text =
                 describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
             let source_text = describe_mana_usage_ability_source_filter(ability_source_filter)?;
@@ -2211,6 +2433,13 @@ pub(crate) fn collect_activation_restriction_clauses(
                 crate::ConditionExpr::SourceAttackedThisTurn
                     | crate::ConditionExpr::MaxActivationsPerTurn(1)
             )
+        {
+            continue;
+        }
+        // Forecast's "only once each turn" is its reminder text too
+        // (CR 702.57b), implied by the label like its upkeep timing.
+        if timing_is_implied_by_presentation
+            && matches!(condition, crate::ConditionExpr::MaxActivationsPerTurn(1))
         {
             continue;
         }
@@ -3250,6 +3479,26 @@ pub(super) fn describe_craft_material_filter(
                 format!("{number} {noun}s")
             });
         }
+        // "four or more nonlands with activated abilities" (The Enigma
+        // Jewel): a negated card type plus the activated-ability predicate.
+        if count.min > 0
+            && count.max.is_none()
+            && material.has_activated_ability
+            && let [excluded] = material.excluded_card_types.as_slice()
+            && {
+                let mut rest = material.clone();
+                rest.has_activated_ability = false;
+                rest.excluded_card_types.clear();
+                rest == ObjectFilter::default()
+            }
+        {
+            let amount = u32::try_from(count.min).ok()?;
+            let number = small_number_word(amount).unwrap_or_else(|| amount.to_string());
+            let excluded = excluded.to_string().to_ascii_lowercase();
+            return Some(format!(
+                "{number} or more non{excluded}s with activated abilities"
+            ));
+        }
         if count.min > 0 && count.max.is_none() {
             let noun = if material == ObjectFilter::default().with_type(CardType::Artifact) {
                 "artifacts".to_string()
@@ -3438,6 +3687,21 @@ pub(super) fn cycling_keywords_for_search_filter(filter: &ObjectFilter) -> Vec<S
     for subtype in &filter.subtypes {
         keywords.push(format!("{subtype}cycling"));
     }
+    // "Artifact landcycling": a conjunctive type requirement naming land.
+    if keywords.is_empty()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.len() >= 2
+        && filter.all_card_types.contains(&CardType::Land)
+    {
+        let prefix = filter
+            .all_card_types
+            .iter()
+            .filter(|card_type| **card_type != CardType::Land)
+            .map(|card_type| format!("{card_type:?}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        keywords.push(format!("{prefix} landcycling"));
+    }
     if keywords.is_empty() {
         for card_type in &filter.card_types {
             keywords.push(format!("{card_type:?}cycling"));
@@ -3534,8 +3798,13 @@ pub(in crate::compiled_text) fn describe_structural_equip_keyword(
     if !matches!(activated.timing, ActivationTiming::SorcerySpeed) {
         return None;
     }
+    // "Equip planeswalker {1}" (Luxior, Giada's Gift) attaches to a
+    // planeswalker you control (CR 702.6a).
+    let is_equip_target = |spec: &ChooseSpec| {
+        is_target_creature_you_control(spec) || is_target_planeswalker_you_control(spec)
+    };
     if !(activated.choices.is_empty()
-        || (activated.choices.len() == 1 && is_target_creature_you_control(&activated.choices[0])))
+        || (activated.choices.len() == 1 && is_equip_target(&activated.choices[0])))
     {
         return None;
     }
@@ -3545,7 +3814,7 @@ pub(in crate::compiled_text) fn describe_structural_equip_keyword(
         return None;
     }
     let target = structural_equip_target(activated)?;
-    if !is_target_creature_you_control(&target) {
+    if !is_equip_target(&target) {
         return None;
     }
 
@@ -4568,7 +4837,16 @@ pub(super) fn describe_structural_bushido_keyword(
     };
     let pump = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()?;
     let Value::Fixed(power) = pump.power else {
-        return None;
+        // "Fumiko has bushido X, where X is the number of attacking
+        // creatures": the same trigger with a counted bonus.
+        if pump.toughness != pump.power
+            || !matches!(pump.target, ChooseSpec::Source)
+            || !matches!(pump.duration, Until::EndOfTurn)
+        {
+            return None;
+        }
+        let basis = describe_where_x_basis(&pump.power)?;
+        return Some(format!("Bushido X, where X is {basis}"));
     };
     if power <= 0
         || pump.toughness != Value::Fixed(power)
@@ -5850,11 +6128,31 @@ pub(super) fn is_target_creature_you_control(spec: &ChooseSpec) -> bool {
     }
 }
 
+fn is_target_planeswalker_you_control(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Target(inner) => is_target_planeswalker_you_control(inner),
+        ChooseSpec::WithCount(inner, count) if count.is_single() => {
+            is_target_planeswalker_you_control(inner)
+        }
+        ChooseSpec::Object(filter) => {
+            filter.zone == Some(Zone::Battlefield)
+                && filter.controller == Some(PlayerFilter::You)
+                && filter.card_types.as_slice() == [CardType::Planeswalker]
+                && filter.subtypes.is_empty()
+                && filter.supertypes.is_empty()
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
     match spec {
         ChooseSpec::Target(inner) => equip_target_qualifier_text(inner),
         ChooseSpec::WithCount(inner, count) if count.is_single() => {
             equip_target_qualifier_text(inner)
+        }
+        ChooseSpec::Object(_) if is_target_planeswalker_you_control(spec) => {
+            Some("planeswalker".to_string())
         }
         ChooseSpec::Object(filter) => {
             if filter.zone != Some(Zone::Battlefield)
@@ -5866,6 +6164,14 @@ pub(super) fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
             // "Equip commander [cost]" (Commander's Plate, CR 702.6a).
             if filter.is_commander && filter.subtypes.is_empty() {
                 return Some("commander".to_string());
+            }
+            // "Equip creature token {1}" (Team Pennant).
+            if filter.token
+                && filter.subtypes.is_empty()
+                && filter.supertypes.is_empty()
+                && filter.colors.is_none()
+            {
+                return Some("creature token".to_string());
             }
             // "Equip worthy {1}" (Mjölnir, Hammer of Thor): a worthy
             // creature is a legendary non-Villain that's red and/or white.
@@ -6350,3 +6656,112 @@ fn describe_move_counters_destination(to: &ChooseSpec) -> String {
     }
     describe_choose_spec(to)
 }
+
+/// "For as long as that creature has a duty counter on it, it is goaded,
+/// can't attack you or a permanent you control, and can't block creatures you
+/// control." (Immortal Obligation): a coordinated goad plus attack/block
+/// restrictions on one tagged object, all sharing the same counter-presence
+/// duration.
+pub(super) fn describe_counter_duration_goad_attack_block_sequence(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    let [goad_effect, attack_effect, block_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let goad = unwrap_basic_tag_wrappers(goad_effect).downcast_ref::<crate::effects::GoadEffect>()?;
+    let ChooseSpec::Tagged(tag) = &goad.target else {
+        return None;
+    };
+    let Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectHasCounter {
+        object: ironsmith_core::ContinuousDurationObject::AffectedObject,
+        counter_type,
+        minimum: 1,
+    }) = &goad.duration
+    else {
+        return None;
+    };
+    if goad.spelled_out_requirement {
+        return None;
+    }
+    let is_only_tagged = |filter: &crate::filter::ObjectFilter| {
+        let [constraint] = filter.tagged_constraints.as_slice() else {
+            return false;
+        };
+        if constraint.tag != *tag
+            || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        {
+            return false;
+        }
+        let mut residual = filter.clone();
+        residual.tagged_constraints.clear();
+        residual.union_surface = Default::default();
+        residual == crate::filter::ObjectFilter::default()
+    };
+    let attack = attack_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let block = block_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    for cant in [attack, block] {
+        if cant.duration != goad.duration
+            || cant.start != crate::effect::RestrictionStart::Immediate
+        {
+            return None;
+        }
+    }
+    let crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } =
+        &attack.restriction
+    else {
+        return None;
+    };
+    let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } =
+        &block.restriction
+    else {
+        return None;
+    };
+    if *player != PlayerFilter::You
+        || !is_only_tagged(attackers)
+        || !is_only_tagged(blockers)
+        || attacker.controller != Some(PlayerFilter::You)
+        || attacker.card_types.as_slice() != [crate::types::CardType::Creature]
+    {
+        return None;
+    }
+    Some(format!(
+        "For as long as that creature has a {} counter on it, it is goaded, can't attack you or a permanent you control, and can't block creatures you control",
+        counter_type.description()
+    ))
+}
+
+/// "you draw a card and create a Treasure token" (Seize the Spotlight): the
+/// authored "you" leads the coordinated pair instead of attaching to the
+/// second verb only. Shared by the lone-sequence list path, which renders a
+/// single coordinated sequence without reaching the per-effect renderer.
+pub(super) fn describe_you_draw_and_create_coordinated(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return None;
+    }
+    let [draw_effect, create_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    if !draw_effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some_and(|draw| draw.player == PlayerFilter::You)
+        || !structural_unwrap_render_wrappers(create_effect)
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+            .is_some_and(|create| {
+                create.controller == PlayerFilter::You && create.actor_surface_explicit
+            })
+    {
+        return None;
+    }
+    let draw_text = lowercase_first(describe_effect(draw_effect).trim().trim_end_matches('.'));
+    let create_text = describe_effect(create_effect);
+    let create_text = create_text.trim().trim_end_matches('.');
+    let create_text = create_text
+        .strip_prefix("you ")
+        .or_else(|| create_text.strip_prefix("You "))
+        .unwrap_or(create_text);
+    (draw_text.starts_with("draw ") && !create_text.contains(". "))
+        .then(|| format!("You {draw_text} and {}", lowercase_first(create_text)))
+}
+

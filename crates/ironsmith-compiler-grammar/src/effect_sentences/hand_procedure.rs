@@ -30,6 +30,9 @@ enum Shown {
     /// "Target player reveals their hand and the top card of their library."
     /// (Psychotic Episode): one revealed pool across two zones.
     RevealedWithLibraryTop(PlayerAst),
+    /// "You may look at that player's hand. If you do, ..." (Mindleech Mass):
+    /// the optional look, whose statement is gated on the look happening.
+    MayLooked(PlayerFilter),
 }
 
 pub(super) struct HandGroup {
@@ -41,6 +44,31 @@ pub(super) struct HandGroup {
 }
 
 fn shown_hand(sentence: &SentenceInput) -> Option<(EffectAst, Shown)> {
+    let tokens = sentence.lexed();
+    if tokens.len() > 2
+        && tokens[0].is_word("you")
+        && tokens[1].is_word("may")
+        && let Ok(Some(look_effects)) = super::parse_look_at_hand_sentence(&tokens[2..])
+        && let [look_effect] = look_effects.as_slice()
+        && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtHand {
+                    target: TargetAst::Player(hand_owner, _),
+                }),
+            ..
+        }) = look_effect
+        && matches!(
+            hand_owner,
+            PlayerFilter::DamagedPlayer | PlayerFilter::Defending | PlayerFilter::IteratedPlayer
+        )
+    {
+        return Some((
+            EffectAst::Permissions(PermissionEffectAst::May {
+                effects: vec![look_effect.clone()],
+            }),
+            Shown::MayLooked(hand_owner.clone()),
+        ));
+    }
     if let Ok(Some(look_effects)) = super::parse_look_at_hand_sentence(sentence.lexed())
         && let [look_effect] = look_effects.as_slice()
         && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -592,6 +620,23 @@ fn statement(shown: &Shown, sentence: &SentenceInput) -> Option<EffectAst> {
         Shown::Looked(owner) => exile_from_shown_hand(sentence, owner.clone())
             .or_else(|| put_from_shown_hand(sentence, owner.clone()))
             .or_else(|| may_cast_spell_from_among(sentence)),
+        Shown::MayLooked(_) => {
+            let prefix =
+                crate::grammar::structure::split_leading_result_prefix_lexed(sentence.lexed())?;
+            if prefix.kind != crate::grammar::structure::LeadingResultPrefixKind::If
+                || prefix.predicate != crate::cards::builders::IfResultPredicate::Did
+            {
+                return None;
+            }
+            let gated = SentenceInput::from_lexed(prefix.trailing_tokens);
+            let cast = may_cast_spell_from_among(&gated)?;
+            Some(EffectAst::Conditionals(
+                crate::cards::builders::ConditionalEffectAst::IfResult {
+                    predicate: crate::cards::builders::IfResultPredicate::Did,
+                    effects: vec![cast],
+                },
+            ))
+        }
         Shown::Revealed(player) => {
             let revealed = match player {
                 PlayerAst::Target => PlayerFilter::Any,

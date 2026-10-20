@@ -1085,7 +1085,7 @@ pub fn parse_cant_clauses(
         return Ok(None);
     }
     // The conditional unblockable reader owns the whole subject and its
-    // condition. A second generic restriction is a conflicting registry AST.
+    // if/as-long-as/unless condition. A second generic restriction conflicts.
     if matches!(crate::keyword_static::parse_subject_cant_be_blocked_as_long_as_condition_line(tokens), Ok(Some(_))) {
         return Ok(None);
     }

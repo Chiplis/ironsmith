@@ -319,6 +319,16 @@
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && filtered[idx]
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+                .is_some()
+            && let Some(rendered) = describe_tap_freeze_bundle(&filtered[idx..idx + 3])
+        {
+            parts.push(rendered);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(rendered) = describe_tap_freeze_bundle(&filtered[idx..idx + 2])
         {
@@ -1124,6 +1134,64 @@
             idx += 3;
             continue;
         }
+        // "Flip a coin. When you win the flip, X. When you lose the flip, Y."
+        // Reflexive triggers keyed to your own coin flip name the flip result
+        // instead of the generic "When you do / don't".
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && with_id
+                .effect
+                .downcast_ref::<crate::effects::FlipCoinEffect>()
+                .is_some_and(|flip| flip.player == PlayerFilter::You && flip.count == 1)
+        {
+            let mut lookahead = idx + 1;
+            let mut branch_parts = Vec::new();
+            while lookahead < filtered.len() {
+                let candidate = filtered[lookahead];
+                let reflexive = candidate
+                    .downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
+                    .or_else(|| {
+                        candidate
+                            .downcast_ref::<crate::effects::WithIdEffect>()
+                            .and_then(|inner| {
+                                inner
+                                    .effect
+                                    .downcast_ref::<crate::effects::ReflexiveTriggerEffect>()
+                            })
+                    });
+                let Some(reflexive) = reflexive.filter(|reflexive| {
+                    reflexive.condition == with_id.id
+                        && matches!(
+                            reflexive.predicate,
+                            EffectPredicate::Happened | EffectPredicate::DidNotHappen
+                        )
+                }) else {
+                    break;
+                };
+                let condition = if reflexive.predicate == EffectPredicate::Happened {
+                    "When you win the flip"
+                } else {
+                    "When you lose the flip"
+                };
+                let triggered =
+                    lowercase_first(&describe_result_branch_effect_list(&reflexive.effects));
+                branch_parts.push(format!(
+                    "{condition}, {}",
+                    triggered.trim_end_matches('.')
+                ));
+                lookahead += 1;
+            }
+            if !branch_parts.is_empty() {
+                let setup = capitalize_first(&describe_effect(&with_id.effect));
+                parts.push(format!(
+                    "{}. {}",
+                    setup.trim_end_matches('.'),
+                    branch_parts.join(". ")
+                ));
+                idx = lookahead;
+                continue;
+            }
+        }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
             && let Some(reflexive) =
@@ -1165,6 +1233,20 @@
             let mut saw_happened_branch = false;
             let mut happened_branch = None;
             let mut lookahead = idx + 1;
+            // A silent tagging step between the optional setup and its result
+            // gate ("you may look at the top five cards of your library. If
+            // you do, ...", Call to the Kindred) renders nothing; the gate
+            // still answers the setup.
+            if lookahead + 1 < filtered.len()
+                && filtered[lookahead]
+                    .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+                    .is_some()
+                && filtered[lookahead + 1]
+                    .downcast_ref::<crate::effects::IfEffect>()
+                    .is_some_and(|if_effect| if_effect.condition == with_id.id)
+            {
+                lookahead += 1;
+            }
             while lookahead < filtered.len() {
                 let if_effect = filtered[lookahead]
                     .downcast_ref::<crate::effects::IfEffect>()
@@ -1216,6 +1298,28 @@
                 }
                 branch_parts.push(branch_text);
                 lookahead += 1;
+            }
+            // A bare payment offer whose only consequence is gated on its
+            // payment ("Then if any player pays {2}, discard three cards.",
+            // Rhystic Scrying): the branch already names the payment, so the
+            // offer itself must not render as a dangling "unless" sentence.
+            let setup_subsumed_by_branch = with_id
+                .effect
+                .downcast_ref::<crate::effects::UnlessPaysEffect>()
+                .is_some_and(|unless_pays| unless_pays.effects.is_empty())
+                && branch_parts.len() == 1
+                && lookahead == idx + 2
+                && filtered[idx + 1]
+                    .downcast_ref::<crate::effects::IfEffect>()
+                    .is_some_and(|if_effect| {
+                        if_effect.predicate == EffectPredicate::WasDeclined
+                            && if_effect.else_.is_empty()
+                    })
+                && branch_parts[0].starts_with("If ");
+            if setup_subsumed_by_branch {
+                parts.push(branch_parts.remove(0));
+                idx = lookahead;
+                continue;
             }
             if !branch_parts.is_empty() {
                 let setup = describe_optional_setup_effect_for_if_happened(with_id)
@@ -3481,6 +3585,102 @@
             idx += 2;
             continue;
         }
+        // "Put one of them into your hand and the other into your graveyard."
+        // (Chrome Courier): an exact single pick from the looked-at cards, the
+        // captured complement of that pick, then one move of each.
+        if idx >= 1
+            && idx + 3 < filtered.len()
+            && let Some(look) = filtered[idx - 1].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && look.player == PlayerFilter::You
+            && let Some(choose) = filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && !choose.is_search
+            && choose.chooser == PlayerFilter::You
+            && choose.count.min == 1
+            && choose.count.max == Some(1)
+            && choose_references_tag(choose, &look.tag)
+            && let Some(capture) =
+                filtered[idx + 1].downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+            && capture.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag == look.tag
+            })
+            && capture.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                    && constraint.tag == choose.tag
+            })
+            && let Some(picked_move) = unwrap_tag_wrappers(filtered[idx + 2])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(rest_move) = unwrap_tag_wrappers(filtered[idx + 3])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(picked_move.target.base(), ChooseSpec::Tagged(tag) if *tag == choose.tag)
+            && matches!(rest_move.target.base(), ChooseSpec::Tagged(tag) if *tag == capture.tag)
+            && matches!(
+                (picked_move.zone, rest_move.zone),
+                (Zone::Hand, Zone::Graveyard | Zone::Exile) | (Zone::Exile, Zone::Hand)
+            )
+        {
+            let rest = if look.count.unhinted() == &Value::Fixed(2) {
+                "the other"
+            } else {
+                "the rest"
+            };
+            parts.push(match (picked_move.zone, rest_move.zone) {
+                (Zone::Exile, _) => format!("Exile one of them and put {rest} into your hand"),
+                (_, Zone::Exile) => format!("Put one of them into your hand and exile {rest}"),
+                _ => format!("Put one of them into your hand and {rest} into your graveyard"),
+            });
+            idx += 4;
+            continue;
+        }
+        // "You may put an Aura or Equipment card from among them onto the
+        // battlefield" (Armored Skyhunter, Gilgamesh): an optional,
+        // non-search choice from the cards you looked at whose sole consumer
+        // moves each chosen card onto the battlefield.
+        if idx + 1 < filtered.len()
+            && let Some(choose) = filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && !choose.is_search
+            && choose.chooser == PlayerFilter::You
+            && choose.count.min == 0
+            && filtered[..idx]
+                .iter()
+                .rev()
+                .find_map(|earlier| earlier.downcast_ref::<crate::effects::LookAtTopCardsEffect>())
+                .is_some_and(|look| {
+                    look.player == PlayerFilter::You && choose_references_tag(choose, &look.tag)
+                })
+            && let Some((_, for_each)) = for_each_tagged_for_compaction(filtered[idx + 1])
+            && for_each.tag == choose.tag
+            && let [move_effect] = for_each.effects.as_slice()
+            && let Some(moved) =
+                unwrap_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && moved.zone == Zone::Battlefield
+            && matches!(moved.target.base(), ChooseSpec::Iterated)
+            && moved.battlefield_controller == crate::effects::BattlefieldController::Preserve
+            && !moved.enters_face_down
+            && let Some(selection) = describe_looked_battlefield_selection(choose)
+        {
+            let selection = match selection.strip_prefix("up to one ") {
+                Some(rest) => with_indefinite_article(rest),
+                None => selection,
+            };
+            let entry_state = describe_battlefield_entry_state_for_looked_move(moved);
+            parts.push(format!(
+                "You may put {selection} from among them onto the battlefield{entry_state}"
+            ));
+            idx += 2;
+            continue;
+        }
+        // The generic look-then-reveal fold runs only after every specific
+        // look+reveal program (put matching into hand, rest on bottom, ...)
+        // has had its chance to claim the pair.
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_look_then_reveal_same_tag(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         // "If it was a creature card, A. If it was a land card, B.
         // Otherwise, C." (Misfortune Teller): the final branch's `Otherwise`
         // also excludes the earlier sibling's condition, which lowering
@@ -3555,12 +3755,40 @@
                     Condition::TaggedObjectMatchedLastKnown(..) => true,
                     _ => false,
                 });
+            // An immediate cast of each selected card and its same-set
+            // replacement are parallel instructions about those spells.
+            // "Then if" would imply a later conditional action instead of
+            // the replacement that applies as each spell leaves the stack.
+            let is_cast_collection_replacement = idx > 0
+                && filtered[idx - 1]
+                    .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                    .is_some_and(|for_each| {
+                        matches!(for_each.effects.as_slice(), [cast_effect]
+                            if cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()
+                                .is_some_and(|cast| cast.tag.as_str() == "__it__"))
+                            && filtered[idx]
+                                .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+                                .is_some_and(|replacement| {
+                                    replacement.those_spells_surface
+                                        && replacement.from_zone == Some(Zone::Stack)
+                                        && replacement.to_zone == Some(Zone::Graveyard)
+                                        && replacement.replacement_zone == Zone::Exile
+                                        && replacement.mode == crate::effects::ReplacementApplyMode::UntilEndOfTurn
+                                        && replacement.cause_filter.is_none()
+                                        && !replacement.require_cause_source_match
+                                        && !replacement.link_exiled_to_source
+                                        && matches!(replacement.filter.tagged_constraints.as_slice(), [constraint]
+                                            if constraint.tag == for_each.tag
+                                                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                                })
+                    });
             if !parts.is_empty()
                 && rendered.starts_with("If ")
                 && !is_coin_result_followup
                 && !is_your_turn_followup
                 && !is_battlefield_move_result_followup
                 && !is_prior_result_followup
+                && !is_cast_collection_replacement
             {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {

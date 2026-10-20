@@ -609,9 +609,14 @@ pub fn parse_look(
         crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
         ["at", "the", "exiled", "card" | "cards"]
     ) {
+        // "the exiled cards" names the cards this ability exiled, not the
+        // most recent object antecedent (the cards just put into hand).
+        let mut exiled = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
+            .in_zone(Zone::Exile);
+        exiled.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Exiled));
         return Ok(EffectAst::subject_verb_look_at_objects(
             subject_player.unwrap_or(PlayerAst::You),
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()).in_zone(Zone::Exile),
+            exiled,
         ));
     }
     // "look at each face-down creature that's attacking or blocking"
@@ -1207,12 +1212,14 @@ pub fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         // when the chosen creature is already suspected, so a following
         // "If you do" sees whether it actually became suspected.
         let group_tag = crate::util::helper_tag_for_tokens(&target_tokens, "suspect_group_choice");
-        let filter = ObjectFilter::creature()
+        let mut filter = ObjectFilter::creature()
             .in_zone(crate::zone::Zone::Battlefield)
             .match_tagged(
                 ironsmith_core::ZONE_CHANGE_GROUP_TAG,
                 TaggedOpbjectRelation::IsTaggedObject,
             );
+        // "the other creatures": never the source itself.
+        filter.other = true;
         return Ok(EffectAst::Sequence {
             effects: vec![
                 EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {

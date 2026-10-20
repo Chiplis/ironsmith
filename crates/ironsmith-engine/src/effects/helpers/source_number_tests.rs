@@ -53,7 +53,7 @@ fn invalid_source_choice_rolls_back_earlier_effect_and_preserves_the_last_actual
     let sequence=Effect::new(SequenceEffect::new(vec![Effect::gain_life(5),Effect::new(ChooseNumberEffect::new(PlayerFilter::You,0,7).with_source_retention())]));
     assert!(execute_effect(&mut game,&sequence,&mut ExecutionContext::new(source,a,&mut invalid).with_source_number_owner(Some(owner(source)))).is_err());
     assert_eq!(game.player(a).unwrap().life,before);assert_eq!(chosen(&game,source),Some(3));
-    let positive=ChooseNumberEffect{chooser:PlayerFilter::You,min:1,max:None,source_owned:false};
+    let positive=ChooseNumberEffect{chooser:PlayerFilter::You,min:1,max:None,source_owned:false,draw_count_choice:false};
     invalid.value=0;assert!(positive.execute(&mut game,&mut ExecutionContext::new(source,a,&mut invalid).with_source_number_owner(Some(owner(source)))).is_err());
 }
 #[test]
@@ -161,7 +161,7 @@ fn public_proof_requires_pairs_for_source_owned_entry_upkeep_and_activation_prod
         for source_owned in [false,true] {
             for paired in [false,true] {
                 let mut game=crate::tests::test_helpers::setup_two_player_game();let source=source(&mut game);
-                let choose=Effect::new(ChooseNumberEffect{chooser:PlayerFilter::You,min:0,max:Some(7),source_owned});
+                let choose=Effect::new(ChooseNumberEffect{chooser:PlayerFilter::You,min:0,max:Some(7),source_owned,draw_count_choice:false});
                 let mut program=crate::resolution::ResolutionProgram::from_effects(vec![
                     Effect::new(SequenceEffect::new(vec![choose])),
                 ]);

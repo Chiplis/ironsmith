@@ -2340,6 +2340,8 @@ pub enum TurnHistoryCondition {
     },
     TriggeringObjectEnlistedThisCombat,
     TriggeringObjectWasCast,
+    /// The triggering object's completed cast was performed by this ability's controller.
+    TriggeringObjectWasCastByController,
     TriggeringObjectWasCastFromZone(Zone),
     PlayerPlayedLandThisTurn(PlayerFilter),
     /// "<player> activated a loyalty ability (of a planeswalker) this turn"

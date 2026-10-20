@@ -26,6 +26,9 @@ pub(crate) struct LibrarySearchRequest {
     pub search_library: bool,
     pub require_library_access: bool,
     pub restrict_initial_view: bool,
+    /// An explicitly captured subset of the library being searched. Both
+    /// private inspection and in-search casting stay inside this scope.
+    pub library_scope_cards: Option<Vec<ObjectId>>,
     /// Reevaluate admission at each presentation/offer/observation boundary.
     pub refresh_library_access: bool,
 }
@@ -76,10 +79,16 @@ pub(crate) fn execute_library_search_scope<'a>(
             }
         };
         if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
-            library_cards = game
-                .player(owner)
-                .map(|player| player.library.to_vec())
-                .unwrap_or_default();
+            library_cards = request.library_scope_cards.clone().unwrap_or_else(|| {
+                game.player(owner)
+                    .map(|player| player.library.to_vec())
+                    .unwrap_or_default()
+            });
+            library_cards.retain(|id| {
+                game.object(*id).is_some_and(|object| {
+                    object.zone == Zone::Library && object.owner == owner
+                })
+            });
             if request.restrict_initial_view {
                 game.restrict_library_search_candidates(request.chooser, &mut library_cards);
             }
@@ -93,7 +102,7 @@ pub(crate) fn execute_library_search_scope<'a>(
             );
         }
         if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
-            completed_outputs = offer_library_search_casts(game, ctx, owner)?;
+            completed_outputs = offer_library_search_casts(game, ctx, owner, &library_cards)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effect::EffectOutcome::count(0));
             }
@@ -468,14 +477,11 @@ pub(crate) fn offer_library_search_casts(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     library_owner: PlayerId,
+    library_cards: &[ObjectId],
 ) -> Result<Vec<crate::effects::PublishedEffectOutputs>, ExecutionError> {
     let mut completed_outputs = Vec::new();
-    let library_cards = game
-        .player(library_owner)
-        .map(|player| player.library.clone())
-        .unwrap_or_default();
 
-    for card_id in library_cards {
+    for &card_id in library_cards {
         if !game.current_has_static_ability_id(
             card_id,
             StaticAbilityId::CastThisCardFromLibraryWhileSearching,

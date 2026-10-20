@@ -7,6 +7,44 @@ use ironsmith::cards::CardDefinition;
 use ironsmith::static_abilities::StaticAbilityId;
 use ironsmith_compiler_runtime::{compile_to_artifact, compile_to_runtime_definition};
 
+#[test]
+fn turn_gated_static_rules_use_the_authored_time_window() {
+    let grand_abolisher = compile_to_runtime_definition(
+        "Grand Abolisher",
+        "Mana cost: {W}{W}\nType: Creature — Human Cleric\nPower/Toughness: 2/2\nDuring your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments.",
+        false,
+    )
+    .unwrap();
+    let text = ironsmith_text::compiled_text_lines(&grand_abolisher).join("\n");
+    assert!(
+        text.contains("During your turn, your opponents can't cast spells or activate abilities"),
+        "{text}"
+    );
+    assert!(!text.contains("timing restriction:"), "{text}");
+}
+
+#[test]
+fn shared_type_unless_blocking_is_static_and_keeps_the_full_condition() {
+    let definition = compile(
+        "This creature can't be blocked unless defending player controls three or more creatures that share a creature type.",
+    );
+    assert!(definition.spell_effect.is_none(), "{definition:#?}");
+    assert!(static_ids(&definition).contains(&StaticAbilityId::RuleRestriction));
+    let abilities = format!("{:#?}", definition.abilities);
+    assert!(abilities.contains("BeBlocked"), "{abilities}");
+    assert!(abilities.contains("GreatestSharedCreatureTypeCount"), "{abilities}");
+    assert!(abilities.contains("Defending"), "{abilities}");
+    assert!(abilities.contains("Not("), "{abilities}");
+
+    let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        text.contains(
+            "can't be blocked unless the defending player controls three or more creatures that share a creature type"
+        ),
+        "{text}"
+    );
+}
+
 fn compile(text: &str) -> CardDefinition {
     let source = format!("Mana cost: {{2}}\nType: Creature — Bear\nPower/Toughness: 2/2\n{text}");
     let (direct, loss) = ironsmith_compiler::parse_loss::capture(|| {

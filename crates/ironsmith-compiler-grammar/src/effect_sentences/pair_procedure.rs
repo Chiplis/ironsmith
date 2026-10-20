@@ -166,6 +166,9 @@ enum Pair {
     /// "Each opponent may sacrifice a nonland permanent of their choice or
     /// discard a card." awaiting the damage to those who did neither.
     OpponentsSacrificeOrDiscardDamage(Vec<EffectAst>),
+    /// "Any player may sacrifice ... or have this deal N damage to that
+    /// player." awaiting "If a player does either, destroy this ...".
+    AnyPlayerSacrificeOrSourceDamage(Vec<EffectAst>),
     /// A statement whose completing sentences are read together with it by
     /// one of the fixed-shape parsers below; `remaining` counts them.
     FixedShape(Vec<EffectAst>),
@@ -1578,6 +1581,18 @@ const PAIR_SHAPES: &[Shape] = &[
         },
     },
     Shape {
+        id: RuleId::new("any-player-sacrifice-or-source-damage"),
+        head: HeadDiscriminator::words(&["any"]),
+        consumed: 2,
+        read: |sentences, sentence_idx| {
+            reading(
+                sentences,
+                sentence_idx,
+                kinds::open_any_player_sacrifice_or_source_damage(sentences, sentence_idx),
+            )
+        },
+    },
+    Shape {
         id: RuleId::new("opponents-sacrifice-or-discard-damage"),
         head: HeadDiscriminator::words(&["each"]),
         consumed: 2,
@@ -1755,6 +1770,7 @@ pub(super) fn continue_with(
         | Pair::EachPlayerPayLifeTokens(_)
         | Pair::TargetOpponentCopyRetarget(_)
         | Pair::OpponentsSacrificeOrDiscardDamage(_)
+        | Pair::AnyPlayerSacrificeOrSourceDamage(_)
         | Pair::FixedShape(_) => true,
     };
     if !completes {
@@ -1785,6 +1801,7 @@ pub(super) fn feature_tag(group: &PairGroup) -> &'static str {
         Pair::EachPlayerPayLifeTokens(_) => "each-player-pay-life-tokens",
         Pair::TargetOpponentCopyRetarget(_) => "target-opponent-copy-retarget",
         Pair::OpponentsSacrificeOrDiscardDamage(_) => "opponents-sacrifice-or-discard-damage",
+        Pair::AnyPlayerSacrificeOrSourceDamage(_) => "any-player-sacrifice-or-source-damage",
         Pair::FixedShape(_) => group.feature,
     }
 }
@@ -1808,6 +1825,7 @@ pub(super) fn finish(group: PairGroup) -> Vec<EffectAst> {
         | Pair::EachPlayerPayLifeTokens(effects)
         | Pair::TargetOpponentCopyRetarget(effects)
         | Pair::OpponentsSacrificeOrDiscardDamage(effects)
+        | Pair::AnyPlayerSacrificeOrSourceDamage(effects)
         | Pair::FixedShape(effects) => effects,
     }
 }

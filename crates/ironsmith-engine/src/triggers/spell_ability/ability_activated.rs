@@ -367,7 +367,19 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         if source_filter.chosen_creature_type {
             source_description = source_description.replace("of the chosen type", "of that type");
         }
-        let mut text = if source_filter == ObjectFilter::default() {
+        // "Whenever an ability of equipped creature is activated, if it
+        // isn't a mana ability" (Illusionist's Bracers): any player's
+        // activation of the attached creature's ability reads passively.
+        let passive_attached = self.activator == PlayerFilter::Any
+            && !self.loyalty_only
+            && named_marker.is_none()
+            && matches!(
+                source_description.as_str(),
+                "an equipped creature" | "the equipped creature" | "equipped creature"
+            );
+        let mut text = if passive_attached {
+            format!("Whenever {ability} of equipped creature is activated")
+        } else if source_filter == ObjectFilter::default() {
             format!("Whenever {subject} {verb} {ability}")
         } else {
             format!(
@@ -380,8 +392,9 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         }
         if self.non_mana_only && !self.loyalty_only {
             text.push_str(
-                if source_filter.zone == Some(Zone::Battlefield)
-                    && source_filter.has_activation_source_battlefield_surface()
+                if passive_attached
+                    || (source_filter.zone == Some(Zone::Battlefield)
+                        && source_filter.has_activation_source_battlefield_surface())
                 {
                     ", if it isn't a mana ability"
                 } else {

@@ -65,6 +65,10 @@ pub(super) fn normalize_imperative_choose_player(effect: &mut EffectAst) -> bool
             player,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            player,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
             player,
             ..

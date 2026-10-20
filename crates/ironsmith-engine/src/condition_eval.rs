@@ -102,6 +102,24 @@ fn source_was_cast(
         .is_some()
 }
 
+/// Match the actual actor of the cast, not the object's later controller.
+fn stable_id_was_cast_by(game: &GameState, stable_id: StableId, caster: PlayerId) -> bool {
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .rev()
+        .find_map(|record| {
+            let event = record.event.downcast::<crate::events::SpellCastEvent>()?;
+            event
+                .snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .filter(|snapshot| snapshot.stable_id == stable_id)
+                .map(|_| event.caster)
+        })
+        .is_some_and(|latest_caster| latest_caster == caster)
+}
+
 /// Whether `source` was cast and its most recent cast this turn was from `zone`.
 fn source_was_cast_from_zone(
     game: &GameState,
@@ -738,6 +756,64 @@ mod tests {
             !verify(&from_hand, Zone::Graveyard),
             "entering without resolving from the stack is not casting it"
         );
+    }
+
+    #[test]
+    fn entering_object_was_cast_by_controller_uses_cast_actor_not_later_control() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let entering = add_battlefield_permanent(
+            &mut game, 121, "Aura", 0, CardType::Enchantment, Some(Subtype::Aura),
+        );
+        let source = game.new_object_id();
+        let spell = game.new_object_id();
+        let mut snapshot = crate::snapshot::ObjectSnapshot::for_testing(spell, bob, "Aura");
+        snapshot.stable_id = game.object(entering).unwrap().stable_id;
+        let cast = RawEvent::new(
+            crate::events::SpellCastEvent::new_with_snapshot(spell, alice, Zone::Hand, snapshot),
+            ProvNodeId::default(),
+        );
+        game.turn_store.turn_history.record_event(&cast, None, None);
+        let enters = RawEvent::new(
+            crate::events::EnterBattlefieldEvent::new(entering, Zone::Stack),
+            ProvNodeId::default(),
+        );
+        let condition = Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastByController,
+        );
+        let alice_ctx = ExecutionContext::new_default(source, alice)
+            .with_triggering_event(enters.clone());
+        let bob_ctx = ExecutionContext::new_default(source, bob)
+            .with_triggering_event(enters);
+        assert!(evaluate_condition(&game, &condition, &alice_ctx).unwrap());
+        assert!(!evaluate_condition(&game, &condition, &bob_ctx).unwrap());
+
+        let second_spell = game.new_object_id();
+        let mut second_snapshot =
+            crate::snapshot::ObjectSnapshot::for_testing(second_spell, alice, "Aura");
+        second_snapshot.stable_id = game.object(entering).unwrap().stable_id;
+        // Cast records can carry the frozen identity on TurnEventRecord even
+        // when the event itself has no snapshot. The latest such cast wins.
+        let second_cast = RawEvent::new(
+            crate::events::SpellCastEvent::new(second_spell, bob, Zone::Hand),
+            ProvNodeId::default(),
+        );
+        game.turn_store.turn_history.record_event(
+            &second_cast, Some(second_snapshot), None,
+        );
+        assert!(!evaluate_condition(&game, &condition, &alice_ctx).unwrap(),
+            "an earlier cast by Alice must not override Bob's latest cast");
+        assert!(evaluate_condition(&game, &condition, &bob_ctx).unwrap());
+
+        let blinked = RawEvent::new(
+            crate::events::EnterBattlefieldEvent::new(entering, Zone::Exile),
+            ProvNodeId::default(),
+        );
+        let blink_ctx = ExecutionContext::new_default(source, bob)
+            .with_triggering_event(blinked);
+        assert!(!evaluate_condition(&game, &condition, &blink_ctx).unwrap(),
+            "a later blink did not resolve from a cast spell");
     }
 
     #[test]
@@ -2963,13 +3039,15 @@ fn evaluate_turn_history_condition(
             source_was_cast(game, ctx.source, ctx.triggering_event)
                 && game
                     .object(ctx.source)
-                    .map(|source| game.controller_of(source))
+                    .map(|source| source.stable_id)
                     .or_else(|| {
                         ctx.triggering_event
                             .and_then(TriggerEvent::snapshot)
-                            .map(|snapshot| snapshot.controller)
+                            .map(|snapshot| snapshot.stable_id)
                     })
-                    == Some(ctx.controller)
+                    .is_some_and(|stable_id| {
+                        stable_id_was_cast_by(game, stable_id, ctx.controller)
+                    })
         }
         TurnHistoryCondition::SourceWasKicked { .. } => game
             .object(ctx.source)
@@ -3051,6 +3129,28 @@ fn evaluate_turn_history_condition(
                             .as_ref()
                             .is_some_and(|cast| cast.stable_id == snapshot.stable_id)
                     })
+            })
+        }
+        TurnHistoryCondition::TriggeringObjectWasCastByController => {
+            let entered_from_cast_spell = ctx.triggering_event.is_some_and(|event| {
+                event
+                    .downcast::<crate::events::EnterBattlefieldEvent>()
+                    .is_some_and(|etb| {
+                        etb.from == Zone::Stack
+                            && !resolved_from_uncast_spell_copy(game, etb.object, None)
+                    })
+                    || event
+                        .downcast::<crate::events::ZoneChangeEvent>()
+                        .is_some_and(|change| {
+                            change.to == Zone::Battlefield
+                                && change.from == Zone::Stack
+                                && change.objects.iter().all(|object| {
+                                    !resolved_from_uncast_spell_copy(game, *object, None)
+                                })
+                        })
+            });
+            entered_from_cast_spell && triggering_snapshot().is_some_and(|snapshot| {
+                stable_id_was_cast_by(game, snapshot.stable_id, ctx.controller)
             })
         }
         TurnHistoryCondition::TriggeringObjectEnteredFromZone(zone) => {
@@ -3870,6 +3970,10 @@ fn resolve_condition_player_simple(
         PlayerFilter::PlayerToYourLeft => {
             game.closest_in_game_player_to_left_matching(controller, |_| true)
         }
+        PlayerFilter::OpponentToYourLeft => game
+            .closest_in_game_player_to_left_matching(controller, |candidate| {
+                game.are_opponents(controller, candidate)
+            }),
         PlayerFilter::PlayerToYourRight => {
             game.closest_in_game_player_to_right_matching(controller, |_| true)
         }

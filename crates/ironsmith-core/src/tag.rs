@@ -272,6 +272,13 @@ pub const DAMAGE_SOURCE_CONTROLLER_TAG: &str = "__damage_source_controller__";
 /// Live controllers attacking the event's frozen defender when an effect
 /// constructs its filter context (CR 508.6), not the declaration's old actors.
 pub const CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG: &str = "__current_players_attacking_event_defender__";
+
+/// Players the resolving source creature attacked during its controller's
+/// most recent combat ("an opponent at random that this creature didn't
+/// attack during your last combat" — Territorial Hellkite). The runtime binds
+/// the set from turn history when constructing a filter context.
+pub const SOURCE_ATTACKED_DURING_YOUR_LAST_COMBAT_TAG: &str =
+    "__source_attacked_during_your_last_combat__";
 /// The players directly attacked by the matched group of a "whenever one or
 /// more <creatures> attack one or more players" trigger ("you and those
 /// players each draw a card", Zurzoth). Runtime filter contexts derive it
@@ -342,6 +349,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ATTACK_DECLARATION_DEFENDER_TAG,
     DAMAGE_SOURCE_CONTROLLER_TAG,
     CURRENT_PLAYERS_ATTACKING_EVENT_DEFENDER_TAG,
+    SOURCE_ATTACKED_DURING_YOUR_LAST_COMBAT_TAG,
     ATTACKING_GROUP_DEFENDERS_TAG,
     INITIATIVE_HOLDER_TAG,
     PREVIOUS_ITERATED_OBJECTS_TAG,

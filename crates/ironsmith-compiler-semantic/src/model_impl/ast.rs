@@ -366,6 +366,10 @@ pub enum TriggerSpec {
         /// "... deals damage to that creature": the damaged object must be a
         /// target of the damage source's resolving spell or ability (CR 115.1).
         recipient_is_source_target: bool,
+        /// "deals noncombat damage to ...".
+        noncombat_only: bool,
+        /// "... equal to that creature's toughness" (Taii Wakeen).
+        amount_equals_target_toughness: bool,
     },
     DealsDamageToPlayer {
         source: ObjectFilter,
@@ -714,6 +718,10 @@ pub enum TriggerSpec {
         /// Singular “a player/an opponent controls” groups each controller;
         /// plural “your opponents control” does not.
         per_source_controller: bool,
+        /// The damaged players, rather than the damaging sources, are the
+        /// grammatical subject of this trigger.
+        recipient_passive: bool,
+        during_your_turn: bool,
     },
     YouCastThisSpell,
     KeywordAction {

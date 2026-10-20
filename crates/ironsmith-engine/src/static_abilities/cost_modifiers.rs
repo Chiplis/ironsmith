@@ -106,6 +106,8 @@ fn pluralize_cost_noun_phrase(phrase: &str) -> String {
     }
     match phrase {
         "Elf" => "Elves".to_string(),
+        "Ally" => "Allies".to_string(),
+        "Equipment" => "Equipment".to_string(),
         "artifact" => "artifacts".to_string(),
         "creature" => "creatures".to_string(),
         "enchantment" => "enchantments".to_string(),
@@ -122,7 +124,16 @@ fn describe_affinity_filter(filter: &ObjectFilter) -> String {
         return pluralize_cost_noun_phrase(&filter.subtypes[0].to_string());
     }
     if filter.card_types.len() == 1 && filter.subtypes.is_empty() {
-        return pluralize_cost_noun_phrase(filter.card_types[0].name());
+        // "Affinity for snow lands" keeps its supertype adjective.
+        let supertypes = filter
+            .supertypes
+            .iter()
+            .map(|supertype| format!("{} ", supertype.name().to_ascii_lowercase()))
+            .collect::<String>();
+        return pluralize_cost_noun_phrase(&format!(
+            "{supertypes}{}",
+            filter.card_types[0].name()
+        ));
     }
 
     let mut bare = filter.clone();
@@ -645,7 +656,30 @@ fn singularize_first_plural_word(phrase: &str) -> String {
         .join(" ")
 }
 
+/// "{2} less to cast for each counter removed this way" (Hierophant
+/// Bio-Titan): the reduction repeats the counters-removed metric per mana.
+fn counters_removed_this_way_multiplier(value: &Value) -> Option<i32> {
+    match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay) =>
+        {
+            Some(1)
+        }
+        Value::Add(left, right) => Some(
+            counters_removed_this_way_multiplier(left)?
+                .saturating_add(counters_removed_this_way_multiplier(right)?),
+        ),
+        _ => None,
+    }
+}
+
 fn describe_for_each_cost_modifier_amount(amount: &Value) -> Option<(String, Option<String>)> {
+    if let Some(multiplier) = counters_removed_this_way_multiplier(amount) {
+        return Some((
+            format!("{{{multiplier}}}"),
+            Some("for each counter removed this way".to_string()),
+        ));
+    }
     if amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
         && amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::IndefiniteCommanderReference)
         && matches!(
@@ -1119,6 +1153,21 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             };
             ("{X}".to_string(), Some(format!("where X is {phrase}")))
         }
+        // "This spell costs {1} less to cast for each {E} you've paid or
+        // lost this turn" (Blaster Hulk).
+        _ if matches!(
+            amount.unhinted(),
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayerCountersRemoved {
+                player: PlayerFilter::You,
+                counter_type: Some(crate::object::CounterType::Energy),
+            })
+        ) =>
+        {
+            (
+                "{1}".to_string(),
+                Some("for each {E} you've paid or lost this turn".to_string()),
+            )
+        }
         _ => ("{X}".to_string(), None),
     }
 }
@@ -1202,6 +1251,11 @@ fn describe_cost_modifier_condition_prefix(condition: &crate::ConditionExpr) -> 
             ) =>
         {
             "As long as this source is in the command zone or on the battlefield".to_string()
+        }
+        // "As long as Kaervek's Torch is on the stack, spells that target it
+        // cost {2} more to cast."
+        crate::ConditionExpr::SourceIsInZone(Zone::Stack) => {
+            "As long as this spell is on the stack".to_string()
         }
         _ => "As long as the stated condition is true".to_string(),
     }
@@ -1396,11 +1450,18 @@ pub(super) fn describe_spell_filter(filter: &ObjectFilter) -> String {
         }
     }
 
+    if filter.is_commander {
+        qualifiers.push("commander".to_string());
+    }
     let mut description = if qualifiers.is_empty() {
         "spells".to_string()
     } else {
         format!("{} spells", qualifiers.join(" "))
     };
+    // "other Sphinx spells you cast" (The Ur-Sphinx).
+    if filter.other {
+        description = format!("other {description}");
+    }
     let keyword_labels = filter
         .static_abilities
         .iter()
@@ -1696,6 +1757,25 @@ impl StaticAbilityKind for Improvise {
     }
 }
 
+/// One cast-origin branch of a cost-reduction union: a spell filter that only
+/// names the zone the spell was cast from ("from your graveyard").
+fn cost_reduction_cast_origin_phrase(branch: &ObjectFilter) -> Option<&'static str> {
+    let mut rest = branch.clone();
+    let zone = rest.zone.take()?;
+    let owner = rest.owner.take();
+    rest.stack_kind = None;
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+    match (zone, owner) {
+        (Zone::Graveyard, Some(PlayerFilter::You)) => Some("from your graveyard"),
+        (Zone::Hand, Some(PlayerFilter::You)) => Some("from your hand"),
+        (Zone::Library, Some(PlayerFilter::You)) => Some("from your library"),
+        (Zone::Exile, None) => Some("from exile"),
+        _ => None,
+    }
+}
+
 /// Cost reduction: "Spells cost {N} less to cast"
 #[derive(Debug, Clone, PartialEq)]
 pub struct CostReduction {
@@ -1820,6 +1900,48 @@ impl StaticAbilityKind for CostReduction {
                 "Each {subject} costs {amount_text} less to cast if it has {}",
                 abilities.join(" or ")
             );
+        }
+        // "Spells you cast from your graveyard or from exile cost {2} less to
+        // cast": a union whose branches differ only by the cast-origin zone.
+        if self.condition.is_none()
+            && self.characteristic_intersection.is_none()
+            && !self.per_target
+            && tail.is_none()
+            && self.filter.any_of.len() >= 2
+            && let Some(origins) = self
+                .filter
+                .any_of
+                .iter()
+                .map(cost_reduction_cast_origin_phrase)
+                .collect::<Option<Vec<_>>>()
+        {
+            let mut base = self.filter.clone();
+            base.any_of.clear();
+            let subject = describe_spell_filter(&base);
+            let origins = match origins.as_slice() {
+                [first, second] => format!("{first} or {second}"),
+                [init @ .., last] => format!("{}, or {last}", init.join(", ")),
+                [] => return format!("{subject} cost {amount_text} less to cast"),
+            };
+            return format!("{subject} {origins} cost {amount_text} less to cast");
+        }
+        // "Your commander costs {1} less to cast for each time it's been cast
+        // from the command zone this game." (Myth Unbound)
+        if self.filter.is_commander
+            && self.condition.is_none()
+            && self.characteristic_intersection.is_none()
+            && !self.per_target
+        {
+            let mut rest = self.filter.clone();
+            rest.is_commander = false;
+            rest.cast_by = None;
+            if rest == ObjectFilter::default() {
+                let mut line = format!("Your commander costs {amount_text} less to cast");
+                if let Some(tail) = tail {
+                    append_cost_modifier_tail(&mut line, &tail);
+                }
+                return line;
+            }
         }
         let mut line = format!(
             "{} cost {} less to cast",
@@ -2455,16 +2577,34 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
             increase
         };
         if let Some(activator) = &self.activator {
+            // "Abilities your opponents activate that target a Merfolk you
+            // control cost {2} more to activate." (Kopala)
+            let targeting = match &self.ability_condition {
+                Some(ActivatedAbilityCostCondition::TargetsExactly { count: 1, filter }) => {
+                    let described = filter.description();
+                    let article = if described
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| "aeiouAEIOU".contains(ch))
+                    {
+                        "an"
+                    } else {
+                        "a"
+                    };
+                    format!(" that target {article} {described}")
+                }
+                _ => String::new(),
+            };
             let mut line = match activator {
                 PlayerFilter::Opponent => format!(
-                    "abilities your opponents activate cost {} more to activate",
+                    "abilities your opponents activate{targeting} cost {} more to activate",
                     increase
                 ),
                 PlayerFilter::You => {
-                    format!("abilities you activate cost {} more to activate", increase)
+                    format!("abilities you activate{targeting} cost {} more to activate", increase)
                 }
                 _ => format!(
-                    "abilities {} activate cost {} more to activate",
+                    "abilities {} activate{targeting} cost {} more to activate",
                     describe_player_filter_for_spell_target(activator),
                     increase
                 ),

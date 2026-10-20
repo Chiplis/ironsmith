@@ -506,6 +506,48 @@ pub fn parse_exile(
             ));
         }
     }
+    // "exile your hand" / "each player may exile their hand" (Wheel of
+    // Potential): a whole hand is every card in it (CR 400.2), never a
+    // single chosen card from it.
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        let owner: Option<&[&str]> = match words.as_slice() {
+            ["your", "hand"] => Some(&["your"][..]),
+            ["their", "hand"] => Some(&["their"][..]),
+            ["his", "or", "her", "hand"] => Some(&["his", "or", "her"][..]),
+            ["that", "player's", "hand"] | ["that", "players", "hand"] => {
+                Some(&["that", "player's"][..])
+            }
+            _ => None,
+        };
+        if let Some(owner) = owner {
+            let mut words = vec!["all", "cards", "from"];
+            words.extend_from_slice(owner);
+            words.push("hand");
+            let rewritten = crate::lexer::synthetic_word_tokens(words);
+            return parse_exile(&rewritten, subject);
+        }
+    }
+    // "Exile an instant or sorcery card from each graveyard" (Summon: Esper
+    // Valigarmanda): one card from every player's graveyard, so the choice
+    // is made once per graveyard rather than once among all of them.
+    if subject.is_none() {
+        let words = crate::lexer::token_word_refs(tokens);
+        if let [first, .., "from", "each", "graveyard"] = words.as_slice()
+            && matches!(*first, "a" | "an" | "one")
+            && !words.contains(&"target")
+            && let Some(from_index) = tokens.iter().rposition(|token| token.is_word("from"))
+        {
+            let mut rewritten = tokens[..from_index].to_vec();
+            rewritten.extend(crate::lexer::synthetic_word_tokens([
+                "from", "that", "player's", "graveyard",
+            ]));
+            let inner = parse_exile(&rewritten, None)?;
+            return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
+                effects: vec![inner],
+            }));
+        }
+    }
     if subject.is_none()
         && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
     {

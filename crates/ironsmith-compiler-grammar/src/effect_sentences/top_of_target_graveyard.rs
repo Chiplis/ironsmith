@@ -36,8 +36,13 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
         .iter()
         .rposition(|token| token.is_word("is"))?
         + 1;
-    let quality_filter =
+    let mut quality_filter =
         crate::object_filters::parse_object_filter(&condition[quality_start..], false).ok()?;
+    // The quality describes the graveyard card itself; a battlefield default
+    // from the bare "a creature card" noun would never match it.
+    if quality_filter.zone == Some(Zone::Battlefield) {
+        quality_filter.zone = None;
+    }
 
     let body_words = token_word_refs(crate::util::trim_edge_punctuation_tokens(body));
     if !matches!(

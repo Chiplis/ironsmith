@@ -316,6 +316,244 @@
             continue;
         }
 
+        // "Two target players each reveal the top card of their library. They
+        // each lose life equal to the mana value of the card revealed by the
+        // other player. Then they each put the card they revealed into their
+        // hand." (Parker Luck): three loops over the same target players
+        // reading one shared revealed pool.
+        if let [reveal_effect, lose_effect, target_effect, return_effect, ..] = &filtered[idx..]
+            && let Some(reveal_loop) = structural_unwrap_render_wrappers(reveal_effect)
+                .downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let Some(lose_loop) = structural_unwrap_render_wrappers(lose_effect)
+                .downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let Some(target_only) = structural_unwrap_render_wrappers(target_effect)
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && let Some(return_loop) = structural_unwrap_render_wrappers(return_effect)
+                .downcast_ref::<crate::effects::ForPlayersEffect>()
+            && [&reveal_loop.filter, &lose_loop.filter, &return_loop.filter]
+                .iter()
+                .all(|filter| matches!(filter, PlayerFilter::Target(inner) if **inner == PlayerFilter::Any))
+            && let ChooseSpec::WithCount(inner_target, count) = &target_only.target
+            && matches!(inner_target.base(), ChooseSpec::Player(PlayerFilter::Any))
+            && count.min >= 2
+            && count.max == Some(count.min)
+            && let [reveal] = reveal_loop.effects.as_slice()
+            && let Some(reveal) = structural_unwrap_render_wrappers(reveal)
+                .downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && reveal.reveal
+            && reveal.player == PlayerFilter::IteratedPlayer
+            && reveal.count == Value::Fixed(1)
+            && let [lose] = lose_loop.effects.as_slice()
+            && let Some(lose) = structural_unwrap_render_wrappers(lose)
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+            && matches!(lose.player, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
+            && let Value::TotalManaValue(others) = &lose.amount
+            && matches!(
+                others.owner.as_ref(),
+                Some(PlayerFilter::Excluding { base, excluded })
+                    if **base == PlayerFilter::Any && **excluded == PlayerFilter::IteratedPlayer
+            )
+            && others.tagged_constraints.iter().any(|constraint| constraint.tag == reveal.tag)
+            && let [put] = return_loop.effects.as_slice()
+            && let Some(put) = structural_unwrap_render_wrappers(put)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && put.zone == Zone::Hand
+            && let ChooseSpec::Object(own) = put.target.base()
+            && own.owner == Some(PlayerFilter::IteratedPlayer)
+            && own.tagged_constraints.iter().any(|constraint| constraint.tag == reveal.tag)
+        {
+            let count_text = small_number_word(count.min as u32)
+                .unwrap_or_else(|| count.min.to_string());
+            parts.push(format!(
+                "{} target players each reveal the top card of their library. They each lose life equal to the mana value of the card revealed by the other player. Then they each put the card they revealed into their hand",
+                capitalize_first(&count_text)
+            ));
+            idx += 4;
+            continue;
+        }
+
+        // "Shuffle up to four cards you own from outside the game into your
+        // library." (Research): an outside-the-game choice whose only consumer
+        // is the following shuffle of exactly the chosen cards.
+        if let [choose_effect, shuffle_effect, ..] = &filtered[idx..]
+            && let Some(choose) = structural_unwrap_render_wrappers(choose_effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(shuffle) = structural_unwrap_render_wrappers(shuffle_effect)
+                .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()
+            && choose.chooser == PlayerFilter::You
+            && (choose.zone == Some(Zone::OutsideGame)
+                || choose.filter.zone == Some(Zone::OutsideGame))
+            && matches!(shuffle.target.base(), ChooseSpec::Tagged(_))
+            && shuffle.player == PlayerFilter::You
+            && let Some(selection) = describe_effect(choose_effect)
+                .trim_end_matches('.')
+                .strip_prefix("Choose ")
+                .and_then(|rest| rest.strip_suffix(" outside the game"))
+                .map(str::to_string)
+        {
+            parts.push(format!(
+                "Shuffle {selection} from outside the game into your library"
+            ));
+            idx += 2;
+            continue;
+        }
+
+        // "You may put a Human creature card from among them onto the
+        // battlefield tapped and attacking." (Winota): an optional single (or
+        // any-number) pick from the looked-at cards, each moved to the
+        // battlefield.
+        if let [choose_effect, move_each_effect, ..] = &filtered[idx..]
+            && let Some(choose) = structural_unwrap_render_wrappers(choose_effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(move_each) = structural_unwrap_render_wrappers(move_each_effect)
+                .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && move_each.tag == choose.tag
+            && choose.chooser == PlayerFilter::You
+            && !choose.is_search
+            && !choose.reveal
+            && choose.count_value.is_none()
+            && choose.aggregate_constraint.is_none()
+            && choose.additional_zones.is_empty()
+            && (choose.zone == Some(Zone::Library) || choose.filter.zone == Some(Zone::Library))
+            && choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+            && let [move_effect] = move_each.effects.as_slice()
+            && let Some(moved) = structural_unwrap_render_wrappers(move_effect)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && moved.zone == Zone::Battlefield
+            && (matches!(moved.target.base(), ChooseSpec::Iterated)
+                || matches!(moved.target.base(), ChooseSpec::Tagged(t) if t.as_str() == "__it__"))
+            && let Some(selection_count) = (if choose.count == crate::effect::ChoiceCount::up_to(1) {
+                Some(false)
+            } else if choose.count.is_any_number() {
+                Some(true)
+            } else {
+                None
+            })
+            && let Some(placement) = describe_effect(move_effect)
+                .trim_end_matches('.')
+                .strip_prefix("Put it ")
+                .map(str::to_string)
+            && placement.starts_with("onto the battlefield")
+        {
+            let mut card = choose.filter.clone();
+            card.zone = None;
+            card.tagged_constraints.retain(|constraint| {
+                constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+            let card_text = describe_revealed_selection_with_cards(&card.description());
+            let selection = if selection_count {
+                format!("any number of {}", pluralize_noun_phrase(&card_text))
+            } else {
+                with_indefinite_article(strip_indefinite_article(&card_text))
+            };
+            if !selection.contains("this way") {
+                parts.push(format!("You may put {selection} from among them {placement}"));
+                idx += 2;
+                continue;
+            }
+        }
+
+        // "Put all Goblin creature cards with mana value 5 or less from among
+        // them onto the battlefield and the rest on the bottom of your library
+        // in a random order." (Muxus): tag the matching looked-at cards, move
+        // each, then bottom the complement.
+        if let [matching_effect, move_each_effect, remainder_effect, ..] = &filtered[idx..]
+            && let Some(matching) = structural_unwrap_render_wrappers(matching_effect)
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+            && let Some(move_each) = structural_unwrap_render_wrappers(move_each_effect)
+                .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && matching.source_tags.is_empty()
+            && matching.additional_zones.is_empty()
+            && move_each.tag == matching.tag
+            && matching.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+            && let Some(rest_text) = {
+                let remainder_effect = structural_unwrap_render_wrappers(remainder_effect);
+                if let Some(remainder) = remainder_effect
+                    .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+                {
+                    (remainder.keep_tagged.as_ref() == Some(&matching.tag)
+                        && remainder.player == PlayerFilter::You)
+                        .then(|| {
+                            let order = match remainder.order {
+                                crate::effects::consult_helpers::LibraryBottomOrder::Random => {
+                                    "a random order"
+                                }
+                                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+                                    "any order"
+                                }
+                            };
+                            format!("the rest on the bottom of your library in {order}")
+                        })
+                } else if let Some(rest_loop) =
+                    remainder_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                    && let [rest_conditional] = rest_loop.effects.as_slice()
+                    && let Some(rest_conditional) = structural_unwrap_render_wrappers(rest_conditional)
+                        .downcast_ref::<crate::effects::ConditionalEffect>()
+                    && rest_conditional.if_true.is_empty()
+                    && let [rest_move] = rest_conditional.if_false.as_slice()
+                    && let Some(rest_move) = structural_unwrap_render_wrappers(rest_move)
+                        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                    && rest_move.zone == Zone::Graveyard
+                    && matches!(rest_move.target.base(), ChooseSpec::Iterated)
+                    && let crate::effect::Condition::TaggedObjectMatches(it_tag, membership) =
+                        &rest_conditional.condition
+                    && it_tag.as_str() == "__it__"
+                    && membership.tagged_constraints.iter().any(|constraint| {
+                        constraint.tag == matching.tag
+                    })
+                {
+                    Some("the rest into your graveyard".to_string())
+                } else {
+                    None
+                }
+            }
+            && let [move_effect] = move_each.effects.as_slice()
+            && let Some(moved) = structural_unwrap_render_wrappers(move_effect)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && (matches!(moved.target.base(), ChooseSpec::Iterated)
+                || matches!(moved.target.base(), ChooseSpec::Tagged(t) if t.as_str() == "__it__"))
+            && !moved.to_top
+            && moved.library_order.is_none()
+            && (!moved.enters_tapped || moved.zone == Zone::Battlefield)
+            && !moved.enters_attacking
+            && !moved.enters_face_down
+            && moved.enters_with_counters.is_empty()
+            && let Some(destination) = match moved.zone {
+                Zone::Hand => Some("into your hand"),
+                Zone::Battlefield if moved.enters_tapped => Some("onto the battlefield tapped"),
+                Zone::Battlefield => Some("onto the battlefield"),
+                Zone::Graveyard => Some("into your graveyard"),
+                _ => None,
+            }
+        {
+            let mut card = matching.filter.clone();
+            card.zone = None;
+            card.tagged_constraints.retain(|constraint| {
+                constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+            let selection = describe_revealed_selection_with_cards(&card.description());
+            let plural = pluralize_noun_phrase(&selection);
+            // The "revealed this way" (matched) variant is owned by the
+            // grammar-side fix; only the "from among them" pool renders here.
+            let pool = if crate::cards::is_sentence_helper_tag(matching.tag.as_str(), "chosen") {
+                Some("from among them")
+            } else {
+                None
+            };
+            if let Some(pool) = pool
+                && !plural.is_empty()
+                && !plural.contains("this way")
+            {
+                parts.push(format!("Put all {plural} {pool} {destination} and {rest_text}"));
+                idx += 3;
+                continue;
+            }
+        }
+
         if let Some((rendered, consumed)) =
             describe_three_way_looked_card_partition(&filtered[idx..])
         {

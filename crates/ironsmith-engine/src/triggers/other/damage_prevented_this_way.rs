@@ -37,10 +37,20 @@ impl TriggerMatcher for DamagePreventedThisWayTrigger {
 
     fn display(&self) -> String {
         match &self.source_filter {
-            Some(filter) => format!(
-                "Whenever damage from {} is prevented this way",
-                filter.description()
-            ),
+            Some(filter) => {
+                let source = filter.description();
+                let article = if source.starts_with("a ")
+                    || source.starts_with("an ")
+                    || source.starts_with("the ")
+                {
+                    ""
+                } else if source.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                    "an "
+                } else {
+                    "a "
+                };
+                format!("Whenever damage from {article}{source} is prevented this way")
+            }
             None => "Whenever damage is prevented this way".to_string(),
         }
     }

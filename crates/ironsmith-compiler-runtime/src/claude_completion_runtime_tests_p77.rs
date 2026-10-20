@@ -73,7 +73,7 @@ fn light_paws_checks_the_entering_aura_was_cast_and_excludes_each_controlled_aur
     )
     .expect("Light-Paws should compile");
     let debug = format!("{:?}", definition.abilities);
-    assert!(debug.contains("TriggeringObjectWasCast"), "{debug}");
+    assert!(debug.contains("TriggeringObjectWasCastByController"), "cast actor must be retained: {debug}");
     assert!(!debug.contains("intervening_if: Some(SourceWasCast)"), "{debug}");
     assert!(debug.contains("TagMatchingObjectsEffect"), "the controlled Auras are tagged: {debug}");
     assert!(debug.contains("DifferentNameFromTagged"), "{debug}");
@@ -87,8 +87,33 @@ fn light_paws_checks_the_entering_aura_was_cast_and_excludes_each_controlled_aur
     )
     .expect("The Sibsig Ceremony should compile");
     let debug = format!("{:?}", sibsig.abilities);
-    assert!(debug.contains("TriggeringObjectWasCast"), "the entering creature was cast: {debug}");
+    assert!(debug.contains("TriggeringObjectWasCastByController"), "the entering creature was cast by you: {debug}");
     assert!(!debug.contains("intervening_if: Some(SourceWasCast)"), "{debug}");
+}
+
+/// The return clause is installed while the ETB ability resolves. It remains
+/// live after the source leaves and watches only cards exiled by that ability.
+#[test]
+fn source_until_exile_return_compiles_as_delayed_one_shot_watchers() {
+    let definition = compile_to_runtime_definition(
+        "Lagrella, the Magpie",
+        "Mana cost: {G}{W}{U}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 2/3\nWhen Lagrella enters, exile any number of other target creatures controlled by different players until Lagrella leaves the battlefield. When an exiled card enters under your control this way, put two +1/+1 counters on it.",
+        false,
+    )
+    .expect("linked exile and its delayed return should compile");
+    let debug = format!("{:#?}", definition.abilities);
+    assert_eq!(debug.matches("TriggeredAbility").count(), 1, "{debug}");
+    assert!(debug.contains("ExileUntilEffect"), "{debug}");
+    assert!(debug.contains("target_set_different_controllers: true"), "{debug}");
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("duration_return_from_source: true"), "{debug}");
+    assert!(debug.contains("one_shot: true"), "{debug}");
+    assert!(debug.contains("watch_ability_source: true"), "{debug}");
+    let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        text.contains("When an exiled card enters under your control this way, put two +1/+1 counters on it"),
+        "the printed delayed clause must preserve the duration-return provenance: {text}"
+    );
 }
 
 /// "If an opponent ... would put a land onto the battlefield": the replaced

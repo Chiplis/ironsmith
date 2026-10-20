@@ -379,6 +379,86 @@ mod tests {
     }
 
     #[test]
+    fn delayed_return_bonus_survives_source_loss_and_only_marks_your_returned_card() {
+        use crate::game_loop::{put_triggers_on_stack, resolve_stack_entry};
+        use crate::object::CounterType;
+        use crate::target::PlayerFilter;
+        use crate::triggers::{Trigger, ZoneChangeTrigger};
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature_on_battlefield(&mut game, "Exile source", alice);
+        let your_creature = create_creature_on_battlefield(&mut game, "Your return", alice);
+        let opposing_creature = create_creature_on_battlefield(&mut game, "Opposing return", bob);
+        game.object_mut(source).unwrap().abilities_mut().push(
+            crate::ability::Ability::triggered(
+                Trigger::beginning_of_upkeep(PlayerFilter::You),
+                vec![crate::effect::Effect::gain_life(1)],
+            ),
+        );
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        for creature in [your_creature, opposing_creature] {
+            ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(creature))
+                .execute(&mut game, &mut ctx)
+                .expect("both chosen creatures must be exiled");
+        }
+        let tag = crate::tag::TagKey::from(ironsmith_core::SOURCE_EXILED_THIS_RESOLUTION_TAG);
+        assert_eq!(ctx.get_tagged_all(&tag).map(Vec::len), Some(2));
+        let trigger = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(Zone::Exile)
+                .to(Zone::Battlefield)
+                .filter(ObjectFilter::tagged(tag.clone()).controlled_by(PlayerFilter::You))
+                .duration_return_from_source(),
+        );
+        crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+            trigger,
+            vec![crate::effect::Effect::put_counters(
+                CounterType::PlusOnePlusOne,
+                2,
+                ChooseSpec::Tagged(crate::tag::TagKey::from("triggering")),
+            )],
+            true,
+            tag,
+            PlayerFilter::You,
+        )
+        .watch_ability_source()
+        .execute(&mut game, &mut ctx)
+        .expect("each exiled card needs its own delayed registration");
+        assert_eq!(game.effect_store.delayed_triggers.len(), 2);
+        drop(ctx);
+
+        // The registrations are independent of abilities the source currently has.
+        game.object_mut(source).unwrap().abilities_mut().clear();
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("source must leave the battlefield");
+        let mut queue = crate::triggers::TriggerQueue::new();
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+        game.process_pending_duration_end_returns(&mut crate::decision::SelectFirstDecisionMaker)
+            .expect("linked exile duration must return both cards");
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut queue);
+        assert_eq!(queue.entries.len(), 1,
+            "only the card returned under the delayed controller may trigger");
+
+        put_triggers_on_stack(&mut game, &mut queue)
+            .expect("delayed counter trigger should go on the stack");
+        resolve_stack_entry(&mut game)
+            .expect("delayed counter trigger should resolve");
+        let your_return = game.battlefield.iter().copied().find(|id| {
+            game.object(*id).is_some_and(|object| object.name == "Your return")
+        }).expect("your creature returned");
+        let opposing_return = game.battlefield.iter().copied().find(|id| {
+            game.object(*id).is_some_and(|object| object.name == "Opposing return")
+        }).expect("opponent's creature returned");
+        assert_eq!(game.object(your_return).unwrap().counters.get(&CounterType::PlusOnePlusOne), Some(&2));
+        assert_eq!(game.object(opposing_return).unwrap().counters.get(&CounterType::PlusOnePlusOne), None);
+        assert_eq!(game.controller_of_id(your_return), Some(alice));
+        assert_eq!(game.controller_of_id(opposing_return), Some(bob));
+    }
+
+    #[test]
     fn distinct_leave_watcher_owns_the_return_link() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

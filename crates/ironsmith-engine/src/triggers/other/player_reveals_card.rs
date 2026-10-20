@@ -154,6 +154,26 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
             _ => "a player".to_string(),
         };
         let suffix = if self.from_source { " this way" } else { "" };
+        // "Whenever you reveal an instant or sorcery card this way" (Kefnet):
+        // a bare filter noun phrase takes its indefinite article.
+        let mut object_text = self.filter.description();
+        let first_word = object_text
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if !object_text.is_empty()
+            && !matches!(
+                first_word.as_str(),
+                "a" | "an" | "the" | "one" | "two" | "three" | "any" | "each" | "this" | "that"
+            )
+        {
+            let article = match first_word.chars().next() {
+                Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                _ => "a",
+            };
+            object_text = format!("{article} {object_text}");
+        }
         format!(
             "Whenever {player_text} reveal{} {}{}",
             if matches!(self.player, PlayerFilter::You) {
@@ -161,7 +181,7 @@ impl TriggerMatcher for PlayerRevealsCardTrigger {
             } else {
                 "s"
             },
-            self.filter.description(),
+            object_text,
             suffix
         )
     }

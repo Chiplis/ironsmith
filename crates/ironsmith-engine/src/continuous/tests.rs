@@ -3149,3 +3149,49 @@ fn next_upkeep_end_duration_tracks_actual_upkeeps_and_expires_permanently() {
     assert_eq!(game.effect_store.continuous_effects.effects().len(), 1);
     assert_eq!(game.effect_store.continuous_effects.effects()[0].expires_end_of_turn, u32::MAX);
 }
+
+#[test]
+fn craft_material_links_transfer_to_each_independently_limited_borrowed_ability() {
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let source_card = CardBuilder::new(CardId::new(), "Craft source")
+        .card_types(vec![CardType::Artifact]).build();
+    let old_source = game.create_object_from_card(&source_card, alice, Zone::Exile);
+    let receiver = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let donor_card = CardBuilder::new(CardId::new(), "Craft material")
+        .card_types(vec![CardType::Artifact]).build();
+    let linked = game.create_object_from_card(&donor_card, alice, Zone::Exile);
+    let unrelated = game.create_object_from_card(&donor_card, alice, Zone::Exile);
+    for donor in [linked, unrelated] {
+        for amount in [1, 2] {
+            game.object_mut(donor).unwrap().abilities_mut().push(
+                crate::ability::Ability::activated(crate::cost::TotalCost::free(),
+                    vec![crate::effect::Effect::gain_life(amount)]),
+            );
+        }
+    }
+    game.add_exiled_with_source_link(old_source, linked);
+    game.transfer_exiled_with_source_links(old_source, receiver);
+    assert!(game.get_exiled_with_source_links(old_source).is_empty());
+    assert_eq!(game.get_exiled_with_source_links(receiver), &[linked]);
+    let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
+        crate::tag::SOURCE_EXILED_TAG,
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+        receiver, alice, EffectTarget::Specific(receiver),
+        Modification::CopyActivatedAbilities { filter, counter: None, include_mana: true,
+            only_loyalty: false, exclude_source_name: false, exclude_source_id: true,
+            force_once_each_turn: true },
+    ));
+    game.refresh_continuous_state().unwrap();
+    let chars = game.calculated_characteristics(receiver).unwrap();
+    assert_eq!(chars.abilities.len(), 2, "only the two linked material abilities transfer");
+    for ability in chars.abilities.iter() {
+        let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+            panic!("borrowed ability should stay activated")
+        };
+        assert!(activated.timing == crate::ability::ActivationTiming::OncePerTurn
+            || activated.activation_restrictions.contains(&crate::ConditionExpr::MaxActivationsPerTurn(1)));
+    }
+}

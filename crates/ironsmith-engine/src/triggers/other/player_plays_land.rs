@@ -70,7 +70,10 @@ impl TriggerMatcher for PlayerPlaysLandTrigger {
         let mut filter = self.filter.clone();
         let origin = filter.zone.take();
         let mut object_text = filter.description();
-        if !object_text.starts_with("a ") && !object_text.starts_with("an ") {
+        if !object_text.starts_with("a ")
+            && !object_text.starts_with("an ")
+            && !object_text.starts_with("another ")
+        {
             let article = match object_text.chars().next() {
                 Some(ch) if matches!(ch.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u') => "an",
                 _ => "a",

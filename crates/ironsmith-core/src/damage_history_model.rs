@@ -130,6 +130,57 @@ impl DamageHistoryQuery {
             }
             DamageHistoryRecipients::Players(players) => format!(" to {}", players.description()),
         };
+        // "the amount of damage dealt to this creature this turn by other
+        // sources named Blazing Effigy" / "... by sources they controlled"
+        // (Grothama): a characteristic-only source set is a plural "sources"
+        // phrase after the recipient and turn window.
+        if self.reduction == DamageHistoryReduction::Total
+            && !recipient.is_empty()
+            && let DamageHistorySources::Matching(filter) = &self.sources
+        {
+            let description = filter.description();
+            let qualifier_tail = |rest: &str| {
+                rest.is_empty()
+                    || [
+                        " named ",
+                        " that player controls",
+                        " you control",
+                        " an opponent controls",
+                        " your opponents control",
+                    ]
+                    .iter()
+                    .any(|tail| rest.starts_with(tail))
+            };
+            let plural = description
+                .strip_prefix("another permanent")
+                .filter(|rest| qualifier_tail(*rest))
+                .map(|rest| format!("other sources{rest}"))
+                .or_else(|| {
+                    description
+                        .strip_prefix("a permanent")
+                        .filter(|rest| qualifier_tail(*rest))
+                        .map(|rest| format!("sources{rest}"))
+                })
+                .or_else(|| {
+                    // "the damage dealt to you so far this turn by
+                    // artifacts" (Reverse Polarity): a bare card-type noun.
+                    let noun = description
+                        .strip_prefix("an ")
+                        .or_else(|| description.strip_prefix("a "))
+                        .unwrap_or(&description);
+                    (matches!(
+                        noun,
+                        "artifact" | "creature" | "enchantment" | "land" | "planeswalker"
+                    ))
+                    .then(|| format!("{noun}s"))
+                });
+            if let Some(plural) = plural {
+                let plural = plural
+                    .replace(" that player controls", " they controlled")
+                    .replace(" you control", " you controlled");
+                return format!("the amount of {damage} dealt{recipient} this turn by {plural}");
+            }
+        }
         match self.reduction {
             DamageHistoryReduction::Total => {
                 format!("the amount of {damage} dealt{source}{recipient} this turn")

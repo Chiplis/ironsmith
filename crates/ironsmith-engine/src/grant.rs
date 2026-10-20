@@ -73,6 +73,11 @@ impl ironsmith_core::GrantStaticAbility for StaticAbility {
         self.compiled_model().is_some_and(|model|
             ironsmith_core::GrantStaticAbility::grant_is_source_owner_graveyard_exile(model))
     }
+
+    fn grant_is_source_any_graveyard_exile(&self) -> bool {
+        self.compiled_model().is_some_and(|model|
+            ironsmith_core::GrantStaticAbility::grant_is_source_any_graveyard_exile(model))
+    }
 }
 
 pub trait DerivedAlternativeCastRuntimeExt {

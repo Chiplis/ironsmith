@@ -165,3 +165,54 @@ fn granted_madness_is_not_an_ordinary_cast_from_exile() {
         }));
     }
 }
+
+#[test]
+fn granted_madness_text_keeps_scope_and_derived_cost() {
+    for definition in compile::compile_both("Falkenrath Gorger", GORGER) {
+        let text = ironsmith_text::compiled_text_lines(&definition).join("\n");
+        assert!(
+            text.contains("Each Vampire creature card you own that isn't on the battlefield has madness. The madness cost is equal to its mana cost"),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn granted_madness_reaches_owned_vampire_cards_in_command_zone() {
+    for gorger in compile::compile_both("Falkenrath Gorger", GORGER) {
+        let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
+        game.create_object_from_definition(&gorger, A, Zone::Battlefield);
+        let vampire = compile_to_runtime_definition(
+            "Command Vampire",
+            "Mana cost: {1}{B}\nType: Creature — Vampire\nPower/Toughness: 2/2",
+            false,
+        )
+        .unwrap();
+        let zombie = compile_to_runtime_definition(
+            "Command Zombie",
+            "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 2/2",
+            false,
+        )
+        .unwrap();
+        let vampire = game.create_object_from_definition(&vampire, A, Zone::Command);
+        let zombie = game.create_object_from_definition(&zombie, A, Zone::Command);
+        game.refresh_continuous_state().unwrap();
+        let granted = |card| {
+            game.effect_store.grant_registry.get_grants_for_card(
+                &game,
+                card,
+                Zone::Command,
+                A,
+            )
+            .into_iter()
+            .any(|grant| matches!(
+                grant.grantable,
+                ironsmith::grant::Grantable::DerivedAlternativeCast(
+                    ironsmith::grant::DerivedAlternativeCast::MadnessFromCardManaCost
+                )
+            ))
+        };
+        assert!(granted(vampire));
+        assert!(!granted(zombie));
+    }
+}

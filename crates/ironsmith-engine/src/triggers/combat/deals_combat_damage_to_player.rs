@@ -21,6 +21,8 @@ pub struct DealsCombatDamageToPlayerTrigger {
     /// Without it, "to one or more players" is one event for the whole step.
     pub each_damaged_player: bool,
     pub per_source_controller: bool,
+    pub recipient_passive: bool,
+    pub during_your_turn: bool,
 }
 
 impl DealsCombatDamageToPlayerTrigger {
@@ -31,6 +33,8 @@ impl DealsCombatDamageToPlayerTrigger {
             one_or_more: false,
             each_damaged_player: false,
             per_source_controller: false,
+            recipient_passive: false,
+            during_your_turn: false,
         }
     }
 
@@ -43,6 +47,8 @@ impl DealsCombatDamageToPlayerTrigger {
             one_or_more: true,
             each_damaged_player: false,
             per_source_controller: false,
+            recipient_passive: false,
+            during_your_turn: false,
         }
     }
 
@@ -55,11 +61,26 @@ impl DealsCombatDamageToPlayerTrigger {
             one_or_more: true,
             each_damaged_player: true,
             per_source_controller: false,
+            recipient_passive: false,
+            during_your_turn: false,
         }
     }
 
     pub fn per_source_controller(filter: ObjectFilter, player: PlayerFilter, each_damaged_player: bool) -> Self {
-        Self { filter, player, one_or_more: true, each_damaged_player, per_source_controller: true }
+        Self { filter, player, one_or_more: true, each_damaged_player, per_source_controller: true,
+            recipient_passive: false, during_your_turn: false }
+    }
+
+    pub fn recipient_passive(player: PlayerFilter, during_your_turn: bool) -> Self {
+        Self {
+            filter: ObjectFilter::default(),
+            player,
+            one_or_more: true,
+            each_damaged_player: false,
+            per_source_controller: false,
+            recipient_passive: true,
+            during_your_turn,
+        }
     }
 
     fn first_matching_hit_to_player_in_batch(
@@ -70,6 +91,9 @@ impl DealsCombatDamageToPlayerTrigger {
         for (source, damaged_player) in ctx.game.combat_damage_player_batch_hits() {
             if *damaged_player != player {
                 continue;
+            }
+            if self.recipient_passive {
+                return false;
             }
             let Some(source_obj) = ctx.game.object(*source) else {
                 continue;
@@ -83,7 +107,43 @@ impl DealsCombatDamageToPlayerTrigger {
 }
 
 impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
+    fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
+        use ironsmith_core::trigger_model::{Trigger as ModelTrigger, TriggerKind};
+        if (self.recipient_passive
+            && (!self.one_or_more
+                || self.each_damaged_player
+                || self.per_source_controller
+                || self.filter != ObjectFilter::default()))
+            || (!self.one_or_more && (self.each_damaged_player || self.per_source_controller))
+        {
+            return None;
+        }
+        let mut model = if self.recipient_passive {
+            ModelTrigger::players_are_dealt_combat_damage_one_or_more(
+                self.player.clone(), self.during_your_turn)
+        } else if self.per_source_controller {
+            ModelTrigger::deals_combat_damage_per_source_controller(
+                self.filter.clone(), self.player.clone(), self.each_damaged_player)
+        } else if self.each_damaged_player {
+            ModelTrigger::deals_combat_damage_to_each_player_one_or_more(
+                self.filter.clone(), self.player.clone())
+        } else if self.one_or_more {
+            ModelTrigger::deals_combat_damage_to_player_one_or_more(
+                self.filter.clone(), self.player.clone())
+        } else {
+            ModelTrigger::deals_combat_damage_to_player(
+                self.filter.clone(), self.player.clone())
+        };
+        if let TriggerKind::DealsCombatDamageToPlayer { during_your_turn, .. } = &mut model.kind {
+            *during_your_turn = self.during_your_turn;
+        }
+        Some(model)
+    }
+
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if self.during_your_turn && !ctx.game.is_active_player(ctx.controller) {
+            return false;
+        }
         if event.kind() != EventKind::Damage {
             return false;
         }
@@ -110,6 +170,12 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             // key groups only this controller's assignments, not another's.
             return self.filter.matches_snapshot(source, &ctx.filter_ctx, ctx.game)
                 && self.player.matches_player(damaged_player, &player_ctx);
+        }
+        if self.recipient_passive {
+            return self.player.matches_player(damaged_player, &ctx.filter_ctx)
+                && (!self.one_or_more
+                    || self.each_damaged_player
+                    || self.first_matching_hit_to_player_in_batch(damaged_player, ctx));
         }
         let Some(obj) = ctx.game.object(e.source) else {
             return false;
@@ -163,6 +229,17 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
+        if self.recipient_passive {
+            let recipient = match &self.player {
+                PlayerFilter::Opponent => "of your opponents",
+                PlayerFilter::Any => "players",
+                _ => return format!("Whenever one or more {} are dealt combat damage{}",
+                    self.player.description(),
+                    if self.during_your_turn { " during your turn" } else { "" }),
+            };
+            return format!("Whenever one or more {recipient} are dealt combat damage{}",
+                if self.during_your_turn { " during your turn" } else { "" });
+        }
         if !self.one_or_more && self.filter == ObjectFilter::default() {
             let player = self.player.description();
             if player == "you" {
@@ -200,7 +277,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                 (PlayerFilter::Opponent, true) => "an opponent".to_string(),
                 _ => self.player.description(),
             };
-            return format!("Whenever one or more {subject} deal combat damage to {player}");
+            return format!("Whenever one or more {subject} deal combat damage to {player}{}",
+                if self.during_your_turn { " during your turn" } else { "" });
         }
         let player = if matches!(self.player, PlayerFilter::Opponent) {
             "one of your opponents".to_string()
@@ -218,7 +296,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             self.player.description()
         };
         let subject = with_indefinite_article(surface_filter.description());
-        format!("Whenever {} deals combat damage to {}", subject, player)
+        format!("Whenever {} deals combat damage to {}{}", subject, player,
+            if self.during_your_turn { " during your turn" } else { "" })
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
@@ -251,6 +330,10 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         damaged_players.insert(current_player);
         for (source, player) in ctx.game.combat_damage_player_batch_hits() {
             if !self.player.matches_player(*player, &ctx.filter_ctx) {
+                continue;
+            }
+            if self.recipient_passive {
+                damaged_players.insert(*player);
                 continue;
             }
             let Some(source_obj) = ctx.game.object(*source) else {
@@ -319,6 +402,145 @@ mod tests {
             true,
             crate::events::cause::EventCause::combat_damage(source),
         )
+    }
+
+    #[test]
+    fn passive_grouped_recipient_matches_other_controller_only_on_your_turn() {
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let c = PlayerId(2);
+        let watcher = create_creature(&mut game, "Watcher", a);
+        let b_source = create_creature(&mut game, "B source", b);
+        let c_source = create_creature(&mut game, "C source", c);
+        let trigger = DealsCombatDamageToPlayerTrigger::recipient_passive(
+            PlayerFilter::Opponent, true,
+        );
+        assert_eq!(trigger.display(),
+            "Whenever one or more of your opponents are dealt combat damage during your turn");
+        let event = |source, recipient, amount| {
+            TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source, DamageTarget::Player(recipient), amount, true,
+                    crate::events::cause::EventCause::combat_damage(source),
+                ),
+                Default::default(),
+            )
+        };
+        game.turn.active_player = a;
+        let ctx = TriggerContext::for_source(watcher, a, &game);
+        assert!(trigger.matches(&event(b_source, c, 2), &ctx),
+            "the damaging creature need not be controlled by the watcher");
+        assert!(!trigger.matches(&event(b_source, a, 2), &ctx),
+            "damage dealt to the watcher is not damage to an opponent");
+        assert!(!trigger.matches(&event(b_source, c, 0), &ctx),
+            "prevented damage does not satisfy the trigger");
+        game.turn.active_player = b;
+        let ctx = TriggerContext::for_source(watcher, a, &game);
+        assert!(!trigger.matches(&event(b_source, c, 2), &ctx),
+            "the same opponent damage is excluded on another player's turn");
+        assert!(!trigger.matches(&event(c_source, b, 2), &ctx));
+    }
+
+    #[test]
+    fn passive_opponent_damage_queues_trigger_for_other_players_source_only_on_your_turn() {
+        use crate::ability::Ability;
+        use crate::cards::CardDefinitionBuilder;
+        use crate::effect::Effect;
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let c = PlayerId(2);
+        let watcher = CardDefinitionBuilder::new(CardId::new(), "Combat watcher")
+            .card_types(vec![CardType::Creature])
+            .with_ability(Ability::triggered(
+                crate::triggers::Trigger::players_are_dealt_combat_damage_one_or_more(
+                    PlayerFilter::Opponent, true,
+                ),
+                vec![Effect::gain_life(1)],
+            ))
+            .build();
+        let watcher_id = game.create_object_from_definition(&watcher, a, Zone::Battlefield);
+        let b_source = create_creature(&mut game, "B source", b);
+        let event = TriggerEvent::new_with_provenance(combat_damage(b_source, c), Default::default());
+        game.turn.active_player = a;
+        let entries = crate::triggers::check_triggers(&game, &event);
+        assert_eq!(entries.iter().filter(|entry| entry.source == watcher_id).count(), 1);
+        game.turn.active_player = b;
+        assert!(crate::triggers::check_triggers(&game, &event).is_empty());
+    }
+
+    #[test]
+    fn passive_opponent_damage_from_several_sources_and_recipients_queues_once() {
+        use crate::ability::Ability;
+        use crate::cards::CardDefinitionBuilder;
+        use crate::effect::Effect;
+        let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 20);
+        let a = PlayerId(0);
+        let b = PlayerId(1);
+        let c = PlayerId(2);
+        let watcher = CardDefinitionBuilder::new(CardId::new(), "Combat watcher")
+            .card_types(vec![CardType::Creature])
+            .with_ability(Ability::triggered(
+                crate::triggers::Trigger::players_are_dealt_combat_damage_one_or_more(
+                    PlayerFilter::Opponent, true,
+                ),
+                vec![Effect::gain_life(1)],
+            ))
+            .build();
+        let watcher_id = game.create_object_from_definition(&watcher, a, Zone::Battlefield);
+        let b_source = create_creature(&mut game, "B source", b);
+        let c_source = create_creature(&mut game, "C source", c);
+        game.turn.active_player = a;
+        let batch = game.provenance_graph_mut().alloc_root_event(EventKind::Damage);
+        let events = [
+            combat_damage(b_source, c),
+            combat_damage(c_source, b),
+        ].into_iter().map(|damage| {
+            TriggerEvent::new_with_provenance(damage, batch)
+                .with_simultaneous_batch(batch)
+        }).collect();
+        let mut queue = crate::triggers::TriggerQueue::new();
+        crate::game_loop::queue_triggers_from_reported_events(
+            &mut game, &mut queue, events, false,
+        );
+        assert_eq!(queue.entries.iter().filter(|entry| entry.source == watcher_id).count(), 1,
+            "all opponent damage in one simultaneous combat batch triggers once");
+    }
+
+    #[test]
+    fn active_source_turn_qualifier_survives_native_model_round_trip() {
+        let mut native_matcher = DealsCombatDamageToPlayerTrigger::one_or_more(
+            ObjectFilter::creature().you_control(), PlayerFilter::Opponent,
+        );
+        native_matcher.during_your_turn = true;
+        let native = crate::triggers::Trigger::new(native_matcher);
+        let model = native.compiled_model().expect("native trigger model").clone();
+        assert!(matches!(model.kind,
+            ironsmith_core::trigger_model::TriggerKind::DealsCombatDamageToPlayer {
+                recipient_passive: false, during_your_turn: true, ..
+            }
+        ));
+        let restored = crate::triggers::Trigger::from_model(model)
+            .expect("turn-qualified active source trigger should restore");
+        let restored = restored.downcast_ref::<DealsCombatDamageToPlayerTrigger>()
+            .expect("combat damage matcher");
+        assert!(restored.during_your_turn);
+        assert!(!restored.recipient_passive);
+        assert_eq!(restored.display(),
+            "Whenever one or more creatures you control deal combat damage to one or more of your opponents during your turn");
+    }
+
+    #[test]
+    fn native_model_rejects_incoherent_grouping_flags() {
+        let mut matcher = DealsCombatDamageToPlayerTrigger::new(
+            ObjectFilter::creature(), PlayerFilter::Opponent);
+        matcher.each_damaged_player = true;
+        assert!(crate::triggers::Trigger::new(matcher.clone()).compiled_model().is_none());
+        matcher.one_or_more = true;
+        assert!(crate::triggers::Trigger::new(matcher.clone()).compiled_model().is_some());
+        matcher.recipient_passive = true;
+        assert!(crate::triggers::Trigger::new(matcher).compiled_model().is_none());
     }
 
     #[test]

@@ -63,6 +63,14 @@ pub enum TaggedPermissionTargetSurface {
     SpellFromAmongSourceExiledCards,
     Other,
     ThisCard,
+    /// "spells from among cards exiled with this Saga" (King Narfi's
+    /// Betrayal): the source-linked pool named by its Saga source.
+    CardsExiledWithThisSaga,
+    /// "cards exiled this way" (Hex Magic): the same set as `ThoseCards`.
+    CardsExiledThisWay,
+    /// "lands and cast spells from among cards exiled this way" (Magus of
+    /// the Mind): the same set as `ThoseCards`.
+    LandsAndSpellsFromAmongCardsExiledThisWay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +100,13 @@ pub enum PermissionLifetimeFact {
     ThisTurn,
     UntilEndOfTurn,
     UntilYourNextTurn,
+    UntilPlayerNextTurnEnd,
+    UntilPlayerNextTurnStart,
+    UntilPlayerNextEndStep,
+    DuringYourNextTurn,
+    DuringPlayerNextTurn,
+    UntilEndOfCombatOnYourNextTurn,
+    UntilEndOfCombatOnPlayerNextTurn,
     UntilYourNextEndStep,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
@@ -155,6 +170,8 @@ pub enum UnsupportedPermissionFact {
 pub struct AdditionalLandPlayFact<'a> {
     pub count: Value,
     pub count_tokens: &'a [OwnedLexToken],
+    /// Authored "up to" ceiling ("play up to three additional lands").
+    pub up_to: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -497,7 +514,7 @@ fn parse_tagged_permission_target_lexed<'a>(
         .value((
             TaggedPermissionReference::LastTagged,
             false,
-            TaggedPermissionTargetSurface::ThoseCards,
+            TaggedPermissionTargetSurface::LandsAndSpellsFromAmongCardsExiledThisWay,
             None,
         )),
         primitives::any_phrase(&[
@@ -555,6 +572,15 @@ fn parse_tagged_permission_target_lexed<'a>(
         // "you may cast spells from among cards exiled with this Saga" (King
         // Narfi's Betrayal): the source-linked exile pool; "cast spells"
         // excludes lands.
+        alt((primitives::phrase(&[
+            "spells", "from", "among", "cards", "exiled", "with", "this", "saga",
+        ])
+        .value((
+            TaggedPermissionReference::SourceExiled,
+            false,
+            TaggedPermissionTargetSurface::CardsExiledWithThisSaga,
+            None,
+        )),
         (
             primitives::phrase(&["spells", "from", "among", "cards", "exiled", "with", "this"]),
             opt(primitives::any_phrase(&[
@@ -563,7 +589,6 @@ fn parse_tagged_permission_target_lexed<'a>(
                 &["enchantment"],
                 &["permanent"],
                 &["card"],
-                &["saga"],
             ])),
         )
             .value((
@@ -571,9 +596,9 @@ fn parse_tagged_permission_target_lexed<'a>(
                 false,
                 TaggedPermissionTargetSurface::Other,
                 None,
-            )),
+            )))),
         alt((
-            primitives::kw("it").value((
+            alt((primitives::kw("it").value((
                 TaggedPermissionReference::LastTagged,
                 false,
                 TaggedPermissionTargetSurface::It,
@@ -589,7 +614,7 @@ fn parse_tagged_permission_target_lexed<'a>(
                 false,
                 TaggedPermissionTargetSurface::ThatCard,
                 None,
-            )),
+            )))),
             primitives::phrase(&["that", "spell"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
@@ -604,13 +629,18 @@ fn parse_tagged_permission_target_lexed<'a>(
             )),
             // "You may play cards exiled this way until the end of your next
             // turn." (Escape to the Wilds) names the same exiled set.
-            primitives::any_phrase(&[&["those", "cards"], &["cards", "exiled", "this", "way"]])
-                .value((
-                    TaggedPermissionReference::LastTagged,
-                    false,
-                    TaggedPermissionTargetSurface::ThoseCards,
-                    None,
-                )),
+            primitives::phrase(&["those", "cards"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::ThoseCards,
+                None,
+            )),
+            primitives::phrase(&["cards", "exiled", "this", "way"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::CardsExiledThisWay,
+                None,
+            )),
             primitives::phrase(&["spells", "from", "among", "those", "exiled", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
@@ -933,25 +963,41 @@ fn parse_permission_turn_duration_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<PermissionLifetimeFact> {
     alt((
-        primitives::phrase(&["until", "your", "next", "end", "step"])
-            .value(PermissionLifetimeFact::UntilYourNextEndStep),
+        primitives::any_phrase(&[
+            &["until", "your", "next", "end", "step"],
+            &["until", "the", "beginning", "of", "your", "next", "end", "step"],
+        ]).value(PermissionLifetimeFact::UntilYourNextEndStep),
+        primitives::any_phrase(&[
+            &["until", "their", "next", "end", "step"],
+            &["until", "the", "beginning", "of", "their", "next", "end", "step"],
+        ]).value(PermissionLifetimeFact::UntilPlayerNextEndStep),
+        primitives::any_phrase(&[
+            &["until", "their", "next", "turn"],
+            &["until", "the", "beginning", "of", "their", "next", "turn"],
+            &["until", "the", "beginning", "of", "their", "next", "upkeep"],
+        ]).value(PermissionLifetimeFact::UntilPlayerNextTurnStart),
+        alt((
+            primitives::phrase(&["during", "your", "next", "turn"])
+                .value(PermissionLifetimeFact::DuringYourNextTurn),
+            primitives::phrase(&["during", "their", "next", "turn"])
+                .value(PermissionLifetimeFact::DuringPlayerNextTurn),
+        )),
+        primitives::phrase(&["until", "end", "of", "combat", "on", "your", "next", "turn"])
+            .value(PermissionLifetimeFact::UntilEndOfCombatOnYourNextTurn),
+        primitives::phrase(&["until", "end", "of", "combat", "on", "their", "next", "turn"])
+            .value(PermissionLifetimeFact::UntilEndOfCombatOnPlayerNextTurn),
         // "Until the beginning of your next upkeep, you may play that card."
         // (Elkin Bottle): no player receives priority during the untap step
         // (CR 502.4), so a play permission ending as your next upkeep begins
         // ends exactly as one ending as your next turn begins.
         primitives::phrase(&["until", "the", "beginning", "of", "your", "next", "upkeep"])
             .value(PermissionLifetimeFact::UntilYourNextTurn),
-        // "They may play those cards until the end of their next turn." /
-        // "its owner may play it until the end of their next turn.": in a
-        // permission tail, the possessive names the permission holder (the
-        // subject of "may play"), exactly what "your" names when the holder
-        // is "you". The grant's next-turn lifetime is computed for that
-        // holder, so it is the same holder-relative lifetime.
+        // Preserve the holder-relative possessive separately from "your".
         primitives::any_phrase(&[
             &["until", "the", "end", "of", "their", "next", "turn"],
             &["until", "end", "of", "their", "next", "turn"],
         ])
-        .value(PermissionLifetimeFact::UntilYourNextTurn),
+        .value(PermissionLifetimeFact::UntilPlayerNextTurnEnd),
         leaf::parse_leaf_turn_duration_phrase_lexed.map(lifetime_from_turn_duration),
     ))
     .parse_next(input)
@@ -1007,7 +1053,9 @@ fn parse_additional_land_play_lexed<'a>(
     primitives::kw("play").parse_next(input)?;
     // This is a permission ceiling, not a resolution-time numeric choice.
     // Leave only the value itself for the complete typed count parser.
-    opt(primitives::phrase(&["up", "to"])).parse_next(input)?;
+    let up_to = opt(primitives::phrase(&["up", "to"]))
+        .parse_next(input)?
+        .is_some();
     let count_tokens = repeat_till::<_, _, (), _, _, _, _>(
         1..,
         any.void(),
@@ -1036,6 +1084,7 @@ fn parse_additional_land_play_lexed<'a>(
     Ok(AdditionalLandPlayFact {
         count,
         count_tokens,
+        up_to,
     })
 }
 

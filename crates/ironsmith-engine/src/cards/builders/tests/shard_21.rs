@@ -3997,3 +3997,20 @@ pub(super) fn hold_for_ransom_keeps_the_aura_as_the_granted_ability_source() {
         "the combat restriction and quoted Aura-source ability should retain their semantics, got {rendered}"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn craft_linked_activated_ability_grant_compiles_as_static() {
+    let text = "Locus of Enlightenment has each activated ability of the exiled cards used to craft it. You may activate each of those abilities only once each turn.";
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Locus of Enlightenment")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(text)
+        .expect("craft-linked activated ability grant should compile");
+    let debug = format!("{:#?}", definition.abilities);
+    assert!(debug.contains("CopyActivatedAbilities"), "{debug}");
+    assert!(debug.contains("__source_exiled__"), "{debug}");
+    assert!(debug.contains("force_once_each_turn: true"), "{debug}");
+    let rendered = unprocessed_compiled_lines(&definition).join(" ");
+    assert!(rendered.contains("the exiled cards used to craft it"), "{rendered}");
+    assert!(rendered.contains("only once each turn"), "{rendered}");
+}

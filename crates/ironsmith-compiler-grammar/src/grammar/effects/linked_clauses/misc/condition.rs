@@ -23,7 +23,11 @@ pub fn parse_graveyard_cast_replacement_shape(
     if !is_graveyard_cast_replacement_sentence(replacement) {
         return None;
     }
-    parse_graveyard_cast_permission_shape(cast)
+    let mut shape = parse_graveyard_cast_permission_shape(cast)?;
+    let words = crate::lexer::token_word_refs(replacement);
+    shape.replacement_to_your_graveyard =
+        crate::word_primitives::sequence_occurs(&words, &["into", "your", "graveyard"]);
+    Some(shape)
 }
 
 /// "You may cast target instant or sorcery card from your graveyard [without
@@ -84,6 +88,7 @@ pub fn parse_graveyard_cast_permission_shape(
         crate::grammar::primitives::probe_shape(additional_cast_mana_cost(cast))?;
     Some(GraveyardCastReplacementShape {
         until_end_of_turn,
+        replacement_to_your_graveyard: false,
         trailing_this_turn,
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),
         includes_artifact: contains_sequence_word(cast, "artifact"),

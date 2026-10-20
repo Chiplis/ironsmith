@@ -67,3 +67,75 @@ impl EffectExecutor for BindXValueEffect {
         super::target_metadata::first_target_count(&[&self.effects])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::SelectObjectsContext;
+    use crate::effect::ChoiceCount;
+    use crate::filter::{ObjectFilter, ObjectFilterExt as _, PlayerFilter};
+    use crate::ids::{CardId, ObjectId, PlayerId};
+    use crate::object::Object;
+    use crate::zone::Zone;
+
+    #[derive(Default)]
+    struct PausingObjectChoice {
+        pause: bool,
+        offered_max: Vec<usize>,
+    }
+
+    impl DecisionMaker for PausingObjectChoice {
+        fn awaiting_choice(&self) -> bool {
+            self.pause
+        }
+
+        fn decide_objects(&mut self, _game: &GameState, choice: &SelectObjectsContext) -> Vec<ObjectId> {
+            self.offered_max.push(choice.max.expect("bounded dynamic choice"));
+            if self.offered_max.len() == 1 {
+                self.pause = true;
+                Vec::new()
+            } else {
+                choice.candidates.iter().take(2).map(|candidate| candidate.id).collect()
+            }
+        }
+    }
+
+    #[test]
+    fn x_bound_survives_pending_choice_replay() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        for index in 0..3 {
+            let id = game.new_object_id();
+            let card = CardBuilder::new(CardId::from_raw(id.0 as u32), format!("Exiled spell {index}"))
+                .card_types(vec![crate::types::CardType::Instant])
+                .build();
+            game.add_object(Object::from_card(id, &card, alice, Zone::Exile));
+        }
+        let source = game.new_object_id();
+        let choice = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::default().in_zone(Zone::Exile),
+            ChoiceCount::up_to_dynamic_x(),
+            PlayerFilter::You,
+            "chosen",
+        ).in_zone(Zone::Exile);
+        let bound = BindXValueEffect::new(Value::Fixed(2), vec![Effect::new(choice)]);
+        let mut decision = PausingObjectChoice::default();
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision);
+            bound.execute(&mut game, &mut ctx).unwrap();
+            assert!(ctx.decision_maker.awaiting_choice());
+            assert_eq!(ctx.x_value, None, "binder restores the outer X on pause");
+        }
+        decision.pause = false;
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision);
+            bound.execute(&mut game, &mut ctx).unwrap();
+            assert!(!ctx.decision_maker.awaiting_choice());
+            assert_eq!(ctx.get_tagged_all("chosen").unwrap().len(), 2);
+            assert_eq!(ctx.x_value, None, "binder restores the outer X on completion");
+        }
+        assert_eq!(decision.offered_max, vec![2, 2], "neither prompt may offer three cards");
+    }
+}

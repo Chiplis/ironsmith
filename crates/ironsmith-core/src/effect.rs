@@ -504,7 +504,7 @@ pub enum GrantPlayTaggedDuration {
     /// Appended; ends permanently when the exact source leaves or phases out.
     ForAsLongAsSourceOnBattlefield,
     /// Appended: "During your next turn, you may play that card." The
-    /// permission is active only during the holder's next turn — not for the
+    /// permission is active only during the effect controller's next turn — not for the
     /// rest of the current turn (Galvanic Relay).
     DuringYourNextTurn,
     /// Appended: "Until that player's next end step, they may play that
@@ -512,9 +512,16 @@ pub enum GrantPlayTaggedDuration {
     /// rather than the effect controller's (`UntilYourNextEndStep`).
     UntilPlayerNextEndStep,
     /// Appended: "Until end of combat on your next turn, you may play that
-    /// card" (Brazen Cannonade): through the combat phase of the holder's
+    /// card" (Brazen Cannonade): through the combat phase of the effect controller's
     /// next turn.
     UntilEndOfCombatOnYourNextTurn,
+    /// The permission holder's next turn, independently of the effect controller.
+    /// `UntilYourNextTurnEnd` instead refers to the effect controller's next turn.
+    UntilPlayerNextTurnEnd,
+    /// Holder-relative counterparts to the controller-relative next-turn boundaries.
+    UntilPlayerNextTurnStart,
+    DuringPlayerNextTurn,
+    UntilEndOfCombatOnPlayerNextTurn,
 }
 
 /// Oracle-facing noun phrase for a temporary permission over a tagged card
@@ -540,6 +547,12 @@ pub enum GrantPlayTaggedObjectSurface {
         source: SourceReferenceSurface,
     },
     ThisCard,
+    /// "cards exiled this way" / "lands and cast spells from among cards
+    /// exiled this way": the same exiled set as `ThoseCards`, authored as
+    /// the explicit result reference. Appended.
+    CardsExiledThisWay {
+        lands_and_spells: bool,
+    },
 }
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary
@@ -682,6 +695,8 @@ pub enum RetargetMode {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub enum DelayedTriggerSpec {
+    /// A fully typed zone change, including event provenance restrictions.
+    ZoneChange(crate::trigger_model::ZoneChangeTrigger),
     /// An event-time condition qualifies the delayed event matcher, rather
     /// than becoming an intervening condition checked again on resolution.
     ConditionQualified {
@@ -764,6 +779,10 @@ pub enum DelayedTriggerSpec {
         each_damaged_player: bool,
         #[cfg_attr(feature = "serde", serde(default))]
         per_source_controller: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        recipient_passive: bool,
+        #[cfg_attr(feature = "serde", serde(default))]
+        during_your_turn: bool,
     },
     IsDealtDamage(ChooseSpec),
     PutIntoGraveyard(ObjectFilter),
@@ -1125,6 +1144,9 @@ pub enum TypeRetentionSurface {
     /// animation ("... becomes a 6/6 Nightmare God creature. It's still an
     /// enchantment."). Same rules meaning as [`Self::StillACardType`].
     StillACardTypeSentence(CardType),
+    /// "It's still a Cave land." (Cavernous Maw): the retained land restated
+    /// with one of its land subtypes. Same rules meaning as [`Self::StillALand`].
+    StillASubtypedLand(crate::types::Subtype),
 }
 
 /// Oracle surface used to express the power and toughness portion of an
@@ -2797,6 +2819,13 @@ impl RevealFromHandEffect {
     }
 
     pub fn cost_display(&self) -> String {
+        // "Reveal your hand" (Sasaya): every card in the payer's hand.
+        if self.card_type.is_none()
+            && self.color_filter.is_none()
+            && matches!(self.count, Value::CardsInHand(PlayerFilter::You))
+        {
+            return "Reveal your hand".to_string();
+        }
         let mut card_desc = String::new();
         if let Some(color) = self.color_display() {
             card_desc.push_str(color);
@@ -3986,6 +4015,16 @@ impl<E> ForEachObjectCorrelatedResultEffect<E> {
     }
 }
 
+/// Presentation of a one-shot cast from cards linked to the source.
+/// Object membership and the legal count remain on ChooseObjectsEffect.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
+pub struct SourceLinkedCollectionCastSurface {
+    pub source: SourceReferenceSurface,
+    pub from_among: bool,
+    pub may_cast: bool,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ChooseObjectsEffect {
@@ -3998,6 +4037,10 @@ pub struct ChooseObjectsEffect {
     pub count: ChoiceCount,
     pub count_value: Option<Value>,
     pub aggregate_constraint: Option<ChoiceAggregateConstraint>,
+    /// Authored source noun for a choice from cards exiled with this source.
+    /// Membership stays in the SourceExiled tag; this is presentation only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub collection_source_surface: Option<SourceLinkedCollectionCastSurface>,
     pub chooser: PlayerFilter,
     pub zone: Option<crate::zone::Zone>,
     pub additional_zones: Vec<crate::zone::Zone>,
@@ -4047,6 +4090,7 @@ impl ChooseObjectsEffect {
             count: count.into(),
             count_value: None,
             aggregate_constraint: None,
+            collection_source_surface: None,
             chooser,
             zone: None,
             additional_zones: Vec::new(),
@@ -4108,6 +4152,11 @@ impl ChooseObjectsEffect {
 
     pub fn with_aggregate_constraint(mut self, constraint: ChoiceAggregateConstraint) -> Self {
         self.aggregate_constraint = Some(constraint);
+        self
+    }
+
+    pub fn with_collection_source_surface(mut self, surface: SourceLinkedCollectionCastSurface) -> Self {
+        self.collection_source_surface = Some(surface);
         self
     }
 
@@ -6615,6 +6664,12 @@ pub struct TagMatchingObjectsEffect {
     /// of objects that were actually affected by preceding effects, including
     /// objects that have since changed zones.
     pub source_tags: Vec<crate::tag::TagKey>,
+    /// Remove every current candidate whose physical card was captured by
+    /// one of these tags. This is for complements such as "the other cards":
+    /// a redirected zone move can leave the selected card in the pool under
+    /// a new object ID, but it remains the selected physical card.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub excluded_stable_card_tags: Vec<crate::tag::TagKey>,
     /// Apply `filter` to the captured snapshots before retaining the union.
     /// Legacy unions use the filter only as descriptive provenance.
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6632,6 +6687,9 @@ impl std::fmt::Debug for TagMatchingObjectsEffect {
         if !self.source_tags.is_empty() {
             debug.field("source_tags", &self.source_tags);
         }
+        if !self.excluded_stable_card_tags.is_empty() {
+            debug.field("excluded_stable_card_tags", &self.excluded_stable_card_tags);
+        }
         if self.filter_source_snapshots {
             debug.field("filter_source_snapshots", &true);
         }
@@ -6647,8 +6705,20 @@ impl TagMatchingObjectsEffect {
             additional_zones: Vec::new(),
             tag: tag.into(),
             source_tags: Vec::new(),
+            excluded_stable_card_tags: Vec::new(),
             filter_source_snapshots: false,
         }
+    }
+
+    pub fn excluding_stable_cards_tagged(
+        mut self,
+        tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        let tag = tag.into();
+        if !self.excluded_stable_card_tags.contains(&tag) {
+            self.excluded_stable_card_tags.push(tag);
+        }
+        self
     }
 
     /// Use the union of existing tagged snapshots as this capture's source.
@@ -7430,6 +7500,10 @@ pub struct ChooseNumberEffect {
     pub chooser: PlayerFilter,
     pub min: u32,
     pub max: Option<u32>,
+    /// This number is the count for an immediate "draw up to N cards" action.
+    /// Static draw prohibitions bound the choice itself (CR 121.2b).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub draw_count_choice: bool,
     /// Source-owned entry/reselection choices survive this resolution. Local
     /// numeric producers remain bound by their exact execution effect id.
     #[cfg_attr(
@@ -7447,6 +7521,7 @@ impl ChooseNumberEffect {
             chooser,
             min,
             max: Some(max),
+            draw_count_choice: false,
             source_owned: false,
         }
     }
@@ -7455,12 +7530,35 @@ impl ChooseNumberEffect {
             chooser,
             min: 0,
             max: None,
+            draw_count_choice: false,
             source_owned: false,
         }
     }
     pub fn with_source_retention(mut self) -> Self {
         self.source_owned = true;
         self
+    }
+    pub fn for_draw_count(mut self) -> Self {
+        self.draw_count_choice = true;
+        self
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod choose_number_draw_count_serde_tests {
+    use super::*;
+
+    #[test]
+    fn old_number_choices_default_to_unconstrained_and_typed_draw_choices_roundtrip() {
+        let ordinary = ChooseNumberEffect::new(PlayerFilter::You, 0, 2);
+        let old = serde_json::to_value(&ordinary).unwrap();
+        assert!(old.get("draw_count_choice").is_none());
+        let restored: ChooseNumberEffect = serde_json::from_value(old).unwrap();
+        assert!(!restored.draw_count_choice);
+        let draw = ordinary.for_draw_count();
+        let encoded = serde_json::to_value(&draw).unwrap();
+        assert_eq!(encoded["draw_count_choice"], true);
+        assert_eq!(serde_json::from_value::<ChooseNumberEffect>(encoded).unwrap(), draw);
     }
 }
 

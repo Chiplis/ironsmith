@@ -647,6 +647,17 @@ pub fn parse_spells_cost_modifier_line(
     } else {
         parse_spell_filter_with_grammar_entrypoint(&subject_tokens)
     };
+    // "Commander spells you cast cost ..." (Myth Unbound, via the "your
+    // commander costs" rewrite): the commander designation restricts the
+    // subject and must not be dropped into "spells you cast".
+    if !is_this_spell
+        && !filter.is_commander
+        && crate::lexer::parser_token_word_refs(&subject_tokens)
+            .iter()
+            .any(|word| matches!(*word, "commander" | "commanders"))
+    {
+        filter.is_commander = true;
+    }
     if first_spell_fact.is_some() && !is_this_spell {
         filter.first_spell_cast_each_turn = true;
     }
@@ -4595,7 +4606,7 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
         && !head.noncombat_only
         && matches!(
             parser_token_word_refs(head.damaged_tokens).as_slice(),
-            ["this", "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle"]
+            ["this", "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker" | "battle" | "token"]
         )
     {
         return Ok(Some(StaticAbility::prevent_all_damage_to_self()));
@@ -4621,6 +4632,7 @@ pub fn parse_prevent_all_damage_to_matching_permanents_line(
                 | "land"
                 | "planeswalker"
                 | "battle"
+                | "token"
         ]
     ) {
         return Ok(Some(StaticAbility::prevent_all_damage_to_self()));

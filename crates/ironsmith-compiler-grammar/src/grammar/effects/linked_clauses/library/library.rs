@@ -50,6 +50,35 @@ pub(super) fn looked_card_optional_one_top_remainder_bottom(
     })
 }
 
+/// "Exile one of them and put the other into your hand." (Ashiok, Wicked
+/// Manipulator): the exiled pick and its exact complement. "The other" is the
+/// looked-at remainder, never a new target.
+fn looked_card_exile_then_put_remainder(
+    input: &mut LexStream<'_>,
+) -> WResult<LookedCardPartitionShape> {
+    primitives::kw("exile").parse_next(input)?;
+    let selected_count = looked_partition_count.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    primitives::kw("put").parse_next(input)?;
+    opt(primitives::kw("the")).parse_next(input)?;
+    alt((primitives::kw("rest"), primitives::kw("other")))
+        .void()
+        .parse_next(input)?;
+    let remainder_destination = looked_partition_destination.parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    if remainder_destination != LookedPartitionDestination::Hand {
+        return Err(primitives::backtrack_err(
+            "looked-card exile partition",
+            "the remainder put into your hand",
+        ));
+    }
+    Ok(LookedCardPartitionShape {
+        selected_count,
+        selected_destination: LookedPartitionDestination::Exile,
+        remainder_destination,
+    })
+}
+
 /// Parses a complete two-way partition of a previously looked-at card set.
 ///
 /// Requiring the sentence to end after both destinations prevents this rule
@@ -63,6 +92,7 @@ pub fn parse_looked_card_partition_shape(
         alt((
             looked_card_optional_one_top_remainder_bottom,
             looked_card_partition,
+            looked_card_exile_then_put_remainder,
         ))
         .parse(LexStream::new(tokens)),
     )

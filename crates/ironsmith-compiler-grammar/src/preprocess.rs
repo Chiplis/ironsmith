@@ -1747,11 +1747,34 @@ fn personal_pronoun_replacement(core: &str, opens_activated_effect: bool) -> Opt
 /// name. Retain the same pronoun vocabulary as preprocessing without rendering
 /// and re-lexing that stream or replacing its original source spans.
 pub(super) fn rewrite_personal_pronouns_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let dies_return_objects = dies_trigger_return_object_pronoun_range(tokens);
     let mut previous_ends_activation_cost = false;
     tokens
         .iter()
         .enumerate()
         .map(|(index, token)| {
+            // Same referent rule as `rewrite_dies_trigger_object_pronouns_line`.
+            if dies_return_objects
+                .as_ref()
+                .is_some_and(|range| range.contains(&index))
+                && let Some(word) = token.as_word()
+            {
+                let lower = word.to_ascii_lowercase();
+                let next_is_owner = tokens
+                    .get(index + 1)
+                    .and_then(|next| next.as_word())
+                    .is_some_and(|next| next.to_ascii_lowercase().starts_with("owner"));
+                let replacement = match lower.as_str() {
+                    "him" => Some("it"),
+                    "her" | "his" if next_is_owner => Some("its"),
+                    "her" => Some("it"),
+                    _ => None,
+                };
+                if let Some(replacement) = replacement {
+                    previous_ends_activation_cost = false;
+                    return OwnedLexToken::word(replacement, token.span);
+                }
+            }
             // The text pass leaves quote-adjacent words untouched, including
             // literal names such as `named "He"`.
             let quote_adjacent = index
@@ -1801,8 +1824,18 @@ fn rewrite_plural_self_reference_line(text: &str, subjects: &[&str]) -> String {
         return text.to_string();
     };
     let singular = format!("{verb}s");
+    let mut agreed = text.replacen(verb.as_str(), &singular, 1);
+    // The same plural name later in the line keeps plural agreement too
+    // ("until Cloak and Dagger leave the battlefield").
+    for subject in subjects.iter().filter(|subject| !subject.trim().is_empty()) {
+        let subject = subject.to_ascii_lowercase();
+        agreed = agreed.replace(
+            &format!("{subject} leave the battlefield"),
+            &format!("{subject} leaves the battlefield"),
+        );
+    }
     let mut rewritten = Vec::new();
-    for word in text.replacen(verb.as_str(), &singular, 1).split(' ') {
+    for word in agreed.split(' ') {
         let trailing_len = word.len()
             - word
                 .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
@@ -1821,6 +1854,104 @@ fn rewrite_plural_self_reference_line(text: &str, subjects: &[&str]) -> String {
         }
     }
     rewritten.join(" ")
+}
+
+/// "It has flying and is an Angel in addition to its other types." (Valkyrie's
+/// Call): the elided subject of the second predicate is the same object, so
+/// the type addition is its own characteristic change ("it's an Angel ..."),
+/// not a quoted static ability granted to it.
+fn rewrite_has_and_is_type_addition_line(text: &str) -> String {
+    const TAIL: &str = " in addition to its other types.";
+    let Some(has_at) = text.find(". it has ") else {
+        return text.to_string();
+    };
+    let sentence_start = has_at + 2;
+    let sentence = &text[sentence_start..];
+    let Some(tail_at) = sentence.find(TAIL) else {
+        return text.to_string();
+    };
+    let clause = &sentence[..tail_at];
+    let Some(is_at) = clause.find(" and is a") else {
+        return text.to_string();
+    };
+    let granted = &clause["it has ".len()..is_at];
+    if granted.is_empty() || granted.contains(['"', '.']) || granted.contains(" and ") {
+        return text.to_string();
+    }
+    let type_phrase = &clause[is_at + " and is ".len()..];
+    format!(
+        "{}it has {granted} and it's {type_phrase}{}",
+        &text[..sentence_start],
+        &sentence[tail_at..]
+    )
+}
+
+/// Token range of the first sentence of "When <source> dies, return her/him
+/// ..." starting at "return", where the object pronouns name the dead card.
+fn dies_trigger_return_object_pronoun_range(
+    tokens: &[OwnedLexToken],
+) -> Option<std::ops::Range<usize>> {
+    if !tokens
+        .first()
+        .and_then(|token| token.as_word())
+        .is_some_and(|word| word.eq_ignore_ascii_case("when"))
+    {
+        return None;
+    }
+    let comma = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)?;
+    let dies = tokens.get(comma.checked_sub(1)?)?.as_word()?;
+    if !dies.eq_ignore_ascii_case("dies") || comma > 8 {
+        return None;
+    }
+    let return_word = tokens.get(comma + 1)?.as_word()?;
+    let object = tokens.get(comma + 2)?.as_word()?;
+    if !return_word.eq_ignore_ascii_case("return")
+        || !(object.eq_ignore_ascii_case("her") || object.eq_ignore_ascii_case("him"))
+    {
+        return None;
+    }
+    let end = tokens[comma..]
+        .iter()
+        .position(|token| token.kind == TokenKind::Period)
+        .map_or(tokens.len(), |offset| comma + offset);
+    Some(comma + 1..end)
+}
+
+/// "When Hellcat dies, return her to the battlefield under her owner's
+/// control with a +1/+1 counter on her." In the card's own dies trigger the
+/// object pronoun names the card that just died — the same referent the
+/// neutral "it" carries (the triggering object, CR 400.7 / 603.10a) — not
+/// the source as a new battlefield object.
+fn rewrite_dies_trigger_object_pronouns_line(text: &str) -> String {
+    let Some(rest) = text.strip_prefix("when this dies, ") else {
+        return text.to_string();
+    };
+    if !rest.starts_with("return her ") && !rest.starts_with("return him ") {
+        return text.to_string();
+    }
+    let words: Vec<&str> = rest.split(' ').collect();
+    let mut rewritten = Vec::with_capacity(words.len());
+    for (index, word) in words.iter().enumerate() {
+        let trailing_len = word.len()
+            - word
+                .trim_end_matches(|ch: char| matches!(ch, ',' | '.' | ';' | ':'))
+                .len();
+        let (core, trailing) = word.split_at(word.len() - trailing_len);
+        let next = words.get(index + 1).copied().unwrap_or("");
+        let replacement = match core {
+            "him" => Some("it"),
+            "her" | "his" if trailing.is_empty() && next.starts_with("owner") => Some("its"),
+            "her" => Some("it"),
+            _ => None,
+        };
+        match replacement {
+            Some(replacement) => rewritten.push(format!("{replacement}{trailing}")),
+            None => rewritten.push((*word).to_string()),
+        }
+    }
+    format!("when this dies, {}", rewritten.join(" "))
 }
 
 fn rewrite_personal_pronouns_line(text: &str) -> String {
@@ -2418,6 +2549,10 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized =
             rewrite_static_cast_the_exiled_card_line(expanded_normalized.as_str());
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_dies_trigger_object_pronouns_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_has_and_is_type_addition_line(expanded_normalized.as_str());
         let expanded_normalized =
             rewrite_plural_self_reference_line(expanded_normalized.as_str(),
                 &["this", typed_subject, full_name.text.as_str(), short_name.text.as_str()]);

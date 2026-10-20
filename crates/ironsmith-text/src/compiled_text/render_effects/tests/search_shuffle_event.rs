@@ -127,3 +127,70 @@ fn combined_source_and_graveyard_shuffle_moves_all_cards_before_one_shuffle_per_
         }
     }
 }
+
+#[test]
+fn plural_library_search_reveals_the_same_found_collection() {
+    for (text, kind) in [
+        ("Search your library for up to two basic land cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle.", CardType::Sorcery),
+        ("Search your library for up to two creature cards and reveal them. Put one into your hand and the other into your graveyard. Then shuffle.", CardType::Sorcery),
+        ("Search your library for three creature cards and reveal them. If you reveal three cards with different names, choose one of them at random and put that card into your hand. Shuffle the rest into your library.", CardType::Instant),
+        ("Search your library for up to four basic land cards and reveal them. Put one of them onto the battlefield tapped under an opponent's control if the {3}{G} cost was paid. Put two of them onto the battlefield tapped under your control and the rest into your hand. Then shuffle.", CardType::Sorcery),
+        ("When this creature enters, search your library for up to two basic land cards and reveal them, then roll a d20.\n9 or less | Put those cards into your hand, then shuffle.\n10—19 | Put one of those cards onto the battlefield tapped and the other into your hand, then shuffle.\n20+ | Put those cards onto the battlefield tapped, then shuffle.", CardType::Creature),
+    ] {
+        let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Plural search probe")
+            .card_types(vec![kind])
+            .parse_text(text)
+            .expect("plural search should compile");
+        let rendered = crate::compiled_text::compiled_text_lines(&definition).join(" ");
+        assert!(rendered.contains("reveal them"), "{rendered}");
+        assert!(!rendered.contains("Reveal it"), "{rendered}");
+    }
+}
+
+#[test]
+fn singular_library_search_keeps_singular_reveal() {
+    let text = "Search your library for a basic land card and reveal it. Put it into your hand, then shuffle.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Single search probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("single search should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join(" ");
+    assert!(rendered.contains("reveal it"), "{rendered}");
+    assert!(!rendered.contains("reveal them"), "{rendered}");
+}
+
+#[test]
+fn revealed_three_card_name_check_keeps_random_pick_inside_searched_set() {
+    let text = "Search your library for three creature cards and reveal them. If you reveal three cards with different names, choose one of them at random and put that card into your hand. Shuffle the rest into your library.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Searched-card selection probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(text)
+        .expect("revealed-card random pick should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join(" ");
+    assert_eq!(rendered.trim_end_matches('.'), text.trim_end_matches('.'));
+    assert!(!rendered.contains("choose a permanent at random"), "{rendered}");
+}
+
+#[test]
+fn searched_four_card_conditional_partition_keeps_every_destination() {
+    let text = "You may pay {3}{G} rather than pay this spell's mana cost.\nSearch your library for up to four basic land cards and reveal them. Put one of them onto the battlefield tapped under an opponent's control if the {3}{G} cost was paid. Put two of them onto the battlefield tapped under your control and the rest into your hand. Then shuffle.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Conditional searched partition")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(text)
+        .expect("searched four-card partition should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert_eq!(rendered.trim_end_matches('.'), text.trim_end_matches('.'));
+}
+
+#[test]
+fn searched_pair_d20_branches_keep_chosen_card_and_its_complement() {
+    let text = "When this creature enters, search your library for up to two basic land cards and reveal them, then roll a d20.\n9 or less | Put those cards into your hand, then shuffle.\n10—19 | Put one of those cards onto the battlefield tapped and the other into your hand, then shuffle.\n20+ | Put those cards onto the battlefield tapped, then shuffle.";
+    let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "D20 searched pair")
+        .card_types(vec![CardType::Creature])
+        .parse_text(text)
+        .expect("d20 searched pair should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("search your library for up to two basic land cards and reveal them, then roll a d20"), "{rendered}");
+    assert!(rendered.contains("10—19 | Put one of those cards onto the battlefield tapped and the other into your hand, then shuffle"), "{rendered}");
+    assert!(!rendered.contains("all card in your library"), "{rendered}");
+}

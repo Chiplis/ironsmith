@@ -36,6 +36,19 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     {
         *predicate_tag = crate::tag::TagRef::of(tag.clone());
     }
+    // "who didn't discard two nonland cards this way": the count form of the
+    // same per-player tagged test.
+    if let PredicateAst::ValueComparison {
+        left: crate::effect::Value::TaggedSnapshotCount {
+            tag: count_tag,
+            ..
+        },
+        ..
+    } = &mut bound
+        && count_tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+    {
+        *count_tag = tag.clone();
+    }
     bound
 }
 
@@ -1552,6 +1565,9 @@ fn vote_option_ast_uses_iterated_player_in_scope(
                     filter, player, ..
                 },
             )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+                filter, player, ..
+            })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
                 filter,
                 player,

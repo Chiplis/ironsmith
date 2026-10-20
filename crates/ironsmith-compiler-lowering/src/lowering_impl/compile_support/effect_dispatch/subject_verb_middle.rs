@@ -1895,6 +1895,7 @@ pub(super) fn compile_subject_verb_middle(
             allow_any_color_for_cast,
             until_next_end_step,
             until_next_turn_start,
+            duration_is_holder_relative,
             during_next_turn,
             until_end_of_combat_next_turn,
             spell_filter,
@@ -1921,13 +1922,31 @@ pub(super) fn compile_subject_verb_middle(
                 resolved_tag.clone(),
                 player_filter,
                 if *until_end_of_combat_next_turn {
-                    crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn
+                    if *duration_is_holder_relative {
+                        crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnPlayerNextTurn
+                    } else {
+                        crate::effects::GrantPlayTaggedDuration::UntilEndOfCombatOnYourNextTurn
+                    }
                 } else if *during_next_turn {
-                    crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn
+                    if *duration_is_holder_relative {
+                        crate::effects::GrantPlayTaggedDuration::DuringPlayerNextTurn
+                    } else {
+                        crate::effects::GrantPlayTaggedDuration::DuringYourNextTurn
+                    }
                 } else if *until_next_turn_start {
-                    crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
+                    if *duration_is_holder_relative {
+                        crate::effects::GrantPlayTaggedDuration::UntilPlayerNextTurnStart
+                    } else {
+                        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnStart
+                    }
                 } else if *until_next_end_step {
-                    crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
+                    if *duration_is_holder_relative {
+                        crate::effects::GrantPlayTaggedDuration::UntilPlayerNextEndStep
+                    } else {
+                        crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep
+                    }
+                } else if *duration_is_holder_relative {
+                    crate::effects::GrantPlayTaggedDuration::UntilPlayerNextTurnEnd
                 } else {
                     crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
                 },
@@ -2680,9 +2699,13 @@ pub(super) fn compile_subject_verb_middle(
                 && let Some((choice_filter, choice_zones)) =
                     normalized_hand_or_graveyard_choice_filter(filter)
             {
-                let chooser = choice_filter
-                    .owner
+                // The player performing the put chooses the card, even from
+                // another player's hand ("You may put a creature card from
+                // it onto the battlefield", Zara); an implicit actor falls
+                // back to the zone's owner.
+                let chooser = actor_surface
                     .clone()
+                    .or_else(|| choice_filter.owner.clone())
                     .or_else(|| choice_filter.controller.clone())
                     .unwrap_or(PlayerFilter::You);
                 let chosen_tag = ctx.next_tag("chosen");

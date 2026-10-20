@@ -420,3 +420,42 @@ fn die_result_damage_then_direct_random_source_attachment_keeps_typed_sequence_s
         "Roll a d6. Deal damage to enchanted player equal to the result. Then attach this source to another one of your opponents chosen at random"
     );
 }
+
+#[test]
+fn retained_distinct_die_results_create_one_token_per_result() {
+    let definition = crate::CardDefinitionBuilder::new(
+        crate::ids::CardId::new(), "Circuits Act",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .parse_text("Roll three six-sided dice. For each different result, create a 1/1 white Clown Robot artifact creature token.")
+    .expect("distinct die-result count should compile");
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(rendered.contains("Roll three six-sided dice. For each different result, create a 1/1 white Clown Robot artifact creature token"), "{rendered}");
+    assert!(!rendered.contains("where X is the number of different results"), "{rendered}");
+
+    let program = definition.spell_effect.as_ref().unwrap();
+    assert!(super::super::roll_result_surfaces::describe_roll_metric_count_actions_program(program).is_some());
+    let effects = program.flattened_default_effects();
+    assert_eq!(effects.len(), 2, "the count action must stay one aggregate instruction");
+    let roll = effects[0].clone();
+    let roll_id = roll.downcast_ref::<crate::effects::WithIdEffect>().unwrap().id;
+    let created = super::super::unwrap_basic_tag_wrappers(&program.flattened_default_effects()[1]);
+    let create = created.downcast_ref::<crate::effects::CreateTokenEffect>().unwrap();
+    assert_eq!(
+        create.count,
+        Value::PriorEffectMetric {
+            effect_id: roll_id,
+            query: crate::effect::PriorEffectMetricQuery::new(
+                crate::effect::EffectMetricSource::Outcome,
+                crate::effect::EffectMetric::DistinctDieResults,
+            ).with_action(crate::effect::PriorEffectAction::Rolled),
+        },
+        "a single token-creation event should count this roll's distinct results"
+    );
+    let mut unrelated = create.clone();
+    unrelated.count = Value::Fixed(1);
+    let wrong = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![roll, Effect::new(unrelated)]),
+    ]);
+    assert!(super::super::roll_result_surfaces::describe_roll_metric_count_actions_program(&wrong).is_none());
+}

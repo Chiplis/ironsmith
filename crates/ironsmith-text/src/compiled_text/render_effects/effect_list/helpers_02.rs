@@ -290,8 +290,19 @@ pub(crate) fn consult_reveal_put_battlefield_then_shuffle_effects(
         PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
             if tag == &consult.match_tag
     );
+    // The shuffler can also be named as the controller of the moved card's
+    // outcome tag (Divergent Transformations).
+    let moved_outer_tag = effects[1]
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.tag);
+    let shuffle_uses_moved_card_controller = matches!(
+        &shuffle.player,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            if Some(tag) == moved_outer_tag
+    );
     if !same_tagged_iteration_player(&shuffle.player, &consult.player)
         && !shuffle_uses_revealed_card_controller
+        && !shuffle_uses_moved_card_controller
     {
         return None;
     }
@@ -1659,6 +1670,34 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
     } else {
         (None, None, effects)
     };
+    if let [exile_effect, manifest_effect] = body {
+        let exile = unwrap_basic_tag_wrappers(exile_effect)
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        let manifest = unwrap_basic_tag_wrappers(manifest_effect)
+            .downcast_ref::<crate::effects::ManifestObjectsEffect>()?;
+        let ChooseSpec::All(filter) = &exile.spec else { return None; };
+        let ChooseSpec::Tagged(pile_tag) = &manifest.target else { return None; };
+        if *exile != crate::effects::ExileEffect::with_spec(exile.spec.clone()).with_face_down(true)
+            || !wrapper_chain_contains_tag(exile_effect, pile_tag)
+            || manifest.controller != PlayerFilter::You
+        {
+            return None;
+        }
+        if let Some(target_only) = target_only {
+            let Some(PlayerFilter::Target(player)) = &filter.owner else { return None; };
+            if *target_only != crate::effects::TargetOnlyEffect::new(
+                ChooseSpec::target(ChooseSpec::Player((**player).clone())))
+            {
+                return None;
+            }
+        }
+        let exile_text = describe_effect(&Effect::new(exile.clone()));
+        let objects = exile_text.strip_prefix("Exile ")?.strip_suffix(" face down")?;
+        let action = if manifest.cloak { "cloak" } else { "manifest" };
+        let shuffle = if manifest.shuffle { "shuffle that pile, then " } else { "then " };
+        let tapped = if manifest.tapped { ". They enter tapped" } else { "" };
+        return Some(format!("Exile {objects} in a face-down pile, {shuffle}{action} those cards{tapped}"));
+    }
     let [target_exile_effect, library_exile_effect, manifest_effect] = body else {
         return None;
     };
@@ -2572,19 +2611,56 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
     if selected_condition.is_some() {
         idx += 1;
     }
-    let remainder = effects
+    let (order_text, remainder_prefix, remainder_len) = if let Some(remainder) = effects
         .get(idx)?
-        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-    if remainder.tag != look.tag
-        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
-        || remainder.player != PlayerFilter::You
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
     {
-        return None;
-    }
-
-    let order_text = match remainder.order {
-        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
-        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+        if remainder.tag != look.tag
+            || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+            || remainder.player != PlayerFilter::You
+        {
+            return None;
+        }
+        let order_text = match remainder.order {
+            crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+                " in any order"
+            }
+        };
+        let remainder_prefix = match remainder.surface {
+            ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
+            ironsmith_core::LibraryRemainderSurface::Rest
+            | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
+            _ => return None,
+        };
+        (order_text, remainder_prefix, 1usize)
+    } else {
+        // "Put the rest on the bottom of your library in a random order"
+        // bound as a captured complement of the looked-at group (the cards
+        // not chosen), then one bottom move of that capture (Ellywick).
+        let capture = effects
+            .get(idx)?
+            .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let bottom = unwrap_tag_wrappers(effects.get(idx + 1)?)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if capture.zone != Some(Zone::Library)
+            || !capture.additional_zones.is_empty()
+            || !capture.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag == look.tag
+            })
+            || bottom.zone != Zone::Library
+            || bottom.to_top
+            || !matches!(bottom.target.base(), ChooseSpec::Tagged(tag) if *tag == capture.tag)
+        {
+            return None;
+        }
+        let order_text = match bottom.library_order.as_ref() {
+            Some(crate::effects::LibraryPlacementOrder::Random) => " in a random order",
+            Some(_) => " in any order",
+            None => return None,
+        };
+        (order_text, "Put", 2usize)
     };
     let mut filter = choose.filter.clone();
     filter.zone = None;
@@ -2645,12 +2721,6 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
     } else {
         "them"
     };
-    let remainder_prefix = match remainder.surface {
-        ironsmith_core::LibraryRemainderSurface::SentenceLeadingThenRest => "Then put",
-        ironsmith_core::LibraryRemainderSurface::Rest
-        | ironsmith_core::LibraryRemainderSurface::RestBare => "Put",
-        _ => return None,
-    };
     Some((
         if reveals_selection {
             let mut sentences = vec![
@@ -2682,7 +2752,7 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
                 )
             }
         },
-        idx + 1,
+        idx + remainder_len,
     ))
 }
 
@@ -2843,6 +2913,39 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
     } else {
         permission_text.to_string()
     };
+    // "Until end of turn, you may cast the exiled card without paying its
+    // mana cost" (Djeru and Hazoret): a free-cast rider over the same
+    // temporary permission folds into it.
+    let leading_cast_permission = permission
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|grant| !grant.allow_land)
+        .map(|grant| grant.surface.as_ref().is_some_and(|surface| surface.leading_duration));
+    let free_cast_rider = leading_cast_permission.is_some()
+        && effects.get(5).is_some_and(|effect| {
+            effect
+                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+                .is_some_and(|free| {
+                    free.tag == choose.tag
+                        && free.player == PlayerFilter::You
+                        && free.duration
+                            == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+                        && !free.while_on_top_of_library
+                })
+        });
+    let (permission_text, consumed) = if free_cast_rider
+        && let Some(object) = permission_text
+            .strip_prefix("You may cast ")
+            .and_then(|rest| rest.strip_suffix(" this turn"))
+    {
+        let text = if leading_cast_permission == Some(true) {
+            format!("Until end of turn, you may cast {object} without paying its mana cost")
+        } else {
+            format!("You may cast {object} this turn without paying its mana cost")
+        };
+        (text, 6)
+    } else {
+        (permission_text, 5)
+    };
     let explicit_up_to_surface = choose
         .tag
         .as_str()
@@ -2888,7 +2991,7 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
             describe_effect(effects[0])
         )
     };
-    Some((rendered, 5))
+    Some((rendered, consumed))
 }
 
 pub(crate) fn describe_look_may_move_one_rest_bottom(

@@ -20,6 +20,46 @@ pub(crate) struct TaggedRuntimeState {
     stable_id_fallback: Option<StableIdFallback>,
     pub(crate) outcome_only: bool,
     result_object_reference: bool,
+    /// The pre-snapshots are a bounded choice's whole candidate pool and the
+    /// player could leave some of it unchosen, so the pool itself is never
+    /// the instruction's result.
+    pre_snapshots_are_choice_pool: bool,
+    /// Entries already in [`BOUNDED_CHOICE_TAG`] and [`BOUNDED_CHOOSERS_TAG`]
+    /// before this instruction ran.
+    bounded_choice_mark: (usize, usize),
+}
+
+/// The objects a non-target bounded choice actually picked while a tagged
+/// instruction ran, recorded where the choice is made. An instruction whose
+/// outcome reports no affected objects is still tagged with exactly these.
+pub(crate) const BOUNDED_CHOICE_TAG: &str = "__bounded_choice__";
+/// The chooser of each such choice, one entry per choice (even of nothing).
+pub(crate) const BOUNDED_CHOOSERS_TAG: &str = "__bounded_choosers__";
+
+/// A non-target bounded choice ("up to one creature", "two cards from your
+/// hand"): a spec naming its whole candidate pool, and the fewest it must
+/// take. The pool keeps the count wrapper without a maximum, since a bare
+/// object filter names a prior selection rather than every candidate.
+pub(crate) fn bounded_choice_pool(
+    spec: &crate::target::ChooseSpec,
+) -> Option<(crate::target::ChooseSpec, usize)> {
+    match spec {
+        crate::target::ChooseSpec::SurfaceHinted { spec, .. } => bounded_choice_pool(spec),
+        crate::target::ChooseSpec::WithCount(inner, count)
+        | crate::target::ChooseSpec::WithCountValue(inner, count, _)
+            if !inner.is_target() =>
+        {
+            let every = crate::effect::ChoiceCount {
+                max: None,
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+                ..*count
+            };
+            Some((crate::target::ChooseSpec::WithCount(inner.clone(), every), count.min))
+        }
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,14 +98,15 @@ fn capture_effect_snapshots_with_provenance(
     game: &GameState,
     effect: &Effect,
     ctx: &ExecutionContext,
-) -> (Vec<ObjectSnapshot>, bool) {
+) -> (Vec<ObjectSnapshot>, bool, bool) {
     let explicit_target_spec = effect.0.get_target_spec();
     if explicit_target_spec.is_some_and(|spec| spec.is_target()) {
         let snapshots = capture_target_object_snapshots(game, ctx);
         if !snapshots.is_empty() {
-            return (snapshots, false);
+            return (snapshots, false, false);
         }
     }
+    let mut choice_pool = false;
     let mut seen = HashSet::new();
     let specs = explicit_target_spec.map_or_else(
         || effect.0.decision_related_object_specs(),
@@ -77,16 +118,25 @@ fn capture_effect_snapshots_with_provenance(
     ));
     for spec in specs {
         if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
-            for snapshot in ctx.get_tagged_all(tag).into_iter().flatten() {
+            let tagged = ctx.get_tagged_all(tag).map_or(&[][..], Vec::as_slice);
+            // "one of those cards" chooses from the remembered set.
+            choice_pool |= bounded_choice_pool(&spec).is_some_and(|(_, min)| tagged.len() > min);
+            for snapshot in tagged {
                 if seen.insert(snapshot.object_id) {
                     snapshots.push(snapshot.clone());
                 }
             }
             continue;
         }
-        let Ok(object_ids) = resolve_objects_from_spec(game, &spec, ctx) else {
+        // Resolving a bounded choice here makes no choice: it would take the
+        // first candidates, which need not be the ones the player picks.
+        let bounded = bounded_choice_pool(&spec);
+        let pool = bounded.as_ref().map_or(&spec, |(pool, _)| pool);
+        let Ok(object_ids) = resolve_objects_from_spec(game, pool, ctx) else {
             continue;
         };
+        // The player could leave some of the pool unchosen.
+        choice_pool |= bounded.is_some_and(|(_, min)| object_ids.len() > min);
         for object_id in object_ids {
             if !seen.insert(object_id) {
                 continue;
@@ -100,7 +150,7 @@ fn capture_effect_snapshots_with_provenance(
     if snapshots.is_empty() && explicit_target_spec.is_none() {
         snapshots = capture_target_object_snapshots(game, ctx);
     }
-    (snapshots, from_decision_hints)
+    (snapshots, from_decision_hints, choice_pool)
 }
 
 /// Capture pre-resolution tagging state for a tagged effect execution.
@@ -109,7 +159,7 @@ pub(crate) fn capture_tagged_runtime_state(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> TaggedRuntimeState {
-    let (mut pre_snapshots, pre_snapshots_from_decision_hints) =
+    let (mut pre_snapshots, pre_snapshots_from_decision_hints, pre_snapshots_are_choice_pool) =
         capture_effect_snapshots_with_provenance(game, effect, ctx);
     if pre_snapshots.is_empty()
         && let Some(object_id) = ctx.iteration.iterated_object
@@ -141,6 +191,11 @@ pub(crate) fn capture_tagged_runtime_state(
             .downcast_ref::<crate::effects::DestroyEffect>()
             .is_some_and(|destroy| destroy.spec.is_target()),
         stable_id_fallback: capture_stable_id_fallback(game, effect, ctx),
+        pre_snapshots_are_choice_pool,
+        bounded_choice_mark: (
+            ctx.get_tagged_all(BOUNDED_CHOICE_TAG).map_or(0, Vec::len),
+            ctx.tagged_players.get(BOUNDED_CHOOSERS_TAG).map_or(0, Vec::len),
+        ),
         outcome_only: false,
         // Milling exposes the exact public successors (CR 701.17c), while
         // its affected-object memories retain the original library objects.
@@ -151,6 +206,24 @@ pub(crate) fn capture_tagged_runtime_state(
 
 /// Apply tagging semantics after the inner effect has resolved.
 pub(crate) fn apply_tagged_runtime_state(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    tag: TagKey,
+    outcome: &EffectOutcome,
+    state: TaggedRuntimeState,
+) {
+    tag_instruction_result(game, ctx, tag.clone(), outcome, state);
+    // A tag names cards, not incarnations: a moved card's pre-move memory and
+    // its new object are one card (CR 400.7 keeps the stable id), so "the two
+    // cards put on top this way" stays two. The first entry is kept; later
+    // references follow its stable id to the current object.
+    if let Some(snapshots) = ctx.tagged_objects.get_mut(tag.as_str()) {
+        let mut seen = HashSet::new();
+        snapshots.retain(|snapshot| seen.insert(snapshot.stable_id));
+    }
+}
+
+fn tag_instruction_result(
     game: &GameState,
     ctx: &mut ExecutionContext,
     tag: TagKey,
@@ -335,7 +408,9 @@ pub(crate) fn apply_tagged_runtime_state(
     // card reached the expected destination; object-resolution helpers can
     // still follow its stable id to the new object when a later effect needs
     // to move or otherwise affect the card itself.
-    if let Some(fallback) = state.stable_id_fallback.as_ref() {
+    if let Some(fallback) = state.stable_id_fallback.as_ref()
+        && !fallback.stable_ids.is_empty()
+    {
         let moved_stable_ids = fallback
             .stable_ids
             .iter()
@@ -436,6 +511,19 @@ pub(crate) fn apply_tagged_runtime_state(
     // Generic fallback: preserve the pre-effect target snapshots.
     if state.outcome_only {
         ctx.set_tagged_objects(tag, Vec::new());
+    } else if state.pre_snapshots_are_choice_pool
+        || ctx.tagged_players.get(BOUNDED_CHOOSERS_TAG).map_or(0, Vec::len)
+            > state.bounded_choice_mark.1
+    {
+        // A bounded choice was made, so the captured candidates are not the
+        // result: "up to one creature" with none picked leaves no "it". Tag
+        // exactly what was chosen.
+        let chosen = ctx
+            .get_tagged_all(BOUNDED_CHOICE_TAG)
+            .and_then(|choices| choices.get(state.bounded_choice_mark.0..))
+            .map(<[ObjectSnapshot]>::to_vec)
+            .unwrap_or_default();
+        ctx.set_tagged_objects(tag, chosen);
     } else if !state.pre_snapshots.is_empty() {
         ctx.tag_objects(tag, state.pre_snapshots);
     } else {
@@ -479,13 +567,22 @@ fn capture_stable_id_fallback(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> Option<StableIdFallback> {
+    // A candidate already in the destination zone proves nothing by being
+    // found there afterward: "put one of them back on top of your library"
+    // leaves every unchosen candidate in the library too. Only candidates
+    // outside the destination can witness a move. A bounded choice watches
+    // its whole pool, since the player may pick any of it.
     let capture = |spec: &crate::target::ChooseSpec, zone: Zone| {
-        resolve_objects_from_spec(game, spec, ctx)
+        let bounded = bounded_choice_pool(spec);
+        let pool = bounded.as_ref().map_or(spec, |(pool, _)| pool);
+        resolve_objects_from_spec(game, pool, ctx)
             .ok()
             .map(|ids| StableIdFallback {
                 stable_ids: ids
                     .into_iter()
-                    .filter_map(|id| game.object(id).map(|obj| obj.stable_id))
+                    .filter_map(|id| game.object(id))
+                    .filter(|obj| obj.zone != zone)
+                    .map(|obj| obj.stable_id)
                     .collect::<Vec<_>>(),
                 zone,
             })

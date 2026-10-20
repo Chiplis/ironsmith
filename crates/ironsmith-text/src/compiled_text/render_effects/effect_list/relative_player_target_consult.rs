@@ -231,6 +231,130 @@ pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_se
     ))
 }
 
+/// "At the beginning of each player's upkeep, that player chooses target
+/// player whose graveyard has fewer creature cards in it than their graveyard
+/// does and is their opponent. The first player may return a creature card
+/// from their graveyard to their hand." (Oath of Ghouls, Oath of Scholars):
+/// the upkeep player declares a relative opponent target, then may act.
+pub(in crate::compiled_text) fn describe_relative_player_target_then_optional_action(
+    effects: &[Effect],
+) -> Option<String> {
+    let [target_effect, may_effect] = effects else {
+        return None;
+    };
+    let target_only = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !target_only.explicit_declaration
+        || target_only.chooser.as_ref() != Some(&PlayerFilter::Active)
+        || !target_only.target.is_target()
+        || target_only.target.count() != crate::effect::ChoiceCount::exactly(1)
+    {
+        return None;
+    }
+    let relation = match target_only.target.base() {
+        ChooseSpec::Player(PlayerFilter::OpponentWithMoreControlledObjectsThan {
+            player,
+            filter,
+            fewer: true,
+            as_you_activate: false,
+            minimum_difference: 0,
+        }) if player.as_ref() == &PlayerFilter::Active
+            && filter.zone == Some(Zone::Graveyard) =>
+        {
+            let mut counted = filter.as_ref().clone();
+            counted.zone = None;
+            counted.owner = None;
+            format!(
+                "whose graveyard has fewer {} in it than their graveyard does",
+                pluralize_noun_phrase(strip_leading_article(&counted.description()))
+            )
+        }
+        ChooseSpec::Player(PlayerFilter::QuantityGreaterThanPlayer {
+            base,
+            other,
+            quantity,
+        }) if base.as_ref() == &PlayerFilter::OpponentOf(Box::new(PlayerFilter::Active))
+            && other.as_ref() == &PlayerFilter::Active =>
+        {
+            format!("who has more {} than they do", quantity.noun_phrase())
+        }
+        _ => return None,
+    };
+    let may = structural_unwrap_render_wrappers(may_effect)
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.as_ref() != Some(&PlayerFilter::Active) {
+        return None;
+    }
+    let action = match may.effects.as_slice() {
+        [discard_effect, draw_effect] => {
+            let discard = discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()?;
+            let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+            let Value::Fixed(count) = draw.count else {
+                return None;
+            };
+            if discard.player != PlayerFilter::Active || draw.player != PlayerFilter::Active {
+                return None;
+            }
+            let count_text = number_word(count).unwrap_or_else(|| count.to_string());
+            let noun = if count == 1 { "card" } else { "cards" };
+            format!("discard their hand and draw {count_text} {noun}")
+        }
+        // "The first player may have this enchantment deal 1 damage to the
+        // second player." (Oath of Mages): the damage recipient is the
+        // declared target, so it is named as the second player.
+        [damage_effect]
+            if damage_effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .is_some() =>
+        {
+            let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+            let ChooseSpec::Player(PlayerFilter::AliasedTarget(aliased)) = &damage.target else {
+                return None;
+            };
+            let ChooseSpec::Player(declared) = target_only.target.base() else {
+                return None;
+            };
+            let Value::Fixed(amount) = damage.amount else {
+                return None;
+            };
+            if aliased.as_ref() != declared
+                || damage.source_is_combat
+                || damage.unpreventable
+                || damage.excess_to_controller.is_some()
+            {
+                return None;
+            }
+            format!("have this permanent deal {amount} damage to the second player")
+        }
+        [return_effect] => {
+            let return_from_gy = return_effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
+            if return_from_gy.random || return_from_gy.target.count() != crate::effect::ChoiceCount::exactly(1) {
+                return None;
+            }
+            let ChooseSpec::Object(return_filter) = return_from_gy.target.base() else {
+                return None;
+            };
+            if return_filter.zone != Some(Zone::Graveyard)
+                || return_filter.owner.as_ref() != Some(&PlayerFilter::Active)
+            {
+                return None;
+            }
+            let mut card = return_filter.clone();
+            card.zone = None;
+            card.owner = None;
+            format!(
+                "return {} from their graveyard to their hand",
+                with_indefinite_article(strip_leading_article(&card.description()))
+            )
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "That player chooses target player {relation} and is their opponent. The first player may {action}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

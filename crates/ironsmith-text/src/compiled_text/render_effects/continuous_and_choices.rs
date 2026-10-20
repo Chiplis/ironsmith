@@ -2986,7 +2986,7 @@ pub(super) fn describe_choose_filter_from_tagged_cards(
         Some(Zone::Library | Zone::Graveyard)
     ) || choose.is_search
         || choose.count.min > 1
-        || choose.count.max != Some(1)
+        || (choose.count.max != Some(1) && !choose_count_is_any_number(choose))
         || choose.count.dynamic_x
         || choose.count.random
     {
@@ -3029,7 +3029,20 @@ pub(super) fn describe_choose_filter_from_tagged_cards(
     if !card_desc.contains(" card") {
         card_desc = format!("{card_desc} card");
     }
+    if choose_count_is_any_number(choose) {
+        let plural = match card_desc.strip_suffix(" card") {
+            Some(head) => format!("{head} cards"),
+            None if card_desc.ends_with(" cards") => card_desc.clone(),
+            None => return None,
+        };
+        return Some(format!("any number of {plural}"));
+    }
     Some(with_indefinite_article(&card_desc))
+}
+
+/// "any number of ..." selection: no lower bound and no upper bound.
+fn choose_count_is_any_number(choose: &crate::effects::ChooseObjectsEffect) -> bool {
+    choose.count.min == 0 && choose.count.max.is_none()
 }
 
 pub(super) fn describe_tagged_mill_clause(mill: &crate::effects::MillEffect) -> String {
@@ -3059,7 +3072,8 @@ fn describe_put_milled_cards_clause(
         choose.chooser != mill.player
             || choose.tag != first.tag
             || choose.count.min > 1
-            || choose.count.max != Some(1)
+            || (choose.count.max != Some(1)
+                && !(choices.len() == 1 && choose_count_is_any_number(choose)))
             || choose.count.dynamic_x
             || choose.count.random
     }) {

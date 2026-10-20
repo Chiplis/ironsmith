@@ -22,29 +22,30 @@ use winnow::prelude::*;
 /// What the rider says about the spell.
 struct GraveyardExileRider {
     cast_this_way: bool,
+    those_spells: bool,
     your_graveyard: bool,
 }
 
 /// "a spell cast this way". "If that spell would be put into ..." after a
 /// this-turn permission already reads through the anaphoric spell reference.
-fn rider_subject<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
+fn rider_subject<'a>(input: &mut LexStream<'a>) -> WResult<(bool, bool)> {
     alt((
-        primitives::phrase(&["a", "spell", "cast", "this", "way"]).value(true),
+        primitives::phrase(&["a", "spell", "cast", "this", "way"]).value((true, false)),
         primitives::phrase(&[
             "an", "instant", "or", "sorcery", "spell", "cast", "this", "way",
         ])
-        .value(true),
+        .value((true, false)),
         // "If those spells would be put into your graveyard, exile them
         // instead." (Invoke Calamity): the spells an immediate collection
         // cast just put on the stack.
-        primitives::phrase(&["those", "spells"]).value(false),
+        primitives::phrase(&["those", "spells"]).value((false, true)),
     ))
     .parse_next(input)
 }
 
 fn rider_line<'a>(input: &mut LexStream<'a>) -> WResult<GraveyardExileRider> {
     primitives::kw("if").parse_next(input)?;
-    let cast_this_way = rider_subject.parse_next(input)?;
+    let (cast_this_way, those_spells) = rider_subject.parse_next(input)?;
     primitives::phrase(&["would", "be", "put", "into"]).parse_next(input)?;
     let your_graveyard = alt((
         primitives::kw("your").value(true),
@@ -61,6 +62,7 @@ fn rider_line<'a>(input: &mut LexStream<'a>) -> WResult<GraveyardExileRider> {
     primitives::sentence_end().parse_next(input)?;
     Ok(GraveyardExileRider {
         cast_this_way,
+        those_spells,
         your_graveyard,
     })
 }
@@ -166,6 +168,8 @@ pub(super) fn bind_cast_spell_graveyard_exile_rider(
     );
     effects.push(if rider.cast_this_way {
         replacement.with_cast_this_way_replacement_surface()
+    } else if rider.those_spells {
+        replacement.with_those_spells_replacement_surface()
     } else {
         replacement
     });

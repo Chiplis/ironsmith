@@ -131,6 +131,9 @@ const REST_REVEALED_OBJECT_PHRASES: &[&[&str]] = &[
     &["rest", "of", "revealed", "cards"],
     &["rest", "of", "cards"],
     &["rest", "of", "those", "cards"],
+    // "Put the rest of those exiled cards on the bottom" (The Day of the
+    // Doctor): the consulted exile pool minus the found card.
+    &["rest", "of", "those", "exiled", "cards"],
     &["remaining", "revealed", "cards"],
 ];
 const TAGGED_COUNTER_STATE_DISJUNCTION_PHRASES: &[&[&str]] = &[

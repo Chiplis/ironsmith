@@ -427,8 +427,25 @@ pub fn parse_trigger_control_phrase(words: &[&str]) -> Option<TriggerControlPhra
 pub fn parse_damage_source_surface(
     tokens: &[OwnedLexToken],
 ) -> crate::triggers::DamageSourceSurface {
-    let words = primitives::TokenWordView::new(tokens).word_refs();
-    let subject_end = parse_trigger_control_suffix(&words)
+    let all_words = primitives::TokenWordView::new(tokens).word_refs();
+    // "a source you control other than this artifact": the trailing
+    // self-exclusion is the `other` qualifier, not part of the source noun.
+    let words = match all_words
+        .windows(2)
+        .position(|pair| pair == ["other", "than"])
+    {
+        Some(index)
+            if index > 0
+                && matches!(
+                    &all_words[index + 2..],
+                    [this, _] if matches!(*this, "this" | "~")
+                ) =>
+        {
+            &all_words[..index]
+        }
+        _ => &all_words[..],
+    };
+    let subject_end = parse_trigger_control_suffix(words)
         .map(|suffix| suffix.subject_end)
         .unwrap_or(words.len());
     let subject = &words[..subject_end];

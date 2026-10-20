@@ -722,6 +722,9 @@ fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
             | EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
             )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+                player, ..
+            })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
                 player,
                 ..
@@ -769,6 +772,10 @@ fn stabilize_standalone_participant_choice_tag(
             tag,
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            tag,
+            ..
+        })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
             tag,
             ..
@@ -798,6 +805,36 @@ fn stabilize_standalone_participant_choice_tag(
 
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
     let filter_tokens = filter_tokens?;
+    // "who didn't discard two nonland cards this way" (Garruk, Veiled
+    // Butcher): a count of that player's matching tagged cards, not a
+    // single-match test.
+    if let Some(count) = filter_tokens
+        .first()
+        .and_then(|token| token.as_word())
+        .and_then(crate::util::parse_number_word_u32)
+        .filter(|count| *count >= 2)
+        && filter_tokens.len() > 1
+    {
+        let rest = &filter_tokens[1..];
+        let mut filter =
+            crate::grammar::primitives::probe_shape(parse_object_filter(rest, false))?;
+        if filter.zone == Some(crate::zone::Zone::Battlefield)
+            && rest
+                .iter()
+                .any(|token| token.is_word("card") || token.is_word("cards"))
+        {
+            filter.zone = None;
+        }
+        filter.owner = Some(PlayerFilter::IteratedPlayer);
+        return Some(PredicateAst::ValueComparison {
+            left: Value::TaggedSnapshotCount {
+                tag: crate::tag::CompilerReferenceTag::It.key(),
+                filter,
+            },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
     let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(filter_tokens, false))?;
     // "didn't discard a creature card this way" (Strongarm Tactics): the
@@ -1039,6 +1076,9 @@ fn bind_quantified_participant_actor(effects: &mut [EffectAst]) {
             | EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { player, .. },
             )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+                player, ..
+            })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsBottomOfLibrary {
                 player,
                 ..

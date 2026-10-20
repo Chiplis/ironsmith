@@ -557,6 +557,25 @@ pub fn parse_return_with_counters_on_it_sentence(
             None,
         )
     };
+    let mut return_effect = return_effect;
+    // "to the battlefield under their control with a duty counter on it"
+    // (Immortal Obligation): keep the authored owner-controller surface, the
+    // same fact the counterless return reader records.
+    if shape.destination.controller == ReturnControllerAst::Preserve
+        && crate::word_primitives::sequence_occurs(
+            &crate::lexer::token_word_refs(clause.tokens()),
+            &["under", "their", "control"],
+        )
+        && let EffectAst::SubjectVerb(subject_verb) = &mut return_effect
+        && let SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::ReturnToBattlefield {
+            target,
+            ..
+        }) = &mut subject_verb.action
+        && let Some(filter) =
+            crate::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+    {
+        filter.set_enters_under_controller_surface(true);
+    }
     let mut effects = vec![return_effect];
     let tagged_target =
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());

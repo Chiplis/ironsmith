@@ -14,7 +14,9 @@ struct Args {
     included_card_names: BTreeSet<String>,
     extra_cards: Vec<Value>,
     insert_missing_only: bool,
+    text_changes_only: bool,
     inserted_names_out: Option<String>,
+    changed_names_out: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -24,7 +26,9 @@ fn parse_args() -> Result<Args, String> {
         included_card_names: BTreeSet::new(),
         extra_cards: Vec::new(),
         insert_missing_only: false,
+        text_changes_only: false,
         inserted_names_out: None,
+        changed_names_out: None,
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -64,6 +68,10 @@ fn parse_args() -> Result<Args, String> {
                 args.extra_cards.extend(cards);
             }
             "--insert-missing-only" => args.insert_missing_only = true,
+            "--text-changes-only" => args.text_changes_only = true,
+            "--changed-names-out" => {
+                args.changed_names_out = Some(required_value(&mut iter, "--changed-names-out")?);
+            }
             "--inserted-names-out" => {
                 args.inserted_names_out = Some(required_value(&mut iter, "--inserted-names-out")?);
             }
@@ -80,7 +88,21 @@ fn required_value(iter: &mut impl Iterator<Item = String>, flag: &str) -> Result
 }
 
 fn usage() -> &'static str {
-    "usage: cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- [--cards <path>] [--db-path <path>] [--include-card <name>] [--include-cards <path>] [--extra-card-json <json-object>] [--extra-cards-json <json-array-path>] [--insert-missing-only] [--inserted-names-out <path>]"
+    "usage: cargo run --release -p ironsmith-registry-sync --bin sync_registry_db -- [--cards <path>] [--db-path <path>] [--include-card <name>] [--include-cards <path>] [--extra-card-json <json-object>] [--extra-cards-json <json-array-path>] [--insert-missing-only] [--text-changes-only] [--inserted-names-out <path>] [--changed-names-out <path>]"
+}
+
+fn write_names(path: &str, names: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = std::path::Path::new(path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let mut output = names.join("\n");
+    if !output.is_empty() {
+        output.push('\n');
+    }
+    fs::write(path, output)?;
+    Ok(())
 }
 
 fn parse_extra_card_json(raw: &str) -> Result<Value, String> {
@@ -108,6 +130,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut db = StatusDb::open(&args.db_path)?;
+    if args.text_changes_only {
+        let summary =
+            db.sync_registry_card_text_changes(&cards.values().cloned().collect::<Vec<_>>())?;
+        if let Some(path) = &args.inserted_names_out {
+            write_names(path, &summary.inserted_names)?;
+        }
+        if let Some(path) = &args.changed_names_out {
+            let mut changed = summary.inserted_names.clone();
+            changed.extend(summary.updated_names.iter().cloned());
+            write_names(path, &changed)?;
+        }
+        println!("Registry DB text-change sync complete");
+        println!("- Canonical cards processed: {}", cards.len());
+        println!("- Registry rows inserted: {}", summary.inserted_names.len());
+        println!("- Registry rows updated (text changed): {}", summary.updated_names.len());
+        println!("- Registry rows unchanged: {}", summary.unchanged);
+        println!("- Registry rows deleted: 0");
+        println!("- DB: {}", args.db_path);
+        return Ok(());
+    }
     if args.insert_missing_only {
         let summary =
             db.insert_missing_registry_cards(&cards.values().cloned().collect::<Vec<_>>())?;

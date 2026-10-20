@@ -27,6 +27,8 @@ pub enum ReplacementActionAst {
         /// "If an instant or sorcery spell cast this way would be put into
         /// your graveyard, exile it instead" wording.
         cast_this_way_surface: bool,
+        cast_from_your_graveyard_surface: bool,
+        those_spells_surface: bool,
     },
     RegisterDrawReplacement {
         player: PlayerFilter,

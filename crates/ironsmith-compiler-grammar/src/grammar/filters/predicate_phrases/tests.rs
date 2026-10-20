@@ -2332,11 +2332,15 @@ fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), Ca
     for (text, expected) in [
         (
             "If you cast this spell",
-            PredicateAst::Source(SourcePredicateAst::SourceWasCast),
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::SourceWasCastByController {
+                surface: SourceReferenceSurface::ThisPermanentType("this spell".into()),
+            }),
         ),
         (
             "If you cast it",
-            PredicateAst::Source(SourcePredicateAst::SourceWasCast),
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::SourceWasCastByController {
+                surface: SourceReferenceSurface::ThisPermanentType("it".into()),
+            }),
         ),
         (
             "If it was cast",

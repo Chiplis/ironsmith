@@ -1430,11 +1430,27 @@ pub(super) fn bind_stack_entry_resolution_targets<'a>(
     mut ctx: ExecutionContext<'a>,
     valid_targets: Vec<ResolvedTarget>,
     valid_target_assignments: &[crate::game_state::TargetAssignment],
+    slot_legality: &[bool],
 ) -> Result<ExecutionContext<'a>, GameLoopError> {
     ctx.all_targets_legal = valid_targets.len() == entry.targets.len();
+    if slot_legality.len() != entry.targets.len() {
+        return Err(GameLoopError::ExecutionFailed(
+            crate::effects::ExecutionError::IncompleteEvidence(
+                "target validation lost announced slot boundaries".into(),
+            ),
+        ));
+    }
+    let announced_target_slots = entry.targets.iter().zip(slot_legality).map(|(target, legal)| {
+        let target = match target {
+            crate::game_state::Target::Object(id) => ResolvedTarget::Object(*id),
+            crate::game_state::Target::Player(id) => ResolvedTarget::Player(*id),
+        };
+        (target, *legal)
+    }).collect();
     ctx = ctx
         .with_targets(valid_targets)
         .with_target_assignments(valid_target_assignments.to_vec())
+        .with_announced_target_slots(announced_target_slots)
         .with_announced_target_assignments(
             super::targeting::current_stack_entry_target_assignments(game, entry)?,
         )
@@ -1563,8 +1579,10 @@ fn resolve_stack_entry_full_inner(
     // Convert targets and validate them
     // Per MTG Rule 608.2b, if ALL targets are now illegal, the spell/ability fizzles
     let target_validation_view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
-    let (valid_targets, valid_target_assignments, all_targets_invalid) =
-        validate_stack_entry_targets_with_view(game, &entry, &target_validation_view, Some(&ctx))?;
+    let (valid_targets, valid_target_assignments, all_targets_invalid, slot_legality) =
+        targeting::validate_stack_entry_targets_with_slot_legality_with_view(
+            game, &entry, &target_validation_view, Some(&ctx),
+        )?;
 
     let mutating_creature_spell = !entry.is_ability
         && obj.as_ref().is_some_and(|obj| {
@@ -1716,6 +1734,7 @@ fn resolve_stack_entry_full_inner(
         ctx,
         valid_targets,
         &valid_target_assignments,
+        &slot_legality,
     )?;
 
     // Get effects to execute
@@ -4464,5 +4483,42 @@ mod incomplete_capture_terminal_root_tests {
         assert_eq!(game.stack.last().unwrap().target_id(), target_id);
         assert_eq!(game.object(source).unwrap().zone, Zone::Battlefield);
         game.end_token_resource_scope(outer, &meter);
+    }
+}
+
+#[cfg(test)]
+mod announced_target_slot_fizzle_tests {
+    use super::*;
+
+    #[test]
+    fn all_illegal_targets_fizzle_before_any_untargeted_slot_rider() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = game.players[0].id;
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Artifact")
+            .card_types(vec![crate::types::CardType::Artifact]).build();
+        let source = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let doomed = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let spec = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+            crate::target::ObjectFilter::artifact(),
+        ));
+        let group = crate::effects::ForEachAnnouncedTargetSlotEffect {
+            target_spec: spec.clone(),
+            start: crate::effect::Value::Fixed(0),
+            count: crate::effect::Value::Fixed(1),
+            effects: vec![crate::effect::Effect::gain_life(1)],
+        };
+        game.push_to_stack(StackEntry::ability(source, alice, vec![
+            crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+            crate::effect::Effect::new(group),
+        ]).with_targets(vec![crate::game_state::Target::Object(doomed)])
+          .with_target_assignments(vec![crate::game_state::TargetAssignment {
+              spec, range: 0..1,
+          }]));
+        game.move_object(doomed, Zone::Graveyard, crate::events::cause::EventCause::effect())
+            .expect("target leaves battlefield");
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        resolve_stack_entry_with(&mut game, &mut decisions).expect("fizzled ability resolves cleanly");
+        assert_eq!(game.player(alice).unwrap().life, 20);
+        assert!(game.stack.is_empty());
     }
 }

@@ -28,6 +28,10 @@ pub(super) struct ChosenCounterKindGroup {
     /// from among <kinds>" (Crystalline Giant): the kind comes from a fixed
     /// list instead of counters on objects.
     random_kinds: Option<RandomKindChoice>,
+    /// "Choose a counter on target permanent. Put an additional counter of
+    /// that kind on that permanent." (Ichormoon Gauntlet): the targeted
+    /// object is both the kind source and the recipient.
+    chosen_target: Option<TargetAst>,
     effects: Vec<EffectAst>,
     closed: bool,
     pub(super) first_sentence: usize,
@@ -211,6 +215,25 @@ fn put_that_kind_prefix(tokens: &[OwnedLexToken]) -> Option<(bool, &[OwnedLexTok
     })
 }
 
+/// "choose a counter on target <object>"
+fn targeted_kind_source(sentence: &SentenceInput) -> Option<&[OwnedLexToken]> {
+    let tokens = trim(sentence.lowered());
+    let (_, rest) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["choose", "a", "counter", "on"]))?;
+    rest.first()
+        .is_some_and(|token| token.is_word("target"))
+        .then_some(rest)
+}
+
+/// "put an additional counter of that kind on that permanent|it"
+fn is_put_additional_on_same_object(sentence: &SentenceInput) -> bool {
+    matches!(
+        crate::lexer::token_word_refs(trim(sentence.lowered())).as_slice(),
+        ["put", "an", "additional", "counter", "of", "that", "kind", "on", "that", "permanent"]
+            | ["put", "an", "additional", "counter", "of", "that", "kind", "on", "it"]
+    )
+}
+
 /// "choose a counter on <objects>" / "choose a kind of counter on <objects>"
 fn kind_source(sentence: &SentenceInput) -> Option<ObjectFilter> {
     let tokens = trim(sentence.lowered());
@@ -311,6 +334,22 @@ pub(super) fn open(
         return Ok(None);
     };
     let mut random_kinds = None;
+    if let Some(target_tokens) = targeted_kind_source(choice) {
+        if !is_put_additional_on_same_object(next) {
+            return Ok(None);
+        }
+        let target: TargetAst = crate::util::parse_target_phrase(target_tokens)?;
+        return Ok(Some(ChosenCounterKindGroup {
+            kind_source: ObjectFilter::default(),
+            for_each: None,
+            random_kinds: None,
+            chosen_target: Some(target),
+            effects: Vec::new(),
+            closed: false,
+            first_sentence: sentence_idx,
+            consumed: 1,
+        }));
+    }
     let (kind_source, for_each) = if let Some(choice) = random_kind_choice(choice) {
         random_kinds = Some(choice);
         (ObjectFilter::default(), None)
@@ -329,6 +368,7 @@ pub(super) fn open(
         kind_source,
         for_each,
         random_kinds,
+        chosen_target: None,
         effects: Vec::new(),
         closed: false,
         first_sentence: sentence_idx,
@@ -343,7 +383,10 @@ pub(super) fn continue_with(
     if group.closed {
         return Ok(false);
     }
-    let effect = if let Some(choice) = &group.random_kinds {
+    let effect = if let Some(target) = &group.chosen_target {
+        is_put_additional_on_same_object(sentence)
+            .then(|| EffectAst::subject_verb_put_counter_of_chosen_kind(target.clone()))
+    } else if let Some(choice) = &group.random_kinds {
         put_random_kind(sentence, choice)?
     } else {
         put_that_kind(sentence, &group.kind_source)?

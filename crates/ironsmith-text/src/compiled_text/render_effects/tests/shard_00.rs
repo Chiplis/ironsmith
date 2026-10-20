@@ -6682,7 +6682,7 @@ pub(super) fn describe_choose_then_sacrifice_compacts_exact_sentence_helper_set(
 
     assert_eq!(
         compact,
-        "that player or that object's controller sacrifices seven permanents of their choice"
+        "that player or that planeswalker's controller sacrifices seven permanents of their choice"
     );
 }
 

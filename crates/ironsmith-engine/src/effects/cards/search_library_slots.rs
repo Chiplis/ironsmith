@@ -63,6 +63,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         search_library: true,
                         require_library_access: true,
                         restrict_initial_view: true,
+                        library_scope_cards: None,
                         refresh_library_access: false,
                     },
                     |game, ctx, search| {

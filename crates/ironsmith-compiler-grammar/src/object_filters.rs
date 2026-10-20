@@ -1138,6 +1138,16 @@ fn finalize_public_object_filter(
             .retain(|constraint| constraint.tag.as_str() != "enchanted");
         let mut aura = ObjectFilter::default();
         aura.subtypes.push(crate::types::Subtype::Aura);
+        // "creatures that are enchanted by an Aura you control": the Aura's
+        // controller constrains the attachment, not the enchanted creature.
+        if words.windows(6).any(|part| {
+            part == ["enchanted", "by", "an", "aura", "you", "control"]
+        }) || words
+            .windows(5)
+            .any(|part| part == ["enchanted", "by", "auras", "you", "control"])
+        {
+            aura.controller = Some(PlayerFilter::You);
+        }
         filter.with_attached_object = Some(Box::new(aura));
     }
 
@@ -1229,6 +1239,20 @@ pub(crate) fn parse_terminal_same_name_filter(
     other: bool,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+    // "Counter all spells with those names" (Grimoire Thief): the names of
+    // the cards exiled with this source (CR 607.2a).
+    if trimmed.len() > 3
+        && parser_token_word_refs(&trimmed[trimmed.len() - 3..]) == ["with", "those", "names"]
+    {
+        let mut filter = parse_object_filter(&trimmed[..trimmed.len() - 3], other)?;
+        filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
+                relation: TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        return Ok(Some(filter));
+    }
     let Some((start, _, reference)) = crate::grammar::primitives::find_prefix(trimmed, || {
         crate::grammar::primitives::any_phrase(&[
             &["with", "the", "same", "name", "as"],
@@ -1766,13 +1790,13 @@ pub fn parse_object_filter(
         let tail = &words_ref[start..];
         let tail = tail.strip_prefix(&["the"]).unwrap_or(tail);
         let player = match tail {
-            [
-                "player" | "opponent",
-                "to",
-                "your",
-                "left",
-                "controls" | "control",
-            ] => Some(PlayerFilter::PlayerToYourLeft),
+            ["player", "to", "your", "left", "controls" | "control"] => {
+                Some(PlayerFilter::PlayerToYourLeft)
+            }
+            // "the opponent to your left" skips teammates (Barroom Brawl).
+            ["opponent", "to", "your", "left", "controls" | "control"] => {
+                Some(PlayerFilter::OpponentToYourLeft)
+            }
             [
                 "player" | "opponent",
                 "to",

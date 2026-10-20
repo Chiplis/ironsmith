@@ -18,6 +18,11 @@ pub struct DealsDamageToTrigger {
     /// The damaged object must be a target of the spell or ability whose
     /// resolution deals the damage ("deals damage to that creature").
     pub recipient_is_source_target: bool,
+    /// Only noncombat damage triggers ("deals noncombat damage to").
+    pub noncombat_only: bool,
+    /// The damage dealt must equal the damaged object's toughness ("damage
+    /// to a creature equal to that creature's toughness", Taii Wakeen).
+    pub amount_equals_target_toughness: bool,
 }
 
 impl DealsDamageToTrigger {
@@ -36,6 +41,8 @@ impl DealsDamageToTrigger {
             combat_only: false,
             source_surface,
             recipient_is_source_target: false,
+            noncombat_only: false,
+            amount_equals_target_toughness: false,
         }
     }
 
@@ -53,6 +60,8 @@ impl DealsDamageToTrigger {
             combat_only: true,
             source_surface: DamageSourceSurface::Filter,
             recipient_is_source_target: false,
+            noncombat_only: false,
+            amount_equals_target_toughness: false,
         }
     }
 
@@ -86,6 +95,9 @@ impl TriggerMatcher for DealsDamageToTrigger {
         if self.combat_only && !damage.is_combat {
             return false;
         }
+        if self.noncombat_only && damage.is_combat {
+            return false;
+        }
         if damage.amount == 0
             || !super::damage_object_matches_filter(
                 damage.source,
@@ -115,6 +127,16 @@ impl TriggerMatcher for DealsDamageToTrigger {
             ctx,
         ) {
             return false;
+        }
+        if self.amount_equals_target_toughness {
+            let toughness = damage
+                .target_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.toughness)
+                .or_else(|| ctx.game.calculated_toughness(target_id));
+            if toughness != Some(damage.amount as i32) {
+                return false;
+            }
         }
         if self.combat_only
             && let Some(current_key) = self.cardinality_key(damage.source, target_id)
@@ -179,7 +201,25 @@ impl TriggerMatcher for DealsDamageToTrigger {
         if self.combat_only {
             format!("Whenever {source} deals combat damage to {target}")
         } else {
-            format!("Whenever {source} deals damage to {target}")
+            let damage_kind = if self.noncombat_only {
+                "noncombat damage"
+            } else {
+                "damage"
+            };
+            let amount = if self.amount_equals_target_toughness {
+                let mut noun = self.target_filter.clone();
+                noun.set_union_one_or_more(false);
+                let noun = noun.description();
+                let noun = noun
+                    .strip_prefix("a ")
+                    .or_else(|| noun.strip_prefix("an "))
+                    .unwrap_or(&noun)
+                    .to_string();
+                format!(" equal to that {noun}'s toughness")
+            } else {
+                String::new()
+            };
+            format!("Whenever {source} deals {damage_kind} to {target}{amount}")
         }
     }
 }

@@ -290,7 +290,7 @@ const NOT_ON_BATTLEFIELD_TAILS: &[&[&str]] = &[
 /// card's madness casting method, derived from its mana cost, recorded in
 /// every zone the card can be in other than the battlefield where that
 /// method matters: hand (the discard replacement), exile (the trigger's cast),
-/// graveyard and library ("if it has madness" checks).
+/// graveyard, library, and command ("if it has madness" checks).
 pub fn parse_granted_madness_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -337,6 +337,6 @@ pub fn parse_granted_madness_line(
         filter,
         Zone::Hand,
     );
-    spec.additional_zones = vec![Zone::Exile, Zone::Graveyard, Zone::Library];
+    spec.additional_zones = vec![Zone::Exile, Zone::Graveyard, Zone::Library, Zone::Command];
     Ok(Some(StaticAbility::grants(spec)))
 }

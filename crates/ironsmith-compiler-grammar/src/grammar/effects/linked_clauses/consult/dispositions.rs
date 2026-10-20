@@ -300,13 +300,20 @@ fn split_terminal_remainder(
 ) -> Option<(Vec<OwnedLexToken>, ConsultRemainderDispositionShape)> {
     // Coordinated destinations share the opening verb: "put that card into
     // your hand and the rest on the bottom ...".
-    if tokens.first().is_some_and(|token| token.is_word("put")) {
-        for (index, token) in tokens.iter().enumerate() {
+    // An inline consult tail keeps its ", then" boundary ("..., then puts
+    // that card onto the battlefield and the rest on the bottom ..." —
+    // Collision of Realms); the shared verb follows that connective.
+    let verb_at = usize::from(tokens.first().is_some_and(|token| token.is_word("then")));
+    if tokens
+        .get(verb_at)
+        .is_some_and(|token| token.is_word("put") || token.is_word("puts"))
+    {
+        for (index, token) in tokens.iter().enumerate().skip(verb_at + 1) {
             if token.is_word("and") && starts_content_sequence(&tokens[index + 1..], &[&["rest"]]) {
-                let mut remainder_tokens = vec![tokens[0].clone()];
+                let mut remainder_tokens = vec![tokens[verb_at].clone()];
                 remainder_tokens.extend_from_slice(&tokens[index + 1..]);
                 if let Some(remainder) = parse_remainder_shape(&remainder_tokens) {
-                    return Some((trimmed(&tokens[..index]).to_vec(), remainder));
+                    return Some((trimmed(&tokens[verb_at..index]).to_vec(), remainder));
                 }
             }
         }

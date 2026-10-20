@@ -1425,9 +1425,20 @@ pub fn parse_exile_face_down_pile_sentence(
                 true,
             )
         };
+        // The pile producer preserves an authored universal selection.
+        // A bare Object target would ask for one card at resolution.
+        let exile = match target {
+            TargetAst::Object(filter, _, _)
+                if filter.set_quantifier_surface()
+                    == Some(ironsmith_core::SetQuantifierSurface::All) =>
+            {
+                EffectAst::subject_verb_exile_all(filter, true)
+            }
+            target => EffectAst::subject_verb_exile(target, true),
+        };
         return Ok(Some(vec![
             EffectAst::TagAffected {
-                effect: Box::new(EffectAst::subject_verb_exile(target, true)),
+                effect: Box::new(exile),
                 tag: crate::tag::TagRef::of(pile_tag),
             },
             entry,
@@ -2133,11 +2144,18 @@ pub fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     else {
         return Ok(None);
     };
+    let rider_words = crate::lexer::token_word_refs(&second);
     let cast_this_way = crate::word_primitives::sequence_occurs(
-        &crate::lexer::token_word_refs(&second),
+        &rider_words,
         &["cast", "this", "way"],
     );
-    graveyard_cast_with_exile_replacement_surface(&first, &shape, cast_this_way)
+    let cast_from_your_graveyard = crate::word_primitives::sequence_occurs(
+        &rider_words,
+        &["cast", "from", "your", "graveyard", "this", "way"],
+    );
+    graveyard_cast_with_exile_replacement_surface(
+        &first, &shape, cast_this_way, cast_from_your_graveyard,
+    )
 }
 
 /// The effects of a graveyard-cast permission whose spell is exiled instead
@@ -2147,7 +2165,7 @@ pub fn graveyard_cast_with_exile_replacement(
     first: &[OwnedLexToken],
     shape: &effect_grammar::GraveyardCastReplacementShape,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    graveyard_cast_with_exile_replacement_surface(first, shape, false)
+    graveyard_cast_with_exile_replacement_surface(first, shape, false, false)
 }
 
 /// `cast_this_way` records the rider wording "If an instant or sorcery spell
@@ -2156,8 +2174,11 @@ pub fn graveyard_cast_with_exile_replacement_surface(
     first: &[OwnedLexToken],
     shape: &effect_grammar::GraveyardCastReplacementShape,
     cast_this_way: bool,
+    cast_from_your_graveyard: bool,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    graveyard_cast_with_exile_replacement_and_surcharge(first, shape, cast_this_way, None)
+    graveyard_cast_with_exile_replacement_and_surcharge(
+        first, shape, cast_this_way, cast_from_your_graveyard, None,
+    )
 }
 
 /// `unless_targets_surcharge` is "If that spell doesn't target <filter>, it
@@ -2166,6 +2187,7 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
     first: &[OwnedLexToken],
     shape: &effect_grammar::GraveyardCastReplacementShape,
     cast_this_way: bool,
+    cast_from_your_graveyard: bool,
     unless_targets_surcharge: Option<(crate::mana::ManaCost, ObjectFilter)>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // Keep the participant binder around the entire target/cast/replacement
@@ -2175,7 +2197,8 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
         let start = view.token_index_after_words(3).unwrap_or(first.len());
         let body = trim_commas(&first[start..]);
         return Ok(graveyard_cast_with_exile_replacement_and_surcharge(
-            &body, shape, cast_this_way, unless_targets_surcharge,
+            &body, shape, cast_this_way, cast_from_your_graveyard,
+            unless_targets_surcharge,
         )?.map(|effects| vec![EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects })]));
     }
     // "... from your graveyard this turn": the trailing duration is not part
@@ -2295,7 +2318,10 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
     };
 
     if shape.until_end_of_turn {
-        let replacement_filter = ObjectFilter::tagged(chosen_tag.clone()).in_zone(Zone::Stack);
+        let mut replacement_filter = ObjectFilter::tagged(chosen_tag.clone()).in_zone(Zone::Stack);
+        if shape.replacement_to_your_graveyard {
+            replacement_filter = replacement_filter.owned_by(PlayerFilter::You);
+        }
         let surface = ironsmith_core::GrantPlayTaggedSurface::default()
             .with_leading_duration(!shape.trailing_this_turn)
             .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard);
@@ -2340,10 +2366,13 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
         ]));
     }
 
-    let replacement_filter = ObjectFilter::spell().match_tagged(
+    let mut replacement_filter = ObjectFilter::spell().match_tagged(
         cast_spell_tag.clone(),
         TaggedOpbjectRelation::IsTaggedObject,
     );
+    if shape.replacement_to_your_graveyard {
+        replacement_filter = replacement_filter.owned_by(PlayerFilter::You);
+    }
 
     let select_card = if chosen_not_targeted {
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
@@ -2394,7 +2423,9 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
                     crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
                     false,
                 );
-                if cast_this_way {
+                if cast_from_your_graveyard {
+                    replacement.with_cast_from_your_graveyard_replacement_surface()
+                } else if cast_this_way {
                     replacement.with_cast_this_way_replacement_surface()
                 } else {
                     replacement

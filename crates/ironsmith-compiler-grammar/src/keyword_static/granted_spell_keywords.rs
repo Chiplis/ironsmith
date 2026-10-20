@@ -154,6 +154,31 @@ pub fn parse_granted_spell_keyword_line(
     {
         filter.first_spell_cast_each_turn = true;
     }
+    // "Each spell you cast that's exactly three colors" (Threefold Signal):
+    // the relative clause is an exact color count on the spell.
+    if filter.color_count.is_none()
+        && filter.exactly_two_colors.is_none()
+        && let Some(exactly) = subject_words.iter().position(|word| *word == "exactly")
+        && exactly > 0
+        && matches!(subject_words[exactly - 1], "thats" | "that's" | "is" | "s" | "with")
+        && subject_words
+            .get(exactly + 2)
+            .is_some_and(|word| matches!(*word, "color" | "colors"))
+        && let Some(count) = subject_words.get(exactly + 1).and_then(|word| match *word {
+            "one" => Some(1),
+            "two" => Some(2),
+            "three" => Some(3),
+            "four" => Some(4),
+            "five" => Some(5),
+            _ => None,
+        })
+    {
+        if count == 2 {
+            filter.exactly_two_colors = Some(true);
+        } else {
+            filter.color_count = Some(crate::filter::Comparison::Equal(count));
+        }
+    }
     if crate::word_primitives::sequence_occurs(
         subject_words,
         &["from", "anywhere", "other", "than", "your", "hand"],

@@ -152,3 +152,7 @@ path = "tests/mechanics_audit_20260927_triggers.rs"
 [[test]]
 name = "wymi_layers"
 path = "tests/wymi_layers.rs"
+
+[[test]]
+name = "cr_complete_audit"
+path = "tests/cr_complete_audit.rs"

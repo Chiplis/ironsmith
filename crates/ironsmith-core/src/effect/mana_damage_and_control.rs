@@ -1448,6 +1448,12 @@ pub struct RegisterFutureZoneReplacementEffect {
     /// into your graveyard, exile it instead" rather than "If that spell ...".
     #[cfg_attr(feature = "serde", serde(default))]
     pub cast_this_way_surface: bool,
+    /// The authored rider says the spell was cast from your graveyard this way.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cast_from_your_graveyard_surface: bool,
+    /// The authored rider refers to a collection as "those spells".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub those_spells_surface: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1696,11 +1702,23 @@ impl RegisterFutureZoneReplacementEffect {
             require_cause_source_match: false,
             link_exiled_to_source: false,
             cast_this_way_surface: false,
+            cast_from_your_graveyard_surface: false,
+            those_spells_surface: false,
         }
     }
 
     pub fn with_cast_this_way_surface(mut self) -> Self {
         self.cast_this_way_surface = true;
+        self
+    }
+
+    pub fn with_cast_from_your_graveyard_surface(mut self) -> Self {
+        self.cast_from_your_graveyard_surface = true;
+        self
+    }
+
+    pub fn with_those_spells_surface(mut self) -> Self {
+        self.those_spells_surface = true;
         self
     }
 
@@ -3660,6 +3678,10 @@ pub enum CounterMoveAmount {
     /// kind on the donor that the recipient has none of (the effect's
     /// `counter_type` is not consulted). Appended for wire stability.
     OneOfEachKindAbsentFromRecipient,
+    /// "Move one or more counters from <donor> onto <recipient>" (Goldberry,
+    /// River-Daughter): like `AnyNumberOfAnyKind`, but at least one counter
+    /// must move when any can. Appended for wire stability.
+    OneOrMoreOfAnyKind,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -6293,6 +6315,18 @@ pub struct ForPlayersEffect<E> {
     pub sequential: bool,
     pub starting_with_controller: bool,
     pub stop_after_first_happened: bool,
+}
+
+/// Execute a body once for each announced target slot in a dynamic range.
+/// The target list is chosen while casting; an illegal slot still runs
+/// non-target instructions in its body while exposing no active target.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct ForEachAnnouncedTargetSlotEffect<E> {
+    pub target_spec: ChooseSpec,
+    pub start: Value,
+    pub count: Value,
+    pub effects: Vec<E>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

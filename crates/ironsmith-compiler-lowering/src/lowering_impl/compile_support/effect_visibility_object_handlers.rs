@@ -85,6 +85,41 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
+        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+            filter,
+            count,
+            player,
+            tag,
+            source,
+            aggregate_constraint,
+        }) => {
+            let subject =
+                LoweredSubject::resolve_resolution_chooser(*player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            if !matches!(chooser, PlayerFilter::ChosenPlayer) {
+                preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            }
+            validate_card_selection_filter(&resolved_filter, None)?;
+            let mut choose = crate::effects::ChooseObjectsEffect::new(
+                resolved_filter,
+                *count,
+                chooser.clone(),
+                tag.clone(),
+            )
+            .in_zone(Zone::Exile)
+            .with_collection_source_surface(source.clone());
+            if let Some(constraint) = aggregate_constraint {
+                choose = choose.with_aggregate_constraint(constraint.clone());
+            }
+            let mut effects = subject.target_prelude();
+            effects.push(Effect::new(choose));
+            ctx.last_object_tag = Some(tag.clone().into());
+            ctx.last_player_filter = Some(chooser);
+            record_exiled_collection_choice(ctx, tag, count);
+            (effects, subject.into_choices())
+        }
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             filter,
             count,

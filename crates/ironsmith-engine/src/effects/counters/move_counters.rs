@@ -64,8 +64,14 @@ impl EffectExecutor for MoveCountersEffect {
                 let any_kind = matches!(
                     self.count,
                     ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
+                        | ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind
                         | ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient
                 );
+                let at_least_one = matches!(
+                    self.count,
+                    ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind
+                );
+                let mut first_available: Option<(crate::ids::ObjectId, crate::object::CounterType)> = None;
                 let absent_kinds_only = matches!(
                     self.count,
                     ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient
@@ -113,13 +119,17 @@ impl EffectExecutor for MoveCountersEffect {
                         }
                         let available = game.counter_count(from_id, kind);
                         if available == 0 { continue; }
+                        if first_available.is_none() {
+                            first_available = Some((from_id, kind));
+                        }
                         let to_move = match &self.count {
                             ironsmith_core::effect::CounterMoveAmount::Exact(value) =>
                                 resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
                             ironsmith_core::effect::CounterMoveAmount::All => available,
                             ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient => 1,
                             ironsmith_core::effect::CounterMoveAmount::AnyNumber
-                            | ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind => {
+                            | ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
+                            | ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind => {
                                 let name = game.object(from_id).map(|object| object.name.as_str()).unwrap_or("the permanent");
                                 let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
                                     format!("Choose how many {} counters to move from {name}", kind.description()));
@@ -135,6 +145,15 @@ impl EffectExecutor for MoveCountersEffect {
                             "counter transfer destination exceeds the supported counter count range".into()))?;
                         allocations.push((from_id, kind, to_move));
                     }
+                }
+                // "Move one or more counters": choosing zero everywhere still
+                // moves one counter when any could move.
+                if totals.is_empty()
+                    && at_least_one
+                    && let Some((from_id, kind)) = first_available
+                {
+                    totals.insert(kind, 1);
+                    allocations.push((from_id, kind, 1));
                 }
                 if totals.is_empty() { return finished(EffectOutcome::count(0)); }
 

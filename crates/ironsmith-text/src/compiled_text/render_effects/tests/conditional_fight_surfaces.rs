@@ -32,3 +32,20 @@ fn explicit_pump_targets_remain_fresh_choices() {
         "explicit target was rebound to the prior target: {rendered}"
     );
 }
+
+#[test]
+fn declared_fighters_remain_distinct_through_the_conditional_counter() {
+    let oracle = "Choose target creature you control and target creature an opponent controls. Put a +1/+1 counter on the creature you control if it has power 4 or greater. Then those creatures fight each other.";
+    let rendered = render_card("Declared fighters", oracle);
+    assert!(rendered.starts_with("Choose target creature you control and target creature an opponent controls."), "{rendered}");
+    assert!(rendered.contains("Then those creatures fight each other"), "{rendered}");
+}
+
+#[test]
+fn shared_fighter_collection_omits_redundant_alias_declaration() {
+    let oracle = "Choose target creature you control and target creature you don't control. If the creature you control entered this turn, put a +1/+1 counter on it. Then those creatures fight each other.";
+    let rendered = render_card("Shared fighters", oracle);
+    assert!(rendered.starts_with("Choose target creature you control and target creature you don't control."), "{rendered}");
+    assert!(!rendered.contains("Choose it"), "{rendered}");
+    assert!(rendered.contains("Then those creatures fight each other"), "{rendered}");
+}

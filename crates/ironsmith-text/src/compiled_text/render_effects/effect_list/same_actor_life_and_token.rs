@@ -24,7 +24,13 @@ pub(in crate::compiled_text) fn describe_you_action_and_create_token(
             .is_some_and(|lose| lose.player == ChooseSpec::Player(PlayerFilter::You))
         || action_effect
             .downcast_ref::<crate::effects::TakeInitiativeEffect>()
-            .is_some_and(|initiative| initiative.player == PlayerFilter::You);
+            .is_some_and(|initiative| initiative.player == PlayerFilter::You)
+        // "you put a +1/+1 counter on target creature and create a Food
+        // token" (Rocco, Street Chef): the shared explicit "you" belongs to
+        // the whole conjunction; the counter placement is yours.
+        || action_effect
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+            .is_some();
     if !action_is_yours {
         return None;
     }
@@ -46,9 +52,12 @@ pub(in crate::compiled_text) fn describe_you_action_and_create_token(
         .strip_prefix("You ")
         .or_else(|| action.strip_prefix("you "))
         .unwrap_or(action);
+    let action = lowercase_first(action);
+    let action = action.as_str();
     if !action.starts_with("gain ")
         && !action.starts_with("lose ")
         && action != "take the initiative"
+        && !action.starts_with("put ")
     {
         return None;
     }

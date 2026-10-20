@@ -1514,14 +1514,25 @@ fn compile_effect_inner(
             Vec::new(),
         ));
     }
-    if let EffectAst::PutTriggeringCounterKind { target } = effect {
+    if let EffectAst::PutTriggeringCounterKind {
+        target,
+        one_of_each,
+    } = effect
+    {
         let (spec, choices) =
             resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+        // "one of each of those kinds": a fixed single counter of the
+        // triggering kind rather than the triggering amount.
+        let amount = if *one_of_each {
+            crate::effect::Value::Fixed(1)
+        } else {
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+        };
         return Ok((
             vec![Effect::new(
                 crate::effects::PutCountersEffect::new(
                     crate::object::CounterType::PlusOnePlusOne,
-                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+                    amount,
                     spec,
                 )
                 .with_counter_kind_from_trigger(),
@@ -2149,6 +2160,49 @@ fn compile_effect_inner(
             vec![Effect::mana_restricted(compiled_effects, restrictions)],
             choices,
         ));
+    }
+    if let EffectAst::ForEach(ForEachEffectAst::AnnouncedTargetSlotRange {
+        target_spec, start, count, target_action, riders,
+    }) = effect {
+        let (target_spec, _) = resolve_target_spec_with_choices(
+            target_spec, &current_reference_env(ctx),
+        )?;
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Destroy {
+                no_regeneration, creature_destroyed_this_way_surface, ..
+            }), ..
+        }) = target_action.as_ref() else {
+            return Err(CardTextError::UnsupportedLine(
+                "ordered target slot action is not a destroy instruction".into(),
+            ));
+        };
+        let destroy = if *no_regeneration {
+            Effect::new(crate::effects::DestroyNoRegenerationEffect::with_spec(
+                ChooseSpec::Iterated,
+            ).with_creature_destroyed_this_way_surface(*creature_destroyed_this_way_surface))
+        } else {
+            Effect::new(crate::effects::DestroyEffect::with_spec(ChooseSpec::Iterated))
+        };
+        // The spell's target was already validated at the start of resolution.
+        // An illegal slot skips only its target-dependent action, not the
+        // untargeted rider printed after it.
+        let mut body = vec![Effect::conditional_only(
+            ironsmith_core::Condition::TargetMatches(ObjectFilter::default()),
+            vec![destroy],
+        )];
+        let (mut rider_effects, rider_choices) = compile_effects(riders, ctx)?;
+        if !rider_choices.is_empty() {
+            return Err(CardTextError::UnsupportedLine(
+                "ordered target rider unexpectedly declared another target".into(),
+            ));
+        }
+        body.append(&mut rider_effects);
+        return Ok((vec![Effect::new(ironsmith_core::ForEachAnnouncedTargetSlotEffect {
+            target_spec,
+            start: start.clone(),
+            count: count.clone(),
+            effects: body,
+        })], Vec::new()));
     }
     if let EffectAst::ForEach(ForEachEffectAst::RepeatEffects { count, effects }) = effect {
         let repeats_manifest_dread = matches!(

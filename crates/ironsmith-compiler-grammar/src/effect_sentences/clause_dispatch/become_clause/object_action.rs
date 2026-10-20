@@ -6,6 +6,28 @@ pub fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    // "Sarkhan becomes a Dragon in addition to his other types": a gendered
+    // possessive before "other" names the same object as the subject and is
+    // read as "its", exactly as the contracted-copula reading does.
+    if rest_tokens.iter().enumerate().any(|(index, token)| {
+        token.is_any_word(&["his", "her"])
+            && rest_tokens.get(index + 1).is_some_and(|next| next.is_word("other"))
+    }) {
+        let normalized: Vec<OwnedLexToken> = rest_tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| {
+                if token.is_any_word(&["his", "her"])
+                    && rest_tokens.get(index + 1).is_some_and(|next| next.is_word("other"))
+                {
+                    OwnedLexToken::synthetic_word("its")
+                } else {
+                    token.clone()
+                }
+            })
+            .collect();
+        return parse_become_clause(subject_tokens, &normalized);
+    }
     // "It becomes night." / "It becomes day." (CR 731.2-731.3): the impersonal
     // "it" names the game's day/night designation, not an object.
     if let [subject] = LexedClause::new(subject_tokens).trim().as_slice()

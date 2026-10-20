@@ -263,13 +263,21 @@ pub(super) fn lower(
                         move_all(capture(exiled, Zone::Library), Zone::Exile),
                         // The pile is still in the library; searching it
                         // reveals it to you, and its rest is shuffled back.
-                        choose_from(
-                            capture(searched, Zone::Library),
-                            ChoiceCount::exactly(1),
-                            PlayerAst::You,
-                            &selected,
-                            Zone::Library,
-                        ),
+                        // This is a search of the other tagged pile, not a
+                        // generic choice from the library. Keep its owner
+                        // explicit so search admission and visibility have
+                        // the correct library to inspect.
+                        EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                            optional_search_zones: false,
+                            filter: capture(searched, Zone::Library)
+                                .owned_by(PlayerFilter::You),
+                            count: ChoiceCount::exactly(1),
+                            count_value: None,
+                            player: PlayerAst::You,
+                            tag: selected.clone(),
+                            zones: vec![Zone::Library],
+                            search_mode: Some(crate::effect::SearchSelectionMode::Exact),
+                        }),
                         move_tagged(&selected, Zone::Hand),
                         shuffle_your_library(),
                     ],
@@ -437,6 +445,7 @@ pub(super) fn lower(
                         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode::Normal,
                         until_next_end_step: duration == ExilePlayDuration::UntilYourNextEndStep,
                         until_next_turn_start: duration == ExilePlayDuration::UntilYourNextTurn,
+                        duration_is_holder_relative: false,
                         during_next_turn: false,
                         until_end_of_combat_next_turn: false,
                         spell_filter: None,

@@ -325,6 +325,7 @@ fn effect_establishes_body_object_antecedent(effect: &EffectAst) -> bool {
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
             ..
         })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection { .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones { .. }) => true,
         _ => false,
     }
@@ -396,6 +397,10 @@ fn bind_condition_antecedent_in_effect(
         },
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { filter, .. })
         | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint {
+            filter,
+            ..
+        })
+        | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
             filter,
             ..
         })
@@ -637,6 +642,10 @@ pub fn bind_condition_collection_antecedent_in_effects(
             | EffectAst::ObjectChoices(
                 ObjectChoiceEffectAst::ChooseObjectsWithAggregateConstraint { filter, .. },
             )
+            | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseSourceLinkedCollection {
+                filter,
+                ..
+            })
             | EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
                 filter,
                 ..

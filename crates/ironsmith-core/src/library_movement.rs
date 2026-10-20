@@ -389,6 +389,11 @@ pub fn payload_library_movement<E: LibraryMovement + 'static, C: LibraryMovement
             context.inspect_iteration_origin(context.filter_library_origin(&e.filter), &e.effects),
         );
     }
+    if let Some(e) = payload.downcast_ref::<ForEachAnnouncedTargetSlotEffect<E>>() {
+        return Some(context.inspect_iteration_origin(
+            context.selection_library_origin(&e.target_spec), &e.effects,
+        ));
+    }
     if let Some(e) = payload.downcast_ref::<ForEachTaggedEffect<E>>() {
         return Some(
             context.inspect_iteration_origin(context.tag_library_origin(&e.tag), &e.effects),

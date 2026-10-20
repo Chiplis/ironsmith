@@ -359,6 +359,11 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         // generic shortening above.
         .replace("can't enter.", "can't enter the battlefield.")
         .replace("can't enter,", "can't enter the battlefield,")
+        // A control-redirecting replacement keeps the zone (Gather Specimens).
+        .replace(
+            "would enter under an opponent's control",
+            "would enter the battlefield under an opponent's control",
+        )
         .replace(
             "had another land enter under",
             "had another land enter the battlefield under",

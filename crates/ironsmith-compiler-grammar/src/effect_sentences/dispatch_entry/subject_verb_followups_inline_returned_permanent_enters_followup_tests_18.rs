@@ -1,6 +1,31 @@
 use super::*;
 
 #[test]
+fn source_until_exile_return_creates_one_delayed_watcher_per_exiled_card() {
+    let lexed = crate::lexer::lex_line(
+        "Exile any number of other target creatures controlled by different players until this creature leaves the battlefield. When an exiled card enters under your control this way, put two +1/+1 counters on it.",
+        0,
+    )
+    .expect("linked exile should lex");
+    let parsed = parse_effect_sentences_lexed(&lexed).expect("linked exile should parse");
+    let [EffectAst::SubjectVerb(exile), EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
+        trigger: crate::cards::builders::TriggerSpec::ZoneChange(return_event),
+        one_shot: true,
+        duration: Until::Forever,
+        effects,
+        ..
+    })] = parsed.as_slice() else {
+        panic!("expected source exile followed by a captured delayed return: {parsed:#?}");
+    };
+    assert!(matches!(exile.action,
+        SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ExileUntilSourceLeaves { leave_watcher: None, .. })));
+    assert_eq!(return_event.from, Some(crate::zone::Zone::Exile));
+    assert_eq!(return_event.to, Some(crate::zone::Zone::Battlefield));
+    assert!(return_event.duration_return_from_source);
+    assert!(!effects.is_empty());
+}
+
+#[test]
 fn singular_return_result_gets_a_one_shot_enter_watcher() {
     let lexed = crate::lexer::lex_line(
             "Return target permanent card from an opponent's graveyard to the battlefield. When that permanent enters, return up to one target permanent card from your graveyard to the battlefield.",

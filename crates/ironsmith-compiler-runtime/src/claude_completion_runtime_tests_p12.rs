@@ -450,6 +450,9 @@ fn parker_luck_players_lose_life_for_each_others_revealed_card() {
     assert_eq!(game.player(bob).unwrap().life, 18, "Bob loses the mana value of Alice's card");
     assert_eq!(game.player(alice).unwrap().hand.len(), 1);
     assert_eq!(game.player(bob).unwrap().hand.len(), 1);
+    assert_eq!(game.object(game.player(alice).unwrap().hand[0]).unwrap().name, "Alice Top");
+    assert_eq!(game.object(game.player(bob).unwrap().hand[0]).unwrap().name, "Bob Top");
+    assert!(game.object(source).is_some(), "unrelated source remains on the battlefield");
 }
 
 #[test]

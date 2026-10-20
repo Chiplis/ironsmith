@@ -139,7 +139,7 @@ pub use effect::{
     ExiledWithSourceSubjectSurface, ExperienceCountersEffect, ExploreEffect, GivePlayerCountersEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
-    ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect,
+    ForEachObject, ForEachObjectCorrelatedResultEffect, ForEachAnnouncedTargetSlotEffect, ForEachTaggedEffect,
     ForEachTaggedPlayerEffect, ForPlayersEffect, CollectManaPaymentsEffect, GainLifeEffect, GoadEffect,
     BindXValueEffect,
     MustAttackPlayerThisTurnEffect,
