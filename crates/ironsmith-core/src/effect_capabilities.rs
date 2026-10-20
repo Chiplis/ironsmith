@@ -371,6 +371,7 @@ pub fn library_movement_policy(type_name: &str) -> LibraryMovementPolicy {
         | "ReturnFromGraveyardOrExileToBattlefieldEffect"
         | "ReturnFromGraveyardToBattlefieldEffect"
         | "ReturnFromGraveyardToHandEffect"
+        | "RevealChosenPlayerEffect"
         | "RevealChosenSubtypeEffect"
         | "RevealFromHandEffect"
         | "RevealObjects"

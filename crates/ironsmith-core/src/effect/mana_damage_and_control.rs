@@ -5334,6 +5334,15 @@ pub enum CopyInstructionSurface {
     /// `Copy it, then you may cast the copy. (A copy of a permanent spell
     /// becomes a token.)`
     SeparateItThenPermanentCopyReminder,
+    /// `You may create a copy of <named card>. You may cast the copy.`: an
+    /// authored optional creation ahead of the optional cast. Creating a copy
+    /// that is never cast has no observable result, so it executes as the one
+    /// optional cast.
+    OptionalCreate,
+    /// `Copy them. You may cast any number of the copies.`: one optional
+    /// copy-cast per card of a just-produced set, authored as a plural copy
+    /// instruction rather than a per-card loop sentence.
+    AnyNumberOfCopies,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -5999,6 +6008,11 @@ pub struct ChoosePlayerEffect {
     /// each iteration of an enclosing loop chooses a different player.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub accumulate_into: Option<crate::tag::TagKey>,
+    /// "secretly choose an opponent" (Stalking Leonin): a remembered choice is stored as the chooser's secret for
+    /// the source and becomes the source's public chosen player only when a
+    /// [`RevealChosenPlayerEffect`] cost reveals it.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub secretly: bool,
 }
 
 impl ChoosePlayerEffect {
@@ -6015,7 +6029,14 @@ impl ChoosePlayerEffect {
             random: false,
             remember_as_chosen_player: false,
             accumulate_into: None,
+            secretly: false,
         }
+    }
+
+    /// Keep the remembered choice hidden until it is revealed.
+    pub fn secretly(mut self) -> Self {
+        self.secretly = true;
+        self
     }
 
     /// Choose a player not already in `tag`, then add the choice to it.
@@ -6376,6 +6397,13 @@ pub struct ReflexiveTriggerEffect<E> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
 pub struct RevealChosenSubtypeEffect;
+
+/// "Reveal the player you chose" (Stalking Leonin, Guardian Archon,
+/// Emissary of Grudges): reveal the player the payer secretly chose for this
+/// source; from then on it is the source's public chosen player.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct RevealChosenPlayerEffect;
 
 /// The next occurrences of a scheduled turn unit, with no current-turn expiry.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

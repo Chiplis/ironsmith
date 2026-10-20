@@ -1113,6 +1113,9 @@ impl GameState {
                 .secret_chosen_subtypes
                 .retain(|source, _| !removed_ids.contains(source));
             choices
+                .secret_chosen_players
+                .retain(|source, _| !removed_ids.contains(source));
+            choices
                 .chosen_creature_types
                 .retain(|source, _| !removed_ids.contains(source));
             choices

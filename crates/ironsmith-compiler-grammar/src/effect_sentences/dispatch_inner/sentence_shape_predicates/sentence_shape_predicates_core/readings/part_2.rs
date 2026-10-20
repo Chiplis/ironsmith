@@ -87,8 +87,29 @@ pub(super) fn read_coordinated_cant_restrictions(
             )
             .is_some()
         })
-        && let Some(effects) = parse_cant_effect_sentence_lexed(tokens)?
+        && let Some(mut effects) = parse_cant_effect_sentence_lexed(tokens)?
     {
+        // "Each of those creatures doesn't untap during its controller's
+        // next untap step" (Juvenile Mist Dragon): the authored distributive
+        // quantifier over the back-referenced set is presentation the
+        // restriction filter keeps, so it does not read as the plural
+        // "Those creatures don't untap".
+        let words = crate::lexer::parser_token_word_refs(tokens);
+        if words.starts_with(&["each", "of", "those"]) {
+            for effect in &mut effects {
+                if let EffectAst::SubjectVerb(subject_verb) = effect
+                    && let crate::cards::builders::SubjectVerbActionAst::Cant {
+                        restriction: crate::effect::Restriction::Untap(filter),
+                        ..
+                    } = &mut subject_verb.action
+                    && filter.set_quantifier_surface().is_none()
+                {
+                    filter.set_set_quantifier_surface(Some(
+                        ironsmith_core::SetQuantifierSurface::Each,
+                    ));
+                }
+            }
+        }
         return Ok(Some(effects));
     }
     Ok(None)

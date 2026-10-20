@@ -219,6 +219,16 @@ impl EffectExecutor for TapEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        // "You may have this land enter tapped" (Mariposa Military Base): an
+        // entry program tapping its own entering source modifies how that
+        // object enters (CR 614.1c, 614.12) rather than tapping an object
+        // that is not yet on the battlefield.
+        if matches!(self.target, ChooseSpec::Source)
+            && ctx.replacement.entry_counter_source == Some(ctx.source)
+        {
+            ctx.replacement.entry_tapped = true;
+            return Ok(EffectOutcome::count(1));
+        }
         crate::effects::composition::execute_transaction(game, ctx, || EffectOutcome::count(0), |game, ctx| {
             let actor = self.actor.as_ref()
                 .map(|actor| crate::effects::helpers::resolve_player_filter(game, actor, ctx))

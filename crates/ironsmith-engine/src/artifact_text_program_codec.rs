@@ -82,6 +82,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             excluded_tags: model.excluded_tags.clone(), random: model.random,
             remember_as_chosen_player: model.remember_as_chosen_player,
             accumulate_into: model.accumulate_into.clone(),
+            secretly: model.secretly,
         });
     }
     if let Some(model) = effect.downcast_ref::<WithIdEffect>() {
@@ -164,6 +165,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             conditional_mode_range: model.conditional_mode_range.clone(), presentation_label: model.presentation_label.clone(),
             endure: model.endure, cast_chooser: model.cast_chooser.clone(),
             optional_choice: model.optional_choice,
+            cost_choice_keywords: model.cost_choice_keywords.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<ForEachObject>() {

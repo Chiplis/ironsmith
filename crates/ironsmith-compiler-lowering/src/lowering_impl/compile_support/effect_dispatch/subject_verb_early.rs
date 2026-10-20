@@ -1447,6 +1447,7 @@ pub(super) fn compile_subject_verb_early(
             tag,
             random,
             exclude_previous_choices,
+            secretly,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let resolved_filter = filter.clone();
@@ -1471,7 +1472,7 @@ pub(super) fn compile_subject_verb_early(
             let accumulate_into = distinct_in_loop.then(|| {
                 crate::tag::TagKey::from(format!("{}_chosen_so_far", resolved_tag.as_str()))
             });
-            let (effects, choices) = compile_choose_player_with_subject(
+            let (mut effects, choices) = compile_choose_player_with_subject(
                 subject,
                 resolved_filter,
                 resolved_tag.clone(),
@@ -1479,6 +1480,16 @@ pub(super) fn compile_subject_verb_early(
                 excluded_tags,
                 accumulate_into,
             );
+            if *secretly {
+                for effect in &mut effects {
+                    let secret = effect
+                        .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+                        .map(|choice| Effect::new(choice.clone().secretly()));
+                    if let Some(secret) = secret {
+                        *effect = secret;
+                    }
+                }
+            }
             ctx.last_player_filter = Some(PlayerFilter::TaggedPlayer(resolved_tag.clone()));
             ctx.recent_player_choice_tags.push(resolved_tag.clone());
             Ok((effects, choices))
@@ -2114,8 +2125,18 @@ pub(super) fn compile_subject_verb_early(
                     crate::effects::ReplacementApplyMode::Resolution
                 }
             };
+            // "a creature dealt damage by the targeted creature" names the
+            // ability's discourse object through `it`; bind it before the
+            // replacement freezes its tags at registration.
+            let filter = if filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+            }) {
+                resolve_it_tag(filter, &current_reference_env(ctx))?
+            } else {
+                filter.clone()
+            };
             let mut replacement = crate::effects::RegisterFutureZoneReplacementEffect::new(
-                filter.clone(),
+                filter,
                 *from_zone,
                 *to_zone,
                 *replacement_zone,
@@ -2887,6 +2908,11 @@ pub(super) fn compile_subject_verb_early(
         }) => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // Reference resolution tags the authored object set before the
+            // "all" quantifier widens it ("Each player who shuffled a nontoken
+            // creature into their library this way", Collision of Realms);
+            // lowering must mint the same result tag.
+            let authored_object_set = choose_spec_targets_object(&spec);
             if *all && let ChooseSpec::Object(filter) = spec {
                 spec = ChooseSpec::All(filter);
             }
@@ -2923,7 +2949,19 @@ pub(super) fn compile_subject_verb_early(
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             effect = Effect::with_id(id.0, effect);
-            if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
+            // "..., then shuffles the rest into their library" (Wand of
+            // Wonder): the remainder of an earlier tagged collection vanishes
+            // into a hidden library and is never a later object antecedent;
+            // "cards exiled this way" keeps naming the collection.
+            let collection_remainder = matches!(spec.base(), ChooseSpec::Object(filter)
+                if filter.tagged_constraints.iter().any(|constraint|
+                    constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject)
+                    && filter.tagged_constraints.iter().any(|constraint|
+                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject));
+            if authored_object_set
+                && ctx.auto_tag_object_targets
+                && !collection_remainder
+            {
                 let tag = ctx.next_tag("moved");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);

@@ -427,6 +427,9 @@ pub enum ValueSurfaceHint {
     UpTo,
     BlightKeywordAction,
     SacrificedObject(SacrificedObjectKind),
+    /// Append-only. "a card for each 1 damage dealt to them" (Anowon, the
+    /// Ruin Thief): the triggering damage amount, authored per point.
+    ForEachOneDamage,
 }
 
 /// Payment action and authored reference in a mana-spent count.
@@ -2411,6 +2414,19 @@ pub enum TurnHistoryCondition {
     /// with emerge" (Foul Emissary): the triggering sacrifice paid the emerge
     /// cost of the spell being cast (CR 702.119a).
     TriggeringSacrificePaidEmergeCost,
+    /// Append-only. "Whenever you tap a land for {C}" (Ultima, Origin of
+    /// Oblivion; Forsaken Monument): the triggering mana event produced this
+    /// mana symbol.
+    TriggeringManaIncludesSymbol(crate::mana::ManaSymbol),
+    /// Append-only. "if that creature shares a color with the mana that land
+    /// produced" (C.A.M.P.): the tagged object shares a color with the mana
+    /// produced by the triggering mana event. `subject` and `producer` are
+    /// presentation-only authored references.
+    TaggedObjectSharesColorWithTriggeringMana {
+        tag: crate::tag::TagKey,
+        subject: String,
+        producer: String,
+    },
 }
 
 /// Selects which captured representation of a tagged object is used when a

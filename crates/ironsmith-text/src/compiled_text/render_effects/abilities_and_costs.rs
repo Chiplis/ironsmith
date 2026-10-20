@@ -1425,6 +1425,10 @@ pub(crate) fn describe_ability(
             if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
+            if let Some(rendered) = describe_non_owner_controller_state_trigger_sacrifice(triggered)
+            {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) =
                 describe_copy_exile_with_counters_suspend_triggered_ability(triggered)
             {
@@ -1572,6 +1576,11 @@ pub(crate) fn describe_ability(
                 && let Some(effects) =
                     describe_triggered_resolution_text(triggered, subject, rewrite_it_deals)
             {
+                let effects =
+                    rewrite_died_object_return_against_other_object_condition(triggered, effects);
+                let effects = rewrite_intervening_count_token_amount(triggered, effects);
+                let effects = rewrite_intervening_subtype_union_all_followup(triggered, effects);
+                let effects = rewrite_intervening_counted_set_back_reference(triggered, effects);
                 clauses.push(effects);
             }
             if !clauses.is_empty() {
@@ -1947,6 +1956,16 @@ pub(crate) fn describe_ability(
                         .join(", ")
                 ));
             }
+            // "{2}, {T}, Choose flying, first strike, trample, or shadow:"
+            // (Phyrexian Splicer): the keyword is chosen while the ability is
+            // activated, so it is printed as part of the cost.
+            let keyword_cost_choice = keyword_cost_choice_modes(activated);
+            if let Some(choose_mode) = keyword_cost_choice {
+                pre.push(format!(
+                    "Choose {}",
+                    join_with_or(&choose_mode.cost_choice_keywords)
+                ));
+            }
             if !pre.is_empty() {
                 if line.is_empty() {
                     line.push_str(&pre.join(", "));
@@ -1966,7 +1985,11 @@ pub(crate) fn describe_ability(
                 if !line.is_empty() {
                     line.push_str(": ");
                 }
-                let effects = super::ast_render::describe_resolution_program(&activated.effects);
+                let effects = keyword_cost_choice
+                    .and_then(describe_keyword_cost_choice_body)
+                    .unwrap_or_else(|| {
+                        super::ast_render::describe_resolution_program(&activated.effects)
+                    });
                 let mut effects = if graveyard_self_exile_damage_uses_it_subject(ability, activated)
                     && let Some(rest) = effects.strip_prefix("Deal ")
                 {
@@ -3893,4 +3916,75 @@ fn name_trigger_attachment_references(
         "for as long as that object is attached to it",
         &format!("for as long as that {noun} is attached to it"),
     )
+}
+
+/// The modal activation whose modes are one instruction read once per
+/// keyword chosen as the activation cost (Phyrexian Splicer).
+fn keyword_cost_choice_modes(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<&crate::effects::ChooseModeEffect> {
+    let [segment] = activated.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let choose_mode = effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    (choose_mode.cost_choice_keywords.len() >= 2
+        && choose_mode.cost_choice_keywords.len() == choose_mode.modes.len())
+    .then_some(choose_mode)
+}
+
+/// The shared instruction of a keyword cost choice: the first mode, with its
+/// keyword read back as "the chosen ability" ("it" as the object of
+/// "loses"/"gains"), the inverse of how the modes were read.
+fn describe_keyword_cost_choice_body(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    let first = choose_mode.modes.first()?;
+    let keyword = choose_mode.cost_choice_keywords.first()?.to_ascii_lowercase();
+    let text = describe_effect_list(&first.effects);
+    let text = text.trim().trim_end_matches('.');
+    // A leading "Until end of turn," already scopes every clause of the
+    // instruction; the per-effect duration is not restated.
+    let text = match text.strip_prefix("Until end of turn, ") {
+        Some(rest) => format!("Until end of turn, {}", rest.replace(" until end of turn", "")),
+        None => text.to_string(),
+    };
+    let text = text.as_str();
+    if text.is_empty() || !text.to_ascii_lowercase().contains(&keyword) {
+        return None;
+    }
+    let words = text.split(' ').collect::<Vec<_>>();
+    let keyword_words = keyword.split(' ').collect::<Vec<_>>();
+    let mut out: Vec<String> = Vec::with_capacity(words.len());
+    let mut index = 0;
+    while index < words.len() {
+        let end = index + keyword_words.len();
+        let matches_keyword = end <= words.len()
+            && words[index..end]
+                .iter()
+                .zip(&keyword_words)
+                .all(|(word, keyword)| {
+                    word.trim_end_matches([',', '.']).eq_ignore_ascii_case(keyword)
+                });
+        if matches_keyword {
+            let trailing = words[end - 1]
+                .strip_prefix(words[end - 1].trim_end_matches([',', '.']))
+                .unwrap_or_default();
+            let after_verb = out.last().is_some_and(|previous| {
+                matches!(previous.as_str(), "loses" | "lose" | "gains" | "gain")
+            });
+            let replacement = if after_verb { "it" } else { "the chosen ability" };
+            out.push(format!("{replacement}{trailing}"));
+            index = end;
+        } else {
+            out.push(words[index].to_string());
+            index += 1;
+        }
+    }
+    Some(capitalize_first(&out.join(" ")))
 }

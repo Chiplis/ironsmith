@@ -4391,13 +4391,34 @@ pub fn parse_filter_has_granted_ability_line(
         if let Some(split) = anthem_grant_grammar::split_type_addition_subject(&subject_tokens)
             && let Some(additions) = parse_type_color_addition_clause(split.addition_tokens)?
         {
-            let base_subject = match parse_anthem_subject(split.base_subject_tokens) {
+            let mut base_subject = match parse_anthem_subject(split.base_subject_tokens) {
                 Ok(subject) => subject,
                 Err(err) => {
                     deferred_error.get_or_insert(err);
                     continue;
                 }
             };
+            // "Each creature your opponents control is an Illusion in
+            // addition to its other types and has ..." (Dismiss into Dream):
+            // the authored distributive subject is kept on every member
+            // static so the line reads in the singular.
+            // Only the unconditional subtype-addition form: conditional
+            // animation bundles ("During your turn, each ... is a 4/4
+            // Elemental creature ... and has ...", Bello) are rebuilt by the
+            // plural animation merge.
+            let distributive_subject = split
+                .base_subject_tokens
+                .first()
+                .and_then(OwnedLexToken::as_word)
+                == Some("each")
+                && condition.is_none()
+                && additions.card_types.is_empty();
+            if distributive_subject
+                && let AnthemSubjectAst::Filter(filter) = &mut base_subject
+                && filter.set_quantifier_surface().is_none()
+            {
+                filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+            }
             let AnthemSubjectAst::Filter(filter) = &base_subject else {
                 continue;
             };
@@ -4463,6 +4484,14 @@ pub fn parse_filter_has_granted_ability_line(
                 &condition,
                 granted_tail,
             ));
+            if distributive_subject {
+                result = result
+                    .into_iter()
+                    .map(|ability| {
+                        with_leading_set_quantifier_surface(ability, split.base_subject_tokens)
+                    })
+                    .collect();
+            }
             if !result.is_empty() {
                 return Ok(Some(result));
             }

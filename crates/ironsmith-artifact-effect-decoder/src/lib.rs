@@ -386,6 +386,7 @@ pub fn family_for_kind(kind: &str) -> Option<EffectFamily> {
         "ImprintFromHandEffect" => Some(EffectFamily::ZoneLibrary),
         "ScaleXValueEffect" => Some(EffectFamily::StackEvent),
         "RevealChosenSubtypeEffect" => Some(EffectFamily::Player),
+        "RevealChosenPlayerEffect" => Some(EffectFamily::Player),
         "BecomePlottedEffect" => Some(EffectFamily::ZoneLibrary),
         "BecomeForetoldEffect" => Some(EffectFamily::ZoneLibrary),
         "GrantLoyaltyActivationAllowanceEffect" => Some(EffectFamily::Player),

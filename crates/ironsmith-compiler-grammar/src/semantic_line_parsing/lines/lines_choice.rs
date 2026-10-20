@@ -294,6 +294,7 @@ pub fn rewrite_modal_to_parsed_item(
         }
         header.trigger = Some(crate::cards::builders::TriggerSpec::SagaChapter(chapters));
     }
+    header.cost_choice_keywords = modal.cost_choice_keywords.clone();
 
     let spending_rules = modal.modes.iter().map(|mode|
         crate::consumer_mana::split_x_spending_sentences(&mode.info.source_tokens).1)

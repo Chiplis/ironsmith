@@ -95,6 +95,37 @@ pub(super) fn describe_prior_exiled_collection_cast(
     };
     let cast = structural_unwrap_render_wrappers(cast_effect)
         .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    // "You may cast a spell from among cards exiled this way" after one
+    // instruction exiled several groups (Crabomination): the pool is the union
+    // of those exact results. Every member must independently prove its
+    // provenance and render the same cast.
+    if choose.filter.tagged_constraints.is_empty() && choose.filter.any_of.len() > 1 {
+        let mut rendered: Option<String> = None;
+        for member in &choose.filter.any_of {
+            let [constraint] = member.tagged_constraints.as_slice() else {
+                return None;
+            };
+            let mut bare = member.clone();
+            bare.tagged_constraints.clear();
+            bare.union_surface = Default::default();
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                || bare != ObjectFilter::default()
+            {
+                return None;
+            }
+            let mut single = choose.clone();
+            single.filter.any_of.clear();
+            single.filter.tagged_constraints = vec![constraint.clone()];
+            let text =
+                describe_prior_exiled_collection_cast(prefix, &Effect::new(single), for_each_effect)?;
+            match &rendered {
+                None => rendered = Some(text),
+                Some(existing) if *existing == text => {}
+                Some(_) => return None,
+            }
+        }
+        return rendered;
+    }
     let constraints = choose.filter.tagged_constraints.as_slice();
     let (membership, rest) = constraints.split_first()?;
     // A cast from a captured exile collection must still name the very same
@@ -144,10 +175,28 @@ pub(super) fn describe_prior_exiled_collection_cast(
     // An exile action, possibly nested in a sequence or a per-player loop,
     // that tags exactly the face-up cards it moved.
     fn exiles_top_into(effect: &Effect, tag: &crate::TagKey) -> bool {
+        // "exile a card at random from each opponent's graveyard" (Kefka):
+        // a face-up exile tagged as this instruction's result.
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && &tagged.tag == tag
+            && structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some_and(|exile| !exile.face_down)
+        {
+            return true;
+        }
         let effect = structural_unwrap_render_wrappers(effect);
         if let Some(exile) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
             return !exile.face_down
                 && (exile.moved_tags.contains(tag) || exile.accumulated_tags.contains(tag));
+        }
+        // "Each opponent exiles cards from the top of their library until
+        // ..., then shuffles the rest into their library" (Wand of Wonder):
+        // an exiling consult nested with its own remainder disposition still
+        // produced the exposure it tags.
+        if let Some(consult) = effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>() {
+            return consult.mode == crate::effects::consult_helpers::LibraryConsultMode::Exile
+                && (consult.all_tag == *tag || consult.match_tag == *tag);
         }
         if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
             return sequence.effects.iter().any(|inner| exiles_top_into(inner, tag));
@@ -312,6 +361,14 @@ pub(super) fn describe_prior_exiled_collection_cast(
     let count = choose.count;
     let (number, possessive) = if count == crate::effect::ChoiceCount::any_number() {
         ("any number of".to_string(), "their")
+    } else if count.dynamic_x
+        && count.up_to_x
+        && count.min == 0
+        && count.max.is_none()
+        && !count.random
+        && !count.explicit_exactly
+    {
+        ("up to X".to_string(), "their")
     } else if count == crate::effect::ChoiceCount::up_to(1) {
         ("a".to_string(), "its")
     } else if count.min == 0

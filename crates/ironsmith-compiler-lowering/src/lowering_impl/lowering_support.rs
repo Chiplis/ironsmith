@@ -2369,8 +2369,33 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
     }
 
     fn tag_repeated_exile_members(effects: &mut [EffectAst], next_aggregate: &mut usize) {
+        // "You may exile the chosen creatures. If you do, return them ..."
+        // (Tunnel of Love): one exile of a plural chosen set is the same
+        // aggregate antecedent as several coordinated exiles.
+        fn exiles_plural_chosen_set(effect: &EffectAst) -> bool {
+            matches!(
+                effect,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::Exile {
+                        target: TargetAst::Object(filter, _, _),
+                        ..
+                    }),
+                    ..
+                }) if filter.has_plural_object_noun_surface()
+                    && filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                            && constraint.tag.as_str()
+                                == crate::tag::CompilerReferenceTag::ChosenObjects.as_str()
+                    })
+            )
+        }
         fn tag_group(effects: &mut [&mut EffectAst], next_aggregate: &mut usize) {
-            if effects.iter().filter(|effect| direct_exile(effect)).count() < 2 {
+            let exiles = effects.iter().filter(|effect| direct_exile(effect)).count();
+            let single_plural_set = exiles == 1
+                && effects
+                    .iter()
+                    .any(|effect| direct_exile(effect) && exiles_plural_chosen_set(effect));
+            if exiles < 2 && !single_plural_set {
                 return;
             }
             let tag = crate::tag::CompilerIndexedTag::ExiledAggregate.key(*next_aggregate);
@@ -2411,6 +2436,12 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     tag_group(&mut members, next_aggregate);
                 }
                 _ => {}
+            }
+            // An exile this pass already tagged is a finished member.
+            if let EffectAst::TagAffected { tag, .. } = effect
+                && tag.as_str().starts_with("__sentence_helper_exiled_aggregate_")
+            {
+                continue;
             }
             for_each_nested_effects_mut(effect, true, |nested| {
                 tag_repeated_exile_members(nested, next_aggregate);
@@ -2526,9 +2557,31 @@ fn bind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                     && count_value.is_none()
                     && as_aura.is_none() =>
                 {
+                    // Keep the authored back-reference surface ("them",
+                    // "those cards") of the rebound return target.
+                    let mut filter = ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile);
+                    let mut authored = target;
+                    while let TargetAst::WithCount(inner, _)
+                    | TargetAst::WithCountValue(inner, _, _) = authored
+                    {
+                        authored = &**inner;
+                    }
+                    if let TargetAst::Object(original, _, _) = authored {
+                        filter.set_plural_pronoun_reference_surface(
+                            original.has_plural_pronoun_reference_surface(),
+                        );
+                        if let Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                            noun,
+                        )) = &original.source_surface
+                            && noun.starts_with("those ")
+                            && !original.source
+                        {
+                            filter.source_surface = original.source_surface.clone();
+                        }
+                    }
                     Some(SubjectVerbActionAst::ZoneMoves(
                         ZoneMoveActionAst::ReturnAllToBattlefield {
-                            filter: ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile),
+                            filter,
                             tapped: *tapped,
                             face_down: false,
                             controller: *controller,

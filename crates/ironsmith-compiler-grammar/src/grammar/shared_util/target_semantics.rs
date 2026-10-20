@@ -56,6 +56,22 @@ fn typed_demonstrative_reference_surface(
         crate::lexer::render_token_slice(tokens).to_ascii_lowercase()
     };
 
+    // Subtype nouns keep their printed capitalization ("that Aura card",
+    // Auratouched Mage); the surface is otherwise case-normalized.
+    let surface = surface
+        .split(' ')
+        .map(|word| {
+            if crate::util::parse_card_type(word).is_none()
+                && crate::util::parse_subtype_word(word).is_some()
+                && let Some(first) = word.chars().next()
+            {
+                format!("{}{}", first.to_uppercase(), &word[first.len_utf8()..])
+            } else {
+                word.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
     Some(SourceReferenceSurface::ThisPermanentType(surface))
 }
 

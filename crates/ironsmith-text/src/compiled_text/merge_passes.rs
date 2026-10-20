@@ -2742,6 +2742,13 @@ pub(super) fn merge_adjacent_simple_mana_add_lines(lines: Vec<String>) -> Vec<St
 
 pub(super) fn have_verb_for_subject(subject: &str) -> &'static str {
     let lower = subject.to_ascii_lowercase();
+    // "this creature and those creatures": a coordinated set is plural even
+    // when its first member is singular.
+    if (lower.starts_with("this ") || lower.starts_with("that "))
+        && (lower.contains(" and those ") || lower.contains(" and other "))
+    {
+        return "have";
+    }
     if lower.starts_with("enchanted ")
         || lower.starts_with("equipped ")
         || lower.starts_with("this ")

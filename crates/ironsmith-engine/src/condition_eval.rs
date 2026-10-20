@@ -3531,6 +3531,13 @@ fn evaluate_turn_history_condition(
                 .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
                 .is_some_and(|event| event.mana.contains(&symbol))
         }
+        // Needs the resolving ability's tagged objects; evaluated by
+        // `evaluate_condition` before delegating here.
+        TurnHistoryCondition::TaggedObjectSharesColorWithTriggeringMana { .. } => false,
+        TurnHistoryCondition::TriggeringManaIncludesSymbol(symbol) => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
+            .is_some_and(|event| event.mana.contains(symbol)),
         TurnHistoryCondition::TriggeringSacrificePaidEmergeCost => ctx
             .triggering_event
             .and_then(|event| event.downcast::<crate::events::SacrificeEvent>())
@@ -6400,6 +6407,40 @@ fn evaluate_condition_in_context(
                 };
                 filter.matches(partner, &filter_ctx, game)
             })),
+        Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::TaggedObjectSharesColorWithTriggeringMana {
+                tag,
+                ..
+            },
+        ) => {
+            // "If that creature shares a color with the mana that land
+            // produced" (C.A.M.P.): compare the tagged object's colors with
+            // the colored mana of the triggering mana event.
+            let Some(exec) = ctx.execution() else {
+                return Ok(false);
+            };
+            let Some(mana) = exec
+                .triggering_event
+                .as_ref()
+                .and_then(|event| event.downcast::<crate::events::ManaAddedEvent>())
+                .map(|event| event.mana.clone())
+            else {
+                return Ok(false);
+            };
+            let Some(tagged) = exec.get_tagged_all(tag.as_str()) else {
+                return Ok(false);
+            };
+            Ok(tagged.iter().any(|snapshot| {
+                let colors = game
+                    .object(snapshot.object_id)
+                    .and_then(|_| game.current_colors(snapshot.object_id))
+                    .unwrap_or(snapshot.colors);
+                crate::color::Color::ALL.into_iter().any(|color| {
+                    colors.contains(color)
+                        && mana.contains(&crate::mana::ManaSymbol::from_color(color))
+                })
+            }))
+        }
         Condition::TurnHistory(condition) => {
             evaluate_turn_history_condition(game, condition, shared)
         }

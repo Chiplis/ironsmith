@@ -1089,6 +1089,26 @@ pub(super) fn matches_subject(
     if filter.attacked_this_turn && !game.creature_attacked_this_turn(subject.object_id()) {
         return false;
     }
+    // "that attacked you this turn" (Jabari's Influence): this exact object
+    // was declared attacking a matching player (CR 508.1b); attacking a
+    // planeswalker or battle that player controls or protects doesn't count.
+    if let Some(player_filter) = &filter.attacked_player_this_turn
+        && !game.turn_store.turn_history.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<crate::events::CreatureAttackedEvent>()
+                .is_some_and(|event| {
+                    event.attacker == subject.object_id()
+                        && matches!(
+                            event.target,
+                            crate::triggers::event::AttackEventTarget::Player(defender)
+                                if player_filter.matches_player(defender, ctx)
+                        )
+                })
+        })
+    {
+        return false;
+    }
     if filter.ability_activated_this_turn
         && !game
             .turn_store

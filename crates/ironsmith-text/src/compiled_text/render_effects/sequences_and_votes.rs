@@ -5553,6 +5553,8 @@ pub(super) fn describe_return_all_to_battlefield_effect(
     let helper_linked_exile = if return_all.filter.zone == Some(Zone::Exile) {
         let mut base = return_all.filter.clone();
         base.zone = None;
+        // The authored back-reference noun is presentation only.
+        base.source_surface = None;
         base.tagged_constraints.retain(|constraint| {
             !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 && helper_exile_tag(constraint.tag.as_str()))
@@ -5598,6 +5600,14 @@ pub(super) fn describe_return_all_to_battlefield_effect(
     let mut filter_text =
         if helper_linked_exile && return_all.filter.has_plural_pronoun_reference_surface() {
             "them".to_string()
+        } else if helper_linked_exile
+            && let Some(crate::target::SourceReferenceSurface::ThisPermanentType(noun)) =
+                &return_all.filter.source_surface
+            && noun.starts_with("those ")
+        {
+            // "then return those cards to the battlefield" (Fortune, Loyal
+            // Steed): the authored demonstrative back-reference.
+            noun.clone()
         } else if helper_linked_exile {
             "the exiled cards".to_string()
         } else if source_linked_exile
@@ -7361,7 +7371,7 @@ pub(super) fn hand_choice_from_it_text(
         bare.union_surface = Default::default();
         bare == ObjectFilter::default()
     } {
-        "card of the chosen color".to_string()
+        "card of that color".to_string()
     } else if filter.card_types.is_empty()
         && filter.excluded_card_types == vec![CardType::Land]
         && filter.mana_value.is_none()

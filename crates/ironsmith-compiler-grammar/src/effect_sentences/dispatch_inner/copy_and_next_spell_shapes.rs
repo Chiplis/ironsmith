@@ -578,9 +578,19 @@ pub fn parse_sentence_delayed_trigger_this_turn(
             let this_turn = crate::lexer::parser_token_word_refs(&tokens[1..comma])
                 .ends_with(&["this", "turn"]);
             let effects = parse_effect_chain(&tokens[comma + 1..])?;
+            // "When you lose control of that Equipment this turn, ..."
+            // (Stolen Uniform): the authored trailing "this turn" is the
+            // this-turn delayed family, not a leading "Until end of turn,"
+            // duration frame.
+            if this_turn {
+                return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
+                    trigger, effects, one_shot: true, until_end_of_combat: false,
+                    attach_to_previous_ability: false,
+                })]));
+            }
             return Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
                 trigger, effects, one_shot: true,
-                duration: if this_turn { crate::effect::Until::EndOfTurn } else { crate::effect::Until::Forever },
+                duration: crate::effect::Until::Forever,
                 either_of_watched_objects: false, while_any_tagged_object_in_zone: None,
             })]));
         }

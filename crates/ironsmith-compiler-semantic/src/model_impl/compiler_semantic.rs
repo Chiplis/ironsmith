@@ -219,6 +219,9 @@ pub struct ParsedModalHeader {
     pub cast_chooser: Option<crate::target::PlayerFilter>,
     /// "you may choose two" (CR 700.2): choosing no modes is also legal.
     pub optional_choice: bool,
+    /// Keywords chosen as an activation cost, one per mode (Phyrexian
+    /// Splicer); presentation for the lowered `ChooseModeEffect`.
+    pub cost_choice_keywords: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

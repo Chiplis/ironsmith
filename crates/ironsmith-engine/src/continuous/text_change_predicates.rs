@@ -121,7 +121,8 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         monocolored, all_colors, exactly_two_colors, color_count,
         historic, nonhistoric, modified, suspected, transformed, goaded, prepared, ring_bearer, sector,
         sticker, token, nontoken, face_down, foretold, other, tapped, untapped,
-        attacking, attacking_alone, attacked_this_turn, ability_activated_this_turn,
+        attacking, attacking_alone, attacked_this_turn, attacked_player_this_turn,
+        ability_activated_this_turn,
         blocked_this_turn, was_blocked_this_turn, didnt_attack_this_turn,
         could_have_attacked_this_turn, attacking_player_or_planeswalker_controlled_by,
         attacking_player_only, protected_by, attached_to_object, attached_to_player,
@@ -520,6 +521,8 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::AllPlayersLifeAtMost(_) | TurnHistoryCondition::TriggeringAbilityIsManaAbility
         | TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor
         | TurnHistoryCondition::TriggeringSacrificePaidEmergeCost
+        | TurnHistoryCondition::TriggeringManaIncludesSymbol(_)
+        | TurnHistoryCondition::TaggedObjectSharesColorWithTriggeringMana { .. }
         | TurnHistoryCondition::ActivePlayerAttackedControllerThisTurn
         | TurnHistoryCondition::OpponentAttackedControllerDuringTheirLastTurn
         | TurnHistoryCondition::TriggeringObjectEnteredFromZone(_) => {}

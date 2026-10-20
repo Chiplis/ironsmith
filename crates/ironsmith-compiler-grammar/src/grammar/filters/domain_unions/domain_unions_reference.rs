@@ -365,6 +365,19 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
                 })
         })
         .collect::<Vec<_>>();
+    // "instant, sorcery, and/or Tamiyo planeswalker cards from your
+    // graveyard": a run of bare type arms elides the same card noun, so an arm
+    // whose next arm itself borrows the following arm's domain borrows it too.
+    let mut elided_into_next_arm = elided_into_next_arm;
+    for index in (0..segments.len().saturating_sub(1)).rev() {
+        if !elided_into_next_arm[index]
+            && elided_into_next_arm[index + 1]
+            && !elided_card_noun_arms.get(index).copied().unwrap_or(false)
+            && is_elided_card_noun_type_arm(segments[index])
+        {
+            elided_into_next_arm[index] = true;
+        }
+    }
 
     let branches = segments
         .into_iter()

@@ -458,7 +458,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
         // first would leave later consequence members outside the condition.
         return ParseOutcome::NoMatch;
     }
-    if sacrifices_object_union(tokens) {
+    if sacrifices_object_union(tokens) || exiles_hand_card_or_chosen_object(tokens) {
         return ParseOutcome::NoMatch;
     }
     // A complete aggregate amount owns its selector connectives. Prove the
@@ -1028,6 +1028,32 @@ fn classify_boundary<'a>(
     } {
         // "exile target black or red permanent that player controls"
         // (Lightwielder Paladin): a color list qualifies one object.
+        return None;
+    }
+    if candidate.operator == CoordinationOperatorAst::Comma && {
+        let characteristic_adjective = |token: &OwnedLexToken| {
+            token.as_word().is_some_and(|word| {
+                crate::util::parse_color(word).is_some()
+                    || crate::util::parse_non_color(word).is_some()
+                    || crate::util::parse_non_type(word).is_some()
+                    || crate::util::parse_non_supertype(word).is_some()
+            })
+        };
+        after.first().is_some_and(characteristic_adjective)
+            && before
+                .iter()
+                .rposition(|token| token.is_word("target"))
+                .is_some_and(|target| {
+                    target + 1 < before.len()
+                        && before[target + 1..]
+                            .iter()
+                            .all(|token| token.is_comma() || characteristic_adjective(token))
+                })
+    } {
+        // "Gain control of target nonartifact, nonblack creature ..."
+        // (Jabari's Influence): a comma between the characteristic
+        // adjectives right after "target" separates qualifiers of one
+        // target's selector, never two coordinated actions.
         return None;
     }
     if boundary_continues_shuffle_zone_list(candidate.operator, before, after) {
@@ -1867,6 +1893,36 @@ fn malformed_boundary<T>(span: Option<TextSpan>, expected: &'static str) -> Pars
         [ParseExpectation::new(expected)],
         "authored coordination boundary has no complete following clause",
     ))
+}
+
+/// "exile a nonland card from their hand or the chosen creature [until ...]"
+/// (Cloak and Dagger, Entwined): one exiled object chosen from a hand card or
+/// an earlier chosen object. The noun phrase after "or" has no verb of its
+/// own, so it never coordinates a second exile.
+pub fn exiles_hand_card_or_chosen_object(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::token_word_refs(tokens);
+    let Some(exile_index) = words.iter().position(|word| *word == "exile") else {
+        return false;
+    };
+    let ors = words
+        .iter()
+        .enumerate()
+        .filter(|(_, word)| **word == "or")
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    let [or_index] = ors.as_slice() else {
+        return false;
+    };
+    if *or_index <= exile_index {
+        return false;
+    }
+    let left = &words[exile_index + 1..*or_index];
+    let right = &words[or_index + 1..];
+    matches!(left.first(), Some(&"a" | &"an"))
+        && matches!(left, [.., "from", _, "hand"])
+        && matches!(right, ["the", "chosen", _, ..])
+        && (right.len() == 3 || right.get(3) == Some(&"until"))
+        && !words.iter().any(|word| matches!(*word, "and" | "then" | "if" | "unless"))
 }
 
 /// "each player sacrifices a Plains or a white permanent" (Omen of Fire): one

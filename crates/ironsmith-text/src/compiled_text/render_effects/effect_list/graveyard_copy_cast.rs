@@ -238,7 +238,11 @@ pub(in crate::compiled_text) fn render_graveyard_exile_copy_cast_pair(
     let exile_text = describe_graveyard_exile(exile_inner);
     let exile_text = exile_text.trim_end_matches('.');
     let mut rendered = match cast.copy_instruction_surface {
-        Some(ironsmith_core::effect::CopyInstructionSurface::SeparateIt) => {
+        Some(
+            ironsmith_core::effect::CopyInstructionSurface::SeparateIt
+            | ironsmith_core::effect::CopyInstructionSurface::OptionalCreate
+            | ironsmith_core::effect::CopyInstructionSurface::AnyNumberOfCopies,
+        ) => {
             format!("{exile_text}. Copy it. {may_cast}")
         }
         Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard) => {

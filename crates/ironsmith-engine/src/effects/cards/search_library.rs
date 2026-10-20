@@ -240,11 +240,42 @@ impl EffectExecutor for SearchLibraryEffect {
                                         original,
                                     )?
                                 } else {
-                                    let move_effect = crate::effect::Effect::move_to_zone(
-                                        crate::target::ChooseSpec::SpecificObject(card_id),
-                                        self.destination,
-                                        false,
-                                    );
+                                    let move_to = |zone: Zone| {
+                                        crate::effect::Effect::move_to_zone(
+                                            crate::target::ChooseSpec::SpecificObject(card_id),
+                                            zone,
+                                            false,
+                                        )
+                                    };
+                                    // "put it into your hand or graveyard" (Dina's
+                                    // Guidance): the searcher picks the destination
+                                    // after the found card is revealed.
+                                    let move_effect = if let Some(alternative) =
+                                        self.alternative_destination
+                                    {
+                                        crate::effect::Effect::new(
+                                            crate::effects::ChooseModeEffect::choose_one(vec![
+                                                crate::effect::EffectMode {
+                                                    source_text: format!(
+                                                        "Put it into {:?}",
+                                                        self.destination
+                                                    ),
+                                                    effects: vec![move_to(self.destination)],
+                                                },
+                                                crate::effect::EffectMode {
+                                                    source_text: format!(
+                                                        "Put it into {alternative:?}"
+                                                    ),
+                                                    effects: vec![move_to(alternative)],
+                                                },
+                                            ])
+                                            .with_chooser(crate::target::PlayerFilter::Specific(
+                                                chooser_id,
+                                            )),
+                                        )
+                                    } else {
+                                        move_to(self.destination)
+                                    };
                                     crate::effects::execute_effect_with_outputs(
                                         game,
                                         &move_effect,

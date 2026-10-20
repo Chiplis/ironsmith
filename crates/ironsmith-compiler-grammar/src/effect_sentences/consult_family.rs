@@ -245,6 +245,12 @@ pub fn parse_consult_traversal_with_inline_followup(
         &parts,
         &mut trailing,
     );
+    bind_inline_remainder_shuffle_to_consulted_collection(
+        &shape.trailing_effect,
+        &parts,
+        each_opponent,
+        &mut trailing,
+    );
     let mut effects = parts.effects;
     effects.append(&mut trailing);
     if each_opponent {
@@ -340,6 +346,86 @@ fn bind_inline_plural_back_reference_to_consulted_collection(
             }
         });
     }
+}
+
+/// "Each opponent exiles cards from the top of their library until they exile
+/// an instant or sorcery card, then shuffles the rest into their library"
+/// (Wand of Wonder): within the traversal's own sentence, "the rest" is the
+/// exiled exposure minus the matched card, and a subject-less conjugated
+/// "shuffles" continues the consult's subject (the exiling player shuffles
+/// those cards into their own library), not the ability's controller.
+fn bind_inline_remainder_shuffle_to_consulted_collection(
+    trailing_tokens: &[OwnedLexToken],
+    parts: &ConsultSentenceParts,
+    each_opponent: bool,
+    trailing: &mut [EffectAst],
+) {
+    use crate::cards::builders::{LibraryActionAst, SubjectVerbActionAst, SubjectVerbEffectAst};
+    let exiled = parts.effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                    mode: LibraryConsultModeAst::Exile,
+                    ..
+                }),
+                ..
+            })
+        )
+    });
+    if !exiled {
+        return;
+    }
+    let words = crate::lexer::parser_token_word_refs(trailing_tokens);
+    let head = words
+        .iter()
+        .find(|word| !matches!(**word, "then" | "and"))
+        .copied();
+    let continues_consult_subject = head == Some("shuffles");
+    let actor = if each_opponent {
+        PlayerAst::Implicit
+    } else {
+        parts.player
+    };
+    fn rebind(
+        effects: &mut [EffectAst],
+        parts: &ConsultSentenceParts,
+        continues_consult_subject: bool,
+        actor: PlayerAst,
+    ) {
+        for effect in effects.iter_mut() {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action:
+                    SubjectVerbActionAst::Library(LibraryActionAst::ShuffleObjectsIntoLibrary {
+                        target,
+                        ..
+                    }),
+            }) = effect
+                && matches!(
+                    target,
+                    TargetAst::Tagged(tag, _)
+                        if tag.as_str() == crate::tag::CompilerReferenceTag::Rest.as_str()
+                )
+            {
+                *target = TargetAst::Object(
+                    ObjectFilter::tagged(parts.all_tag.clone())
+                        .not_tagged(parts.match_tag.clone())
+                        .in_zone(Zone::Exile),
+                    None,
+                    None,
+                );
+                if continues_consult_subject && subject.player == PlayerAst::You {
+                    subject.player = actor;
+                }
+                continue;
+            }
+            crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+                rebind(nested, parts, continues_consult_subject, actor);
+            });
+        }
+    }
+    rebind(trailing, parts, continues_consult_subject, actor);
 }
 
 /// Compose a consult's common inline damage/disposition tail from leaf

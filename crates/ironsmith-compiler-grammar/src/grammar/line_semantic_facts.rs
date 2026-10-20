@@ -15,6 +15,30 @@ fn parse_as_enters_effect_program_facts(
     tokens: &[OwnedLexToken],
 ) -> Option<AsEntersEffectProgramFacts> {
     let tokens = document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    // "You may have this land enter tapped. If you do, you get two rad
+    // counters." (Mariposa Military Base): an optional tap of the entering
+    // source is an entry program (CR 614.1c) whose whole line is the body.
+    {
+        let words = super::super::lexer::token_word_refs(tokens);
+        if let ["you", "may", "have", "this", rest @ ..] = words.as_slice()
+            && let Some(enter_idx) = rest.iter().position(|word| *word == "enter")
+            && (1..=2).contains(&enter_idx)
+            && rest.get(enter_idx + 1) == Some(&"tapped")
+            && rest.get(enter_idx + 2).is_none_or(|word| *word != "as")
+        {
+            return Some(AsEntersEffectProgramFacts {
+                subject: std::iter::once("this")
+                    .chain(rest[..enter_idx].iter().copied())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                also_turns_face_up: false,
+                turns_face_up_only: false,
+                uses_enters_with_counter_surface: false,
+                source_reference_enters_with_counter_surface: false,
+                entry_instead_surface: false,
+            });
+        }
+    }
     if !tokens.first().is_some_and(|token| token.is_word("as"))
         || !tokens.get(1).is_some_and(|token| token.is_word("this"))
     {

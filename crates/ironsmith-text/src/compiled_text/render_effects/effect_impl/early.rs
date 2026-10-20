@@ -133,6 +133,39 @@ if filter.zone == Some(Zone::Hand)
         if let Some(text) = effect_lists::describe_face_down_pile_then_manifest(&sequence.effects) {
             return text;
         }
+        // "They choose a creature they control, then you choose a creature
+        // you control" (Tunnel of Love): consecutive choices by different
+        // players name each chooser, and a chooser's own controlled objects
+        // read "they control".
+        if sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+            && let [first, second] = sequence.effects.as_slice()
+            && let Some(first) = first.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(second) = second.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && first.chooser != PlayerFilter::You
+            && second.chooser == PlayerFilter::You
+            && first.filter.controller.as_ref() == Some(&first.chooser)
+            && !first.is_search
+            && !second.is_search
+            && !first.reveal
+            && !second.reveal
+        {
+            let described = describe_player_filter(&first.chooser);
+            let own = format!(" {described} controls");
+            let first_selection = describe_choose_selection(first).replace(&own, " they control");
+            // A player just chosen by the previous instruction is the
+            // pronoun antecedent ("Choose an opponent. They choose ...").
+            let chooser = if matches!(first.chooser, PlayerFilter::TaggedPlayer(_)) {
+                "they".to_string()
+            } else {
+                described
+            };
+            return format!(
+                "{} {} {first_selection}, then you choose {}",
+                capitalize_first(&chooser),
+                player_verb(&chooser, "choose", "chooses"),
+                describe_choose_selection(second)
+            );
+        }
         if let Some(text) = effect_lists::describe_you_put_found_card_and_lose_its_mana_value(sequence) {
             return text;
         }
@@ -3287,16 +3320,18 @@ if filter.zone == Some(Zone::Hand)
             );
         }
         let filtered = describe_player_filter(&choose_player.filter);
+        // "secretly choose an opponent" (Stalking Leonin).
+        let secretly = if choose_player.secretly { "secretly " } else { "" };
         // Oracle states the controller's own choice imperatively: "choose an
         // opponent" (Faramir, Gluntch), never "you choose an opponent".
         if choose_player.chooser == PlayerFilter::You {
             return format!(
-                "choose {}{random_suffix}",
+                "{secretly}choose {}{random_suffix}",
                 with_indefinite_article(strip_leading_article(&filtered))
             );
         }
         return format!(
-            "{chooser} {choose_verb} {}{random_suffix}",
+            "{chooser} {secretly}{choose_verb} {}{random_suffix}",
             with_indefinite_article(strip_leading_article(&filtered))
         );
     }
@@ -3476,6 +3511,9 @@ if filter.zone == Some(Zone::Hand)
     }
     if effect.downcast_ref::<crate::effects::RevealChosenSubtypeEffect>().is_some() {
         return "Reveal the creature type you chose".to_string();
+    }
+    if effect.downcast_ref::<crate::effects::RevealChosenPlayerEffect>().is_some() {
+        return "Reveal the player you chose".to_string();
     }
     if let Some(choose_creature_type) =
         effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
@@ -3697,8 +3735,20 @@ if filter.zone == Some(Zone::Hand)
                 } else {
                     rendered
                 };
+                // "If they don't, they put it on the bottom of their library"
+                // (Clash of Elements): an actor aliased to the moved object's
+                // owner continues the pronoun of the preceding clause, and
+                // that owner's library is theirs.
+                let (subject, action) = if matches!(actor, PlayerFilter::AliasedOwnerOf(_))
+                    && move_to_zone.zone == Zone::Library
+                    && subject == "that player"
+                {
+                    ("they".to_string(), action.replacen("its owner's library", "their library", 1))
+                } else {
+                    (subject, action)
+                };
                 let action = lowercase_first(&action);
-                let action = if subject == "you" {
+                let action = if subject == "you" || subject == "they" {
                     normalize_you_verb_phrase(&action)
                 } else {
                     normalize_third_person_verb_phrase(&action)
@@ -5501,6 +5551,23 @@ if filter.zone == Some(Zone::Hand)
                 describe_value(&deal_damage.amount)
             );
         }
+        // "If they do, Clash of Elements deals 2 damage to them": the
+        // lowering preserved that the recipient was authored as the object
+        // pronoun for the player just named.
+        if deal_damage
+            .amount
+            .has_surface_hint(ValueSurfaceHint::DamageRecipientPronoun)
+            && let ChooseSpec::Player(player) = deal_damage.target.base()
+            && matches!(
+                player,
+                PlayerFilter::OwnerOf(_)
+                    | PlayerFilter::AliasedOwnerOf(_)
+                    | PlayerFilter::ControllerOf(_)
+                    | PlayerFilter::AliasedControllerOf(_)
+            )
+        {
+            return format!("Deal {} damage to them", describe_value(&deal_damage.amount));
+        }
         return format!(
             "Deal {} damage to {}",
             describe_value(&deal_damage.amount),
@@ -5634,6 +5701,16 @@ if filter.zone == Some(Zone::Hand)
     }
     if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
         if fight.mutual_surface {
+            // "the chosen creatures fight each other": both fighters are the
+            // members of the accumulated chosen set rather than an antecedent.
+            if fight.creature1 == fight.creature2
+                && matches!(
+                    fight.creature1.base(),
+                    ChooseSpec::Tagged(tag) if tag.as_str() == "__chosen_objects__"
+                )
+            {
+                return "The chosen creatures fight each other".to_string();
+            }
             return "Those creatures fight each other".to_string();
         }
         return format!(
@@ -6057,6 +6134,40 @@ if filter.zone == Some(Zone::Hand)
             && noun.chars().all(|ch| ch.is_ascii_alphabetic())
         {
             target = format!("each of those {noun}s");
+        }
+        // "put a +1/+1 counter on Kathril for each counter put on a creature
+        // this way" (Kathril, Aspect Warper): one per counter the preceding
+        // placement instructions actually put.
+        if put_counters.amount.has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) =
+                put_counters.amount.unhinted()
+            && query.metric == crate::effect::EffectMetric::CountersPut
+            && query.player.is_none()
+        {
+            let counter = match query.counter_type {
+                Some(kind) => format!("{} counter", describe_counter_type(kind)),
+                None => "counter".to_string(),
+            };
+            let recipient = query
+                .filter
+                .as_ref()
+                .map(|filter| {
+                    // The recipients were on the battlefield when the
+                    // counters were put; "this way" already says so.
+                    let mut filter = filter.clone();
+                    if filter.zone == Some(Zone::Battlefield) {
+                        filter.zone = None;
+                    }
+                    format!(
+                        " on {}",
+                        with_indefinite_article(&describe_for_each_count_filter(&filter))
+                    )
+                })
+                .unwrap_or_default();
+            return format!(
+                "Put {} on {target} for each {counter} put{recipient} this way",
+                describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+            );
         }
         if let Some(phrase) = describe_for_each_effect_metric(&put_counters.amount)
             .or_else(|| describe_coin_result_for_each_basis(&put_counters.amount))
@@ -7655,6 +7766,17 @@ if filter.zone == Some(Zone::Hand)
             return format!("Mill {count_text}");
         }
         let player = describe_player_filter(&mill.player);
+        // "that player mills a card for each 1 damage dealt to them" (Anowon,
+        // the Ruin Thief).
+        if mill.count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEachOneDamage)
+            && matches!(mill.count.unhinted(), Value::EventValue(EventValueSpec::Amount))
+        {
+            return format!(
+                "{} {} a card for each 1 damage dealt to them",
+                player,
+                player_verb(&player, "mill", "mills")
+            );
+        }
         if mill.count == Value::X {
             return format!(
                 "{} {} X cards",
@@ -8417,6 +8539,14 @@ if filter.zone == Some(Zone::Hand)
             Zone::Command => "into the command zone".to_string(),
             Zone::Ante => "into ante".to_string(),
             Zone::OutsideGame => "outside the game".to_string(),
+        };
+        // "put it into your hand or graveyard" (Dina's Guidance): the
+        // searcher picks between the two destinations after the reveal.
+        let destination = match (search_library.destination, search_library.alternative_destination) {
+            (Zone::Hand, Some(Zone::Graveyard)) | (Zone::Graveyard, Some(Zone::Hand)) => {
+                "into your hand or graveyard".to_string()
+            }
+            _ => destination,
         };
         let mut display_filter = search_library.filter.clone();
         if display_filter.owner.as_ref() == Some(&search_library.player) {
@@ -9627,6 +9757,9 @@ if filter.zone == Some(Zone::Hand)
             || body.ends_with("you may repeat this process any number of times")
             || body.ends_with("You may repeat this process")
             || body.ends_with("you may repeat this process")
+            // A die table's repeat prompt is its re-roll ("You may roll
+            // again", Delina, Wild Mage); the loop is already stated.
+            || body.ends_with("You may roll again")
         {
             return body.to_string();
         }
@@ -10725,8 +10858,12 @@ if filter.zone == Some(Zone::Hand)
         );
     }
     if let Some(reflexive) = effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>() {
-        let triggered =
+        let mut triggered =
             lowercase_first(&describe_result_branch_effect_list(&reflexive.effects));
+        // "When one or more nonland cards are exiled this way, put that many
+        // +1/+1 counters ..." (Augusta, Order Returned): a count of exactly
+        // the trigger condition's matching objects is its "that many".
+        triggered = rebind_reflexive_matching_count_surface(reflexive, &triggered);
         let condition = match &reflexive.predicate {
             EffectPredicate::Happened => "When you do".to_string(),
             EffectPredicate::DidNotHappen => "When you don't".to_string(),
@@ -11421,6 +11558,29 @@ if filter.zone == Some(Zone::Hand)
                 );
             }
         }
+        // "Copy that card. You may cast the copy by paying {1} rather than
+        // paying its mana cost." (Wizard's Spellbook): an authored separate
+        // copy instruction keeps its own sentence ahead of the alternative
+        // payment for casting the copy.
+        if may.effects.len() == 1
+            && let Some(cast_tagged) =
+                may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
+            && cast_tagged.as_copy
+            && cast_tagged.alternative_cost.is_some()
+            && cast_tagged.copy_instruction_surface
+                == Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard)
+        {
+            let mut inner = describe_effect_list(&may.effects);
+            if inner.starts_with("you ") {
+                inner = inner["you ".len()..].to_string();
+            }
+            inner = normalize_you_verb_phrase(&inner);
+            inner = lowercase_may_clause(&inner);
+            if let Some(rest) = inner.strip_prefix("cast a copy of it") {
+                inner = format!("cast the copy{rest}");
+                return format!("Copy that card. You may {inner}");
+            }
+        }
         if may.effects.len() == 1
             && let Some(cast_tagged) =
                 may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>().filter(|permission| permission.alternative_cost.is_none())
@@ -11436,8 +11596,16 @@ if filter.zone == Some(Zone::Hand)
             // definition the name names, not from an object.
             if cast_tagged.copy_named_definition && cast_tagged.cost_reduction.is_none() {
                 let name = if tag == "__chosen_name__" { "chosen" } else { "noted" };
-                let mut text =
-                    format!("Create a copy of the card with the {name} name. You may cast the copy");
+                let create = if cast_tagged.copy_instruction_surface
+                    == Some(ironsmith_core::effect::CopyInstructionSurface::OptionalCreate)
+                {
+                    "You may create"
+                } else {
+                    "Create"
+                };
+                let mut text = format!(
+                    "{create} a copy of the card with the {name} name. You may cast the copy"
+                );
                 if cast_tagged.without_paying_mana_cost {
                     text.push_str(" without paying its mana cost");
                 }
@@ -11456,6 +11624,10 @@ if filter.zone == Some(Zone::Hand)
                     "the exiled card"
                 } else if tag == "enchanted" {
                     "the enchanted card"
+                } else if cast_tagged.copy_instruction_surface
+                    == Some(ironsmith_core::effect::CopyInstructionSurface::SeparateThatCard)
+                {
+                    "that card"
                 } else {
                     "it"
                 };

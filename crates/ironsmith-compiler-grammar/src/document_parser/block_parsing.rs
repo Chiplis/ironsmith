@@ -153,6 +153,7 @@ fn try_parse_tiered_shared_body_block(
             header_tokens: line.tokens.clone(),
             modes,
             saga_chapters: None,
+            cost_choice_keywords: Vec::new(),
         }),
         probe_idx,
     )))
@@ -258,6 +259,10 @@ fn try_parse_chosen_keyword_cost_block(
             header_tokens,
             modes,
             saga_chapters: None,
+            cost_choice_keywords: keywords
+                .iter()
+                .map(|keyword| render_token_slice(keyword).trim().to_string())
+                .collect(),
         }),
         1,
     )))
@@ -377,6 +382,7 @@ pub(super) fn try_parse_modal_bullet_block(
             header_tokens,
             modes: bullet_modes,
             saga_chapters: None,
+            cost_choice_keywords: Vec::new(),
         }),
         probe_idx,
     )))
@@ -440,6 +446,7 @@ pub(super) fn try_parse_saga_modal_chapter_block(
             header_tokens: body_tokens,
             modes: bullet_modes,
             saga_chapters: Some(chapters),
+            cost_choice_keywords: Vec::new(),
         }),
         probe_idx,
     )))

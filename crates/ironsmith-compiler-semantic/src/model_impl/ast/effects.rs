@@ -5968,6 +5968,7 @@ impl EffectAst {
                 tag,
                 random,
                 exclude_previous_choices,
+                secretly: false,
             }),
         )
     }

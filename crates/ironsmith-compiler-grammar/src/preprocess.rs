@@ -1509,6 +1509,21 @@ fn normalize_line_for_parse(
     ))
 }
 
+/// Tokens of a leading trigger clause ("At the beginning of each upkeep,")
+/// that a repeated instruction shares, or `None` when the sentence is not a
+/// trigger or its trigger carries an intervening "if" condition.
+fn shared_trigger_prefix_len(sentence: &[OwnedLexToken]) -> Option<usize> {
+    let first = sentence.first()?;
+    if !(first.is_word("at") || first.is_word("when") || first.is_word("whenever")) {
+        return None;
+    }
+    let comma = sentence.iter().position(|token| token.kind == TokenKind::Comma)?;
+    if sentence.get(comma + 1).is_none_or(|token| token.is_word("if")) {
+        return None;
+    }
+    Some(comma + 1)
+}
+
 fn split_same_is_true_subject_predicate(sentence: &[OwnedLexToken]) -> Option<(String, String)> {
     preprocess_grammar::parse_subject_predicate_surface_tokens(sentence)
         .map(|surface| (surface.subject, surface.predicate))
@@ -2165,13 +2180,24 @@ fn expand_borrow_ability_line(text: &str) -> String {
                             source_phrase,
                         )
                 {
+                    // "At the beginning of each upkeep, creatures you control
+                    // gain flying ... . The same is true for fear, ..."
+                    // (Concerted Effort): one triggered ability whose
+                    // instruction is repeated per keyword, so each repetition
+                    // continues the same trigger rather than restating it. An
+                    // intervening "if" after the trigger stays per repetition.
+                    let shared_trigger_len = shared_trigger_prefix_len(&base_sentence);
                     for target in &targets {
                         let replaced = apply_borrow_phrase_occurrences(
                             &base_sentence,
                             &occurrences,
                             target.as_str(),
                         );
-                        expanded.push(rewrite_borrow_static_sentence(&replaced));
+                        let instruction = match shared_trigger_len {
+                            Some(len) if replaced.len() > len => &replaced[len..],
+                            _ => &replaced[..],
+                        };
+                        expanded.push(rewrite_borrow_static_sentence(instruction));
                         expanded_tokens.push(replaced);
                     }
                     continue;

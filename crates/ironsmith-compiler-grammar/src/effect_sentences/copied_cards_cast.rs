@@ -271,7 +271,26 @@ pub(crate) fn read(
     let Some((free, mandatory)) = cast_statement_mode(cast) else {
         return Ok(None);
     };
-    let one_cast = if mandatory { mandatory_copy_cast(free) } else { copy_cast(free) };
+    // "Copy them. You may cast any number of the copies." keeps its plural
+    // authored instruction on the per-card optional cast.
+    let any_number = parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(cast))
+        .windows(3)
+        .any(|window| window == ["any", "number", "of"]);
+    let one_cast = if mandatory {
+        mandatory_copy_cast(free)
+    } else if any_number
+        && times == 1
+        && choice.is_none()
+        && tag.as_str() == CompilerReferenceTag::It.as_str()
+    {
+        EffectAst::Permissions(PermissionEffectAst::May {
+            effects: vec![mandatory_copy_cast(free).with_copy_instruction_surface(
+                ironsmith_core::effect::CopyInstructionSurface::AnyNumberOfCopies,
+            )],
+        })
+    } else {
+        copy_cast(free)
+    };
     let mut effects: Vec<EffectAst> = choice.into_iter().collect();
     let casts = vec![one_cast; times as usize];
     if tag.as_str() == CompilerReferenceTag::SourceExiled.as_str() {

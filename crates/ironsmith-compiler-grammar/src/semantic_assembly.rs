@@ -229,6 +229,7 @@ fn assemble_statement_line(
     statement_line: RecognizedStatementLine,
 ) -> Result<RewriteSemanticItem, CardTextError> {
     let info = statement_line.info;
+
     let chunks = match statement_line.parsed_effects {
         Some(effects) => vec![crate::cards::builders::LineAst::Statement { effects }],
         None => crate::semantic_line_parsing::parse_statement_token_groups_to_chunks(
@@ -251,6 +252,7 @@ fn assemble_modal_block(
         header: modal.header,
         header_tokens: modal.header_tokens,
         saga_chapters: modal.saga_chapters,
+        cost_choice_keywords: modal.cost_choice_keywords,
         modes: modal
             .modes
             .into_iter()

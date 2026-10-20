@@ -1991,6 +1991,11 @@ fn describe_chosen_object_set_filter(filter: &ObjectFilter) -> Option<String> {
             .trim()
             .to_string();
         if !noun.is_empty() && !noun.contains(' ') {
+            // "each permanent chosen this way" (Grenzo's Rebuttal) keeps the
+            // authored relation to the producing choices.
+            if base.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Chosen) {
+                return Some(format!("each {noun} chosen this way"));
+            }
             return Some(format!("each chosen {noun}"));
         }
     }
@@ -2712,6 +2717,12 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 describe_object_filter_with_fixed_pt_shorthand(filter)
             } else if let Some(tagged_text) = describe_demonstrative_tagged_object_filter(filter) {
                 tagged_text
+            } else if filter.has_plural_object_noun_surface()
+                && let Some(chosen_set) = describe_chosen_object_set_filter(filter)
+            {
+                // "exile the chosen creatures": a membership reference to the
+                // whole accumulated chosen set, authored in the plural.
+                chosen_set
             } else {
                 ensure_indefinite_article(&describe_object_filter_with_fixed_pt_shorthand(filter))
             }
@@ -2774,6 +2785,39 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             }
         }
         ChooseSpec::All(filter) => {
+            // "destroy all untapped non-Wall creatures that player controls
+            // that didn't attack, except for creatures the player hasn't
+            // controlled continuously since the beginning of the turn" (Total
+            // War): the continuous-control history was authored as a
+            // trailing exception of the affected set.
+            if (filter.has_continuous_control_exception_surface()
+                || filter.has_continuous_control_ignore_effect_surface())
+                && filter.controlled_continuously_since_turn_began == Some(true)
+            {
+                let mut base = filter.clone();
+                base.controlled_continuously_since_turn_began = None;
+                base.set_continuous_control_exception_surface(false);
+                base.set_continuous_control_ignore_effect_surface(false);
+                let base_text = describe_choose_spec(&ChooseSpec::All(base));
+                let singular = match filter.card_types.as_slice() {
+                    [card_type] => card_type.name().to_ascii_lowercase(),
+                    _ => "permanent".to_string(),
+                };
+                let you = filter.controller == Some(PlayerFilter::You);
+                // "Ignore this effect for each creature the player didn't
+                // control continuously since the beginning of the turn."
+                // (Siren's Call): the exclusion closes its own sentence.
+                if filter.has_continuous_control_ignore_effect_surface() {
+                    let player = if you { "you didn't" } else { "the player didn't" };
+                    return format!(
+                        "{base_text}. Ignore this effect for each {singular} {player} control continuously since the beginning of the turn"
+                    );
+                }
+                let player = if you { "you haven't" } else { "the player hasn't" };
+                return format!(
+                    "{base_text}, except for {singular}s {player} controlled continuously since the beginning of the turn"
+                );
+            }
             if let Some(description) = describe_all_conjunctive_branch_union(filter) {
                 return description;
             }
@@ -5751,7 +5795,8 @@ pub(crate) fn describe_prior_effect_metric_value(
     if query.action == Some(crate::effect::PriorEffectAction::Rolled)
         && query.metric == crate::effect::EffectMetric::Count
     {
-        return "the result of that roll".into();
+        // Oracle names an immediately preceding roll's outcome "the result".
+        return "the result".into();
     }
     if query.action == Some(crate::effect::PriorEffectAction::ChosenNumber)
         && query.metric == crate::effect::EffectMetric::Count

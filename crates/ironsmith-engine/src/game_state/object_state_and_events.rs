@@ -2226,6 +2226,7 @@ impl GameState {
             choices.chosen_basic_land_type_sequences.remove(&id);
             choices.chosen_creature_types.remove(&id);
             choices.secret_chosen_subtypes.remove(&id);
+            choices.secret_chosen_players.remove(&id);
             choices.chosen_creature_type_sets.remove(&id);
             choices.chosen_card_types.remove(&id);
             choices.chosen_players.remove(&id);
@@ -2816,6 +2817,32 @@ impl GameState {
         self.choice_store_mut()
             .chosen_players
             .insert(permanent_id, player);
+    }
+
+    /// Store a hidden player choice on this exact source, without publishing
+    /// it as the source's chosen player.
+    pub fn set_secret_chosen_player(&mut self, source: ObjectId, chooser: PlayerId, player: PlayerId) {
+        self.choice_store_mut()
+            .secret_chosen_players
+            .insert(source, (chooser, player));
+    }
+
+    /// A hidden player choice can be inspected only by the player who made it.
+    pub fn secret_chosen_player(&self, source: ObjectId, viewer: PlayerId) -> Option<PlayerId> {
+        self.choice_store
+            .secret_chosen_players
+            .get(&source)
+            .filter(|(chooser, _)| *chooser == viewer)
+            .map(|(_, player)| *player)
+    }
+
+    /// Reveal the viewer's hidden player choice for this source: it becomes
+    /// the source's public chosen player.
+    pub fn reveal_secret_chosen_player(&mut self, source: ObjectId, viewer: PlayerId) -> Option<PlayerId> {
+        let player = self.secret_chosen_player(source, viewer)?;
+        self.choice_store_mut().secret_chosen_players.remove(&source);
+        self.set_chosen_player(source, player);
+        Some(player)
     }
 
     /// Get a chosen player for a permanent, if any.

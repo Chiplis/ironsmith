@@ -45,10 +45,9 @@ use super::compile_support::{
     is_sentence_helper_exiled_collection_tag, predicate_references_tag,
     value_references_event_derived_amount,
 };
-#[cfg(test)]
-use super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::effect_ast_traversal::{
-    for_each_nested_effect_vec_mut, for_each_nested_effects, try_for_each_nested_effects_mut,
+    for_each_nested_effect_vec_mut, for_each_nested_effects, for_each_nested_effects_mut,
+    try_for_each_nested_effects_mut,
 };
 use super::reference_helpers::{
     as_followup_player_alias, choose_spec_targets_object, is_noun_restricted_object_result_tag,
@@ -1169,6 +1168,149 @@ fn rebind_noun_excluded_antecedent_references(effect: &mut EffectAst, env: &Refe
     }
 }
 
+/// "Choose target creature you control and target Equipment. Gain control of
+/// that Equipment until end of turn. Attach it to the chosen creature. When
+/// you lose control of that Equipment this turn, ... unattach it." (Stolen
+/// Uniform): the shared chosen-objects collector holds several independently
+/// declared slots. A definite description whose head noun names exactly one
+/// of those slots ("that Equipment", "the chosen creature") is that slot,
+/// not the whole collection.
+fn chosen_collection_slot_for_noun(
+    filter: &ObjectFilter,
+    env: &ReferenceEnv,
+) -> Option<TagKey> {
+    let chosen = crate::tag::CompilerReferenceTag::ChosenObjects.as_str();
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    // `it` names the collector, or one of its recorded slots when an earlier
+    // clause already narrowed the antecedent to that slot.
+    let last_is_chosen = env.known_last_object_tag().is_some_and(|tag| {
+        tag.as_str() == chosen
+            || (env.recent_object_target_bindings.len() >= 2
+                && env
+                    .recent_object_target_bindings
+                    .iter()
+                    .any(|binding| &binding.tag == tag))
+    });
+    let references_collection = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && (constraint.tag.as_str() == chosen
+                || (last_is_chosen && constraint.tag.as_str() == it))
+    });
+    if !references_collection {
+        return None;
+    }
+    let mut noun = crate::model::reference_state::filter_implied_card_types(filter);
+    if let Some(card_type) = filter.explicit_card_type_noun()
+        && !noun.contains(&card_type)
+    {
+        noun.push(card_type);
+    }
+    if noun.is_empty() {
+        return None;
+    }
+    let slots = env
+        .recent_object_target_bindings
+        .iter()
+        .filter(|binding| binding.tag.as_str() != chosen && binding.tag.as_str() != it)
+        .collect::<Vec<_>>();
+    if slots.len() < 2 {
+        return None;
+    }
+    let mut matching = slots.iter().filter(|binding| {
+        let kinds = binding.discriminator.implied_card_types();
+        noun.iter().all(|card_type| kinds.contains(card_type))
+    });
+    let (Some(binding), None) = (matching.next(), matching.next()) else {
+        return None;
+    };
+    Some(binding.tag.clone())
+}
+
+fn rebind_chosen_collection_filter(
+    filter: &mut ObjectFilter,
+    env: &ReferenceEnv,
+) -> Option<TagKey> {
+    let slot = chosen_collection_slot_for_noun(filter, env)?;
+    let chosen = crate::tag::CompilerReferenceTag::ChosenObjects.as_str();
+    let it = crate::tag::CompilerReferenceTag::It.as_str();
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && (constraint.tag.as_str() == chosen || constraint.tag.as_str() == it)
+        {
+            constraint.tag = slot.clone();
+        }
+    }
+    Some(slot)
+}
+
+fn rebind_chosen_collection_target(target: &mut TargetAst, env: &ReferenceEnv) {
+    match target {
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            rebind_chosen_collection_target(inner, env);
+        }
+        TargetAst::Object(filter, None, _) => {
+            rebind_chosen_collection_filter(filter, env);
+        }
+        _ => {}
+    }
+}
+
+fn rebind_chosen_collection_trigger(
+    trigger: &mut TriggerSpec,
+    env: &ReferenceEnv,
+) -> Option<TagKey> {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. }
+        | TriggerSpec::ConditionQualified { trigger, .. } => {
+            rebind_chosen_collection_trigger(trigger, env)
+        }
+        TriggerSpec::ControlChanged(control) => {
+            rebind_chosen_collection_filter(&mut control.filter, env)
+        }
+        _ => None,
+    }
+}
+
+fn rebind_chosen_collection_noun_references(effect: &mut EffectAst, env: &ReferenceEnv) {
+    if env.recent_object_target_bindings.len() < 2 {
+        return;
+    }
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::Control(ControlActionAst::GainControl { target, .. }) => {
+                rebind_chosen_collection_target(target, env);
+            }
+            _ => {}
+        },
+        EffectAst::Delayed(
+            DelayedEffectAst::DelayedTriggerThisTurn { trigger, effects, .. }
+            | DelayedEffectAst::DelayedTriggerForDuration { trigger, effects, .. },
+        ) => {
+            // The watched object is that one slot; every reference inside the
+            // delayed ability to the collection or to `it` names it.
+            if let Some(slot) = rebind_chosen_collection_trigger(trigger, env) {
+                use ironsmith_core::tag::TagKeyWalk;
+                let chosen = crate::tag::CompilerReferenceTag::ChosenObjects.as_str();
+                let it = crate::tag::CompilerReferenceTag::It.as_str();
+                for nested in effects.iter_mut() {
+                    nested.map_tag_keys(&mut |tag| {
+                        if tag.as_str() == chosen || tag.as_str() == it {
+                            *tag = slot.clone();
+                        }
+                    });
+                }
+            }
+            return;
+        }
+        _ => {}
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            rebind_chosen_collection_noun_references(effect, env);
+        }
+    });
+}
+
 fn object_antecedent_before_sacrifice(env: &ReferenceEnv) -> Option<TagKey> {
     let current = env.known_last_object_tag()?;
     if !is_sacrificed_object_reference_tag(current.as_str()) {
@@ -1906,8 +2048,49 @@ fn advance_reference_frame_for_effect(
                 let mut exiled_members: Vec<TagKey> = Vec::new();
                 for member in &coordination.members {
                     let before = frame.last_object_tag.clone();
-                    advance_reference_frames(&member.effects, id_gen, frame)?;
-                    if member.effects.iter().any(|effect| {
+                    // A member that is itself a distributed object list ("the
+                    // top card of their library, a card at random from their
+                    // graveyard") exiles several groups; each is its own
+                    // producer of the one instruction.
+                    let distributed = match member.effects.as_slice() {
+                        [EffectAst::Sequence { effects }]
+                            if effects.len() > 1
+                                && effects.iter().all(|effect| {
+                                    let effect = match effect {
+                                        EffectAst::TagAffected { effect, .. } => effect.as_ref(),
+                                        effect => effect,
+                                    };
+                                    is_object_memory_producer_for_action(
+                                        effect,
+                                        PriorEffectAction::Exiled,
+                                    )
+                                }) =>
+                        {
+                            Some(effects.as_slice())
+                        }
+                        _ => None,
+                    };
+                    if let Some(units) = distributed {
+                        for unit in units {
+                            advance_reference_frames(std::slice::from_ref(unit), id_gen, frame)?;
+                            if let Some((_, exiled)) = frame
+                                .snapshot_tag_aliases
+                                .iter()
+                                .rev()
+                                .find(|(alias, _)| alias == &exiled_alias)
+                                && !exiled_members.contains(exiled)
+                            {
+                                exiled_members.push(exiled.clone());
+                            }
+                        }
+                    } else {
+                        advance_reference_frames(&member.effects, id_gen, frame)?;
+                    }
+                    if distributed.is_none() && member.effects.iter().any(|effect| {
+                        let effect = match effect {
+                            EffectAst::TagAffected { effect, .. } => effect.as_ref(),
+                            effect => effect,
+                        };
                         is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled)
                     }) && let Some((_, exiled)) = frame
                         .snapshot_tag_aliases
@@ -2273,6 +2456,17 @@ fn advance_reference_frame_for_effect(
                                 // a separate ability relationship and requires
                                 // explicit pair/acquisition metadata.
                                 frame.last_object_tag = Some(tag.clone());
+                            } else if let ChooseSpec::Object(filter) = spec.base()
+                                && !spec.is_target()
+                                && let [constraint] = filter.tagged_constraints.as_slice()
+                                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                                && filter.any_of.is_empty()
+                            {
+                                // "exile it from your graveyard" (Leonardo da
+                                // Vinci): a zone-qualified pronoun still names
+                                // the referenced card, not every card this
+                                // source has exiled.
+                                frame.last_object_tag = Some(constraint.tag.clone());
                             } else if spec.is_target() {
                                 if let Some(tag) =
                                     propagated_or_generated_object_tag(&spec, id_gen, "exiled")
@@ -2318,6 +2512,40 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtTarget { target }) => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
+                // "Then look at the exiled cards and put them on top of your
+                // library" (Scroll Rack): the looked-at tagged set becomes the
+                // object antecedent, so "them" names those cards rather than
+                // an older moved/drawn set.
+                SubjectVerbActionAst::RevealLook(RevealLookActionAst::LookAtObjects {
+                    filter,
+                    ..
+                }) => {
+                    // A pronoun look ("look at it/them") re-mentions the
+                    // current antecedent and must not replace it with the
+                    // unresolved placeholder.
+                    // "the exiled cards" is authored as the pronoun
+                    // placeholder plus an "exiled" prior-action surface; it
+                    // names the single exiled-this-way set.
+                    let exiled_this_way = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                    let exiled_sets = frame
+                        .snapshot_tag_aliases
+                        .iter()
+                        .filter(|(alias, _)| alias == &exiled_this_way)
+                        .map(|(_, exiled)| exiled.clone())
+                        .collect::<Vec<_>>();
+                    if let [constraint] = filter.tagged_constraints.as_slice()
+                        && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                    {
+                        if constraint.tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+                            frame.last_object_tag = Some(constraint.tag.clone());
+                        } else if filter.prior_effect_action_surface()
+                            == Some(ironsmith_core::PriorEffectAction::Exiled)
+                            && let [exiled] = exiled_sets.as_slice()
+                        {
+                            frame.last_object_tag = Some(exiled.clone());
+                        }
+                    }
                 }
                 SubjectVerbActionAst::Stack(StackActionAst::Counter {
                     exile_permission: Some(_),
@@ -2467,7 +2695,18 @@ fn advance_reference_frame_for_effect(
                         && frame.last_object_tag.is_none()
                         && resolve_target_spec_with_choices(target, &lowering_reference_frame(frame))
                             .is_ok_and(|(spec, _)| matches!(spec.base(), ChooseSpec::Source));
-                    maybe_tag_target(target, frame, id_gen, "moved")?;
+                    // "..., then shuffles the rest into their library" (Wand of
+                    // Wonder): the remainder of a tagged collection vanishes into
+                    // a hidden library; it never replaces the object antecedent
+                    // a later "cards exiled this way" names. Mirrors lowering.
+                    let collection_remainder = matches!(target, TargetAst::Object(filter, None, _)
+                        if filter.tagged_constraints.iter().any(|constraint|
+                            constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject)
+                            && filter.tagged_constraints.iter().any(|constraint|
+                                constraint.relation == TaggedOpbjectRelation::IsTaggedObject));
+                    if !collection_remainder {
+                        maybe_tag_target(target, frame, id_gen, "moved")?;
+                    }
                     if source_owner_subject {
                         frame.last_player_filter = Some(PlayerFilter::AliasedOwnerOf(
                             ObjectRef::tagged(ironsmith_core::SOURCE_OBJECT_TAG),
@@ -2905,6 +3144,7 @@ fn advance_reference_frame_for_effect(
                     zone,
                     attached_to,
                     destination_player_surface,
+                    battlefield_face_down,
                     ..
                 }) => {
                     let refs = lowering_reference_frame(frame);
@@ -2936,7 +3176,16 @@ fn advance_reference_frame_for_effect(
                         if choose_spec_targets_object(&spec)
                             || matches!(spec.base(), ChooseSpec::All(_))
                         {
-                            frame.last_object_tag = Some(next_reference_tag(id_gen, "moved"));
+                            // Mirrors lowering's moved-result prefix: a
+                            // face-down battlefield entry is a face-down result.
+                            let prefix = if *zone == crate::zone::Zone::Battlefield
+                                && *battlefield_face_down
+                            {
+                                "turned_face_down"
+                            } else {
+                                "moved"
+                            };
+                            frame.last_object_tag = Some(next_reference_tag(id_gen, prefix));
                         }
                     }
                     track_target_player(target, frame);
@@ -3110,6 +3359,7 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
                     player,
+                    mode,
                     filter,
                     all_tag,
                     match_tag,
@@ -3122,6 +3372,20 @@ fn advance_reference_frame_for_effect(
                     // match as ordinary object memory while preserving the public
                     // revealed alias for later typed collection counts.
                     remember_public_revealed_alias(frame, Some(all_tag));
+                    // "Each opponent exiles cards from the top of their library
+                    // until ..., then shuffles the rest into their library. You
+                    // may cast ... from among cards exiled this way" (Wand of
+                    // Wonder): an exiling consult is an exile instruction, and
+                    // "exiled this way" names its whole exposure even after a
+                    // same-sentence remainder disposition replaces ordinary
+                    // object memory.
+                    if *mode == crate::cards::builders::LibraryConsultModeAst::Exile {
+                        let alias = crate::tag::CompilerReferenceTag::ExiledThisWay.key();
+                        frame
+                            .snapshot_tag_aliases
+                            .retain(|(existing, _)| existing != &alias);
+                        frame.snapshot_tag_aliases.push((alias, all_tag.key.clone()));
+                    }
                     // A definite later card description names this matched
                     // result even after another instruction replaces ordinary
                     // object memory. The full reveal set has a separate alias.
@@ -4596,6 +4860,7 @@ fn annotate_effect_sequence_with_env_internal(
             &resolution_env.recent_object_target_bindings,
         );
         rebind_noun_excluded_antecedent_references(&mut effect, &resolution_env);
+        rebind_chosen_collection_noun_references(&mut effect, &resolution_env);
         bind_counted_choice_amount_to_antecedent(&mut effect, &resolution_env);
         // Some surface parsers initially spell "the exiled card" as the
         // ordinary `it` target and only resolve it to the source-linked exile
@@ -10606,6 +10871,12 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
             replacements
         }
         PredicateAst::TaggedWasCast(tag) => bind_unresolved_it_in_tag(&mut tag.key, seed_tag),
+        PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
+                tag,
+                ..
+            },
+        ) => bind_unresolved_it_in_tag(&mut tag.key, seed_tag),
         PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
             tag, filter, ..
         }) => {

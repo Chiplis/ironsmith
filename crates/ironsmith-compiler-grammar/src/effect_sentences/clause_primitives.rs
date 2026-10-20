@@ -428,9 +428,7 @@ pub fn parse_change_target_clause_inner(
             )
         } else {
             let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
-            for constraint in clause_shapes::parse_retarget_constraint_shapes(&tail_tokens) {
-                filter = apply_retarget_constraint(filter, constraint);
-            }
+            filter = apply_retarget_constraints(filter, &tail_tokens);
             TargetAst::Object(filter, span_from_tokens(tokens), None)
         };
         return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
@@ -450,9 +448,7 @@ pub fn parse_change_target_clause_inner(
         parse_stack_retarget_filter(&tail_tokens)?
     };
 
-    for constraint in clause_shapes::parse_retarget_constraint_shapes(&tail_tokens) {
-        filter = apply_retarget_constraint(filter, constraint);
-    }
+    filter = apply_retarget_constraints(filter, &tail_tokens);
 
     let target = TargetAst::Object(filter, span_from_tokens(tokens), None);
 
@@ -470,6 +466,21 @@ pub fn parse_change_target_clause_inner(
         mode,
         !any_targets,
     )))
+}
+
+fn apply_retarget_constraints(mut filter: ObjectFilter, tokens: &[OwnedLexToken]) -> ObjectFilter {
+    for constraint in clause_shapes::parse_retarget_constraint_shapes(tokens) {
+        filter = apply_retarget_constraint(filter, constraint);
+    }
+    // "target spell with a single target if that target is you"
+    // (Reflecting Mirror) keeps its authored conditional surface.
+    if crate::lexer::token_word_refs(tokens)
+        .windows(4)
+        .any(|window| window == ["if", "that", "target", "is"])
+    {
+        filter.set_single_target_if_that_target_surface(true);
+    }
+    filter
 }
 
 fn apply_retarget_constraint(

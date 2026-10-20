@@ -170,6 +170,9 @@ pub use win_the_game::WinTheGameEffect;
 mod reveal_chosen_subtype;
 pub use reveal_chosen_subtype::RevealChosenSubtypeEffect;
 
+mod reveal_chosen_player;
+pub use reveal_chosen_player::RevealChosenPlayerEffect;
+
 mod ripple;
 pub use ripple::RippleEffect;
 

@@ -531,12 +531,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tag,
                 random,
                 exclude_previous_choices,
+                secretly,
             }) => f
                 .debug_struct("ChoosePlayer")
                 .field("filter", filter)
                 .field("tag", tag)
                 .field("random", random)
                 .field("exclude_previous_choices", exclude_previous_choices)
+                .field("secretly", secretly)
                 .finish(),
             Self::LifeResources(LifeResourceActionAst::NoteLifeTotal) => {
                 f.write_str("NoteLifeTotal")

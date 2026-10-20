@@ -1184,6 +1184,14 @@ pub(crate) fn parse_cast_from_among_looked_cards_action(
     filter.zone = Some(Zone::Library);
     filter.stack_kind = None;
     filter.has_mana_cost = false;
+    // "an instant or sorcery spell from among them": the trailing `spell`
+    // noun names the proposed cast, not a stack object. The disjunction's
+    // final arm absorbed that noun; strip it from every arm so the choice
+    // matches library cards of either type.
+    for branch in &mut filter.any_of {
+        branch.stack_kind = None;
+        branch.has_mana_cost = false;
+    }
     if let Some(cap) = trailing_cap {
         if filter.mana_value.is_some() {
             return Ok(None);

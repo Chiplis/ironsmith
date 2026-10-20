@@ -412,7 +412,9 @@ fn guess_statement(
     tokens: &[OwnedLexToken],
     range: PlayerNumberChoice,
 ) -> Option<ChoosePlayerOptionEffect> {
+    let full = trim(tokens);
     let tokens = without_reveal_tail(tokens);
+    let reveals = tokens.len() < full.len();
     let words = crate::lexer::token_word_refs(tokens);
     let (participants, choose_one) = match words.as_slice() {
         ["an", "opponent", "guesses", "which", "number", "you", "chose"] => {
@@ -426,6 +428,7 @@ fn guess_statement(
     let mut guess = ChoosePlayerOptionEffect::numbers(participants, range);
     guess.guess = true;
     guess.choose_one_participant = choose_one;
+    guess.reveals_chosen_number_after_guess = reveals;
     Some(guess)
 }
 

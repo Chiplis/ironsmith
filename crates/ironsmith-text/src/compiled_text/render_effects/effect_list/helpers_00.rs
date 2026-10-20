@@ -457,7 +457,12 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
         bottom_effect,
     ] = effects
     {
-        let with_id = shuffle_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        // The shuffled set may carry its result tag outside the id wrapper.
+        let with_id = shuffle_effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(*shuffle_effect)
+            .downcast_ref::<crate::effects::WithIdEffect>()?;
         let shuffle = unwrap_wrapped_effect(shuffle_effect)
             .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
         let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
@@ -546,7 +551,12 @@ pub(crate) fn describe_shuffle_reveal_repeated_permanent_groups_rest_bottom(
     else {
         return None;
     };
-    let with_id = shuffle_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    // The shuffled set may carry its result tag outside the id wrapper.
+    let with_id = shuffle_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(*shuffle_effect)
+        .downcast_ref::<crate::effects::WithIdEffect>()?;
     let shuffle = unwrap_wrapped_effect(shuffle_effect)
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
@@ -4451,6 +4461,49 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
                 member_idx += 1;
                 continue;
             }
+            // "any number of target opponents each discard a card. For each of
+            // those opponents who didn't discard a card with mana value 4 or
+            // greater, draw a card." (Hollow Marauder): a follow-up gated on
+            // the iterated player's own tagged discard.
+            if single_per_player_effect
+                && instead_suffix.is_none()
+                && member_idx + 2 == members.len()
+                && let Some(discard) = structural_unwrap_render_wrappers(members[member_idx])
+                    .downcast_ref::<crate::effects::DiscardEffect>()
+                && discard.player == PlayerFilter::IteratedPlayer
+                && let Some(discard_tag) = discard.tag.as_ref()
+                && let Some(conditional) = structural_unwrap_render_wrappers(members[member_idx + 1])
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                && conditional.if_false.is_empty()
+                && !conditional.if_true.is_empty()
+                && let Condition::Not(inner) = &conditional.condition
+                && let Condition::PlayerTaggedObjectMatches {
+                    player: PlayerFilter::IteratedPlayer,
+                    tag,
+                    filter: discarded_filter,
+                    ..
+                } = inner.as_ref()
+                && tag == discard_tag
+            {
+                let follow_up = describe_effect_list(&conditional.if_true);
+                let follow_up = lowercase_first(follow_up.trim().trim_end_matches('.'));
+                if !follow_up.is_empty() && !follow_up.contains("that player") {
+                    let those = if matches!(target_filter, PlayerFilter::Opponent) {
+                        "those opponents"
+                    } else {
+                        "those players"
+                    };
+                    instead_suffix = Some(format!(
+                        "For each of {those} who didn't discard {}, {follow_up}",
+                        with_indefinite_article(strip_indefinite_article(
+                            &discarded_filter.description()
+                        ))
+                    ));
+                    member_texts.push(describe_effect(members[member_idx]));
+                    member_idx += 2;
+                    continue;
+                }
+            }
             if single_per_player_effect
                 && members.len() == 1
                 && instead_suffix.is_none()
@@ -6858,6 +6911,35 @@ pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(
     // (Mizzix's Mastery): the per-iterand copy and the optional cast of that
     // copy stay inside the loop's single sentence; a sentence break would
     // read as one cast outside the loop.
+    // "Copy them. You may cast any number of the copies." (The Tale of
+    // Tamiyo): the authored plural copy instruction over the whole produced
+    // set.
+    if restates_producer
+        && !producer_text.is_empty()
+        && let [only] = followup_effects
+        && let Some(may) = unwrap_tag_wrappers(only).downcast_ref::<crate::effects::MayEffect>()
+        && matches!(may.decider, None | Some(PlayerFilter::You))
+        && let [cast_effect] = may.effects.as_slice()
+        && let Some(cast) = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()
+        && cast.copy_instruction_surface
+            == Some(ironsmith_core::effect::CopyInstructionSurface::AnyNumberOfCopies)
+        && cast.as_copy
+        && cast.tag.as_str() == "__it__"
+        && cast.player == PlayerFilter::You
+        && cast.cost_reduction.is_none()
+        && cast.additional_mana_cost.is_none()
+        && cast.alternative_cost.is_none()
+        && cast.alternative_payment.is_none()
+    {
+        let payment = if cast.without_paying_mana_cost {
+            " without paying their mana costs"
+        } else {
+            ""
+        };
+        return Some(format!(
+            "{producer_text}. Copy them. You may cast any number of the copies{payment}"
+        ));
+    }
     let followup = if let [only] = followup_effects
         && let Some(may) = unwrap_tag_wrappers(only).downcast_ref::<crate::effects::MayEffect>()
         && may.decider.is_none()

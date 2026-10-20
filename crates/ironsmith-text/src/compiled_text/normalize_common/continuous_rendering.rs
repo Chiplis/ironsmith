@@ -3246,8 +3246,20 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             )
         });
     let is_creature_template = card_types.contains(&CardType::Creature);
+    // "it becomes a Vehicle artifact ... and "... this Vehicle deals damage
+    // ..."" (Captain Rex Nebula): an animation into a Vehicle names its
+    // granted abilities' source by that subtype.
+    let becomes_vehicle = effect.additional_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            crate::continuous::Modification::AddSubtypes(subtypes)
+                if subtypes.contains(&crate::types::Subtype::Vehicle)
+        )
+    });
     let granted_self_subject = if is_creature_template {
         "this creature"
+    } else if becomes_vehicle {
+        "this Vehicle"
     } else if card_types.contains(&CardType::Artifact) {
         "this artifact"
     } else {
@@ -3378,6 +3390,22 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 let keyword = describe_keyword_ability(ability).unwrap_or_default();
                 ability_text.push(lowercase_first(keyword.trim_end_matches('.')));
             }
+            // "it becomes a Vehicle artifact ... and it gains crew 2" (Captain
+            // Rex Nebula): a granted crew activation is the Crew keyword
+            // (CR 702.122a), not a quoted ability.
+            crate::continuous::Modification::AddAbilityGeneric(ability)
+                if matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Activated(activated)
+                        if describe_structural_crew_keyword(activated).is_some()
+                ) =>
+            {
+                if let crate::ability::AbilityKind::Activated(activated) = &ability.kind
+                    && let Some(crew) = describe_structural_crew_keyword(activated)
+                {
+                    ability_text.push(lowercase_first(&crew));
+                }
+            }
             crate::continuous::Modification::AddAbilityGeneric(ability) => {
                 // A bare keyword is quoted only because it travels through the
                 // generic ability model; it is still a clause fragment, so its
@@ -3395,6 +3423,10 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 ))
                 .replace(". otherwise,", ". Otherwise,");
                 rendered = replace_this_spell_self_reference(rendered, granted_self_subject);
+                if granted_self_subject == "this Vehicle" {
+                    // The trigger matcher's generic self reference.
+                    rendered = rendered.replace("this permanent", granted_self_subject);
+                }
                 rendered = normalize_granted_triggered_ability_surface(rendered);
                 rendered = rendered.replace(", where X is X", "");
                 if matches!(effect.until, Until::EndOfTurn) {
@@ -3756,7 +3788,20 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             } else {
                 noun_phrase.clone()
             };
-            format!("{target_text} become {noun_phrase}")
+            if face_down_result_animation {
+                // "They're Forest lands": the face-down result copula.
+                format!("{target_text} {returned_copula} {noun_phrase}").replace("  ", " ")
+            } else {
+                format!("{target_text} become {noun_phrase}")
+            }
+        } else if face_down_result_animation {
+            // "It's a Forest land." (Yedora, Grave Gardener): a face-down
+            // result states its characteristics with the contracted copula.
+            format!(
+                "{target_text} {returned_copula} {}",
+                with_indefinite_article(&noun_phrase)
+            )
+            .replace("  ", " ")
         } else {
             format!(
                 "{target_text} becomes {}",
@@ -3777,7 +3822,15 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         });
     }
     if !ability_text.is_empty() {
-        let ability_connector = if text.contains(" with base power and toughness ")
+        // "with base power and toughness each equal to its mana value, and
+        // it gains crew 2 and ..." (Captain Rex Nebula): after an open-ended
+        // "each equal to <value>" phrase the granted abilities start their own
+        // clause, so they cannot be read as part of the value.
+        let ability_connector = if text.contains(" with base power and toughness each equal to ")
+            && !returned_permanent_animation
+        {
+            if plural_target { ", and they gain " } else { ", and it gains " }
+        } else if text.contains(" with base power and toughness ")
             || text.contains(" with power and toughness each equal to ")
         {
             " and "
@@ -3785,6 +3838,17 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
             " with "
         };
         text.push_str(ability_connector);
+        // Oracle closes only the final quoted ability of a list with its
+        // period: `with "... mana cost" and "If ... anywhere else."`.
+        let last = ability_text.len().saturating_sub(1);
+        let ability_text = ability_text
+            .iter()
+            .enumerate()
+            .map(|(index, text)| match text.strip_suffix(".\"") {
+                Some(body) if index < last && text.starts_with('"') => format!("{body}\""),
+                _ => text.clone(),
+            })
+            .collect::<Vec<_>>();
         text.push_str(&join_with_and(&ability_text));
     }
     let adds_artifact_type = card_types.contains(&CardType::Artifact);
@@ -4052,6 +4116,9 @@ pub(crate) fn one_turn_additional_block_rule(rule: &str) -> String {
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    if let Some(text) = describe_borrowed_keyword_variant_grant(effect) {
+        return Some(text);
+    }
     // "Until your next turn, this creature's base power becomes twice that
     // card's power and its base toughness becomes twice that card's
     // toughness" (Amplifire): the source's base stats set to a doubled copy
@@ -4080,6 +4147,33 @@ pub(crate) fn describe_apply_continuous_effect(
             Until::Forever => capitalize_first(body),
             ref until => format!("{}, {body}", capitalize_first(&describe_until(until))),
         });
+    }
+    // "This creature's power becomes the total power of those creatures and
+    // its toughness becomes their total toughness." (Dracoplasm): a
+    // characteristic-setting P/T pair summed over one shared object set. The
+    // SetBasePowerToughnessEffect form renders the same way.
+    if effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.condition.is_none()
+        && effect.until == Until::Forever
+        && !effect.grant_only_if_absent
+        && let Some(crate::continuous::Modification::SetPowerToughness {
+            power,
+            toughness,
+            sublayer: crate::continuous::PtSublayer::Setting,
+        }) = effect.modification.as_ref()
+        && let (Value::TotalPower(power_set), Value::TotalToughness(toughness_set)) =
+            (power.unhinted(), toughness.unhinted())
+        && power_set == toughness_set
+    {
+        let (target, plural) = describe_apply_continuous_target(effect);
+        if !plural && !target.trim().is_empty() {
+            return Some(format!(
+                "{}'s power becomes {} and its toughness becomes their total toughness",
+                capitalize_first(target.trim()),
+                describe_value(power)
+            ));
+        }
     }
     // "If it doesn't have \"...,\" it gains that ability" (Musician): render
     // the plain grant, then restate its quoted ability as the presence gate.
@@ -5860,6 +5954,12 @@ pub(crate) fn describe_untap_restriction_oracle(
         return None;
     };
     let mut subject = default_untap_restriction_subject(filter);
+    // "Each of those creatures doesn't untap during its controller's next
+    // untap step" (Juvenile Mist Dragon): an authored distributive subject
+    // keeps the per-object singular.
+    if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each) {
+        return describe_untap_restriction_for_subject(cant, subject);
+    }
     // A one-shot "next untap step" restriction over a set reads in the plural
     // in oracle ("Those creatures don't untap during their controllers' next
     // untap steps", "Creatures target player controls don't untap during that
@@ -8492,4 +8592,54 @@ pub(crate) fn describe_prevent_all_damage_source_would_deal(
         target => format!(" to {}", describe_prevention_target(target)),
     };
     Some(format!("Prevent all {damage} {source} would deal{recipient} {timing}"))
+}
+
+/// "creatures you control gain landwalk until end of turn if a creature you
+/// control has landwalk" (Concerted Effort): a temporary grant of the
+/// variant-copying static, whose source objects lend every variant of one
+/// keyword family (each landwalk, each protection quality).
+fn describe_borrowed_keyword_variant_grant(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+        || effect.condition.is_some()
+        || effect.until != Until::EndOfTurn
+    {
+        return None;
+    }
+    let crate::continuous::EffectTarget::Filter(recipients) = &effect.target else {
+        return None;
+    };
+    let Some(crate::continuous::Modification::AddAbility(granted)) = effect.modification.as_ref()
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::CopyStaticAbilityVariants(copy) =
+        &granted.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let [selector] = copy.selectors.as_slice() else {
+        return None;
+    };
+    let keyword = crate::compiled_text::ast_render::static_variant_selector_keyword(*selector)?;
+    let recipients = crate::compiled_text::pluralize_noun_phrase(&recipients.description());
+    let condition = if copy.filter.controller == Some(PlayerFilter::You) {
+        let mut source = copy.filter.clone();
+        source.controller = None;
+        source.zone = None;
+        format!(
+            "you control {} with {keyword}",
+            with_indefinite_article(&source.description())
+        )
+    } else {
+        format!(
+            "{} has {keyword}",
+            with_indefinite_article(&copy.filter.description())
+        )
+    };
+    Some(format!(
+        "{recipients} gain {keyword} until end of turn if {condition}"
+    ))
 }

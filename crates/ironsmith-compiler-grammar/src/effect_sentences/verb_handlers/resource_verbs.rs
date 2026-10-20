@@ -103,6 +103,15 @@ pub fn parse_effect_with_verb(
             // authored player subject is the actor who makes any untargeted
             // object choice.
             let parse_put_counters_with_subject = |tokens: &[OwnedLexToken]| {
+                if let Some(player) = extract_subject_player(subject)
+                    && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
+                    && let Some(effect) =
+                        crate::effect_sentences::zone_counter_helpers::parse_put_counters_with_subject_chosen_target(
+                            tokens, player,
+                        )
+                {
+                    return Ok(effect);
+                }
                 let mut effect = parse_put_counters(tokens)?;
                 if let Some(player) = extract_subject_player(subject)
                     && let EffectAst::SubjectVerb(SubjectVerbEffectAst {

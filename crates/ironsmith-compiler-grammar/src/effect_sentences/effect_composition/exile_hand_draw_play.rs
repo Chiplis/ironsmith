@@ -19,11 +19,14 @@ pub(super) fn parse_exile_hand_draw_play_bundle(
             tag, player: PlayerAst::Implicit | PlayerAst::You, allow_land: true,
             without_paying_mana_cost: false, allow_any_color_for_cast: mode,
             permission_bound_mana, filter: None, during_turns_counter_put_on_source: None,
-            spell_cost_increase: None, lands_enter_tapped: false, ..
+            spell_cost_increase: None, lands_enter_tapped: false, surface, ..
         }), .. }) = &mut permission else { return Ok(None); };
     if let Some(rider) = rider {
         if !mode.is_normal() { return Ok(None); }
         *mode = rider;
+        // "If you cast a spell this way, you may spend mana as though it were
+        // mana of any color to cast it." was authored as its own sentence.
+        surface.get_or_insert_with(Default::default).mana_spend_followup = true;
     }
     if mode.is_normal() { return Ok(None); }
     if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() { return Ok(None); }

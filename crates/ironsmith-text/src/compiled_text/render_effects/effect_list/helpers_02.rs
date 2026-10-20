@@ -1170,6 +1170,741 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
     }
 }
 
+/// "Target player reveals cards from the top of their library until a card
+/// with that name is revealed. If it is, that player puts the rest of the
+/// revealed cards into their graveyard. Otherwise, the player shuffles."
+/// (Tunnel Vision): a reveal-until consult whose found branch moves every
+/// unmatched revealed card to the graveyard (leaving the match on top) and
+/// whose not-found branch shuffles. The branch gate tests the consult's own
+/// match tag, and the remainder iterates the consult's own exposure.
+pub(crate) fn render_consult_reveal_found_rest_graveyard_else_shuffle(
+    consult_effect: &Effect,
+    conditional_effect: &Effect,
+) -> Option<String> {
+    let consult = unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || !matches!(
+            consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+        )
+    {
+        return None;
+    }
+    let conditional = unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::ConditionExpr::TaggedObjectMatches(gate_tag, gate_filter) = &conditional.condition
+    else {
+        return None;
+    };
+    if gate_tag != &consult.match_tag
+        || !(*gate_filter == ObjectFilter::default() || gate_filter == &consult.filter)
+        || conditional.capture_condition_result
+    {
+        return None;
+    }
+    let [remainder_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let remainder = unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if remainder.controller_at_last_blocked_by.is_some()
+        || !for_each_moves_unselected_to_zone(
+            remainder,
+            consult.all_tag.as_str(),
+            consult.match_tag.as_str(),
+            Zone::Graveyard,
+        )
+    {
+        return None;
+    }
+    let [shuffle_effect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    let mut bare = consult.filter.clone();
+    let named = matches!(
+        bare.tagged_constraints.as_slice(),
+        [constraint] if constraint.tag.as_str() == "__chosen_name__"
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+    );
+    bare.tagged_constraints.clear();
+    bare.union_surface = Default::default();
+    let selection = if named && bare == ObjectFilter::default() {
+        "a card with that name".to_string()
+    } else {
+        with_indefinite_article(&describe_library_consult_selection_with_cards(&consult.filter))
+    };
+    let player = describe_player_filter(&consult.player);
+    if player == "you" {
+        return Some(format!(
+            "Reveal cards from the top of your library until {selection} is revealed. If it is, put the rest of the revealed cards into your graveyard. Otherwise, shuffle"
+        ));
+    }
+    let library_owner = if matches!(consult.player, PlayerFilter::Target(_)) {
+        "their".to_string()
+    } else {
+        describe_possessive_player_filter(&consult.player)
+    };
+    let reveal_verb = player_verb(&player, "reveal", "reveals");
+    Some(format!(
+        "{} {reveal_verb} cards from the top of {library_owner} library until {selection} is revealed. If it is, that player puts the rest of the revealed cards into their graveyard. Otherwise, that player shuffles",
+        capitalize_first(&player)
+    ))
+}
+
+/// "Each opponent exiles cards from the top of their library until they exile
+/// an instant or sorcery card, then shuffles the rest into their library."
+/// (Wand of Wonder): a per-opponent exiling consult followed by the exact
+/// remainder shuffle (the exposure minus the match) by that same player.
+pub(crate) fn render_each_opponent_consult_exile_shuffle_rest(effect: &Effect) -> Option<String> {
+    let players = unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if players.filter != PlayerFilter::Opponent {
+        return None;
+    }
+    let body: &[Effect] = match players.effects.as_slice() {
+        [only] => match unwrap_render_wrappers(only).downcast_ref::<crate::effects::SequenceEffect>() {
+            Some(sequence) if sequence.result_label.is_none() => sequence.effects.as_slice(),
+            _ => return None,
+        },
+        effects => effects,
+    };
+    let [consult_effect, shuffle_effect] = body else {
+        return None;
+    };
+    let consult = unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Exile
+        || consult.player != PlayerFilter::IteratedPlayer
+        || !matches!(
+            consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+                | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+        )
+        || !is_exact_consult_remainder_shuffle(shuffle_effect, consult)
+    {
+        return None;
+    }
+    let selection =
+        with_indefinite_article(&describe_library_consult_selection_with_cards(&consult.filter));
+    Some(format!(
+        "Each opponent exiles cards from the top of their library until they exile {selection}, then shuffles the rest into their library"
+    ))
+}
+
+/// "its controller looks at the top card of that player's library and exiles
+/// it face down. They may play that card for as long as it remains exiled.
+/// Mana of any type can be spent to cast a spell this way." (Gonti, Night
+/// Minister): the triggering source's controller is the viewer, the exiler,
+/// and the permission holder of the one looked-at card.
+pub(crate) fn render_source_controller_look_exile_face_down_play(
+    look_effect: &Effect,
+    exile_effect: &Effect,
+    grant_effect: &Effect,
+) -> Option<String> {
+    let look = unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let exile = unwrap_render_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let grant = unwrap_render_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .filter(|grant| grant.alternative_cost.is_none())?;
+    let triggering_controller = matches!(
+        &look.viewer,
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag))
+            if tag.as_str() == "triggering_source"
+    );
+    if !triggering_controller
+        || look.reveal
+        || look.count != Value::Fixed(1)
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if *tag == look.tag)
+        || !exile.face_down
+        || grant.tag != look.tag
+        || grant.player != look.viewer
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || !grant.allow_land
+        || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::AnyType
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+        || grant.spell_filter.is_some()
+    {
+        return None;
+    }
+    let library_owner = match &look.player {
+        PlayerFilter::DamagedPlayer => "that player's".to_string(),
+        other => describe_possessive_player_filter(other),
+    };
+    Some(format!(
+        "its controller looks at the top card of {library_owner} library and exiles it face down. They may play that card for as long as it remains exiled. Mana of any type can be spent to cast a spell this way"
+    ))
+}
+
+/// "You may cast up to one target instant card and/or up to one target
+/// sorcery card from your graveyard each with mana value X or less without
+/// paying their mana costs. If a spell cast this way would be put into your
+/// graveyard, exile it instead. If X is 10 or more, copy each of those spells
+/// twice. You may choose new targets for the copies." (Finale of Promise):
+/// two independent typed graveyard target slots, each cast-free offer bound to
+/// its own slot with its own exile replacement, and a gated copy of each cast
+/// spell.
+pub(crate) fn render_two_slot_graveyard_free_cast_with_copies(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [first_target, second_target, first_may, first_if, second_may, second_if, copies] =
+        effects
+    else {
+        return None;
+    };
+    fn slot(effect: &Effect) -> Option<(&crate::TagKey, crate::types::CardType)> {
+        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let target_only = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let ChooseSpec::WithCount(inner, count) = &target_only.target else {
+            return None;
+        };
+        let ChooseSpec::Target(object) = inner.as_ref() else {
+            return None;
+        };
+        let ChooseSpec::Object(filter) = object.as_ref() else {
+            return None;
+        };
+        let [card_type] = filter.card_types.as_slice() else {
+            return None;
+        };
+        let x_cap = matches!(
+            &filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.unhinted() == &Value::X
+        );
+        if *count != crate::effect::ChoiceCount::up_to(1)
+            || filter.zone != Some(Zone::Graveyard)
+            || filter.owner != Some(PlayerFilter::You)
+            || !x_cap
+        {
+            return None;
+        }
+        Some((&tagged.tag, *card_type))
+    }
+    fn offer<'a>(
+        may_effect: &'a Effect,
+        target_tag: &crate::TagKey,
+    ) -> Option<(crate::effect::EffectId, &'a crate::TagKey)> {
+        let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+        let [cast_effect] = may.effects.as_slice() else {
+            return None;
+        };
+        let tagged = cast_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let cast = structural_unwrap_render_wrappers(cast_effect)
+            .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+        if &cast.tag != target_tag
+            || cast.player != PlayerFilter::You
+            || !cast.without_paying_mana_cost
+            || cast.as_copy
+            || cast.alternative_cost.is_some()
+        {
+            return None;
+        }
+        Some((with_id.id, &tagged.tag))
+    }
+    fn exiles_if_cast(effect: &Effect, id: crate::effect::EffectId, spell: &crate::TagKey) -> bool {
+        let Some(gate) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::IfEffect>()
+        else {
+            return false;
+        };
+        let [replacement_effect] = gate.then.as_slice() else {
+            return false;
+        };
+        let Some(replacement) = structural_unwrap_render_wrappers(replacement_effect)
+            .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
+        else {
+            return false;
+        };
+        gate.condition == id
+            && gate.predicate == crate::effect::EffectPredicate::Happened
+            && gate.else_.is_empty()
+            && replacement.replacement_zone == Zone::Exile
+            && replacement.to_zone == Some(Zone::Graveyard)
+            && replacement
+                .filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| &constraint.tag == spell)
+    }
+    let (first_tag, first_type) = slot(first_target)?;
+    let (second_tag, second_type) = slot(second_target)?;
+    if first_type == second_type {
+        return None;
+    }
+    let (first_id, first_spell) = offer(first_may, first_tag)?;
+    let (second_id, second_spell) = offer(second_may, second_tag)?;
+    if !exiles_if_cast(first_if, first_id, first_spell)
+        || !exiles_if_cast(second_if, second_id, second_spell)
+    {
+        return None;
+    }
+    let gate = structural_unwrap_render_wrappers(copies)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::XValueAtLeast(threshold) = &gate.condition else {
+        return None;
+    };
+    if !gate.if_false.is_empty() {
+        return None;
+    }
+    let mut copied = Vec::new();
+    let mut retargets = 0usize;
+    for effect in &gate.if_true {
+        let inner = structural_unwrap_render_wrappers(effect);
+        if let Some(copy) = inner.downcast_ref::<crate::effects::CopySpellEffect>() {
+            if copy.count != Value::Fixed(2) || copy.copier != PlayerFilter::You {
+                return None;
+            }
+            let ChooseSpec::Tagged(tag) = &copy.target else {
+                return None;
+            };
+            copied.push(tag.clone());
+        } else if let Some(retarget) = inner.downcast_ref::<crate::effects::ChooseNewTargetsEffect>() {
+            if !retarget.may {
+                return None;
+            }
+            retargets += 1;
+        } else {
+            return None;
+        }
+    }
+    if copied.len() != 2
+        || !copied.contains(first_spell)
+        || !copied.contains(second_spell)
+        || retargets != 2
+    {
+        return None;
+    }
+    Some(format!(
+        "You may cast up to one target {} card and/or up to one target {} card from your graveyard each with mana value X or less without paying their mana costs. If a spell cast this way would be put into your graveyard, exile it instead. If X is {threshold} or more, copy each of those spells twice. You may choose new targets for the copies",
+        first_type.name().to_ascii_lowercase(),
+        second_type.name().to_ascii_lowercase(),
+    ))
+}
+
+/// "For each player, choose target nonenchantment, nonland permanent that
+/// player controls. Those permanents' owners shuffle them into their
+/// libraries. Each player who controlled one of those permanents exiles cards
+/// from the top of their library until they exile a nonland card, then puts
+/// the rest on the bottom of their library in a random order. Each player may
+/// cast the nonland card they exiled without paying its mana cost." (Guff
+/// Rewrites History): one target per player, an owner shuffle of exactly
+/// those targets, a per-target consult with a random-bottom remainder, and a
+/// per-player free cast of that player's own accumulated match.
+pub(crate) fn render_per_player_target_shuffle_consult_cast(effects: &[&Effect]) -> Option<String> {
+    let [declare_effect, shuffle_effect, consult_loop_effect, cast_loop_effect] = effects else {
+        return None;
+    };
+    let declared = declare_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let declare = structural_unwrap_render_wrappers(declare_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::WithCountValue(inner, _, Value::CountPlayers(PlayerFilter::Any)) =
+        &declare.target
+    else {
+        return None;
+    };
+    let ChooseSpec::Target(object) = inner.as_ref() else {
+        return None;
+    };
+    let ChooseSpec::Object(target_filter) = object.as_ref() else {
+        return None;
+    };
+    if !target_filter.target_set_different_controllers
+        || target_filter.zone != Some(Zone::Battlefield)
+        || !target_filter.card_types.is_empty()
+        || target_filter.excluded_card_types.is_empty()
+    {
+        return None;
+    }
+    let targets = &declared.tag;
+    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if !matches!(shuffle.target.base(), ChooseSpec::Tagged(tag) if tag == targets)
+        || !shuffle.owner_library_destination
+    {
+        return None;
+    }
+    let consult_loop = structural_unwrap_render_wrappers(consult_loop_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [consult_effect, remainder_effect] = consult_loop.effects.as_slice() else {
+        return None;
+    };
+    let consult = structural_unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let accumulated = consult.accumulated_match_tag.as_ref()?;
+    if &consult_loop.tag != targets
+        || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Exile
+        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch)
+        || consult.filter.excluded_card_types.as_slice() != [CardType::Land]
+        || remainder.tag != consult.all_tag
+        || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
+        || !matches!(remainder.order, crate::effects::consult_helpers::LibraryBottomOrder::Random)
+    {
+        return None;
+    }
+    let cast_loop = structural_unwrap_render_wrappers(cast_loop_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [choose_effect, cast_effect] = cast_loop.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let cast = structural_unwrap_render_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast_loop.filter != PlayerFilter::Any
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.count != crate::effect::ChoiceCount::up_to(1)
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || !choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| &constraint.tag == accumulated)
+        || cast.tag != choose.tag
+        || cast.player != PlayerFilter::IteratedPlayer
+        || !cast.without_paying_mana_cost
+    {
+        return None;
+    }
+    let mut permanent = target_filter.clone();
+    permanent.target_set_different_controllers = false;
+    permanent.target_controller_fixed_on_announcement = false;
+    let permanent = strip_indefinite_article(&permanent.description()).to_string();
+    if permanent.trim().is_empty() || permanent.contains(" control") {
+        return None;
+    }
+    Some(format!(
+        "For each player, choose target {permanent} that player controls. Those permanents' owners shuffle them into their libraries. Each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card, then puts the rest on the bottom of their library in a random order. Each player may cast the nonland card they exiled without paying its mana cost"
+    ))
+}
+
+/// "For each of those colors, you may exile a card of that color from among
+/// the revealed cards." (Sanar, Innovative First-Year): one optional choice
+/// per color among permanents you control, each drawn from the same revealed
+/// pool into one shared chosen set, then that set is exiled.
+pub(crate) fn render_per_color_optional_exile_from_revealed(effects: &[&Effect]) -> Option<String> {
+    let (exile_effect, gates) = effects.split_last()?;
+    if gates.len() != 5 {
+        return None;
+    }
+    let exile_loop = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_effect] = exile_loop.effects.as_slice() else {
+        return None;
+    };
+    let moved = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if moved.zone != Zone::Exile || !matches!(moved.target, ChooseSpec::Iterated) {
+        return None;
+    }
+    let chosen = &exile_loop.tag;
+    let mut seen = crate::color::ColorSet::COLORLESS;
+    let mut pool: Option<crate::TagKey> = None;
+    for gate_effect in gates {
+        let gate = structural_unwrap_render_wrappers(gate_effect)
+            .downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let crate::effect::Condition::ValueComparison { left, operator, right } = &gate.condition
+        else {
+            return None;
+        };
+        let Value::Count(controlled) = left.unhinted() else {
+            return None;
+        };
+        let color = controlled.colors?;
+        if *operator != crate::effect::ValueComparisonOperator::GreaterThan
+            || right.unhinted() != &Value::Fixed(0)
+            || controlled.controller != Some(PlayerFilter::You)
+            || controlled.zone != Some(Zone::Battlefield)
+            || color.count() != 1
+            || !gate.if_false.is_empty()
+        {
+            return None;
+        }
+        let [choose_effect] = gate.if_true.as_slice() else {
+            return None;
+        };
+        let choose = structural_unwrap_render_wrappers(choose_effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        if &choose.tag != chosen
+            || choose.chooser != PlayerFilter::You
+            || choose.count != crate::effect::ChoiceCount::up_to(1)
+            || choose.filter.colors != Some(color)
+        {
+            return None;
+        }
+        let revealed = choose.filter.tagged_constraints.iter().find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })?;
+        match &pool {
+            None => pool = Some(revealed.tag.clone()),
+            Some(existing) if *existing == revealed.tag => {}
+            Some(_) => return None,
+        }
+        seen = seen.union(color);
+    }
+    if seen.count() != 5 {
+        return None;
+    }
+    Some(
+        "For each of those colors, you may exile a card of that color from among the revealed cards"
+            .to_string(),
+    )
+}
+
+/// "exile a card at random from each opponent's graveyard" (Kefka, Dancing
+/// Mad): one random card from each opponent's own graveyard.
+pub(crate) fn render_each_opponent_random_graveyard_exile(effect: &Effect) -> Option<String> {
+    let players = unwrap_render_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [exile_effect] = players.effects.as_slice() else {
+        return None;
+    };
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::WithCount(inner, count) = &exile.spec else {
+        return None;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    let mut bare = filter.clone();
+    bare.zone = None;
+    bare.owner = None;
+    bare.union_surface = Default::default();
+    if players.filter != PlayerFilter::Opponent
+        || exile.face_down
+        || !count.random
+        || count.min != 1
+        || count.max != Some(1)
+        || filter.zone != Some(Zone::Graveyard)
+        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || bare != ObjectFilter::default()
+    {
+        return None;
+    }
+    Some("exile a card at random from each opponent's graveyard".to_string())
+}
+
+/// "Then each player who owns a spell you cast this way loses life equal to
+/// its mana value." (Kefka, Dancing Mad): one life loss per spell cast from a
+/// cast-from-collection choice, by that spell's owner.
+pub(crate) fn render_cast_collection_owner_life_loss(effect: &Effect) -> Option<String> {
+    let mut lead = "";
+    let mut effect = unwrap_render_wrappers(effect);
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && let [only] = sequence.effects.as_slice()
+    {
+        if sequence.surface == ironsmith_core::SequenceSurface::SentenceLeadingThen {
+            lead = "Then ";
+        }
+        effect = unwrap_render_wrappers(only);
+    }
+    let for_each = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if !crate::cards::is_sentence_helper_tag(for_each.tag.as_str(), "cast_from_collection") {
+        return None;
+    }
+    let [lose_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let lose = structural_unwrap_render_wrappers(lose_effect)
+        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let Value::ManaValueOf(spec) = lose.amount.unhinted() else {
+        return None;
+    };
+    let iterated_it = |spec: &ChooseSpec| {
+        matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__it__")
+            || matches!(spec.base(), ChooseSpec::Iterated)
+    };
+    let owner_of_it = matches!(
+        lose.player.base(),
+        ChooseSpec::Player(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)))
+            if tag.as_str() == "__it__"
+    );
+    if !iterated_it(spec) || !owner_of_it {
+        return None;
+    }
+    let body = "each player who owns a spell you cast this way loses life equal to its mana value";
+    Some(if lead.is_empty() { capitalize_first(body) } else { format!("{lead}{body}") })
+}
+
+/// "target opponent exiles the top card of their library, a card at random
+/// from their graveyard, and a card at random from their hand"
+/// (Crabomination): one coordinated instruction whose every member is an
+/// exile performed by the same declared target player from their own zones.
+pub(crate) fn render_target_player_distributed_exile_list(effect: &Effect) -> Option<String> {
+    let sequence = unwrap_render_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return None;
+    }
+    let (declare, members) = sequence.effects.split_first()?;
+    let declare = structural_unwrap_render_wrappers(declare)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::Target(inner) = &declare.target else {
+        return None;
+    };
+    let ChooseSpec::Player(declared) = inner.as_ref() else {
+        return None;
+    };
+    let actor = match declared {
+        PlayerFilter::Opponent => "target opponent",
+        PlayerFilter::Any => "target player",
+        _ => return None,
+    };
+    let is_actor = |player: &PlayerFilter| {
+        matches!(player, PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner)
+            if inner.as_ref() == declared)
+    };
+    let mut items = Vec::new();
+    let mut index = 0usize;
+    while index < members.len() {
+        let current = structural_unwrap_render_wrappers(&members[index]);
+        if let Some(top) = current.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
+            if top.count != Value::Fixed(1) || !is_actor(&top.player) || top.face_down {
+                return None;
+            }
+            items.push("the top card of their library".to_string());
+            index += 1;
+            continue;
+        }
+        let choose = current.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let exile = members
+            .get(index + 1)
+            .map(structural_unwrap_render_wrappers)?
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        let zone = choose.zone?;
+        let zone_word = match zone {
+            Zone::Graveyard => "graveyard",
+            Zone::Hand => "hand",
+            _ => return None,
+        };
+        let mut bare = choose.filter.clone();
+        bare.zone = None;
+        bare.owner = None;
+        bare.union_surface = Default::default();
+        if !choose.count.random
+            || choose.count.min != 1
+            || choose.count.max != Some(1)
+            || !is_actor(&choose.chooser)
+            || choose.filter.zone != Some(zone)
+            || !choose.filter.owner.as_ref().is_some_and(|owner| is_actor(owner))
+            || bare != ObjectFilter::default()
+            || !matches!(&exile.spec, ChooseSpec::Tagged(tag) if *tag == choose.tag)
+            || exile.face_down
+        {
+            return None;
+        }
+        items.push(format!("a card at random from their {zone_word}"));
+        index += 2;
+    }
+    if items.len() < 2 {
+        return None;
+    }
+    let last = items.pop()?;
+    let list = if items.len() == 1 {
+        format!("{} and {last}", items[0])
+    } else {
+        format!("{}, and {last}", items.join(", "))
+    };
+    Some(format!("{actor} exiles {list}"))
+}
+
+/// "Each player shuffles all creatures they own into their library. Each
+/// player who shuffled a nontoken creature into their library this way
+/// reveals cards from the top of their library until they reveal a creature
+/// card, then puts that card onto the battlefield and the rest on the bottom
+/// of their library in a random order." (Collision of Realms): a per-player
+/// owned-set shuffle whose own tagged result gates a per-player consult.
+pub(crate) fn render_each_player_shuffle_owned_then_qualified_consult(
+    shuffle_loop_effect: &Effect,
+    consult_loop_effect: &Effect,
+) -> Option<String> {
+    let shuffle_loop = unwrap_render_wrappers(shuffle_loop_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [shuffle_effect] = shuffle_loop.effects.as_slice() else {
+        return None;
+    };
+    let shuffled_tag = shuffle_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.tag.clone())
+        .or_else(|| {
+            shuffle_effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .and_then(|with_id| with_id.effect.downcast_ref::<crate::effects::TaggedEffect>())
+                .map(|tagged| tagged.tag.clone())
+        })?;
+    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    let ChooseSpec::All(owned) = shuffle.target.base() else {
+        return None;
+    };
+    let [card_type] = owned.card_types.as_slice() else {
+        return None;
+    };
+    if shuffle_loop.filter != PlayerFilter::Any
+        || shuffle.player != PlayerFilter::IteratedPlayer
+        || owned.owner != Some(PlayerFilter::IteratedPlayer)
+        || owned.zone != Some(Zone::Battlefield)
+    {
+        return None;
+    }
+    let consult_loop = unwrap_render_wrappers(consult_loop_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [gate_effect] = consult_loop.effects.as_slice() else {
+        return None;
+    };
+    let gate = structural_unwrap_render_wrappers(gate_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::PlayerTaggedObjectMatches { player, tag, filter, .. } =
+        &gate.condition
+    else {
+        return None;
+    };
+    if consult_loop.filter != PlayerFilter::Any
+        || *player != PlayerFilter::IteratedPlayer
+        || *tag != shuffled_tag
+        || !filter.nontoken
+        || filter.card_types.as_slice() != [*card_type]
+        || !gate.if_false.is_empty()
+    {
+        return None;
+    }
+    let [consult_effect, move_effect, remainder_effect] = gate.if_true.as_slice() else {
+        return None;
+    };
+    let consult = structural_unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let moved = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || consult.player != PlayerFilter::IteratedPlayer
+        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch)
+        || consult.filter.card_types.as_slice() != [*card_type]
+        || moved.zone != Zone::Battlefield
+        || !matches!(&moved.target, ChooseSpec::Tagged(tag) if *tag == consult.match_tag)
+        || moved.enters_tapped
+        || remainder.tag != consult.all_tag
+        || remainder.keep_tagged.as_ref() != Some(&consult.match_tag)
+        || !matches!(remainder.order, crate::effects::consult_helpers::LibraryBottomOrder::Random)
+    {
+        return None;
+    }
+    let noun = card_type.name().to_ascii_lowercase();
+    let card = with_indefinite_article(&format!("{noun} card"));
+    Some(format!(
+        "Each player shuffles all {noun}s they own into their library. Each player who shuffled a nontoken {noun} into their library this way reveals cards from the top of their library until they reveal {card}, then puts that card onto the battlefield and the rest on the bottom of their library in a random order"
+    ))
+}
+
 pub(crate) fn render_consult_reveal_put_hand_rest_graveyard(effects: &[&Effect]) -> Option<String> {
     if effects.len() != 3 {
         return None;

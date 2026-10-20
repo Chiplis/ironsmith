@@ -181,11 +181,30 @@ pub fn preserve_branch_scoped_card_type_union(
         .or_else(|| infer_card_type_union_branches(filter, &segments));
     let Some(branches) = branches else { return };
 
-    let has_local_exclusion = branches.iter().any(card_type_branch_has_exclusion);
-    let has_unexcluded_branch = branches
+    // A branch-local qualifier is an exclusion ("non-Aura enchantment") or a
+    // subtype that belongs to only one arm ("instant, sorcery, and/or Tamiyo
+    // planeswalker cards"): flattening either onto the shared filter would
+    // wrongly impose it on every arm.
+    let has_local_qualifier = branches
         .iter()
-        .any(|branch| !card_type_branch_has_exclusion(branch));
-    if !has_local_exclusion || !has_unexcluded_branch {
+        .any(|branch| card_type_branch_has_exclusion(branch) || !branch.subtypes.is_empty());
+    let has_unqualified_branch = branches.iter().any(|branch| {
+        !card_type_branch_has_exclusion(branch) && branch.subtypes.is_empty()
+    });
+    if !has_local_qualifier || !has_unqualified_branch {
+        return;
+    }
+    if filter
+        .subtypes
+        .iter()
+        .any(|subtype| !branches.iter().any(|branch| branch.subtypes.contains(subtype)))
+        || branches.iter().any(|branch| {
+            branch
+                .subtypes
+                .iter()
+                .any(|subtype| !filter.subtypes.contains(subtype))
+        })
+    {
         return;
     }
 
@@ -250,6 +269,12 @@ fn infer_card_type_union_branches(
 
         let mut branch = ObjectFilter::default().with_type(segment_types[0]);
         for word in &words {
+            if parse_non_subtype(word).is_none()
+                && let Some(subtype) = parse_subtype_flexible(word)
+                && crate::slice_primitives::contains(&filter.subtypes, &subtype)
+            {
+                push_unique(&mut branch.subtypes, subtype);
+            }
             if let Some(card_type) = parse_non_type(word)
                 && crate::slice_primitives::contains(&filter.excluded_card_types, &card_type)
             {
@@ -401,6 +426,7 @@ fn parse_card_type_union_branch(tokens: &[OwnedLexToken]) -> Option<ObjectFilter
 
     let mut selector_remainder = branch.clone();
     selector_remainder.card_types.clear();
+    selector_remainder.subtypes.clear();
     selector_remainder.excluded_card_types.clear();
     selector_remainder.excluded_subtypes.clear();
     selector_remainder.excluded_supertypes.clear();

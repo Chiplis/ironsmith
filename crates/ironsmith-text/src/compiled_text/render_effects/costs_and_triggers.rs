@@ -3869,6 +3869,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " you both own and control",
         " you control but don't own",
         " that player both owns and controls",
+        " the active player controls",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             return format!(

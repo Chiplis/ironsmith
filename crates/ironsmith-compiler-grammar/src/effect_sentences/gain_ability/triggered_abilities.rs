@@ -578,7 +578,10 @@ pub fn parse_granted_activated_or_triggered_ability_for_gain(
         (Some(intro), Some(subject)) if matches!(intro.parser_text(), "when" | "whenever") => {
             subject.is_word("this")
         }
-        (Some(intro), Some(article)) if intro.is_word("at") => article.is_word("the"),
+        // "At the beginning of ...", and "At end of combat, ..." (CR 511.2).
+        (Some(intro), Some(article)) if intro.is_word("at") => {
+            article.is_word("the") || article.is_word("end")
+        }
         _ => false,
     };
     if direct_trigger_subject
@@ -615,7 +618,9 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                 || (gain_shapes::gain_word_is_trigger_intro(token.parser_text())
                     && ability_tokens
                         .get(1)
-                        .is_some_and(|next| next.parser_text() == THE_WORD)))
+                        .is_some_and(|next| {
+                            next.parser_text() == THE_WORD || next.is_word("end")
+                        })))
     });
     if !has_colon && !looks_like_trigger {
         return Ok(None);

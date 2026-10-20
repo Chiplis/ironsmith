@@ -746,6 +746,53 @@ fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    // `gains "Crash Land — Whenever this Vehicle deals damage, ..."`: the
+    // quoted trigger's ability-word label is its presentation label, kept on
+    // the granted triggered ability exactly as on a printed line.
+    let quoted = ability_tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+        && ability_tokens
+            .last()
+            .is_some_and(|token| token.kind == TokenKind::Quote);
+    let label = quoted
+        .then(|| trim_edge_punctuation_and_quotes(ability_tokens))
+        .and_then(|trimmed| {
+            crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&trimmed)
+                .filter(|shape| {
+                    shape.kind
+                        != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
+                        && shape
+                            .body_tokens
+                            .first()
+                            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+                })
+                .map(|shape| {
+                    shape
+                        .label_tokens
+                        .iter()
+                        .filter(|token| token.kind == TokenKind::Word)
+                        .map(|token| token.literal_surface().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+        })
+        .filter(|label| !label.is_empty());
+    let mut parsed = parse_granted_ability_component_for_gain_unlabeled(ability_tokens, clause_words)?;
+    if let (Some(label), Some(abilities)) = (label, parsed.as_mut())
+        && let [GrantedAbilityAst::ParsedObjectAbility { ability, .. }] = abilities.as_mut_slice()
+        && let crate::model::CompilerAbilityKindCore::Triggered(triggered) = ability.kind_mut()
+        && triggered.presentation_label.is_none()
+    {
+        triggered.presentation_label = Some(crate::ability::PresentationLabel::AbilityWord(label));
+    }
+    Ok(parsed)
+}
+
+fn parse_granted_ability_component_for_gain_unlabeled(
+    ability_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
     let authored_as_quoted_ability = ability_tokens
         .first()
         .is_some_and(|token| token.kind == TokenKind::Quote)

@@ -75,6 +75,13 @@ pub struct ChoosePlayerOptionEffect {
         serde(default, skip_serializing_if = "std::ops::Not::not")
     )]
     pub guess: bool,
+    /// "..., then you reveal the number you chose" (The Toymaker's Trap):
+    /// after the guesses, the secretly chosen number is revealed.
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "std::ops::Not::not")
+    )]
+    pub reveals_chosen_number_after_guess: bool,
     /// "a number ... that hasn't been chosen": numbers this source chose in
     /// earlier resolutions can't be chosen again. The number chosen is
     /// remembered on the source.
@@ -123,6 +130,7 @@ impl ChoosePlayerOptionEffect {
             hidden_items_surface: None,
             draw_count_choice: false,
             guess: false,
+            reveals_chosen_number_after_guess: false,
             exclude_source_history: false,
             choose_one_participant: false,
         }
@@ -139,6 +147,7 @@ impl ChoosePlayerOptionEffect {
             hidden_items_surface: None,
             draw_count_choice: false,
             guess: false,
+            reveals_chosen_number_after_guess: false,
             exclude_source_history: false,
             choose_one_participant: false,
         }

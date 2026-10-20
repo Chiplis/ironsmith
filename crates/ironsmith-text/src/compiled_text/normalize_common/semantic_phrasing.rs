@@ -6820,8 +6820,16 @@ pub(crate) fn strip_square_bracketed_segments(text: &str) -> String {
             while after < chars.len() && chars[after].is_whitespace() {
                 after += 1;
             }
-            if after < chars.len()
-                && chars[after] == ':'
+            // A signed loyalty symbol written inside an effect ("1 or 2 —
+            // [+2], then create ...", "... , then [−2]" on Comet, Stellar
+            // Pup) is printed text, not an annotation; keep it like an
+            // activation cost.
+            let signed_loyalty_symbol = content.trim().len() > 1
+                && content
+                    .trim()
+                    .starts_with(['+', '-', '\u{2212}'])
+                && is_bracketed_loyalty_activation_cost(&content);
+            if ((after < chars.len() && chars[after] == ':') || signed_loyalty_symbol)
                 && is_bracketed_loyalty_activation_cost(&content)
             {
                 out.extend(chars[start..=end].iter());

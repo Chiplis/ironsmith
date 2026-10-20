@@ -759,6 +759,20 @@ fn describe_single_creature_target_excluding_source(filter: &ObjectFilter) -> Op
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    // "Whenever a player casts a card" / "an instant or sorcery card": the
+    // physical-card restriction (CR 707.12) is authored with the card noun.
+    if filter.physical_card {
+        let mut plain = filter.clone();
+        plain.physical_card = false;
+        let base = describe_spell_filter(&plain);
+        if base == "a spell" || base == "spell" {
+            return "a card".to_string();
+        }
+        if let Some(noun) = base.strip_suffix(" spell") {
+            return format!("{noun} card");
+        }
+        return base;
+    }
     if filter
         .ability_markers
         .iter()

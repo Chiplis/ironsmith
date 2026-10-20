@@ -6071,6 +6071,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.prepared
         || filter.attacking
         || filter.attacked_this_turn
+        || filter.attacked_player_this_turn.is_some()
         || filter.was_blocked_this_turn
         || filter.didnt_attack_this_turn
         || filter.could_have_attacked_this_turn

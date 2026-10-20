@@ -753,6 +753,23 @@ pub struct ObjectFilterUnionSurface {
     /// Authored comparison noun; the tagged relation alone carries identity.
     #[cfg_attr(feature = "serde", serde(default))]
     shared_type_antecedent: Option<DemonstrativeAntecedentSurface>,
+    /// Oracle stated the continuous-control history as a trailing exception
+    /// ("..., except for creatures the player hasn't controlled continuously
+    /// since the beginning of the turn"). The executable predicate stays on
+    /// `controlled_continuously_since_turn_began`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    continuous_control_exception: bool,
+    /// The same exclusion authored as a trailing "Ignore this effect for each
+    /// creature the player didn't control continuously since the beginning
+    /// of the turn." sentence (Siren's Call).
+    #[cfg_attr(feature = "serde", serde(default))]
+    continuous_control_ignore_effect: bool,
+    /// Oracle stated a single-player-target requirement as "with a single
+    /// target if that target is you" (Reflecting Mirror) instead of the
+    /// canonical "that targets only a player" (Rebound). `target_count` and
+    /// `targets_only_player` remain the executable semantics.
+    #[cfg_attr(feature = "serde", serde(default))]
+    single_target_if_that_target_surface: bool,
 }
 
 impl ObjectFilterUnionSurface {
@@ -807,6 +824,9 @@ impl ObjectFilterUnionSurface {
             mana_source_spent_trailing_if_surface: false,
             as_you_cast_this_turn_surface: false,
             shared_type_antecedent: None,
+            continuous_control_exception: false,
+            continuous_control_ignore_effect: false,
+            single_target_if_that_target_surface: false,
         }
     }
 
@@ -1174,6 +1194,33 @@ impl ObjectFilterUnionSurface {
     }
     pub const fn shared_type_antecedent(self) -> Option<DemonstrativeAntecedentSurface> { self.shared_type_antecedent }
 
+    pub const fn with_continuous_control_exception(mut self, exception: bool) -> Self {
+        self.continuous_control_exception = exception;
+        self
+    }
+
+    pub const fn continuous_control_exception(self) -> bool {
+        self.continuous_control_exception
+    }
+
+    pub const fn with_continuous_control_ignore_effect(mut self, ignore: bool) -> Self {
+        self.continuous_control_ignore_effect = ignore;
+        self
+    }
+
+    pub const fn continuous_control_ignore_effect(self) -> bool {
+        self.continuous_control_ignore_effect
+    }
+
+    pub const fn with_single_target_if_that_target(mut self, surface: bool) -> Self {
+        self.single_target_if_that_target_surface = surface;
+        self
+    }
+
+    pub const fn single_target_if_that_target(self) -> bool {
+        self.single_target_if_that_target_surface
+    }
+
     pub const fn with_demonstrative_antecedent(
         mut self,
         surface: Option<DemonstrativeAntecedentSurface>,
@@ -1357,6 +1404,11 @@ pub enum TaggedOpbjectRelation {
     /// the other type" relative to the triggering instant or sorcery spell,
     /// Gale, Waterdeep Prodigy). Appended for wire stability.
     SharesNoCardTypeWithTagged,
+    /// Positive damage from the tagged object incarnation to the candidate
+    /// during the current turn, even if the tagged object has since left
+    /// ("a creature dealt damage by the targeted creature this turn",
+    /// Runesword). Appended for wire stability.
+    WasDealtDamageByTaggedThisTurn,
 }
 
 /// A characteristic that can be compared between a candidate object and a
@@ -2626,6 +2678,11 @@ pub struct ObjectFilter {
     /// in the current combat.
     pub attacking_alone: bool,
     pub attacked_this_turn: bool,
+    /// "that attacked you this turn" (Jabari's Influence): the creature was
+    /// declared as an attacker this turn attacking a player matching this
+    /// filter (CR 508.1b). Attacking a planeswalker or battle doesn't count.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub attacked_player_this_turn: Option<PlayerFilter>,
     /// Requires an object that was the source of an activated ability this
     /// turn. For planeswalkers, Oracle conventionally phrases this as a
     /// planeswalker "that was activated this turn."
@@ -3370,6 +3427,36 @@ impl ObjectFilter {
     }
     pub const fn shared_type_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
         self.union_surface.shared_type_antecedent()
+    }
+
+    /// Preserve an authored "except for <noun> the player hasn't controlled
+    /// continuously since the beginning of the turn" exclusion surface.
+    pub fn set_continuous_control_exception_surface(&mut self, exception: bool) {
+        self.union_surface = self.union_surface.with_continuous_control_exception(exception);
+    }
+
+    pub const fn has_continuous_control_exception_surface(&self) -> bool {
+        self.union_surface.continuous_control_exception()
+    }
+
+    /// Preserve an authored "Ignore this effect for each <noun> the player
+    /// didn't control continuously since the beginning of the turn." surface.
+    pub fn set_continuous_control_ignore_effect_surface(&mut self, ignore: bool) {
+        self.union_surface = self.union_surface.with_continuous_control_ignore_effect(ignore);
+    }
+
+    pub const fn has_continuous_control_ignore_effect_surface(&self) -> bool {
+        self.union_surface.continuous_control_ignore_effect()
+    }
+
+    /// Preserve an authored "with a single target if that target is ..."
+    /// stack-object requirement (Reflecting Mirror).
+    pub fn set_single_target_if_that_target_surface(&mut self, surface: bool) {
+        self.union_surface = self.union_surface.with_single_target_if_that_target(surface);
+    }
+
+    pub const fn has_single_target_if_that_target_surface(&self) -> bool {
+        self.union_surface.single_target_if_that_target()
     }
 
     /// Preserve the authored noun of an explicit demonstrative condition
@@ -4728,6 +4815,15 @@ impl ObjectFilter {
             let branch_descriptions = merged_branches
                 .iter()
                 .map(|branch| {
+                    // "this creature and those creatures" (Noble Banneret): a
+                    // conjunctive set arm that refers back to the objects an
+                    // earlier clause named.
+                    if self.has_conjunctive_set_surface()
+                        && branch.has_plural_pronoun_reference_surface()
+                        && let [card_type] = branch.card_types.as_slice()
+                    {
+                        return format!("those {}s", card_type.name().to_ascii_lowercase());
+                    }
                     let mut described_branch = branch.clone();
                     if shared_colors.is_some() {
                         described_branch.colors = None;
@@ -4902,7 +4998,12 @@ impl ObjectFilter {
                     controller_suffix = Some("an opponent controls".to_string());
                 }
                 PlayerFilter::Any => {}
-                PlayerFilter::Active => parts.push("the active player's".to_string()),
+                // "creatures the active player controls" (Siren's Call,
+                // Maddening Imp): Oracle scopes the active player's
+                // permanents with a controller clause, never a possessive.
+                PlayerFilter::Active => {
+                    controller_suffix = Some("the active player controls".to_string());
+                }
                 PlayerFilter::EffectController => {
                     parts.push("the player who cast this spell's".to_string())
                 }
@@ -5685,6 +5786,9 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
                     post_noun_qualifiers.push("of the other type".to_string());
                 }
+                TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
+                    post_noun_qualifiers.push("dealt damage by it this turn".to_string());
+                }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
                         "that dealt combat damage to it this turn"
@@ -5936,7 +6040,12 @@ impl ObjectFilter {
         if self.attacking_alone {
             post_noun_qualifiers.push("that's attacking alone".to_string());
         }
-        if self.attacked_this_turn {
+        if let Some(player_filter) = &self.attacked_player_this_turn {
+            post_noun_qualifiers.push(format!(
+                "that attacked {} this turn",
+                player_filter.description()
+            ));
+        } else if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if self.ability_activated_this_turn {
@@ -7175,6 +7284,7 @@ impl ObjectFilter {
                 // the named player.
                 if self.targets_only_object.is_none()
                     && target_fragments.len() == 1
+                    && self.has_single_target_if_that_target_surface()
                     && self.target_count.is_some_and(|count| count.is_single() && count.min == 1)
                 {
                     parts.push(format!("with a single target if that target is {target_text}"));

@@ -79,6 +79,12 @@ fn fold_into_effect(
 ) -> Result<bool, CardTextError> {
     if let Some(filter) = affected_set_filter_mut(effect) {
         exclude_matching_objects(filter, exception)?;
+        // The exclusion was authored as its own "Ignore this effect ..."
+        // sentence rather than an "except for ..." tail.
+        if filter.has_continuous_control_exception_surface() {
+            filter.set_continuous_control_exception_surface(false);
+            filter.set_continuous_control_ignore_effect_surface(true);
+        }
         return Ok(true);
     }
     let mut attached = false;

@@ -191,6 +191,9 @@ fn tagged_action<'a>(input: &mut LexStream<'a>) -> winnow::error::ModalResult<()
         primitives::kw("destroyed"),
         primitives::kw("exiled"),
         primitives::kw("discarded"),
+        // "Each player who shuffled a nontoken creature into their library
+        // this way" (Collision of Realms).
+        primitives::kw("shuffled"),
     ))
     .void()
     .parse_next(input)
@@ -571,7 +574,17 @@ fn tagged_filter_after_action(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
     let (_, after_action) = primitives::parse_prefix(after_who, tagged_action)?;
     let (way_index, _, _) =
         primitives::find_prefix(after_action, || primitives::phrase(&["this", "way"]).void())?;
-    let filter = trim(after_action.get(..way_index)?);
+    let mut filter = trim(after_action.get(..way_index)?);
+    // "who shuffled a nontoken creature into their library this way": the
+    // destination names where the action put the object, not which objects
+    // qualify.
+    if let Some(into) = filter
+        .iter()
+        .position(|token| token.is_word("into") || token.is_word("onto"))
+        && into > 0
+    {
+        filter = trim(&filter[..into]);
+    }
     // "who discarded their hand this way" (Snort): the act is the player's
     // whole-hand choice, not a property of some discarded card. A player who
     // accepted with an empty hand still discarded their hand (CR 701.9b), so

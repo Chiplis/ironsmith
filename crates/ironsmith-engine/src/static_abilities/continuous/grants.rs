@@ -1138,6 +1138,11 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             "have"
         } else if explicitly_singular_subject {
             "has"
+        } else if self.filter.has_conjunctive_set_surface() && self.filter.any_of.len() >= 2 {
+            // "this creature and those creatures have lifelink": a
+            // conjunctive set of several arms is plural even when its first
+            // arm is a singular "this ...".
+            "have"
         } else if grant_subject_is_plural(&subject) {
             "have"
         } else {

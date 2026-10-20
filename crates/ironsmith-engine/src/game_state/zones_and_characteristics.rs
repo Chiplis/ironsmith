@@ -5,6 +5,9 @@ pub(crate) struct PreparedEtbChoices {
     /// An entry program put the entering object into this zone instead of
     /// onto the battlefield (Frankenstein's Monster).
     pub(crate) entry_redirect: Option<Zone>,
+    /// An entry program tapped the entering object ("You may have this land
+    /// enter tapped"), so it enters tapped.
+    pub(crate) as_enters_tapped: bool,
     pub(crate) chosen_color: Option<crate::color::Color>,
     /// "choose two colors": the chosen colors, recorded together.
     pub(crate) chosen_color_set: Option<crate::color::ColorSet>,
@@ -158,6 +161,8 @@ struct AsEntersProgramExecution {
     ran: bool,
     /// "put this into its owner's graveyard instead of onto the battlefield".
     entry_redirect: Option<Zone>,
+    /// An entry program tapped the entering source.
+    entry_tapped: bool,
     continuous_effects: Vec<crate::continuous::ContinuousEffectId>,
     tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
@@ -523,6 +528,7 @@ impl GameState {
             if let Some(destination) = context.replacement.entry_redirect.take() {
                 execution.entry_redirect = Some(destination);
             }
+            execution.entry_tapped |= std::mem::take(&mut context.replacement.entry_tapped);
             if awaiting_choice {
                 return Ok(execution);
             }
@@ -620,6 +626,7 @@ impl GameState {
             .counters = before;
         Ok(Some(PreparedEtbChoices {
             entry_redirect: execution.entry_redirect,
+            as_enters_tapped: execution.entry_tapped,
             as_enters_counters: counters,
             as_enters_tagged_objects: execution.tagged_objects,
             transfer_as_enters_source_links: execution.ran,
@@ -3595,6 +3602,10 @@ impl GameState {
             if let Some(player) = choice_store.chosen_players.remove(&old_id) {
                 choice_store.chosen_players.insert(new_id, player);
             }
+            // "As this creature enters, secretly choose an opponent."
+            if let Some(secret) = choice_store.secret_chosen_players.remove(&old_id) {
+                choice_store.secret_chosen_players.insert(new_id, secret);
+            }
             if let Some(players) = choice_store.chosen_player_sets.remove(&old_id) {
                 choice_store.chosen_player_sets.insert(new_id, players);
             }
@@ -3949,7 +3960,7 @@ impl GameState {
         }
 
         // Apply enters tapped
-        if result.enters_tapped {
+        if result.enters_tapped || choices.as_enters_tapped {
             self.tap(new_id);
         }
 

@@ -3746,8 +3746,16 @@
             let is_coin_result_followup = filtered[idx]
                 .downcast_ref::<crate::effects::ConditionalEffect>()
                 .is_some_and(|conditional| match &conditional.condition {
+                    // "Roll a six-sided die. If the result is ..." reads
+                    // the roll's own outcome as well.
                     Condition::ValueComparison { left, .. } => {
                         describe_coin_result_for_each_basis(left).is_some()
+                            || matches!(
+                                left.unhinted(),
+                                Value::PriorEffectMetric { query, .. }
+                                    if query.action
+                                        == Some(crate::effect::PriorEffectAction::Rolled)
+                            )
                     }
                     // "Exile target card. If it was a creature card, ... If
                     // it was a land card, ..." classifies the object the
@@ -3782,8 +3790,25 @@
                                                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
                                 })
                     });
+            // "If you do, an opponent guesses ... If they guessed wrong, ...
+            // If they guessed right, ..." (The Toymaker's Trap): each gate
+            // reads the result of the preceding number choice or guess; they
+            // are result sentences, not later steps.
+            let is_number_choice_result_followup = filtered[idx]
+                .downcast_ref::<crate::effects::ConditionalEffect>()
+                .is_some_and(|conditional| {
+                    matches!(
+                        &conditional.condition,
+                        Condition::ValueComparison {
+                            left: Value::CountPlayers(PlayerFilter::TaggedPlayer(tag)),
+                            ..
+                        } if tag.as_str().starts_with("__player_number_guess__:")
+                            || tag.as_str().starts_with("__player_number_choice__:")
+                    )
+                });
             if !parts.is_empty()
                 && rendered.starts_with("If ")
+                && !is_number_choice_result_followup
                 && !is_coin_result_followup
                 && !is_your_turn_followup
                 && !is_battlefield_move_result_followup

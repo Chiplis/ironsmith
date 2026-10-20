@@ -640,6 +640,7 @@ const POWER_GREATER_THAN_THAT_BASE_POWER_PHRASES: &[&[&str]] = &[
 ];
 const NON_WORD: &str = "non";
 const ATTACKED_THIS_TURN_PHRASE: &[&str] = &["attacked", "this", "turn"];
+const ATTACKED_YOU_THIS_TURN_PHRASE: &[&str] = &["attacked", "you", "this", "turn"];
 const TYPE_LIST_CONJUNCTION_WORDS: &[&str] = &["and", "or", "and/or"];
 const STRICT_COMPOUND_COUNT_PREFIXES: &[&[&str]] = &[&["and", "each"], &["and", "every"]];
 const STRICT_FOR_EACH_TAIL_PREFIX: &[&str] = &["for", "each"];

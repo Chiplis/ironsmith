@@ -187,9 +187,21 @@ pub(super) fn parse_retained_spell_copy_bundle(
         crate::util::helper_tag_for_tokens(exile_sentence, "retained_spell_controller");
     let target_spell =
         parse_target_phrase(&crate::lexer::synthetic_word_tokens(["target", "spell"]))?;
-    let remove_effects = effect_sentences::parse_effect_sentence_lexed(remove_tokens)?;
+    let mut remove_effects = effect_sentences::parse_effect_sentence_lexed(remove_tokens)?;
     if remove_effects.is_empty() {
         return Ok(None);
+    }
+    // "remove a delay counter from it": "it" is the exiled card. The delayed
+    // ability's own source is the resolved spell card, so the pronoun must
+    // name the retained card explicitly rather than default to the source.
+    for effect in &mut remove_effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let crate::cards::builders::SubjectVerbActionAst::Counters(
+                crate::cards::builders::CounterActionAst::RemoveUpToAnyCounters { target, .. },
+            ) = &mut subject_verb.action
+        {
+            *target = TargetAst::Tagged(exiled_tag.clone(), span_from_tokens(remove_tokens));
+        }
     }
     let mut delayed_effects = remove_effects;
     delayed_effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {

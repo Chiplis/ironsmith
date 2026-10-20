@@ -1151,6 +1151,57 @@ fn describe_named_list_control_condition(condition: &Condition) -> Option<String
     ))
 }
 
+/// "you control an Employee, a Performer, and a Robot" (Done for the Day):
+/// a conjunction of three or more controls conditions for one player, each
+/// requiring a bare single subtype, names every required subtype once.
+fn describe_subtype_list_control_condition(condition: &Condition) -> Option<String> {
+    fn leaves<'a>(
+        condition: &'a Condition,
+        out: &mut Vec<(&'a PlayerFilter, &'a ObjectFilter)>,
+    ) -> bool {
+        match condition {
+            Condition::And(left, right) => leaves(left, out) && leaves(right, out),
+            Condition::PlayerControls { player, filter } if filter.subtypes.len() == 1 => {
+                out.push((player, filter));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut found = Vec::new();
+    if !leaves(condition, &mut found) || found.len() < 3 {
+        return None;
+    }
+    let (player, _) = found[0];
+    let mut subtypes = Vec::with_capacity(found.len());
+    for (other_player, filter) in &found {
+        if *other_player != player {
+            return None;
+        }
+        let mut bare = (*filter).clone();
+        let subtype = bare.subtypes.pop()?;
+        if bare.zone == Some(Zone::Battlefield) {
+            bare.zone = None;
+        }
+        if bare.controller.as_ref() == Some(player) {
+            bare.controller = None;
+        }
+        bare.union_surface = ObjectFilter::default().union_surface;
+        if bare != ObjectFilter::default() {
+            return None;
+        }
+        subtypes.push(with_indefinite_article(&subtype.to_string()));
+    }
+    let (last, init) = subtypes.split_last()?;
+    let subject = describe_player_filter(player);
+    Some(format!(
+        "{} {} {}, and {last}",
+        subject,
+        player_verb(&subject, "control", "controls"),
+        init.join(", ")
+    ))
+}
+
 fn describe_two_named_creatures_control_condition(
     left: &Condition,
     right: &Condition,
@@ -1364,6 +1415,14 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
         TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor => {
             "that mana is of the chosen color".to_string()
         }
+        TurnHistoryCondition::TriggeringManaIncludesSymbol(symbol) => {
+            format!("that mana includes {}", describe_mana_symbol(*symbol))
+        }
+        TurnHistoryCondition::TaggedObjectSharesColorWithTriggeringMana {
+            subject,
+            producer,
+            ..
+        } => format!("{subject} shares a color with the mana {producer} produced"),
         TurnHistoryCondition::TriggeringSacrificePaidEmergeCost => {
             "casting a spell with emerge".to_string()
         }
@@ -1709,6 +1768,40 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         && query.counter_type.is_none()
     {
         return if negated { "you don't draw a card this way" } else { "you draw a card this way" }.into();
+    }
+    // "if all lands on the battlefield are Islands" (Quicksilver Fountain):
+    // the count of a set equals the count of its members that have one more
+    // subtype.
+    if !negated
+        && let Condition::ValueComparison { left, operator, right } = result_condition
+        && *operator == crate::effect::ValueComparisonOperator::Equal
+        && let Value::Count(all) = left.unhinted()
+        && let Value::Count(subset) = right.unhinted()
+        && let Some(subtype) = match (subset.subtypes.as_slice(), subset.all_subtypes.as_slice()) {
+            ([subtype], []) | ([], [subtype]) => Some(subtype),
+            _ => None,
+        }
+        && !all.subtypes.contains(subtype)
+        && !all.all_subtypes.contains(subtype)
+        && {
+            let mut stripped = subset.clone();
+            stripped.subtypes.clear();
+            stripped.all_subtypes.clear();
+            stripped.union_surface = all.union_surface.clone();
+            stripped == *all
+        }
+    {
+        let noun = pluralize_noun_phrase(strip_indefinite_article(&all.description()));
+        let location = if all.zone == Some(Zone::Battlefield)
+            && all.controller.is_none()
+            && !noun.contains(" on the battlefield")
+        {
+            " on the battlefield"
+        } else {
+            ""
+        };
+        let subtype_noun = pluralize_noun_phrase(&subtype.to_string());
+        return format!("all {noun}{location} are {subtype_noun}");
     }
     // "If that opponent's speed is greater than each other player's speed"
     // (Spikeshell Harrier): a strict maximum over every other player.
@@ -2229,11 +2322,30 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
                 bare.union_surface = ObjectFilter::default().union_surface;
                 if bare == ObjectFilter::default() {
-                    let alternatives = described_filter
-                        .subtypes
+                    // "if you control an outlaw" (Take the Fall): the outlaw
+                    // batch (Assassin, Mercenary, Pirate, Rogue, Warlock) is
+                    // one keyword-defined alternative (CR 700.13 / glossary).
+                    let outlaw_pack = [
+                        Subtype::Assassin,
+                        Subtype::Mercenary,
+                        Subtype::Pirate,
+                        Subtype::Rogue,
+                        Subtype::Warlock,
+                    ];
+                    let mut remaining = described_filter.subtypes.clone();
+                    let mut alternatives = Vec::new();
+                    if outlaw_pack
                         .iter()
-                        .map(|subtype| with_indefinite_article(&subtype.to_string()))
-                        .collect::<Vec<_>>();
+                        .all(|subtype| remaining.contains(subtype))
+                    {
+                        alternatives.push("an outlaw".to_string());
+                        remaining.retain(|subtype| !outlaw_pack.contains(subtype));
+                    }
+                    alternatives.extend(
+                        remaining
+                            .iter()
+                            .map(|subtype| with_indefinite_article(&subtype.to_string())),
+                    );
                     return format!(
                         "{} {} {}",
                         subject,
@@ -3888,6 +4000,52 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     return "any of those cards shares a card type with that spell".to_string();
                 }
             }
+            // "Exile target creature that's attacking you if it's controlled
+            // by the chosen player" (Stalking Leonin): a bare controller check
+            // on the referenced object reads as a control clause. A stack
+            // object's targeting predicate joins it as a second "if" clause
+            // ("if it's controlled by the chosen player and if it targets you
+            // or a permanent you control", Emissary of Grudges).
+            if this_way_action_from_tag(tag).is_none()
+                && !tagged_condition_is_known_card_reference(tag)
+                && let Some(controller) = &filter.controller
+            {
+                let mut rest = filter.clone();
+                rest.controller = None;
+                if rest.zone == Some(Zone::Battlefield) {
+                    rest.zone = None;
+                }
+                rest.union_surface = Default::default();
+                let controlled = format!("it's controlled by {}", describe_player_filter(controller));
+                if rest == ObjectFilter::default() {
+                    return controlled;
+                }
+                let targets_player = rest.targets_player.take();
+                let targets_object = rest.targets_object.take();
+                let any_of = std::mem::take(&mut rest.targets_any_of);
+                if matches!(rest.zone, Some(Zone::Stack)) {
+                    rest.zone = None;
+                    rest.stack_kind = None;
+                }
+                if rest == ObjectFilter::default()
+                    && (targets_player.is_some() || targets_object.is_some())
+                {
+                    let mut fragments = Vec::new();
+                    if let Some(player) = &targets_player {
+                        let text = describe_player_filter(player);
+                        fragments.push(if text == "you" {
+                            text
+                        } else {
+                            ensure_indefinite_article(&text)
+                        });
+                    }
+                    if let Some(object) = &targets_object {
+                        fragments.push(ensure_indefinite_article(&object.description()));
+                    }
+                    let joiner = if any_of { " or " } else { " and " };
+                    return format!("{controlled} and if it targets {}", fragments.join(joiner));
+                }
+            }
             let desc = if tagged_condition_is_known_card_reference(tag) {
                 let mut card_filter = filter.clone();
                 card_filter.set_explicit_card_noun(true);
@@ -4257,6 +4415,27 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 }
 
                 let stripped = strip_leading_article(&desc).to_ascii_lowercase();
+                // "if it's attached to a creature you control" (Stolen
+                // Uniform): an attachment-only predicate has no head noun of
+                // its own.
+                if filter.attached_to_object.is_some() {
+                    let mut rest = filter.clone();
+                    rest.attached_to_object = None;
+                    rest.union_surface = Default::default();
+                    if rest == ObjectFilter::default()
+                        && let Some(host) = strip_leading_article(&desc)
+                            .trim()
+                            .strip_prefix("permanent attached to ")
+                    {
+                        // The pronoun reads naturally for the trigger's own
+                        // event object too ("if it's attached to ...").
+                        return if subject == "it" || subject == "that object" {
+                            format!("it's attached to {host}")
+                        } else {
+                            format!("{subject} is attached to {host}")
+                        };
+                    }
+                }
                 if matches!(filter.controller, Some(PlayerFilter::Opponent))
                     && filter.card_types.len() == 1
                     && filter.card_types[0] == CardType::Creature
@@ -5756,6 +5935,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 };
                 return format!("{subject} rolled {count_text} or more dice this turn");
             }
+            // "if the card has no delay counters on it" (Ertai's Meddling):
+            // a typed counter total equal to zero is the absence of that kind.
+            if let (
+                Value::CountersOn(spec, Some(counter_type)),
+                crate::effect::ValueComparisonOperator::Equal,
+                Value::Fixed(0),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "{} has no {} counters on it",
+                    describe_choose_spec(spec),
+                    counter_type.description()
+                );
+            }
             if let (
                 Value::CountersOn(spec, Some(counter_type)),
                 crate::effect::ValueComparisonOperator::LessThan,
@@ -6799,6 +6992,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             if let Some(named_list) = describe_named_list_control_condition(condition) {
                 return named_list;
+            }
+            if let Some(subtype_list) = describe_subtype_list_control_condition(condition) {
+                return subtype_list;
             }
             // "if you've done all four this turn" (Avatar Aang): a conjunction
             // of single keyword actions you performed this turn.

@@ -17,6 +17,9 @@ pub struct ChoosePlayerEffect {
     /// Players this effect already chose (in an enclosing loop); excluded
     /// from the candidates, and each new choice is appended.
     pub accumulate_into: Option<crate::tag::TagKey>,
+    /// "secretly choose an opponent": a remembered choice is the chooser's
+    /// secret until a reveal cost publishes it (`RevealChosenPlayerEffect`).
+    pub secretly: bool,
 }
 
 impl ChoosePlayerEffect {
@@ -33,6 +36,7 @@ impl ChoosePlayerEffect {
             excluded_tags: Vec::new(),
             remember_as_chosen_player: false,
             accumulate_into: None,
+            secretly: false,
         }
     }
 
@@ -166,7 +170,11 @@ impl EffectExecutor for ChoosePlayerEffect {
             players.push(chosen);
             ctx.set_tagged_players(accumulated.clone(), players);
         }
-        if self.remember_as_chosen_player {
+        if self.remember_as_chosen_player && self.secretly {
+            // The choice stays hidden: it is not the source's chosen player
+            // until the chooser reveals it.
+            game.set_secret_chosen_player(ctx.source, chooser, chosen);
+        } else if self.remember_as_chosen_player {
             game.set_chosen_player(ctx.source, chosen);
             ctx.combat.chosen_player = Some(chosen);
         }

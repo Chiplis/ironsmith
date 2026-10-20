@@ -1978,6 +1978,12 @@ pub fn parse_enters_tapped_for_filter_line(
         return parse_permanents_enter_tapped_line(tokens);
     }
     let clause_words = crate::lexer::token_word_refs(tokens);
+    // "You may have this land enter tapped. If you do, ..." (Mariposa
+    // Military Base) is an optional entry program for the source itself,
+    // not a rule that makes every matching permanent enter tapped.
+    if clause_words.starts_with(&["you", "may", "have"]) && !clause_words.contains(&"copy") {
+        return Ok(None);
+    }
     // A resolving "... enter tapped this turn" sentence establishes a
     // temporary replacement rule. It is not a static ability of the spell
     // card itself, so leave the explicitly turn-scoped form to the effect

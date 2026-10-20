@@ -372,6 +372,25 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         })));
                     }
                 }
+                // "Then each player who owns a spell you cast this way loses
+                // life equal to its mana value." (Kefka, Dancing Mad): the
+                // relative clause ranges over the spells just cast, once per
+                // spell, and its owner is the acting player; "its" names that
+                // spell.
+                let result_words = crate::lexer::parser_token_word_refs(result_tokens);
+                if matches!(
+                    result_words.as_slice(),
+                    ["who", "owns", "a" | "an", "spell", "you", "cast", "this", "way"]
+                ) {
+                    let mut rewritten =
+                        crate::lexer::synthetic_word_tokens(["its", "owner"]);
+                    rewritten.extend_from_slice(effect_tokens);
+                    let effects = parse_effect_chain_inner(&rewritten)?;
+                    return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
+                        tag: crate::tag::CompilerReferenceTag::It.bind(),
+                        effects,
+                    })));
+                }
                 let mut result_clause = result_tokens.to_vec();
                 if let Some(subject) = result_clause.first_mut() {
                     subject.replace_word("player");

@@ -2368,6 +2368,17 @@ fn merge_shared_have_subject_bodies(bodies: &[String]) -> Option<String> {
 
 const SOURCE_LINE_KEYWORD_GROUP_SENTINEL: &str = "\0ironsmith:source-line-keyword-group:";
 
+/// A rendered pseudo-line separating two printed lines; adjacent-line merge
+/// passes never join across it, and it is dropped once they have run.
+pub(super) const PRINTED_LINE_BOUNDARY_SENTINEL: &str = "ironsmithprintedlineboundary";
+
+pub(super) fn is_printed_line_boundary_sentinel(line: &str) -> bool {
+    super::merge_passes::strip_render_heading(line)
+        .trim()
+        .trim_end_matches('.')
+        .eq_ignore_ascii_case(PRINTED_LINE_BOUNDARY_SENTINEL)
+}
+
 pub(super) fn source_line_keyword_group_count(ability: &Ability) -> Option<usize> {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return None;
@@ -7170,7 +7181,7 @@ fn modeled_static_variant_copy(
     Some(copy)
 }
 
-fn static_variant_selector_keyword(
+pub(super) fn static_variant_selector_keyword(
     selector: ironsmith_core::StaticAbilityVariantSelector,
 ) -> Option<&'static str> {
     use crate::static_abilities::StaticAbilityId::*;
@@ -12294,6 +12305,83 @@ fn describe_cross_segment_choose_color_reveal_discard_window(
     describe_choose_color_reveal_hand_discard_that_color(&refs).map(|rendered| (rendered, 2))
 }
 
+/// "Choose an opponent at random ... This creature attacks that player this
+/// combat if able. If you can't choose an opponent this way, tap this
+/// creature." (Territorial Hellkite): the fallback gates the requirement
+/// that names the chosen player, which happens exactly when a player was
+/// chosen; it reads as the failed choice rather than "Otherwise".
+fn describe_cross_segment_failed_player_choice_fallback(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    if start < 1 {
+        return None;
+    }
+    let [gated_effect] = segments.get(start)?.default_effects.as_slice() else {
+        return None;
+    };
+    let [if_effect] = segments.get(start + 1)?.default_effects.as_slice() else {
+        return None;
+    };
+    if segments[start..=start + 1]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.predicate != EffectPredicate::DidNotHappen
+        || !if_effect.else_.is_empty()
+        || if_effect.per_player_result
+    {
+        return None;
+    }
+    let gated = gated_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    if gated.id != if_effect.condition {
+        return None;
+    }
+    let choose = segments
+        .get(start - 1)?
+        .default_effects
+        .last()?
+        .downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let requirement = gated.effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::MustAttackPlayer {
+        player: PlayerFilter::TaggedPlayer(player_tag),
+        ..
+    } = &requirement.restriction
+    else {
+        return None;
+    };
+    if player_tag.as_str() != "__it__" && *player_tag != choose.tag {
+        return None;
+    }
+    let domain = match &choose.filter {
+        PlayerFilter::Excluding { base, .. } => base.as_ref(),
+        other => other,
+    };
+    let chosen = match domain {
+        PlayerFilter::Opponent => "an opponent",
+        PlayerFilter::Any => "a player",
+        _ => return None,
+    };
+    let gated_text = describe_effect_list(std::slice::from_ref(gated_effect));
+    let gated_text = gated_text.trim().trim_end_matches('.');
+    let then = describe_effect_list(&if_effect.then);
+    let then = then.trim().trim_end_matches('.');
+    if gated_text.is_empty() || then.is_empty() || gated_text.contains(". ") {
+        return None;
+    }
+    Some((
+        format!(
+            "{}. If you can't choose {chosen} this way, {}",
+            capitalize_first(gated_text),
+            lowercase_first(then)
+        ),
+        2,
+    ))
+}
+
 /// Rejoin a revealed hand with a tag-linked choose/discard-or-exile action
 /// when the authored sentence boundary leaves the reveal in its own segment.
 fn describe_cross_segment_look_hand_choose_action_window(
@@ -12309,8 +12397,39 @@ fn describe_cross_segment_look_hand_choose_action_window(
         {
             continue;
         }
+        // "target opponent reveals their hand and you choose a nonland card
+        // from it. Exile that card." (Tidehollow Sculler): an authored
+        // coordinated reveal/choice keeps its conjunction across the
+        // sentence boundary before the flattened reading below.
+        if window.iter().all(|segment| segment.self_replacements.is_empty()) {
+            let visible = window
+                .iter()
+                .flat_map(|segment| segment.default_effects.iter())
+                .filter(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                        .is_none()
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if let Some(rendered) =
+                super::render_effects::describe_coordinated_hand_reveal_choice_exile(&visible)
+            {
+                return Some((rendered, consumed));
+            }
+        }
         let flattened = flattened_cross_segment_effects(window)?;
-        let refs = flattened.iter().collect::<Vec<_>>();
+        // A triggered ability's internal triggering-object snapshot has no
+        // printed surface (Null Summoner: "... target opponent reveals their
+        // hand. You choose a nonland card from it. Exile that card.").
+        let refs = flattened
+            .iter()
+            .filter(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                    .is_none()
+            })
+            .collect::<Vec<_>>();
         if let Some(rendered) =
             describe_look_hand_choose_action_with_exile_boundary(&refs, consumed == 3)
         {
@@ -16472,6 +16591,80 @@ fn describe_cross_segment_choose_exiled_card_free_play_window(
 /// The effect-list matcher still proves the implicit tag edge, matching
 /// counter type, duration, and single granted ability; this window only makes
 /// the two adjacent default-only segments visible to that matcher together.
+/// "that player mills a card for each 1 damage dealt to them. If the player
+/// mills at least one creature card this way, you draw a card." (Anowon, the
+/// Ruin Thief): a threshold on another player's own mill result names that
+/// player as the actor of the counted mill.
+fn describe_cross_segment_other_player_mill_result_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [mill_segment, result_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !mill_segment.self_replacements.is_empty() || !result_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [mill_effect] = mill_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let with_id = mill_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let mill = with_id.effect.downcast_ref::<crate::effects::MillEffect>()?;
+    if mill.player == PlayerFilter::You {
+        return None;
+    }
+    let [conditional_effect] = result_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.is_empty() {
+        return None;
+    }
+    let Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    let Value::PriorEffectMetric { effect_id, query } = left.unhinted() else {
+        return None;
+    };
+    if *effect_id != with_id.id
+        || query.action != Some(crate::effect::PriorEffectAction::Milled)
+        || query.source != ironsmith_core::EffectMetricSource::AffectedObjects
+        || query.metric != ironsmith_core::EffectMetric::Count
+        || query.player.is_some()
+    {
+        return None;
+    }
+    let Value::Fixed(minimum) = right.unhinted() else {
+        return None;
+    };
+    let minimum = u32::try_from(*minimum).ok().filter(|minimum| *minimum >= 1)?;
+    let noun = strip_indefinite_article(&query.filter.as_ref()?.description()).to_string();
+    if noun.is_empty() {
+        return None;
+    }
+    let noun = if minimum == 1 { noun } else { pluralize_noun_phrase(&noun) };
+    let count_word = small_number_word(minimum).unwrap_or_else(|| minimum.to_string());
+    let mill_text = describe_effect(mill_effect);
+    let mill_text = mill_text.trim().trim_end_matches('.');
+    let body = describe_effect_list(&conditional.if_true);
+    let body = lowercase_first(body.trim().trim_end_matches('.'));
+    if mill_text.is_empty() || body.is_empty() {
+        return None;
+    }
+    Some((
+        format!(
+            "{}. If the player mills at least {count_word} {noun} this way, {body}",
+            capitalize_first(mill_text)
+        ),
+        2,
+    ))
+}
+
 fn describe_cross_segment_counter_linked_grant_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -23817,6 +24010,18 @@ pub(super) fn describe_resolution_program(
     if let Some(collapsed) = collapse_program_exiled_suspend_grant_loops(program) {
         return describe_resolution_program(&collapsed);
     }
+    // One instruction repeated per keyword, each repetition its own
+    // sentence ("... The same is true for fear, first strike, ...").
+    if program
+        .segments
+        .iter()
+        .all(|segment| segment.self_replacements.is_empty())
+        && let Some(text) = super::render_effects::describe_keyword_grant_same_is_true_ladder(
+            &program.flattened_default_effects(),
+        )
+    {
+        return text;
+    }
     let text = describe_resolution_program_inner(program);
     let text = name_new_line_tagged_target_grant(program, text);
     let flattened = program.flattened_default_effects();
@@ -25078,6 +25283,13 @@ fn describe_resolution_program_inner(
             continue;
         }
         if let Some((rendered, consumed)) =
+            describe_cross_segment_failed_player_choice_fallback(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
             describe_cross_segment_revealed_random_hand_pick(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
@@ -25812,6 +26024,13 @@ fn describe_resolution_program_inner(
                 &program.segments,
                 segment_index,
             )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_other_player_mill_result_window(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -30002,14 +30221,16 @@ pub(crate) fn describe_target_flashback_grant_instead_self_replacement(
     let default_text = describe_effect(grant_effect);
     let default_rest = default_text
         .trim()
-        .trim_end_matches('.')
-        .strip_prefix("It gains ")?
+        .trim_end_matches('.');
+    let default_rest = default_rest
+        .strip_prefix("It gains ")
+        .or_else(|| default_rest.strip_prefix("it gains "))?
         .to_string();
     let replacement_text = describe_effect(replacement_effect);
-    let replacement_rest = replacement_text
-        .trim()
-        .trim_end_matches('.')
-        .strip_prefix("It gains ")?
+    let replacement_rest = replacement_text.trim().trim_end_matches('.');
+    let replacement_rest = replacement_rest
+        .strip_prefix("It gains ")
+        .or_else(|| replacement_rest.strip_prefix("it gains "))?
         .replace("flashback—{", "flashback {");
     if !replacement_rest.starts_with("flashback ") || replacement_rest.contains(". ") {
         return None;
@@ -37534,10 +37755,29 @@ pub(super) fn describe_alternative_cast_line(
                 .unwrap_or_else(|| "Web-slinging".to_string())
         }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Emerge") => {
+            // "Emerge from artifact {5}{B}{B}" (Crabomination): a sacrificed
+            // permanent quality other than creature prints after "from".
+            let quality = method.non_mana_costs().iter().find_map(|cost| {
+                let sacrifice = unwrap_basic_render_wrapper(cost.effect_ref()?)
+                    .downcast_ref::<crate::effects::SacrificeEffect>()?;
+                match (
+                    sacrifice.filter.card_types.as_slice(),
+                    sacrifice.filter.subtypes.as_slice(),
+                ) {
+                    ([card_type], []) if *card_type != CardType::Creature => {
+                        Some(card_type.name().to_ascii_lowercase())
+                    }
+                    ([], [subtype]) => Some(subtype.to_string()),
+                    _ => None,
+                }
+            });
+            let keyword = quality
+                .map(|quality| format!("Emerge from {quality}"))
+                .unwrap_or_else(|| "Emerge".to_string());
             method
                 .mana_cost()
-                .map(|cost| format!("Emerge {}", cost.to_oracle()))
-                .unwrap_or_else(|| "Emerge".to_string())
+                .map(|cost| format!("{keyword} {}", cost.to_oracle()))
+                .unwrap_or(keyword)
         }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Surge") => {
             method
@@ -40715,6 +40955,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if source_line_static_group_count(ability) == Some(1) {
+                // A one-member marker records a printed-line boundary: the
+                // following ability is its own printed line.
+                output.push(PRINTED_LINE_BOUNDARY_SENTINEL.to_string());
+                ability_idx += 1;
+                continue;
+            }
             if let Some(member_count) = source_line_static_group_count(ability) {
                 if let Some(text) = def
                     .abilities
@@ -43728,6 +43975,43 @@ fn describe_source_line_your_turn_group(members: &[Ability], subject: &str) -> O
     Some(format!("{lead}, {}", join_with_and(&bodies)))
 }
 
+/// "Each creature your opponents control is an Illusion in addition to its
+/// other types and has \"When this creature becomes the target of a spell or
+/// ability, sacrifice it.\"" (Dismiss into Dream): two members over the same
+/// distributive "Each ..." subject, one a type addition and one a grant, are
+/// one singular predicate list.
+fn describe_source_line_distributive_type_and_grant_pair(
+    members: &[Ability],
+    subject: &str,
+) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    let mut bodies = Vec::with_capacity(2);
+    for (index, member) in [first, second].into_iter().enumerate() {
+        if member.functional_zones.as_slice() != [Zone::Battlefield]
+            || !matches!(member.kind, AbilityKind::Static(_))
+        {
+            return None;
+        }
+        let [line] = describe_ability(index + 1, member, subject, false).try_into().ok()?;
+        let body = super::merge_passes::strip_render_heading(&line);
+        bodies.push(body.trim().trim_end_matches('.').to_string());
+    }
+    let (type_subject, type_predicate) = bodies[0].split_once(" is ")?;
+    let (grant_subject, grant_predicate) = bodies[1].split_once(" has ")?;
+    if !type_subject.starts_with("Each ")
+        || type_subject.contains(',')
+        || !type_subject.eq_ignore_ascii_case(grant_subject)
+        || !type_predicate.contains(" in addition to its other types")
+        || type_predicate.contains(". ")
+        || grant_predicate.is_empty()
+    {
+        return None;
+    }
+    Some(format!("{type_subject} is {type_predicate} and has {grant_predicate}"))
+}
+
 fn describe_source_line_static_group(
     abilities: &[Ability],
     member_count: usize,
@@ -43752,7 +44036,8 @@ fn describe_source_line_static_group(
     {
         return Some(text);
     }
-    describe_implied_basic_type_landwalk_group(members, subject)
+    describe_source_line_distributive_type_and_grant_pair(members, subject)
+        .or_else(|| describe_implied_basic_type_landwalk_group(members, subject))
         .or_else(|| describe_source_line_your_turn_group(members, subject))
         .or_else(|| describe_source_line_chosen_abilities_grant_group(members))
         .or_else(|| describe_complementary_entry_counter_group(members, subject))
@@ -43848,6 +44133,130 @@ fn describe_source_line_static_group(
         .or_else(|| describe_source_line_enters_tapped_untap_restriction_pair(members, subject))
         .or_else(|| describe_source_line_attached_restriction_and_grant_pair(members))
         .or_else(|| describe_source_line_same_subject_restriction_pair(members, subject))
+        .or_else(|| describe_source_line_conditioned_object_protection_group(members))
+}
+
+/// "As long as this creature is untapped, noncreature artifacts you control
+/// can't be enchanted, they have indestructible, and other players can't
+/// gain control of them. This effect doesn't remove Auras already attached
+/// to those artifacts." (Guardian Beast): one source condition shared by
+/// rules and keyword grants about the same object set. The set is named
+/// once; later members refer back to it.
+fn describe_source_line_conditioned_object_protection_group(
+    members: &[Ability],
+) -> Option<String> {
+    if members.len() < 2 {
+        return None;
+    }
+    let mut condition: Option<&Condition> = None;
+    let mut objects: Option<&ObjectFilter> = None;
+    let mut clauses: Vec<String> = Vec::with_capacity(members.len());
+    let mut keeps_existing_auras = false;
+    fn same_objects(filter: &ObjectFilter, objects: &Option<&ObjectFilter>) -> bool {
+        objects.is_none_or(|known| known == filter)
+    }
+    for member in members {
+        if member.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        if let Some((filter, Some(grant_condition), granted)) = modeled_object_static_grant(member)
+        {
+            if filter.source
+                || condition.is_some_and(|known| known != grant_condition)
+                || !same_objects(filter, &objects)
+                || clauses.is_empty()
+            {
+                return None;
+            }
+            condition = Some(grant_condition);
+            objects = Some(filter);
+            let keyword = granted.display().trim().trim_end_matches('.').to_ascii_lowercase();
+            if keyword.is_empty() || keyword.contains(':') || keyword.contains('"') {
+                return None;
+            }
+            clauses.push(format!("they have {keyword}"));
+            continue;
+        }
+        let AbilityKind::Static(static_ability) = &member.kind else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::Conditional {
+            ability: inner,
+            condition: member_condition,
+            ..
+        } = &static_ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        if condition.is_some_and(|known| known != member_condition) {
+            return None;
+        }
+        condition = Some(member_condition);
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction,
+            additional_restrictions,
+            ..
+        } = &inner.payload
+        else {
+            return None;
+        };
+        if !additional_restrictions.is_empty() {
+            return None;
+        }
+        match restriction {
+            crate::effect::Restriction::BeAttachedByNew(hosts, attachments)
+                if attachments.subtypes.as_slice() == [crate::types::Subtype::Aura]
+                    && !attachments.other
+                    && same_objects(hosts, &objects) =>
+            {
+                objects = Some(hosts);
+                keeps_existing_auras = true;
+                clauses.push(if clauses.is_empty() {
+                    format!(
+                        "{} can't be enchanted",
+                        pluralize_noun_phrase(&hosts.description())
+                    )
+                } else {
+                    "they can't be enchanted".to_string()
+                });
+            }
+            crate::effect::Restriction::GainControl(controlled, players)
+                if same_objects(controlled, &objects)
+                    && *players
+                        == (PlayerFilter::Excluding {
+                            base: Box::new(PlayerFilter::Any),
+                            excluded: Box::new(PlayerFilter::You),
+                        }) =>
+            {
+                if clauses.is_empty() {
+                    return None;
+                }
+                objects = Some(controlled);
+                clauses.push("other players can't gain control of them".to_string());
+            }
+            _ => return None,
+        }
+    }
+    let condition = condition?;
+    let objects = objects?;
+    if clauses.len() != members.len() {
+        return None;
+    }
+    let mut text = format!(
+        "As long as {}, {}",
+        describe_condition(condition),
+        join_with_and(&clauses)
+    );
+    if keeps_existing_auras {
+        let noun = match objects.card_types.as_slice() {
+            [card_type] => format!("{}s", card_type.name().to_ascii_lowercase()),
+            _ => "permanents".to_string(),
+        };
+        text.push_str(&format!(
+            ". This effect doesn't remove Auras already attached to those {noun}"
+        ));
+    }
+    Some(text)
 }
 
 /// "Enchanted creature can't be the target of spells and can't be enchanted
@@ -44316,6 +44725,21 @@ fn describe_source_line_shared_subject_predicate_list(
                 ))
             });
         let body = trailing_condition_body.as_deref().unwrap_or(body);
+        // "Equipped creature has ward {1}, can't be blocked, and its name and
+        // creature type are the last chosen name and creature type" (Psychic
+        // Paper): a later member about the shared subject's own
+        // characteristics continues the list possessively.
+        if let Some(known) = shared_subject.as_deref()
+            && body
+                .get(..known.len() + 3)
+                .is_some_and(|head| head.eq_ignore_ascii_case(&format!("{known}'s ")))
+            && let Some(rest) = body.get(known.len() + 3..)
+            && (rest.contains(" are ") || rest.contains(" is "))
+            && !rest.contains(" as long as ")
+        {
+            predicates.push(format!("its {rest}"));
+            continue;
+        }
         let (line_subject, predicate) = [
             " gets ",
             " has ",
@@ -44692,6 +45116,25 @@ fn describe_source_line_conditional_self_animation_group(
                 counter_type: crate::CounterType::Loyalty,
                 ..
             } => true,
+            // "As long as Grand Master of Flowers has seven or more loyalty
+            // counters on him": the static grammar lowers a named counter
+            // threshold through `CountComparison`.
+            Condition::CountComparison {
+                count:
+                    ironsmith_core::AnthemCountExpression::CountersOnSource(
+                        crate::CounterType::Loyalty,
+                    )
+                    | ironsmith_core::AnthemCountExpression::CountersOnSourceWithSurface {
+                        counter_type: crate::CounterType::Loyalty,
+                        ..
+                    }
+                    | ironsmith_core::AnthemCountExpression::CountersOnSourceWithPronoun {
+                        counter_type: crate::CounterType::Loyalty,
+                        ..
+                    },
+                comparison: Comparison::GreaterThanOrEqual(_),
+                ..
+            } => true,
             Condition::And(left, right) if your_turn_timing(left) => loyalty_threshold(right),
             other => matches!(
                 source_counter_threshold(other),
@@ -44822,18 +45265,31 @@ fn describe_source_line_conditional_self_animation_group(
         Condition::Not(inner) if matches!(inner.as_ref(), Condition::YourTurn) => {
             "During turns other than yours".to_string()
         }
-        Condition::And(timing, rest) if your_turn_timing(timing) => {
-            format!("During your turn, as long as {}", describe_condition(rest))
-        }
-        other => format!("As long as {}", describe_condition(other)),
+        // A source counter threshold names the source by the same subject
+        // as the rest of the sentence ("As long as Grand Master of Flowers
+        // has seven or more loyalty counters on him").
+        Condition::And(timing, rest) if your_turn_timing(timing) => format!(
+            "During your turn, as long as {}",
+            source_counter_threshold_condition_surface(rest, subject)
+                .unwrap_or_else(|| describe_condition(rest))
+        ),
+        other => format!(
+            "As long as {}",
+            source_counter_threshold_condition_surface(other, subject)
+                .unwrap_or_else(|| describe_condition(other))
+        ),
     };
-    // A card name ("Grand Master of Flowers") keeps its capitals; a common
-    // noun subject ("This creature") continues the clause in lowercase.
+    // A card name ("Grand Master of Flowers", "Kaito") keeps its capitals; a
+    // common noun subject ("This creature") continues the clause in
+    // lowercase.
     let names_card = subject
         .split(' ')
         .nth(1)
         .and_then(|word| word.chars().next())
-        .is_some_and(|first| first.is_ascii_uppercase());
+        .is_some_and(|first| first.is_ascii_uppercase())
+        || (!subject.contains(' ')
+            && !matches!(subject, "This" | "It" | "it" | "this")
+            && subject.chars().next().is_some_and(|first| first.is_ascii_uppercase()));
     let subject_text = if names_card {
         subject.to_string()
     } else {

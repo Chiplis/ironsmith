@@ -1930,6 +1930,14 @@ fn compile_effect_inner(
                 effects: mode_effects,
             });
         }
+        // "Search your library for a creature card, reveal it, put it into
+        // your hand or graveyard, then shuffle." (Dina's Guidance): two
+        // otherwise identical searches differing only in the found card's
+        // destination are one search whose destination the searcher picks
+        // after revealing the card (not a mode chosen before searching).
+        if let Some(effects) = merge_search_destination_alternatives(&lowered_modes) {
+            return Ok((effects, choices));
+        }
         // `EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseOneOf)` represents an instruction-level choice
         // made while the effect resolves. Printed modal spell/ability blocks
         // have their own document AST and deliberately lower without a
@@ -4180,4 +4188,53 @@ mod counter_movement_antecedent_tests {
         assert!(nested_effect_performs_action(&plus_one, PriorEffectAction::CountersMoved(CounterType::PlusOnePlusOne)));
         assert!(!nested_effect_performs_action(&plus_one, PriorEffectAction::CountersMoved(CounterType::Charge)));
     }
+}
+
+fn merge_search_destination_alternatives(
+    modes: &[crate::effect::EffectMode],
+) -> Option<Vec<Effect>> {
+    let [first, second] = modes else {
+        return None;
+    };
+    fn search_index(effects: &[Effect]) -> Option<(usize, String, crate::zone::Zone)> {
+        effects.iter().enumerate().find_map(|(index, effect)| {
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            let search = tagged
+                .effect
+                .downcast_ref::<crate::effects::SearchLibraryEffect>()?;
+            Some((index, tagged.tag.as_str().to_string(), search.destination))
+        })
+    }
+    let (first_index, first_tag, first_destination) = search_index(&first.effects)?;
+    let (second_index, second_tag, second_destination) = search_index(&second.effects)?;
+    if first_index != second_index
+        || first.effects.len() != second.effects.len()
+        || first_destination == second_destination
+        || !matches!(
+            (first_destination, second_destination),
+            (crate::zone::Zone::Hand, crate::zone::Zone::Graveyard)
+                | (crate::zone::Zone::Graveyard, crate::zone::Zone::Hand)
+        )
+    {
+        return None;
+    }
+    let normalize = |effects: &[Effect], tag: &str, destination: crate::zone::Zone| {
+        format!("{effects:?}")
+            .replace(tag, "__found__")
+            .replace(&format!("destination: {destination:?}"), "destination: __zone__")
+    };
+    if normalize(&first.effects, &first_tag, first_destination)
+        != normalize(&second.effects, &second_tag, second_destination)
+    {
+        return None;
+    }
+    let mut merged = first.effects.clone();
+    let tagged = merged[first_index].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let search = tagged
+        .effect
+        .downcast_ref::<crate::effects::SearchLibraryEffect>()?
+        .clone()
+        .with_alternative_destination(second_destination);
+    merged[first_index] = Effect::new(search).tag(tagged.tag.clone());
+    Some(merged)
 }

@@ -202,6 +202,58 @@ pub(super) fn post_rule_iterated_result_followup(
     if !is_result(sentence_effects) {
         return Ok(None);
     }
+    // "Each player exiles a card from their graveyard. When one or more
+    // nonland cards are exiled this way, ..." (Augusta, Order Returned): a
+    // passive one-or-more result aggregates every player's action, so it is
+    // one reflexive trigger after the loop, not one per player.
+    if let [EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+        predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(surface),
+        effects: reflexive_body,
+    })] = sentence_effects.as_mut_slice()
+        && surface.actor == ironsmith_core::PriorEffectResultActor::Passive
+        && surface.quantifier == ironsmith_core::PriorEffectResultQuantifier::OneOrMore
+    {
+        // Its "that many" counts the matching objects of every player's
+        // action ("put that many +1/+1 counters"), not every object moved.
+        if surface.filter != crate::filter::ObjectFilter::default() {
+            let matching = Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::AffectedObjects,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_filter(surface.filter.clone())
+                .with_action(surface.action),
+            );
+            let mut rebound = false;
+            for effect in reflexive_body.iter_mut() {
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::Counters(
+                            crate::cards::builders::CounterActionAst::PutCounters { count, .. },
+                        )
+                        | SubjectVerbActionAst::LifeResources(
+                            crate::cards::builders::LifeResourceActionAst::Draw { count }
+                            | crate::cards::builders::LifeResourceActionAst::GainLife {
+                                amount: count,
+                            }
+                            | crate::cards::builders::LifeResourceActionAst::LoseLife {
+                                amount: count,
+                            },
+                        ),
+                    ..
+                }) = effect
+                {
+                    let before = count.clone();
+                    replace_event_amount_with_value(count, &matching);
+                    rebound |= *count != before;
+                }
+            }
+            if rebound {
+                return Ok(Some(PostParseFollowupResult::Annotated));
+            }
+        }
+        return Ok(None);
+    }
     body.append(sentence_effects);
     Ok(Some(PostParseFollowupResult::Handled {
         consumed_sentences: 1,

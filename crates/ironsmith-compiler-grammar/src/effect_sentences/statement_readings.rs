@@ -96,6 +96,12 @@ const STATEMENT_READINGS: &[Reading] = &[
         read: |input| input.outcome(read_block_attacker_of_choice(input)),
     },
     Reading {
+        id: RuleId::new("optional-self-enter-tapped"),
+        head: HeadDiscriminator::Words(&["you", "have"]),
+        admits: |_| true,
+        read: |input| input.outcome(Ok(read_optional_self_enter_tapped(input))),
+    },
+    Reading {
         id: RuleId::new("trailing-local-action-replacement"),
         head: HeadDiscriminator::Any,
         admits: |_| true,
@@ -1615,6 +1621,35 @@ pub(super) fn parse_unblock_sole_blocked_attackers_sentence(
             }]
         }
     })
+}
+
+/// "You may have this land enter tapped." (Mariposa Military Base): the line
+/// is an entry program (CR 614.1c), and tapping the entering source there
+/// makes it enter tapped.
+fn read_optional_self_enter_tapped(input: &Statement<'_>) -> Option<Vec<EffectAst>> {
+    let tokens = crate::util::trim_edge_punctuation_tokens(input.sentence);
+    let words = crate::lexer::token_word_refs(tokens);
+    // The leading "you may" may already have been peeled off by the
+    // player-may chain reading, leaving "have this land enter tapped".
+    let (optional, rest) = match words.as_slice() {
+        ["you", "may", "have", "this", rest @ ..] => (true, rest),
+        ["have", "this", rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let [noun @ .., "enter", "tapped"] = rest else {
+        return None;
+    };
+    if noun.is_empty() || noun.len() > 2 {
+        return None;
+    }
+    let tap = EffectAst::subject_verb_tap(crate::cards::builders::TargetAst::Source(None));
+    Some(vec![if optional {
+        EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {
+            effects: vec![tap],
+        })
+    } else {
+        tap
+    }])
 }
 
 /// "You may have it block an attacking creature of your choice." (False

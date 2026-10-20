@@ -46,11 +46,24 @@ fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuild
         .iter()
         .enumerate()
         .flat_map(|(ability_index, ability)| {
-            let AbilityKind::Triggered(triggered) = &ability.kind else {
-                return Vec::new().into_iter();
+            // "As this creature enters, secretly choose an opponent."
+            // (Guardian Archon): an entry program's choice is remembered on
+            // the source just like a triggered one.
+            let program = match &ability.kind {
+                AbilityKind::Triggered(triggered) => &triggered.effects,
+                AbilityKind::Static(static_ability) => {
+                    let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                        program,
+                        ..
+                    } = &static_ability.payload
+                    else {
+                        return Vec::new().into_iter();
+                    };
+                    program
+                }
+                AbilityKind::Activated(_) => return Vec::new().into_iter(),
             };
-            triggered
-                .effects
+            program
                 .segments
                 .iter()
                 .enumerate()
@@ -72,10 +85,21 @@ fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuild
     let [(ability_index, segment_index, effect_index, choice)] = choices.as_slice() else {
         return;
     };
-    let AbilityKind::Triggered(triggered) = &mut builder.abilities[*ability_index].kind else {
-        return;
+    let program = match &mut builder.abilities[*ability_index].kind {
+        AbilityKind::Triggered(triggered) => &mut triggered.effects,
+        AbilityKind::Static(static_ability) => {
+            let crate::static_abilities::StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                ..
+            } = &mut static_ability.payload
+            else {
+                return;
+            };
+            program
+        }
+        AbilityKind::Activated(_) => return,
     };
-    triggered.effects.segments[*segment_index].default_effects[*effect_index] =
+    program.segments[*segment_index].default_effects[*effect_index] =
         crate::effect::Effect::new(choice.clone().remember_as_chosen_player());
 }
 
@@ -376,6 +400,75 @@ fn remember_single_cross_ability_object_choice(builder: &mut CardDefinitionBuild
     }
 }
 
+/// One printed line the preprocessor split into several single static
+/// abilities ("This creature has trample as long as you control a Beast,
+/// haste as long as you control a Goblin, ... ." on Tribal Golem): the run of
+/// consecutive one-static items sharing that source line, keyed by the index
+/// of its first item. The renderer reads the group marker as that printed
+/// line's boundary, exactly as for a line that parsed into several statics.
+fn split_source_line_static_runs(
+    items: &[NormalizedCardItem],
+) -> std::collections::HashMap<usize, usize> {
+    fn single_static_line(item: &NormalizedCardItem) -> Option<(usize, &crate::cards::builders::StaticAbilityAst)> {
+        let NormalizedCardItem::Line(line) = item else {
+            return None;
+        };
+        let ability = match line.chunks.as_slice() {
+            [super::super::effect_pipeline::NormalizedLineChunk::StaticAbility(ability)] => ability,
+            [super::super::effect_pipeline::NormalizedLineChunk::StaticAbilities(abilities)]
+                if abilities.len() == 1 =>
+            {
+                &abilities[0]
+            }
+            _ => return None,
+        };
+        // Split variants of one printed line get consecutive parse indices
+        // but share that line's display index.
+        Some((line.info.display_line_index, ability))
+    }
+    let display_index = |index: usize| single_static_line(&items[index]).map(|(line, _)| line);
+    let mut runs = std::collections::HashMap::new();
+    let mut singles = Vec::new();
+    let mut index = 0;
+    while index < items.len() {
+        let Some(line_index) = display_index(index) else {
+            index += 1;
+            continue;
+        };
+        let mut end = index + 1;
+        while end < items.len() && display_index(end) == Some(line_index) {
+            end += 1;
+        }
+        if end - index >= 3 {
+            runs.insert(index, end - index);
+        } else if end - index == 1
+            && single_static_line(&items[index]).is_some_and(|(_, ability)| {
+            !matches!(
+                ability,
+                crate::cards::builders::StaticAbilityAst::AttachmentRestriction { .. }
+                    | crate::cards::builders::StaticAbilityAst::KeywordAction(_)
+            )
+        }) {
+            singles.push(index);
+        }
+        index = end;
+    }
+    // A one-static printed line next to another one-static printed line
+    // (Ironclaw Curse: "Enchanted creature gets -0/-1." / "Enchanted creature
+    // can't block ..."): a one-member marker records the printed-line
+    // boundary so the two are never rendered as one sentence. It is inert at
+    // runtime (groups need two members).
+    for (position, &index) in singles.iter().enumerate() {
+        let neighbor = |other: Option<&usize>| other.is_some_and(|other| other.abs_diff(index) == 1);
+        if neighbor(position.checked_sub(1).and_then(|p| singles.get(p)))
+            || neighbor(singles.get(position + 1))
+        {
+            runs.insert(index, 1);
+        }
+    }
+    runs
+}
+
 /// The reference scope of the line with this display index, entered for the
 /// duration of its lowering; `None` when the parse opened no scope for it.
 fn line_reference_scope(
@@ -443,10 +536,18 @@ pub fn lower_normalized_card_ast_with_facts(
     let mut level_activated_lines = Vec::new();
     let mut last_restrictable_ability: Option<usize> = None;
     let mut state = RewriteLoweredCardState::default();
+    let split_static_runs = split_source_line_static_runs(&items);
 
-    for item in items {
+    for (item_index, item) in items.into_iter().enumerate() {
         match item {
             NormalizedCardItem::Line(line) => {
+                if let Some(member_count) = split_static_runs.get(&item_index) {
+                    builder = builder.with_ability(crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::source_line_static_group(
+                            *member_count,
+                        ),
+                    ));
+                }
                 let _references = line_reference_scope(&symbols, line.info.display_line_index);
                 lower_line_ast(
                     &mut builder,

@@ -2773,6 +2773,11 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(equip);
     }
     if let AbilityKind::Activated(activated) = &ability.kind
+        && let Some(fortify) = describe_structural_fortify_keyword(activated)
+    {
+        return Some(fortify);
+    }
+    if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(outlast) = describe_structural_outlast_keyword(activated)
     {
         return Some(outlast);
@@ -3879,6 +3884,65 @@ pub(in crate::compiled_text) fn describe_structural_equip_keyword(
     }
 
     Some(rendered)
+}
+
+/// CR 702.67a: "Fortify [cost]" means "[Cost]: Attach this Fortification to
+/// target land you control. Activate only as a sorcery." (C.A.M.P.)
+fn describe_structural_fortify_keyword(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || activated.mana_cost.as_one_of().is_some()
+    {
+        return None;
+    }
+    if !(activated.choices.is_empty()
+        || (activated.choices.len() == 1 && is_target_land_you_control(&activated.choices[0])))
+    {
+        return None;
+    }
+    if activated.effects.segments.len() != 1
+        || !activated.effects.segments[0].self_replacements.is_empty()
+    {
+        return None;
+    }
+    let target = structural_equip_target(activated)?;
+    if !is_target_land_you_control(&target) {
+        return None;
+    }
+    let cost = describe_cost_list(activated.mana_cost.costs());
+    if cost.trim().is_empty() {
+        return None;
+    }
+    let mut rendered = format!("Fortify {cost}");
+    let mut restriction_clauses = collect_activation_restriction_clauses(
+        &activated.timing,
+        &activated.additional_restrictions,
+        &activated.activation_restrictions,
+    );
+    restriction_clauses.retain(|clause| !clause.eq_ignore_ascii_case("Activate only as a sorcery"));
+    if !restriction_clauses.is_empty() {
+        rendered.push_str(". ");
+        rendered.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+    }
+    Some(rendered)
+}
+
+fn is_target_land_you_control(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::Target(inner) => is_target_land_you_control(inner),
+        ChooseSpec::WithCount(inner, count) if count.is_single() => {
+            is_target_land_you_control(inner)
+        }
+        ChooseSpec::Object(filter) => {
+            filter.zone == Some(Zone::Battlefield)
+                && filter.controller == Some(PlayerFilter::You)
+                && filter.card_types.as_slice() == [CardType::Land]
+                && filter.subtypes.is_empty()
+                && filter.supertypes.is_empty()
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn describe_structural_reconfigure_keyword(
@@ -6755,6 +6819,10 @@ pub(super) fn describe_you_draw_and_create_coordinated(
         return None;
     }
     let draw_text = lowercase_first(describe_effect(draw_effect).trim().trim_end_matches('.'));
+    let draw_text = draw_text
+        .strip_prefix("you ")
+        .map(str::to_string)
+        .unwrap_or(draw_text);
     let create_text = describe_effect(create_effect);
     let create_text = create_text.trim().trim_end_matches('.');
     let create_text = create_text
@@ -6765,3 +6833,37 @@ pub(super) fn describe_you_draw_and_create_coordinated(
         .then(|| format!("You {draw_text} and {}", lowercase_first(create_text)))
 }
 
+
+/// "When one or more nonland cards are exiled this way, put that many
+/// +1/+1 counters ..." (Augusta, Order Returned): inside a reflexive trigger
+/// whose condition counts filtered result objects, a count of exactly those
+/// matching objects reads as the trigger's "that many".
+pub(crate) fn rebind_reflexive_matching_count_surface(
+    reflexive: &crate::effects::ReflexiveTriggerEffect,
+    triggered: &str,
+) -> String {
+    let mut triggered = triggered.to_string();
+    let EffectPredicate::PriorEffectResult(surface) = &reflexive.predicate else {
+        return triggered;
+    };
+    for body_effect in &reflexive.effects {
+        let Some(put) = structural_unwrap_render_wrappers(body_effect)
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+        else {
+            continue;
+        };
+        if let Value::PriorEffectMetric { effect_id, query } = put.amount.unhinted()
+            && *effect_id == reflexive.condition
+            && query.source == ironsmith_core::EffectMetricSource::AffectedObjects
+            && query.metric == ironsmith_core::EffectMetric::Count
+            && query.filter.as_ref() == Some(&surface.filter)
+            && query.action == Some(surface.action)
+        {
+            let phrase = describe_value(&put.amount);
+            if !phrase.is_empty() {
+                triggered = triggered.replacen(&phrase, "that many", 1);
+            }
+        }
+    }
+    triggered
+}

@@ -761,19 +761,34 @@ pub fn parse_counter_target_count_shape(tokens: &[OwnedLexToken]) -> Option<(Cho
 }
 
 fn source_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    (
-        primitives::kw("until"),
-        repeat_till::<_, _, (), _, _, _, _>(
-            0..,
-            any.void(),
-            peek(primitives::phrase(&["leaves", "the", "battlefield"])),
+    alt((
+        (
+            primitives::kw("until"),
+            repeat_till::<_, _, (), _, _, _, _>(
+                0..,
+                any.void(),
+                peek(primitives::phrase(&["leaves", "the", "battlefield"])),
+            )
+            .void(),
+            primitives::phrase(&["leaves", "the", "battlefield"]),
+            primitives::sentence_end(),
         )
-        .void(),
-        primitives::phrase(&["leaves", "the", "battlefield"]),
-        primitives::sentence_end(),
-    )
-        .void()
-        .parse_next(input)
+            .void(),
+        // A plural-named source keeps the plural verb after the name is
+        // normalized to a source reference ("until Cloak and Dagger leave
+        // the battlefield" -> "until this creature leave the battlefield").
+        // Only the normalized `this <noun>` source form is accepted here so
+        // a plural non-source ("until those creatures leave ...") never
+        // reads as the source leaving.
+        (
+            primitives::phrase(&["until", "this"]),
+            any.void(),
+            primitives::phrase(&["leave", "the", "battlefield"]),
+            primitives::sentence_end(),
+        )
+            .void(),
+    ))
+    .parse_next(input)
 }
 
 fn opponent_becomes_monarch_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {

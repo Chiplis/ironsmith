@@ -259,6 +259,11 @@ pub(super) fn compile_create_token_with_mods_action(
         LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?
     };
     let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
+    // One named token ("create Stangg Twin, ..."): a later "attached to
+    // Stangg Twin" in the same instruction list names this token.
+    let single_created_token_name = (matches!(count, crate::effect::Value::Fixed(1))
+        && !token.card.name.is_empty())
+    .then(|| token.card.name.clone());
     let player_filter = subject.clone_player_filter();
     let count = per_player_partition_value_for_filter(count, &player_filter);
     let mut choices = subject.into_choices();
@@ -353,6 +358,9 @@ pub(super) fn compile_create_token_with_mods_action(
         let tag = super::reserved_or_fresh_result_tag(ctx, "created");
         effect = effect.tag(tag.clone());
         ctx.last_object_tag = Some(tag.clone());
+        if let Some(name) = single_created_token_name {
+            ctx.created_token_names.push((name, tag.clone()));
+        }
         created_tag = Some(tag);
     }
 
@@ -1342,11 +1350,34 @@ fn attach_created_token_copies(
     ctx: &mut EffectLoweringContext,
 ) -> Result<Vec<Effect>, CardTextError> {
     let mut compiled = vec![effect];
-    let Some((target_spec, target_choices)) = attached_to else {
+    let Some((mut target_spec, target_choices)) = attached_to else {
         return Ok(compiled);
     };
     for choice in target_choices {
         push_choice(choices, choice);
+    }
+    // "create a token that's a copy of it attached to Stangg Twin": a bare
+    // name naming a token created earlier in this instruction list is that
+    // token, not a choice among every permanent with the name.
+    if let ChooseSpec::Object(filter) = &mut target_spec
+        && let Some(name) = filter.name.clone()
+        && (ObjectFilter {
+            name: None,
+            zone: None,
+            union_surface: Default::default(),
+            name_surface: Default::default(),
+            ..filter.clone()
+        }) == ObjectFilter::default()
+        && let Some((_, created)) = ctx
+            .created_token_names
+            .iter()
+            .rev()
+            .find(|(created_name, _)| *created_name == name)
+    {
+        filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
+            tag: created.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
     }
     let Some(created_tag) = created_tag else {
         return Err(CardTextError::InvariantViolation(
@@ -2774,7 +2805,10 @@ pub(super) fn compile_subject_verb_middle(
                 };
                 let mut effect = Effect::new(move_effect);
                 if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
-                    let tag = reserved_or_next_object_tag(ctx, "moved");
+                    let tag = reserved_or_next_object_tag(
+                        ctx,
+                        moved_result_tag_prefix(*zone, *battlefield_face_down),
+                    );
                     ctx.last_object_tag = Some(tag.clone());
                     effect = effect.tag(tag);
                 }
@@ -2952,7 +2986,10 @@ pub(super) fn compile_subject_verb_middle(
             let should_tag = produces_referencable_objects
                 && (ctx.auto_tag_object_targets || attached_to.is_some());
             if should_tag {
-                let tag = reserved_or_next_object_tag(ctx, "moved");
+                let tag = reserved_or_next_object_tag(
+                    ctx,
+                    moved_result_tag_prefix(*zone, *battlefield_face_down),
+                );
                 moved_tag = Some(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
                 if *zone == Zone::Exile {
@@ -4806,4 +4843,17 @@ fn lower_ability_removal_modifications(
         _ => None,
     }));
     Ok(removals)
+}
+
+/// Result-tag prefix for a zone move. A permanent put onto the battlefield
+/// face down is a face-down result ("It's a 3/3 creature ..."), named like a
+/// turned-face-down result. Reference resolution reserves the same prefix
+/// (`ironsmith_compiler_resolve` MoveToZone tracking), keeping both tag
+/// streams aligned.
+fn moved_result_tag_prefix(zone: Zone, battlefield_face_down: bool) -> &'static str {
+    if zone == Zone::Battlefield && battlefield_face_down {
+        "turned_face_down"
+    } else {
+        "moved"
+    }
 }

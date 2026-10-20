@@ -143,6 +143,8 @@ pub enum ActivationCostSegmentCst {
         count: u32,
     },
     RevealChosenSubtype,
+    /// "Reveal the player you chose" (Stalking Leonin).
+    RevealChosenPlayer,
     RevealSourceFromHand,
     RevealFromHand {
         count: Value,

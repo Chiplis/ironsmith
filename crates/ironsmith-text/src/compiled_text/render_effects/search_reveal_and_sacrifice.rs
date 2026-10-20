@@ -813,16 +813,51 @@ pub(super) fn describe_each_player_may_discard_hand_draw(
     let [discard_effect, draw_effect] = may.effects.as_slice() else {
         return None;
     };
-    let discard = discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()?;
-    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
-    if discard.player != PlayerFilter::IteratedPlayer || draw.player != PlayerFilter::IteratedPlayer
+    // "Each player may exile their hand and draw ..." (Wheel of Potential):
+    // exiling every card from the iterated player's own hand is the same
+    // whole-hand action as the discard wheel.
+    let verb = if let Some(discard) =
+        discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()
     {
+        if discard.player != PlayerFilter::IteratedPlayer {
+            return None;
+        }
+        "discard"
+    } else if exiles_iterated_players_whole_hand(discard_effect) {
+        "exile"
+    } else {
+        return None;
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::IteratedPlayer {
         return None;
     }
     Some(format!(
-        "Each player may discard their hand and draw {}",
+        "Each player may {verb} their hand and draw {}",
         describe_card_count(&draw.count)
     ))
+}
+
+fn exiles_iterated_players_whole_hand(effect: &Effect) -> bool {
+    let Some(exile) =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::ExileEffect>()
+    else {
+        return false;
+    };
+    let ChooseSpec::All(filter) = &exile.spec else {
+        return false;
+    };
+    if exile.face_down
+        || filter.zone != Some(Zone::Hand)
+        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return false;
+    }
+    let mut rest = filter.clone();
+    rest.zone = None;
+    rest.owner = None;
+    rest.union_surface = ObjectFilter::default().union_surface;
+    rest == ObjectFilter::default()
 }
 
 pub(super) fn describe_each_player_may_discard_card_then_draw(

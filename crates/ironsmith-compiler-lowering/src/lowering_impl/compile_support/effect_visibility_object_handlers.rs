@@ -492,10 +492,35 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
             }
+            // "Target opponent puts ... Search that player's library ..."
+            // (Head Games): a searched library owned by the earlier
+            // instruction's announced target refers back to that target; it
+            // is not a second target.
+            if zones.contains(&Zone::Library)
+                && let Some(PlayerFilter::Target(inner)) = resolved_filter.owner.as_ref()
+                && matches!(
+                    ctx.last_player_filter.as_ref(),
+                    Some(PlayerFilter::Target(previous) | PlayerFilter::AliasedTarget(previous))
+                        if previous == inner
+                )
+            {
+                resolved_filter.owner = Some(PlayerFilter::AliasedTarget(inner.clone()));
+            }
+            // A union whose every branch already names its own owner,
+            // controller, or tagged object ("a nonland card from their hand
+            // or the chosen creature") is fully scoped; defaulting the
+            // battlefield controller to the chooser would exclude it.
+            let branches_scoped = !resolved_filter.any_of.is_empty()
+                && resolved_filter.any_of.iter().all(|branch| {
+                    branch.controller.is_some()
+                        || branch.owner.is_some()
+                        || !branch.tagged_constraints.is_empty()
+                });
             if zones.contains(&Zone::Battlefield)
                 && resolved_filter.controller.is_none()
                 && resolved_filter.owner.is_none()
                 && resolved_filter.tagged_constraints.is_empty()
+                && !branches_scoped
             {
                 resolved_filter.controller = Some(chooser.clone());
             }

@@ -4110,7 +4110,9 @@ pub(crate) fn describe_with_id_then_reflexive_trigger(
         // body, as it does across resolution segments.
         .or_else(|| describe_segment_prior_exiled_collection_cast(&[], &reflexive.effects))
         .unwrap_or_else(|| describe_result_branch_effect_list(&reflexive.effects));
-    let triggered = lowercase_first(&triggered);
+    let triggered = lowercase_first(&rebind_reflexive_matching_count_surface(
+        reflexive, &triggered,
+    ));
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
@@ -6685,10 +6687,99 @@ pub(crate) fn describe_effect(effect: &Effect) -> String {
             lowercase_first(&describe_effect(action))
         );
     }
+    if let Some(text) = describe_effect_impl_keyword_repeat_process(effect) {
+        return text;
+    }
     if let Some(text) = describe_control_gated_create_then_attach_those(effect) {
         return text;
     }
     with_effect_render_depth(|| describe_effect_impl(effect))
+}
+
+/// "Put a flying counter on any creature you control if a creature card in
+/// your graveyard has flying. Repeat this process for first strike, ..., and
+/// vigilance." (Kathril, Aspect Warper): one instruction performed once per
+/// keyword, each repetition identical except for the keyword its counter and
+/// its graveyard test name.
+pub(crate) fn describe_effect_impl_keyword_repeat_process(effect: &Effect) -> Option<String> {
+    let sequence = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.effects.len() < 3 || sequence.result_label.is_some() {
+        return None;
+    }
+    // (condition with the keyword normalized away, placement with the
+    // counter normalized away, keyword counter, conditional surface)
+    let normalized = |child: &Effect| {
+        let conditional = child.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() || conditional.capture_condition_result {
+            return None;
+        }
+        let [action] = conditional.if_true.as_slice() else {
+            return None;
+        };
+        let put = action.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if !matches!(
+            put.counter_type,
+            CounterType::Flying
+                | CounterType::FirstStrike
+                | CounterType::DoubleStrike
+                | CounterType::Deathtouch
+                | CounterType::Hexproof
+                | CounterType::Indestructible
+                | CounterType::Lifelink
+                | CounterType::Menace
+                | CounterType::Reach
+                | CounterType::Trample
+                | CounterType::Vigilance
+                | CounterType::Haste
+        ) {
+            return None;
+        }
+        let Condition::PlayerControls { player, filter } = &conditional.condition else {
+            return None;
+        };
+        if filter.static_abilities.len() != 1 {
+            return None;
+        }
+        let mut filter = filter.clone();
+        filter.static_abilities.clear();
+        let mut put = put.clone();
+        let counter = put.counter_type;
+        put.counter_type = CounterType::PlusOnePlusOne;
+        Some((player.clone(), filter, put, counter, conditional.surface))
+    };
+    let mut shared: Option<(
+        PlayerFilter,
+        ObjectFilter,
+        crate::effects::PutCountersEffect,
+        ironsmith_core::ConditionalSurface,
+    )> = None;
+    let mut keywords: Vec<String> = Vec::with_capacity(sequence.effects.len());
+    for child in &sequence.effects {
+        let (player, filter, put, counter, surface) = normalized(child)?;
+        let key = (player, filter, put, surface);
+        if shared.as_ref().is_some_and(|first| *first != key) {
+            return None;
+        }
+        if shared.is_none() {
+            shared = Some(key);
+        }
+        let keyword = describe_counter_type(counter);
+        if keywords.contains(&keyword) {
+            return None;
+        }
+        keywords.push(keyword);
+    }
+    let first = describe_effect(&sequence.effects[0]);
+    let first = first.trim().trim_end_matches('.');
+    if first.is_empty() || first.contains(". ") {
+        return None;
+    }
+    Some(format!(
+        "{}. Repeat this process for {}",
+        capitalize_first(first),
+        join_with_and(&keywords[1..])
+    ))
 }
 
 /// "If you control Equipment named A, B, and C, create Kaldra, ... . Attach

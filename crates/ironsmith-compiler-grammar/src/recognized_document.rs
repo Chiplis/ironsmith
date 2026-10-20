@@ -194,6 +194,9 @@ pub struct RecognizedModalBlock {
     /// "I, II — Choose one —": a modal Saga chapter ability. The header
     /// tokens are the chapter body; these chapters are its trigger (CR 714.2b).
     pub saga_chapters: Option<Vec<u32>>,
+    /// Keywords chosen as the activation cost, one per mode (Phyrexian
+    /// Splicer); empty for ordinary modal blocks.
+    pub cost_choice_keywords: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

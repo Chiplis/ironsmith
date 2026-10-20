@@ -4968,6 +4968,27 @@ fn parse_demonstrative_keyword_predicate(tokens: &[OwnedLexToken]) -> Option<Pre
 fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let (descriptor_tokens, _, _, _, _) = demonstrative_descriptor_filter_tokens(tokens)?;
     let descriptor = LexedClause::new(&descriptor_tokens);
+    // "If that creature shares a color with the mana that land produced"
+    // (C.A.M.P.): the comparison is against the triggering mana event's
+    // produced mana, not against an object some player controls.
+    {
+        let all_words = crate::lexer::token_word_refs(tokens);
+        if let Some(shares_idx) = all_words.iter().position(|word| *word == "shares")
+            && shares_idx > 0
+            && all_words.get(shares_idx + 1..shares_idx + 4) == Some(&["a", "color", "with"][..])
+            && let Some(rest) = all_words.get(shares_idx + 4..)
+            && let ["the", "mana", producer @ .., "produced"] = rest
+            && !producer.is_empty()
+        {
+            return Some(PredicateAst::TurnHistory(
+                crate::cards::builders::TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
+                    tag: crate::tag::CompilerReferenceTag::It.bind(),
+                    subject: all_words[..shares_idx].join(" "),
+                    producer: producer.join(" "),
+                },
+            ));
+        }
+    }
     if surface::exact_any(
         descriptor,
         &[

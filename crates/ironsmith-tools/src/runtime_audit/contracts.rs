@@ -356,6 +356,8 @@ impl Auditor {
             | "TriggeringAbilityIsManaAbility"
             | "TriggeringManaIncludesSourceChosenColor"
             | "TriggeringSacrificePaidEmergeCost"
+            | "TriggeringManaIncludesSymbol"
+            | "TaggedObjectSharesColorWithTriggeringMana"
             | "YouWonTriggeringClash"
             | "YouChoseAnotherRingBearer"
             | "TriggeringAbilityManaSpentToActivateAtLeast"

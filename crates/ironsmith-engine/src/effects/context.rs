@@ -339,6 +339,9 @@ pub struct ReplacementExecutionContext {
     /// Set by an entry program that puts the entering object into another
     /// zone instead of onto the battlefield (Frankenstein's Monster).
     pub entry_redirect: Option<crate::zone::Zone>,
+    /// Set by an entry program that taps the entering source ("You may have
+    /// this land enter tapped", Mariposa Military Base): it enters tapped.
+    pub entry_tapped: bool,
 }
 
 impl Default for ReplacementExecutionContext {
@@ -353,6 +356,7 @@ impl Default for ReplacementExecutionContext {
             suppressed_replacement_effect_keys: HashSet::new(),
             simultaneous_zone_destinations: HashMap::new(),
             entry_redirect: None,
+            entry_tapped: false,
         }
     }
 }

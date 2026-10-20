@@ -485,19 +485,22 @@ pub(crate) fn interpret_trigger_model(
             recipient_passive,
             during_your_turn,
         } => {
-            if recipient_passive && (!one_or_more
-                || each_damaged_player
-                || per_source_controller
-                || source != crate::target::ObjectFilter::default())
-            {
+            if recipient_passive && (!one_or_more || each_damaged_player || per_source_controller) {
                 return Err(TriggerModelConversionError {
                     detail: "passive combat-damage recipient requires an unrestricted source and one grouped event".into(),
                 });
             }
-            let mut matcher = if recipient_passive {
+            let mut matcher = if recipient_passive
+                && source == crate::target::ObjectFilter::default()
+            {
                 crate::triggers::DealsCombatDamageToPlayerTrigger::recipient_passive(
                     player, during_your_turn,
                 )
+            } else if recipient_passive {
+                let mut matcher =
+                    crate::triggers::DealsCombatDamageToPlayerTrigger::one_or_more(source, player);
+                matcher.recipient_passive = true;
+                matcher
             } else if one_or_more && per_source_controller {
                 crate::triggers::DealsCombatDamageToPlayerTrigger::per_source_controller(
                     source, player, each_damaged_player,

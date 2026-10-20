@@ -10515,6 +10515,36 @@ pub(super) fn describe_mana_amount_for_add_effect(value: &Value) -> String {
     describe_value(value)
 }
 
+/// The entry program's first instruction is "you may tap <the entering
+/// source>" (the lowered form of "You may have this land enter tapped").
+fn program_opens_with_optional_self_tap(program: &crate::resolution::ResolutionProgram) -> bool {
+    let Some(first) = program
+        .segments
+        .first()
+        .and_then(|segment| segment.default_effects.first())
+    else {
+        return false;
+    };
+    let Some(may) =
+        structural_unwrap_render_wrappers(first).downcast_ref::<crate::effects::MayEffect>()
+    else {
+        return false;
+    };
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::You)
+    {
+        return false;
+    }
+    let [tap] = may.effects.as_slice() else {
+        return false;
+    };
+    structural_unwrap_render_wrappers(tap)
+        .downcast_ref::<crate::effects::TapEffect>()
+        .is_some_and(|tap| matches!(tap.target, ChooseSpec::Source))
+}
+
 pub(crate) fn describe_as_enters_counter_phrase_on_it(
     amount: &Value,
     counter_type: CounterType,
@@ -10720,6 +10750,106 @@ fn restore_conditional_source_counter_grant_as_enters_surface(
     Some(format!(
         "{prefix_text}. If you do, {} enters with {counter_phrase}",
         subject.to_ascii_lowercase()
+    ))
+}
+
+/// "As this creature enters, exile X creature cards from your graveyard. If
+/// you can't, put this creature into its owner's graveyard instead of onto
+/// the battlefield. For each creature card exiled this way, this creature
+/// enters with a +2/+0, +1/+1, or +0/+2 counter on it." (Frankenstein's
+/// Monster): a dynamic-X exile whose exiled count is compared with X; the
+/// shortfall branch redirects the entering source and the success branch
+/// puts one chosen counter on it per exiled card.
+fn describe_as_enters_exile_x_or_redirect_counter_program(
+    program: &crate::resolution::ResolutionProgram,
+    subject: &str,
+) -> Option<String> {
+    let [segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [exile_effect, conditional_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tagged = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = tagged.effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down || !exile.spec.count().is_dynamic_x() {
+        return None;
+    }
+    let ChooseSpec::Object(exiled_filter) = exile.spec.base() else {
+        return None;
+    };
+    let [card_type] = exiled_filter.card_types.as_slice() else {
+        return None;
+    };
+    if exiled_filter.zone != Some(Zone::Graveyard) || exiled_filter.owner != Some(PlayerFilter::You)
+    {
+        return None;
+    }
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if !matches!(left.unhinted(), Value::TaggedSnapshotCount { tag, .. } if *tag == tagged.tag)
+        || !matches!(right.unhinted(), Value::X)
+    {
+        return None;
+    }
+    let [redirect_effect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let redirect =
+        redirect_effect.downcast_ref::<crate::effects::RedirectEnteringSourceEffect>()?;
+    if redirect.destination != Zone::Graveyard {
+        return None;
+    }
+    let [for_each_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [mode_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    if for_each.tag != tagged.tag {
+        return None;
+    }
+    let choice = mode_effect.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if choice.modes.len() < 2 {
+        return None;
+    }
+    let mut counters = Vec::new();
+    for mode in &choice.modes {
+        let [put_effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if !matches!(put.target, ChooseSpec::Source)
+            || !matches!(put.amount, Value::Fixed(1))
+            || put.target_count.is_some()
+            || put.distributed
+        {
+            return None;
+        }
+        counters.push(put.counter_type.description().to_string());
+    }
+    let exile_text = describe_effect(exile_effect);
+    let exile_text = exile_text.trim().trim_end_matches('.');
+    if !exile_text.starts_with("Exile ") || exile_text.contains(". ") {
+        return None;
+    }
+    let subject = lowercase_first(subject);
+    let noun = card_type.name().to_ascii_lowercase();
+    let counter_phrase = with_indefinite_article(&format!("{} counter", join_with_or(&counters)));
+    Some(format!(
+        "As {subject} enters, {}. If you can't, put {subject} into its owner's graveyard instead of onto the battlefield. For each {noun} card exiled this way, {subject} enters with {counter_phrase} on it",
+        lowercase_first(exile_text)
     ))
 }
 
@@ -11625,6 +11755,35 @@ pub(crate) fn describe_static_ability_with_subject(
                 describe_structural_as_enters_keyword_program(program, presentation_label.as_ref())
         {
             return keyword;
+        }
+        if !also_turns_face_up
+            && !turns_face_up_only
+            && transforms_into.is_none()
+            && !entry_instead_surface
+            && presentation_label.is_none()
+            && let Some(rendered) =
+                describe_as_enters_exile_x_or_redirect_counter_program(program, authored_subject)
+        {
+            return rendered;
+        }
+        // "You may have this land enter tapped. If you do, you get two rad
+        // counters." (Mariposa Military Base): the program opens with an
+        // optional tap of the entering source, which makes it enter tapped.
+        if !also_turns_face_up
+            && !turns_face_up_only
+            && transforms_into.is_none()
+            && !entry_instead_surface
+            && presentation_label.is_none()
+            && program_opens_with_optional_self_tap(program)
+        {
+            let body = super::ast_render::describe_resolution_program(program);
+            let body = body.trim().trim_end_matches('.');
+            let rest = body.split_once(". ").map(|(_, rest)| rest);
+            let head = format!("You may have {authored_subject} enter tapped");
+            return match rest {
+                Some(rest) if !rest.trim().is_empty() => format!("{head}. {rest}"),
+                _ => head,
+            };
         }
         let timing = if let Some(destination) = transforms_into {
             format!("As {authored_subject} transforms into {destination}")
@@ -15928,7 +16087,7 @@ pub(super) fn rewrite_each_upkeep_active_player_reference(
         }
     }
 
-    text.replace(
+    let text = text.replace(
         "If that player doesn't, that player returns ",
         "If they don't, they return ",
     )
@@ -15956,13 +16115,276 @@ pub(super) fn rewrite_each_upkeep_active_player_reference(
     .replace("if that player doesn't", "if they don't")
     .replace("If that player does", "If they do")
     .replace("if that player does", "if they do")
-    .replace(" that player controls", " they control")
+    .replace(" that player controls", " they control");
+    // The pronoun substitution above turns "that player puts" into "they
+    // puts"; restore plural agreement for the substituted subject.
+    let mut text = text;
+    for (singular, plural) in [
+        ("puts", "put"),
+        ("chooses", "choose"),
+        ("sacrifices", "sacrifice"),
+        ("draws", "draw"),
+        ("creates", "create"),
+        ("exiles", "exile"),
+        ("returns", "return"),
+        ("discards", "discard"),
+    ] {
+        for lead in ["If they do, they ", "if they do, they ", "If they don't, they ", "if they don't, they "] {
+            text = text.replace(&format!("{lead}{singular} "), &format!("{lead}{plural} "));
+        }
+    }
+    text
 }
 
 /// Replace the generic triggering-object noun with the concrete card type
 /// carried by a typed permanent trigger. The damage renderer cannot recover
 /// that type from `ControllerOf(Tagged("triggering"))` alone, but the trigger
 /// matcher still has the exact filter that established the reference.
+/// "Whenever a creature dies, if another creature is on the battlefield,
+/// return the first card to the battlefield ..." (Lifeline): when the
+/// intervening condition counts *other* objects of the dying object's own
+/// type, a bare pronoun for the returned triggering card is ambiguous between
+/// the two. The returned object is the triggering card (now in a graveyard),
+/// so it is named as the first-mentioned card.
+/// "At the beginning of combat on your turn, if you control five or more
+/// Deserts, create that many 1/1 ... tokens." (Desert Warfare): a token count
+/// equal to the number of objects the intervening condition just counted is
+/// that condition's amount.
+/// "At the beginning of your end step, if you control an Employee, a
+/// Performer, or a Robot, ... If you control all three, ..." (Done for the
+/// Day): a later conjunction requiring every alternative subtype of the
+/// trigger's own "an X, a Y, or a Z" condition is that condition's "all N".
+pub(super) fn rewrite_intervening_subtype_union_all_followup(
+    triggered: &crate::ability::TriggeredAbility,
+    text: String,
+) -> String {
+    let Some(crate::effect::Condition::PlayerControls { player, filter }) =
+        triggered.intervening_if.as_ref()
+    else {
+        return text;
+    };
+    let count_word = match filter.subtypes.len() {
+        3 => "three",
+        4 => "four",
+        5 => "five",
+        _ => return text,
+    };
+    fn leaves<'a>(
+        condition: &'a crate::effect::Condition,
+        out: &mut Vec<(&'a PlayerFilter, &'a ObjectFilter)>,
+    ) -> bool {
+        match condition {
+            crate::effect::Condition::And(left, right) => leaves(left, out) && leaves(right, out),
+            crate::effect::Condition::PlayerControls { player, filter } => {
+                out.push((player, filter));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut text = text;
+    for effect in triggered.effects.flattened_default_effects() {
+        let Some(conditional) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+        else {
+            continue;
+        };
+        let mut found = Vec::new();
+        if !leaves(&conditional.condition, &mut found) || found.len() != filter.subtypes.len() {
+            continue;
+        }
+        let covers_every_alternative = found.iter().all(|(leaf_player, leaf_filter)| {
+            *leaf_player == player
+                && leaf_filter.subtypes.len() == 1
+                && filter.subtypes.contains(&leaf_filter.subtypes[0])
+        }) && filter.subtypes.iter().all(|subtype| {
+            found
+                .iter()
+                .any(|(_, leaf_filter)| leaf_filter.subtypes.first() == Some(subtype))
+        });
+        if !covers_every_alternative {
+            continue;
+        }
+        let rendered = describe_condition(&conditional.condition);
+        let subject = describe_player_filter(player);
+        let replacement = format!(
+            "{subject} {} all {count_word}",
+            player_verb(&subject, "control", "controls")
+        );
+        text = text.replacen(&rendered, &replacement, 1);
+    }
+    text
+}
+
+/// "At the beginning of each end step, if all lands on the battlefield are
+/// Islands, remove all flood counters from them." (Quicksilver Fountain): a
+/// per-object instruction over exactly the set the intervening "all X are Y"
+/// condition counted refers back to that set.
+pub(super) fn rewrite_intervening_counted_set_back_reference(
+    triggered: &crate::ability::TriggeredAbility,
+    text: String,
+) -> String {
+    let Some(crate::effect::Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right,
+    }) = triggered.intervening_if.as_ref()
+    else {
+        return text;
+    };
+    let (Value::Count(all), Value::Count(_)) = (left.unhinted(), right.unhinted()) else {
+        return text;
+    };
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return text;
+    };
+    let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() else {
+        return text;
+    };
+    if for_each.filter != *all {
+        return text;
+    }
+    let noun = pluralize_noun_phrase(strip_indefinite_article(&all.description()));
+    text.replacen(&format!(" from all {noun}"), " from them", 1)
+}
+
+pub(super) fn rewrite_intervening_count_token_amount(
+    triggered: &crate::ability::TriggeredAbility,
+    text: String,
+) -> String {
+    let Some(crate::effect::Condition::PlayerHasAtLeast { player, filter, .. }) =
+        triggered.intervening_if.as_ref()
+    else {
+        return text;
+    };
+    let same_count = |counted: &ObjectFilter| {
+        let mut left = counted.clone();
+        left.zone = None;
+        let mut right = filter.clone();
+        right.zone = None;
+        if right.controller.is_none() {
+            right.controller = Some(player.clone());
+        }
+        left == right
+    };
+    let creates = triggered
+        .effects
+        .all_effects()
+        .into_iter()
+        .filter_map(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::CreateTokenEffect>()
+        })
+        .collect::<Vec<_>>();
+    let [create] = creates.as_slice() else {
+        return text;
+    };
+    if !matches!(create.count.unhinted(), crate::effect::Value::Count(counted) if same_count(counted))
+    {
+        return text;
+    }
+    // The token phrase was rendered with a distributive count: "create a
+    // <token> for each <counted>".
+    for create_word in ["create ", "Create "] {
+        let Some(start) = text.find(create_word) else {
+            continue;
+        };
+        let after = &text[start + create_word.len()..];
+        let Some(article_len) = ["a ", "an "]
+            .into_iter()
+            .find(|article| after.starts_with(article))
+            .map(str::len)
+        else {
+            continue;
+        };
+        let Some(per) = after.find(" token for each ") else {
+            continue;
+        };
+        let token = &after[article_len..per];
+        let tail_start = per + " token for each ".len();
+        let tail = &after[tail_start..];
+        let tail_end = tail.find(". ").or_else(|| tail.find('.')).unwrap_or(tail.len());
+        // With a plural antecedent, the distributive "Those tokens ..."
+        // follow-up becomes the plain pronoun.
+        let rest = tail[tail_end..]
+            .replacen(". Those tokens gain ", ". They gain ", 1)
+            .replacen(". Those tokens have ", ". They have ", 1);
+        return format!(
+            "{}{create_word}that many {token} tokens{rest}",
+            &text[..start]
+        );
+    }
+    text
+}
+
+pub(super) fn rewrite_died_object_return_against_other_object_condition(
+    triggered: &crate::ability::TriggeredAbility,
+    text: String,
+) -> String {
+    let Some(zone_change) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+    else {
+        return text;
+    };
+    if zone_change.this_object
+        || zone_change.from
+            != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || zone_change.to != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+    {
+        return text;
+    }
+    let Some(crate::effect::Condition::ValueComparison {
+        left: crate::effect::Value::Count(counted),
+        ..
+    }) = triggered.intervening_if.as_ref()
+    else {
+        return text;
+    };
+    if !counted.other
+        || counted.card_types.is_empty()
+        || counted.card_types != zone_change.object_filter.card_types
+    {
+        return text;
+    }
+
+    fn returns_triggering_to_battlefield(effect: &Effect) -> bool {
+        if effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|move_to_zone| {
+                move_to_zone.zone == Zone::Battlefield
+                    && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+            })
+        {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            if !found && returns_triggering_to_battlefield(child) {
+                found = true;
+            }
+        });
+        found
+    }
+    if !triggered
+        .effects
+        .all_effects()
+        .into_iter()
+        .any(returns_triggering_to_battlefield)
+    {
+        return text;
+    }
+    for (pronoun, noun) in [
+        ("Return it to the battlefield", "Return the first card to the battlefield"),
+        ("return it to the battlefield", "return the first card to the battlefield"),
+    ] {
+        if text.contains(pronoun) {
+            return text.replacen(pronoun, noun, 1);
+        }
+    }
+    text
+}
+
 pub(super) fn rewrite_typed_triggering_object_player_reference(
     triggered: &crate::ability::TriggeredAbility,
     text: String,
@@ -16765,6 +17187,96 @@ pub(super) fn is_oath_of_ghouls_player(player: &PlayerFilter) -> bool {
     matches!(player, PlayerFilter::Active | PlayerFilter::IteratedPlayer)
 }
 
+/// "When a player other than this creature's owner controls it, that player
+/// sacrifices it. If the player does, this creature deals 7 damage to the
+/// player." (Bronze Bombshell): a state trigger gated on a non-owner
+/// controlling the source is controlled by that player (CR 603.3a), so the
+/// ability's own "you" is the player its condition names.
+pub(super) fn describe_non_owner_controller_state_trigger_sacrifice(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    triggered
+        .trigger
+        .downcast_ref::<crate::triggers::StateTrigger>()?;
+    if !triggered.choices.is_empty() || triggered.presentation_label.is_some() {
+        return None;
+    }
+    let Condition::SourceMatches(filter) = triggered.intervening_if.as_ref()? else {
+        return None;
+    };
+    let mut residual = filter.clone();
+    residual.source = false;
+    if residual.owner.take() != Some(PlayerFilter::NotYou) || residual != ObjectFilter::default() {
+        return None;
+    }
+    let trigger_text = triggered.trigger.display();
+    let trigger_text = trigger_text.trim().trim_end_matches(',');
+    let lower = trigger_text.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("when a player other than ") else {
+        return None;
+    };
+    let Some(noun) = rest
+        .strip_prefix("this ")
+        .and_then(|rest| rest.strip_suffix("'s owner controls it"))
+    else {
+        return None;
+    };
+    if noun.is_empty() || noun.contains(' ') {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let effects = segment
+        .default_effects
+        .iter()
+        .filter(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
+    let [sacrifice_effect, if_effect] = effects.as_slice() else {
+        return None;
+    };
+    let with_id = sacrifice_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sacrifice = with_id
+        .effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) || sacrifice.player.is_some() {
+        return None;
+    }
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+        || if_effect.per_player_result
+    {
+        return None;
+    }
+    let [damage_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    let Value::Fixed(amount) = damage.amount.unhinted() else {
+        return None;
+    };
+    if !matches!(damage.target, ChooseSpec::SourceController)
+        || damage.source_is_combat
+        || damage.unpreventable
+        || damage.excess_to_controller.is_some()
+    {
+        return None;
+    }
+    Some(format!(
+        "{}, that player sacrifices it. If the player does, this {noun} deals {amount} damage to the player",
+        capitalize_first(trigger_text)
+    ))
+}
+
 pub(super) fn describe_oath_of_ghouls_triggered_ability(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -17482,6 +17994,50 @@ fn describe_additional_mana_amount(effect: &Effect, player: &PlayerFilter) -> Op
         .map(ToString::to_string)
 }
 
+/// "Whenever you tap a land for {C}, add an additional {C}" (Ultima, Origin
+/// of Oblivion): mana a tap-for-mana trigger adds for the tapping player is
+/// in addition to the tapped source's mana, so Oracle says "additional".
+/// The event may carry a produced-mana qualification ("for {C}").
+fn describe_you_tap_for_mana_additional_mana_trigger(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let tap = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::TapForManaTrigger>()
+        .or_else(|| {
+            triggered
+                .trigger
+                .downcast_ref::<crate::triggers::ConditionQualifiedTrigger>()
+                .and_then(|qualified| {
+                    qualified
+                        .trigger
+                        .downcast_ref::<crate::triggers::TapForManaTrigger>()
+                })
+        })?;
+    if tap.player != PlayerFilter::You {
+        return None;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [add_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let add = add_effect.downcast_ref::<crate::effects::AddManaEffect>()?;
+    if add.player != PlayerFilter::You {
+        return None;
+    }
+    let amount = describe_additional_mana_amount(add_effect, &add.player)?;
+    let head = triggered.trigger.display();
+    if !head.starts_with("Whenever you tap ") {
+        return None;
+    }
+    Some(format!("{head}, add an additional {amount}"))
+}
+
 pub(super) fn describe_tap_for_mana_additional_mana_trigger(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -17492,6 +18048,9 @@ pub(super) fn describe_tap_for_mana_additional_mana_trigger(
         return None;
     }
 
+    if let Some(rendered) = describe_you_tap_for_mana_additional_mana_trigger(triggered) {
+        return Some(rendered);
+    }
     let trigger = triggered
         .trigger
         .downcast_ref::<crate::triggers::TapForManaTrigger>()?;
@@ -17795,6 +18354,9 @@ pub(super) fn describe_triggered_inline_ability(
     if let Some(rendered) = describe_oath_of_ghouls_triggered_ability(triggered) {
         return rendered;
     }
+    if let Some(rendered) = describe_non_owner_controller_state_trigger_sacrifice(triggered) {
+        return rendered;
+    }
     if let Some(rendered) = describe_copy_exile_with_counters_suspend_triggered_ability(triggered) {
         return rendered;
     }
@@ -17887,7 +18449,8 @@ pub(super) fn describe_triggered_inline_ability(
         ));
     }
     if let Some(effects) = describe_triggered_resolution_text(triggered, self_subject, true) {
-        clauses.push(effects);
+        let effects = rewrite_intervening_subtype_union_all_followup(triggered, effects);
+        clauses.push(rewrite_intervening_counted_set_back_reference(triggered, effects));
     }
 
     if !clauses.is_empty() {

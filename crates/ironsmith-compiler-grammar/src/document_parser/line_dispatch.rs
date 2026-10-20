@@ -177,7 +177,9 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     },
     LineFamilyRuleDef {
         id: RuleId::new("ward-or-echo-static-prefix"),
-        head: HeadDiscriminator::words(&["ward", "echo"]),
+        // Also owns "<this source> has ward {X}, where X is ..." (Minthara,
+        // Merciless Soul), whose head is the source reference, not "ward".
+        head: HeadDiscriminator::words(&[]),
         run: run_ward_or_echo_static_prefix_line_family,
     },
     LineFamilyRuleDef {

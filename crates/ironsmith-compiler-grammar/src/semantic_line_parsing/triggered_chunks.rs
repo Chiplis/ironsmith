@@ -202,6 +202,19 @@ fn absorb_predicate_into_trigger(
                 )
             }
         }
+        // "Whenever an opponent casts a spell, if it has a single target,
+        // ..." (Captured by the Consulate): a bare target-count check stays
+        // an intervening-if (CR 603.4), checked again on resolution.
+        PredicateAst::ItMatches(filter)
+            if is_stack_object_targeting_filter(&filter)
+                && filter.target_count.is_some()
+                && filter.targets_player.is_none()
+                && filter.targets_object.is_none()
+                && filter.targets_only_player.is_none()
+                && filter.targets_only_object.is_none() =>
+        {
+            (trigger, Some(PredicateAst::ItMatches(filter)))
+        }
         PredicateAst::ItMatches(filter) if is_stack_object_targeting_filter(&filter) => {
             match trigger {
                 TriggerSpec::SpellCast {
@@ -282,12 +295,15 @@ fn with_combat_damage_source_filter(trigger: TriggerSpec, filter: ObjectFilter) 
             if filter.zone.is_none() {
                 filter.zone = source.zone;
             }
+            // The authored event is the passive recipient form ("your
+            // opponents are dealt combat damage"); the source qualifier only
+            // restricts which batches count.
             TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source: filter,
                 player,
                 each_damaged_player: false,
                 per_source_controller: false,
-                recipient_passive: false,
+                recipient_passive: true,
                 during_your_turn: false,
             }
         }

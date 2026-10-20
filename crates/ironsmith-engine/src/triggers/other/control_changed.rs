@@ -133,10 +133,36 @@ impl TriggerMatcher for ControlChangedTrigger {
                 )
             })
             .unwrap_or_default();
-        format!(
-            "When {} {verb} control of {}{from}",
-            player.description(),
+        // "When you lose control of that Equipment this turn" (Stolen
+        // Uniform): a watched, previously chosen object is a demonstrative.
+        let object = if self
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            }) {
+            let mut plain = self.filter.clone();
+            plain.tagged_constraints.clear();
+            plain.zone = None;
+            let description = plain.description();
+            let noun = description
+                .strip_prefix("a ")
+                .or_else(|| description.strip_prefix("an "))
+                .unwrap_or(description.as_str())
+                .trim()
+                .to_string();
+            if noun.is_empty() || noun.contains(' ') {
+                self.filter.description()
+            } else {
+                format!("that {noun}")
+            }
+        } else {
             self.filter.description()
+        };
+        format!(
+            "When {} {verb} control of {object}{from}",
+            player.description(),
         )
     }
 }

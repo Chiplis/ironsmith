@@ -290,6 +290,7 @@ where
         converted.endure = payload.endure;
         converted.cast_chooser = payload.cast_chooser.clone();
         converted.optional_choice = payload.optional_choice;
+        converted.cost_choice_keywords = payload.cost_choice_keywords.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -1416,6 +1417,7 @@ where
         if let Some(accumulated) = &payload.accumulate_into {
             converted = converted.accumulating_into(accumulated.clone());
         }
+        converted.secretly = payload.secretly;
         return Ok(Effect::new(converted));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DealDistributedDamageEffect>(&effect) {
@@ -2132,6 +2134,9 @@ where
     }
     if M::downcast_ref::<ironsmith_core::RevealChosenSubtypeEffect>(&effect).is_some() {
         return Ok(Effect::new(crate::effects::RevealChosenSubtypeEffect));
+    }
+    if M::downcast_ref::<ironsmith_core::RevealChosenPlayerEffect>(&effect).is_some() {
+        return Ok(Effect::new(crate::effects::RevealChosenPlayerEffect));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ChooseCreatureTypeEffect>(&effect) {
         let mut runtime = crate::effects::ChooseCreatureTypeEffect::for_family(

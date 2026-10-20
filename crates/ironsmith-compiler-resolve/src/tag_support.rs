@@ -1315,6 +1315,12 @@ pub fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
         PredicateAst::TaggedWasCast(found)
         | PredicateAst::Player(
             PlayerPredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { tag: found, .. },
+        )
+        | PredicateAst::TurnHistory(
+            crate::cards::builders::TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
+                tag: found,
+                ..
+            },
         ) => found.as_str() == tag,
         PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches {
             tag: found,

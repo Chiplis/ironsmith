@@ -77,6 +77,7 @@ enum MaterializationCost {
         count: u32,
     },
     RevealChosenSubtype,
+    RevealChosenPlayer,
     RevealSourceFromHand,
     RevealSourceFromHandUntilUpkeepEnds,
     RevealFromHand {
@@ -404,6 +405,7 @@ fn materialization_cost(cost: &CompilerCost) -> MaterializationCost {
             MaterializationCost::ExileTopLibrary { count: *count }
         }
         CompilerCost::RevealChosenSubtype => MaterializationCost::RevealChosenSubtype,
+        CompilerCost::RevealChosenPlayer => MaterializationCost::RevealChosenPlayer,
         CompilerCost::RevealSourceFromHand => MaterializationCost::RevealSourceFromHand,
         CompilerCost::RevealSourceFromHandUntilUpkeepEnds => {
             MaterializationCost::RevealSourceFromHandUntilUpkeepEnds
@@ -1027,6 +1029,12 @@ fn lower_materialization_costs_with(
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::validated_effect(Effect::new(
                     crate::effects::RevealChosenSubtypeEffect,
+                )));
+            }
+            MaterializationCost::RevealChosenPlayer => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::validated_effect(Effect::new(
+                    crate::effects::RevealChosenPlayerEffect,
                 )));
             }
             MaterializationCost::RevealSourceFromHand => {

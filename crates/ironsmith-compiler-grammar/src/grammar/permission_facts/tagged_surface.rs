@@ -71,6 +71,8 @@ pub enum TaggedPermissionTargetSurface {
     /// "lands and cast spells from among cards exiled this way" (Magus of
     /// the Mind): the same set as `ThoseCards`.
     LandsAndSpellsFromAmongCardsExiledThisWay,
+    /// "lands and cast spells from among the exiled cards" (Elder Brain).
+    LandsAndSpellsFromAmongTheExiledCards,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -501,6 +503,7 @@ fn parse_tagged_permission_target_lexed<'a>(
     Option<u32>,
 )> {
     alt((
+        alt((
         primitives::phrase(&["the", "card", "exiled", "this", "way"])
             .value((TaggedPermissionReference::LastTagged, false,
                 TaggedPermissionTargetSurface::ThatCard, None)),
@@ -517,10 +520,18 @@ fn parse_tagged_permission_target_lexed<'a>(
             TaggedPermissionTargetSurface::LandsAndSpellsFromAmongCardsExiledThisWay,
             None,
         )),
-        primitives::any_phrase(&[
-            &["lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards"],
-            &["lands", "and", "cast", "spells", "from", "among", "those", "cards"],
-        ]).value((TaggedPermissionReference::LastTagged, false, TaggedPermissionTargetSurface::Other, None)),
+        primitives::phrase(&[
+            "lands", "and", "cast", "spells", "from", "among", "the", "exiled", "cards",
+        ])
+        .value((
+            TaggedPermissionReference::LastTagged,
+            false,
+            TaggedPermissionTargetSurface::LandsAndSpellsFromAmongTheExiledCards,
+            None,
+        )),
+        primitives::phrase(&["lands", "and", "cast", "spells", "from", "among", "those", "cards"])
+            .value((TaggedPermissionReference::LastTagged, false, TaggedPermissionTargetSurface::Other, None)),
+        )),
         (
             primitives::phrase(&["this", "card"]),
             // This cross-zone self reference is the durable exile permission,

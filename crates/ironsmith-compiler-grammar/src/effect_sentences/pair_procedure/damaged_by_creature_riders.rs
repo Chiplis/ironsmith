@@ -2,15 +2,12 @@
 //! damage can't be regenerated this turn. If a creature dealt damage by the
 //! targeted creature would die this turn, exile that creature instead."
 //! (Runesword): both riders are about creatures dealt damage this turn by the
-//! referenced creature. They are given to that creature until end of turn as
-//! the statics "Creatures dealt damage by this creature this turn can't be
-//! regenerated this turn." (Bone Shaman's rule) and "If a creature dealt
-//! damage by this creature this turn would die, exile it instead.", so each is
-//! evaluated as regeneration or the death would happen (CR 701.19c, 614.1a),
-//! not by a trigger that resolves after state-based actions.
+//! referenced creature. They are turn-scoped effects of the resolving ability
+//! (a regeneration restriction and a would-die replacement over creatures
+//! that creature dealt damage to this turn), so each is evaluated as
+//! regeneration or the death would happen (CR 701.19c, 614.1a) and persists
+//! after the referenced creature leaves the battlefield.
 use super::*;
-use crate::cards::builders::{GrantedAbilityAst, StaticAbilityAst};
-use crate::model::CompilerStaticAbilityCore as StaticAbility;
 
 fn is_cant_be_regenerated_rider(words: &[&str]) -> bool {
     matches!(
@@ -94,24 +91,30 @@ pub(super) fn read(
     if !is_cant_be_regenerated_rider(&first_words) || !is_exile_instead_rider(&second_words) {
         return Ok(None);
     }
-    let mut damaged = ObjectFilter::creature();
-    damaged.dealt_damage_by_source_this_turn = Some(ironsmith_core::DamagedBySource::ThisCreature);
-    let cant_be_regenerated = StaticAbility::restriction(
-        crate::effect::Restriction::be_regenerated(damaged),
-        "Creatures dealt damage by this creature this turn can't be regenerated this turn.",
+    // Both riders are turn-scoped effects of the resolving ability about
+    // creatures the referenced creature deals damage to this turn. They are
+    // not abilities of that creature: they keep applying after it leaves the
+    // battlefield (CR 611.2a). The regeneration rule is a restriction checked
+    // when regeneration would apply (CR 701.19c); the exile is a replacement
+    // of the death event (CR 614.1a).
+    let damaged_by_it = ObjectFilter::creature().match_tagged(
+        crate::tag::CompilerReferenceTag::It.bind(),
+        crate::filter::TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn,
     );
-    let exile_instead = StaticAbility::exile_would_die_instead_with_damage_source(
-        ObjectFilter::creature(),
-        Some(ironsmith_core::DamagedBySource::ThisCreature),
-    );
-    Ok(Some(vec![EffectAst::subject_verb_grant_abilities_to_target(
-        TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
-        vec![
-            GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(
-                cant_be_regenerated,
-            ))),
-            GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(exile_instead))),
-        ],
-        crate::effect::Until::EndOfTurn,
-    )]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_cant(
+            crate::effect::Restriction::be_regenerated(damaged_by_it.clone()),
+            crate::effect::Until::EndOfTurn,
+            None,
+        ),
+        EffectAst::subject_verb_register_future_zone_replacement(
+            damaged_by_it,
+            Some(crate::zone::Zone::Battlefield),
+            Some(crate::zone::Zone::Graveyard),
+            crate::zone::Zone::Exile,
+            crate::cards::builders::ZoneReplacementDurationAst::UntilEndOfTurn,
+            crate::cards::builders::FutureZoneReplacementCausePolicyAst::Any,
+            false,
+        ),
+    ]))
 }

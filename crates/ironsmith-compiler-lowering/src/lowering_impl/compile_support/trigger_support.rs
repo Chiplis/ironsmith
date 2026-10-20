@@ -1475,8 +1475,23 @@ fn compile_trigger_spec_without_intro(trigger: TriggerSpec) -> Trigger {
             recipient_passive,
             during_your_turn,
         } => {
-            let mut trigger = if recipient_passive {
+            let unrestricted_source = {
+                let mut bare = source.clone();
+                bare.zone = None;
+                bare == crate::filter::ObjectFilter::default()
+            };
+            let mut trigger = if recipient_passive && unrestricted_source {
                 Trigger::players_are_dealt_combat_damage_one_or_more(player, during_your_turn)
+            } else if recipient_passive {
+                let mut trigger = Trigger::deals_combat_damage_to_player_one_or_more(source, player);
+                if let crate::triggers::TriggerKind::DealsCombatDamageToPlayer {
+                    recipient_passive: passive,
+                    ..
+                } = &mut trigger.kind
+                {
+                    *passive = true;
+                }
+                trigger
             } else if per_source_controller {
                 Trigger::deals_combat_damage_per_source_controller(source, player, each_damaged_player)
             } else if each_damaged_player {

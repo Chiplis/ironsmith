@@ -201,6 +201,11 @@ pub struct LoweringFrame {
     /// (Tempt with Reflections), and an unmodified copy's copiable values are
     /// the source's anyway (CR 707.2).
     pub token_copy_sources: Vec<(TagKey, TagKey)>,
+    /// `(name, created)`: the result tag of a single named token created
+    /// earlier in this instruction list. A later "... attached to <that
+    /// name>" (Stangg, Echo Warrior: "attached to Stangg Twin") names that
+    /// token, not any permanent that happens to share its name.
+    pub created_token_names: Vec<(String, TagKey)>,
     pub last_revealed_tag: Option<TagKey>,
     pub last_revealed_zone: Option<Zone>,
     pub last_revealed_player_filter: Option<PlayerFilter>,

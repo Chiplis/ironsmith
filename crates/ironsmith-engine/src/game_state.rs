@@ -1396,6 +1396,10 @@ pub struct ChoiceStore {
     pub chosen_creature_types: HashMap<ObjectId, crate::types::Subtype>,
     /// Unrevealed choices are separate from public chosen characteristics.
     pub(crate) secret_chosen_subtypes: HashMap<ObjectId, (PlayerId, crate::types::Subtype)>,
+    /// Unrevealed player choices ("secretly choose an opponent"), keyed by
+    /// source and holding (chooser, chosen player). Revealing moves the
+    /// choice into `chosen_players`.
+    pub(crate) secret_chosen_players: HashMap<ObjectId, (PlayerId, PlayerId)>,
     /// All subtype choices made for one source. This supplements the ordinary
     /// singular chosen subtype for instructions where multiple players each
     /// choose a type during the same resolution.
@@ -7364,6 +7368,7 @@ impl GameState {
             || filter.mana_from_source_spent_to_cast.is_some()
             || filter.attacking
             || filter.attacked_this_turn
+            || filter.attacked_player_this_turn.is_some()
             || filter.didnt_attack_this_turn
             || filter.could_have_attacked_this_turn
             || filter.nonattacking

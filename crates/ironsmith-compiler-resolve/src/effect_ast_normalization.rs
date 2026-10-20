@@ -2423,10 +2423,18 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
         let Some(filter) = direct_destroy_filter_mut(&mut effects[consumer_index]) else {
             continue;
         };
+        let mut rebound_pronoun = false;
         for constraint in &mut filter.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 constraint.tag = durable_tag.clone().into();
+                rebound_pronoun = true;
             }
+        }
+        // "Destroy each permanent chosen this way" (Grenzo's Rebuttal): the
+        // authored "this way" relation to the choices, now bound to their
+        // durable collection, keeps its surface.
+        if rebound_pronoun && filter.prior_effect_action_surface().is_none() {
+            filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
         }
         if filter.other {
             filter.other = false;

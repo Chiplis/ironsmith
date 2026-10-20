@@ -15891,9 +15891,21 @@ pub fn rewrite_when_one_or_more_this_way_clause_prefix(
         // vulnerable to binding to an intervening effect instead.
         return tokens.to_vec();
     }
+    // "When one or more nonland cards are exiled this way, ..." (Augusta,
+    // Order Returned): a characteristic-qualified result is not "When you
+    // do" -- the typed predicate keeps the filter (and the matching count
+    // for "that many").
+    let qualified_result = split_leading_result_prefix_lexed(tokens).is_some_and(|prefix| {
+        matches!(
+            &prefix.predicate,
+            IfResultPredicate::PriorEffectResult(surface)
+                if surface.filter != crate::filter::ObjectFilter::default()
+        )
+    });
     if (grammar::strip_lexed_prefix_phrase(tokens, &["when", "one", "or", "more"]).is_some()
         || grammar::strip_lexed_prefix_phrase(tokens, &["whenever", "one", "or", "more"]).is_some())
         && this_way_in_prefix
+        && !qualified_result
     {
         let Some((_before, after)) =
             grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)

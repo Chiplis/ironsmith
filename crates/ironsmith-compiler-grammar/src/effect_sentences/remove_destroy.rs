@@ -854,6 +854,9 @@ pub fn apply_except_filter_exclusions(
             )));
         }
         base.controlled_continuously_since_turn_began = Some(!polarity);
+        if !polarity {
+            base.set_continuous_control_exception_surface(true);
+        }
         return Ok(());
     }
     for branch in &exception.any_of {

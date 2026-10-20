@@ -269,6 +269,12 @@ pub(super) fn read_repeat_with_new_values(
     for repetition in repetitions {
         effects.extend(super::parse_effect_sentence_lexed(&repetition)?);
     }
+    // The whole repeated process is one instruction: a later "for each
+    // counter put on a creature this way" (Kathril, Aspect Warper) reads
+    // every repetition's result, not only the last one's.
+    if matches!(values, RepeatValues::Keywords(_)) && effects.len() > 1 {
+        return Ok(Some(vec![EffectAst::CommaThen { effects }]));
+    }
     Ok(Some(effects))
 }
 

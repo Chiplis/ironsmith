@@ -239,6 +239,9 @@ fn tagged_permission_object_surface(
                 lands_and_spells: true,
             })
         }
+        permission_tagged_facts::TaggedPermissionTargetSurface::LandsAndSpellsFromAmongTheExiledCards => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::LandsAndSpellsFromAmongTheExiledCards)
+        }
         permission_tagged_facts::TaggedPermissionTargetSurface::SpellsFromAmongThoseCards => {
             Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards)
         }

@@ -318,6 +318,7 @@ WinTheGameEffect	ironsmith_core::WinTheGameEffect	player
 WithIdEffect	ironsmith_core::WithIdEffect<wire::WireEffect>	composition-m-z
 ImprintFromHandEffect	wire::WireImprintFromHandEffect	zone-library
 ScaleXValueEffect	wire::WireScaleXValueEffect	stack-event
+RevealChosenPlayerEffect	ironsmith_core::RevealChosenPlayerEffect	player
 RevealChosenSubtypeEffect	ironsmith_core::RevealChosenSubtypeEffect	player
 BecomePlottedEffect	ironsmith_core::BecomePlottedEffect	zone-library
 BecomeForetoldEffect	ironsmith_core::BecomeForetoldEffect	zone-library

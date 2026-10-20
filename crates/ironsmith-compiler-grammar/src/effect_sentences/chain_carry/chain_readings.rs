@@ -1100,7 +1100,17 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
                 .copy_exception
                 .is_some()
             });
-        let mut effects = if let Some(effect) =
+        // "You may have this land enter tapped" (Mariposa Military Base): in
+        // an entry program, tapping the entering source makes it enter tapped.
+        let self_enter_tapped = matches!(
+            stripped_words.as_slice(),
+            ["this", noun, "enter", "tapped"] if !noun.is_empty()
+        );
+        let mut effects = if self_enter_tapped {
+            vec![EffectAst::subject_verb_tap(
+                crate::cards::builders::TargetAst::Source(None),
+            )]
+        } else if let Some(effect) =
             super::super::damage_counter_replacement::parse(&stripped)?
         {
             // "may choose that for each 1 damage that would be dealt to you

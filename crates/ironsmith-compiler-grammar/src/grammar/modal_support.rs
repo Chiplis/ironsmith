@@ -331,6 +331,7 @@ pub fn parse_modal_header(
         modal_gate,
         cast_chooser,
         optional_choice,
+        cost_choice_keywords: Vec::new(),
     }))
 }
 

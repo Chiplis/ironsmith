@@ -389,6 +389,62 @@ fn parse_put_counters_on_two_independent_targets(
     Ok(Some(effects))
 }
 
+/// "that player puts a flood counter on target non-Island land they control
+/// of their choice" (Quicksilver Fountain): the subject player announces the
+/// target (CR 115.4) through a delegated TargetOnly; the counters go on the
+/// declared object through its tag.
+pub fn parse_put_counters_with_subject_chosen_target(
+    tokens: &[OwnedLexToken],
+    chooser: PlayerAst,
+) -> Option<EffectAst> {
+    let choice = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)?;
+    if choice.actor != crate::grammar::choices::PossessiveObjectChoiceActor::SubjectPlayer
+        || !choice.object_tokens.iter().any(|token| token.is_word("target"))
+    {
+        return None;
+    }
+    delegated_target_put_counters(tokens, &choice.object_tokens, chooser)
+}
+
+fn delegated_target_put_counters(
+    tokens: &[OwnedLexToken],
+    object_tokens: &[OwnedLexToken],
+    chooser: PlayerAst,
+) -> Option<EffectAst> {
+    let mut effect = parse_put_counters(object_tokens).ok()?;
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                target,
+                target_count: None,
+                ..
+            }),
+        ..
+    }) = &mut effect
+    else {
+        return None;
+    };
+    if !matches!(target, TargetAst::Object(..)) {
+        return None;
+    }
+    let tag = crate::util::helper_tag_for_tokens(tokens, "chooser_declared_target");
+    let declared = std::mem::replace(
+        target,
+        TargetAst::Tagged(crate::tag::TagRef::of(tag.clone()), span_from_tokens(tokens)),
+    );
+    Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::TagAffected {
+                effect: Box::new(EffectAst::subject_verb_explicit_target_only_for_chooser(
+                    declared, chooser,
+                )),
+                tag: crate::tag::TagRef::of(tag),
+            },
+            effect,
+        ],
+    })
+}
+
 pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     // "put a +1/+1 counter on target creature of defending player's choice"
     // (Erithizon): another player announces the target (CR 115.4, 601.2c).

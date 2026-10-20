@@ -380,7 +380,10 @@ fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         &after_each[4..],
         ["them"] | ["that", "player"] | ["you"]
     ) {
-        return Some(Value::EventValue(EventValueSpec::Amount));
+        return Some(
+            Value::EventValue(EventValueSpec::Amount)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEachOneDamage),
+        );
     }
     if let Some(on) = permission_shapes::find_words(after_each, &["on"])
         && on > 0

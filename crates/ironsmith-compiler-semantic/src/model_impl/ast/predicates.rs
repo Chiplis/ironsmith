@@ -289,6 +289,16 @@ pub enum TurnHistoryPredicateAst {
     /// "while casting a spell with emerge": the triggering sacrifice paid a
     /// spell's emerge cost.
     TriggeringSacrificePaidEmergeCost,
+    /// "tap a land for {C}": the triggering mana event produced this symbol.
+    TriggeringManaIncludesSymbol(ManaSymbol),
+    /// "if that creature shares a color with the mana that land produced":
+    /// the referenced object shares a color with the triggering mana event.
+    /// `subject` and `producer` keep the authored reference wording.
+    TaggedSharesColorWithTriggeringMana {
+        tag: TagRef,
+        subject: String,
+        producer: String,
+    },
 }
 
 /// Whether a compared value measures the source object itself ("the number

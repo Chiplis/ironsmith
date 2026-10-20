@@ -120,6 +120,7 @@ fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
 pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
     debug_compiled_surface_lines(def)
         .into_iter()
+        .filter(|line| !ast_render::is_printed_line_boundary_sentinel(line))
         .map(restore_cleave_bracket_surface)
         .collect()
 }
@@ -523,6 +524,7 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
     // physical ability line.
     let merged = merge_ast_surface_lines(lines)
         .into_iter()
+        .filter(|line| !ast_render::is_printed_line_boundary_sentinel(line))
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect();
     let lines = compact_shared_conditional_pump_and_ability_lines(merged)
@@ -1841,6 +1843,11 @@ fn finalize_ast_surface_line(line: String) -> String {
         while line.contains("..") {
             line = line.replace("..", ".");
         }
+    }
+    // The same doubling after a closing quote that already ends with the
+    // quoted rule's period: `has "At end of combat, exile this token.".`
+    while line.contains(".\".") {
+        line = line.replace(".\".", ".\"");
     }
     // An intervening-if trigger whose effect repeats the same condition as a
     // conditional wrapper prints it twice ("if you control three or more

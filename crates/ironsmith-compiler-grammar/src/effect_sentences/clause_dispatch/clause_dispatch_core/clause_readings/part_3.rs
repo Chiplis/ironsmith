@@ -548,17 +548,17 @@ pub(super) fn read_you_choose_player(
     input: &Clause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = input.tokens;
-    // "secretly choose an opponent" (Stalking Leonin): the engine keeps no
-    // hidden player choices, so the choice reads as an ordinary one that a
-    // later "Reveal the player you chose" discloses.
-    let tokens = match tokens.split_first() {
+    // "secretly choose an opponent" (Stalking Leonin): the choice is kept
+    // hidden on the source until a "Reveal the player you chose" cost
+    // discloses it.
+    let (tokens, secretly) = match tokens.split_first() {
         Some((first, rest))
             if first.is_word("secretly")
                 && rest.first().is_some_and(|token| token.is_word("choose")) =>
         {
-            rest
+            (rest, true)
         }
-        _ => tokens,
+        _ => (tokens, false),
     };
     let restriction_duration_shape = if find_negation_span(tokens).is_some() {
         effect_grammar::parse_search_restriction_duration_shape_lexed(tokens)?
@@ -591,13 +591,28 @@ pub(super) fn read_you_choose_player(
     if let Some((chooser, choose_filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(tokens)?
     {
-        return Ok(Some(EffectAst::subject_verb_choose_player(
+        let mut effect = EffectAst::subject_verb_choose_player(
             chooser,
             choose_filter,
             crate::tag::CompilerReferenceTag::It.bind(),
             random,
             exclude_previous_choices,
-        )));
+        );
+        if secretly
+            && let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Choices(
+                        crate::cards::builders::ChoiceActionAst::ChoosePlayer {
+                        secretly: choice_secretly,
+                        ..
+                    },
+                    ),
+                ..
+            }) = &mut effect
+        {
+            *choice_secretly = true;
+        }
+        return Ok(Some(effect));
     }
     Ok(None)
 }

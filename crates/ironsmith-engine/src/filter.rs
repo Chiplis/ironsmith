@@ -1647,6 +1647,20 @@ fn tagged_constraint_matches_subject(
             snapshot.attached_to.and_then(|target| target.object_id())
                 == Some(subject.subject_object_id())
         }),
+        TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
+            let subject_id = subject.subject_object_id();
+            let subject_stable = Some(subject.subject_stable_id());
+            tagged_snapshots.iter().any(|snapshot| {
+                game.turn_store
+                    .turn_history
+                    .creature_was_damaged_by_source_identity_this_turn(
+                        subject_id,
+                        subject_stable,
+                        snapshot.object_id,
+                        Some(snapshot.stable_id),
+                    )
+            })
+        }
         TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
             game.turn_store.turn_history.projected_records().any(|record| {
                 let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() else { return false; };
@@ -5421,6 +5435,9 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
                     post_noun_qualifiers.push("of the other type".to_string());
                 }
+                TaggedOpbjectRelation::WasDealtDamageByTaggedThisTurn => {
+                    post_noun_qualifiers.push("dealt damage by it this turn".to_string());
+                }
                 TaggedOpbjectRelation::DealtDamageToTaggedThisTurn { combat_only } => {
                     post_noun_qualifiers.push(if combat_only {
                         "that dealt combat damage to it this turn"
@@ -5635,7 +5652,12 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacking_alone {
             post_noun_qualifiers.push("that's attacking alone".to_string());
         }
-        if self.attacked_this_turn {
+        if let Some(player_filter) = &self.attacked_player_this_turn {
+            post_noun_qualifiers.push(format!(
+                "that attacked {} this turn",
+                player_filter.description()
+            ));
+        } else if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if self.ability_activated_this_turn {

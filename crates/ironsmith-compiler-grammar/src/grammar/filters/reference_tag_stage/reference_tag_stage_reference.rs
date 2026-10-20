@@ -1778,6 +1778,17 @@ pub(in super::super) fn parse_object_filter_inner(
     {
         filter.attacked_this_turn = true;
     }
+    // "target ... creature that attacked you this turn" (Jabari's
+    // Influence): the attack declared against you (CR 508.1b).
+    if parse_phrase_anywhere(
+        &non_article_parser_word_refs(&segment_tokens),
+        ATTACKED_YOU_THIS_TURN_PHRASE,
+    )
+    .is_some()
+    {
+        filter.attacked_this_turn = true;
+        filter.attacked_player_this_turn = Some(PlayerFilter::You);
+    }
 
     let blocked_this_turn_word_indices = all_words
         .iter()

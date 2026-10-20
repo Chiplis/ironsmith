@@ -127,6 +127,7 @@ impl ironsmith_core::CostComponent for CompilerCost {
                 format!("exile the top {count} card(s) of your library")
             }
             Self::RevealChosenSubtype => "reveal the creature type you chose".to_string(),
+            Self::RevealChosenPlayer => "reveal the player you chose".to_string(),
             Self::RevealSourceFromHand => "reveal this card from your hand".to_string(),
             Self::RevealSourceFromHandUntilUpkeepEnds => {
                 "reveal this card from your hand until upkeep ends".to_string()
@@ -351,6 +352,7 @@ pub enum CompilerCost {
         count: u32,
     },
     RevealChosenSubtype,
+    RevealChosenPlayer,
     RevealSourceFromHand,
     RevealSourceFromHandUntilUpkeepEnds,
     RevealFromHand {

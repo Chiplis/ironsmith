@@ -1476,7 +1476,10 @@ pub(super) fn try_compile_timing_and_control_effect(
                 trigger_without_intro(trigger),
                 TriggerSpec::ConditionQualified { .. }
             ) {
-                return compile_duration_scoped_delayed_trigger(
+                // "When you lose control of that Equipment this turn, if
+                // ..." (Stolen Uniform): the authored duration trails the
+                // event; it is not a leading "Until end of turn," frame.
+                let (compiled, choices) = compile_duration_scoped_delayed_trigger(
                     trigger,
                     effects,
                     *one_shot,
@@ -1488,8 +1491,22 @@ pub(super) fn try_compile_timing_and_control_effect(
                     false,
                     &None,
                     ctx,
-                )
-                .map(Some);
+                )?;
+                let compiled = compiled
+                    .into_iter()
+                    .map(|effect| {
+                        match effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+                        {
+                            Some(schedule) => {
+                                let mut schedule = schedule.clone();
+                                schedule.leading_duration_surface = false;
+                                Effect::new(schedule)
+                            }
+                            None => effect,
+                        }
+                    })
+                    .collect();
+                return Ok(Some((compiled, choices)));
             }
             // "When this artifact leaves the battlefield this turn, destroy
             // that creature": when the delayed event's own object is the

@@ -3463,10 +3463,14 @@ fn source_and_condition_counted_subject(
     {
         return None;
     }
-    Some(ObjectFilter {
-        any_of: vec![ObjectFilter::source(), counted.clone()],
+    let mut those = counted.clone();
+    those.set_plural_pronoun_reference_surface(true);
+    let mut subject = ObjectFilter {
+        any_of: vec![ObjectFilter::source(), those],
         ..ObjectFilter::default()
-    })
+    };
+    subject.set_conjunctive_set_surface(true);
+    Some(subject)
 }
 
 fn parse_anthem_subject_with_attached_fallback(

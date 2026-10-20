@@ -44,6 +44,9 @@ pub enum ChoiceActionAst {
         tag: TagRef,
         random: bool,
         exclude_previous_choices: usize,
+        /// "secretly choose an opponent" (Stalking Leonin): the choice stays
+        /// hidden until a "Reveal the player you chose" cost discloses it.
+        secretly: bool,
     },
     ChooseSpellCastHistory {
         cast_by: PlayerAst,

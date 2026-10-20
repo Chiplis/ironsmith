@@ -92,7 +92,7 @@ impl DealsCombatDamageToPlayerTrigger {
             if *damaged_player != player {
                 continue;
             }
-            if self.recipient_passive {
+            if self.recipient_passive && self.filter == ObjectFilter::default() {
                 return false;
             }
             let Some(source_obj) = ctx.game.object(*source) else {
@@ -110,17 +110,23 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     fn canonical_model(&self) -> Option<ironsmith_core::trigger_model::Trigger> {
         use ironsmith_core::trigger_model::{Trigger as ModelTrigger, TriggerKind};
         if (self.recipient_passive
-            && (!self.one_or_more
-                || self.each_damaged_player
-                || self.per_source_controller
-                || self.filter != ObjectFilter::default()))
+            && (!self.one_or_more || self.each_damaged_player || self.per_source_controller))
             || (!self.one_or_more && (self.each_damaged_player || self.per_source_controller))
         {
             return None;
         }
-        let mut model = if self.recipient_passive {
+        let mut model = if self.recipient_passive && self.filter == ObjectFilter::default() {
             ModelTrigger::players_are_dealt_combat_damage_one_or_more(
                 self.player.clone(), self.during_your_turn)
+        } else if self.recipient_passive {
+            // "Whenever your opponents are dealt combat damage, if any of
+            // that damage was dealt by a Warrior" (Mindblade Render).
+            let mut model = ModelTrigger::deals_combat_damage_to_player_one_or_more(
+                self.filter.clone(), self.player.clone());
+            if let TriggerKind::DealsCombatDamageToPlayer { recipient_passive, .. } = &mut model.kind {
+                *recipient_passive = true;
+            }
+            model
         } else if self.per_source_controller {
             ModelTrigger::deals_combat_damage_per_source_controller(
                 self.filter.clone(), self.player.clone(), self.each_damaged_player)
@@ -171,7 +177,7 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             return self.filter.matches_snapshot(source, &ctx.filter_ctx, ctx.game)
                 && self.player.matches_player(damaged_player, &player_ctx);
         }
-        if self.recipient_passive {
+        if self.recipient_passive && self.filter == ObjectFilter::default() {
             return self.player.matches_player(damaged_player, &ctx.filter_ctx)
                 && (!self.one_or_more
                     || self.each_damaged_player
@@ -229,6 +235,23 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
+        if self.recipient_passive && self.filter != ObjectFilter::default() {
+            let recipient = match &self.player {
+                PlayerFilter::Opponent => "your opponents".to_string(),
+                PlayerFilter::Any => "players".to_string(),
+                other => other.description(),
+            };
+            let source = self.filter.description();
+            let article = if source.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+                "an"
+            } else {
+                "a"
+            };
+            return format!(
+                "Whenever {recipient} are dealt combat damage{}, if any of that damage was dealt by {article} {source}",
+                if self.during_your_turn { " during your turn" } else { "" }
+            );
+        }
         if self.recipient_passive {
             let recipient = match &self.player {
                 PlayerFilter::Opponent => "of your opponents",

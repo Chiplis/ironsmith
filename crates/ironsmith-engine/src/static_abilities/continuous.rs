@@ -6348,6 +6348,19 @@ impl StaticAbilityKind for AddSubtypesForFilter {
 
         let subject = if self.filter == ObjectFilter::source() {
             "this creature".to_string()
+        } else if self.condition.is_none()
+            && self.filter.set_quantifier_surface()
+                == Some(ironsmith_core::SetQuantifierSurface::Each)
+        {
+            // "Each creature your opponents control is an Illusion in
+            // addition to its other types" (Dismiss into Dream). Conditional
+            // animation bundles keep the plural layer surfaces their
+            // sentence merge rebuilds (Bello, Bard of the Brambles).
+            grant_subject_with_set_quantifier(
+                &self.filter,
+                Some(ironsmith_core::SetQuantifierSurface::Each),
+            )
+            .0
         } else {
             pluralized_subject_text(&self.filter)
         };

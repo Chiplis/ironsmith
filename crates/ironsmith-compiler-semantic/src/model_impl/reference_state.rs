@@ -321,6 +321,7 @@ impl ReferenceFrame {
             last_value_comparison: self.last_value_comparison.clone(),
             snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             token_copy_sources: Vec::new(),
+            created_token_names: Vec::new(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
             last_revealed_zone: None,

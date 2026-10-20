@@ -1160,6 +1160,36 @@ pub fn resolve_condition_from_predicate(
             TurnHistoryPredicateAst::TriggeringSacrificePaidEmergeCost => {
                 ironsmith_core::TurnHistoryCondition::TriggeringSacrificePaidEmergeCost
             }
+            TurnHistoryPredicateAst::TriggeringManaIncludesSymbol(symbol) => {
+                ironsmith_core::TurnHistoryCondition::TriggeringManaIncludesSymbol(*symbol)
+            }
+            TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
+                tag,
+                subject,
+                producer,
+            } => ironsmith_core::TurnHistoryCondition::TaggedObjectSharesColorWithTriggeringMana {
+                // "that creature" names the object the preceding instruction
+                // acted on (C.A.M.P.: the creature that got the counter). Bind
+                // it exactly as a "shares a color with it" filter relation is
+                // bound, then read the bound tag back.
+                tag: if tag.as_str() != crate::tag::CompilerReferenceTag::It.as_str() {
+                    tag.clone().into()
+                } else if let Some(saved) = saved_last_tag.clone() {
+                    saved
+                } else {
+                    let probe = ObjectFilter::default().shares_color_with_tagged(tag.clone());
+                    resolve_it_tag(&probe, &refs)?
+                        .tagged_constraints
+                        .into_iter()
+                        .find(|constraint| {
+                            constraint.relation == TaggedOpbjectRelation::SharesColorWithTagged
+                        })
+                        .map(|constraint| constraint.tag)
+                        .unwrap_or_else(|| crate::tag::CompilerReferenceTag::It.key())
+                },
+                subject: subject.clone(),
+                producer: producer.clone(),
+            },
             TurnHistoryPredicateAst::TriggeringPlayerWasAttackedThisTurnBy { attackers } => {
                 ironsmith_core::TurnHistoryCondition::TriggeringPlayerWasAttackedThisTurnBy {
                     attackers: resolve_it_tag(attackers, &refs)?,

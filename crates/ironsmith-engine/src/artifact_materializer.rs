@@ -152,6 +152,9 @@ fn decode_wire_effect_monolithic_reference<T: 'static>(effect: &wire::WireEffect
         "RevealChosenSubtypeEffect" => {
             decode_as::<T, ironsmith_core::RevealChosenSubtypeEffect>(effect)
         }
+        "RevealChosenPlayerEffect" => {
+            decode_as::<T, ironsmith_core::RevealChosenPlayerEffect>(effect)
+        }
         "ChooseCreatureTypeEffect" => {
             decode_as::<T, ironsmith_core::ChooseCreatureTypeEffect>(effect)
         }

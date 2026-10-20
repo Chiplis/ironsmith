@@ -487,6 +487,25 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             TaggedOpbjectRelation::IsTaggedObject,
         );
         crate::object_filters::preserve_chosen_object_reference_noun(&mut filter, tokens);
+        // "the chosen creatures" names the whole accumulated chosen set; keep
+        // the authored plural so the reference is not read as one object.
+        if filter_words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "creatures"
+                    | "permanents"
+                    | "cards"
+                    | "artifacts"
+                    | "enchantments"
+                    | "lands"
+                    | "planeswalkers"
+                    | "tokens"
+                    | "objects"
+                    | "spells"
+            )
+        }) {
+            filter.set_plural_object_noun_surface(true);
+        }
         return Ok(wrap_target_count(
             TargetAst::Object(filter, None, None),
             target_count,

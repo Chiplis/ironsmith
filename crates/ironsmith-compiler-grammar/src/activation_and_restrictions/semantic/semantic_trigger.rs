@@ -1730,7 +1730,29 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 if !object_tokens.is_empty()
                     && let Ok(filter) = parse_object_filter_lexed(&object_tokens, false)
                 {
-                    return Ok(TriggerSpec::PlayerTapsForMana { player, filter });
+                    let tapped = TriggerSpec::PlayerTapsForMana { player, filter };
+                    // "Whenever you tap a land for {C}" (Ultima, Origin of
+                    // Oblivion; Forsaken Monument): the produced mana
+                    // qualifies the event itself, like "for mana of the
+                    // chosen color" below.
+                    let produced = trim_commas(&after_tap[for_idx + 1..]);
+                    if let [symbol_token] = produced.as_slice()
+                        && symbol_token.as_word().is_none()
+                        && let Some(symbols) = crate::util::mana_pips_from_token(symbol_token)
+                        && let [symbol] = symbols.as_slice()
+                    {
+                        return Ok(TriggerSpec::ConditionQualified {
+                            trigger: Box::new(tapped),
+                            condition: crate::cards::builders::PredicateAst::TurnHistory(
+                                crate::cards::builders::TurnHistoryPredicateAst::TriggeringManaIncludesSymbol(*symbol),
+                            ),
+                            surface: format!(
+                                "for {}",
+                                symbol_token.parser_text().to_ascii_uppercase()
+                            ),
+                        });
+                    }
+                    return Ok(tapped);
                 }
             }
         }

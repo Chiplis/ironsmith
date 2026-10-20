@@ -259,6 +259,54 @@ pub fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
 
+    // "for each counter put on a creature this way" (Kathril, Aspect
+    // Warper): the counters the preceding placement instruction actually put
+    // (of the named kind, on recipients matching the filter), not a count of
+    // the recipients' current objects.
+    if !head.other
+        && let Some(counter_rel) = first_counter_word(&words[idx..])
+        && counter_rel <= 2
+        && words.get(idx + counter_rel + 1..idx + counter_rel + 3) == Some(&["put", "on"][..])
+        && let Some(way_rel) =
+            permission_shapes::find_words(&words[idx + counter_rel + 3..], &["this", "way"])
+    {
+        let counter_idx = idx + counter_rel;
+        let descriptor_start = if words.get(idx).is_some_and(|word| is_article(word)) {
+            idx + 1
+        } else {
+            idx
+        };
+        let counter_type = (counter_idx > descriptor_start)
+            .then(|| parse_counter_type_words(&words[descriptor_start..=counter_idx]))
+            .flatten();
+        let recipient_start = counter_idx + 3;
+        let mut recipient = &words[recipient_start..recipient_start + way_rel];
+        if recipient.first().is_some_and(|word| is_article(word)) {
+            recipient = &recipient[1..];
+        }
+        let filter = if recipient.is_empty() {
+            None
+        } else {
+            Some(parse_for_each_object_filter_words(recipient, false)?)
+        };
+        if counter_idx == descriptor_start || counter_type.is_some() {
+            let mut query = ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::CountersPut,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::CountersPut)
+            .with_counter_type(counter_type);
+            if let Some(filter) = filter {
+                query = query.with_filter(filter);
+            }
+            return Some((
+                Value::PendingPriorEffectMetric(query)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+                recipient_start + way_rel + 2,
+            ));
+        }
+    }
+
     // A surviving reference reads the exact current object incarnations,
     // rather than the captured characteristics of the original result set.
     for suffix in [

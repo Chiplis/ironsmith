@@ -33,9 +33,9 @@ pub fn parse_reveal_segment_tokens(
     if let Some(group) = super::grouped_hand::parse_grouped_hand_cost(tokens, true) {
         return group;
     }
-    // "Reveal the player you chose" (Stalking Leonin): revealing a secretly
-    // chosen player only discloses information; the engine keeps no hidden
-    // player choices, so the cost costs nothing ({0}).
+    // "Reveal the player you chose" (Stalking Leonin): reveal the player
+    // secretly chosen for this source; it can be paid only while that
+    // hidden choice exists, and publishes it as the chosen player.
     let lowered = crate::lexer::token_word_refs(tokens)
         .into_iter()
         .map(str::to_ascii_lowercase)
@@ -44,9 +44,7 @@ pub fn parse_reveal_segment_tokens(
         lowered.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
         ["reveal", "the", "player" | "opponent", "you", "chose"]
     ) {
-        return Ok(ActivationCostSegmentCst::Mana(crate::mana::ManaCost::from_pips(
-            vec![vec![crate::mana::ManaSymbol::Generic(0)]],
-        )));
+        return Ok(ActivationCostSegmentCst::RevealChosenPlayer);
     }
     // "Reveal your hand" (Sasaya, Orochi Ascendant): reveal every card in
     // your hand as the cost; an empty hand reveals nothing and is still paid.

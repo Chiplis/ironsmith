@@ -117,6 +117,24 @@ impl TriggerMatcher for ConditionQualifiedTrigger {
         {
             return format!("Whenever {}", self.surface.trim());
         }
+        // "Whenever you tap a land for {C}" / "Whenever a basic land is
+        // tapped for mana of the chosen color": the produced-mana
+        // qualification replaces the event's generic "for mana" tail.
+        if self.trigger.downcast_ref::<crate::triggers::TapForManaTrigger>().is_some()
+            && matches!(
+                self.condition,
+                Condition::TurnHistory(
+                    ironsmith_core::TurnHistoryCondition::TriggeringManaIncludesSourceChosenColor
+                        | ironsmith_core::TurnHistoryCondition::TriggeringManaIncludesSymbol(_)
+                )
+            )
+            && self.surface.trim().starts_with("for ")
+        {
+            let event = self.trigger.display();
+            if let Some(head) = event.strip_suffix(" for mana") {
+                return format!("{head} {}", self.surface.trim());
+            }
+        }
         // An adverbial qualification ("from anywhere other than exile",
         // "during your turn") reads directly after the event.
         // "by spending four or more mana to activate it" and "enters

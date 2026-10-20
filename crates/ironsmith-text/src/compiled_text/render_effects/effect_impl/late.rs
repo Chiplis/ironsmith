@@ -2384,7 +2384,20 @@
             other => describe_choose_spec(other),
         };
         let plural_subject = target.starts_with("all ") || target.starts_with("those ");
-        let target = capitalize_first(&target);
+        // "That land is an Island for as long as it has a flood counter on
+        // it" (Quicksilver Fountain, Cyclopean Tomb, Aquitect's Will): a
+        // counter-linked type on the land the counter was put on is stated as
+        // that land's characteristic for the duration.
+        let counter_linked = !plural_subject
+            && matches!(become_basic.target, ChooseSpec::Tagged(_))
+            && matches!(
+                become_basic.duration,
+                Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectHasCounter {
+                    object: ironsmith_core::ContinuousDurationObject::AffectedObject,
+                    ..
+                })
+            );
+        let target = if counter_linked { "That land".to_string() } else { capitalize_first(&target) };
         if become_basic.preserve_other_types || !become_basic.allowed_subtypes.is_empty() {
             let land_type = if become_basic.allowed_subtypes.is_empty() {
                 "the basic land type of your choice".to_string()
@@ -2396,7 +2409,14 @@
             let retention = if become_basic.preserve_other_types { " in addition to its other types" } else { "" };
             let duration = if become_basic.duration == Until::Forever { String::new() }
                 else { format!(" {}", describe_until(&become_basic.duration)) };
-            return format!("{target} {} {land_type}{retention}{duration}", if plural_subject { "become" } else { "becomes" });
+            let verb = if counter_linked && become_basic.allowed_subtypes.len() == 1 {
+                "is"
+            } else if plural_subject {
+                "become"
+            } else {
+                "becomes"
+            };
+            return format!("{target} {verb} {land_type}{retention}{duration}");
         }
         if let Some(subtype) = become_basic.fixed_subtype {
             let subtype_text = if plural_subject {
@@ -2414,7 +2434,13 @@
             if become_basic.duration == Until::Forever && plural_subject {
                 return format!("{target} are {subtype_text}");
             }
-            let verb = if plural_subject { "become" } else { "becomes" };
+            let verb = if counter_linked {
+                "is"
+            } else if plural_subject {
+                "become"
+            } else {
+                "becomes"
+            };
             if become_basic.duration == Until::Forever {
                 return format!("{target} {verb} {subtype_text}");
             }
@@ -5653,9 +5679,13 @@
                     capitalize_first(rest)
                 );
             }
-            if (single_clause && back_references)
+            // A trailing ", except for ..." exception closes the affected set;
+            // the timing then leads instead of following the exception.
+            if ((single_clause && back_references)
                 || is_single_destroy_instruction
-                || is_single_phase_out_instruction
+                || is_single_phase_out_instruction)
+                && !delayed_lower.contains(", except for ")
+                && !delayed_lower.contains(". ignore this effect ")
             {
                 return format!(
                     "{} at the beginning of the next end step",
@@ -5712,6 +5742,28 @@
             return format!("At this turn's next end of combat, {delayed_text}");
         }
         if schedule.one_shot && trigger_lower.contains("beginning of your end step") {
+            // A single instruction on a back-referenced card or permanent
+            // reads action-first: "Sacrifice it at the beginning of your next
+            // end step", "put that card onto the battlefield under your
+            // control at the beginning of your next end step". Demonstrative
+            // object nouns and compound or conditional payloads keep the
+            // timing first ("At the beginning of your next end step, exile
+            // that creature").
+            let delayed_lower = delayed_text.to_ascii_lowercase();
+            let single_clause = !delayed_lower.contains(". ")
+                && !delayed_lower.contains(" and ")
+                && !delayed_lower.contains(", then")
+                && !delayed_lower.contains(" unless ");
+            let card_back_reference = delayed_lower
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '\'')
+                .any(|word| word == "it")
+                || delayed_lower.contains("that card");
+            if single_clause && card_back_reference {
+                return format!(
+                    "{} at the beginning of your next end step",
+                    capitalize_first(&delayed_text)
+                );
+            }
             return format!("At the beginning of your next end step, {delayed_text}");
         }
         if schedule.one_shot
@@ -7556,6 +7608,65 @@
             let costs = if plural { "their mana costs" } else { "its mana cost" };
             return format!("{permission} without paying {costs}");
         }
+        // "For as long as you control Hama, you may cast the exiled card
+        // during your turn by waterbending {X} rather than paying its mana
+        // cost, where X is its mana value." The turn restriction and the
+        // mana-value binding of X are typed fields of the grant; render them
+        // with the price instead of dropping them.
+        if let Some(price) = &grant_play_tagged.alternative_cost
+            && !source_presence_free_price
+            && (grant_play_tagged.during_your_turns
+                || grant_play_tagged.alternative_cost_x_is_mana_value)
+            && let Some(mana) = price.mana_cost()
+            && mana.has_waterbend_obligation()
+            && price.as_all().is_some_and(|costs| costs.len() == 1)
+        {
+            let mut grant = grant_play_tagged.clone();
+            grant.alternative_cost = None;
+            grant.during_your_turns = false;
+            grant.alternative_cost_x_is_mana_value = false;
+            let surface = lowercase_first(&mana.payment_surface());
+            let payment = surface
+                .strip_prefix("waterbend ")
+                .map(|tail| format!("waterbending {tail}"))
+                .unwrap_or_else(|| format!("paying {surface}"));
+            let during = if grant_play_tagged.during_your_turns { " during your turn" } else { "" };
+            let x_clause = if grant_play_tagged.alternative_cost_x_is_mana_value {
+                ", where X is its mana value"
+            } else {
+                ""
+            };
+            let leading_control_source = grant_play_tagged.duration
+                == crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource
+                && grant_play_tagged
+                    .surface
+                    .as_ref()
+                    .is_some_and(|surface| surface.leading_duration)
+                && !grant_play_tagged.cast_pool_is_plural
+                && !grant_play_tagged.allow_land;
+            if leading_control_source {
+                let source = grant_play_tagged
+                    .surface
+                    .as_ref()
+                    .and_then(|surface| surface.control_source.as_ref())
+                    .map(ironsmith_core::SourceReferenceSurface::display_text)
+                    .unwrap_or_else(|| "this source".to_string());
+                return format!(
+                    "For as long as you control {source}, {} may cast that card{during} by {payment} rather than paying its mana cost{x_clause}",
+                    describe_player_filter(&grant_play_tagged.player),
+                );
+            }
+            let permission = describe_effect(&Effect::new(grant));
+            return format!(
+                "{}{during}. If you cast a spell this way, {} rather than pay its mana cost{x_clause}",
+                permission.trim_end_matches('.'),
+                payment
+                    .strip_prefix("waterbending ")
+                    .map(|tail| format!("waterbend {tail}"))
+                    .or_else(|| payment.strip_prefix("paying ").map(|tail| format!("pay {tail}")))
+                    .unwrap_or_else(|| payment.clone()),
+            );
+        }
         if let Some(price) = &grant_play_tagged.alternative_cost && !source_presence_free_price {
             let mut grant = grant_play_tagged.clone(); grant.alternative_cost = None;
             let payment = describe_casting_price_payment(price);
@@ -7583,6 +7694,25 @@
                 } else {
                     format!("{base} as an Adventure")
                 };
+            }
+            // "you may play cards you own exiled this way until the end of
+            // your next turn" (Wheel of Potential): an ownership-only face
+            // restriction on a land-or-spell play permission names the
+            // permitted cards rather than gating on "if it's a spell".
+            let mut owner_only = crate::target::ObjectFilter::default();
+            owner_only.owner = filter.owner.clone();
+            if grant_play_tagged.allow_land
+                && let Some(owner) = filter.owner.as_ref()
+                && *filter == owner_only
+            {
+                let base = describe_effect(&Effect::new(permission.clone()));
+                let owner = describe_player_filter(owner);
+                let own = player_verb(&owner, "own", "owns");
+                for phrase in [" play that card", " play those cards", " play them", " play it"] {
+                    if let Some((head, tail)) = base.split_once(phrase) {
+                        return format!("{head} play cards {owner} {own} exiled this way{tail}");
+                    }
+                }
             }
             let spell = describe_cast_spell_filter(filter, CastSpellFilterContext::EnclosingPermission);
             return format!("{} if it's {}", describe_effect(&Effect::new(permission)), with_indefinite_article(&spell));
@@ -7735,7 +7865,18 @@
         let helper_tag = helper_tag || helper_consult_match || authored_card_reference;
         let object_text = if grant_play_tagged.cast_pool_is_plural && helper_tag {
             if grant_play_tagged.allow_land {
-                "those cards".to_string()
+                // "You may play lands and cast spells from among the exiled
+                // cards" (Elder Brain): the authored definite description.
+                match grant_play_tagged
+                    .surface
+                    .as_ref()
+                    .and_then(|surface| surface.object.as_ref())
+                {
+                    Some(
+                        ironsmith_core::GrantPlayTaggedObjectSurface::LandsAndSpellsFromAmongTheExiledCards,
+                    ) => "lands and cast spells from among the exiled cards".to_string(),
+                    _ => "those cards".to_string(),
+                }
             } else {
                 match grant_play_tagged
                     .surface
@@ -8488,10 +8629,15 @@
         };
         let verb_prefix = if choice.secret { "secretly " } else { "" };
         if choice.guess {
-            return if choice.choose_one_participant {
-                "An opponent guesses which number you chose".to_string()
+            let reveal = if choice.reveals_chosen_number_after_guess {
+                ", then you reveal the number you chose"
             } else {
-                "Each opponent guesses which number you chose".to_string()
+                ""
+            };
+            return if choice.choose_one_participant {
+                format!("An opponent guesses which number you chose{reveal}")
+            } else {
+                format!("Each opponent guesses which number you chose{reveal}")
             };
         }
         if matches!(choice.participants, PlayerFilter::You) {
@@ -9102,6 +9248,9 @@
                 let body = repeated.trim_end_matches('.');
                 body.strip_prefix("Copy it. You may cast the copy")
                     .or_else(|| body.strip_prefix("copy it. You may cast the copy"))
+                    // An authored separate "Copy that card." instruction.
+                    .or_else(|| body.strip_prefix("Copy that card. You may cast the copy"))
+                    .or_else(|| body.strip_prefix("copy that card. You may cast the copy"))
             }
             && matches!(cast_tail, "" | " without paying its mana cost")
         {

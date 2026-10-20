@@ -676,6 +676,7 @@ pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<Ef
     { return None; }
     let cast_words = crate::lexer::parser_token_word_refs(cast.lowered());
     if cast_words != ["you", "may", "cast", "the", "copy", "without", "paying", "its", "mana", "cost"] { return None; }
+    let optional_create = copy_words.get(2) == Some(&"create");
     Some(vec![build_may_cast_tagged_effect(&MayCastTaggedSpec {
         tag: CompilerReferenceTag::NotedCardName.key(),
         alternative_cost: None,
@@ -683,7 +684,7 @@ pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<Ef
         verb: crate::activation_and_restrictions::trigger_subject_filters::MayCastItVerb::Cast,
         as_copy: true,
         without_paying_mana_cost: true,
-        copy_instruction_surface: None,
+        copy_instruction_surface: optional_create.then_some(CopyInstructionSurface::OptionalCreate),
         predicate: None,
         cost_reduction: None,
     })])
@@ -726,6 +727,26 @@ pub(super) fn die_row_copy_cast(
     {
         let tag = helper_tag_for_tokens(body.lowered(), "copied");
         cast.tag = CompilerReferenceTag::It.bind().key.clone();
+        // "each card exiled with this artifact" names the source's whole
+        // exile link set (CR 607.2a), not only the card this activation just
+        // exiled. The explicit source surface keeps the resolver from
+        // narrowing the link reference to the same-resolution exile.
+        let mut filter = filter;
+        if filter.source_surface.is_none()
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == CompilerReferenceTag::SourceExiled.as_str()
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+            })
+        {
+            let words = crate::lexer::parser_token_word_refs(filter_tokens);
+            filter.source_surface = words
+                .iter()
+                .rposition(|word| *word == "with")
+                .and_then(|with| {
+                    crate::util::source_reference_surface_for_words(&words[with + 1..])
+                        .or_else(|| crate::util::this_source_surface_for_words(&words[with + 1..]))
+                });
+        }
         return Some((
             EffectAst::Conditionals(ConditionalEffectAst::IfResult {
                 predicate,

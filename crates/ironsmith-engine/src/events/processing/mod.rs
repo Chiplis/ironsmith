@@ -10720,6 +10720,10 @@ fn prepare_etb_replacements_inner(
                 for (kind, count) in choices.as_enters_counters.drain(..) {
                     resumed = resumed.with_counters(kind, count);
                 }
+                if choices.as_enters_tapped {
+                    resumed.program_choices.as_enters_tapped = true;
+                    resumed.enters_tapped = true;
+                }
                 resumed.program_choices.transfer_as_enters_source_links |=
                     choices.transfer_as_enters_source_links;
                 resumed

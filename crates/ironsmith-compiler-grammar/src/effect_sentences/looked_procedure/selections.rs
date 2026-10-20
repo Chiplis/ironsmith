@@ -936,13 +936,15 @@ pub(super) fn conditional_instead_put(
         return Ok(false);
     }
     let instead_effects = group.effects.split_off(count - 2);
-    group.effects.push(EffectAst::Conditionals(
-        crate::cards::builders::ConditionalEffectAst::Conditional {
-            predicate,
-            if_true: instead_effects,
-            if_false: default_effects,
-        },
-    ));
+    // The replacement substitutes for the default selection ("... instead"),
+    // so keep it as a local self-replacement: it lowers to the same
+    // conditional choice, carrying the instead surface for rendering.
+    group.effects.push(EffectAst::SelfReplacement {
+        predicate,
+        if_true: instead_effects,
+        if_false: default_effects,
+        attach_to_previous_ability: false,
+    });
     group.selected = Some(selected);
     Ok(true)
 }

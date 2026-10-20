@@ -562,10 +562,36 @@ fn group_distributed_exile_instruction(
     // Only a list whose members are themselves several exiles: other
     // "exile ... and <action>" chains keep their flat shape for the
     // specialist bundle readers that match it.
-    if exile_verbs != 1 || !one_clause || effects.iter().filter(|effect| exiles(effect)).count() < 2
-    {
+    // A distributed object list read inside one member ("the top card of
+    // their library, a card at random from their graveyard") arrives as a
+    // sequence of exiles; each is its own producer of the one instruction.
+    let flattened_exiles = |effects: Vec<EffectAst>| -> Vec<EffectAst> {
+        effects
+            .into_iter()
+            .flat_map(|effect| match effect {
+                EffectAst::Sequence { effects }
+                    if effects.len() > 1 && effects.iter().all(exiles) =>
+                {
+                    effects
+                }
+                other => vec![other],
+            })
+            .collect()
+    };
+    let exile_members = effects
+        .iter()
+        .map(|effect| match effect {
+            EffectAst::Sequence { effects } if effects.len() > 1 && effects.iter().all(exiles) => {
+                effects.len()
+            }
+            effect if exiles(effect) => 1,
+            _ => 0,
+        })
+        .sum::<usize>();
+    if exile_verbs != 1 || !one_clause || exile_members < 2 {
         return effects;
     }
+    let effects = flattened_exiles(effects);
     vec![EffectAst::Coordinated {
         effects,
         leading_duration: false,
@@ -885,8 +911,27 @@ fn parse_effect_chain_lexed_inner(
     {
         return parse_effect_chain_inner_lexed_unstacked(tokens, false);
     }
-    let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
+    let mut effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
     if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
+        // "Create two Treasure tokens, then sacrifice this and open an
+        // Attraction" (Pick-a-Beeble): one single-action head, then one
+        // `and`-coordinated pair. The pair is ordered after the head as a
+        // group, not as the last two steps of a flat three-step chain.
+        if let [head, tail] = comma_then_segments.as_slice()
+            && effects.len() == 3
+            && !head.iter().any(|token| token.is_comma() || token.is_word("and"))
+            && !tail.iter().any(|token| token.is_comma())
+            && tail.iter().filter(|token| token.is_word("and")).count() == 1
+            && tail.iter().filter(|token| token.is_word("then")).count() <= 1
+            && !tail.iter().any(|token| token.is_any_word(&["if", "unless", "or"]))
+        {
+            let pair = effects.split_off(1);
+            effects.push(EffectAst::Coordinated {
+                effects: pair,
+                leading_duration: false,
+                result_conjunction: false,
+            });
+        }
         return Ok(vec![EffectAst::CommaThen { effects }]);
     }
     Ok(preserve_coordinated_effect_chain_surface(tokens, effects))
@@ -1964,6 +2009,9 @@ fn parse_effect_chain_inner_lexed_unstacked(
         });
     let mut coordination_plan = if lists_mana_combination
         || sacrifices_object_union
+        || super::super::grammar::effects::coordination::exiles_hand_card_or_chosen_object(
+            effect_chain_tokens,
+        )
         || lists_explicit_choice
     {
         None

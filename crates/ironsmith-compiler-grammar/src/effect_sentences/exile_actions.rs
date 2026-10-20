@@ -484,7 +484,159 @@ fn parse_exile_source_or_up_to_one_target(
     }))
 }
 
+/// "exile a nonland card from their hand or the chosen creature [until this
+/// creature leaves the battlefield]" (Cloak and Dagger, Entwined): one exile
+/// of exactly one object, either a card from the named hand or the object
+/// chosen earlier in the ability. The exiling player chooses which, across
+/// both zones, and only that one object is exiled.
+fn parse_exile_hand_card_or_chosen_object(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
+    let tokens = trim_commas(tokens);
+    let Some(or_index) = tokens.iter().position(|token| token.is_word("or")) else {
+        return Ok(None);
+    };
+    let (card_tokens, chosen_tokens) = (&tokens[..or_index], &tokens[or_index + 1..]);
+    let card_words = crate::lexer::token_word_refs(card_tokens);
+    if !matches!(card_words.first(), Some(&"a" | &"an"))
+        || !matches!(card_words.as_slice(), [.., "from", _, "hand"])
+        || card_words.contains(&"target")
+    {
+        return Ok(None);
+    }
+    let chosen_words = crate::lexer::token_word_refs(chosen_tokens);
+    if !matches!(chosen_words.as_slice(), ["the", "chosen", _]) {
+        return Ok(None);
+    }
+    fn untargeted_object_filter(target: TargetAst) -> Option<ObjectFilter> {
+        match target {
+            TargetAst::Object(filter, None, _) => Some(filter),
+            TargetAst::WithCount(inner, count) if count.is_single() => {
+                untargeted_object_filter(*inner)
+            }
+            _ => None,
+        }
+    }
+    let Some(card_filter) = untargeted_object_filter(parse_target_phrase(card_tokens)?) else {
+        return Ok(None);
+    };
+    let Some(chosen_filter) = untargeted_object_filter(parse_target_phrase(chosen_tokens)?)
+    else {
+        return Ok(None);
+    };
+    if card_filter.zone != Some(Zone::Hand) || chosen_filter.tagged_constraints.is_empty() {
+        return Ok(None);
+    }
+    let chosen_zone = chosen_filter.zone.unwrap_or(Zone::Battlefield);
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![card_filter, chosen_filter];
+    let tag = helper_tag_for_tokens(&tokens, "exiled");
+    let exiled = TargetAst::Tagged(tag.clone(), None);
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                optional_search_zones: false,
+                filter,
+                count: crate::effect::ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag,
+                zones: vec![Zone::Hand, chosen_zone],
+                search_mode: None,
+            }),
+            if until_source_leaves {
+                EffectAst::subject_verb_exile_until_source_leaves(exiled, false)
+            } else {
+                EffectAst::subject_verb_exile(exiled, false)
+            },
+        ],
+    }))
+}
+
+/// Split "the top card of their library, a card at random from their
+/// graveyard[, and] ..." into its object phrases when every phrase is a
+/// complete singular-article object that names its own zone. Disjunctive or
+/// targeted lists ("a creature or planeswalker", "target creature, target
+/// artifact") keep their ordinary readings.
+fn split_distributed_exile_object_list(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
+    if !tokens.iter().any(|token| token.is_comma()) {
+        return None;
+    }
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.is_comma() {
+            segments.push(&tokens[start..index]);
+            start = index + 1;
+        }
+    }
+    segments.push(&tokens[start..]);
+    let segments = segments
+        .into_iter()
+        .map(|segment| {
+            if segment.first().is_some_and(|token| token.is_word("and")) {
+                &segment[1..]
+            } else {
+                segment
+            }
+        })
+        .collect::<Vec<_>>();
+    if segments.len() < 2 {
+        return None;
+    }
+    for segment in &segments {
+        let words = crate::lexer::token_word_refs(segment);
+        let names_own_zone = words.iter().any(|word| {
+            matches!(*word, "library" | "graveyard" | "hand")
+        }) && words
+            .windows(2)
+            .any(|pair| matches!(pair, ["their" | "your" | "its" | "that" | "his", _]));
+        if !matches!(words.first(), Some(&"the" | &"a" | &"an"))
+            || !names_own_zone
+            || words.iter().any(|word| matches!(*word, "or" | "and" | "target" | "targets"))
+        {
+            return None;
+        }
+    }
+    Some(segments)
+}
+
 pub fn parse_exile(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
+    // "[target opponent exiles] ... and a card at random from their hand"
+    // (Crabomination): a player's random exile from their own zone is a
+    // distinct result that a following "cards exiled this way" names.
+    // Only a declared target player's exile is fused this way; other actors
+    // ("that player exiles a card at random from their hand", Elkin Lair)
+    // keep the source-linked exile that later delayed instructions read.
+    if matches!(
+        subject,
+        Some(SubjectAst::Player(PlayerAst::Target | PlayerAst::TargetOpponent))
+    )
+        && !tokens.iter().any(|token| token.is_comma())
+        && crate::grammar::primitives::find_prefix(tokens, || {
+            crate::grammar::primitives::phrase(&["at", "random", "from"])
+        })
+        .is_some()
+        && !crate::lexer::token_word_refs(tokens).contains(&"target")
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        if matches!(words.first(), Some(&"a" | &"an" | &"one"))
+            && matches!(words.last(), Some(&"hand" | &"graveyard" | &"library"))
+        {
+            return Ok(EffectAst::TagAffected {
+                effect: Box::new(parse_exile_inner(tokens, subject)?),
+                tag: helper_tag_for_tokens(tokens, "exiled"),
+            });
+        }
+    }
+    parse_exile_inner(tokens, subject)
+}
+
+fn parse_exile_inner(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
@@ -547,9 +699,53 @@ pub fn parse_exile(
                 effects: vec![inner],
             }));
         }
+        // "exile a card at random from each opponent's graveyard" (Kefka,
+        // Dancing Mad): one card from every opponent's graveyard, chosen
+        // separately for each graveyard rather than once among all of them.
+        if let [first, .., "from", "each", "opponent's" | "opponents", "graveyard"] =
+            words.as_slice()
+            && matches!(*first, "a" | "an" | "one")
+            && !words.contains(&"target")
+            && let Some(from_index) = tokens.iter().rposition(|token| token.is_word("from"))
+        {
+            let mut rewritten = tokens[..from_index].to_vec();
+            rewritten.extend(crate::lexer::synthetic_word_tokens([
+                "from", "that", "player's", "graveyard",
+            ]));
+            // Tag the per-graveyard exiles so "cards exiled this way" names
+            // exactly this instruction's results across the loop.
+            let inner = EffectAst::TagAffected {
+                effect: Box::new(parse_exile(&rewritten, None)?),
+                tag: helper_tag_for_tokens(tokens, "exiled"),
+            };
+            return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
+                effects: vec![inner],
+            }));
+        }
+    }
+    // "exiles the top card of their library, a card at random from their
+    // graveyard, and a card at random from their hand" (Crabomination): a
+    // comma list of object phrases that each name their own zone is several
+    // objects of one distributed exile, never one disjunctive filter.
+    if let Some(segments) = split_distributed_exile_object_list(tokens) {
+        let mut effects = Vec::with_capacity(segments.len());
+        for segment in segments {
+            // Each object phrase is its own exile result; "cards exiled this
+            // way" names the union of these exact results.
+            effects.push(EffectAst::TagAffected {
+                effect: Box::new(parse_exile_inner(segment, subject.clone())?),
+                tag: helper_tag_for_tokens(segment, "exiled"),
+            });
+        }
+        return Ok(EffectAst::Sequence { effects });
     }
     if subject.is_none()
         && let Some(effect) = parse_exile_source_or_up_to_one_target(tokens)?
+    {
+        return Ok(effect);
+    }
+    if matches!(subject, None | Some(SubjectAst::Player(PlayerAst::You)))
+        && let Some(effect) = parse_exile_hand_card_or_chosen_object(tokens)?
     {
         return Ok(effect);
     }

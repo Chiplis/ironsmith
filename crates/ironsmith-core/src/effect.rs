@@ -553,6 +553,9 @@ pub enum GrantPlayTaggedObjectSurface {
     CardsExiledThisWay {
         lands_and_spells: bool,
     },
+    /// "lands and cast spells from among the exiled cards" (Elder Brain): the
+    /// instruction's exiled set, authored as a definite description. Appended.
+    LandsAndSpellsFromAmongTheExiledCards,
 }
 
 /// Oracle-facing reference used by a flexible-mana suffix on a temporary
@@ -2309,6 +2312,12 @@ pub struct ChooseModeEffect<E> {
     /// Choosing none removes a modal triggered ability (CR 603.3c).
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub optional_choice: bool,
+    /// "{2}, {T}, Choose flying, first strike, trample, or shadow: ... the
+    /// chosen ability ..." (Phyrexian Splicer): the modes are one instruction
+    /// read once per keyword chosen while the ability is activated; these
+    /// are the authored keywords, in mode order. Presentation only.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub cost_choice_keywords: Vec<String>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2340,7 +2349,14 @@ impl<E> ChooseModeEffect<E> {
             endure: false,
             cast_chooser: None,
             optional_choice: false,
+            cost_choice_keywords: Vec::new(),
         }
+    }
+
+    /// The modes are one instruction read per keyword chosen as a cost.
+    pub fn with_cost_choice_keywords(mut self, keywords: Vec<String>) -> Self {
+        self.cost_choice_keywords = keywords;
+        self
     }
 
     /// "You may choose N": choosing no modes is also legal.
@@ -2559,6 +2575,11 @@ pub struct SearchLibraryEffect {
     pub search_mode: SearchSelectionMode,
     pub library_position_from_top: Option<Value>,
     pub result_reference_surface: SearchResultReferenceSurface,
+    /// "put it into your hand or graveyard" (Dina's Guidance): after the
+    /// found card is revealed, the searching player chooses this zone or
+    /// `destination` for it.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub alternative_destination: Option<crate::zone::Zone>,
 }
 
 impl SearchLibraryEffect {
@@ -2579,7 +2600,13 @@ impl SearchLibraryEffect {
             search_mode: SearchSelectionMode::Exact,
             library_position_from_top: None,
             result_reference_surface: SearchResultReferenceSurface::ThatCard,
+            alternative_destination: None,
         }
+    }
+
+    pub fn with_alternative_destination(mut self, zone: crate::zone::Zone) -> Self {
+        self.alternative_destination = Some(zone);
+        self
     }
 
     pub fn with_search_mode(mut self, search_mode: SearchSelectionMode) -> Self {
