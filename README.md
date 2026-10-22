@@ -13,9 +13,8 @@ is involved at any point.
 - **Cards come from their text, not from hand-written scripts.** A compiler
   written in Rust reads each card's Oracle wording the way a player would:
   lexing, then grammar, then resolving what "it" and "that creature" refer to,
-  and finally producing a runtime card definition. More than 31,000 cards
-  compile today. The same compiler runs in the browser, so you can write a
-  custom card in plain rules English and play it immediately.
+  and finally producing a runtime card definition. **At the moment of writing (October 20th, 2026),
+  every single card legally playable in Legacy/Vintage/Modern/Standard/Pioneer/Commander/Pauper works in-game.**
 - **The rules engine is deterministic.** It covers the stack, priority, combat,
   costs, triggers, replacement effects, and the layer and dependency system for
   continuous effects (CR 613). Given the same starting state and the same

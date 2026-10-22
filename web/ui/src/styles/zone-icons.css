@@ -287,8 +287,7 @@
   top: calc(var(--opponent-hand-card-width) * 88 / 63 * 0.42);
 }
 
-/* Shift computed in PlayerZonePiles: our zone chips settle at the bottom of
-   our board, above a decision dock sharing their corner. */
+/* Shift computed in PlayerZonePiles: zone chips stay at the board bottom. */
 [data-local-zone-piles="true"] > .zone-icon-row {
   top: var(--local-zone-rows-shift, 0px);
 }

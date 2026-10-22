@@ -1,0 +1,26 @@
+<!doctype html><html><head><title>Battlefield scene lifecycle</title></head><body>
+<div id="field" style="width:600px;height:300px;padding:7px;display:grid"></div>
+<script type="module">
+import { createBattlefieldScene } from '../src/components/board/scene/battlefield-scene.js';
+import { allocateBattlefieldScene } from '../src/lib/battlefield-scene-layout.js';
+import '../src/components/board/scene/battlefield-scene.css';
+const field = document.getElementById('field'), registry = new Map();
+const scene = createBattlefieldScene(field, registry);
+let layout, fitted = 0;
+window.addEventListener('ironsmith:battlefield-layout-fitted', () => fitted++);
+function update(count) {
+  const cards = Array.from({length:count}, (_, i) => ({id:i+1, stable_id:i+1, lane:'creatures'}));
+  layout = allocateBattlefieldScene(cards, layout);
+  const keys = new Set(layout.visualKeyById.values());
+  for (const key of registry.keys()) if (!keys.has(key)) registry.delete(key);
+  for (const key of keys) if (!registry.has(key)) {
+    const node = document.createElement('div');
+    node.style.width = '124px'; node.style.height = '108px';
+    node.innerHTML = '<button style="width:124px;height:108px;pointer-events:auto">Card</button>';
+    registry.set(key, node);
+  }
+  scene.configure({ layout, options: {baseWidth:124,baseHeight:108,gap:18} });
+}
+window.sceneHarness = { update, scene, get fitted(){return fitted;}, get count(){return registry.size;} };
+update(1);
+</script></body></html>

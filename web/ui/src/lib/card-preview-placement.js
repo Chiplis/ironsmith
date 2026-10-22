@@ -1,6 +1,8 @@
 // Keep the entire card in the permitted region, preferring its original size
 // and then the nearest free position. Only shrink when no full-size space fits.
-export function placeCardPreview({ preferred, height, bounds, obstacles = [], gap = 8 }) {
+// `frames` stacks that many card frames vertically (a face-down permanent and
+// its known front face); `height` stays the height of one frame.
+export function placeCardPreview({ preferred, height, bounds, obstacles = [], gap = 8, frames = 1, frameGap = 8 }) {
   let spaces = [bounds];
   for (const obstacle of obstacles) {
     const o = { left: obstacle.left - gap, right: obstacle.right + gap,
@@ -18,8 +20,10 @@ export function placeCardPreview({ preferred, height, bounds, obstacles = [], ga
     });
   }
   const candidates = spaces.map(r => {
-    const h = Math.floor(Math.max(0, Math.min(height, r.bottom - r.top, (r.right - r.left) * 88 / 63)));
-    const width = h * 63 / 88;
+    const frameHeight = Math.floor(Math.max(0, Math.min(height,
+      (r.bottom - r.top - frameGap * (frames - 1)) / frames, (r.right - r.left) * 88 / 63)));
+    const h = frameHeight * frames + (frameHeight > 0 ? frameGap * (frames - 1) : 0);
+    const width = frameHeight * 63 / 88;
     const left = Math.max(r.left, Math.min(r.right - width, preferred.left));
     const top = Math.max(r.top, Math.min(r.bottom - h, preferred.top));
     return { left, top, height: h, width, distance: Math.hypot(left - preferred.left, top - preferred.top) };

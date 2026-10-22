@@ -4,7 +4,7 @@ import useUiText from "@/i18n/useUiText";
 import { CUSTOM_CARD_LIBRARY_CHANGED, loadBundledCustomCards, listSavedCustomCards, customCardOptions } from "@/lib/custom-card-library";
 
 export default function BuildCardSearch({ onSelect, disabled, actions, secondaryControls }) {
-  const { game } = useGame();
+  const { game, semanticThreshold } = useGame();
   const ui = useUiText();
   const [query, setQuery] = useState("");
   const [includeCustom, setIncludeCustom] = useState(false);
@@ -35,7 +35,7 @@ export default function BuildCardSearch({ onSelect, disabled, actions, secondary
       } catch (error) { if (active) setError(String(error?.message || error)); }
     }, 150);
     return () => { active = false; clearTimeout(timer); };
-  }, [query, game, includeCustom, cards]);
+  }, [query, game, includeCustom, cards, semanticThreshold]);
   return <section className="build-card-search">
     <div className="build-card-search-toolbar">
     <label className="card-forge-field">

@@ -12,7 +12,6 @@ import { withSupportedCards } from "@/lib/unsupported-card-substitution";
 import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
 import {
   MATCH_FORMAT_COMMANDER,
-  MATCH_FORMAT_NORMAL,
   normalizeMatchFormat,
   readDefaultLobbyDeck,
 } from "@/lib/decklists";
@@ -25,6 +24,7 @@ import useTabAttention from "@/hooks/useTabAttention";
 import Topbar from "./Topbar";
 import TopbarUtilityControls from "./TopbarUtilityControls";
 import LobbyOverlay from "./LobbyOverlay";
+import { readStoredPlayerName } from "@/lib/player-name";
 import AddCardBar from "./AddCardBar";
 import DiagnosticsSheet from "./DiagnosticsSheet";
 import TableActionControls from "./TableActionControls";
@@ -44,7 +44,6 @@ import {
 } from "@/lib/starting-board";
 import { markStartupFoils } from "@/lib/foil-cards";
 import { installDockLabelFit } from "@/lib/dock-label-fit";
-import { installDockPlacement } from "@/lib/dock-placement";
 import FullCardsManaRail from "@/components/board/FullCardsManaRail";
 import { syncFullCardsFlag } from "@/lib/full-cards-flag";
 import useBattlefieldAppearance from "@/hooks/useBattlefieldAppearance";
@@ -54,7 +53,6 @@ export default function Shell() {
   useEffect(() => installMainDecisionShortcut(document), []);
   useEffect(() => installHandToggleShortcut(document), []);
   useEffect(() => installDockLabelFit(), []);
-  useEffect(() => installDockPlacement(), []);
   const [battlefieldAppearance] = useBattlefieldAppearance();
   useEffect(() => syncFullCardsFlag(battlefieldAppearance), [battlefieldAppearance]);
   const {
@@ -278,7 +276,7 @@ export default function Shell() {
     setLobbyOverlayInitial(buildLobbyOverlayInitialState(queryLobby, "join"));
     setLobbyOpen(true);
     joinLobby({
-      name: queryLobby.name || parseNames(playerNames)[0] || "Player",
+      name: queryLobby.name || readStoredPlayerName() || parseNames(playerNames)[0] || "Player",
       lobbyId: lobbyCode,
       deckText: queryLobby.deckText,
       commanderText: queryLobby.commanderText,
@@ -685,7 +683,7 @@ export default function Shell() {
       "Initializing";
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
-        <div className="game-loading-brand">Ironsmith</div>
+        <img className="game-loading-wordmark" src={`${import.meta.env.BASE_URL}theme/ironsmith-loading.svg#working`} alt="IronSmith" />
         {wasmPhase === "init" ? (
           <span className="game-loading-status text-[16px] font-semibold">
             {ui(phaseLabel)}
@@ -734,7 +732,7 @@ export default function Shell() {
   if (!state) {
     return (
       <div className="game-loading-screen flex h-screen flex-col items-center justify-center gap-4 text-muted-foreground">
-        <div className="game-loading-brand">Ironsmith</div>
+        <img className="game-loading-wordmark" src={`${import.meta.env.BASE_URL}theme/ironsmith-loading.svg#working`} alt="IronSmith" />
         <span className="game-loading-status text-[16px] font-semibold">{ui("Preparing Game")}<span className="loading-dots" aria-hidden="true">
             <span className="loading-dot loading-dot-1">.</span>
             <span className="loading-dot loading-dot-2">.</span>
@@ -1064,10 +1062,11 @@ function stripLobbyCodeFromUrl() {
   window.history.replaceState({}, "", url.toString());
 }
 
+// A commander list implies Commander; otherwise the host picks the format.
 function inferCreateFormatFromLobbyQuery(query) {
   return String(query?.commanderText || "").trim()
     ? MATCH_FORMAT_COMMANDER
-    : MATCH_FORMAT_NORMAL;
+    : "";
 }
 
 function buildLobbyOverlayInitialState(query, mode = null) {

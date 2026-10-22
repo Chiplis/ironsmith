@@ -13,6 +13,8 @@ import {
   useHoveredObjectId,
 } from "@/context/HoverContext";
 import HoverArtOverlay from "./HoverArtOverlay";
+import FaceDownIdentityFrame from "./FaceDownIdentityFrame";
+import { knownFaceDownNames } from "@/lib/look-pile";
 import useDisplayedCardImage from "@/hooks/useDisplayedCardImage";
 import { playerAccentVars } from "@/lib/player-colors";
 import { samePlayerId } from "@/lib/player-display";
@@ -113,7 +115,7 @@ function zoneAnchoredPreviewPosition(anchorRect, objectId, size) {
     : zonePreviewLayout(anchorRect, size);
 }
 
-function previewPosition(objectId, size) {
+function previewPosition(objectId, size, frames = 1) {
   if (objectId == null || typeof document === "undefined" || typeof window === "undefined") return null;
   const candidates = Array.from(document.querySelectorAll(".game-card[data-object-id], [data-zone-card][data-object-id], .opponent-hand-card[data-object-id]"))
     .filter((element) => element.getAttribute("data-object-id") === String(objectId));
@@ -130,10 +132,10 @@ function previewPosition(objectId, size) {
       top, bottom: rect.bottom, height: Math.max(0, rect.bottom - top) }, size);
   }
 
-  return battlefieldPreviewLayout(source.getBoundingClientRect(), size);
+  return battlefieldPreviewLayout(source.getBoundingClientRect(), size, frames);
 }
 
-function battlefieldPreviewLayout(rect, size) {
+function battlefieldPreviewLayout(rect, size, frames = 1) {
   const margin = 8;
   const minimumTop = phaseToolbarTop(margin);
   const availableHeight = Math.max(0, window.innerHeight - margin - minimumTop);
@@ -158,7 +160,7 @@ function battlefieldPreviewLayout(rect, size) {
   return placeCardPreview({
     preferred: { left, top }, height,
     bounds: { left: margin, right: window.innerWidth - margin, top: minimumTop, bottom: window.innerHeight - margin },
-    obstacles: [...previewObstacleBounds(), rect],
+    obstacles: [...previewObstacleBounds(), rect], frames,
   });
 }
 
@@ -220,7 +222,7 @@ function stackAnchoredPreviewPosition(anchorRect, size) {
   });
 }
 
-function anchoredPreviewPosition(anchorRect, size) {
+function anchoredPreviewPosition(anchorRect, size, frames = 1) {
   if (!anchorRect || typeof document === "undefined" || typeof window === "undefined") return null;
   const battlefield = document.querySelector(".table-shell[data-drop-zone]");
   const bounds = battlefield?.getBoundingClientRect?.() || {
@@ -253,7 +255,7 @@ function anchoredPreviewPosition(anchorRect, size) {
   return placeCardPreview({
     preferred: { left, top }, height,
     bounds: { left: bounds.left + margin, right: bounds.right - margin, top: minimumTop, bottom: bounds.bottom - margin },
-    obstacles: [...previewObstacleBounds(), anchorRect],
+    obstacles: [...previewObstacleBounds(), anchorRect], frames,
   });
 }
 
@@ -459,11 +461,19 @@ function CardPreviewSurface({
       return [];
     }
     return (decision.actions || []).filter((action) => (
-      ["activate_ability", "activate_mana_ability", "untap_land"].includes(action?.kind)
+      ["activate_ability", "activate_mana_ability", "untap_land", "turn_face_up"].includes(action?.kind)
       && action?.object_id != null
       && familyIds.has(String(action.object_id))
     ));
   }, [renderedObjectId, state]);
+  // A face-down permanent this viewer can identify shows its front face too.
+  const faceDownIdentity = useMemo(() => {
+    if (renderedObjectId == null || isStackSource(renderedObjectId)) return null;
+    const faceDown = (state?.players || []).some(player => (player?.battlefield || [])
+      .some(card => String(card?.id) === String(renderedObjectId) && card?.face_down));
+    return faceDown ? knownFaceDownNames(state).get(String(renderedObjectId)) || null : null;
+  }, [renderedObjectId, state, lockedStackEntry, lockedObjectId]);
+  const previewFrames = faceDownIdentity ? 2 : 1;
 
   useEffect(() => {
     if (closeTimerRef.current != null) {
@@ -613,14 +623,14 @@ function CardPreviewSurface({
         if (anchoredCardPreview?.placement === "stack") {
           return stackAnchoredPreviewPosition(anchoredCardPreview?.anchorRect, size);
         }
-        return anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size);
+        return anchoredPreviewPosition(anchoredCardPreview?.anchorRect, size, previewFrames);
       }
       // A stack preview locked in by a click keeps the place the hover preview
       // held, so committing to an entry never makes the frame jump.
       if (stackPreview && typeof document !== "undefined") {
         return stackAnchoredPreviewPosition(stackAnchorRect, size);
       }
-      return previewPosition(renderedObjectId, size);
+      return previewPosition(renderedObjectId, size, previewFrames);
     })();
   const accentStyle = accent
     ? {
@@ -649,6 +659,7 @@ function CardPreviewSurface({
             ? "beside-stack"
             : "near-card"}
       data-interactive={interactiveActions.length > 0 ? "true" : "false"}
+      data-frames={previewFrames > 1 ? previewFrames : undefined}
       aria-hidden={!visible}
       inert={!visible}
       // Closing is a fade, and the position keeps being recomputed underneath
@@ -668,7 +679,27 @@ function CardPreviewSurface({
         if (anchoredObjectId != null) clearAnchoredCardPreview();
       }}
     >
-      {renderedObjectId != null ? (
+      {renderedObjectId != null && faceDownIdentity ? (
+        <div className="floating-card-preview__frames">
+          <div className="floating-card-preview__frame">
+            <HoverArtOverlay
+              key={renderedObjectId}
+              objectId={renderedObjectId}
+              displayMode="card-frame"
+              sourceImageUrl={renderedImageUrl}
+              availableInspectorWidth={size.width}
+              availableInspectorHeight={size.height}
+              onInspectorAccentChange={setAccent}
+              onCardFrameReadyChange={onCardFrameReadyChange}
+              interactiveActions={interactiveActions}
+              onInteractiveAction={triggerInteractiveAction}
+            />
+          </div>
+          <div className="floating-card-preview__frame">
+            <FaceDownIdentityFrame name={faceDownIdentity} />
+          </div>
+        </div>
+      ) : renderedObjectId != null ? (
         <HoverArtOverlay
           key={renderedObjectId}
           objectId={renderedObjectId}

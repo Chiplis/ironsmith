@@ -32,7 +32,7 @@ export function saveRelayIdentity(room, url, identity) {
   saveReconnectRecord(key(room, url), { ...readRelaySession(room, url), ...identity });
 }
 const durableFields = ['role', 'lobbyId', 'hostPeerId', 'localPeerId', 'localName',
-  'localPlayerIndex', 'desiredPlayers', 'startingLife', 'format', 'securityMode',
+  'localPlayerIndex', 'desiredPlayers', 'startingLife', 'format', 'allowUnreleased', 'securityMode',
   'localDeckText', 'localCommanderText', 'players', 'matchStarted', 'rematch', 'tournament'];
 export function durableRelaySession(session) {
   return Object.fromEntries(durableFields.filter(field => session[field] !== undefined)

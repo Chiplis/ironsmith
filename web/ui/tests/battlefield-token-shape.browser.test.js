@@ -40,6 +40,13 @@ test('token tiles retain an arched silhouette without a name bar on desktop and 
       assert.equal(await token.evaluate(el => getComputedStyle(el).borderTopLeftRadius), '48%');
       assert.equal(await ordinary.evaluate(el => getComputedStyle(el).borderTopLeftRadius), '4px');
       assert.equal(await token.locator('.arena-permanent-name').count(), 0);
+      const tokenStack = token.locator('xpath=../..').locator('.battlefield-group-stack-layer');
+      assert.equal(await tokenStack.count(), 3);
+      assert.deepEqual(await tokenStack.evaluateAll(els => els.map(el => getComputedStyle(el).borderTopLeftRadius)), ['48%', '48%', '48%']);
+      const count = await token.locator('.battlefield-group-badge').boundingBox();
+      const face = await token.boundingBox();
+      assert.ok(count.x >= face.x && count.x + count.width < face.x + face.width / 2, 'count stays in the lower-left, clear of stats');
+      assert.ok(count.y > face.y + face.height / 2, 'count stays below the clipped crown');
       const tapped = page.locator('.battlefield-arena-card.tapped');
       const transforms = await tapped.evaluate(el => ['.game-card-surface', '.battlefield-group-stack'].map(selector => getComputedStyle(el.querySelector(selector)).transform));
       assert.notEqual(transforms[0], 'none');

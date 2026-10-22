@@ -1006,6 +1006,16 @@
   }
 
   .lobby-sheet-deck > div:last-child { line-height: 1.35; }
+  /* The decklist takes the deck panel's free height and scrolls inside it. */
+  .lobby-sheet-active .lobby-sheet-deck .lobby-deck-card-list {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .lobby-sheet-active .lobby-sheet-deck .lobby-deck-card-list__scroll {
+    max-height: none;
+    min-height: 72px;
+  }
   .lobby-sheet-active .lobby-sheet-footer { flex: none; }
   .lobby-sheet-active .lobby-sheet-status { margin-top: 0; flex: none; }
 }
@@ -1126,3 +1136,152 @@
   border-color: transparent !important;
   box-shadow: inset 0 -2px 0 #d8bf7a !important;
 }
+
+/* --- lobby deck card list (LobbyDeckCardList.jsx) ------------------- */
+/* One row per unique card, scrolling inside a fixed-height well. The
+   hover preview is portaled to <body>, so it never shifts the list. */
+
+.lobby-deck-card-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lobby-deck-card-list__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lobby-deck-card-list__problem-count {
+  color: var(--flat-danger-ink, #f0a9a0);
+}
+
+.lobby-deck-card-list__scroll {
+  max-height: min(320px, 45dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--flat-well, #0e0f11);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(216, 191, 122, 0.25) transparent;
+}
+
+.lobby-deck-card-list__empty {
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.lobby-deck-card-list__section + .lobby-deck-card-list__section {
+  border-top: 1px solid var(--flat-rule, rgba(216, 191, 122, 0.12));
+}
+
+.lobby-deck-card-list__section-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 10px 4px;
+  color: var(--flat-ink-head, #d8bf7a);
+  background: var(--flat-well, #0e0f11);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.lobby-deck-card-list__section-count {
+  color: var(--flat-ink-mute, #8b806b);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.lobby-deck-card-list__rows {
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+
+.lobby-deck-card-list__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 0;
+  color: var(--flat-ink, #e7d9bc);
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: default;
+}
+
+.lobby-deck-card-list__row:hover,
+.lobby-deck-card-list__row.is-active {
+  background: var(--flat-hover, #1d1e22);
+}
+
+.lobby-deck-card-list__row:focus-visible {
+  outline: 1px solid var(--flat-ink-head, #d8bf7a);
+  outline-offset: -1px;
+}
+
+.lobby-deck-card-list__count {
+  flex: none;
+  min-width: 2ch;
+  color: var(--flat-ink-mute, #8b806b);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.lobby-deck-card-list__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-deck-card-list__row.is-problem {
+  color: var(--flat-danger-ink, #f0a9a0);
+  box-shadow: inset 2px 0 0 var(--flat-danger-ink, #f0a9a0);
+}
+
+.lobby-deck-card-list__row.is-problem:hover,
+.lobby-deck-card-list__row.is-problem.is-active {
+  background: var(--flat-danger-fill, #2b1114);
+}
+
+.lobby-deck-card-list__problem {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  padding: 0 5px;
+  border-radius: 2px;
+  color: var(--flat-danger-ink, #f0a9a0);
+  background: var(--flat-danger-fill, #2b1114);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-deck-card-list__preview {
+  position: fixed;
+  /* Above the lobby sheet (1001) it floats out of. */
+  z-index: 1100;
+  pointer-events: none;
+  border-radius: 4.75% / 3.5%;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+/* --- end lobby deck card list -------------------------------------- */

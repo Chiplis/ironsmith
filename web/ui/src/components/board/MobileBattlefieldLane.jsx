@@ -40,11 +40,11 @@ export default function MobileBattlefieldLane({
     <div
       ref={laneRef}
       className={cn("mobile-mtga-battlefield-lane", className)}
-      style={{ height: `${viewportHeight}px`, "--arena-card-height": `${fittedHeight}px` }}
+      style={{ height: `${viewportHeight}px`, "--arena-card-height": `${cardHeight}px` }}
     >
       <div
         className="mobile-mtga-battlefield-lane-track"
-        style={{ height: `${fittedHeight}px`, minWidth: `${cards.length * fittedWidth + Math.max(0, cards.length - 1) * 2}px` }}
+        style={{ height: `${viewportHeight}px`, width: '100%', minWidth: 0 }}
       >
         <BattlefieldRow
           cards={cards}
@@ -57,6 +57,7 @@ export default function MobileBattlefieldLane({
             cardHeight: fittedHeight,
             gap: 2,
             overlapPx: 0,
+            aspect: cardWidth / cardHeight,
           }}
           selectedObjectId={selectedObjectId}
           onInspect={onInspect}

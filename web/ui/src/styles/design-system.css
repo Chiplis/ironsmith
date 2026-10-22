@@ -1934,12 +1934,13 @@ select.stone-select.topbar-phase-perspective-select:disabled {
     linear-gradient(180deg, #171410, #090a0b);
 }
 
-.game-loading-brand {
-  color: #f1d79e;
-  font-family: var(--font-heading, "Alegreya"), Georgia, serif;
-  font-size: clamp(28px, 4vw, 48px);
-  letter-spacing: 0.12em;
-  text-shadow: 0 2px #000, 0 0 24px rgba(212, 164, 74, 0.22);
+.game-loading-wordmark {
+  display: block;
+  width: min(680px, 90vw);
+  height: auto;
+  max-height: 44svh;
+  object-fit: contain;
+  flex: none;
 }
 
 .game-loading-status {
@@ -3303,7 +3304,7 @@ button:disabled,
 .card-forge-inline-frame { height: auto; min-height: 100%; }
 /* The rules box gives up height first, so the stats row stays in view. */
 .card-forge-inline-rules { min-height: 80px; }
-.card-forge-inline-frame { grid-template-rows: min-content min-content minmax(80px, 1fr) min-content; gap: 8px; padding: 12px; }
+.card-forge-inline-frame { grid-template-rows: min-content min-content min-content minmax(80px, 1fr) min-content; gap: 8px; padding: 12px; }
 .card-forge-choice,
 .card-forge-chip,
 .card-forge-color { border-radius: var(--ui-radius-control); }
@@ -7257,6 +7258,8 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-trigger {
     display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
     align-items: center;
     white-space: nowrap;
     cursor: pointer;
@@ -7269,6 +7272,9 @@ html[data-hand-pointer-suspended="true"] * {
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-label {
     margin-bottom: 2px;
+    text-transform: none;
+    font-weight: normal;
+    letter-spacing: normal;
     color: var(--ui-text-secondary);
     font-size: 9px;
     line-height: 1;
@@ -7764,7 +7770,7 @@ html[data-hand-pointer-suspended="true"] * {
   }
   .table-shell[data-focused-hud="true"] [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail {
     left: var(--stack-frame-rail-left, 0px);
-    width: var(--stack-frame-rail-width);
+    width: var(--stack-reserved-width, var(--stack-frame-rail-width));
   }
 }
 
@@ -7976,3 +7982,45 @@ html[data-hand-pointer-suspended="true"] * {
   filter: drop-shadow(0 0 3px currentColor);
 }
 
+
+/* A face-down permanent with a known identity: its face-down frame above the
+   front face it hides. Each frame keeps the card aspect ratio. */
+.floating-card-preview[data-frames] {
+  aspect-ratio: auto;
+}
+.floating-card-preview__frames {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.floating-card-preview__frame {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.face-down-identity-frame {
+  position: absolute;
+  inset: 0;
+}
+.face-down-identity-frame > .card-frame-presentation {
+  width: 100%;
+  height: 100%;
+}
+.face-down-identity-frame__label {
+  position: absolute;
+  top: -2px;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  padding: 1px 8px;
+  border: 1px solid var(--ui-border-subtle);
+  background: var(--ui-surface-raised, rgba(16, 12, 10, 0.94));
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}

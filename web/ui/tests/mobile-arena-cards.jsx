@@ -18,7 +18,7 @@ const samples = [
   {name:'Sol Ring',type_line:'Artifact'},
   {name:'Omniscience',type_line:'Enchantment',colors:['U']},
   {name:'The Eldest Reborn',type_line:'Enchantment — Saga',colors:['B'],oracle_text:'I — Each opponent sacrifices a creature.\nII — Each opponent discards a card.\nIII — Return a card.'},
-  {name:'Llanowar Elves',type_line:'Creature — Elf Druid',power_toughness:'1/1',token:true,colors:['G']},
+  {name:'Llanowar Elves',type_line:'Creature — Elf Druid',power_toughness:'1/1',token:true,count:4,colors:['G']},
   {name:'Hallowed Fountain',type_line:'Land — Plains Island',tapped:true,colors:['W','U'],count:2},
 ];
 function Sample({card}) {
@@ -27,7 +27,7 @@ function Sample({card}) {
   const land = /Land/.test(card.type_line);
   return <figure style={{margin:0,width:110}}><div className={`game-card field-card battlefield-arena-card battlefield-artwork-card ${card.tapped?'tapped':''}`}
     style={{position:'relative',width:land?70:92,height:land?58:80,minHeight:0,'--arena-card-height':land?'44px':'80px'}}>
-    {card.count && <div className="battlefield-group-stack"><div className="battlefield-group-stack-layer" style={{'--group-stack-depth':1}} /></div>}
+    {card.count && <div className="battlefield-group-stack">{Array.from({length:card.count - 1}, (_,i) => <div key={i} className="battlefield-group-stack-layer" style={{'--group-stack-depth':i+1,zIndex:card.count-i}}>{url && <img className="battlefield-group-stack-art" src={url} alt=""/>}<span className="battlefield-frame" aria-hidden="true"/></div>)}</div>}
     <div className="game-card-surface"><MobileArenaCardFace card={card} name={card.name} artUrl={url} pending={!ready} primary={stat!=null?{label:stat,title:card.type_line}:null}/></div>
     </div><figcaption style={{fontSize:10}}>{card.type_line}{card.token?' token':''}</figcaption></figure>;
 }

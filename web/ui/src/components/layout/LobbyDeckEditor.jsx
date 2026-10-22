@@ -1,6 +1,7 @@
 import useUiText from "@/i18n/useUiText";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import CompetitiveDeckPicker from "./CompetitiveDeckPicker";
+import LobbyDeckCardList from "./LobbyDeckCardList";
 import PreservingTextarea from "@/components/ui/PreservingTextarea";
 import {
   LOBBY_DECK_SIZE,
@@ -10,7 +11,7 @@ import {
   normalizeMatchFormat,
 } from "@/lib/decklists";
 import { commanderDeckTarget, formatDeckRequirement, formatName } from "@/lib/lobby-deck";
-import { usesCommanders } from "@/lib/relay/formats";
+import { isLegalityFormat, usesCommanders } from "@/lib/relay/formats";
 
 // The deck a player brings to a lobby seat: the lobby sheet shows it when they
 // join, and the rematch screen shows the same controls between games.
@@ -31,6 +32,7 @@ export function LobbyDeckCatalogPicker({ format, disabled = false, onChange }) {
   return (
     <CompetitiveDeckPicker
       format={matchFormat === MATCH_FORMAT_COMMANDER ? "commander" : matchFormat === MATCH_FORMAT_NORMAL ? "modern" : matchFormat}
+      lockFormat={isLegalityFormat(matchFormat)}
       onApply={({ deckText, commanderText }) => {
         onChange({ deckText, commanderText: commanderText || "" });
       }}
@@ -47,10 +49,17 @@ export default function LobbyDeckEditor({
   deckOptions = [],
   disabled = false,
   readyText = "",
+  cardProblems = {},
+  legalityText = "",
   onChange,
 }) {
   const ui = useUiText();
   const activeFormat = normalizeMatchFormat(format);
+  // The list view is the default; the paste box opens for an empty deck or
+  // when the player asks to edit.
+  const [editing, setEditing] = useState(false);
+  const hasCards = Boolean(String(deckText || "").trim() || String(commanderText || "").trim());
+  const showEditor = editing || !hasCards;
   const selectedDeckOptionId = useMemo(() => {
     const current = String(deckText || "");
     return deckOptions.find((option) => String(option?.deckText || "") === current)?.id || "";
@@ -60,7 +69,16 @@ export default function LobbyDeckEditor({
     <div className="lobby-sheet-deck lobby-sheet-panel fantasy-sheet-section grid gap-3 p-4">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#d8bf7a]">{ui("Your Deck")}</span>
-        <span className="text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
+        <span className="flex items-center gap-3 text-[13px] text-muted-foreground">{ui("Format:") + " "}{ui(formatName(activeFormat))}
+          {hasCards ? (
+            <button
+              type="button"
+              className="lobby-deck-edit-toggle text-[11px] font-semibold uppercase tracking-[0.16em] text-[#d8bf7a] underline-offset-4 hover:underline disabled:opacity-50"
+              disabled={disabled}
+              aria-pressed={editing}
+              onClick={() => setEditing((value) => !value)}
+            >{editing ? ui("Show list") : ui("Edit list")}</button>
+          ) : null}
         </span>
       </div>
       {deckOptions.length > 1 ? (
@@ -86,7 +104,15 @@ export default function LobbyDeckEditor({
           </select>
         </label>
       ) : null}
-      <PreservingTextarea
+      {showEditor ? null : (
+        <LobbyDeckCardList
+          deckText={deckText}
+          commanderText={usesCommanders(activeFormat) ? commanderText : ""}
+          format={activeFormat}
+          cardProblems={cardProblems}
+        />
+      )}
+      {showEditor ? <PreservingTextarea
         aria-label={ui("Your Deck")}
         className={`${lobbyTextareaClass} lobby-sheet-main-deck`}
         disabled={disabled}
@@ -97,7 +123,7 @@ export default function LobbyDeckEditor({
             ? `Paste your Commander main deck...\n\n1 Sol Ring\n1 Brainstorm\n33 Island`
             : `Paste a main deck with at least ${LOBBY_DECK_SIZE} cards...\n\n4 Swords to Plowshares\n4 Brainstorm\n24 Plains`)
         }
-      />
+      /> : null}
       <div className={lobbyInfoTextClass}>
         <span>{ui("Main deck:")}{" "}
           {usesCommanders(activeFormat)
@@ -107,7 +133,7 @@ export default function LobbyDeckEditor({
         {usesCommanders(activeFormat)
         || activeFormat === MATCH_FORMAT_PLANECHASE ? (
           <>
-            <PreservingTextarea
+            {showEditor || activeFormat === MATCH_FORMAT_PLANECHASE ? <PreservingTextarea
               className={lobbyCommanderTextareaClass}
               disabled={disabled}
               value={commanderText}
@@ -117,7 +143,7 @@ export default function LobbyDeckEditor({
                   ? "1 Plane or Phenomenon per line"
                   : "1 Commander\nor\nCommander One\nCommander Two")
               }
-            />
+            /> : null}
             <span>
               {activeFormat === MATCH_FORMAT_PLANECHASE
                 ? ui("Planar deck: {0}/10+", { 0: commanderCount })
@@ -125,6 +151,7 @@ export default function LobbyDeckEditor({
             </span>
           </>
         ) : null}
+        {legalityText ? <span className="lobby-deck-legality is-error text-[#f0a9a0]" role="status">{legalityText}</span> : null}
         <span>{readyText ? ui(readyText) : formatDeckRequirement(activeFormat)}</span>
       </div>
     </div>

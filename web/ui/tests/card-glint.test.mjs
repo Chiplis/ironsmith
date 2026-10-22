@@ -145,3 +145,18 @@ test('hand snapshots take supertypes and subtypes from their printing', () => {
     {printing:{type_line:'Land',set:'atq'}});
   assert.equal(animated.typeLine,'Artifact Creature');
 });
+
+test('loyalty abilities retain their layout when live types become creature',()=>{
+  const card={name:'Animated walker',type_line:'Legendary Creature — Ninja',power:'3',toughness:'4',
+    oracle_text:'Hexproof\n+1: Draw a card.\n0: Surveil 2.\n−2: Tap target creature.'};
+  const face=cardGlintFace(card);
+  assert.equal(face.layout,'planeswalker');
+  assert.equal(face.typeLine,card.type_line);
+  assert.equal(face.creature,true);
+  assert.equal(face.power,'3');assert.equal(face.toughness,'4');
+  assert.equal(face.rulesText,card.oracle_text);
+  assert.equal(cardGlintFace({...card,oracle_text:'{0}: Draw a card.'}).layout,'normal');
+  assert.equal(cardGlintFace({...card,oracle_text:'Pay 2 life: Draw a card.'}).layout,'normal');
+  assert.equal(cardGlintFace({...card,layout:'adventure'}).layout,'adventure');
+  assert.equal(cardGlintFace({...card,oracle_text:'[-X]: Draw X cards.'}).layout,'planeswalker');
+});

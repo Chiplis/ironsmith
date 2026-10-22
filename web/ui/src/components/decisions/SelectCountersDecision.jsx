@@ -1,3 +1,4 @@
+import { SymbolText } from "@/lib/mana-symbols";
 import { useCallback, useEffect, useId, useState } from "react";
 import useUiText from "@/i18n/useUiText";
 import { useGame } from "@/context/GameContext";
@@ -28,7 +29,7 @@ export default function SelectCountersDecision({ decision, canAct, inlineSubmit 
     <ScrollArea className="flex-1 min-h-0">
       <div className={layout === "strip" ? "flex min-w-max gap-3" : "flex flex-col gap-2"}>
         {(decision.options || []).map((option) => <label key={option.index} className="flex items-center gap-2">
-          <span>{option.description}</span>
+          <SymbolText text={option.description} />
           <Input type="text" inputMode="numeric" pattern="[0-9]*" className="decision-inline-input w-32"
             aria-label={option.description} aria-describedby={`${inputId}-range`} aria-invalid={!choice}
             value={entries.find((entry) => entry.index === option.index)?.value ?? "0"}

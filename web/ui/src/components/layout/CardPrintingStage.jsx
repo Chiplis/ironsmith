@@ -11,8 +11,6 @@ import {
 import { loadCardGlint } from "@/lib/card-glint/session.mjs";
 import { cn } from "@/lib/utils";
 
-const CARD_GLINT_REPO_URL = "https://github.com/vishvananda/card-glint";
-
 function cyclePresentation(options, value) {
   const index = options.findIndex((option) => option.id === value);
   return options[(index + 1) % options.length].id;
@@ -120,10 +118,7 @@ export default function CardPrintingStage({ draft, faceIndex, printing, onPresen
           onChange={(borderColor) => change({ borderColor })} />
         <PresentationChoices label={ui("Rarity")} options={CARD_RARITIES} value={presentation.rarity}
           onChange={(rarity) => change({ rarity })} />
-        <p className="card-forge-printing-credit">
-          {ui("Card frames rendered by")}{" "}
-          <a href={CARD_GLINT_REPO_URL} target="_blank" rel="noopener noreferrer">card-glint</a>
-        </p>
+
       </div>
     </section>
   );

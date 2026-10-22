@@ -2,7 +2,7 @@ import { useState } from "react";
 import CompetitiveDeckBrowser from "@/components/board/CompetitiveDeckBrowser";
 import { listSavedDeckPresets } from "@/lib/decklists";
 
-export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
+export default function CompetitiveDeckPicker({ onApply, format = "modern", lockFormat = false }) {
   const [savedDecks] = useState(() => listSavedDeckPresets());
 
   return (
@@ -10,6 +10,7 @@ export default function CompetitiveDeckPicker({ onApply, format = "modern" }) {
       <CompetitiveDeckBrowser
         key={format}
         initialFormat={format}
+        lockFormat={lockFormat}
         savedDecks={savedDecks}
         onSelect={(deck) => onApply?.({
           deckText: deck.deckText,

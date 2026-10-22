@@ -450,8 +450,7 @@
   display: grid;
   grid-template-columns: minmax(0, 2.6fr) minmax(0, 1fr);
   gap: 12px;
-  /* Room on the right for the compiled-abilities drawer's tab. */
-  padding: 12px 34px 12px 16px;
+  padding: 12px 16px;
   min-height: 0;
   overflow: hidden;
 }
@@ -520,65 +519,11 @@
   color: #f0dcb4;
 }
 
-.card-forge-abilities-drawer {
-  position: absolute;
-  z-index: 5;
-  top: 12px;
-  right: 0;
-  bottom: 12px;
-  display: flex;
-  align-items: stretch;
-  pointer-events: none;
-}
-.card-forge-abilities-drawer[data-open="true"] {
-  /* Covers the layout column (the grid's last track) and a little more. */
-  width: min(560px, calc(100% / 3.6 + 60px));
-}
-.card-forge-abilities-toggle {
-  align-self: center;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 72px;
-  margin-right: 4px;
-  padding: 0;
-  border: 1px solid rgba(151, 122, 83, 0.45);
-  border-radius: 6px 0 0 6px;
-  background: linear-gradient(180deg, rgba(59, 50, 42, 0.95), rgba(30, 26, 23, 0.98));
-  color: #d1b279;
-  cursor: pointer;
-  pointer-events: auto;
-}
-.card-forge-abilities-toggle:hover,
-.card-forge-abilities-toggle:focus-visible {
-  color: #f3dca6;
-  border-color: rgba(209, 178, 121, 0.8);
-  outline: none;
-}
-.card-forge-abilities-toggle > svg { width: 18px; height: 18px; }
-.card-forge-abilities-drawer-body {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: grid;
-  margin-right: 8px;
-  pointer-events: auto;
-  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.55);
-  animation: card-forge-drawer-in 180ms ease-out;
-}
-.card-forge-abilities-drawer-body > .card-forge-abilities-panel { height: 100%; }
-@keyframes card-forge-drawer-in {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .card-forge-abilities-drawer-body { animation: none; }
-}
-
 .card-forge-side {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, auto) minmax(180px, 1fr);
   gap: 12px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .card-forge-panel {
@@ -644,7 +589,7 @@
 .card-forge-inline-frame {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: 10px;
   height: 100%;
   min-height: 0;
@@ -4020,4 +3965,28 @@
 }
 .game-card:has(.arena-permanent[data-mana-strip="true"]) > .battlefield-damage-badge {
   bottom: calc(var(--mana-strip-height, 12px) + clamp(15px, calc(var(--bf-card-height, 96px) * .18), 20px) + 7px);
+}
+
+/* Keep layout beside artwork, and compiled output visible at every size. */
+.card-forge-layout-art-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.6fr);
+  align-items: start;
+  gap: 12px;
+}
+.card-forge-layout-controls { display: grid; gap: 8px; min-width: 0; }
+.card-forge-layout-controls .card-forge-choice { padding: 8px; font-size: 11px; }
+.card-forge-side .card-forge-compile-panel { display: grid; max-height: 280px; }
+@media (max-width: 960px) {
+  .card-forge-grid { grid-template-rows: minmax(480px, auto) auto; }
+  .card-forge-side { grid-template-columns: 1fr; grid-template-rows: auto 360px; }
+}
+@container (max-width: 420px) {
+  .card-forge-layout-art-row { grid-template-columns: 1fr; }
+}
+
+@media (max-height: 520px) and (min-width: 961px) {
+  .card-forge-inline-frame { grid-template-rows: auto auto minmax(80px, 1fr) auto; }
+  .card-forge-layout-art-row { grid-column: 1 / -1; }
+  .card-forge-side { grid-template-rows: minmax(0, auto) minmax(180px, 1fr); }
 }

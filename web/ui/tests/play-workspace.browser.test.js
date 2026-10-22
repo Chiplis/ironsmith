@@ -19,7 +19,18 @@ test('Play tabs fill the viewport, preserve featured decks while scrolling, and 
         await page.getByRole('button',{name:tab,exact:true}).first().click();
         const sheet=await page.locator('.play-workspace').boundingBox();
         assert.equal(Math.round(sheet.width),viewport.width);assert.equal(Math.round(sheet.height),viewport.height);
-        if(tab==='Create'||tab==='Join') {
+        if(tab==='Join') {
+          // Guests pick a deck inside the lobby, once the host's format is known.
+          assert.equal(await page.locator('[data-deck-catalog]').count(),0);
+          assert.ok(await page.getByRole('button',{name:'Join Lobby',exact:true}).isVisible());
+        }
+        if(tab==='Create') {
+          // The host picks the format before decks (or the lobby) are offered.
+          assert.equal(await page.locator('[data-deck-catalog]').count(),0);
+          assert.ok(await page.getByRole('button',{name:'Create Lobby',exact:true}).isDisabled());
+          await page.getByRole('combobox',{name:'Format',exact:true}).first().selectOption('modern');
+          assert.ok(await page.getByRole('button',{name:'Create Lobby',exact:true}).isEnabled());
+          assert.ok(await page.getByText('Allow unreleased cards').isVisible());
           await page.locator('[data-featured-deck]').first().waitFor();
           const featured=page.locator('[data-featured-decks]');const before=await featured.boundingBox();
           const list=page.locator('[data-deck-catalog-list]');await list.evaluate(e=>{e.scrollTop=500});

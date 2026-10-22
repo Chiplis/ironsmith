@@ -1396,6 +1396,8 @@ export default function GameCard({
         className,
       )}
       data-object-id={card.id}
+      data-attached-to-ids={card.attached_to_ids?.length ? card.attached_to_ids.join(',') : undefined}
+      data-battle-protector={card.battle_protector ?? undefined}
       data-card-image-url={artUrl || ''}
       data-stable-id={stableId}
       data-member-object-ids={(Array.isArray(card.member_ids) ? card.member_ids : []).join(",")}

@@ -3209,7 +3209,7 @@ body {
   right: 18px;
   width: 34px;
   height: 50px;
-  background: url("/theme/gem-seal.svg") center / contain no-repeat;
+  background: url("/theme/ironsmith-logo.svg") center / contain no-repeat;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.35));
   opacity: 0.9;
   pointer-events: none;

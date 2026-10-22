@@ -50,6 +50,11 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
   const cost = face.mana_cost ?? card.mana_cost ?? '';
   const palette = colors(signature ? signature[1] : face.colors ?? face.color_indicator ?? [...cost.matchAll(/[WUBRG]/g)].map(m => m[0]));
   const text = rules(face);
+  // Becoming a creature does not remove loyalty abilities. Keep their roomy,
+  // badged layout even when the live type line no longer says Planeswalker.
+  // Do not replace explicit multi-face or other special layouts.
+  const layout = face.layout ?? card.layout ?? 'normal';
+  const hasLoyaltyAbility = /^\s*\[?[+−-]?(?:\d+|X)\]?\s*:/im.test(text);
   // Imported custom-card catalogs may store a source URL as flavor text.
   // Attribution links are shown below the inspector and can overflow the painter's
   // unbroken-word layout, rejecting an otherwise valid default frame.
@@ -77,7 +82,7 @@ export function cardGlintFace(card, {imageUrl, faceIndex = 0, printing, presenta
     borderColor: ['black','white','silver'].includes(print.border_color) ? print.border_color : CARD_GLINT_DEFAULT_FRAME.borderColor,
     securityStamp: print.security_stamp ?? 'none',
     frameStyle: print.frame ? (Number(print.frame) < 2003 ? 'retro' : 'modern') : CARD_GLINT_DEFAULT_FRAME.frameStyle,
-    layout: face.layout ?? card.layout ?? 'normal',
+    layout: layout === 'normal' && hasLoyaltyAbility ? 'planeswalker' : layout,
   };
   const chosen = presentation === undefined ? cardPresentation(card) : presentation;
   if (chosen?.rarity) result.rarity = chosen.rarity;

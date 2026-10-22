@@ -1,45 +1,54 @@
+.mana-pool-inline,
+.mobile-mtga-mana-pool { position: relative; }
+
+/* Appearing counters must not move the mana symbols below them. */
 .player-counters {
-  display: inline-flex;
-  flex-wrap: wrap;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
 }
 .player-counter-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px;
-  border: 1px solid #9d8b65;
-  background: #181c24;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px;
   color: #f4e4bd;
   font-size: 10px;
   line-height: 1.2;
   white-space: nowrap;
 }
+.player-counter-chip img { filter: invert(1); }
+.player-counter-chip[data-counter-kind="storm"] { color: #bcb5ff; }
 .player-counter-chip > span { text-transform: capitalize; }
-.opponent-battlefield-mana .player-counters,
-.mobile-mtga-mana-pool--opponent .player-counters {
-  flex-direction: column;
-  align-items: flex-start;
-}
-.my-zone-mana-rail .mana-pool-inline,
-.mobile-mtga-mana-pool--self { position: relative; }
-.my-zone-mana-rail .player-counters,
-.mobile-mtga-mana-pool--self .player-counters {
+.player-counter-chip > strong {
   position: absolute;
-  left: calc(100% + 4px);
-  top: 0;
-  flex-direction: column;
-  align-items: flex-start;
+  right: -3px;
+  bottom: -2px;
+  min-width: 15px;
+  padding: 2px 3px;
+  border-radius: 3px;
+  background: #171321;
+  box-shadow: 0 0 0 1px #a889d355;
+  color: #f2eaff;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
 }
-
-/* Opponent counters occupy their own row when mana is horizontal. */
-.opponent-battlefield-mana-row .mana-pool-inline { flex-wrap: wrap; }
-.opponent-battlefield-mana-row .player-counters { flex-basis: 100%; }
+.mobile-mtga-mana-pool .player-counters {
+  flex-direction: row;
+  gap: 10px;
+}
 @media (min-width: 1024px) {
   .table-shell .battlefield-panel--opponents .opponent-battlefield-mana.mana-pool-inline {
     overflow: visible;
   }
-  .opponent-battlefield-mana-row .player-counters { flex-basis: auto; }
 }

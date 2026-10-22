@@ -482,9 +482,8 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
             const room = nextPilesTop - ceiling;
             lift = Math.max(0, Math.min(LOCAL_PILES_MAX_LIFT, room));
           }
-          // Our zone chips sit at the bottom of our board, above whatever
-          // decision dock shares their corner (a scry or search grows it up
-          // the right edge), and never above the opponent's piles.
+          // Zones stay anchored to the board; decisions reserve a separate
+          // horizontal lane and must never lift this column.
           const rows = [...piles.querySelectorAll(":scope > .zone-icon-row")]
             .map((row) => row.getBoundingClientRect()).filter((rect) => rect.height > 0);
           if (rows.length && board) {
@@ -493,11 +492,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
             const right = Math.max(...rows.map((rect) => rect.right));
             const restingTop = Math.min(...rows.map((rect) => rect.top)) - currentShift;
             const restingBottom = Math.max(...rows.map((rect) => rect.bottom)) - currentShift;
-            const dockTop = [...document.querySelectorAll(".battlefield-human-action-dock")]
-              .map((dock) => dock.getBoundingClientRect())
-              .filter((rect) => rect.height > 0 && rect.left < right && rect.right > left && rect.bottom > restingTop)
-              .reduce((top, rect) => Math.min(top, rect.top), Infinity);
-            const floor = Math.min(boardBounds.bottom - LOCAL_PILES_CLEARANCE, dockTop - LOCAL_PILES_CLEARANCE / 2);
+            const floor = boardBounds.bottom - LOCAL_PILES_CLEARANCE;
             const ceiling = [...document.querySelectorAll('[data-opponent-zone-piles="true"] .zone-icon-row')]
               .map((row) => row.getBoundingClientRect())
               .filter((rect) => rect.width > 0 && rect.left < right && rect.right > left)
@@ -532,7 +527,7 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
         // The stack anchor is independent of the zone column.
         const stackTop = 12;
         board.style.setProperty("--stack-area-top", `${stackTop}px`);
-        // Overlay the unused left edge without removing a battlefield column.
+        // Card positions only determine whether a mana rail precedes the stack.
         const fieldCards = [...(row?.querySelectorAll('.game-card') || [])]
           .map(card => card.getBoundingClientRect()).filter(rect => rect.width > 0 && rect.height > 0);
         const firstColumnLeft = fieldCards.length ? Math.min(...fieldCards.map(rect => rect.left)) : Math.min(360, window.innerWidth * .24);
@@ -545,7 +540,9 @@ export default function PlayerZonePiles({ player, onCardClick, legalTargetObject
           : 0;
         const railLeft = manaRight > 0 ? manaRight + 6 : 0;
         board.style.setProperty('--stack-mana-clearance', `${railLeft}px`);
-        const railWidth = `${Math.max(0, firstColumnLeft - 8 - railLeft)}px`;
+        // The battlefield reserves this lane. Deriving its width from the
+        // first card creates a feedback loop as that card moves out of its way.
+        const railWidth = `${Math.max(240, Math.min(360, window.innerWidth * .24))}px`;
         if (board.style.getPropertyValue('--stack-frame-rail-width') !== railWidth) board.style.setProperty('--stack-frame-rail-width', railWidth);
         board.style.setProperty('--stack-frame-rail-left', `${railLeft - boardBounds.left}px`);
       }

@@ -1,9 +1,13 @@
 // Build the upstream browser library only. Its full build also generates
 // declaration files and the showcase site, neither consumed by Ironsmith.
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {cp} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 const source = process.cwd();
+// Match upstream's build prerequisite: fresh checkouts omit generated set data,
+// including the eager module imported by the Magic presentation entry point.
+execFileSync(process.execPath, ['games/magic/tools/build-set-data.mjs'], {cwd: source, stdio: 'inherit'});
 const {build} = await import(pathToFileURL(path.join(source, 'node_modules/vite/dist/node/index.js')).href);
 const result = await build({
   configFile:false,

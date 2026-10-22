@@ -1,3 +1,4 @@
+import { stackArrivalActivity } from "@/lib/stack-arrival-activity";
 import { isOwnPassCancellation } from "@/lib/sync-commands.js";
 import { useAutomaticHandReveal } from "@/hooks/useAutomaticHandReveal";
 import { buildOpponentDecisionCommand } from "@/lib/opponent-decision.js";
@@ -888,6 +889,7 @@ export function GameProvider({ children }) {
     const enabled = typeof value === "function" ? value(autoResolveEnabledRef.current) : value;
     setAutoResolveMode(enabled ? "regular" : "off");
   }, [setAutoResolveMode]);
+  const pendingStackArrivals = useSyncExternalStore(stackArrivalActivity.subscribe, stackArrivalActivity.getSnapshot);
   const priorityStopsState = useSyncExternalStore(priorityStops.subscribe, priorityStops.getSnapshot);
   const cyclePriorityStop = useCallback(key => priorityStops.cycleStop(key, stateRef.current), [priorityStops, stateRef]);
   const holdPostActionPriority = useCallback(() => priorityStops.hold(stateRef.current), [priorityStops, stateRef]);
@@ -2439,8 +2441,15 @@ export function GameProvider({ children }) {
   // normal local pass, and revalidate authoritative state after any input/sync.
   useEffect(() => {
     const window = priorityStopsState.window;
-    if (!window || !autoResolveEnabled || window.pausedAt != null) return;
-    // Start the two seconds once the authoritative priority snapshot is drawn.
+    if (!window || !autoResolveEnabled) return;
+    // Read live activity too: child layout effects register arrivals before
+    // this effect, potentially after this render read the store.
+    if (stackArrivalActivity.getSnapshot() > 0) {
+      priorityStops.deferWindow(window.id);
+      return;
+    }
+    if (window.pausedAt != null) return;
+    // Start only after the snapshot is drawn and every stack arrival settles.
     if (window.startedAt === null) {
       if (state === stateRef.current && isSnapshotRendered() && priorityStops.windowFor(state)) priorityStops.armWindow(window.id);
       return;
@@ -2479,7 +2488,7 @@ export function GameProvider({ children }) {
     timer = setTimeout(passWhenReady, Math.max(0, Math.ceil(window.startedAt + window.duration - performance.now())));
     return () => clearTimeout(timer);
   }, [priorityStops, priorityStopsState.window, autoResolveEnabled, autoPassEnabled, holdRule, dispatch,
-    isSnapshotRendered, multiplayer.submittingAction, stateRef, state]);
+    isSnapshotRendered, multiplayer.submittingAction, stateRef, state, pendingStackArrivals]);
 
   // Each run sends one authenticated intention. The engine drains authorized
   // priority without intermediate renders and reports retained consent.

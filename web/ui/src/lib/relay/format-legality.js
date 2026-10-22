@@ -56,11 +56,17 @@ function validPair(a, b) {
   const doctor = (a, b) => /Doctor's companion/.test(a.rules) && /Legendary Creature — Time Lord Doctor$/.test(b.type);
   return background(a, b) || background(b, a) || doctor(a, b) || doctor(b, a);
 }
-export function validateFormatDeck(format, deck = [], commanders = [], sideboard = [], data = catalog) {
+// `options.allowUnreleased` admits cards Scryfall previews before any format
+// lists them (the lobby's "Allow unreleased cards" toggle); they still obey
+// copy limits, commander rules, and color identity.
+export function validateFormatDeck(format, deck = [], commanders = [], sideboard = [], data = catalog, options = {}) {
   const rules = Object.hasOwn(PUBLIC_FORMATS, format) ? PUBLIC_FORMATS[format] : null;
   if (!rules) return { ready: false, errors: ['Choose a supported public format.'] };
   const errors = [];
-  if (!data?.cards) return { ready: false, errors: ['Card legality catalog has not loaded.'] };
+  // Card name as the deck wrote it → why that card keeps the deck from starting.
+  const cardProblems = {};
+  const flag = (name, message) => { errors.push(message); cardProblems[name] ||= message; };
+  if (!data?.cards) return { ready: false, errors: ['Card legality catalog has not loaded.'], cardProblems };
   const commanderFormat = usesCommanders(format);
   if (commanderFormat) {
     if (![1, 2].includes(commanders.length) || deck.length + commanders.length !== 100) errors.push(`${rules.label} requires 100 cards including one commander or a legal commander pair.`);
@@ -73,13 +79,16 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   const counts = new Map();
   const found = new Map();
   const requested = new Map();
+  const written = new Map();
   for (const name of [...deck, ...sideboard, ...commanders]) requested.set(name, (requested.get(name) || 0) + 1);
   for (const [name, count] of requested) {
     const card = lookup(data.cards, name);
-    if (!card) { errors.push(`Unknown card: ${name}.`); continue; }
+    if (!card) { flag(name, `Unknown card: ${name}.`); continue; }
     counts.set(card.name, (counts.get(card.name) || 0) + count);
     found.set(card.name, card);
+    written.set(card.name, name);
   }
+  const flagCard = (card, message) => flag(written.get(card.name) || card.name, message);
   // Pauper EDH commanders are uncommons, which its card legality (the 99's
   // commons-only rule) never covers; their eligibility is checked below.
   const leaders = commanders.map(name => lookup(data.cards, name));
@@ -87,44 +96,55 @@ export function validateFormatDeck(format, deck = [], commanders = [], sideboard
   for (const [name, count] of counts) {
     const card = found.get(name);
     const legal = card.legalities[format];
-    const allowed = exempt.has(name) ? legal !== 'banned' : ['legal', 'restricted'].includes(legal);
-    if (!allowed) errors.push(`${name} is ${legal === 'banned' ? 'banned' : 'not legal'} in ${rules.label}.`);
+    if (card.unreleased) {
+      if (!options.allowUnreleased) flagCard(card, `${name} is unreleased; this lobby does not allow unreleased cards.`);
+    } else {
+      const allowed = exempt.has(name) ? legal !== 'banned' : ['legal', 'restricted'].includes(legal);
+      if (!allowed) flagCard(card, `${name} is ${legal === 'banned' ? 'banned' : 'not legal'} in ${rules.label}.`);
+    }
     const limit = legal === 'restricted' ? 1 : copyLimit(card, format);
-    if (count > limit) errors.push(`${name}: at most ${limit} ${limit === 1 ? 'copy' : 'copies'} across the deck, sideboard, and commanders.`);
+    if (count > limit) flagCard(card, `${name}: at most ${limit} ${limit === 1 ? 'copy' : 'copies'} across the deck, sideboard, and commanders.`);
   }
   if (commanderFormat) {
-    if (leaders.length === 1 && leaders[0] && !commanderEligible(leaders[0], format)) errors.push(`${leaders[0].name} cannot be a commander in ${rules.label}.`);
+    if (leaders.length === 1 && leaders[0] && !commanderEligible(leaders[0], format)) flagCard(leaders[0], `${leaders[0].name} cannot be a commander in ${rules.label}.`);
     if (leaders.length === 2 && leaders.every(Boolean)) {
       // A partner pair is legendary by construction; Pauper EDH also wants both uncommon.
-      if (format === 'paupercommander') for (const leader of leaders) if (!commanderEligible(leader, format)) errors.push(`${leader.name} cannot be a commander in ${rules.label}.`);
+      if (format === 'paupercommander') for (const leader of leaders) if (!commanderEligible(leader, format)) flagCard(leader, `${leader.name} cannot be a commander in ${rules.label}.`);
       if (!validPair(...leaders)) errors.push('These commanders do not form a legal pair.');
     }
     const colors = new Set(leaders.filter(Boolean).flatMap(c => c.colors));
     for (const card of found.values()) {
-      if (card.colors.some(color => !colors.has(color))) errors.push(`${card.name} is outside the commanders’ color identity.`);
+      if (card.colors.some(color => !colors.has(color))) flagCard(card, `${card.name} is outside the commanders’ color identity.`);
       const basicColors = { Plains: 'W', Island: 'U', Swamp: 'B', Mountain: 'R', Forest: 'G' };
       for (const [land, color] of Object.entries(basicColors)) {
-        if (new RegExp(`\\b${land}\\b`).test(card.type) && !colors.has(color)) errors.push(`${card.name} has a basic land type outside the commanders’ colors.`);
+        if (new RegExp(`\\b${land}\\b`).test(card.type) && !colors.has(color)) flagCard(card, `${card.name} has a basic land type outside the commanders’ colors.`);
       }
     }
   }
-  return { ready: errors.length === 0, errors: [...new Set(errors)] };
+  return { ready: errors.length === 0, errors: [...new Set(errors)], cardProblems };
 }
 // Checks every deck of a saved configuration against each chosen format;
 // `decks` holds { index, deck, commanders, sideboard } card-name lists.
-export function deckFormatProblems(formats, decks, data = catalog) {
+export function deckFormatProblems(formats, decks, data = catalog, options = {}) {
   return formats.flatMap(format => decks.flatMap(({ index, deck, commanders, sideboard }) => {
-    const result = validateFormatDeck(format, deck, commanders, sideboard, data);
+    const result = validateFormatDeck(format, deck, commanders, sideboard, data, options);
     return result.ready ? [] : [{ format, index, errors: result.errors }];
   }));
 }
+const matchPlayerCount = config => config.playerNames?.length || config.players?.length || config.decks?.length;
+// Public relay tables also fix the life total and seat count.
 export function assertFormatMatch(config, data = catalog) {
   const rules = Object.hasOwn(PUBLIC_FORMATS, config.format) ? PUBLIC_FORMATS[config.format] : null;
   if (!rules) throw new Error('Unsupported public format');
-  const count = config.playerNames?.length || config.players?.length || config.decks?.length;
+  const count = matchPlayerCount(config);
   if (count < 2 || count > rules.maxPlayers || config.startingLife !== rules.startingLife) throw new Error(`${rules.label} requires ${rules.startingLife} life and ${rules.maxPlayers === 2 ? 'two' : 'two to four'} players.`);
-  for (let i = 0; i < count; i++) {
-    const result = validateFormatDeck(config.format, config.decks?.[i], config.commanders?.[i], config.sideboards?.[i], data);
+  assertFormatDecks(config, data);
+}
+// Every seat's deck obeys the match format's card legality.
+export function assertFormatDecks(config, data = catalog) {
+  const options = { allowUnreleased: config.allowUnreleased === true };
+  for (let i = 0; i < matchPlayerCount(config); i++) {
+    const result = validateFormatDeck(config.format, config.decks?.[i], config.commanders?.[i], config.sideboards?.[i], data, options);
     if (!result.ready) throw new Error(`Player ${i + 1}: ${result.errors.slice(0, 4).join(' ')}`);
   }
 }

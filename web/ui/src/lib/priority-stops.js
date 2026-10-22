@@ -218,6 +218,11 @@ export function createPriorityStops({
       heldKey = null;
       if (window) { window = null; publish(); }
     },
+    deferWindow(id) {
+      if (!window || window.id !== id || window.startedAt === null) return;
+      window = { ...window, startedAt: null };
+      publish();
+    },
     armWindow(id) {
       if (!window || window.id !== id || window.startedAt !== null || window.pausedAt != null) return;
       window = { ...window, startedAt: now() };

@@ -1,8 +1,9 @@
 import useUiText from "@/i18n/useUiText";
 import PublicLobbySearch from './PublicLobbySearch';
-import { PUBLIC_FORMATS, isRelayId, relayBaseUrl, usesCommanders } from '@/lib/relay/formats';
-import { validateFormatDeck, formatCatalogDate } from '@/lib/relay/format-legality';
-import { useMemo, useState } from "react";
+import { PUBLIC_FORMATS, isLegalityFormat, relayBaseUrl, usesCommanders } from '@/lib/relay/formats';
+import { validateFormatDeck, formatCatalogDate, loadFormatCatalog } from '@/lib/relay/format-legality';
+import { useEffect, useMemo, useState } from "react";
+import { readStoredPlayerName, sanitizeStoredPlayerName, writeStoredPlayerName } from "@/lib/player-name";
 import LocalLobbySearch from "./LocalLobbySearch";
 import TournamentPanel from "./TournamentPanel";
 import DeckLoadingView from "@/components/board/DeckLoadingView";
@@ -34,7 +35,6 @@ import {
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
   MATCH_FORMAT_PLANECHASE,
-  PARTNER_DECK_SIZE,
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
@@ -127,6 +127,51 @@ function offlinePlayerSummary(players) {
     .join(", ");
 }
 
+// Re-renders once the card legality catalog has loaded, so format checks made
+// during render stop reporting "not loaded".
+function useFormatCatalogReady(enabled) {
+  const [ready, setReady] = useState(() => Boolean(formatCatalogDate()));
+  useEffect(() => {
+    if (!enabled || ready) return undefined;
+    let active = true;
+    loadFormatCatalog().then(() => { if (active) setReady(true); }).catch(() => {});
+    return () => { active = false; };
+  }, [enabled, ready]);
+  return ready;
+}
+
+// The local player's seat name inside an active lobby. It commits on blur or
+// Enter and is remembered for later sessions.
+function LobbyNameField({ name, disabled, title, onRename }) {
+  const ui = useUiText();
+  const [draft, setDraft] = useState(name || "");
+  const [editingName, setEditingName] = useState(false);
+  const value = editingName ? draft : name || "";
+  const commit = () => {
+    setEditingName(false);
+    const next = sanitizeStoredPlayerName(draft);
+    if (next && next !== name) onRename(next);
+  };
+  return (
+    <label className={labelClass}>{ui("Your Name")}
+      <input
+        className={inputClass}
+        value={value}
+        disabled={disabled}
+        title={title}
+        maxLength={40}
+        aria-label={ui("Your Name")}
+        onFocus={() => { setDraft(name || ""); setEditingName(true); }}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") { setDraft(name || ""); setEditingName(false); event.currentTarget.blur(); }
+        }}
+      />
+    </label>
+  );
+}
 
 export default function LobbyOverlay({
   onClose,
@@ -134,7 +179,7 @@ export default function LobbyOverlay({
   defaultName = "Player",
   defaultStartingLife = 20,
   initialMode = "create",
-  initialCreateFormat = MATCH_FORMAT_NORMAL,
+  initialCreateFormat = "",
   initialCreateName = "",
   initialCreateDeckText = "",
   initialCreateDeckOptions = [],
@@ -162,13 +207,13 @@ export default function LobbyOverlay({
   const shouldDefaultCreateDeck =
     !String(initialCreateDeckText || "").trim()
     && !String(initialCreateCommanderText || "").trim();
-  const shouldDefaultJoinDeck =
-    !String(initialJoinDeckText || "").trim()
-    && !String(initialJoinCommanderText || "").trim();
+  // The host picks the format before anything else; only a prefilled
+  // commander list (or an explicit format) preselects one.
   const resolvedInitialCreateFormat =
     shouldDefaultCreateDeck && String(lobbyDeckDefault.commanderText || "").trim()
       ? MATCH_FORMAT_COMMANDER
-      : normalizeMatchFormat(initialCreateFormat);
+      : initialCreateFormat ? normalizeMatchFormat(initialCreateFormat) : "";
+  const storedPlayerName = useMemo(() => readStoredPlayerName(), []);
   const [transport, setTransport] = useState('peerjs');
   const [advertise, setAdvertise] = useState(true);
   const [relayOnly, setRelayOnly] = useState(() => readRelayOnlyPreference());
@@ -183,9 +228,10 @@ export default function LobbyOverlay({
     resolvedInitialCreateFormat
   );
   const [createName, setCreateName] = useState(
-    String(initialCreateName || defaultName)
+    String(initialCreateName || storedPlayerName || defaultName)
   );
-  const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
+  const [joinName, setJoinName] = useState(String(initialJoinName || storedPlayerName || defaultName));
+  const [allowUnreleased, setAllowUnreleased] = useState(false);
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
   const [desiredPlayers, setDesiredPlayers] = useState(() => Math.max(2, Math.min(4, Number(initialDesiredPlayers) || 2)));
   const [createSecurityMode, setCreateSecurityMode] = useState(
@@ -197,6 +243,7 @@ export default function LobbyOverlay({
   const [startingLife, setStartingLife] = useState(() => {
     const initialLife = Math.max(1, Number(defaultStartingLife) || 20);
     const normalizedFormat = resolvedInitialCreateFormat;
+    if (PUBLIC_FORMATS[normalizedFormat]) return PUBLIC_FORMATS[normalizedFormat].startingLife;
     if (normalizedFormat === MATCH_FORMAT_COMMANDER && initialLife === 20) {
       return 40;
     }
@@ -210,21 +257,15 @@ export default function LobbyOverlay({
       ? String(lobbyDeckDefault.deckText || "")
       : String(initialCreateDeckText || "")
   );
-  const [joinDeckText, setJoinDeckText] = useState(
-    shouldDefaultJoinDeck
-      ? String(lobbyDeckDefault.deckText || "")
-      : String(initialJoinDeckText || "")
-  );
   const [createCommanderText, setCreateCommanderText] = useState(
     shouldDefaultCreateDeck
       ? String(lobbyDeckDefault.commanderText || "")
       : String(initialCreateCommanderText || "")
   );
-  const [joinCommanderText, setJoinCommanderText] = useState(
-    shouldDefaultJoinDeck
-      ? String(lobbyDeckDefault.commanderText || "")
-      : String(initialJoinCommanderText || "")
-  );
+  // Guests pick a deck inside the lobby, once they know its format; only a
+  // deck carried by an invite link travels with the join request.
+  const joinDeckText = String(initialJoinDeckText || "");
+  const joinCommanderText = String(initialJoinCommanderText || "");
 
   const lobbyActive = multiplayer.mode !== "idle";
   const playerCount = multiplayer.players.length;
@@ -237,17 +278,9 @@ export default function LobbyOverlay({
     () => parseDeckList(createDeckText).length,
     [createDeckText]
   );
-  const joinDeckCount = useMemo(
-    () => parseDeckList(joinDeckText).length,
-    [joinDeckText]
-  );
   const createCommanderCount = useMemo(
     () => parseCommanderList(createCommanderText).length,
     [createCommanderText]
-  );
-  const joinCommanderCount = useMemo(
-    () => parseCommanderList(joinCommanderText).length,
-    [joinCommanderText]
   );
   const localPlayer = multiplayer.players.find(
     (player) => player.peerId === multiplayer.localPeerId
@@ -276,16 +309,38 @@ export default function LobbyOverlay({
     [shareLobbyCode]
   );
 
-  const publicDeckStatus = isRelayId(multiplayer.lobbyId) ? validateFormatDeck(activeFormat,
+  const createFormatChosen = Boolean(createFormat);
+  const lobbyChecksLegality = lobbyActive && isLegalityFormat(activeFormat);
+  const catalogReady = useFormatCatalogReady(lobbyChecksLegality || isLegalityFormat(createFormat));
+  const lobbyAllowsUnreleased = multiplayer.allowUnreleased === true;
+  // The local seat's deck against the lobby format, card by card; the host
+  // runs the same check on every seat and shares the problems with the table.
+  const localDeckStatus = lobbyChecksLegality && catalogReady && !multiplayer.matchStarted ? validateFormatDeck(activeFormat,
     parseDeckList(multiplayer.localDeckText || ''), parseCommanderList(multiplayer.localCommanderText || ''),
-    parseSideboardList(multiplayer.localDeckText || '')) : null;
+    parseSideboardList(multiplayer.localDeckText || ''), undefined, { allowUnreleased: lobbyAllowsUnreleased }) : null;
+  const createDeckStatus = !lobbyActive && isLegalityFormat(createFormat) && catalogReady && createDeckCount > 0
+    ? validateFormatDeck(createFormat, parseDeckList(createDeckText), parseCommanderList(createCommanderText),
+      parseSideboardList(createDeckText), undefined, { allowUnreleased })
+    : null;
+  const illegalSeats = lobbyChecksLegality && !multiplayer.matchStarted
+    ? multiplayer.players.filter((player) => Array.isArray(player.formatErrors) && player.formatErrors.length > 0)
+    : [];
+  const localNameLocked = Boolean(multiplayer.tournament?.tournamentId) || multiplayer.matchStarted || startPending;
+  const handleRename = (nextName) => {
+    writeStoredPlayerName(nextName);
+    void updateLobbyDeck({ name: nextName });
+  };
 
   const handleCreateFormatChange = (nextFormat) => {
+    if (!nextFormat) return;
     const normalized = normalizeMatchFormat(nextFormat);
     setCreateFormat(normalized);
-    if (relayTransport && PUBLIC_FORMATS[normalized]) {
-      setDesiredPlayers(PUBLIC_FORMATS[normalized].maxPlayers === 2 ? 2 : desiredPlayers);
+    if (PUBLIC_FORMATS[normalized]) {
       setStartingLife(PUBLIC_FORMATS[normalized].startingLife);
+      if (relayTransport || PUBLIC_FORMATS[normalized].maxPlayers === 2) {
+        setDesiredPlayers(PUBLIC_FORMATS[normalized].maxPlayers === 2 ? 2 : desiredPlayers);
+      }
+      return;
     }
     if (normalized === MATCH_FORMAT_PLANECHASE) {
       setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
@@ -298,6 +353,10 @@ export default function LobbyOverlay({
   };
 
   const handleCreate = () => {
+    if (!createFormatChosen) {
+      setStatus("Choose a format before creating the lobby", true);
+      return;
+    }
     if (import.meta.env.VITE_LAN_LOBBY === "true"
       && createSecurityMode === MULTIPLAYER_SECURITY_VERIFIED && !globalThis.crypto?.subtle) {
       setStatus("Verified mode requires the LAN server's trusted HTTPS address. Use Trusted mode at this HTTP address.", true);
@@ -307,9 +366,11 @@ export default function LobbyOverlay({
       setStatus("Redeem a tournament invite in the Tournaments tab first", true);
       return;
     }
+    if (transport !== 'tournament') writeStoredPlayerName(createName);
     createLobby({
       transport: relayTransport ? 'websocket' : transport,
       advertise,
+      allowUnreleased: isLegalityFormat(createFormat) && allowUnreleased,
       ...(transport === 'tournament' ? { tournamentId: createTournamentId } : {}),
       name: createName,
       desiredPlayers,
@@ -326,6 +387,7 @@ export default function LobbyOverlay({
   };
 
   const handleJoin = () => {
+    writeStoredPlayerName(joinName);
     joinLobby({
       name: joinName,
       lobbyId: joinCode,
@@ -378,9 +440,16 @@ export default function LobbyOverlay({
         </SheetHeader>
 
         <div className="lobby-sheet-body grid min-h-0 gap-4 p-4">
-              {publicDeckStatus && <div className={panelClass} role="status">
-                <span>{publicDeckStatus.ready ? ui('Your deck meets the format restrictions.') : publicDeckStatus.errors.slice(0, 5).join(' ')}</span>
-                <small>{ui("Card legality snapshot:") + " "}{formatCatalogDate()?.slice(0, 10) || ui('loading')}</small>
+              {lobbyChecksLegality && !multiplayer.matchStarted && <div className={`${panelClass} lobby-sheet-legality${illegalSeats.length ? " is-error" : ""}`} role="status">
+                {illegalSeats.length ? (
+                  <span className="text-[#f0a9a0]">
+                    {ui("The match cannot start until every deck is legal in {0}:", { 0: ui(formatName(activeFormat)) }) + " "}
+                    {illegalSeats.map((player) => (player.peerId === multiplayer.localPeerId ? ui("your deck") : player.name)).join(", ")}
+                  </span>
+                ) : (
+                  <span>{localDeckStatus?.ready ? ui('Your deck meets the format restrictions.') : localDeckStatus ? localDeckStatus.errors.slice(0, 5).join(' ') : ui("Checking decks against the format…")}</span>
+                )}
+                <small>{ui("Card legality snapshot:") + " "}{formatCatalogDate()?.slice(0, 10) || ui('loading')}{lobbyAllowsUnreleased ? " · " + ui("Unreleased cards allowed") : ""}</small>
               </div>}
           {!lobbyActive ? (
             <div className="lobby-sheet-setup grid gap-4">
@@ -425,6 +494,21 @@ export default function LobbyOverlay({
                 <div className="play-setup-grid">
                   <div className="play-session-controls">
                     <div className="lobby-sheet-setup-fields grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <label className={labelClass}>{ui("Format")}<select
+                          className={inputClass}
+                          aria-label={ui("Format")}
+                          aria-invalid={!createFormatChosen}
+                          value={createFormat}
+                          onChange={(event) => handleCreateFormatChange(event.target.value)}
+                        >
+                          {!createFormatChosen ? <option value="" disabled>{ui("Choose a format…")}</option> : null}
+                          {Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>)}
+                          {!relayTransport ? <>
+                            <option value={MATCH_FORMAT_NORMAL}>{ui("Freeform (no card legality)")}</option>
+                            <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
+                          </> : null}
+                        </select>
+                      </label>
                       <label className={labelClass}>{ui("Your Name")}<input
                           className={inputClass}
                           disabled={transport === 'tournament'}
@@ -436,25 +520,12 @@ export default function LobbyOverlay({
                           placeholder={ui("Host name")}
                         />
                       </label>
-                      <label className={labelClass}>{ui("Format")}<select
-                          className={inputClass}
-                          aria-label={ui("Format")}
-                          value={createFormat}
-                          onChange={(event) => handleCreateFormatChange(event.target.value)}
-                        >
-                          {relayTransport ? Object.values(PUBLIC_FORMATS).map(f => <option key={f.id} value={f.id}>{ui(f.label)}</option>) : <>
-                            <option value={MATCH_FORMAT_NORMAL}>{ui("Normal")}</option>
-                            <option value={MATCH_FORMAT_COMMANDER}>{ui("Commander")}</option>
-                            <option value={MATCH_FORMAT_PLANECHASE}>{ui("Planechase")}</option>
-                          </>}
-                        </select>
-                      </label>
                       <label className={labelClass}>{ui("Starting Life")}<input
                           className={inputClass}
                           type="number"
                           min={1}
                           value={startingLife}
-                          disabled={relayTransport}
+                          disabled={relayTransport || !createFormatChosen}
                           onChange={(event) => setStartingLife(Number(event.target.value) || 20)}
                         />
                       </label>
@@ -462,7 +533,7 @@ export default function LobbyOverlay({
                           className={inputClass}
                           aria-label={ui("Players")}
                           value={desiredPlayers}
-                          disabled={relayTransport && PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
+                          disabled={PUBLIC_FORMATS[createFormat]?.maxPlayers === 2}
                           onChange={(event) => setDesiredPlayers(Number(event.target.value) || 2)}
                         >
                           <option value={2}>{ui("2 Players")}</option>
@@ -470,15 +541,25 @@ export default function LobbyOverlay({
                           <option value={4}>{ui("4 Players")}</option>
                         </select>
                       </label>
+                      {isLegalityFormat(createFormat) ? (
+                        <label className="lobby-sheet-unreleased flex items-center gap-2 text-sm md:col-span-2 lg:col-span-4"
+                          title={ui("Cards previewed on Scryfall that no format lists yet. Every other format rule still applies.")}>
+                          <input type="checkbox" checked={allowUnreleased} onChange={(event) => setAllowUnreleased(event.target.checked)} />
+                          {ui("Allow unreleased cards")}
+                        </label>
+                      ) : null}
                     </div>
               <div className={`${panelClass} lobby-sheet-connection-panel`}>
                 <label className={labelClass}>{ui("Connection")}<select aria-label={ui("Connection")} className={inputClass} value={transport} onChange={event => {
                     const value = event.target.value;
                     setTransport(value);
                     if (value === 'websocket' || value === 'tournament') {
-                      const format = PUBLIC_FORMATS[createFormat] ? createFormat : 'modern';
-                      setCreateFormat(format); setStartingLife(PUBLIC_FORMATS[format].startingLife);
-                      setDesiredPlayers(PUBLIC_FORMATS[format].maxPlayers === 2 ? 2 : desiredPlayers);
+                      // Relay tables only host public formats; an unchosen format stays unchosen.
+                      if (createFormat && !PUBLIC_FORMATS[createFormat]) setCreateFormat('');
+                      if (PUBLIC_FORMATS[createFormat]) {
+                        setStartingLife(PUBLIC_FORMATS[createFormat].startingLife);
+                        setDesiredPlayers(PUBLIC_FORMATS[createFormat].maxPlayers === 2 ? 2 : desiredPlayers);
+                      }
                       setCreateSecurityMode(MULTIPLAYER_SECURITY_TRUSTED);
                     }
                   }}>
@@ -543,14 +624,19 @@ export default function LobbyOverlay({
               </div>
                   </div>
                   <div className="play-deck-discovery">
-                    {(
+                    {createFormatChosen ? (
                       <CompetitiveDeckPicker
                         format={createFormat === MATCH_FORMAT_NORMAL || createFormat === MATCH_FORMAT_PLANECHASE ? "modern" : createFormat}
+                        lockFormat={isLegalityFormat(createFormat)}
                         onApply={({ deckText, commanderText }) => {
                           setCreateDeckText(deckText);
                           setCreateCommanderText(commanderText);
                         }}
                       />
+                    ) : (
+                      <div className={`${panelClass} lobby-sheet-format-first`}>
+                        <span className={infoTextClass}>{ui("Choose the lobby's format first. Deck browsing and every seat's deck then follow that format.")}</span>
+                      </div>
                     )}
                   </div>
                   <div className="play-deck-sidebar">
@@ -584,7 +670,13 @@ export default function LobbyOverlay({
                       </label>
                     ) : null}                  <div className={panelClass}>
                     <div className={infoTextClass}>
-                      <span>{ui("Format:") + " "}{ui(formatName(createFormat))}</span>
+                      <span>{ui("Format:") + " "}{createFormatChosen ? ui(formatName(createFormat)) : ui("not chosen")}</span>
+                      {createDeckStatus ? (
+                        <span className={createDeckStatus.ready ? "" : "text-[#f0a9a0]"}>
+                          {createDeckStatus.ready ? ui("Your deck meets the format restrictions.") : createDeckStatus.errors.slice(0, 4).join(" ")}
+                        </span>
+                      ) : null}
+                      {isLegalityFormat(createFormat) && allowUnreleased ? <span>{ui("Unreleased cards are allowed.")}</span> : null}
                       <span>{ui("Main deck:")}{" "}
                         {usesCommanders(createFormat)
                           ? `${createDeckCount}/${createCommanderTarget}`
@@ -597,19 +689,21 @@ export default function LobbyOverlay({
                       ) : null}
                       <span>{ui("Mode:") + " "}{ui(securityModeName(createSecurityMode))}</span>
                       <span>{ui(securityModeSummary(createSecurityMode))}</span>
-                      <span>{ui(formatDeckRequirement(createFormat))}</span>
+                      {createFormatChosen ? <span>{ui(formatDeckRequirement(createFormat))}</span> : null}
                       <span>{ui("The host can start the match once every seat is filled and ready.")}</span>
                     </div>
                     <Button
                       variant="secondary"
                       className={`${pill} ui-primary-action`}
+                      disabled={!createFormatChosen}
+                      title={createFormatChosen ? undefined : ui("Choose a format first")}
                       onClick={handleCreate}
                     >{ui("Create Lobby")}</Button>
                   </div>
                   </div>
                 </div>
               ) : (
-                <div className="play-setup-grid">
+                <div className="play-setup-grid is-join">
                   <div className="play-session-controls">
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className={labelClass}>{ui("Your Name")}<input
@@ -632,35 +726,13 @@ export default function LobbyOverlay({
                       <input type="checkbox" checked={relayOnly} onChange={e => { setRelayOnly(e.target.checked); writeRelayOnlyPreference(e.target.checked); }} />{ui("Hide my IP address in WebSocket and tournament lobbies (relay only, slower)")}</label>}
                     {import.meta.env.VITE_LAN_LOBBY === "true" && <LocalLobbySearch onSelect={setJoinCode} />}
                   </div>
-                  <div className="play-deck-discovery">
-                    <CompetitiveDeckPicker
-                      format="modern"
-                      onApply={({ deckText, commanderText }) => {
-                        setJoinDeckText(deckText);
-                        setJoinCommanderText(commanderText);
-                      }}
-                    />
-                  </div>
                   <div className="play-deck-sidebar">
-                    <label className={labelClass}>{ui("Main Deck")}<PreservingTextarea
-                        className={textareaClass}
-                        value={joinDeckText}
-                        onChange={(event) => setJoinDeckText(event.target.value)}
-                        placeholder={ui("Paste your main deck now or finish it inside the lobby.\n\nNormal and Planechase lobbies need at least {0} cards.\nCommander lobbies need {1} or {2} main-deck cards.", { 0: LOBBY_DECK_SIZE, 1: COMMANDER_DECK_SIZE, 2: PARTNER_DECK_SIZE })}
-                      />
-                    </label>
-                    <label className={labelClass}>{ui("Commander(s) / Planar Deck")}<PreservingTextarea
-                        className={commanderTextareaClass}
-                        value={joinCommanderText}
-                        onChange={(event) => setJoinCommanderText(event.target.value)}
-                        placeholder={ui("Optional until you see the host format.\nAdd 1 or 2 commanders for Commander, or at least 10 unique planar cards for Planechase.")}
-                      />
-                    </label>                  <div className={panelClass}>
+                  <div className={panelClass}>
                     <div className={infoTextClass}>
-                      <span>{ui("Main deck:") + " "}{joinDeckCount}{" " + ui("cards")}</span>
-                      <span>{ui("Supplemental cards:") + " "}{joinCommanderCount}</span>
-                      <span>{ui("Join first to see the host’s format and deck requirements.")}</span>
-                      <span>{ui("You only become ready after the host receives a valid deck submission for that format.")}</span>
+                      <span>{ui("The host has already chosen this lobby's format.")}</span>
+                      <span>{ui("After you join, pick a deck for that format: browse the catalog, choose a saved deck, or paste your own list.")}</span>
+                      <span>{ui("Every seat's deck is checked against the format, and the match starts only when all of them are legal.")}</span>
+                      {joinDeckText.trim() ? <span>{ui("Your invite link carries a deck; you can change it inside the lobby.")}</span> : null}
                     </div>
                     <Button
                       variant="secondary"
@@ -687,8 +759,21 @@ export default function LobbyOverlay({
 
               <div className="lobby-sheet-sidebar">
                 {!multiplayer.matchStarted ? (
+                  <div className="lobby-sheet-name lobby-sheet-panel fantasy-sheet-section grid gap-2 p-4">
+                    <LobbyNameField
+                      name={multiplayer.localName}
+                      disabled={localNameLocked}
+                      title={multiplayer.tournament?.tournamentId ? ui("Tournament seats use the name on your invite") : undefined}
+                      onRename={handleRename}
+                    />
+                  </div>
+                ) : null}
+
+                {!multiplayer.matchStarted ? (
                   <LobbyDeckEditor
                     format={activeFormat}
+                    cardProblems={localDeckStatus?.cardProblems || {}}
+                    legalityText={localDeckStatus && !localDeckStatus.ready ? localDeckStatus.errors.slice(0, 3).join(" ") : ""}
                     deckText={multiplayer.localDeckText}
                     commanderText={multiplayer.localCommanderText}
                     deckCount={multiplayer.localDeckCount}
@@ -706,25 +791,36 @@ export default function LobbyOverlay({
                     <span className="text-[13px] text-muted-foreground">
                       {playerCount}/{multiplayer.desiredPlayers}{" " + ui("seats,") + " "}{readyPlayers}{" " + ui("ready")}</span>
                   </div>
-                  {multiplayer.players.map((player) => (
-                    <div
-                      key={player.peerId}
-                      className={`lobby-sheet-player-row fantasy-sheet-stat flex items-center justify-between px-3 py-2 ${
-                        player.connected === false ? "bg-[#2b1114]" : ""
-                      }`}
-                    >
-                      <span className="text-[14px] text-foreground">
-                        {player.index + 1}. {player.name}
-                      </span>
-                      <span
-                        className={`text-[12px] uppercase tracking-[0.18em] ${
-                          player.connected === false ? "text-[#f0a9a0]" : "text-muted-foreground"
+                  {multiplayer.players.map((player) => {
+                    const formatErrors = !multiplayer.matchStarted && Array.isArray(player.formatErrors) ? player.formatErrors : [];
+                    return (
+                      <div
+                        key={player.peerId}
+                        className={`lobby-sheet-player-row fantasy-sheet-stat grid gap-1 px-3 py-2 ${
+                          player.connected === false ? "bg-[#2b1114]" : ""
                         }`}
                       >
-                        {ui(formatPlayerStatus(player, multiplayer.localPeerId, activeFormat))}
-                      </span>
-                    </div>
-                  ))}
+                        <div className="flex items-center justify-between">
+                          <span className="text-[14px] text-foreground">
+                            {player.index + 1}. {player.name}
+                          </span>
+                          <span
+                            className={`text-[12px] uppercase tracking-[0.18em] ${
+                              player.connected === false || formatErrors.length ? "text-[#f0a9a0]" : "text-muted-foreground"
+                            }`}
+                          >
+                            {formatErrors.length ? ui("Deck not legal") : ui(formatPlayerStatus(player, multiplayer.localPeerId, activeFormat))}
+                          </span>
+                        </div>
+                        {formatErrors.length ? (
+                          <ul className="lobby-sheet-player-problems grid gap-0.5 text-[12px] leading-5 text-[#f0a9a0]">
+                            {formatErrors.slice(0, 4).map((error) => <li key={error}>{error}</li>)}
+                            {formatErrors.length > 4 ? <li>{ui("…and {0} more", { 0: formatErrors.length - 4 })}</li> : null}
+                          </ul>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
@@ -765,6 +861,7 @@ export default function LobbyOverlay({
                 <div className="lobby-sheet-footer flex items-center justify-between gap-2">
                   <span className="text-[13px] text-muted-foreground">
                     {ui(formatName(activeFormat))}{" " + ui("• Starting life:") + " "}{multiplayer.startingLife}
+                    {lobbyAllowsUnreleased ? " • " + ui("Unreleased cards allowed") : ""}
                   </span>
                   <Button
                     variant="secondary"

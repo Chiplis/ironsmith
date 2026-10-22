@@ -1,3 +1,4 @@
+import { SymbolText } from "@/lib/mana-symbols";
 import useUiText from "@/i18n/useUiText";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useGame } from "@/context/GameContext";
@@ -1040,7 +1041,7 @@ export default function TargetsDecision({
               <div className="decision-target-heading">
                 <div className="decision-target-heading-label">
                   <span className="decision-target-heading-index">{ui("Target") + " "}{reqIdx + 1}:</span>{" "}
-                  {req.description || ui("Choose a target")}
+                  <SymbolText text={req.description || ui("Choose a target")} />
                 </div>
                 <span className="decision-target-heading-limit">
                   ({reqMin}-{req.max_targets ?? req.legal_targets?.length ?? "?"}{isOptional ? ui(", optional") : ""})

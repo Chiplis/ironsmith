@@ -14,6 +14,19 @@ export function createForgeMeasurer(root) {
     const bounds = root.getBoundingClientRect();
     const width = bounds.width, height = bounds.height;
     const clips = new Map();
+    const sceneBounds = new Map();
+    function projectedCards(field) {
+      if (!sceneBounds.has(field)) {
+        const r = field.getBoundingClientRect();
+        sceneBounds.set(field, field.battlefieldScene.bounds().map(p => clipRect({
+          left: Math.max(0, p.left - field.scrollLeft) + r.left - bounds.left,
+          right: Math.min(field.clientWidth, p.right - field.scrollLeft) + r.left - bounds.left,
+          top: Math.max(0, p.top - field.scrollTop) + r.top - bounds.top,
+          bottom: Math.min(field.clientHeight, p.bottom - field.scrollTop) + r.top - bounds.top,
+        }, width, height)).filter(Boolean));
+      }
+      return sceneBounds.get(field);
+    }
     function rectOf(el) {
       if (el.checkVisibility && !el.checkVisibility({ checkVisibilityCSS: true, checkOpacity: true })) return null;
       const r = el.getBoundingClientRect();
@@ -48,8 +61,9 @@ export function createForgeMeasurer(root) {
         const cx = (bounds.left + bounds.right) / 2;
         rect = { left: Math.max(bounds.left, cx - 95), right: Math.min(bounds.right, cx + 95), top: bounds.top, bottom: Math.min(bounds.bottom, bounds.top + 110) };
         let occupied = null;
-        for (const card of el.querySelectorAll(CARD_FOOTPRINT)) {
-          const cardRect = rectOf(card);
+        const cardRects = el.battlefieldScene ? projectedCards(el)
+          : [...el.querySelectorAll(CARD_FOOTPRINT)].map(rectOf);
+        for (const cardRect of cardRects) {
           if (cardRect) occupied = occupied ? unionRect(occupied, cardRect) : cardRect;
         }
         if (occupied) rect = occupied;
@@ -60,8 +74,13 @@ export function createForgeMeasurer(root) {
       if (!ids.has(el)) ids.set(el, `zone-${++nextId}`);
       zones.push({ key: `${ids.get(el)}:${owner}:${type}`, owner, type, battlefield, rect: clipRect(rect, width, height, battlefield ? 14 : 6) });
     }
-    const obstacles = [...root.querySelectorAll(OBSTACLES)].map(rectOf).filter(Boolean);
-    const cardShadows = [...root.querySelectorAll('.battlefield-row .game-card')].map(card => rectOf(card.querySelector('.arena-permanent') || card)).filter(Boolean).slice(0, 200);
+    const sceneCards = [...root.querySelectorAll('[data-scene-layout="true"]')]
+      .filter(field => field.battlefieldScene).flatMap(projectedCards);
+    const obstacles = [...root.querySelectorAll(OBSTACLES)].filter(el => !el.closest('.battlefield-scene'))
+      .map(rectOf).filter(Boolean).concat(sceneCards);
+    const cardShadows = [...root.querySelectorAll('.battlefield-row .game-card')]
+      .filter(el => !el.closest('.battlefield-scene')).map(card => rectOf(card.querySelector('.arena-permanent') || card))
+      .filter(Boolean).concat(sceneCards).slice(0, 200);
     const seatsByOwner = new Map();
     for (const el of root.querySelectorAll(SEATS)) {
       const rect = rectOf(el);

@@ -84,6 +84,7 @@ import {
   useRef,
   useState,
   withDeckState,
+  sanitizePlayerName,
 } from "./peer-lobby/shared.js";
 
 import { usePeerLobbyConnections } from "./peer-lobby/connections.js";
@@ -352,6 +353,15 @@ export function usePeerLobby({
           : Object.prototype.hasOwnProperty.call(updates || {}, "commanderText")
             ? String(updates.commanderText || "")
             : currentSession.localCommanderText;
+      // A rename travels with the deck submission: Verified seats sign their
+      // name into the genesis, so the seat re-signs with it. Tournament seats
+      // keep the name their organizer certified.
+      const nextName =
+        typeof updates === "object"
+        && Object.prototype.hasOwnProperty.call(updates || {}, "name")
+        && !currentSession.tournament?.tournamentId
+          ? sanitizePlayerName(updates.name, currentSession.localName || "Player")
+          : currentSession.localName;
 
       // Keep the editor controlled by the text the player just entered. Card
       // validation below is asynchronous, so waiting for it would replace
@@ -365,6 +375,7 @@ export function usePeerLobby({
         if (prev.matchStarted || prev.mode === "starting") return prev;
         return {
           ...prev,
+          localName: nextName,
           localDeckText: nextDeckText,
           localCommanderText: nextCommanderText,
           localDeckCount: optimisticSubmission.deckCount,
@@ -421,6 +432,7 @@ export function usePeerLobby({
 	                      ? withDeckState(
 	                          {
 	                            ...player,
+	                            name: nextName,
 	                            deckAuditManifest: null,
 	                            deckSlotOpenings: [],
 	                            ziffleKey: null,
@@ -429,7 +441,8 @@ export function usePeerLobby({
 	                          prev.format,
 	                          deckSubmission.deck,
 	                          deckSubmission.commanders,
-	                          deckSubmission.sideboard
+	                          deckSubmission.sideboard,
+	                          { allowUnreleased: prev.allowUnreleased }
 	                        )
 	                      : player
 	                  )
@@ -445,6 +458,7 @@ export function usePeerLobby({
 	          safeSend(conn, {
 	            type: "deck_update",
 	            protocolVersion: PROTOCOL_VERSION,
+	            name: nextName,
 	            securityMode: MULTIPLAYER_SECURITY_TRUSTED,
 	            deckAuditManifest: null,
 	            deck: deckSubmission.deck,
@@ -487,7 +501,7 @@ export function usePeerLobby({
       const localZiffleKey = publicZiffleKey(ziffleKeyPair, localPlayerIndex);
       const localGenesisPlayer = {
         peerId: currentSession.localPeerId,
-        name: currentSession.localName,
+        name: nextName,
         index: localPlayerIndex,
         auditPublicKey,
         auditEncryptionPublicKey,
@@ -522,6 +536,7 @@ export function usePeerLobby({
                     ? withDeckState(
                         {
 	                          ...player,
+	                          name: nextName,
 	                          auditPublicKey,
 		                          auditEncryptionPublicKey,
 		                          deckAuditManifest: publicDeckManifest(deckAuditManifest),
@@ -532,7 +547,8 @@ export function usePeerLobby({
                         prev.format,
                         deckSubmission.deck,
                         deckSubmission.commanders,
-                        deckSubmission.sideboard
+                        deckSubmission.sideboard,
+                        { allowUnreleased: prev.allowUnreleased }
                       )
                     : player
                 )
@@ -550,6 +566,7 @@ export function usePeerLobby({
         safeSend(conn, {
           type: "deck_update",
 	          protocolVersion: PROTOCOL_VERSION,
+	          name: nextName,
 	          auditPublicKey,
 	          auditEncryptionPublicKey,
 		          playerGenesisSignature,

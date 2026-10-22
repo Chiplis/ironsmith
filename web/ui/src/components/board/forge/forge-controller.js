@@ -43,12 +43,12 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
   }
   const resize = new ResizeObserver(() => { dirty = true; wake(); });
   const mutations = new MutationObserver(records => {
-    if (records.some(record => !host.contains(record.target))) { dirty = true; wake(); }
+    if (records.some(record => !host.contains(record.target) && !record.target.closest?.('.battlefield-scene'))) { dirty = true; wake(); }
   });
   mutations.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'data-zone-id', 'data-arena-owner', 'data-zone-owner', 'data-zone-anchor-player', 'data-player-drop-target'] });
   resize.observe(root);
   function syncObserved() {
-    const current = new Set(root.querySelectorAll(FORGE_MEASURE_SELECTOR));
+    const current = new Set([...root.querySelectorAll(FORGE_MEASURE_SELECTOR)].filter(el => !el.closest('.battlefield-scene')));
     for (const el of observed) if (!current.has(el)) { resize.unobserve(el); observed.delete(el); }
     for (const el of current) if (!observed.has(el)) { resize.observe(el); observed.add(el); }
   }
@@ -122,6 +122,7 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
   root.addEventListener('scroll', onScroll, true);
   root.addEventListener('click', onClick);
   window.addEventListener('resize', onScroll);
+  window.addEventListener('ironsmith:battlefield-layout-fitted', onScroll);
   host.addEventListener('forgeassetsready', onScroll);
   host.addEventListener('webglcontextlost', onContextLost, true);
   host.addEventListener('webglcontextrestored', onContextRestored, true);
@@ -134,6 +135,7 @@ export function mountForgeBoard(root, host, scene, initialSignal) {
       root.removeEventListener('scroll', onScroll, true); root.removeEventListener('click', onClick);
       host.removeEventListener('forgeassetsready', onScroll);
       window.removeEventListener('resize', onScroll); host.removeEventListener('webglcontextlost', onContextLost, true);
+      window.removeEventListener('ironsmith:battlefield-layout-fitted', onScroll);
       host.removeEventListener('webglcontextrestored', onContextRestored, true); scene?.dispose(); fields.remove();
     },
   };

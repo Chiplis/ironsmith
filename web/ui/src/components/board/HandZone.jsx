@@ -19,6 +19,7 @@ import {
 } from "@/components/cards/MiniatureCardFrame";
 import GameCard from "@/components/cards/GameCard";
 import useHandReflow from "@/hooks/useHandReflow";
+import useHandBattlefieldClearance from "@/hooks/useHandBattlefieldClearance";
 import { samePlayerId } from "@/lib/player-display";
 import { handCardSourcePoint, plainRect } from "@/lib/hand-drag-intent";
 import {
@@ -1340,6 +1341,7 @@ export default function HandZone({
   // no card has focus yet: Right starts at the first card, Left at the last.
   // Once a card has focus, GameCard's own arrow handling takes over.
   const handOpen = useHandOpen();
+  useHandBattlefieldClearance(handListRef, `${layout}:${Boolean(player)}`, handOpen || activeFanIndex != null);
   useEffect(() => {
     if (!handOpen) return undefined;
     const onKeyDown = (event) => {

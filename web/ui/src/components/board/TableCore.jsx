@@ -31,7 +31,7 @@ import { ZONE_PILES_MOVED_EVENT } from "./PlayerZonePiles";
 import { canShowPhasePass } from "@/lib/opening-hand-actions";
 
 // Reserve the entire local zone column, including its visible labels.
-const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > .zone-pile-slot';
+const FLOATING_DOCK_PROTECTED_ZONES = '[data-local-zone-piles="true"] > :is(.zone-icon-row, .zone-pile-slot)';
 
 function visibleRect(element) {
   if (!element || !element.isConnected) return null;
@@ -328,6 +328,7 @@ export default function TableCore({
         handRight,
         handTop,
         commandZoneMidpoint,
+        contentTop: table.querySelector(".battlefield-panel--self")?.getBoundingClientRect().top ?? 48,
       });
       next.navigationRight = navigationRight;
       next.panelMaxHeight = Math.max(1, next.maxHeight - dockExtrasHeight);
@@ -593,6 +594,7 @@ export default function TableCore({
             left: `${humanActionDockPosition.left}px`,
             top: `${humanActionDockPosition.top}px`,
             maxWidth: `${humanActionDockPosition.maxWidth}px`,
+            "--decision-dock-lane-width": `${humanActionDockPosition.maxWidth}px`,
             "--dock-max-height": `${humanActionDockPosition.panelMaxHeight ?? humanActionDockPosition.maxHeight}px`,
             right: "auto",
             bottom: "auto",

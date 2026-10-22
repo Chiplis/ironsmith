@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
-import { DragProvider } from "../src/context/DragContext";
+import { DragProvider, useDragActions } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
@@ -16,6 +16,15 @@ const context = {
   multiplayer: {mode:"idle"}, playerAccentOverrides: {}, game:null,
   dispatch:async()=>{}, dispatchInBackground:async()=>{},
 };
+function PlacementControls() {
+  const { startDrag, updateDrag, endDrag } = useDragActions();
+  window.placementFixture = { start(card, kind = "cast_spell", keyboard = false) {
+    const rect = document.querySelector('.battlefield-row').getBoundingClientRect();
+    startDrag(card.id, card.name, [{ kind }], null, rect.left + 10, rect.top + 10,
+      null, card, null, null, { keyboard });
+  }, move: updateDrag, end: endDrag };
+  return null;
+}
 export function StableSlotsFixture() {
   const layoutMode = new URLSearchParams(window.location.search).get("layout") || "default";
   const [phase, setPhase] = useState(0);
@@ -24,12 +33,12 @@ export function StableSlotsFixture() {
   const current = phase === 0 ? initial : phase === 1 ? initial.filter(c => c.id !== 2)
     : [...initial.filter(c => c.id !== 2), ...Array.from({length: 55}, (_, i) => ({...initial[0], id: i + 20, stable_id: i + 20}))];
   return <I18nProvider><GameContext.Provider value={{...context, state: {...context.state, snapshot_id: phase, decision: activating ? {...decision, source_id: 1} : decision}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
-    <main style={{padding:40}}>
+    <PlacementControls /><main style={{padding:40}}>
       <button onClick={() => setActivating(true)}>Activate source</button>
       <button onClick={() => setActivating(false)}>Cancel activation</button>
       <button onClick={() => setPhase(1)}>Remove object</button>
       <button onClick={() => setPhase(2)}>Add many objects</button>
-      <div style={{height:350, marginTop:50}}><BattlefieldRow cards={current} paperLayoutMode={layoutMode} onInspect={()=>{}} activatableMap={new Map()} /></div>
+      <div style={{height:350, marginTop:50}}><BattlefieldRow enablePlacementPreview cards={current} paperLayoutMode={layoutMode} onInspect={()=>{}} activatableMap={new Map()} /></div>
     </main>
   </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }

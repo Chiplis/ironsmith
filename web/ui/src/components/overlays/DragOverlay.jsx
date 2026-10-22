@@ -57,7 +57,9 @@ function placementTargetAtPoint(x, y) {
     rowGap,
     overlap,
   });
-  const slotElement = slot
+  const slotElement = grid.dataset.placementAutomatic === "true"
+    ? grid.querySelector('[data-battlefield-drop-slot][data-active="true"]')
+    : slot
     ? grid.querySelector(
       `[data-battlefield-drop-slot][data-row="${slot.row}"][data-column="${slot.column}"]`
     )

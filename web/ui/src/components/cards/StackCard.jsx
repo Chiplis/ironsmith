@@ -1,4 +1,5 @@
 import useUiText from "@/i18n/useUiText";
+import usePriorityHoverPause from "@/hooks/usePriorityHoverPause";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCastObjectHovered, useCastTargeting } from "@/context/DragContext";
@@ -42,6 +43,7 @@ export default function StackCard({
   arrowRoute = undefined,
 }) {
   const ui = useUiText();
+  const hoverPause = usePriorityHoverPause({ enabled: !isLeaving });
   const { state, playerAccentOverrides } = useGame();
   const {
     hoverCard,
@@ -219,8 +221,9 @@ export default function StackCard({
     "data-pending-replacement": isPendingReplacement ? "true" : undefined,
     onClick: handleClick,
     onPointerDown: handlePointerDown,
-    onMouseEnter: handleHoverEnter,
-    onMouseLeave: handleHoverLeave,
+    onMouseEnter: event => { hoverPause.onMouseEnter(); handleHoverEnter(event); },
+    onMouseMove: hoverPause.onMouseMove,
+    onMouseLeave: () => { hoverPause.onMouseLeave(); handleHoverLeave(); },
     style: stackAccentStyle,
   };
   const stateClasses = cn(

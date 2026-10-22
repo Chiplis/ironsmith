@@ -11,8 +11,13 @@ import {createRoot} from 'react-dom/client';
 import {GameProvider,useGame} from '/src/context/GameContext.jsx';
 import {I18nProvider} from '/src/i18n/I18nContext.jsx';
 import PhaseTrack from '/src/components/board/PhaseTrack.jsx';
+import StackCard from '/src/components/cards/StackCard.jsx';
+import {HoverProvider} from '/src/context/HoverContext.jsx';
+import {DragProvider} from '/src/context/DragContext.jsx';
 import PriorityHoldButton from '/src/components/decisions/PriorityHoldButton.jsx';
 import PriorityHoldControl from '/src/components/decisions/PriorityHoldControl.jsx';
+import {beginStackArrival} from '/src/lib/stack-arrival-activity.js';
+window.beginStackArrival=beginStackArrival;
 import '/src/index.css';
 const h=React.createElement;
 function Probe() {
@@ -23,7 +28,8 @@ function Probe() {
     c.postActionPriorityWindow ? h(PriorityHoldButton,{className:'h-12 w-32 text-[14px]'}) :
       h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'pass_priority'}})},'Resolve'),
     h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'cast_spell',spell_id:7,casting_method:{kind:'normal'}}})},'Cast'),
-    h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'activate_ability',source:7,ability_index:0}})},'Activate'));
+    h('button',{onClick:()=>c.dispatch({type:'priority_action',action_ref:{kind:'activate_ability',source:7,ability_index:0}})},'Activate'),
+    h(HoverProvider,null,h(DragProvider,null,(c.state?.stack_objects||[]).map(entry=>h(StackCard,{key:entry.id,entry})))));
 }
 createRoot(document.getElementById('root')).render(h(I18nProvider,null,h(GameProvider,null,h(Probe))));`;
 const mockPeer = `import {useEffect} from 'react';
@@ -112,6 +118,27 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.equal(await upkeep.locator('..').getAttribute('data-stop'), 'off', 'one-time stop is consumed');
     assert.equal(await upkeep.locator('svg').evaluate(el => getComputedStyle(el).fill), 'none');
 
+    // Concurrent arrivals keep both the deadline and visual drain unarmed
+    // until the final landing completes.
+    await load(priority(220));
+    await upkeep.click();
+    await page.evaluate(state => {
+      window.finishArrivals = [window.beginStackArrival(), window.beginStackArrival()];
+      window.publish(state);
+    }, priority(221, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await hold.waitFor();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt), null);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0);
+    await page.evaluate(() => window.finishArrivals[0]());
+    await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt), null);
+    await page.evaluate(() => { window.lastLanding = performance.now(); window.finishArrivals[1](); });
+    await page.waitForFunction(() => window.context.postActionPriorityWindow?.startedAt != null);
+    assert.ok(await page.evaluate(() => window.context.postActionPriorityWindow.startedAt >= window.lastLanding));
+    await page.waitForFunction(() => window.submissions.length === 1);
+    assert.ok(await page.evaluate(() => window.submissions[0].time - window.lastLanding >= 2000));
+
     // Hover freezes both the pass deadline and its visual countdown.
     await load(priority(23));
     await upkeep.click();
@@ -126,6 +153,7 @@ test('real provider times only opponent phase stops and preserves stack priority
     assert.ok(elapsed >= 600);
     const drainTime = () => hold.locator('.priority-hold-window-fill').evaluate(el => el.getAnimations()[0].currentTime);
     const frozenTime = await drainTime();
+    const holdBox = await hold.boundingBox();
     await page.waitForTimeout(2200);
     assert.equal(await page.evaluate(() => window.submissions.length), 0, 'hover prevents automatic passing');
     assert.equal(await drainTime(), frozenTime, 'visual timer stays frozen');
@@ -136,6 +164,32 @@ test('real provider times only opponent phase stops and preserves stack priority
     });
     assert.ok(Math.abs(resumedElapsed - elapsed) < 150, 'leaving resumes the remaining time');
     await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 2200 });
+
+    // Appearing beneath a parked cursor must not acquire a pause.
+    await load(priority(240));
+    await upkeep.click();
+    await page.mouse.move(holdBox.x + holdBox.width / 2, holdBox.y + holdBox.height / 2);
+    await page.evaluate(state => window.publish(state), priority(241, { active_player: 1, phase: 'beginning phase', step: 'upkeep' }));
+    await hold.waitFor();
+    assert.equal(await hold.evaluate((el, box) => el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)), holdBox), true, 'button appears under the parked cursor');
+    await page.waitForTimeout(150);
+    assert.equal(await page.evaluate(() => window.context.postActionPriorityWindow.pausedAt ?? null), null);
+    await page.mouse.move(holdBox.x + holdBox.width / 2 + 2, holdBox.y + holdBox.height / 2 + 2);
+    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
+
+    // Hovering the actual stack object freezes and resumes the same countdown.
+    await load(priority(242, { stack_size: 1, stack_objects: [{ id: 81, controller: 1, name: 'Test spell' }] }));
+    await page.evaluate(() => window.context.setAutoResolveMode('all'));
+    await hold.waitFor();
+    await page.locator('.stack-card').hover();
+    await page.waitForFunction(() => window.context.postActionPriorityWindow?.pausedAt != null);
+    await page.waitForTimeout(2200);
+    assert.equal(await page.evaluate(() => window.submissions.length), 0, 'stack hover prevents automatic resolution');
+    await page.mouse.move(0, 0);
+    await page.waitForFunction(() => window.submissions.length === 1, null, { timeout: 4000 });
+    await page.evaluate(() => window.context.setAutoResolveMode('regular'));
 
     // Clicking Hold keeps an opponent-turn phase pause beyond the deadline.
     await load(priority(25));

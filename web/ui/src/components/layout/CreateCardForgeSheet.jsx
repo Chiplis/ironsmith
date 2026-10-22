@@ -11,10 +11,11 @@ import { customCardImageUrl } from "@/lib/custom-card-assets";
 import { saveCustomCard } from "@/lib/custom-card-library";
 import useUiText from "@/i18n/useUiText";
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
+import { CircleHelp, Copy, Loader2, RefreshCw, Sparkles, SquareSplitHorizontal, Layers3 } from "lucide-react";
 
 import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
+import { copyTextToClipboard } from "@/lib/clipboard";
 import { hideEmptyDefinitionFields } from "@/lib/compiled-definition-display";
 import {
   fetchCardBuildDraft,
@@ -28,6 +29,8 @@ import {
 import { counterDisplayLabel } from "@/lib/mana-assets";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
 import {
   Sheet,
   SheetContent,
@@ -394,10 +397,12 @@ function CompilePanel({ face, previewError, busy }) {
   );
 }
 
-function CompiledAbilitiesPanel({ face, previewError, busy }) {
+function CompiledAbilitiesPanel({ face, faces, previewError, busy }) {
   const ui = useUiText();
   const [showEmptyValues, setShowEmptyValues] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
   const rawCompilation = face?.rawCompilation || "";
+  const fullDefinition = (faces || []).map((entry) => entry.rawCompilation || "").filter(Boolean).join("\n\n");
   const displayedDefinition = showEmptyValues
     ? rawCompilation
     : hideEmptyDefinitionFields(rawCompilation);
@@ -405,6 +410,15 @@ function CompiledAbilitiesPanel({ face, previewError, busy }) {
     <section className="card-forge-panel card-forge-abilities-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="card-forge-section-label">{ui("Compiled Abilities")}</div>
+        <Button type="button" variant="secondary" size="sm"
+          disabled={!fullDefinition || busy || Boolean(previewError)}
+          onClick={async () => {
+            const copied = await copyTextToClipboard(fullDefinition);
+            setCopyStatus(copied ? "Card definition copied" : "Could not copy card definition");
+          }}>
+          <Copy className="size-3.5" aria-hidden="true" />{ui("Copy card definition")}
+        </Button>
+        <span role="status" className="text-xs">{copyStatus ? ui(copyStatus) : ""}</span>
         <label className="flex cursor-pointer items-center gap-2 text-xs">
           <Checkbox
             checked={showEmptyValues}
@@ -431,7 +445,7 @@ function layoutLabel(layout) {
   return "Single-face";
 }
 
-function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceArrayValue }) {
+function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceArrayValue, layoutControls }) {
   const ui = useUiText();
   return (
     <section className="card-forge-inline-editor">
@@ -459,6 +473,11 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
               value={face.manaCost}
               onChange={(event) => updateFace({ manaCost: event.target.value })}
             />
+          </div>
+        </div>
+
+        <div className="card-forge-layout-art-row">
+          {layoutControls}
             <label className="card-forge-inline-art-field">
               <span className="card-forge-section-label">{ui("Art URL")}</span>
               <input
@@ -469,7 +488,6 @@ function InlineFaceEditor({ face, layout, hasFuse, busy, updateFace, toggleFaceA
                 onChange={(event) => updateFace({ artUrl: event.target.value })}
               />
             </label>
-          </div>
         </div>
 
         <div className="card-forge-inline-type">
@@ -572,7 +590,7 @@ export default function CreateCardForgeSheet({
   trigger = null,
 }) {
   const ui = useUiText();
-  const { game, state, refresh, runWasmInteraction, setStatus } = useGame();
+  const { game, state, refresh, runWasmInteraction, setStatus, semanticThreshold, setSemanticThreshold, cardsMeetingThreshold } = useGame();
   const [open, setOpen] = useState(false);
   const [catalogCard, setCatalogCard] = useState(null);
   const [seedLoading, setSeedLoading] = useState(false);
@@ -586,7 +604,6 @@ export default function CreateCardForgeSheet({
   const [draft, setDraft] = useState(blankDraft());
   const [preview, setPreview] = useState(null);
   const [activeFace, setActiveFace] = useState("face-0");
-  const [abilitiesOpen, setAbilitiesOpen] = useState(false);
   // The real card a draft started from, whose printing "Current printing" shows.
   const [printingName, setPrintingName] = useState(null);
   const [currentPrinting, setCurrentPrinting] = useState(null);
@@ -913,6 +930,23 @@ export default function CreateCardForgeSheet({
     })
     : null;
 
+  const layoutControls = (
+    <section className="card-forge-layout-controls">
+      <div className="card-forge-panel-title">{ui("Card Layout")}</div>
+      <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />
+      {draft.layout === "split" ? (
+        <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
+          <Checkbox
+            checked={draft.hasFuse}
+            onCheckedChange={(checked) => {
+              setDraft((current) => ({ ...current, hasFuse: checked === true }));
+            }}
+            className="h-3.5 w-3.5"
+          />{ui("Fuse enabled")}</label>
+      ) : null}
+    </section>
+  );
+
   return (
     <>
       {triggerNode ?? (
@@ -1001,6 +1035,31 @@ export default function CreateCardForgeSheet({
                     onCheckedChange={(checked) => onSkipTriggersChange?.(checked === true)}
                     className="h-3.5 w-3.5"
                   />{ui("Skip triggers")}</label>
+                <div className="build-card-fidelity">
+                  <span className="build-card-fidelity-label text-[13px] uppercase tracking-wide">{ui("Fidelity")}</span>
+                  <Slider
+                    aria-label={ui("Card fidelity threshold")}
+                    className="build-card-fidelity-slider"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[Math.round(semanticThreshold)]}
+                    onValueChange={([value]) => setSemanticThreshold(value)}
+                  />
+                  <span className="build-card-fidelity-value text-[12px] tabular-nums">
+                    {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : ui("Off")}
+                  </span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="build-card-fidelity-help" aria-label={ui("What does fidelity do?")}>
+                        <CircleHelp size={15} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" data-ui-layer="tooltip" className="build-card-fidelity-help-content text-[13px] leading-5">
+                      {ui("Fidelity is how closely our compiled version of a card matches its printed Oracle text. Search only shows cards at or above this threshold, so lower it to find cards that compile but read less like the original. Off shows every card. Currently {0} cards meet the threshold. This is the same setting as Card fidelity threshold in Settings.", { 0: cardsMeetingThreshold })}
+                    </PopoverContent>
+                  </Popover>
+                </div>
             </div>}
             disabled={disabled || seedLoading || submitting} onSelect={async (option) => {
             setSeedLoading(true);
@@ -1024,8 +1083,14 @@ export default function CreateCardForgeSheet({
             finally { setSeedLoading(false); }
           }} />
           <div className="card-forge-toolbar">
-            <div className="card-forge-banner">
-              {seedLoading ? ui("Loading deck sample...") : ui("Editing: {0}", { 0: draft.faces?.[0]?.name || "New card" })}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <div className="card-forge-banner">
+                {seedLoading ? ui("Loading deck sample...") : ui("Editing: {0}", { 0: draft.faces?.[0]?.name || "New card" })}
+              </div>
+              <p className="card-forge-printing-credit">
+                {ui("Card frames rendered by")}{" "}
+                <a href="https://github.com/vishvananda/card-glint" target="_blank" rel="noopener noreferrer">card-glint</a>
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="secondary" size="sm" className="stone-pill" disabled={seedLoading || submitting} onClick={() => { setDraft(blankDraft()); setSeedDraft(null); setCatalogCard(null); setPrintingName(null); setActiveFace("face-0"); }}>{ui("New card")}</Button>
@@ -1077,6 +1142,7 @@ export default function CreateCardForgeSheet({
                   <InlineFaceEditor
                     face={draft.faces[0]}
                     layout={draft.layout}
+                    layoutControls={layoutControls}
                     hasFuse={draft.hasFuse}
                     busy={previewLoading}
                     updateFace={(patch) => updateFace(0, patch)}
@@ -1111,6 +1177,7 @@ export default function CreateCardForgeSheet({
                       <InlineFaceEditor
                         face={face}
                         layout={draft.layout}
+                        layoutControls={layoutControls}
                         hasFuse={draft.hasFuse}
                         busy={previewLoading}
                         updateFace={(patch) => updateFace(index, patch)}
@@ -1124,39 +1191,10 @@ export default function CreateCardForgeSheet({
             </div>
 
             <div className="card-forge-side">
-              <section className="card-forge-panel">
-                <div className="card-forge-panel-title">{ui("Card Layout")}</div>
-                <LayoutPicker value={draft.layout} onChange={handleLayoutChange} />
-                {draft.layout === "split" ? (
-                  <label className="toolbar-checkbox mt-2 flex items-center gap-2 text-[13px] uppercase tracking-wide">
-                    <Checkbox
-                      checked={draft.hasFuse}
-                      onCheckedChange={(checked) => {
-                        setDraft((current) => ({ ...current, hasFuse: checked === true }));
-                      }}
-                      className="h-3.5 w-3.5"
-                    />{ui("Fuse enabled")}</label>
-                ) : null}
-              </section>
-
               <CompilePanel face={previewFace} previewError={previewError} busy={previewLoading} />
+              <CompiledAbilitiesPanel face={previewFace} faces={preview?.faces} previewError={previewError} busy={previewLoading} />
             </div>
-            {/* Compiled abilities are a debugging view: a drawer from the right
-                edge that opens over the layout column. */}
-            <div className="card-forge-abilities-drawer" data-open={abilitiesOpen ? "true" : "false"}>
-              <button type="button" className="card-forge-abilities-toggle"
-                aria-expanded={abilitiesOpen} aria-controls="card-forge-abilities"
-                aria-label={ui(abilitiesOpen ? "Hide compiled abilities" : "Show compiled abilities")}
-                title={ui(abilitiesOpen ? "Hide compiled abilities" : "Show compiled abilities")}
-                onClick={() => setAbilitiesOpen((open) => !open)}>
-                {abilitiesOpen ? <ChevronRight aria-hidden="true" /> : <ChevronLeft aria-hidden="true" />}
-              </button>
-              {abilitiesOpen ? (
-                <div id="card-forge-abilities" className="card-forge-abilities-drawer-body">
-                  <CompiledAbilitiesPanel face={previewFace} previewError={previewError} busy={previewLoading} />
-                </div>
-              ) : null}
-            </div>
+
           </div>
 
 

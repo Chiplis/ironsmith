@@ -66,6 +66,10 @@
 .play-workspace .play-deck-sidebar .lobby-sheet-panel > div { font-size: 12px; line-height: 1.4; }
 .play-workspace .play-deck-sidebar .ui-primary-action { min-height: 44px !important; width: 100%; }
 .play-workspace .lobby-sheet-tournaments { min-height: 0; flex: 1; align-content: start; }
+.play-workspace .lobby-sheet-setup-fields > .lobby-sheet-unreleased { grid-column: 1 / -1; }
+/* Joining picks no deck yet: lobby search beside the join panel. */
+.play-workspace .play-setup-grid.is-join { grid-template-columns: minmax(260px, 1.6fr) minmax(240px, 1fr); }
+.play-workspace .lobby-sheet-format-first { flex: 1; align-content: center; justify-items: center; text-align: center; }
 @media (max-height: 800px) {
   .play-workspace .fantasy-sheet-header { padding-block: 8px !important; }
   .play-workspace .fantasy-sheet-header [data-slot="sheet-description"] { display: none; }
@@ -470,3 +474,9 @@
     letter-spacing: 0.06em;
   }
 }
+.build-card-fidelity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.build-card-fidelity-slider { width: 120px; flex: 0 1 120px; }
+.build-card-fidelity-value { min-width: 3ch; color: var(--muted-foreground); }
+.build-card-fidelity-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.build-card-fidelity-help:hover, .build-card-fidelity-help:focus-visible { color: var(--foreground); }
+.build-card-fidelity-help-content { max-width: 300px; }

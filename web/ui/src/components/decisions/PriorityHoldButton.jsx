@@ -3,11 +3,13 @@ import { Hand } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGame } from '@/context/GameContext';
 import useUiText from '@/i18n/useUiText';
+import usePriorityHoverPause from '@/hooks/usePriorityHoverPause';
 
 export default function PriorityHoldButton({ className = '', disabled = false }) {
   const ui = useUiText();
-  const { postActionPriorityWindow: window, holdPostActionPriority, pausePostActionPriority, resumePostActionPriority } = useGame();
+  const { postActionPriorityWindow: window, holdPostActionPriority } = useGame();
   const buttonRef = useRef(null);
+  const hoverPause = usePriorityHoverPause({ enabled: !disabled, requireMovement: true });
   useLayoutEffect(() => {
     if (!window || !buttonRef.current) return;
     const currentTime = performance.now();
@@ -44,8 +46,7 @@ export default function PriorityHoldButton({ className = '', disabled = false })
       disabled={disabled}
       aria-label={ui('Hold Priority')}
       title={ui('Keep priority instead of passing automatically')}
-      onMouseEnter={() => pausePostActionPriority(window.id)}
-      onMouseLeave={() => resumePostActionPriority(window.id)}
+      {...hoverPause}
       onClick={holdPostActionPriority}
       style={{ '--hold-duration': `${window.duration}ms`, animationPlayState: window.startedAt === null || window.pausedAt != null ? 'paused' : 'running' }}
     >

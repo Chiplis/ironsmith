@@ -2,7 +2,7 @@ export { hiddenCardMetadataForObjectFromCheckpoint } from "../../lib/hidden-card
 import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
 export { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint };
 import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
-import { PUBLIC_FORMATS, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
+import { PUBLIC_FORMATS, isLegalityFormat, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { readRelayOnlyPreference } from '../../lib/relay/session.js';
 import { WITNESS_FORFEIT_REASON } from '../../lib/tournament/witness-protocol.js';
 import { validateFormatDeck } from '../../lib/relay/format-legality.js';
@@ -291,6 +291,7 @@ export function createEmptyState() {
     desiredPlayers: 0,
     startingLife: 20,
     format: MATCH_FORMAT_NORMAL,
+    allowUnreleased: false,
     securityMode: MULTIPLAYER_SECURITY_TRUSTED,
     signalingServer: "",
     localDeckText: "",
@@ -2172,7 +2173,20 @@ export function rememberDefaultLobbyDeck(deckText, commanderText = "") {
   saveDefaultLobbyDeck({ deckText, commanderText });
 }
 
-export function withDeckState(player, format, deck, commanders = [], sideboard = []) {
+// The format check for one seat's open decklist in a public-format lobby, or
+// null when the lobby's format has no card legality (Normal, Planechase).
+export function lobbyDeckLegality(format, deck, commanders = [], sideboard = [], { allowUnreleased = false } = {}) {
+  if (!isLegalityFormat(format)) return null;
+  return validateFormatDeck(format, sanitizeCardList(deck), sanitizeCardList(commanders),
+    sanitizeCardList(sideboard), undefined, { allowUnreleased: allowUnreleased === true });
+}
+
+// What every seat sees about a deck that breaks the lobby format.
+export function formatErrorsForLobby(legality) {
+  return legality && !legality.ready ? legality.errors.slice(0, 8) : [];
+}
+
+export function withDeckState(player, format, deck, commanders = [], sideboard = [], legalityOptions = {}) {
   const normalizedDeck = sanitizeCardList(deck);
   const normalizedCommanders = sanitizeCardList(commanders);
   const normalizedSideboard = sanitizeCardList(sideboard);
@@ -2181,6 +2195,7 @@ export function withDeckState(player, format, deck, commanders = [], sideboard =
     normalizedDeck,
     normalizedCommanders
   );
+  const legality = lobbyDeckLegality(format, normalizedDeck, normalizedCommanders, normalizedSideboard, legalityOptions);
   return {
     ...player,
     deck: normalizedDeck,
@@ -2189,7 +2204,8 @@ export function withDeckState(player, format, deck, commanders = [], sideboard =
     deckCount: status.deckCount,
     sideboardCount: normalizedSideboard.length,
     commanderCount: status.commanderCount,
-    ready: status.ready && (!isRelayId(player.peerId) || validateFormatDeck(format, normalizedDeck, normalizedCommanders, normalizedSideboard).ready),
+    ready: status.ready && (!legality || legality.ready),
+    formatErrors: formatErrorsForLobby(legality),
   };
 }
 
@@ -2760,6 +2776,9 @@ export function toPublicPlayers(players) {
 export function toLobbyPlayer(player) {
   return {
     ...toPublicPlayer(player),
+    // Lobby-only: the host's format check of this seat's deck, so every
+    // player sees why the match cannot start yet.
+    formatErrors: Array.isArray(player.formatErrors) ? player.formatErrors.map(String).slice(0, 8) : [],
   };
 }
 
@@ -3135,9 +3154,10 @@ export function canHostedMatchStart(session) {
   if (!lobbyReady) return false;
   if (isRelayId(session.lobbyId)) {
     const rules = PUBLIC_FORMATS[session.format];
-    if (!rules || playerCount > rules.maxPlayers || session.startingLife !== rules.startingLife
-      || !session.players.every(p => validateFormatDeck(session.format, p.deck, p.commanders, p.sideboard).ready)) return false;
+    if (!rules || playerCount > rules.maxPlayers || session.startingLife !== rules.startingLife) return false;
   }
+  if (isLegalityFormat(session.format) && !session.players.every(p =>
+    lobbyDeckLegality(session.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: session.allowUnreleased }).ready)) return false;
   if (
     normalizeMatchFormat(session.format) === MATCH_FORMAT_PLANECHASE
     && !isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))

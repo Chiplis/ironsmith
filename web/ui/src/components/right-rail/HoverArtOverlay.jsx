@@ -6,7 +6,7 @@ import { groupManaAbilities } from "@/lib/group-mana-abilities";
 import GroupedManaAbility from "./GroupedManaAbility";
 import { cardArtCropUrl } from "@/lib/card-image-variants";
 import { cachedInspectorDetails, requestInspectorDetails } from "@/lib/inspector-details-cache";
-import { inspectorRulesLines, stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView } from "@/lib/inspector-ability-lines";
+import { inspectorRulesLines, stripInspectorAbilityPrefixes, normalizeAbilityMatchText, lineAbilityMatchScore, activatedAbilityLineIndices, interactiveRulesView, turnFaceUpRulesLines } from "@/lib/inspector-ability-lines";
 import "@/styles/card-typography.css";
 import useCardTypography from "@/hooks/useCardTypography";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1068,9 +1068,13 @@ export default function HoverArtOverlay({
   // the engine's compiled paragraphs. Generated translations follow their input.
   const canonicalRulesText = translatedRulesText && activeCardTranslation?.rulesSource === "scryfall"
     && oracleRulesLines.length > 0 ? oracleRulesLines.join("\n") : baseDisplayRulesText;
-  const ungroupedRulesView = useMemo(() => interactiveRulesView(
-    canonicalRulesText, translatedRulesText || canonicalRulesText, paymentActions
-  ), [canonicalRulesText, translatedRulesText, paymentActions]);
+  const faceUpRules = useMemo(() => turnFaceUpRulesLines(paymentActions), [paymentActions]);
+  const ungroupedRulesView = useMemo(() => {
+    const withFaceUp = text => [text, ...faceUpRules.lines].filter(Boolean).join("\n");
+    return interactiveRulesView(
+      withFaceUp(canonicalRulesText), withFaceUp(translatedRulesText || canonicalRulesText), faceUpRules.actions
+    );
+  }, [canonicalRulesText, translatedRulesText, faceUpRules]);
   const rulesView = useMemo(() => groupManaAbilities(ungroupedRulesView, locale), [ungroupedRulesView, locale]);
   const displayRulesLines = rulesView.lines;
   const displayRulesText = displayRulesLines.join("\n");

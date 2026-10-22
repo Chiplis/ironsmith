@@ -13,6 +13,7 @@ import {
   sigil,
   ZONE_ACCENTS,
 } from "@/lib/motion/stack-fx";
+import { beginStackArrival } from "@/lib/stack-arrival-activity";
 import { castOrigin } from "@/lib/stack-cast-origins";
 import { getZoneAnchorRect } from "@/lib/zone-anchors";
 import { getPlayerTargetRect } from "@/hooks/useCardPositions";
@@ -150,15 +151,16 @@ function nodeCenterRect(node) {
 }
 
 /** The frame ignites where the comet struck: radial reveal, flash, settle. */
-export function materialize(node, rgb, { subtle = false } = {}) {
+export function materialize(node, rgb, { subtle = false, onComplete = () => {} } = {}) {
   node.style.opacity = "";
-  if (prefersReducedMotion()) return null;
+  if (prefersReducedMotion()) { onComplete(); return null; }
   const rect = node.getBoundingClientRect();
   node.dataset.arriving = "true";
   node.dataset.materialize = "true";
   window.setTimeout(() => {
     delete node.dataset.arriving;
     delete node.dataset.materialize;
+    onComplete();
   }, MATERIALIZE_MS);
   shockwave({ at: rect, rgb, radius: Math.max(rect.width, rect.height) * (subtle ? 0.5 : 0.75) });
   burst({ at: { x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.42 }, rgb, kind: "impact", count: subtle ? 18 : 46 });
@@ -206,6 +208,7 @@ export function playArrival({ node, entry, state, inspectId, owner, rgb, pileNod
       cancelled = true;
     };
   }
+  const finishArrival = beginStackArrival();
   let watchdog = null;
   node.style.opacity = "0";
   (async () => {
@@ -224,7 +227,8 @@ export function playArrival({ node, entry, state, inspectId, owner, rgb, pileNod
         autoplay: true,
         onComplete: () => {
           node.style.transform = "";
-          materialize(node, rgb, { subtle: true });
+          window.clearTimeout(watchdog);
+          onMotion(materialize(node, rgb, { subtle: true, onComplete: finishArrival }));
         },
       }).add(node, {
         x: [plan.copyOf.left - rect.left, 0],
@@ -245,15 +249,18 @@ export function playArrival({ node, entry, state, inspectId, owner, rgb, pileNod
     }
     await launchComet({ from: plan.from, to: nodeCenterRect(node), rgb, accentRgb: plan.accentRgb, style: plan.style });
     if (cancelled) return;
-    onMotion(materialize(node, rgb));
+    window.clearTimeout(watchdog);
+    onMotion(materialize(node, rgb, { onComplete: finishArrival }));
   })().catch((error) => {
     // A failed flourish must never leave the card invisible.
     console.error("[card stack] arrival animation failed", error);
     if (!cancelled) node.style.opacity = "";
+    finishArrival();
   });
   return () => {
     cancelled = true;
     window.clearTimeout(watchdog);
+    finishArrival();
   };
 }
 

@@ -79,7 +79,8 @@ function buildActivatableMap(decision, perspective) {
     if (
       (action.kind === "activate_ability"
         || action.kind === "activate_mana_ability"
-        || action.kind === "untap_land")
+        || action.kind === "untap_land"
+        || action.kind === "turn_face_up")
       && action.object_id != null
     ) {
       const objectId = Number(action.object_id);

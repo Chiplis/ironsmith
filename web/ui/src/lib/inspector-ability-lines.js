@@ -148,3 +148,25 @@ export function inspectorRulesLines(compiledText, abilities, fallback = '') {
   return source.flatMap(line => stripInspectorAbilityPrefixes(String(line ?? '')).split(/\n+/))
     .map(line => line.trim()).filter(Boolean);
 }
+
+const TURN_FACE_UP_KEYWORDS = {
+  "turn-face-up cost": "Morph",
+  "megamorph cost": "Megamorph",
+  "disguise cost": "Disguise",
+};
+
+// A face-down permanent's text box is blank (CR 708.2), yet its controller may
+// turn it face up. Each offered turn-face-up action becomes a rules line that
+// carries its own action, so the inspector can render it as an ability.
+export function turnFaceUpRulesLines(actions = []) {
+  const lines = [];
+  const mapped = actions.map(action => {
+    if (action?.kind !== "turn_face_up") return action;
+    const cost = String(action.label || "").match(/^(.*?):\s*Turn this face-down permanent face up/i)?.[1]?.trim();
+    const keyword = TURN_FACE_UP_KEYWORDS[String(action.action_ref?.method || "").toLowerCase()];
+    const line = `${keyword ? `${keyword} ` : ""}${cost || ""}: Turn this permanent face up.`.replace(/^:\s*/, "");
+    if (!lines.includes(line)) lines.push(line);
+    return { ...action, ability_text: line };
+  });
+  return { lines, actions: mapped };
+}

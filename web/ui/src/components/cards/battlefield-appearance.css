@@ -78,6 +78,20 @@
   top: calc(var(--arena-name-height) + 2px);
 }
 
+/* Every copy follows the token crown, including the clipped backing art. */
+.game-card.battlefield-artwork-card:has(.arena-permanent[data-token]) .battlefield-group-stack-layer {
+  inset: 2px;
+  border-radius: 48% 48% 4px 4px;
+  overflow: hidden;
+}
+.battlefield-artwork-card .arena-permanent[data-token] > .battlefield-group-badge {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  border-radius: 0 4px 0 0;
+}
+
 .battlefield-artwork-card {
   --mana-strip-height: clamp(4px, calc(var(--bf-card-height, 90px) * .0425), 6px);
   /* Tall enough that a tap button's mana symbol always fits inside it. */

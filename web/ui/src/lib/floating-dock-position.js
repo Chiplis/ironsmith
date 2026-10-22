@@ -13,7 +13,7 @@ const FOCUSED_HUD_MIN_VIEWPORT = 721;
  */
 export function handSideReserve(viewportWidth) {
   if (!(viewportWidth >= FOCUSED_HUD_MIN_VIEWPORT)) return 24;
-  return DOCK_RIGHT_INSET + clamp(viewportWidth * 0.25, 260, 340) + HAND_DOCK_GAP;
+  return DOCK_RIGHT_INSET + clamp(viewportWidth * 0.25, 280, 340) + HAND_DOCK_GAP;
 }
 
 /** Widest the decision dock may get without reaching the hand's reserve. */
@@ -102,14 +102,15 @@ export function anchorFloatingDock({
   return { left, top };
 }
 
-/** Keep the decision in the horizontal lane beside the actual hand cards.
+/** Keep every decision in the reserved lane beside the hand. Fewer cards
+ * never widen the lane; all menus and plain actions share the same width.
  * Reserve the entire zone column, even before the panel grows into it, so
  * expanding content cannot alternate between two different placements.
  */
-export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, dockHeight, protectedZones = [], handRight = 0, handTop = viewportHeight, commandZoneMidpoint = null }) {
+export function anchorDecisionDock({ viewportWidth, viewportHeight, dockHeight, protectedZones = [], handRight = 0, handTop = viewportHeight, commandZoneMidpoint = null, contentTop = DOCK_MIN_TOP }) {
   const zones = protectedZones.filter(zone => Number.isFinite(zone?.left));
   const right = zones.reduce((edge, zone) => Math.min(edge, zone.left - ZONE_CLEARANCE), viewportWidth - DOCK_RIGHT_INSET);
-  const leftLimit = Math.max(DOCK_EDGE_PADDING, handRight + HAND_DOCK_GAP);
+  const leftLimit = Math.max(DOCK_EDGE_PADDING, viewportWidth - handSideReserve(viewportWidth) + HAND_DOCK_GAP, handRight + HAND_DOCK_GAP);
   const laneWidth = right - leftLimit;
   // If a wide hand leaves too little room, use the space above its cards.
   const aboveHand = laneWidth < 180;
@@ -119,10 +120,10 @@ export function anchorDecisionDock({ viewportWidth, viewportHeight, dockWidth, d
   const deckTop = Math.max(DOCK_MIN_TOP, Number.isFinite(zoneTop) ? zoneTop : DOCK_MIN_TOP);
   // The command midpoint caps hover-driven lifting of the bottom controls;
   // expanded decision content can still grow upward toward the deck.
-  const topLimit = aboveHand ? Math.max(DOCK_MIN_TOP, Math.min(deckTop, bottom - 200)) : deckTop;
+  const topLimit = aboveHand ? Math.max(DOCK_MIN_TOP, Math.min(deckTop, bottom - 200)) : Math.max(DOCK_MIN_TOP, contentTop);
   const maxHeight = Math.max(1, bottom - topLimit);
   return {
-    left: Math.round(right - Math.min(dockWidth, maxWidth)),
+    left: Math.round(right - maxWidth),
     top: Math.round(bottom - Math.min(dockHeight, maxHeight)),
     maxWidth,
     maxHeight,

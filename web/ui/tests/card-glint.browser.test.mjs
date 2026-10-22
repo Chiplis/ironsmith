@@ -277,3 +277,38 @@ test('colored lands paint their outer stock from the land palette', {timeout:120
     await page.screenshot({path:'test-results/card-glint-land-stock.png'});
   } finally {await browser.close();await vite.close();}
 });
+
+test('Kaito keeps a painted frame and loyalty actions while he is a creature', {timeout:90000},async()=>{
+  const vite=await createServer({server:{host:'127.0.0.1',port:0},logLevel:'error'});await vite.listen();
+  const browser=await chromium.launch();
+  try {
+    const page=await browser.newPage({viewport:{width:440,height:570}}),errors=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/tests/card-glint.html?warm`);
+    await page.waitForFunction(()=>window.changeGlintCard);
+    // Preserve the verbose live engine wording that overflowed the ordinary
+    // creature frame; no Scryfall lookup or replacement Oracle text is needed.
+    await page.evaluate(()=>{
+      const lines=['Ninjutsu {1}{U}{B}',
+        'As long as timing restriction: During your turn and this has one or more loyalty counters on him, kaito, Bane of Nightmares is a creature.',
+        'As long as this has one or more loyalty counters on him, Kaito is ninja during your turn and and has base power and toughness 3/4 during your turn and.',
+        'Kaito has hexproof as long as timing restriction: During your turn and this has one or more loyalty counters on him.',
+        '+1: You get an emblem with "Ninjas you control get +1/+1."',
+        '0: Surveil 2. Then you draw a card for each opponent who has lost life this turn.',
+        '−2: Tap target creature. Put two stun counters on it.','Hexproof','4 loyalty'];
+      window.changeGlintCard({name:'Kaito, Bane of Nightmares',type_line:'Legendary Creature — Ninja',
+        mana_cost:'{2}{U}{B}',power:'3',toughness:'4',loyalty:4,oracle_text:lines.join('\n')});
+      window.setGlintRules({lines,actions:new Map([[4,[{id:'plus'}]],[5,[{id:'zero'}]],[6,[{id:'minus'}]]])});
+      window.showGlintFrame();
+    });
+    await page.locator('[data-card-glint-frame="ready"]').waitFor({timeout:60000});
+    await page.getByRole('img',{name:/Kaito, Bane of Nightmares: Legendary Creature — Ninja/}).waitFor();
+    assert.equal(await page.locator('[data-frame-mode="baked"]').count(),0);
+    for(const [prefix,id] of [['+1:','plus'],['0:','zero'],['−2:','minus']]){
+      await page.getByRole('button',{name:`Kaito, Bane of Nightmares: ${prefix}`,exact:false}).first().click();
+      assert.equal(await page.evaluate(()=>window.glintActivated),id);
+    }
+    await page.screenshot({path:'/tmp/kaito-card-glint-fixed.png'});
+    assert.deepEqual(errors,[]);
+  }finally{await browser.close();await vite.close();}
+});

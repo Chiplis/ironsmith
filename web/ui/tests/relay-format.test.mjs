@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { validateFormatDeck, assertFormatMatch } from '../src/lib/relay/format-legality.js';
+import { validateFormatDeck, assertFormatMatch, assertFormatDecks } from '../src/lib/relay/format-legality.js';
 import { normalizeMatchFormat, evaluateLobbyDeckSubmission } from '../src/lib/decklists.js';
-import { PUBLIC_FORMATS, usesCommanders } from '../src/lib/relay/formats.js';
+import { PUBLIC_FORMATS, isLegalityFormat, usesCommanders } from '../src/lib/relay/formats.js';
 const catalog = JSON.parse(await readFile(new URL('../src/lib/relay/format-catalog.generated.json', import.meta.url)));
 const deck = (name, count = 60) => Array(count).fill(name);
 const check = (format, main, commanders = [], sideboard = []) => validateFormatDeck(format, main, commanders, sideboard, catalog);
@@ -53,4 +53,24 @@ test('match gate checks format rules and rejects missing catalog', () => {
   assert.throws(() => assertFormatMatch({ ...config, startingLife: 40 }, catalog));
   assert.throws(() => assertFormatMatch({ ...config, playerNames: ['A', 'B', 'C'] }, catalog));
   assert.equal(validateFormatDeck('modern', deck('Plains')).ready, false);
+});
+test('unreleased cards need the lobby toggle and still obey copy limits', () => {
+  const preview = { name: 'Preview Dragon', legalities: Object.fromEntries(Object.keys(PUBLIC_FORMATS).map(f => [f, 'not_legal'])),
+    colors: ['R'], type: 'Creature — Dragon', rules: '', unreleased: true };
+  const data = { ...catalog, cards: { ...catalog.cards, 'preview dragon': preview } };
+  const main = [...deck('Mountain', 56), ...deck('Preview Dragon', 4)];
+  const blocked = validateFormatDeck('modern', main, [], [], data);
+  assert.equal(blocked.ready, false);
+  assert.match(blocked.cardProblems['Preview Dragon'], /unreleased/);
+  assert.equal(validateFormatDeck('modern', main, [], [], data, { allowUnreleased: true }).ready, true);
+  assert.equal(validateFormatDeck('modern', [...main, 'Preview Dragon'], [], [], data, { allowUnreleased: true }).ready, false);
+  const config = { format: 'modern', startingLife: 20, playerNames: ['A', 'B'], decks: [main, deck('Island')] };
+  assert.throws(() => assertFormatDecks(config, data));
+  assert.doesNotThrow(() => assertFormatDecks({ ...config, allowUnreleased: true }, data));
+});
+test('card problems name the card as the deck wrote it', () => {
+  const result = check('modern', [...deck('Plains', 59), 'Sol Ring']);
+  assert.deepEqual(Object.keys(result.cardProblems), ['Sol Ring']);
+  assert.equal(isLegalityFormat('modern') && isLegalityFormat('commander'), true);
+  assert.equal(isLegalityFormat('normal') || isLegalityFormat('planechase'), false);
 });

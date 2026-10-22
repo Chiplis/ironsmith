@@ -1,3 +1,4 @@
+import { useGame } from "@/context/GameContext";
 import PlayerCounters from "./PlayerCounters";
 import { playerCounters } from "@/lib/player-counters";
 import useUiText from "@/i18n/useUiText";
@@ -14,8 +15,10 @@ export default function ManaPool({
   className = "",
 }) {
   const ui = useUiText();
+  const { state } = useGame();
+  const stormCount = player?.id === state?.perspective ? state?.storm_count : 0;
   const safePool = pool && typeof pool === "object" ? pool : {};
-  if (!alwaysVisible && safePool !== pool && !playerCounters(player).length) return null;
+  if (!alwaysVisible && safePool !== pool && !playerCounters(player).length && !(stormCount > 0)) return null;
 
   const chips = MANA_SYMBOLS.map(({ key, symbol, label }) => {
     const amount = Number(safePool[key]);
@@ -41,7 +44,7 @@ export default function ManaPool({
     );
   }).filter(Boolean);
 
-  if (!chips.length && !playerCounters(player).length) return null;
+  if (!chips.length && !playerCounters(player).length && !(stormCount > 0)) return null;
 
   return (
     <div
@@ -54,8 +57,8 @@ export default function ManaPool({
       aria-label={ui("Mana pool by type")}
       title={ui("Mana pool by type")}
     >
+      <PlayerCounters player={player} stormCount={stormCount} />
       {chips}
-      <PlayerCounters player={player} />
     </div>
   );
 }

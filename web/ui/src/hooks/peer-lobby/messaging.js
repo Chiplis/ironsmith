@@ -6,8 +6,8 @@ import { withActionPrefixes, EMPTY_ACTION_PREFIX, actionPrefixHash } from '../..
 import { needsFullStateResync, matchingActionPrefix } from '../../lib/relay/resync.js';
 import { replayTrustedMatch, replayTrustedActions } from '../../lib/relay/replay-trusted-match.js';
 import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from '../../lib/relay/session.js';
-import { PUBLIC_FORMATS, isRelayId, relayBaseUrl, usesCommanders } from '../../lib/relay/formats.js';
-import { loadFormatCatalog, validateFormatDeck, assertFormatMatch } from '../../lib/relay/format-legality.js';
+import { PUBLIC_FORMATS, isLegalityFormat, isRelayId, relayBaseUrl, usesCommanders } from '../../lib/relay/formats.js';
+import { loadFormatCatalog, assertFormatDecks, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer, pinnedSessionSecurityMode, relayPeerOptions } from './shared.js';
 import {
   CURRENT_AUDIT_MAX_PLAYERS,
@@ -73,6 +73,8 @@ import {
   sanitizeCardList,
   sanitizeDeckSlotOpenings,
   sanitizePlayerName,
+  lobbyDeckLegality,
+  formatErrorsForLobby,
   sessionSecurityMode,
   summarizeMatchValidationIssues,
   toErrorMessage,
@@ -134,6 +136,18 @@ function normalizeLobbyDeckOptions(value) {
       deckText: String(option?.deckText || "").slice(0, 100000),
     }))
     .filter((option) => option.deckText.trim());
+}
+
+// A seat's readiness as the host sees it: the guest's own deck-size check,
+// replaced in a public format by the host's card-legality check of the open
+// decklist, whose problems every seat is shown.
+function hostCheckedDeckReadiness(session, message) {
+  const legality = lobbyDeckLegality(session.format, message.deck, message.commanders,
+    message.sideboard, { allowUnreleased: session.allowUnreleased });
+  return {
+    ready: legality ? legality.ready : Boolean(message.ready),
+    formatErrors: formatErrorsForLobby(legality),
+  };
 }
 
 export function usePeerLobbyMessaging(base, servicesRef) {
@@ -983,9 +997,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 
   const broadcastLobbyState = useCallback(() => {
     let session = multiplayerRef.current;
-    if (session.role === 'host' && isRelayId(session.lobbyId) && !session.matchStarted) {
+    // The legality catalog can finish loading after a deck arrived, so the
+    // host re-checks every seat before telling the table.
+    if (session.role === 'host' && isLegalityFormat(session.format) && !session.matchStarted) {
       session = updateMultiplayer(prev => ({ ...prev, players: prev.players.map(p =>
-        withDeckState(p, prev.format, p.deck, p.commanders, p.sideboard)) }));
+        withDeckState(p, prev.format, p.deck, p.commanders, p.sideboard, { allowUnreleased: prev.allowUnreleased })) }));
     }
     if (session.role !== "host") return;
     broadcastToClients({
@@ -996,6 +1012,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       desiredPlayers: session.desiredPlayers,
       startingLife: session.startingLife,
       format: session.format,
+      allowUnreleased: session.allowUnreleased === true,
       securityMode: sessionSecurityMode(session),
       players: toLobbyPlayers(session.players),
       deckOptions: normalizeLobbyDeckOptions(session.deckOptions),
@@ -1048,6 +1065,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       hostPeerId: session.localPeerId,
       players: payloadPlayers,
       format,
+      ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map((player) => sanitizeCardList(player.deck)),
       sideboards,
@@ -1059,8 +1077,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       matchClockPolicy: matchClockPolicyPayload(matchClockConfigRef.current),
       auditMatchId: session.lobbyId || session.localPeerId,
     };
-    if (isRelayId(session.lobbyId)) {
-      try { assertFormatMatch(payload); }
+    if (isRelayId(session.lobbyId) || isLegalityFormat(payload.format)) {
+      try { (isRelayId(session.lobbyId) ? assertFormatMatch : assertFormatDecks)(payload); }
       catch (error) { setStatus(error.message, true); return; }
     }
     payload.seed = createMatchSeed(payload);
@@ -1217,6 +1235,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       hostPeerId: session.localPeerId,
       players: players.map(toPublicPlayer),
       format,
+      ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map(() => []),
       sideboards,
@@ -1473,6 +1492,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         ready: false,
       })),
       format,
+      ...(session.allowUnreleased ? { allowUnreleased: true } : {}),
       openDecklists: true,
       decks: players.map(() => []),
       sideboards,
@@ -1820,9 +1840,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       parseDeckSubmission(session.format, deckText, commanderText),
       { game: gameRef.current, onSubstitute: reportCardSubstitutions },
     );
-    const formatStatus = isRelayId(session.lobbyId)
-      ? validateFormatDeck(session.format, submission.deck, submission.commanders, submission.sideboard)
-      : null;
+    const formatStatus = lobbyDeckLegality(session.format, submission.deck, submission.commanders,
+      submission.sideboard, { allowUnreleased: session.allowUnreleased });
     if (!submission.ready || (formatStatus && !formatStatus.ready)) {
       setStatus(
         formatStatus && !formatStatus.ready
@@ -2049,7 +2068,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           // A lobby_state acknowledges these open decklists. Re-sending the same
           // submission would make the host broadcast another lobby_state forever.
           const accepted = session.players.find(p => p.peerId === session.localPeerId);
-          if (isRelayId(session.lobbyId) && accepted
+          if (isRelayId(session.lobbyId) && accepted && accepted.name === session.localName
             && JSON.stringify([accepted.deck, accepted.commanders, accepted.sideboard])
               === JSON.stringify([deckSubmission.deck, deckSubmission.commanders, deckSubmission.sideboard])) return;
 	      updateMultiplayer((prev) => ({
@@ -2070,7 +2089,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                  prev.format,
 	                  deckSubmission.deck,
 	                  deckSubmission.commanders,
-	                  deckSubmission.sideboard
+	                  deckSubmission.sideboard,
+	                  { allowUnreleased: prev.allowUnreleased }
 	                )
 	              : player
 	          )
@@ -2081,6 +2101,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	      safeSend(conn, {
 	        type: "deck_update",
 	        protocolVersion: PROTOCOL_VERSION,
+	        name: session.localName,
 	        securityMode: MULTIPLAYER_SECURITY_TRUSTED,
 	        deckAuditManifest: null,
 	        deck: deckSubmission.deck,
@@ -2118,6 +2139,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       && currentManifest?.commitmentRoot === currentPrivateManifest?.commitmentRoot
       && currentZifflePlayer === localPlayerIndex
       && currentSigner === localPlayerIndex
+      && localEntry?.name === session.localName
     ) {
       return;
     }
@@ -2194,6 +2216,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     safeSend(conn, {
       type: "deck_update",
       protocolVersion: PROTOCOL_VERSION,
+      name: session.localName,
 	      auditPublicKey,
 	      auditEncryptionPublicKey,
 	      playerGenesisSignature,
@@ -2318,6 +2341,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               desiredPlayers: Number(message.desiredPlayers || prev.desiredPlayers || 0),
               startingLife: Number(message.startingLife || prev.startingLife || 20),
               format: nextFormat,
+              allowUnreleased: message.allowUnreleased === true,
               securityMode: nextSecurityMode,
               lockedSecurityMode: nextSecurityMode,
               localDeckCount: localDeckSubmission.deckCount,
@@ -2345,6 +2369,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             nextSession.localCommanderText
           );
           ensureDirectPeerConnections(message.players || []);
+          // Guests check their own list against the host's format as they edit.
+          if (isLegalityFormat(nextSession.format)) void loadFormatCatalog().catch(() => {});
           void publishLocalDeckUpdateForAssignedSeat(nextSession).catch((err) => {
             emitSyncFailureNotice(
               "Deck commitment update failed",
@@ -3361,9 +3387,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                  ziffleKey: message.ziffleKey || basePlayer.ziffleKey || null,
 	                  commanders: sanitizeCardList(message.commanders),
                   deckSlotOpenings: sanitizeDeckSlotOpenings(message.deckSlotOpenings),
-	                  ready: isRelayId(prev.lobbyId)
-                        ? validateFormatDeck(prev.format, sanitizeCardList(message.deck), sanitizeCardList(message.commanders), sanitizeCardList(message.sideboard)).ready
-                        : Boolean(message.ready),
+	                  ...hostCheckedDeckReadiness(prev, message),
                   deckCount: Number(message.deckCount || 0),
                   sideboardCount: Number(message.sideboardCount || 0),
                   commanderCount: Number(message.commanderCount || 0),
@@ -3600,9 +3624,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	                      ziffleKey: message.ziffleKey || player.ziffleKey || null,
 	                      commanders: sanitizeCardList(message.commanders),
                       deckSlotOpenings: sanitizeDeckSlotOpenings(message.deckSlotOpenings),
-	                      ready: isRelayId(prev.lobbyId)
-                        ? validateFormatDeck(prev.format, sanitizeCardList(message.deck), sanitizeCardList(message.commanders), sanitizeCardList(message.sideboard)).ready
-                        : Boolean(message.ready),
+	                      ...hostCheckedDeckReadiness(prev, message),
+                      // Lobby renames ride the deck update, which re-signs the
+                      // seat genesis; tournament seats keep the certified name.
+                      ...(typeof message.name === "string" && !prev.tournament?.tournamentId
+                        ? { name: sanitizePlayerName(message.name, player.name) } : {}),
                       deckCount: Number(message.deckCount || 0),
                       sideboardCount: Number(message.sideboardCount || 0),
                       commanderCount: Number(message.commanderCount || 0),
@@ -4080,7 +4106,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
                       current.format,
                       currentDeck.deck,
                       currentDeck.commanders,
-                      currentDeck.sideboard
+                      currentDeck.sideboard,
+                      { allowUnreleased: current.allowUnreleased }
                     );
               }
               return {
@@ -4183,6 +4210,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       advertise = true,
       resume = null,
       deckOptions = [],
+      allowUnreleased = resume?.session?.allowUnreleased === true,
       tournamentId = resume?.session?.tournament?.tournamentId || "",
     }) => {
       let tournament = null;
@@ -4204,6 +4232,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         securityMode = tournament ? MULTIPLAYER_SECURITY_VERIFIED : MULTIPLAYER_SECURITY_TRUSTED;
         startingLife = PUBLIC_FORMATS[format].startingLife;
         if (PUBLIC_FORMATS[format].maxPlayers === 2) desiredPlayers = 2;
+      } else if (isLegalityFormat(format)) {
+        // The host checks every seat's deck against the format before starting.
+        try { await loadFormatCatalog(); } catch (error) { setStatus(error.message, true); return; }
       }
       teardownPeer();
       peerOptionsRef.current = transport === 'websocket'
@@ -4299,6 +4330,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         desiredPlayers: targetPlayers,
         startingLife: lifeTotal,
         format: normalizedFormat,
+        allowUnreleased: isLegalityFormat(normalizedFormat) && allowUnreleased === true,
         securityMode: normalizedSecurityMode,
         lockedSecurityMode: normalizedSecurityMode,
         tournament,
@@ -4409,7 +4441,8 @@ export function usePeerLobbyMessaging(base, servicesRef) {
               prev.format,
               currentDeck.deck,
               currentDeck.commanders,
-              currentDeck.sideboard
+              currentDeck.sideboard,
+              { allowUnreleased: prev.allowUnreleased }
             ),
           ],
         }));

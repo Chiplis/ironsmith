@@ -27,6 +27,7 @@ function buildManaActivationMap(decision) {
 export default function MobileManaPool({ pool, player, interactive = false, side = "self", className }) {
   const ui = useUiText();
   const { state, dispatch } = useGame();
+  const stormCount = side === "self" ? state?.storm_count : 0;
   const activationsByColor = useMemo(
     () => (interactive ? buildManaActivationMap(state?.decision) : new Map()),
     [interactive, state?.decision]
@@ -62,7 +63,7 @@ export default function MobileManaPool({ pool, player, interactive = false, side
     );
   }).filter(Boolean);
 
-  if (!chips.length && !playerCounters(player).length) return null;
+  if (!chips.length && !playerCounters(player).length && !(stormCount > 0)) return null;
 
   return (
     <div
@@ -70,8 +71,8 @@ export default function MobileManaPool({ pool, player, interactive = false, side
       data-mobile-mana-pool-side={side}
       aria-label={ui("{0} mana pool", { 0: side === "self" ? "Your" : "Opponent" })}
     >
+      <PlayerCounters player={player} stormCount={stormCount} />
       {chips}
-      <PlayerCounters player={player} />
     </div>
   );
 }

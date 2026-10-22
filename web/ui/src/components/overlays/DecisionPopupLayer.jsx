@@ -1383,7 +1383,7 @@ function MobileDecisionDock({
             disabled={secondaryDisabled || multiplayer?.submittingAction}
             onClick={onSecondary}
           >
-            {ui(secondaryLabel)}
+            <SymbolText text={ui(secondaryLabel)} style={{ whiteSpace: "inherit" }} />
           </Button>
         ) : null}
         {pregameActions.length > 0 && (
@@ -1398,7 +1398,7 @@ function MobileDecisionDock({
                 disabled={primaryDisabled || peerWaitLocked}
                 onClick={() => onPregameAction?.(action)}
               >
-                {ui(action.label)}
+                <SymbolText text={ui(action.label)} style={{ whiteSpace: "inherit" }} />
               </Button>
             ))}
           </div>
@@ -1427,11 +1427,11 @@ function MobileDecisionDock({
             ) : (
               <>
                 <span className="mobile-decision-primary-label">
-                  {ui(primaryText)}
+                  <SymbolText text={ui(primaryText)} style={{ whiteSpace: "inherit" }} />
                 </span>
                 {primaryAdvanceText ? (
                   <span className="mobile-decision-primary-subtitle">
-                    {ui(primaryAdvanceText)}
+                    <SymbolText text={ui(primaryAdvanceText)} style={{ whiteSpace: "inherit" }} />
                   </span>
                 ) : subtitleText ? (
                   <span className="mobile-decision-primary-subtitle">
@@ -2141,7 +2141,7 @@ function MobileBattleDecisionLayer({
             onClick={() => effectiveSubmitAction.onSubmit()}
           >
             <span className="mobile-decision-primary-label">
-              {effectiveSubmitAction.label || t("decision.submitPlain")}
+              <SymbolText text={effectiveSubmitAction.label || t("decision.submitPlain")} style={{ whiteSpace: "inherit" }} />
             </span>
           </Button>
         ) : null}
@@ -2290,7 +2290,7 @@ function MobileBattleDecisionLayer({
           onClick={() => effectiveSubmitAction.onSubmit()}
         >
           <span className="mobile-decision-primary-label">
-            {effectiveSubmitAction.label || t("decision.submitPlain")}
+            <SymbolText text={effectiveSubmitAction.label || t("decision.submitPlain")} style={{ whiteSpace: "inherit" }} />
           </span>
         </Button>
       ) : null}
@@ -2452,7 +2452,7 @@ function ActionStripMainTitleText({ children }) {
 
   return (
     <span ref={textRef} className="action-strip-main-title-text">
-      {children}
+      {typeof children === "string" ? <SymbolText text={children} symbolSize="1em" style={{ whiteSpace: "inherit" }} /> : children}
     </span>
   );
 }
@@ -2894,7 +2894,7 @@ function PriorityBar({
               {effectiveSubmitAction.label || t("decision.submitPlain")}
             </span>
           ) : (
-            showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))
+            <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
           )}
         </Button>
       </PeerWaitPopover>
@@ -3267,7 +3267,7 @@ function PriorityBar({
                           secondarySubmitAction.onSubmit();
                         }}
                       >
-                        {secondarySubmitAction.label || ui("Plan")}
+                        <SymbolText text={secondarySubmitAction.label || ui("Plan")} style={{ whiteSpace: "inherit" }} />
                       </Button>
                     ) : null}
                     {!topbarMainDecisionHost ? renderCancelControl() : null}
@@ -3284,11 +3284,11 @@ function PriorityBar({
                       <div className="flex min-w-0 items-baseline gap-2">
                         <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
                         <div className="action-strip-decision-title text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision, t)}
+                          <SymbolText text={resolveDecisionTitle(decision, t)} style={{ whiteSpace: "inherit" }} />
                         </div>
                         {toolbarDecisionSummary && (
                           <div className="action-strip-decision-inline-summary truncate text-[11px]">
-                            {ui(toolbarDecisionSummary)}
+                            <SymbolText text={ui(toolbarDecisionSummary)} style={{ whiteSpace: "inherit" }} />
                           </div>
                         )}
                       </div>
@@ -3573,7 +3573,7 @@ function PriorityBar({
                       aria-label={ui(action.label)}
                       onClick={() => triggerPriorityAction(action)}
                     >
-                      {ui(action.label)}
+                      <SymbolText text={ui(action.label)} style={{ whiteSpace: "inherit" }} />
                     </Button>
                   ))}
               </>
@@ -3631,7 +3631,7 @@ function PriorityBar({
                             {effectiveSubmitAction.label || t("decision.submitPlain")}
                           </span>
                         ) : (
-                          showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))
+                          <SymbolText text={showViewedCardsStep ? t("decision.done") : ui(effectiveSubmitAction?.label || t("decision.submitPlain"))} style={{ whiteSpace: "inherit" }} />
                         )}
                       </Button>
                     </PeerWaitPopover>
@@ -3656,7 +3656,7 @@ function PriorityBar({
                           secondarySubmitAction.onSubmit();
                         }}
                       >
-                        {secondarySubmitAction.label || ui("Plan")}
+                        <SymbolText text={secondarySubmitAction.label || ui("Plan")} style={{ whiteSpace: "inherit" }} />
                       </Button>
                     ) : null}
                     {renderCancelControl()}
@@ -3672,7 +3672,7 @@ function PriorityBar({
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="decision-stage-chip">{decisionStageLabel(decision, t)}</span>
                         <div className="action-strip-decision-title truncate text-[11px] font-bold uppercase tracking-[0.14em]">
-                          {resolveDecisionTitle(decision, t)}
+                          <SymbolText text={resolveDecisionTitle(decision, t)} style={{ whiteSpace: "inherit" }} />
                         </div>
                       </div>
                       {decision?.source_name && (

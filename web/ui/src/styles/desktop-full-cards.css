@@ -264,7 +264,7 @@
   }
 
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) [data-my-zone] .my-zone-board-shell > .my-zone-stack-rail:not([data-card-stack-anchor]) {
-    width: max(0px, min(calc(var(--stack-frame-rail-width, 0px) - var(--fc-rail-gutter)), var(--fc-stack-max-w))) !important;
+    width: var(--stack-reserved-width, max(0px, min(calc(var(--stack-frame-rail-width, 0px) - var(--fc-rail-gutter)), var(--fc-stack-max-w)))) !important;
   }
 
   .table-shell[data-focused-hud="true"]:has(.battlefield-row[data-battlefield-style="full"]) .my-zone-stack-rail .stack-panel {
@@ -349,7 +349,7 @@
      End turn: design-system.css's blue. Auto-pass (») : quiet icon button.
      --------------------------------------------------------------------- */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock:not(:has(.action-strip-decision-stack, .combat-decision-panel)) {
-    width: auto !important;
+    width: var(--decision-dock-lane-width, auto) !important;
     min-width: 0 !important;
   }
 
@@ -361,6 +361,8 @@
   /* The bottom-right dock speaks the bottom-left navigation's language
      (Lobby / Build): small corners, a muted violet line, a dark surface. */
   .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+    width: var(--decision-dock-lane-width, auto) !important;
+    min-width: 0 !important;
     --fc-radius: 3px;
     --fc-line: rgba(154, 131, 197, 0.4);
     --fc-line-strong: rgba(195, 161, 255, 0.7);
@@ -924,17 +926,6 @@
     -webkit-text-fill-color: var(--fc-dock-ink) !important;
   }
 
-  /* The plain action row lines up with the bottom-left navigation and sits
-     centred between the hand and the screen edge; dock-placement.js measures
-     both and publishes the position, which outranks the dock's own inset. */
-  .table-shell[data-focused-hud="true"] .battlefield-human-action-dock[data-fc-placed] {
-    top: var(--fc-dock-top) !important;
-    left: var(--fc-dock-left) !important;
-    right: auto !important;
-    bottom: auto !important;
-    max-width: var(--fc-dock-max-width) !important;
-  }
-
   /* Brand (the menu) and links sit at the left end of the phase row,
      between the two fields, where no player's header can run into them.
      The divider also reserves the combat row below the tracker, so the
@@ -962,12 +953,9 @@
    that row's room instead of overflowing it. */
 @layer fc-dock-sizing {
   @media (min-width: 1024px), (min-width: 721px) and (min-height: 541px) {
-    /* Phase changes resize the dock. Its own animation scales it unevenly
-       (squashing the labels) while dock-placement.js moves it, so the two
-       fought and the dock zigzagged; here it keeps its shape and glides to
-       its new place instead. In this layer so it also outranks
-       decision-stability's transition: none. */
+    /* Preserve control shapes as taller menus grow upward in their lane. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock {
+      width: var(--decision-dock-lane-width, 340px) !important;
       translate: none !important;
       scale: none !important;
       transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), top 220ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
@@ -1000,6 +988,11 @@
       min-width: 0 !important;
     }
 
+    .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .battlefield-human-decision-panel {
+      height: auto !important;
+      min-height: 0 !important;
+    }
+
     /* Every level between the dock and the row passes the dock's capped
        width down, so the main action shrinks instead of overflowing. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock :is(.battlefield-human-decision-dock, .battlefield-human-decision-panel, .battlefield-human-decision-panel > div) {
@@ -1017,9 +1010,11 @@
        with its buttons: its grid tracks could shrink to nothing and let the
        main action slide under the quick controls. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) {
+      height: auto !important;
+      min-height: var(--fc-action-h) !important;
       display: flex !important;
       flex-direction: row !important;
-      flex-wrap: nowrap !important;
+      flex-wrap: wrap !important;
       align-items: center !important;
       justify-content: flex-end !important;
       gap: 8px !important;
@@ -1043,11 +1038,10 @@
       min-width: 100px !important;
     }
 
-    /* Paired actions (Resolve / Resolve all, Keep hand / Mulligan) stay on
-       one line and share it, rather than dropping the second below. */
+    /* Paired actions share the lane and wrap when the viewport is narrow. */
     .table-shell[data-focused-hud="true"] .battlefield-human-action-dock .priority-inline-panel:not(.combat-decision-panel):not(:has(.action-strip-decision-stack, .mana-payment-editor)) .action-strip-layout {
       display: flex !important;
-      flex-wrap: nowrap !important;
+      flex-wrap: wrap !important;
       align-items: center !important;
       gap: 8px !important;
     }

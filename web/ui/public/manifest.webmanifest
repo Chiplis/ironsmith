@@ -11,7 +11,7 @@
   "theme_color": "#120f0d",
   "icons": [
     {
-      "src": "/theme/gem-seal.svg",
+      "src": "./theme/ironsmith-logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

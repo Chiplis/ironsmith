@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GameContext } from "../src/context/GameContext.shared";
 import { HoverProvider } from "../src/context/HoverContext";
@@ -6,6 +6,9 @@ import { DragProvider } from "../src/context/DragContext";
 import { CombatArrowProvider } from "../src/context/CombatArrowContext";
 import { I18nProvider } from "../src/i18n/I18nContext";
 import { TooltipProvider } from "../src/components/ui/tooltip";
+import { buildEffectOrderingKey } from "../src/lib/effect-ordering";
+import useCardStackMode from "../src/hooks/useCardStackMode";
+import CardStackPile from "../src/components/right-rail/CardStackPile";
 import TableCore from "../src/components/board/TableCore";
 import Topbar from "../src/components/layout/Topbar";
 import "../src/index.css";
@@ -25,7 +28,17 @@ if (sizingParams.has('objects')) {
     }));
   }
 }
+function StackFixture(){
+ const enabled = useCardStackMode();
+ return enabled ? <CardStackPile /> : null;
+}
 function Fixture(){
+ const [stackOrder,setStackOrder]=useState(sizingParams.get("stackOrder"));
+ useEffect(()=>{window.setStackOrder=setStackOrder;},[]);
+ const [stackCount,setStackCount]=useState(1);
+ useEffect(()=>{window.setStackCount=setStackCount;},[]);
+ const [stackLaneVisible,setStackLaneVisible]=useState(false);
+ useEffect(()=>{window.setStackLaneVisible=setStackLaneVisible;},[]);
  const [result,setResult]=useState('none');
  const [holdRule,setHoldRule]=useState('never');
  const [autoResolveEnabled,setAutoResolveEnabled]=useState(false);
@@ -68,9 +81,23 @@ function Fixture(){
  }
 
  const state={cancelable:scenario === 'optional-target',players,perspective:0,priority_player:0,active_player:scenario === 'opponent-turn' ? 1 : 0,decision: expanded ? decisions[kind] : null, mana_payment: kind === 'mana_payment' ? {source_name:'Grizzly Bears',can_confirm:true,planning_complete:true,request_hash:'test',plan_id:'test',pips:longPayment ? [['14']] : [['1'],['G']],pool_before:{green:longPayment ? 14 : 2},pool_after_activations:{green:longPayment ? 14 : 2},pool_after_payment:{},planned_sources:[],available_sources:[],allocations:[],warnings:[],life_to_pay:0} : null,stack:[9000],stack_objects:[{id:9000,name:"Lightning Bolt",controller:0,owner:0,type_line:"Instant",mana_cost:"{R}",targets:[]}],snapshot_id:1,phase:"Main",step:"Main1"};
- if (scenario === "phase-controls") { state.phase = "FirstMain"; state.step = null; state.stack = []; state.stack_objects = []; state.stack_size = 0; }
- return <I18nProvider><GameContext.Provider value={{state,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"once"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
- <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<div className="topbar-minor-controls--utility" />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
+ if (sizingParams.has("stackLaneTest")) {
+   state.stack_objects = Array.from({length:stackCount},(_,index)=>({...state.stack_objects[0],id:9000+index}));
+   state.stack = state.stack_objects.map(entry=>entry.id);
+   state.stack_size = state.stack_objects.length;
+ }
+ if (scenario === "phase-controls" && !stackLaneVisible) { state.phase = "FirstMain"; state.step = null; state.stack = []; state.stack_objects = []; state.stack_size = 0; }
+ if (stackOrder) state.decision = {
+   kind: "select_options", player: 0,
+   reason: stackOrder === "replacement" ? "Replacement effect" : "Order triggers",
+   description: stackOrder === "replacement" ? "Choose a replacement effect" : "Order triggered abilities",
+   min: stackOrder === "replacement" ? 1 : 2, max: stackOrder === "replacement" ? 1 : 2,
+   options: [0,1].map(index=>({index,description:`Object ${index}\nWhenever you cast a noncreature spell, this ability triggers.`,related_object_ids:[index+1],legal:true})),
+ };
+ const effectOrderingState = stackOrder ? {key:buildEffectOrderingKey(state.decision),order:[0,1]} : null;
+ return <I18nProvider><GameContext.Provider value={{state,effectOrderingState,matchClockStore:{subscribe:()=>()=>{},getSnapshot:()=>null},multiplayer:{mode:"idle"},playerAccentOverrides:{},game:null,cancelDecision:async()=>{},holdRule,setHoldRule,autoResolveEnabled,setAutoResolveEnabled,phasePassing,priorityStops,cyclePriorityStop:(key)=>setPriorityStops(stops=>({...stops,[key]:stops[key]?undefined:"once"})),startPhaseAdvance:()=>{window.__phaseAdvance=true;setPhasePassing(true);},togglePhasePassing:()=>setPhasePassing(value=>!value),dispatch:async(action)=>{window.__dispatched=action;},dispatchInBackground:async()=>{}}}><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
+ {sizingParams.has("stackLaneTest") && <StackFixture />}
+ <main style={{height:"96vh"}}><button onClick={()=>setExpanded(value=>!value)}>Toggle decision</button><button onClick={()=>setTargeting(true)}>Target graveyard cards</button><TableCore onChangePerspective={id=>{window.selectedPerspective=id;}} legalTargetObjectIds={targeting?new Set([1000,1001]):new Set()} onInspect={(id)=>setResult(String(id))} zoneViews={["battlefield"]} middleTopbar={<Topbar middleDocked />} middleUtilityControls={<div className="topbar-minor-controls--utility" />} zoneActionControls={<div className="table-zone-action-controls">{["Verify Match","Add Card","Compile Card","Load Decks","Puzzle Setup","Share Table","Create Lobby"].map(label=><button key={label} className="table-zone-action-button">{label}</button>)}</div>} /><output>{result}</output></main>
  </TooltipProvider></CombatArrowProvider></DragProvider></HoverProvider></GameContext.Provider></I18nProvider>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);

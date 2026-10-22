@@ -98,11 +98,11 @@ test("decision width uses the gap after the hand and reserves zones at every hei
   for (const dockHeight of [100, 900]) {
     const position = anchorDecisionDock({viewportWidth:1440,viewportHeight:900,dockWidth:500,dockHeight,
       handRight:1000,protectedZones:[{left:1350,top:200,right:1430,bottom:450}]});
-    assert.equal(position.maxWidth, 322);
-    assert.equal(position.left, 1016);
+    assert.equal(position.maxWidth, 256);
+    assert.equal(position.left, 1082);
     assert.ok(position.left + position.maxWidth <= 1338);
-    assert.equal(position.maxHeight, 684);
-    assert.ok(position.top >= 200);
+    assert.equal(position.maxHeight, 836);
+    assert.ok(position.top >= 48);
     assert.equal(position.top + Math.min(dockHeight, position.maxHeight), 884);
   }
 });
@@ -128,4 +128,29 @@ test("hovering a tall hand card cannot lift bottom controls above the command mi
   assert.equal(payment.top + payment.maxHeight, 720);
   const resting = anchorDecisionDock({...geometry,handTop:850});
   assert.equal(resting.top + geometry.dockHeight, 834, 'normal hand clearance still applies below the cap');
+});
+
+
+test("all decisions retain their lane as the hand empties or contents change", () => {
+  for (const viewportWidth of [1024, 1440, 2048, 3418]) {
+    const geometry = { viewportWidth, viewportHeight: 900, dockHeight: 120,
+      protectedZones: [{ left: viewportWidth - 90, top: 300 }] };
+    const full = anchorDecisionDock({ ...geometry, handRight: viewportWidth - handSideReserve(viewportWidth), dockWidth: 500 });
+    for (const handRight of [0, viewportWidth / 2]) {
+      const sparse = anchorDecisionDock({ ...geometry, handRight, dockWidth: 190 });
+      assert.equal(sparse.left, full.left);
+      assert.equal(sparse.maxWidth, full.maxWidth);
+      assert.ok(sparse.left + sparse.maxWidth <= viewportWidth - 102);
+      assert.ok(sparse.left >= viewportWidth - handSideReserve(viewportWidth) + 16);
+    }
+  }
+});
+
+test("bottom-aligned zone icons do not clip menus or set their height budget", () => {
+  const position = anchorDecisionDock({ viewportWidth: 1600, viewportHeight: 1100,
+    dockHeight: 2000, handRight: 1200, contentTop: 564,
+    protectedZones: [{ left: 1540, top: 959, right: 1591, bottom: 1066 }] });
+  assert.equal(position.top, 564);
+  assert.equal(position.maxHeight, 520);
+  assert.ok(position.left + position.maxWidth <= 1528);
 });

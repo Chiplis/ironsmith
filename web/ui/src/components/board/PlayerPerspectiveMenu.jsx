@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * The local player's name opens the seat switcher in goldfish games.
@@ -9,6 +9,33 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
   const listRef = useRef(null);
   const listId = useId();
   const current = players.find((player) => Number(player.id) === Number(currentId)) || players[0];
+
+  // A top-layer popover escapes every board/Stack stacking context while
+  // retaining the menu's inherited styling and keyboard event handling.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const menu = listRef.current;
+    menu.showPopover();
+    const position = () => {
+      const anchor = rootRef.current.getBoundingClientRect();
+      const width = Math.max(168, anchor.width);
+      Object.assign(menu.style, {
+        position: "fixed", margin: "0", right: "auto", bottom: "auto",
+        minWidth: `${width}px`, maxWidth: "calc(100vw - 16px)",
+        maxHeight: "calc(100vh - 16px)", overflowY: "auto",
+        left: `${Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8))}px`,
+        top: `${Math.max(8, anchor.top - menu.getBoundingClientRect().height - 4)}px`,
+      });
+    };
+    position();
+    window.addEventListener("resize", position);
+    window.addEventListener("scroll", position, true);
+    return () => {
+      window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
+      if (menu.matches(":popover-open")) menu.hidePopover();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -45,7 +72,6 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
         }
       }}
     >
-      <span className="player-header-perspective-label">{label}</span>
       <button
         type="button"
         className="player-header-perspective-trigger battlefield-name min-w-0 text-[16px] uppercase tracking-wider font-bold"
@@ -55,10 +81,11 @@ export default function PlayerPerspectiveMenu({ label, players, currentId, onSel
         aria-controls={listId}
         onClick={() => setOpen((value) => !value)}
       >
+        <span className="player-header-perspective-label">{label}</span>
         <span className={isActivePlayer ? "battlefield-name-text--active" : undefined}>{current?.name}</span>
       </button>
       {open ? (
-        <div ref={listRef} id={listId} className="player-header-perspective-menu" role="listbox" aria-label={label}>
+        <div popover="manual" ref={listRef} id={listId} className="player-header-perspective-menu" role="listbox" aria-label={label}>
           {players.map((player) => {
             const selected = Number(player.id) === Number(currentId);
             return (

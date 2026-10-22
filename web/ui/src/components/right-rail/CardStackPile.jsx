@@ -591,6 +591,23 @@ export default function CardStackPile({
     return () => dock.style.removeProperty("--card-stack-extent");
   }, [extent]);
 
+  // Reserve only the resting pile footprint. Pulled-out/hovered cards may
+  // expand over the board without making the battlefield chase the pointer.
+  const laneWidth = active && geometry && frame?.dock
+    ? Math.ceil(geometry.left - frame.dock.left
+      + geometry.width * (1 + Math.max(0, entries.length - 1) * DRIFT_SHARE) + 12)
+    : 0;
+  useLayoutEffect(() => {
+    const dock = document.querySelector("[data-card-stack-anchor]");
+    if (!dock) return undefined;
+    dock.dataset.stackLaneWidth = String(laneWidth);
+    window.dispatchEvent(new Event("ironsmith:stack-lane-changed"));
+    return () => {
+      delete dock.dataset.stackLaneWidth;
+      window.dispatchEvent(new Event("ironsmith:stack-lane-changed"));
+    };
+  }, [laneWidth]);
+
   const selectedKey = useMemo(() => {
     const selected = selectedObjectId == null ? null : String(selectedObjectId);
     const match = selected != null && live.find((entry) => (
